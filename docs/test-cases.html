@@ -1,0 +1,488 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>novel-studio — テストケース仕様書</title>
+    <style>
+      :root {
+        --bg: #0f1115;
+        --panel: #171a21;
+        --panel-2: #1e222b;
+        --border: #2a2f3a;
+        --text: #e6e9ef;
+        --muted: #9aa3b2;
+        --mono: ui-monospace, "SFMono-Regular", "Menlo", "Consolas", monospace;
+        --done: #34d399;
+        --proposed: #60a5fa;
+        --decision: #fbbf24;
+        --accent: #818cf8;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+        font-family: system-ui, -apple-system, "Hiragino Kaku Gothic ProN", "Noto Sans JP", sans-serif;
+        line-height: 1.6;
+      }
+      header {
+        position: sticky;
+        top: 0;
+        z-index: 10;
+        background: rgba(15, 17, 21, 0.92);
+        backdrop-filter: blur(8px);
+        border-bottom: 1px solid var(--border);
+        padding: 16px 24px;
+      }
+      h1 { margin: 0 0 4px; font-size: 20px; }
+      .sub { color: var(--muted); font-size: 13px; margin: 0 0 12px; }
+      .flow {
+        display: flex; flex-wrap: wrap; gap: 6px; align-items: center;
+        font-size: 12px; color: var(--muted); margin: 0 0 12px;
+      }
+      .flow .step { background: var(--panel-2); border: 1px solid var(--border); border-radius: 999px; padding: 3px 10px; }
+      .flow .arrow { color: var(--accent); }
+      .toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+      .filters { display: flex; gap: 6px; }
+      button.chip {
+        cursor: pointer; border: 1px solid var(--border); background: var(--panel);
+        color: var(--text); border-radius: 999px; padding: 5px 12px; font-size: 12px;
+      }
+      button.chip.active { border-color: var(--accent); background: var(--panel-2); }
+      #search {
+        flex: 1; min-width: 180px; background: var(--panel); border: 1px solid var(--border);
+        color: var(--text); border-radius: 8px; padding: 7px 12px; font-size: 13px;
+      }
+      .counts { display: flex; gap: 12px; font-size: 12px; color: var(--muted); margin-left: auto; }
+      .counts b { color: var(--text); }
+      main { padding: 24px; max-width: 1100px; margin: 0 auto; }
+      section { margin-bottom: 32px; }
+      h2 { font-size: 15px; border-left: 3px solid var(--accent); padding-left: 10px; margin: 24px 0 4px; }
+      .modnote { color: var(--muted); font-size: 12px; margin: 0 0 12px; padding-left: 13px; }
+      .group-title { font-size: 13px; color: var(--muted); margin: 16px 0 6px; font-family: var(--mono); }
+      table { width: 100%; border-collapse: collapse; background: var(--panel); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+      th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--border); vertical-align: top; font-size: 13px; }
+      th { background: var(--panel-2); color: var(--muted); font-weight: 600; font-size: 11px; letter-spacing: 0.04em; text-transform: uppercase; }
+      tr:last-child td { border-bottom: none; }
+      tbody tr:hover { background: var(--panel-2); }
+      td.id { font-family: var(--mono); color: var(--muted); white-space: nowrap; }
+      code, .mono { font-family: var(--mono); font-size: 12px; background: var(--panel-2); padding: 1px 6px; border-radius: 5px; }
+      .badge { font-size: 11px; padding: 2px 8px; border-radius: 999px; white-space: nowrap; font-weight: 600; }
+      .badge.done { color: var(--done); border: 1px solid color-mix(in srgb, var(--done) 40%, transparent); }
+      .badge.proposed { color: var(--proposed); border: 1px solid color-mix(in srgb, var(--proposed) 40%, transparent); }
+      .badge.decision { color: var(--decision); border: 1px solid color-mix(in srgb, var(--decision) 40%, transparent); }
+      .lbadge { font-size: 10px; padding: 1px 7px; border-radius: 999px; font-family: var(--mono); white-space: nowrap; }
+      .lbadge.unit { color: #a78bfa; border: 1px solid #a78bfa55; }
+      .lbadge.integration { color: #38bdf8; border: 1px solid #38bdf855; }
+      .lbadge.e2e { color: #f472b6; border: 1px solid #f472b655; }
+      .scn { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; margin: 8px 0; }
+      .scn-head { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 6px; }
+      .scn-head .id { font-family: var(--mono); color: var(--muted); font-size: 12px; }
+      .scn-title { font-weight: 600; font-size: 14px; }
+      .gwt { display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; font-size: 13px; }
+      .gwt .k { color: var(--accent); font-family: var(--mono); font-size: 11px; padding-top: 2px; }
+      .scn-note { color: var(--muted); font-size: 12px; margin-top: 6px; }
+      .layer-legend { color: var(--muted); font-size: 12px; padding-left: 13px; margin: 0 0 8px; }
+      pre { background: var(--panel-2); border: 1px solid var(--border); border-radius: 10px; padding: 14px; overflow-x: auto; font-family: var(--mono); font-size: 12px; color: #cdd3e0; }
+      .decision-card { background: color-mix(in srgb, var(--decision) 8%, var(--panel)); border: 1px solid color-mix(in srgb, var(--decision) 35%, transparent); border-radius: 10px; padding: 14px 16px; margin: 10px 0; }
+      .decision-card h3 { margin: 0 0 6px; font-size: 13px; color: var(--decision); }
+      .decision-card .opt { font-size: 13px; margin: 4px 0; }
+      .hidden { display: none !important; }
+      .empty { color: var(--muted); font-size: 13px; padding: 20px; text-align: center; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>novel-studio — テストケース仕様書</h1>
+      <p class="sub">TDD の「生きた仕様書」。テストを増やすたびにこの HTML を育てる（データ駆動：<code>TEST_CASES</code> 配列に1行追加するだけ）。</p>
+      <div class="flow">
+        <span class="step">① テストケース追加</span><span class="arrow">→</span>
+        <span class="step">② レビュー</span><span class="arrow">→</span>
+        <span class="step">③ テスト実装</span><span class="arrow">→</span>
+        <span class="step">④ 通る最小実装</span><span class="arrow">→</span>
+        <span class="step">⑤ テスト PASS</span><span class="arrow">→</span>
+        <span class="step">⑥ 本格実装</span>
+      </div>
+      <div class="toolbar">
+        <div class="filters">
+          <button class="chip active" data-filter="all">すべて</button>
+          <button class="chip" data-filter="done">✅ 実装済み</button>
+          <button class="chip" data-filter="proposed">📝 提案</button>
+          <button class="chip" data-filter="decision">❓ 決定事項</button>
+        </div>
+        <div class="filters">
+          <button class="chip layer active" data-layer="all">全レイヤ</button>
+          <button class="chip layer" data-layer="unit">🧩 unit</button>
+          <button class="chip layer" data-layer="integration">🔗 integration</button>
+          <button class="chip layer" data-layer="e2e">🌐 e2e</button>
+        </div>
+        <input id="search" type="search" placeholder="検索（シナリオ・Given/When/Then・ID）…" />
+        <div class="counts" id="counts"></div>
+      </div>
+    </header>
+    <main id="content"></main>
+
+    <script>
+      // ───────────────────────────────────────────────────────────
+      // テストを増やす = この配列に1件 push するだけ。
+      // status: 'done'(✅実装済み) | 'proposed'(📝提案) | 'decision'(❓論点)
+      // ───────────────────────────────────────────────────────────
+      const TEST_CASES = [
+        // 1. core/parser/parseNotation
+        { id: 'P1', module: 'core/parser/parseNotation', group: 'parseInlines(line)', status: 'done', title: 'プレーン行 → 単一 text', input: 'こんにちは世界', expected: '[text]' },
+        { id: 'P2', module: 'core/parser/parseNotation', group: 'parseInlines(line)', status: 'done', title: '明示ルビ（全角｜・非漢字親文字）', input: '｜カオス《混沌》', expected: '[ruby(カオス→混沌)]' },
+        { id: 'P3', module: 'core/parser/parseNotation', group: 'parseInlines(line)', status: 'done', title: '半角| の明示ルビ', input: '|Sky《スカイ》', expected: '[ruby(Sky→スカイ)]' },
+        { id: 'P4', module: 'core/parser/parseNotation', group: 'parseInlines(line)', status: 'done', title: '自動ルビ（漢字親文字・パイプ省略）', input: '漢字《かんじ》', expected: '[ruby(漢字→かんじ)]' },
+        { id: 'P5', module: 'core/parser/parseNotation', group: 'parseInlines(line)', status: 'done', title: '傍点（カクヨム式）', input: '《《強調》》', expected: '[emphasisDots(強調)]' },
+        { id: 'P6', module: 'core/parser/parseNotation', group: 'parseInlines(line)', status: 'done', title: 'text + 自動ルビ + text 混在', input: '私は漢字《かんじ》を書く', expected: '[text, ruby, text]' },
+        { id: 'P7', module: 'core/parser/parseNotation', group: 'parseInlines(line)', status: 'done', title: '閉じ括弧欠落の不正記法 → 壊れずプレーン化', input: '｜未完《よみ', expected: '[text]' },
+        { id: 'P8', module: 'core/parser/parseNotation', group: 'parseEpisodeBody(text)', status: 'done', title: '改行ごとに1 block・連番id', input: '一行目\\n二行目', expected: 'b1, b2 (paragraph)' },
+        { id: 'P9', module: 'core/parser/parseNotation', group: 'parseEpisodeBody(text)', status: 'done', title: '空行は空paragraph（間として保持）', input: '上\\n\\n下', expected: 'b1, b2(inlines:[]), b3' },
+        { id: 'P10', module: 'core/parser/parseNotation', group: 'parseEpisodeBody(text)', status: 'done', title: '＊のみの行は sceneBreak', input: '前\\n＊\\n後', expected: 'b1, sceneBreak(b2), b3' },
+
+        // 2. core/exporter/toNarou
+        { id: 'E1', module: 'core/exporter/toNarou', group: 'blocksToNarou(blocks)', status: 'done', title: 'プレーン/自動ルビ/明示ルビ/空行/区切りが往復で恒等', input: 'parse(src) を export', expected: 'blocksToNarou(parse(src)) === src' },
+        { id: 'E2', module: 'core/exporter/toNarou', group: 'blocksToNarou(blocks)', status: 'done', title: '傍点 → なろうは記法が無いのでルビ「・」へ degrade', input: '《《重要》》', expected: '｜重《・》｜要《・》' },
+
+        // 3. core 境界
+        { id: 'B1', module: 'core 境界', group: 'boundary', status: 'done', title: 'core は React / ui を import しない（所有テストで強制）', input: 'src/core/**/*.ts を走査', expected: '違反ファイル 0' },
+
+        // 4. core/storage（次サイクル・レビュー対象）
+        { id: 'S1', module: 'core/storage', group: 'WorkRepository（対 MemoryStore）', status: 'proposed', title: 'saveWork → getWork で同一 Work を復元', input: 'saveWork(w); getWork(w.id)', expected: 'w と等価' },
+        { id: 'S2', module: 'core/storage', group: 'WorkRepository（対 MemoryStore）', status: 'proposed', title: 'getWork(存在しないid)', input: "getWork('nope')", expected: 'undefined' },
+        { id: 'S3', module: 'core/storage', group: 'WorkRepository（対 MemoryStore）', status: 'proposed', title: 'saveWork で既存 id を上書き（更新）', input: 'saveWork(v1); saveWork(v2 同id)', expected: 'v2 が後勝ち' },
+        { id: 'S4', module: 'core/storage', group: 'WorkRepository（対 MemoryStore）', status: 'proposed', title: 'listWorks → 保存済み全件の要約(id,title)', input: '複数 saveWork 後 listWorks', expected: '件数・内容一致' },
+        { id: 'S5', module: 'core/storage', group: 'WorkRepository（対 MemoryStore）', status: 'proposed', title: 'listWorks（0件）', input: 'listWorks()', expected: '[]' },
+        { id: 'S6', module: 'core/storage', group: 'WorkRepository（対 MemoryStore）', status: 'proposed', title: 'deleteWork → 以後 getWork=undefined・listWorks から消える', input: 'deleteWork(id)', expected: '消える' },
+        { id: 'S7', module: 'core/storage', group: 'WorkRepository（対 MemoryStore）', status: 'proposed', title: '作品>話>block（ルビ/傍点含む）の入れ子が完全に往復', input: '入れ子 Work を保存/取得', expected: '無損失で等価' },
+        { id: 'S8', module: 'core/storage', group: 'WorkRepository（対 MemoryStore）', status: 'proposed', title: 'load 時に Zod 検証 — スキーマ不一致データの扱い（❓挙動を決定）', input: '壊れた保存データを load', expected: '定義した挙動（D2参照）' },
+        { id: 'S9', module: 'core/storage', group: 'WorkRepository（対 MemoryStore）', status: 'proposed', title: '連続 saveWork が整合（後勝ち）', input: 'saveWork 連打', expected: '最新で確定' },
+        { id: 'K1', module: 'core/storage', group: 'KeyValueStore contract（案A採用時・Memory & IndexedDB）', status: 'proposed', title: 'set → get で値往復', input: "set('k', v); get('k')", expected: 'v' },
+        { id: 'K2', module: 'core/storage', group: 'KeyValueStore contract（案A採用時・Memory & IndexedDB）', status: 'proposed', title: 'get(未存在)', input: "get('none')", expected: 'undefined' },
+        { id: 'K3', module: 'core/storage', group: 'KeyValueStore contract（案A採用時・Memory & IndexedDB）', status: 'proposed', title: 'delete 後 get', input: "delete('k'); get('k')", expected: 'undefined' },
+        { id: 'K4', module: 'core/storage', group: 'KeyValueStore contract（案A採用時・Memory & IndexedDB）', status: 'proposed', title: 'keys(prefix) で前方一致一覧', input: "keys('work:')", expected: '一致集合' },
+        { id: 'K5', module: 'core/storage', group: 'KeyValueStore contract（案A採用時・Memory & IndexedDB）', status: 'proposed', title: 'set で上書き', input: "set('k', a); set('k', b)", expected: 'b が後勝ち' },
+
+        // 5. core/schema（正本Zodスキーマ検証）
+        { id: 'SC1', module: 'core/schema', group: 'WorkSchema.safeParse', status: 'proposed', title: '正常な Work（話>block>inline）を受理', input: '正しい Work オブジェクト', expected: 'success=true' },
+        { id: 'SC2', module: 'core/schema', group: 'BlockSchema', status: 'proposed', title: 'paragraph の inlines:[]（空段落）を許容', input: "{id,type:'paragraph',inlines:[]}", expected: 'success=true' },
+        { id: 'SC3', module: 'core/schema', group: 'BlockSchema', status: 'proposed', title: 'sceneBreak は inlines 不要', input: "{id,type:'sceneBreak'}", expected: 'success=true' },
+        { id: 'SC4', module: 'core/schema', group: 'BlockSchema', status: 'proposed', title: '未知の block type を拒否', input: "{id,type:'heading'}", expected: 'success=false' },
+        { id: 'SC5', module: 'core/schema', group: 'InlineSchema', status: 'proposed', title: '未知の inline type を拒否', input: "{type:'bold',text}", expected: 'success=false' },
+        { id: 'SC6', module: 'core/schema', group: 'BlockSchema', status: 'proposed', title: 'block の id 欠落を拒否', input: "{type:'paragraph',inlines:[]}", expected: 'success=false' },
+        { id: 'SC7', module: 'core/schema', group: 'InlineSchema', status: 'proposed', title: 'ruby の reading 欠落を拒否', input: "{type:'ruby',base:'漢'}", expected: 'success=false' },
+        { id: 'SC8', module: 'core/schema', group: 'EpisodeSchema', status: 'proposed', title: 'Episode.title 欠落を拒否', input: '{id,blocks:[]}', expected: 'success=false' },
+        { id: 'SC9', module: 'core/schema', group: 'WorkSchema', status: 'proposed', title: 'episodes:[]（話0件）を許容', input: '{id,title,episodes:[]}', expected: 'success=true（D-WORK-E と整合）' },
+        { id: 'SC10', module: 'core/schema', group: 'WorkSchema', status: 'decision', title: '未知の余剰フィールドの扱い', input: '{...Work, extra:1}', expected: 'D-SCHEMA-1 の決定どおり' },
+
+        // 6. core/exporter/toKakuyomu（カクヨム記法・傍点は恒等）
+        { id: 'EK1', module: 'core/exporter/toKakuyomu', group: 'blocksToKakuyomu(blocks)', status: 'proposed', title: 'プレーン/自動ルビ/明示ルビ/空行が往復で恒等', input: 'parse(src) を export', expected: 'kakuyomu(parse(src)) === src' },
+        { id: 'EK2', module: 'core/exporter/toKakuyomu', group: 'blocksToKakuyomu(blocks)', status: 'proposed', title: '傍点はカクヨム式 《《》》 で恒等（degrade しない）', input: '《《重要》》', expected: '《《重要》》（なろう E2 と差分）' },
+        { id: 'EK3', module: 'core/exporter/toKakuyomu', group: 'blocksToKakuyomu(blocks)', status: 'proposed', title: '漢字のみ親文字ルビは自動ルビ（｜省略）', input: 'ruby(漢字→かんじ)', expected: '漢字《かんじ》' },
+        { id: 'EK4', module: 'core/exporter/toKakuyomu', group: 'blocksToKakuyomu(blocks)', status: 'proposed', title: '非漢字親文字ルビは明示｜', input: 'ruby(カオス→混沌)', expected: '｜カオス《混沌》' },
+        { id: 'EK5', module: 'core/exporter/toKakuyomu', group: 'blocksToKakuyomu(blocks)', status: 'proposed', title: '空 paragraph は空行で行構造保存', input: 'b1, 空, b3', expected: '3行（中央が空行）' },
+        { id: 'EK6', module: 'core/exporter/toKakuyomu', group: 'blocksToKakuyomu(blocks)', status: 'decision', title: 'シーン区切りの出力表記', input: 'sceneBreak', expected: 'D-KAKU-1 の決定どおり' },
+
+        // 7. core/exporter/toEpub（EPUB 縦書き・純生成部）
+        { id: 'EB1', module: 'core/exporter/toEpub', group: 'episodeToXhtml', status: 'proposed', title: 'paragraph は段落要素になる', input: 'paragraph(text)', expected: 'p 要素にテキスト' },
+        { id: 'EB2', module: 'core/exporter/toEpub', group: 'episodeToXhtml', status: 'proposed', title: 'ruby は ruby/rt 要素になる', input: 'ruby(漢字→かんじ)', expected: 'ruby要素 base=漢字 rt=かんじ' },
+        { id: 'EB3', module: 'core/exporter/toEpub', group: 'episodeToXhtml', status: 'decision', title: '傍点の EPUB 表現', input: 'emphasisDots(重要)', expected: 'D-EPUB-1 の決定どおり' },
+        { id: 'EB4', module: 'core/exporter/toEpub', group: 'episodeToXhtml', status: 'proposed', title: 'sceneBreak は区切り要素になる', input: 'sceneBreak', expected: '区切り（hr 等）1個' },
+        { id: 'EB5', module: 'core/exporter/toEpub', group: 'episodeToXhtml', status: 'proposed', title: '空 paragraph は間（空行）として保持', input: '空 paragraph', expected: '空段落/改行が1個' },
+        { id: 'EB6', module: 'core/exporter/toEpub', group: 'stylesheet', status: 'proposed', title: '縦書き CSS を含む', input: 'スタイル生成', expected: 'writing-mode: vertical-rl を含む' },
+        { id: 'EB7', module: 'core/exporter/toEpub', group: 'content.opf', status: 'proposed', title: '話が spine に順序どおり並ぶ', input: '3話の Work', expected: 'spine itemref が3件・話順' },
+        { id: 'EB8', module: 'core/exporter/toEpub', group: 'nav.xhtml', status: 'proposed', title: '目次に全話タイトル', input: '3話の Work', expected: 'nav の項目が3件・各話title' },
+        { id: 'EB9', module: 'core/exporter/toEpub', group: 'container.xml', status: 'proposed', title: 'rootfile が content.opf を指す', input: 'container 生成', expected: 'full-path=OEBPS/content.opf' },
+        { id: 'EB10', module: 'core/exporter/toEpub', group: 'XML エスケープ', status: 'proposed', title: '本文の山括弧・アンパサンド・引用符をエスケープ', input: '不等号とアンパサンドを含む text', expected: '実体参照に変換される' },
+
+        // 8. core/exporter/toHtml（ライブプレビュー描画）
+        { id: 'PV1', module: 'core/exporter/toHtml', group: 'blocksToHtml', status: 'proposed', title: 'text は HTML エスケープされる', input: '山括弧・アンパサンドを含む text', expected: '実体参照に変換' },
+        { id: 'PV2', module: 'core/exporter/toHtml', group: 'blocksToHtml', status: 'proposed', title: 'ruby は ruby/rt 要素に描画', input: 'ruby(漢字→かんじ)', expected: 'ruby要素 base=漢字 rt=かんじ' },
+        { id: 'PV3', module: 'core/exporter/toHtml', group: 'blocksToHtml', status: 'decision', title: '傍点の描画マークアップ', input: 'emphasisDots(重要)', expected: 'D-PREVIEW-1 の決定どおり' },
+        { id: 'PV4', module: 'core/exporter/toHtml', group: 'blocksToHtml', status: 'proposed', title: 'paragraph は段落要素に描画', input: 'paragraph(text)', expected: 'p 要素1個' },
+        { id: 'PV5', module: 'core/exporter/toHtml', group: 'blocksToHtml', status: 'proposed', title: '空 paragraph は間（空行）として描画', input: '空 paragraph', expected: '空行の高さが確保される' },
+        { id: 'PV6', module: 'core/exporter/toHtml', group: 'blocksToHtml', status: 'proposed', title: 'sceneBreak は区切りに描画', input: 'sceneBreak', expected: '区切り要素1個' },
+        { id: 'PV7', module: 'core/exporter/toHtml', group: 'blocksToHtml', status: 'proposed', title: '複数 block の順序保持', input: 'b1,b2,b3', expected: '描画順 b1→b2→b3' },
+        { id: 'PV8', module: 'core/exporter/toHtml', group: 'blocksToHtml', status: 'proposed', title: 'ruby の base/reading もエスケープ', input: 'ruby に山括弧を含む', expected: '実体参照に変換' },
+
+        // 9. core/bundle（構造化バンドル export/import）
+        { id: 'BN1', module: 'core/bundle', group: 'exportBundle', status: 'proposed', title: 'Work[] を version 付き JSON へ直列化', input: 'exportBundle(works)', expected: 'version と works を含む JSON' },
+        { id: 'BN2', module: 'core/bundle', group: 'importBundle', status: 'proposed', title: 'バンドル JSON を Work[] へ復元', input: 'importBundle(json)', expected: 'Work[] を返す' },
+        { id: 'BN3', module: 'core/bundle', group: '往復', status: 'proposed', title: 'export→import で恒等', input: 'importBundle(exportBundle(w))', expected: 'w と deep equal' },
+        { id: 'BN4', module: 'core/bundle', group: 'importBundle', status: 'proposed', title: '壊れた JSON を安全に拒否', input: "importBundle('{壊れ')", expected: 'エラー（throw/Result）・例外で落ちない' },
+        { id: 'BN5', module: 'core/bundle', group: 'importBundle', status: 'decision', title: '未知 version の扱い', input: 'version 違いの bundle', expected: 'D-BUNDLE-1 の決定どおり' },
+        { id: 'BN6', module: 'core/bundle', group: 'importBundle', status: 'proposed', title: 'スキーマ違反 bundle を拒否', input: 'works に不正 Work', expected: 'Zod 検証で拒否' },
+        { id: 'BN7', module: 'core/bundle', group: '往復', status: 'proposed', title: '作品0件 bundle の往復', input: 'exportBundle([])', expected: 'import で [] に戻る' },
+
+        // 10. core/folder（フォルダ往復・話ごとのなろう記法テキスト）
+        { id: 'FD1', module: 'core/folder', group: '往復', status: 'proposed', title: '1話の blocks→narou→parse→blocks がロスレス', input: '傍点を含まない話', expected: '元 blocks と等価' },
+        { id: 'FD2', module: 'core/folder', group: '往復', status: 'proposed', title: '傍点はなろう経由で非可逆（・ルビ化）', input: '傍点を含む話', expected: 'emphasisDots が ruby「・」へ変化（FD注記）' },
+        { id: 'FD3', module: 'core/folder', group: 'filename', status: 'proposed', title: 'ファイル名規則（話番号ゼロ詰め＋タイトル）', input: 'index=2, title=旅立ち', expected: '003_旅立ち.txt 等（D-FOLDER 確定）' },
+        { id: 'FD4', module: 'core/folder', group: 'filename', status: 'proposed', title: '複数話のファイル名が一意', input: '同名タイトル2話', expected: '番号で一意化' },
+        { id: 'FD5', module: 'core/folder', group: 'import', status: 'decision', title: '取り込み時のファイル→話 対応付けキー', input: 'フォルダ内 .txt 群', expected: 'D-FOLDER-2 の決定どおり' },
+
+        // 11. core/snapshot（最小版管理・純ロジック）
+        { id: 'SV1', module: 'core/snapshot', group: 'createSnapshot', status: 'proposed', title: '版を作成（時刻は注入）', input: 'createSnapshot(work, at)', expected: 'at と work のコピーを持つ版' },
+        { id: 'SV2', module: 'core/snapshot', group: 'restoreSnapshot', status: 'proposed', title: '版から当時の Work を復元', input: 'restoreSnapshot(snap)', expected: '当時の work と deep equal' },
+        { id: 'SV3', module: 'core/snapshot', group: 'trimSnapshots', status: 'proposed', title: '保持上限で古い版を切り詰め', input: 'trim(list(5), max=3)', expected: '新しい3件のみ残る' },
+        { id: 'SV4', module: 'core/snapshot', group: 'trimSnapshots', status: 'proposed', title: 'トリム後も新しい順を保持', input: 'trim 後の順序', expected: '降順（新→古）を維持' },
+      ]
+
+      // ───────────────────────────────────────────────────────────
+      // 第1層: 機能シナリオ（受け入れ仕様 / Given-When-Then）。/spec-tests で増やす。
+      // layer: 'unit'(Vitest) | 'integration'(Vitest+Testing Library) | 'e2e'(Playwright)
+      // ───────────────────────────────────────────────────────────
+      const FEATURE_SCENARIOS = [
+        { id: 'F-WORK-001', feature: '作品管理 / 新規作成', layer: 'integration', status: 'proposed', scenario: '作品0件のとき空状態と作成CTAを表示', given: '作品0件でトップ', when: 'トップ表示', then: '空状態メッセージと「小説を作成」ボタンが見える' },
+        { id: 'F-WORK-002', feature: '作品管理 / 新規作成', layer: 'integration', status: 'proposed', scenario: '作成ボタンでメタ情報ダイアログが開く', given: 'トップ', when: '「小説を作成」押下', then: 'タイトル入力欄を持つダイアログが開く' },
+        { id: 'F-WORK-003', feature: '作品管理 / 新規作成', layer: 'integration', status: 'proposed', scenario: '空タイトルで作成不可', given: 'ダイアログ', when: 'タイトル空で「作成」', then: 'エラー表示・作成されない', note: '観点=作成不可＋エラー（空白系の網羅は F-WORK-U10）' },
+        { id: 'F-WORK-005', feature: '作品管理 / 新規作成', layer: 'integration', status: 'proposed', scenario: '作成成功で一覧+1・当該作品が開く', given: 'タイトル入力済', when: '「作成」', then: '一覧+1し、アクティブ作品が当該作品へ切替わりエディタ領域に表示', note: 'URL遷移の具体は D-WORK-F 依存 / 遷移先は D-WORK-E' },
+        { id: 'F-WORK-006', feature: '作品管理 / 新規作成', layer: 'integration', status: 'proposed', scenario: '作成キャンセルで未作成', given: '入力中', when: '「キャンセル」or Esc', then: '作成されずダイアログが閉じる' },
+        { id: 'F-WORK-007', feature: '作品管理 / 新規作成', layer: 'e2e', status: 'proposed', scenario: '作成作品は再読込後も残り空状態で開く', given: '作品作成', when: 'ページ再読込', then: '一覧に残り、開くと話0件（D-WORK-Eで第1話なら第1話）の空状態' },
+        { id: 'F-WORK-008', feature: '作品管理 / 新規作成', layer: 'integration', status: 'proposed', scenario: '二重作成防止', given: 'ダイアログ', when: '「作成」連打/Enter二重送信', then: '作品は1件のみ' },
+        { id: 'F-WORK-009', feature: '作品管理 / 新規作成', layer: 'integration', status: 'proposed', scenario: '保存失敗時の挙動', given: '保存が失敗する状況（Quota超過/persist拒否）', when: '作成', then: 'エラーが提示され、一覧に二重追加されない' },
+        { id: 'F-WORK-A11Y1', feature: '作品管理 / 新規作成', layer: 'integration', status: 'proposed', scenario: 'ダイアログのA11y最低限', given: '作成ダイアログ表示', when: '開いた直後', then: '初期フォーカスがタイトル欄、Escでキャンセル相当、フォーカストラップが働く' },
+        { id: 'F-WORK-PERSIST', feature: '作品管理 / 新規作成', layer: 'e2e', status: 'proposed', scenario: '永続化要求（low・環境依存）', given: '初回作成', when: '作品を作成', then: 'navigator.storage.persist() が要求される' },
+        { id: 'F-WORK-010', feature: '作品管理 / 一覧', layer: 'integration', status: 'proposed', scenario: '複数作品の一覧表示', given: '作品が複数', when: 'トップ表示', then: '各作品のタイトルが既定順で並ぶ', note: '既定順は D-WORK-B 確定後' },
+        { id: 'F-WORK-011', feature: '作品管理 / 一覧', layer: 'integration', status: 'proposed', scenario: '一覧から編集へ', given: '一覧に作品', when: '作品を選択', then: 'アクティブ作品が切替わりエディタ領域に当該作品が表示', note: 'URL遷移は D-WORK-F 依存' },
+        { id: 'F-WORK-020', feature: '作品管理 / メタ編集', layer: 'integration', status: 'proposed', scenario: 'タイトル変更が即時反映', given: 'メタ編集', when: 'タイトルを変更して保存', then: '再読込せず一覧の当該行が新タイトルに更新' },
+        { id: 'F-WORK-021', feature: '作品管理 / メタ編集', layer: 'integration', status: 'proposed', scenario: '空タイトルへの変更を拒否', given: 'メタ編集', when: 'タイトルを空にして保存', then: '弾かれ保存（DB）は変化しない', note: '無効判定の網羅は F-WORK-U10' },
+        { id: 'F-WORK-022', feature: '作品管理 / メタ編集', layer: 'e2e', status: 'proposed', scenario: 'メタ変更の永続化', given: 'タイトル変更', when: '再読込', then: '新タイトルが保持' },
+        { id: 'F-WORK-030', feature: '作品管理 / 並べ替え', layer: 'e2e', status: 'proposed', scenario: '並べ替えの反映・永続化', given: '複数作品', when: '順序を変更（操作手段は D-WORK-B 確定まで非依存）', then: '新順序で表示され再読込後も保持' },
+        { id: 'F-WORK-U01', feature: '作品管理 / 並べ替え', layer: 'unit', status: 'proposed', scenario: 'reorder 純関数', given: '配列と from/to', when: 'reorder(list, from, to)', then: 'from==t同一・長さと要素集合は不変・末尾↔先頭が成立', note: '範囲外indexの扱いは D-WORK-H / 話のreorderも本関数を流用' },
+        { id: 'F-WORK-040', feature: '作品管理 / 削除', layer: 'integration', status: 'proposed', scenario: '削除は確認を求める', given: '一覧', when: '作品の削除を選ぶ', then: '確認ダイアログが出て、確認文に対象作品のタイトルが含まれる' },
+        { id: 'F-WORK-041', feature: '作品管理 / 削除', layer: 'e2e', status: 'proposed', scenario: '削除確定で消える・永続化', given: '削除確認', when: '確定', then: '一覧から消え再読込後も消えている' },
+        { id: 'F-WORK-042', feature: '作品管理 / 削除', layer: 'integration', status: 'proposed', scenario: '削除キャンセルで残る', given: '削除確認', when: 'キャンセル', then: '作品は残る' },
+        { id: 'F-WORK-043', feature: '作品管理 / 削除', layer: 'e2e', status: 'proposed', scenario: '最後の1件削除で空状態へ', given: '作品が1件', when: 'それを削除', then: '空状態（F-WORK-001）へ戻る' },
+        { id: 'F-WORK-044', feature: '作品管理 / 削除', layer: 'integration', status: 'proposed', scenario: '開いている作品の削除', given: 'ある作品をエディタで開いている', when: 'その作品を削除', then: 'エディタを閉じトップ（一覧/空状態）へ戻る' },
+        { id: 'F-WORK-U10', feature: '作品管理 / 検証', layer: 'unit', status: 'proposed', scenario: 'validateTitle', given: '入力文字列', when: 'validateTitle(s)', then: '空・全角空白「　」・タブ・trim後空→無効、有効文字列→有効、最大長超過→無効', note: '最大長/改行/trim方針は D-WORK-G' },
+        { id: 'F-WORK-050', feature: '作品管理 / 壊れデータ耐性', layer: 'integration', status: 'proposed', scenario: '壊れた保存データでも一覧がクラッシュしない', given: '一部に不正な保存データ', when: '一覧を表示', then: 'UIはクラッシュせず、storage の D2 で定義した挙動になる', note: 'storage S8/D2 と連動' },
+        { id: 'F-EP-001', feature: '話（エピソード）構造', layer: 'integration', status: 'proposed', scenario: '作品を開くと話一覧（0件なら空状態＋追加CTA）', given: '話0件の作品', when: '作品を開く', then: '空状態と「話を追加」が見える' },
+        { id: 'F-EP-002', feature: '話（エピソード）構造', layer: 'integration', status: 'proposed', scenario: '話の追加', given: '作品を開いている', when: '「話を追加」', then: '話一覧の末尾に1件追加され、デフォルトタイトル・本文空', note: 'デフォルトタイトルは D-EP-A' },
+        { id: 'F-EP-003', feature: '話（エピソード）構造', layer: 'integration', status: 'proposed', scenario: '話タイトル設定', given: '話', when: 'タイトルを入力', then: '一覧に反映', note: 'D-EP-A 依存' },
+        { id: 'F-EP-010', feature: '話（エピソード）構造', layer: 'e2e', status: 'proposed', scenario: '話の並べ替え・永続化', given: '複数話', when: '順序変更', then: '新順序で表示・再読込後も保持', note: '作品と同じ reorder 純関数を流用（F-WORK-U01）' },
+        { id: 'F-EP-020', feature: '話（エピソード）構造', layer: 'e2e', status: 'proposed', scenario: '話削除・永続化', given: '話', when: '削除確定', then: '消え再読込後も消えている' },
+        { id: 'F-EP-021', feature: '話（エピソード）構造', layer: 'integration', status: 'proposed', scenario: '話削除は確認を求める', given: '話一覧', when: '削除を選ぶ', then: '確認ダイアログ' },
+        { id: 'F-EP-022', feature: '話（エピソード）構造', layer: 'e2e', status: 'proposed', scenario: '話を全削除後の空状態', given: '作品の話が1件', when: 'それを削除', then: '作品は残り話0件の空状態へ戻る' },
+
+        // ── EPUB 書き出し
+        { id: 'F-EPUB-001', feature: 'EPUB 書き出し', layer: 'e2e', status: 'proposed', scenario: '作品をEPUBで書き出し', given: '話のある作品', when: '「EPUB書き出し」を実行', then: '.epub がDLされ、解凍すると mimetype/META-INF/container.xml/OEBPS を持つ' },
+        { id: 'F-EPUB-002', feature: 'EPUB 書き出し', layer: 'integration', status: 'proposed', scenario: '複数話が個別XHTML＋目次に反映', given: '3話の作品', when: 'EPUB生成', then: '各話が個別XHTMLになり目次(nav)に3話とも並ぶ' },
+        { id: 'F-EPUB-003', feature: 'EPUB 書き出し', layer: 'integration', status: 'proposed', scenario: '本文が縦書きで表示', given: 'EPUBを生成', when: 'リーダで開く', then: '本文が縦書き(vertical-rl)で表示', note: 'page-progression-direction は D-EPUB-3' },
+        { id: 'F-EPUB-004', feature: 'EPUB 書き出し', layer: 'integration', status: 'decision', scenario: '空作品/空話の扱い', given: '話0件 or 本文空の作品', when: 'EPUB生成', then: 'D-EPUB-4 の決定どおり', note: '挙動は D-EPUB-4' },
+
+        // ── 構造化バンドル export/import
+        { id: 'F-BUNDLE-001', feature: '構造化バンドル', layer: 'integration', status: 'proposed', scenario: 'エクスポートでバンドルをDL', given: '作品が複数', when: '「エクスポート」', then: 'version付きバンドルJSONがDLされる' },
+        { id: 'F-BUNDLE-002', feature: '構造化バンドル', layer: 'integration', status: 'proposed', scenario: 'インポートで作品が復元', given: '空状態', when: 'バンドルをインポート', then: '全作品が一覧に復元される' },
+        { id: 'F-BUNDLE-003', feature: '構造化バンドル', layer: 'integration', status: 'decision', scenario: 'id衝突時の取り込み方針', given: '既存作品と同id', when: 'インポート', then: 'D-BUNDLE-2 の決定どおり', note: '挙動は D-BUNDLE-2' },
+        { id: 'F-BUNDLE-004', feature: '構造化バンドル', layer: 'e2e', status: 'proposed', scenario: '別ブラウザで同一復元', given: 'A でエクスポート', when: 'B でインポート', then: 'B が A と同一の作品集合になり再読込後も残る' },
+        { id: 'F-BUNDLE-005', feature: '構造化バンドル', layer: 'integration', status: 'proposed', scenario: '不正ファイルのインポート', given: '壊れた/別形式ファイル', when: 'インポート', then: 'エラー提示・既存データは変化しない' },
+
+        // ── フォルダ往復（話ごとのなろう記法テキスト）
+        { id: 'F-FOLDER-001', feature: 'フォルダ往復', layer: 'e2e', status: 'proposed', scenario: 'フォルダへ話を書き出し', given: '話のある作品とFS Access対応ブラウザ', when: 'フォルダを選び書き出し', then: '各話が記法テキストファイルとして書かれる' },
+        { id: 'F-FOLDER-002', feature: 'フォルダ往復', layer: 'e2e', status: 'proposed', scenario: '外部編集後の取り込み', given: '書き出したテキストを外部編集', when: 'フォルダを取り込み', then: '本文が再パースされエディタ/プレビューに反映' },
+        { id: 'F-FOLDER-003', feature: 'フォルダ往復', layer: 'integration', status: 'decision', scenario: '非対応ブラウザの fallback', given: 'FS Access 非対応', when: '書き出し/取り込み', then: 'D-FOLDER-3 の fallback になる', note: '形式は D-FOLDER-3' },
+        { id: 'F-FOLDER-004', feature: 'フォルダ往復', layer: 'integration', status: 'proposed', scenario: '傍点を含む話の往復で損失を警告', given: '傍点を含む話', when: 'なろう記法で往復', then: '傍点が失われる旨を警告 or 記法選択を促す', note: 'FD2・D-FOLDER-1 と連動' },
+
+        // ── エディタ（記法入力＋ライブプレビュー分割）
+        { id: 'F-EDIT-001', feature: 'エディタ（記法入力＋プレビュー）', layer: 'integration', status: 'proposed', scenario: 'ルビ記法入力がプレビューに描画', given: 'エディタ表示', when: 'textareaに 漢字《かんじ》 と入力', then: 'プレビューに ruby(漢字/かんじ) が描画' },
+        { id: 'F-EDIT-002', feature: 'エディタ（記法入力＋プレビュー）', layer: 'integration', status: 'proposed', scenario: '傍点記法入力がプレビューに描画', given: 'エディタ', when: '《《重要》》 と入力', then: 'プレビューに傍点付きの「重要」が描画' },
+        { id: 'F-EDIT-003', feature: 'エディタ（記法入力＋プレビュー）', layer: 'integration', status: 'proposed', scenario: 'シーン区切り入力がプレビューに描画', given: 'エディタ', when: '＊ のみの行を入力', then: 'プレビューに区切りが描画' },
+        { id: 'F-EDIT-004', feature: 'エディタ（記法入力＋プレビュー）', layer: 'integration', status: 'proposed', scenario: '入力が正本blockへ変換され dirty 化', given: 'エディタ', when: '本文を編集', then: '正本(block列)へ反映され未保存(dirty)になる', note: 'デバウンスは D-EDIT-1' },
+        { id: 'F-EDIT-005', feature: 'エディタ（記法入力＋プレビュー）', layer: 'integration', status: 'proposed', scenario: '不正記法でもプレビューが壊れない', given: 'エディタ', when: '｜未完《よみ など閉じ括弧欠落を入力', then: 'プレビューはクラッシュせずプレーン表示（P7と整合）' },
+        { id: 'F-EDIT-006', feature: 'エディタ（記法入力＋プレビュー）', layer: 'e2e', status: 'proposed', scenario: '分割ペイン表示', given: 'エディタ画面', when: '表示', then: '入力ペインとプレビューペインが並ぶ', note: '向き/モバイルは D-EDIT-2' },
+        { id: 'F-EDIT-007', feature: 'エディタ（記法入力＋プレビュー）', layer: 'e2e', status: 'proposed', scenario: 'IME変換が壊れない', given: '日本語IME', when: '変換中の未確定文字を入力', then: '変換が分断されず確定後にプレビュー更新（textareaなのでcompositionが安全）' },
+
+        // ── 自動保存・dirty・最小版管理
+        { id: 'F-SAVE-001', feature: '自動保存・版管理', layer: 'integration', status: 'proposed', scenario: 'idleで自動保存しdirty解消', given: '未保存の編集', when: '一定時間入力が止まる', then: '自動保存されdirty表示が消える', note: '契機は D-SAVE-1' },
+        { id: 'F-SAVE-002', feature: '自動保存・版管理', layer: 'integration', status: 'proposed', scenario: 'dirtyインジケータ表示', given: '編集直後', when: '未保存状態', then: '未保存インジケータが見える' },
+        { id: 'F-SAVE-003', feature: '自動保存・版管理', layer: 'e2e', status: 'proposed', scenario: '自動保存の永続化', given: '編集→自動保存', when: 'ページ再読込', then: '本文が復元される' },
+        { id: 'F-SAVE-004', feature: '自動保存・版管理', layer: 'integration', status: 'proposed', scenario: '手動スナップショット作成', given: '編集中の作品', when: '「スナップショット作成」', then: '版一覧が1件増える' },
+        { id: 'F-SAVE-005', feature: '自動保存・版管理', layer: 'integration', status: 'proposed', scenario: 'スナップショット復元', given: '過去の版がある', when: '版を選び復元', then: '本文が当時の内容に戻る' },
+        { id: 'F-SAVE-006', feature: '自動保存・版管理', layer: 'e2e', status: 'proposed', scenario: 'スナップショットの永続化', given: '版を作成', when: '再読込', then: '版一覧が残っている', note: '保持数は D-SAVE-2' },
+      ]
+
+      const DECISIONS = [
+        { id: 'D1', title: 'IndexedDbStore の自動テスト方法（happy-dom は IndexedDB 非実装）', options: [
+          '案A（暫定推奨）: fake-indexeddb（テスト専用 devDep）で contract テストを Memory/IndexedDB 両方に回す。テスト専用依存は「コピー所有」原則の対象外と整理。',
+          '案B: アダプタは手動/ブラウザE2E 確認のみ、自動テストは MemoryStore だけ（依存ゼロ徹底）。',
+        ]},
+        { id: 'D2', title: 'S8 の挙動 — load 時に Zod 検証で不一致データを検出したら？', options: [
+          '例外を投げる（呼び出し側でハンドリング）',
+          '修復を試みる（既知の旧形式をマイグレーション）',
+          '握りつぶさず、自動バックアップを提示して読み込み中断',
+        ]},
+        { id: 'D-WORK-A', title: '作品メタの項目範囲', options: ['タイトルのみ', '+ あらすじ'], decided: 'タイトル＋あらすじ＋ジャンル＋タグ（スキーマに summary/genre/tags 追加が必要。表紙・帯は P1+）' },
+        { id: 'D-WORK-B', title: '作品の並び順', options: ['手動', '更新日時順', '作成順'], decided: '更新日時順（新しい順）' },
+        { id: 'D-WORK-C', title: '削除の取り消し', options: ['即時完全削除', 'ゴミ箱/取消猶予'], decided: 'ゴミ箱＋取り消し猶予（ソフト削除→復元可→猶予経過で完全削除）。猶予期間の長さは要確定' },
+        { id: 'D-WORK-D', title: '同名タイトルの可否', options: ['許可', '重複禁止'], decided: '許可（別作品として並ぶ）' },
+        { id: 'D-WORK-E', title: '新規作成時に第1話を自動生成するか', options: ['する', 'しない'], decided: 'しない（話0件で開始）' },
+        { id: 'D-WORK-F', title: '不正な作品ID/URL直アクセス時の挙動', options: ['トップへ', '404'], decided: '404/不存在表示' },
+        { id: 'D-WORK-G', title: 'タイトル正規化', options: ['trim', '最大長', '改行可否'], decided: '最大長を設ける（既定 100 字・要確定）。前後 trim・単一行（改行不可）を既定とする' },
+        { id: 'D-WORK-H', title: 'reorder の範囲外index の扱い', options: ['no-op', '例外'], decided: 'no-op（範囲外なら何もしない）※ユーザー確認待ち' },
+        { id: 'D-EP-A', title: '話タイトル 必須/任意', options: ['必須', '任意'], decided: '必須。新規話のデフォルトは「無題」' },
+        { id: 'D-SCHEMA-1', title: '正本スキーマの未知フィールド扱い', options: ['strip（既定・余剰を捨てる）', 'passthrough（将来 ref 等の前方互換のため温存）', 'strict（余剰を拒否）'] },
+        { id: 'D-KAKU-1', title: 'カクヨム書き出しのシーン区切り表記', options: ['＊ のまま（正本記法と同一）', 'カクヨム流の別表記（中央寄せ記号等）に変換'] },
+        { id: 'D-EPUB-1', title: '傍点の EPUB 表現', options: ['CSS text-emphasis（圏点/ゴマ点）', 'ルビ「・」で表現', '圏点用 span+font'] },
+        { id: 'D-EPUB-2', title: 'EPUB(zip) 生成手段', options: ['自前の最小 zip 実装（依存ゼロ・所有）', '軽量 zip ライブラリを1つ追加（依存最小哲学の例外）'] },
+        { id: 'D-EPUB-3', title: '縦書き指定の方法', options: ['CSS(writing-mode)のみ', 'opf の page-progression-direction:rtl も併記', '両方＋viewport設定'] },
+        { id: 'D-EPUB-4', title: '空作品/空話の EPUB 書き出し', options: ['生成不可としてエラー', '空本でも生成（空ページ）', '空話はスキップ'] },
+        { id: 'D-PREVIEW-1', title: 'プレビューの傍点描画', options: ['CSS text-emphasis', 'ルビ「・」', 'EPUB(D-EPUB-1)と統一する'] },
+        { id: 'D-BUNDLE-1', title: 'バンドル version 不一致の扱い', options: ['拒否してエラー', 'マイグレーションを試みる', '警告して読み込む'] },
+        { id: 'D-BUNDLE-2', title: 'インポート時の既存データとの併合', options: ['全置換（現状を捨てる）', 'マージ（id衝突は新idで追加）', 'id衝突は上書き'] },
+        { id: 'D-FOLDER-1', title: 'フォルダ往復の書き出し記法', options: ['なろう式固定（傍点は非可逆）', 'カクヨム式（傍点を保つ）', '正本JSON（完全可逆）', 'ユーザー選択'] },
+        { id: 'D-FOLDER-2', title: '取り込み時のファイル↔話 対応付けキー', options: ['ファイル名の話番号', '先頭メタコメント行(id)', '別 manifest ファイル'] },
+        { id: 'D-FOLDER-3', title: 'FS Access 非対応ブラウザの fallback', options: ['zip 一括 DL／アップロード', '話ごと個別 DL', 'クリップボード往復'] },
+        { id: 'D-EDIT-1', title: 'プレビュー更新のデバウンス', options: ['即時（入力ごと）', '150ms', '300ms'] },
+        { id: 'D-EDIT-2', title: '分割ペインの向き/モバイル', options: ['横並び固定', '縦並び', 'タブ切替', '画面幅で自動'] },
+        { id: 'D-EDIT-3', title: 'プレビューを縦書きにするか', options: ['横書き（読みやすさ優先）', '縦書き（EPUB一致）', 'トグル切替'] },
+        { id: 'D-SAVE-1', title: '自動保存の契機', options: ['idle 数秒（入力停止）', '一定間隔', 'blur/ページ離脱時', '複数併用'] },
+        { id: 'D-SAVE-2', title: 'スナップショット保持数と契機', options: ['手動のみ・上限N件', '自動でも版を切る・上限N件', '無制限（容量まで）'] },
+        { id: 'D-SAVE-3', title: '文字数カウントの範囲', options: ['本文のみ（記法記号除外）', '記法記号も含む', 'ルビ読みを除外/含める の細分'] },
+      ]
+
+      const STORAGE_DESIGN = `// 低レベルの鍵値ストア抽象
+interface KeyValueStore {
+  get<T>(key: string): Promise<T | undefined>
+  set<T>(key: string, value: T): Promise<void>
+  delete(key: string): Promise<void>
+  keys(prefix?: string): Promise<string[]>
+}
+
+class IndexedDbStore implements KeyValueStore { /* 本番: IndexedDB 薄ラッパ */ }
+class MemoryStore    implements KeyValueStore { /* テスト/フォールバック */ }
+
+// 業務ロジック（正本の保存単位 = 作品）— テストは MemoryStore に対して実行
+class WorkRepository {
+  constructor(store: KeyValueStore)
+  saveWork(work: Work): Promise<void>
+  getWork(id: string): Promise<Work | undefined>
+  listWorks(): Promise<Array<{ id: string; title: string }>>
+  deleteWork(id: string): Promise<void>
+}`
+
+      const BADGE = { done: '✅ 実装済み', proposed: '📝 提案', decision: '❓ 決定' }
+      let activeFilter = 'all'
+      let activeLayer = 'all'
+      let query = ''
+      const esc = (s) => String(s).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]))
+
+      function render() {
+        const content = document.getElementById('content')
+        const q = query.trim().toLowerCase()
+        const match = (t) =>
+          (activeFilter === 'all' || t.status === activeFilter) &&
+          (!q ||
+            [t.title, t.scenario, t.input, t.given, t.when, t.expected, t.then, t.id]
+              .filter(Boolean)
+              .join(' ')
+              .toLowerCase()
+              .includes(q))
+
+        let html = ''
+
+        // 第1層: 機能シナリオ（受け入れ仕様）
+        const scns = FEATURE_SCENARIOS.filter(
+          (s) => match(s) && (activeLayer === 'all' || s.layer === activeLayer),
+        )
+        if (scns.length) {
+          html += '<section><h2>機能シナリオ（受け入れ仕様 / Given-When-Then）</h2>'
+          html +=
+            '<p class="layer-legend">レイヤ: 🧩 unit=Vitest純関数 / 🔗 integration=Vitest+Testing Library / 🌐 e2e=Playwright</p>'
+          for (const f of [...new Set(scns.map((s) => s.feature))]) {
+            html += `<div class="group-title">${esc(f)}</div>`
+            for (const s of scns.filter((x) => x.feature === f)) {
+              html += `<div class="scn">
+                <div class="scn-head">
+                  <span class="id">${esc(s.id)}</span>
+                  <span class="badge ${s.status}">${BADGE[s.status]}</span>
+                  <span class="lbadge ${s.layer}">${esc(s.layer)}</span>
+                  <span class="scn-title">${esc(s.scenario)}</span>
+                </div>
+                <div class="gwt"><span class="k">Given</span><span>${esc(s.given)}</span><span class="k">When</span><span>${esc(s.when)}</span><span class="k">Then</span><span>${esc(s.then)}</span></div>
+                ${s.note ? `<div class="scn-note">📝 ${esc(s.note)}</div>` : ''}
+              </div>`
+            }
+          }
+          html += '</section>'
+        }
+
+        // 第2層: ユニット（core 純関数）。レイヤ=unit のみ表示。
+        const modules = [...new Set(TEST_CASES.map((t) => t.module))]
+        for (const mod of activeLayer === 'all' || activeLayer === 'unit' ? modules : []) {
+          const rows = TEST_CASES.filter((t) => t.module === mod && match(t))
+          if (!rows.length) continue
+          html += `<section><h2>${esc(mod)}</h2>`
+          if (mod === 'core/storage') {
+            html += `<p class="modnote">設計方針（レビュー観点）: KeyValueStore 抽象 ＋ IndexedDbStore（本番）＋ MemoryStore（テスト）。WorkRepository は MemoryStore に対してテスト（IndexedDB 実機不要・依存ゼロ）。</p>`
+            html += `<pre>${esc(STORAGE_DESIGN)}</pre>`
+          }
+          const groups = [...new Set(rows.map((t) => t.group))]
+          for (const g of groups) {
+            html += `<div class="group-title">${esc(g)}</div>`
+            html += '<table><thead><tr><th>ID</th><th>状態</th><th>ケース</th><th>入力</th><th>期待</th></tr></thead><tbody>'
+            for (const t of rows.filter((r) => r.group === g)) {
+              html += `<tr>
+                <td class="id">${esc(t.id)}</td>
+                <td><span class="badge ${t.status}">${BADGE[t.status]}</span></td>
+                <td>${esc(t.title)}</td>
+                <td><span class="mono">${esc(t.input)}</span></td>
+                <td><span class="mono">${esc(t.expected)}</span></td>
+              </tr>`
+            }
+            html += '</tbody></table>'
+          }
+          html += '</section>'
+        }
+
+        // 決定事項
+        if (activeFilter === 'all' || activeFilter === 'decision') {
+          const decs = DECISIONS.filter((d) => !q || (d.title + d.options.join('')).toLowerCase().includes(q))
+          if (decs.length) {
+            html += '<section><h2>❓ 決定事項（レビューで決める）</h2>'
+            for (const d of decs) {
+              html += `<div class="decision-card"><h3>${esc(d.id)}: ${esc(d.title)}</h3>`
+              for (const o of d.options) html += `<div class="opt">・${esc(o)}</div>`
+              html += '</div>'
+            }
+            html += '</section>'
+          }
+        }
+
+        content.innerHTML = html || '<p class="empty">該当するテストケースはありません。</p>'
+        renderCounts()
+      }
+
+      function renderCounts() {
+        const all = [...FEATURE_SCENARIOS, ...TEST_CASES]
+        const c = { done: 0, proposed: 0, decision: DECISIONS.length }
+        for (const t of all) c[t.status] = (c[t.status] || 0) + 1
+        document.getElementById('counts').innerHTML =
+          `<span>✅ <b>${c.done}</b></span><span>📝 <b>${c.proposed}</b></span><span>❓ <b>${c.decision}</b></span><span>計 <b>${all.length}</b></span>`
+      }
+
+      document.querySelectorAll('.chip[data-filter]').forEach((btn) =>
+        btn.addEventListener('click', () => {
+          document.querySelectorAll('.chip[data-filter]').forEach((b) => b.classList.remove('active'))
+          btn.classList.add('active')
+          activeFilter = btn.dataset.filter
+          render()
+        }),
+      )
+      document.querySelectorAll('.chip[data-layer]').forEach((btn) =>
+        btn.addEventListener('click', () => {
+          document.querySelectorAll('.chip[data-layer]').forEach((b) => b.classList.remove('active'))
+          btn.classList.add('active')
+          activeLayer = btn.dataset.layer
+          render()
+        }),
+      )
+      document.getElementById('search').addEventListener('input', (e) => {
+        query = e.target.value
+        render()
+      })
+      render()
+    </script>
+  </body>
+</html>

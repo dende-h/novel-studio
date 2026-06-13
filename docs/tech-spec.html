@@ -1,0 +1,306 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>novel-studio — 技術仕様・ライブラリバージョン</title>
+    <style>
+      :root {
+        --bg: #0f1115;
+        --panel: #171a21;
+        --panel-2: #1e222b;
+        --border: #2a2f3a;
+        --text: #e6e9ef;
+        --muted: #9aa3b2;
+        --mono: ui-monospace, "SFMono-Regular", "Menlo", "Consolas", monospace;
+        --accept: #34d399;
+        --copy: #60a5fa;
+        --avoid: #f87171;
+        --consider: #fbbf24;
+        --accent: #818cf8;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+        font-family: system-ui, -apple-system, "Hiragino Kaku Gothic ProN", "Noto Sans JP", sans-serif;
+        line-height: 1.6;
+      }
+      header {
+        position: sticky;
+        top: 0;
+        z-index: 10;
+        background: rgba(15, 17, 21, 0.92);
+        backdrop-filter: blur(8px);
+        border-bottom: 1px solid var(--border);
+        padding: 16px 24px;
+      }
+      h1 { margin: 0 0 4px; font-size: 20px; }
+      .sub { color: var(--muted); font-size: 13px; margin: 0 0 12px; }
+      .flow {
+        display: flex; flex-wrap: wrap; gap: 6px; align-items: center;
+        font-size: 12px; color: var(--muted); margin: 0 0 12px;
+      }
+      .flow .step { background: var(--panel-2); border: 1px solid var(--border); border-radius: 999px; padding: 3px 10px; }
+      .flow .arrow { color: var(--accent); }
+      .toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+      .filters { display: flex; flex-wrap: wrap; gap: 6px; }
+      button.chip {
+        cursor: pointer; border: 1px solid var(--border); background: var(--panel);
+        color: var(--text); border-radius: 999px; padding: 5px 12px; font-size: 12px;
+      }
+      button.chip.active { border-color: var(--accent); background: var(--panel-2); }
+      #search {
+        flex: 1; min-width: 180px; background: var(--panel); border: 1px solid var(--border);
+        color: var(--text); border-radius: 8px; padding: 7px 12px; font-size: 13px;
+      }
+      .counts { display: flex; gap: 12px; font-size: 12px; color: var(--muted); margin-left: auto; }
+      .counts b { color: var(--text); }
+      main { padding: 24px; max-width: 1100px; margin: 0 auto; }
+      section { margin-bottom: 32px; }
+      h2 { font-size: 15px; border-left: 3px solid var(--accent); padding-left: 10px; margin: 24px 0 4px; }
+      .modnote { color: var(--muted); font-size: 12px; margin: 0 0 12px; padding-left: 13px; }
+      .group-title { font-size: 13px; color: var(--muted); margin: 16px 0 6px; font-family: var(--mono); }
+      table { width: 100%; border-collapse: collapse; background: var(--panel); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+      th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--border); vertical-align: top; font-size: 13px; }
+      th { background: var(--panel-2); color: var(--muted); font-weight: 600; font-size: 11px; letter-spacing: 0.04em; text-transform: uppercase; }
+      tr:last-child td { border-bottom: none; }
+      tbody tr:hover { background: var(--panel-2); }
+      td.id { font-family: var(--mono); color: var(--muted); white-space: nowrap; }
+      td.ver { font-family: var(--mono); color: var(--text); white-space: nowrap; }
+      td.name { white-space: nowrap; }
+      code, .mono { font-family: var(--mono); font-size: 12px; background: var(--panel-2); padding: 1px 6px; border-radius: 5px; }
+      .badge { font-size: 11px; padding: 2px 8px; border-radius: 999px; white-space: nowrap; font-weight: 600; }
+      .badge.accept { color: var(--accept); border: 1px solid color-mix(in srgb, var(--accept) 40%, transparent); }
+      .badge.copy { color: var(--copy); border: 1px solid color-mix(in srgb, var(--copy) 40%, transparent); }
+      .badge.avoid { color: var(--avoid); border: 1px solid color-mix(in srgb, var(--avoid) 40%, transparent); }
+      .badge.consider { color: var(--consider); border: 1px solid color-mix(in srgb, var(--consider) 40%, transparent); }
+      .badge.wip { color: var(--consider); border: 1px solid color-mix(in srgb, var(--consider) 40%, transparent); }
+      .badge.runtime { color: var(--accept); border: 1px solid color-mix(in srgb, var(--accept) 40%, transparent); }
+      .badge.build { color: var(--copy); border: 1px solid color-mix(in srgb, var(--copy) 40%, transparent); }
+      .badge.test { color: var(--consider); border: 1px solid color-mix(in srgb, var(--consider) 40%, transparent); }
+      .badge.quality { color: var(--accent); border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent); }
+      pre { background: var(--panel-2); border: 1px solid var(--border); border-radius: 10px; padding: 14px; overflow-x: auto; font-family: var(--mono); font-size: 12px; color: #cdd3e0; }
+      .why { color: var(--muted); font-size: 12.5px; }
+      .hidden { display: none !important; }
+      .empty { color: var(--muted); font-size: 13px; padding: 20px; text-align: center; }
+      .legend { display: flex; flex-wrap: wrap; gap: 14px; font-size: 12px; color: var(--muted); margin: 6px 0 0; padding-left: 13px; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>novel-studio — 技術仕様・ライブラリバージョン</h1>
+      <p class="sub">ローカルファースト小説執筆ツール（Vite + React + PWA / TypeScript strict）。哲学＝<b>依存最小・コピーして所有・EOL耐性・TDD</b>。データ駆動：依存を足したら <code>STACK</code> 配列に1行追加するだけ。</p>
+      <div class="flow">
+        <span class="step">依存を検討</span><span class="arrow">→</span>
+        <span class="step">コピーして所有できないか？</span><span class="arrow">→</span>
+        <span class="step">土台として正当か？</span><span class="arrow">→</span>
+        <span class="step">採用 / 自前化 / 却下</span><span class="arrow">→</span>
+        <span class="step">この表に1行追加</span>
+      </div>
+      <div class="toolbar">
+        <div class="filters">
+          <button class="chip active" data-filter="all">すべて</button>
+          <button class="chip" data-filter="runtime">⚙️ ランタイム</button>
+          <button class="chip" data-filter="build">🏗️ ビルド時</button>
+          <button class="chip" data-filter="test">🧪 テスト</button>
+          <button class="chip" data-filter="quality">✨ 品質</button>
+        </div>
+        <input id="search" type="search" placeholder="検索（名前・採用理由…）…" />
+        <div class="counts" id="counts"></div>
+      </div>
+    </header>
+    <main id="content"></main>
+
+    <script>
+      // ───────────────────────────────────────────────────────────
+      // 依存を足す = この配列に1件 push するだけ（バージョンは package.json と同期）。
+      // layer:  'runtime'(⚙️ ランタイム) | 'build'(🏗️ ビルド時) | 'test'(🧪 テスト) | 'quality'(✨ 品質)
+      // kind:   'prod'(dependencies) | 'dev'(devDependencies)
+      // ───────────────────────────────────────────────────────────
+      const META = {
+        packageManager: 'pnpm@10.29.3',
+        node: 'type: module（ESM）',
+        ts: 'TypeScript strict / tsc -b（project references）',
+        source: 'package.json（2026-06）',
+      }
+
+      const STACK = [
+        // ── 土台 / ランタイム ──────────────────────────────────
+        { name: 'react',              version: '19.2.7',  layer: 'runtime', kind: 'prod', group: '土台（UIランタイム）',
+          why: '受け入れる土台。安定大型エコシステム・EOL耐性。Presentational/Container で薄く使う。' },
+        { name: 'react-dom',          version: '19.2.7',  layer: 'runtime', kind: 'prod', group: '土台（UIランタイム）',
+          why: 'react のレンダラ。ブラウザ DOM への描画。' },
+        { name: 'zod',                version: '4.4.3',   layer: 'runtime', kind: 'prod', group: '正本検証の核',
+          why: '依存が正当化される核＝正本 block スキーマの検証。load 時の不一致検出（S8/D2）に必須。' },
+
+        // ── スタイル（ランタイム依存なし） ─────────────────────
+        { name: 'tailwindcss',        version: '4.3.0',   layer: 'build',   kind: 'dev', group: 'スタイル',
+          why: 'ランタイム依存を残さない（ビルド時にCSS生成）。shadcn/ui のコピー所有と相性が良い。' },
+        { name: '@tailwindcss/vite',  version: '4.3.0',   layer: 'build',   kind: 'dev', group: 'スタイル',
+          why: 'Tailwind v4 の Vite 公式プラグイン。PostCSS 設定を持たず薄く統合。' },
+
+        // ── ビルド土台 ────────────────────────────────────────
+        { name: 'vite',               version: '8.0.16',  layer: 'build',   kind: 'dev', group: 'ビルド / 開発サーバ',
+          why: '受け入れる土台（ビルド時のみ）。高速 dev・成果物は素の JS/CSS でEOL耐性が高い。' },
+        { name: '@vitejs/plugin-react', version: '6.0.2', layer: 'build',   kind: 'dev', group: 'ビルド / 開発サーバ',
+          why: 'React 向け Fast Refresh / JSX 変換。Vite 公式。' },
+        { name: 'vite-plugin-pwa',    version: '1.3.0',   layer: 'build',   kind: 'dev', group: 'PWA',
+          why: 'ローカルファースト＝PWA（オフライン・インストール可）。Service Worker / manifest 生成を担う。' },
+        { name: 'typescript',         version: '6.0.3',   layer: 'build',   kind: 'dev', group: '言語',
+          why: 'strict・project references（tsc -b）。core/ui の型境界を支える基盤。' },
+        { name: '@types/react',       version: '19.2.17', layer: 'build',   kind: 'dev', group: '型定義',
+          why: 'react の型。ランタイムには含まれない。' },
+        { name: '@types/react-dom',   version: '19.2.3',  layer: 'build',   kind: 'dev', group: '型定義',
+          why: 'react-dom の型。' },
+
+        // ── テスト ────────────────────────────────────────────
+        { name: 'vitest',             version: '4.1.8',   layer: 'test',    kind: 'dev', group: 'ユニット / 統合ランナー',
+          why: 'TDD の主戦場。core/（schema・parser・exporter・storage）の純関数を高速に回す。Vite と設定共有。' },
+        { name: 'happy-dom',          version: '20.10.2', layer: 'test',    kind: 'dev', group: 'ユニット / 統合ランナー',
+          why: '軽量 DOM 環境（jsdom より速い）。ui/ のコンポーネントテスト用。※ IndexedDB は非実装（D1 の論点）。' },
+        { name: '@testing-library/react', version: '16.3.2', layer: 'test', kind: 'dev', group: 'コンポーネントテスト',
+          why: 'Presentational を Props 駆動でテスト（実装詳細でなく振る舞い）。Storybook 不採用の代替。' },
+        { name: '@testing-library/jest-dom', version: '6.9.1', layer: 'test', kind: 'dev', group: 'コンポーネントテスト',
+          why: 'DOM 向けカスタムマッチャ（toBeInTheDocument 等）。アサーションを読みやすく。' },
+        { name: '@playwright/test',   version: '1.60.0',  layer: 'test',    kind: 'dev', group: 'E2E（別タスクで整備中）', wip: true,
+          why: 'ブラウザ実機の E2E。IndexedDB アダプタ等、実機確認が要る箇所を担当。テスト本体は別タスクで並行追加中。' },
+
+        // ── 品質ツール ────────────────────────────────────────
+        { name: '@biomejs/biome',     version: '2.4.16',  layer: 'quality', kind: 'dev', group: 'Lint / Format',
+          why: '重い ESLint/Prettier を一本化。単一バイナリ・高速・低 churn で依存最小哲学に合致。' },
+      ]
+
+      // 依存ポリシー（受け入れる土台 / コピーして所有 / 避ける / 将来検討）
+      const POLICY = [
+        { kind: 'accept',   item: 'React・Vite（ビルド時）・Tailwind（ランタイム依存なし）・Zod（正本検証の核）',
+          note: '受け入れる土台。大型・安定・EOL耐性があり、自前化が非現実的なもの。' },
+        { kind: 'copy',     item: 'shadcn/ui・nuqs・各種ユーティリティ',
+          note: 'コピーして所有。zero-dep/copy-in。churn と EOL リスクを自分の手元に閉じ込める。' },
+        { kind: 'avoid',    item: '重い抽象ラッパ・大型UIライブラリ・churn の激しい依存・グローバル state（Redux/Zustand）',
+          note: '避ける。state は useSyncExternalStore + 数十行の自前最小ストアで代替。' },
+        { kind: 'consider', item: 'ProseMirror / CodeMirror6',
+          note: '将来検討のみ。現状エディタは A1=textarea＋自前パーサで回避済み。WYSIWYG 化する時だけ。' },
+      ]
+
+      // アーキテクチャ（core/ui 境界・永続化・PWA）
+      const ARCH = [
+        { area: 'core/（純TS・React非依存・TDD中心）', detail: 'schema（正本block・Zod）/ parser（記法→正本・純関数）/ exporter（正本→EPUB・なろう・カクヨム）/ storage（IndexedDB薄ラッパ）。将来は公開プラットフォームへ切り出すだけ。' },
+        { area: 'ui/（React / PWA / shadcn / nuqs）', detail: 'Presentational/Container。URL表現可能な状態は nuqs。エディタ状態は自前最小ストア（useSyncExternalStore）。' },
+        { area: '境界の強制', detail: 'core は ui / React を import しない。lint ではなく自作の所有テスト（B1）で走査・強制（違反0）。' },
+        { area: '永続化', detail: 'ネイティブ IndexedDB を薄い自前ラッパで包む（依存ゼロ・所有・TDD）。KeyValueStore 抽象＋IndexedDbStore（本番）/ MemoryStore（テスト）。格納は正本 block JSON バンドル。' },
+        { area: 'PWA', detail: 'vite-plugin-pwa で Service Worker / manifest 生成。オフライン動作・インストール可能なローカルファースト。' },
+        { area: 'バックアップ / 同期', detail: 'MVP は手動エクスポート/インポート＋ローカル persist()。将来 opt-in で at-rest 暗号化クラウド同期（技術選定は未決）。' },
+      ]
+
+      const POLICY_BADGE = { accept: '🟢 受け入れる土台', copy: '🔵 コピーして所有', avoid: '🔴 避ける', consider: '🟡 将来検討' }
+      const LAYER_BADGE  = { runtime: '⚙️ ランタイム', build: '🏗️ ビルド時', test: '🧪 テスト', quality: '✨ 品質' }
+
+      let activeFilter = 'all'
+      let query = ''
+      const esc = (s) => String(s).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]))
+
+      function render() {
+        const content = document.getElementById('content')
+        const q = query.trim().toLowerCase()
+        const matchStack = (t) =>
+          (activeFilter === 'all' || t.layer === activeFilter) &&
+          (!q || (t.name + t.why + t.group + t.version).toLowerCase().includes(q))
+
+        let html = ''
+
+        // ── スタック概要（バージョン表・layer ごと）─────────
+        html += `<section><h2>スタック概要 — 正確なバージョン</h2>`
+        html += `<p class="modnote">出典: <code>${esc(META.source)}</code> ／ ${esc(META.packageManager)} ／ ${esc(META.ts)} ／ ${esc(META.node)}。バージョンは package.json と1対1。</p>`
+        const layers = ['runtime', 'build', 'test', 'quality']
+        let shownAny = false
+        for (const layer of layers) {
+          const rows = STACK.filter((t) => t.layer === layer && matchStack(t))
+          if (!rows.length) continue
+          shownAny = true
+          const groups = [...new Set(rows.map((t) => t.group))]
+          for (const g of groups) {
+            html += `<div class="group-title">${esc(LAYER_BADGE[layer])} ／ ${esc(g)}</div>`
+            html += '<table><thead><tr><th>パッケージ</th><th>バージョン</th><th>区分</th><th>採用理由（依存最小哲学との関係）</th></tr></thead><tbody>'
+            for (const t of rows.filter((r) => r.group === g)) {
+              html += `<tr>
+                <td class="name"><code>${esc(t.name)}</code></td>
+                <td class="ver">${esc(t.version)}${t.wip ? ' <span class="badge wip">整備中</span>' : ''}</td>
+                <td><span class="badge ${t.layer}">${LAYER_BADGE[t.layer]}</span> <span class="mono">${t.kind === 'prod' ? 'deps' : 'devDeps'}</span></td>
+                <td class="why">${esc(t.why)}</td>
+              </tr>`
+            }
+            html += '</tbody></table>'
+          }
+        }
+        if (!shownAny) html += '<p class="empty">該当するパッケージはありません。</p>'
+        html += '</section>'
+
+        // ── 依存ポリシー表（フィルタ all のみ）──────────────
+        if (activeFilter === 'all') {
+          const pol = POLICY.filter((p) => !q || (p.item + p.note).toLowerCase().includes(q))
+          if (pol.length) {
+            html += '<section><h2>依存ポリシー</h2>'
+            html += '<p class="modnote">新しい依存を足す前に「コピーして所有できないか」を先に検討する。</p>'
+            html += '<table><thead><tr><th>区分</th><th>対象</th><th>方針</th></tr></thead><tbody>'
+            for (const p of pol) {
+              html += `<tr>
+                <td><span class="badge ${p.kind}">${POLICY_BADGE[p.kind]}</span></td>
+                <td>${esc(p.item)}</td>
+                <td class="why">${esc(p.note)}</td>
+              </tr>`
+            }
+            html += '</tbody></table></section>'
+          }
+
+          const arch = ARCH.filter((a) => !q || (a.area + a.detail).toLowerCase().includes(q))
+          if (arch.length) {
+            html += '<section><h2>アーキテクチャ — core / ui 境界・永続化・PWA</h2>'
+            html += '<p class="modnote">モノレポにせず単一リポ内で境界を引く。core は純TS・React非依存で TDD の中心。</p>'
+            html += `<pre>${esc(ARCH_TREE)}</pre>`
+            html += '<table><thead><tr><th>領域</th><th>方針</th></tr></thead><tbody>'
+            for (const a of arch) {
+              html += `<tr><td class="name">${esc(a.area)}</td><td class="why">${esc(a.detail)}</td></tr>`
+            }
+            html += '</tbody></table></section>'
+          }
+        }
+
+        content.innerHTML = html || '<p class="empty">該当する項目はありません。</p>'
+        renderCounts()
+      }
+
+      const ARCH_TREE = `src/
+├── core/                     ← 純TS・React 非依存・TDD の中心
+│   ├── schema/               : 正本 block スキーマ（Zod）
+│   ├── parser/               : 記法 → 正本（純関数）
+│   ├── exporter/             : 正本 → EPUB / なろう / カクヨム（純関数）
+│   └── storage/              : IndexedDB 薄ラッパ（型付き / Promise化 / tx管理）
+└── ui/                       ← React / PWA / shadcn / nuqs
+
+ルール: core は ui / React を import しない（所有テスト B1 で強制・違反0）`
+
+      function renderCounts() {
+        const c = { runtime: 0, build: 0, test: 0, quality: 0 }
+        for (const t of STACK) c[t.layer] = (c[t.layer] || 0) + 1
+        document.getElementById('counts').innerHTML =
+          `<span>⚙️ <b>${c.runtime}</b></span><span>🏗️ <b>${c.build}</b></span><span>🧪 <b>${c.test}</b></span><span>✨ <b>${c.quality}</b></span><span>計 <b>${STACK.length}</b></span>`
+      }
+
+      document.querySelectorAll('.chip').forEach((btn) =>
+        btn.addEventListener('click', () => {
+          document.querySelectorAll('.chip').forEach((b) => b.classList.remove('active'))
+          btn.classList.add('active')
+          activeFilter = btn.dataset.filter
+          render()
+        }),
+      )
+      document.getElementById('search').addEventListener('input', (e) => {
+        query = e.target.value
+        render()
+      })
+      render()
+    </script>
+  </body>
+</html>
