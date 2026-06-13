@@ -13,6 +13,7 @@ export function useAutosave(
   const saveRef = useRef(save)
   saveRef.current = save
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: trigger（draft）の変化で保存タイマーを張り直すための意図的な依存
   useEffect(() => {
     if (!dirty) return
     const t = setTimeout(() => saveRef.current(), delayMs)

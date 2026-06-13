@@ -24,7 +24,7 @@ const FEATURES: Feature[] = [
     title: 'ローカルファースト',
     body: '原稿は端末内（IndexedDB）に保存。ログイン不要で、オフラインでも書けます。',
     icon: (
-      <svg viewBox="0 0 24 24" {...stroke} aria-hidden>
+      <svg viewBox="0 0 24 24" {...stroke} aria-hidden="true">
         <rect x="5" y="11" width="14" height="9" rx="2" />
         <path d="M8 11V8a4 4 0 0 1 8 0v3" />
       </svg>
@@ -34,7 +34,7 @@ const FEATURES: Feature[] = [
     title: '縦書きEPUB',
     body: '1作品＝1冊として、縦書きのEPUBに書き出し。電子書籍リーダーでそのまま読めます。',
     icon: (
-      <svg viewBox="0 0 24 24" {...stroke} aria-hidden>
+      <svg viewBox="0 0 24 24" {...stroke} aria-hidden="true">
         <path d="M4 5a2 2 0 0 1 2-2h6v18H6a2 2 0 0 1-2-2z" />
         <path d="M12 3h6a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-6" />
       </svg>
@@ -44,7 +44,7 @@ const FEATURES: Feature[] = [
     title: 'なろう・カクヨム記法',
     body: 'ルビや傍点を保ったまま、各投稿サイトの記法へワンクリックで変換します。',
     icon: (
-      <svg viewBox="0 0 24 24" {...stroke} aria-hidden>
+      <svg viewBox="0 0 24 24" {...stroke} aria-hidden="true">
         <path d="M4 7h16M4 12h16M4 17h10" />
       </svg>
     ),
@@ -53,7 +53,7 @@ const FEATURES: Feature[] = [
     title: 'ルビ・傍点',
     body: '｜親文字《よみ》や《《傍点》》をそのまま記述。書いた瞬間に組版を確認できます。',
     icon: (
-      <svg viewBox="0 0 24 24" {...stroke} aria-hidden>
+      <svg viewBox="0 0 24 24" {...stroke} aria-hidden="true">
         <path d="M7 18 11 6l4 12M8.5 14h5" />
         <circle cx="18" cy="7" r="1" />
       </svg>
@@ -63,7 +63,7 @@ const FEATURES: Feature[] = [
     title: 'ライブプレビュー',
     body: '入力と同時に整形結果を表示。執筆のリズムを止めません。',
     icon: (
-      <svg viewBox="0 0 24 24" {...stroke} aria-hidden>
+      <svg viewBox="0 0 24 24" {...stroke} aria-hidden="true">
         <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z" />
         <circle cx="12" cy="12" r="3" />
       </svg>
@@ -73,7 +73,7 @@ const FEATURES: Feature[] = [
     title: 'バックアップ自由',
     body: '全作品をバンドルJSONやフォルダに書き出し／取り込み。データはあなたのものです。',
     icon: (
-      <svg viewBox="0 0 24 24" {...stroke} aria-hidden>
+      <svg viewBox="0 0 24 24" {...stroke} aria-hidden="true">
         <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
         <path d="M7 10l5 5 5-5M12 15V3" />
       </svg>
