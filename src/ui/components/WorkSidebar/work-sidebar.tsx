@@ -29,7 +29,11 @@ export function WorkSidebar({
     <nav className="flex h-full w-56 flex-col gap-2 border-neutral-200 border-r p-2 text-sm">
       <div className="flex items-center justify-between">
         <span className="font-semibold text-neutral-500 text-xs">作品</span>
-        <button type="button" onClick={onNewWork} className="rounded px-2 py-0.5 hover:bg-neutral-100">
+        <button
+          type="button"
+          onClick={onNewWork}
+          className="rounded px-2 py-0.5 hover:bg-neutral-100"
+        >
           新規作品
         </button>
       </div>

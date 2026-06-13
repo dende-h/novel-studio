@@ -69,7 +69,9 @@ describe('editorStore（自前ストア・useSyncExternalStore 用）', () => {
     const s = store.getSnapshot()
     const ep = s.work?.episodes[0]
     expect(ep?.blocks.some((b) => b.type === 'sceneBreak')).toBe(true)
-    expect(ep?.blocks.some((b) => b.type === 'paragraph' && b.inlines.some((i) => i.type === 'ruby'))).toBe(true)
+    expect(
+      ep?.blocks.some((b) => b.type === 'paragraph' && b.inlines.some((i) => i.type === 'ruby')),
+    ).toBe(true)
   })
 
   it('openEpisode は blocks をカクヨム記法に戻して draft へ（ロスレス往復）', async () => {

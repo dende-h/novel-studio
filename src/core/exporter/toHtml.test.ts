@@ -8,7 +8,9 @@ describe('blocksToHtml（ライブプレビュー描画）', () => {
   })
 
   it('ruby は ruby/rt 要素に描画', () => {
-    expect(blocksToHtml(parseEpisodeBody('漢字《かんじ》'))).toBe('<p><ruby>漢字<rt>かんじ</rt></ruby></p>')
+    expect(blocksToHtml(parseEpisodeBody('漢字《かんじ》'))).toBe(
+      '<p><ruby>漢字<rt>かんじ</rt></ruby></p>',
+    )
   })
 
   it('傍点は em.dots（既定 = CSS text-emphasis 用）に描画', () => {
@@ -16,14 +18,20 @@ describe('blocksToHtml（ライブプレビュー描画）', () => {
   })
 
   it('空 paragraph は間（blank 段落）として描画', () => {
-    expect(blocksToHtml(parseEpisodeBody('上\n\n下'))).toBe('<p>上</p><p class="blank"></p><p>下</p>')
+    expect(blocksToHtml(parseEpisodeBody('上\n\n下'))).toBe(
+      '<p>上</p><p class="blank"></p><p>下</p>',
+    )
   })
 
   it('sceneBreak は区切りに描画', () => {
-    expect(blocksToHtml(parseEpisodeBody('前\n＊\n後'))).toBe('<p>前</p><hr class="scene-break" /><p>後</p>')
+    expect(blocksToHtml(parseEpisodeBody('前\n＊\n後'))).toBe(
+      '<p>前</p><hr class="scene-break" /><p>後</p>',
+    )
   })
 
   it('ruby の base/reading 内もエスケープ', () => {
-    expect(blocksToHtml(parseEpisodeBody('｜a<b《よ&み》'))).toBe('<p><ruby>a&lt;b<rt>よ&amp;み</rt></ruby></p>')
+    expect(blocksToHtml(parseEpisodeBody('｜a<b《よ&み》'))).toBe(
+      '<p><ruby>a&lt;b<rt>よ&amp;み</rt></ruby></p>',
+    )
   })
 })

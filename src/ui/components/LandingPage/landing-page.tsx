@@ -82,9 +82,21 @@ const FEATURES: Feature[] = [
 ]
 
 const STEPS: { n: string; title: string; body: string }[] = [
-  { n: '01', title: '作品をつくる', body: '「新規作品」からタイトルを付けるだけ。連載＝複数話をまとめて管理します。' },
-  { n: '02', title: '話を書く', body: '記法のまま書けば、入力中に自動保存。隣のペインに組版プレビューが追従します。' },
-  { n: '03', title: '書き出す', body: '縦書きEPUB、なろう／カクヨム記法、バックアップ用バンドルへ自在に出力。' },
+  {
+    n: '01',
+    title: '作品をつくる',
+    body: '「新規作品」からタイトルを付けるだけ。連載＝複数話をまとめて管理します。',
+  },
+  {
+    n: '02',
+    title: '話を書く',
+    body: '記法のまま書けば、入力中に自動保存。隣のペインに組版プレビューが追従します。',
+  },
+  {
+    n: '03',
+    title: '書き出す',
+    body: '縦書きEPUB、なろう／カクヨム記法、バックアップ用バンドルへ自在に出力。',
+  },
 ]
 
 /** アプリの入り口（ローカルファースト小説執筆ツールの紹介＋執筆導線）。 */
@@ -128,7 +140,9 @@ export function LandingPage({ onStart, hasWorks }: LandingPageProps) {
             >
               {ctaLabel}
             </button>
-            <span className="text-stone-500 text-xs">サーバ不要・あなたのデータはあなたの端末に</span>
+            <span className="text-stone-500 text-xs">
+              サーバ不要・あなたのデータはあなたの端末に
+            </span>
           </div>
         </div>
 
@@ -139,7 +153,11 @@ export function LandingPage({ onStart, hasWorks }: LandingPageProps) {
             style={{ writingMode: 'vertical-rl' }}
           >
             <p>
-              夜の<ruby>帳<rt>とばり</rt></ruby>が下りる。
+              夜の
+              <ruby>
+                帳<rt>とばり</rt>
+              </ruby>
+              が下りる。
               <em className="dots">確かに</em>、彼女はそこにいた。
             </p>
           </div>

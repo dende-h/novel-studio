@@ -42,7 +42,10 @@ export function buildContainerXml(): string {
 
 export function buildPackageOpf(work: Work): string {
   const manifestItems = work.episodes
-    .map((ep) => `<item id="${epubId(ep)}" href="${epubHref(ep)}" media-type="application/xhtml+xml" />`)
+    .map(
+      (ep) =>
+        `<item id="${epubId(ep)}" href="${epubHref(ep)}" media-type="application/xhtml+xml" />`,
+    )
     .join('\n')
   const spineItems = work.episodes.map((ep) => `<itemref idref="${epubId(ep)}" />`).join('\n')
   return `<?xml version="1.0" encoding="UTF-8"?>

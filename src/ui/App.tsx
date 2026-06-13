@@ -2,6 +2,14 @@ import { useEffect, useMemo, useRef } from 'react'
 import { importBundle } from '../core/bundle'
 import { blocksToHtml } from '../core/exporter/toHtml'
 import { parseEpisodeBody } from '../core/parser/parseNotation'
+import { readFileText, triggerDownload } from './_utils/download'
+import {
+  episodeKakuyomuExport,
+  episodeNarouExport,
+  workEpubExport,
+  workFolderZipExport,
+  worksBundleExport,
+} from './_utils/exporters'
 import { EditorPane } from './components/EditorPane/editor-pane'
 import { PreviewPane } from './components/PreviewPane/preview-pane'
 import { StatusBar } from './components/StatusBar/status-bar'
@@ -9,14 +17,6 @@ import { WorkSidebar } from './components/WorkSidebar/work-sidebar'
 import { useAutosave } from './hooks/use-autosave'
 import { useEditorStore } from './hooks/use-editor-store'
 import type { EditorStore } from './store/editorStore'
-import { readFileText, triggerDownload } from './_utils/download'
-import {
-  episodeKakuyomuExport,
-  episodeNarouExport,
-  worksBundleExport,
-  workEpubExport,
-  workFolderZipExport,
-} from './_utils/exporters'
 
 interface AppProps {
   store: EditorStore
@@ -81,13 +81,64 @@ export function App({ store, onExit }: AppProps) {
           </button>
         </h1>
         <div className="ml-auto flex flex-wrap items-center gap-1 text-xs">
-          <button type="button" onClick={() => liveEpisode && work && triggerDownload(episodeNarouExport(work.title, liveEpisode))} disabled={!liveEpisode} className="rounded border px-2 py-1 disabled:opacity-40">なろう</button>
-          <button type="button" onClick={() => liveEpisode && work && triggerDownload(episodeKakuyomuExport(work.title, liveEpisode))} disabled={!liveEpisode} className="rounded border px-2 py-1 disabled:opacity-40">カクヨム</button>
-          <button type="button" onClick={exportEpub} disabled={!work} className="rounded border px-2 py-1 disabled:opacity-40">EPUB</button>
-          <button type="button" onClick={exportFolder} disabled={!work} className="rounded border px-2 py-1 disabled:opacity-40">フォルダ</button>
-          <button type="button" onClick={exportBundle} className="rounded border px-2 py-1">バンドル出力</button>
-          <button type="button" onClick={() => fileInput.current?.click()} className="rounded border px-2 py-1">取り込み</button>
-          <input ref={fileInput} type="file" accept="application/json,.json" className="hidden" aria-label="バンドル取り込み" onChange={(e) => void onImportFile(e.target.files?.[0]).then(() => { if (fileInput.current) fileInput.current.value = '' })} />
+          <button
+            type="button"
+            onClick={() =>
+              liveEpisode && work && triggerDownload(episodeNarouExport(work.title, liveEpisode))
+            }
+            disabled={!liveEpisode}
+            className="rounded border px-2 py-1 disabled:opacity-40"
+          >
+            なろう
+          </button>
+          <button
+            type="button"
+            onClick={() =>
+              liveEpisode && work && triggerDownload(episodeKakuyomuExport(work.title, liveEpisode))
+            }
+            disabled={!liveEpisode}
+            className="rounded border px-2 py-1 disabled:opacity-40"
+          >
+            カクヨム
+          </button>
+          <button
+            type="button"
+            onClick={exportEpub}
+            disabled={!work}
+            className="rounded border px-2 py-1 disabled:opacity-40"
+          >
+            EPUB
+          </button>
+          <button
+            type="button"
+            onClick={exportFolder}
+            disabled={!work}
+            className="rounded border px-2 py-1 disabled:opacity-40"
+          >
+            フォルダ
+          </button>
+          <button type="button" onClick={exportBundle} className="rounded border px-2 py-1">
+            バンドル出力
+          </button>
+          <button
+            type="button"
+            onClick={() => fileInput.current?.click()}
+            className="rounded border px-2 py-1"
+          >
+            取り込み
+          </button>
+          <input
+            ref={fileInput}
+            type="file"
+            accept="application/json,.json"
+            className="hidden"
+            aria-label="バンドル取り込み"
+            onChange={(e) =>
+              void onImportFile(e.target.files?.[0]).then(() => {
+                if (fileInput.current) fileInput.current.value = ''
+              })
+            }
+          />
           <StatusBar dirty={state.dirty} status={state.status} />
         </div>
       </header>

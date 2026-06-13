@@ -4,7 +4,9 @@ import { blocksToKakuyomu } from './toKakuyomu'
 
 describe('blocksToKakuyomu', () => {
   it('プレーン/自動ルビ/明示ルビ/空行/区切りが往復で恒等', () => {
-    const src = ['私は漢字《かんじ》を書く', '', '｜カオス《混沌》が来る', '＊', '終わり'].join('\n')
+    const src = ['私は漢字《かんじ》を書く', '', '｜カオス《混沌》が来る', '＊', '終わり'].join(
+      '\n',
+    )
     expect(blocksToKakuyomu(parseEpisodeBody(src))).toBe(src)
   })
 
@@ -18,10 +20,26 @@ describe('blocksToKakuyomu', () => {
   })
 
   it('漢字のみ親文字ルビは自動ルビ（｜省略）で出力', () => {
-    expect(blocksToKakuyomu([{ id: 'b1', type: 'paragraph', inlines: [{ type: 'ruby', base: '漢字', reading: 'かんじ' }] }])).toBe('漢字《かんじ》')
+    expect(
+      blocksToKakuyomu([
+        {
+          id: 'b1',
+          type: 'paragraph',
+          inlines: [{ type: 'ruby', base: '漢字', reading: 'かんじ' }],
+        },
+      ]),
+    ).toBe('漢字《かんじ》')
   })
 
   it('非漢字親文字ルビは明示｜で出力', () => {
-    expect(blocksToKakuyomu([{ id: 'b1', type: 'paragraph', inlines: [{ type: 'ruby', base: 'カオス', reading: '混沌' }] }])).toBe('｜カオス《混沌》')
+    expect(
+      blocksToKakuyomu([
+        {
+          id: 'b1',
+          type: 'paragraph',
+          inlines: [{ type: 'ruby', base: 'カオス', reading: '混沌' }],
+        },
+      ]),
+    ).toBe('｜カオス《混沌》')
   })
 })

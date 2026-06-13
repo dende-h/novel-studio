@@ -10,7 +10,14 @@ const work: Work = {
       id: 'e1',
       title: '第一話 出会い',
       blocks: [
-        { id: 'b1', type: 'paragraph', inlines: [{ type: 'text', text: '私は' }, { type: 'ruby', base: '漢字', reading: 'かんじ' }] },
+        {
+          id: 'b1',
+          type: 'paragraph',
+          inlines: [
+            { type: 'text', text: '私は' },
+            { type: 'ruby', base: '漢字', reading: 'かんじ' },
+          ],
+        },
         { id: 'b2', type: 'paragraph', inlines: [] },
         { id: 'b3', type: 'paragraph', inlines: [{ type: 'emphasisDots', text: '重要' }] },
         { id: 'b4', type: 'sceneBreak' },

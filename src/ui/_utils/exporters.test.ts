@@ -3,9 +3,9 @@ import type { Episode, Work } from '../../core/schema'
 import {
   episodeKakuyomuExport,
   episodeNarouExport,
-  worksBundleExport,
   workEpubExport,
   workFolderZipExport,
+  worksBundleExport,
 } from './exporters'
 
 const ep: Episode = {

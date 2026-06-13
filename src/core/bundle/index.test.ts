@@ -10,7 +10,11 @@ const work: Work = {
       id: 'e1',
       title: '第一話',
       blocks: [
-        { id: 'b1', type: 'paragraph', inlines: [{ type: 'ruby', base: '漢字', reading: 'かんじ' }] },
+        {
+          id: 'b1',
+          type: 'paragraph',
+          inlines: [{ type: 'ruby', base: '漢字', reading: 'かんじ' }],
+        },
         { id: 'b2', type: 'sceneBreak' },
       ],
     },
@@ -41,6 +45,8 @@ describe('bundle（構造化バンドル export/import）', () => {
   })
 
   it('スキーマ違反 bundle を拒否', () => {
-    expect(() => importBundle(JSON.stringify({ version: BUNDLE_VERSION, works: [{ id: 'x' }] }))).toThrow()
+    expect(() =>
+      importBundle(JSON.stringify({ version: BUNDLE_VERSION, works: [{ id: 'x' }] })),
+    ).toThrow()
   })
 })

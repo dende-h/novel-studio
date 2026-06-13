@@ -114,7 +114,12 @@ export function createEditorStore({ repo, genId }: EditorStoreDeps): EditorStore
     openEpisode(id) {
       const ep = state.work?.episodes.find((e) => e.id === id)
       if (!ep) return
-      set({ currentEpisodeId: id, draft: blocksToKakuyomu(ep.blocks), dirty: false, status: 'idle' })
+      set({
+        currentEpisodeId: id,
+        draft: blocksToKakuyomu(ep.blocks),
+        dirty: false,
+        status: 'idle',
+      })
     },
 
     setDraft(text) {
