@@ -4,8 +4,15 @@ import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 import { defineConfig } from 'vitest/config'
 
+import { cloudflare } from "@cloudflare/vite-plugin";
+
 export default defineConfig({
-  plugins: [react(), tailwindcss(), VitePWA({ registerType: 'autoUpdate' })],
+  plugins: [
+    react(),
+    tailwindcss(),
+    VitePWA({ registerType: 'autoUpdate' }),
+    cloudflare()
+  ],
   test: {
     environment: 'happy-dom',
     globals: true,
