@@ -1,0 +1,11 @@
+# 開発ツールのバージョンと環境変数を一元管理する。
+# 環境別の値は mise.staging.toml / mise.production.toml が
+# MISE_ENV により上書き適用する（読み込み順: mise.{MISE_ENV}.toml > mise.toml）。
+[tools]
+node = "22"
+pnpm = "10.29.3"
+
+[env]
+# Vite は VITE_ 接頭辞の変数のみクライアントへ公開する。
+# ここは全環境共通のデフォルト（ローカル開発相当）。
+VITE_APP_ENV = "development"

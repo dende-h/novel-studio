@@ -1,0 +1,56 @@
+name: Deploy
+
+# main へ push（=PRマージ） → 本番、stg へ push → ステージング。
+# Cloudflare Pages は --branch が本番ブランチ(main)と一致すれば本番、
+# それ以外はプレビュー（stg は固定エイリアス stg.<project>.pages.dev）として扱う。
+on:
+  push:
+    branches: [main, stg]
+
+# 最小権限。deployments:write は GitHub Deployments 連携用。
+permissions:
+  contents: read
+  deployments: write
+
+# 同一ブランチの古いデプロイはキャンセルする。
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    name: Cloudflare Pages へデプロイ
+    runs-on: ubuntu-latest
+    steps:
+      - name: チェックアウト
+        uses: actions/checkout@v4
+
+      - name: 環境を判定（main=production / stg=staging）
+        run: echo "MISE_ENV=${{ github.ref_name == 'main' && 'production' || 'staging' }}" >> "$GITHUB_ENV"
+
+      - name: mise セットアップ（node/pnpm + 環境変数）
+        uses: jdx/mise-action@v4
+
+      - name: pnpm ストアのパスを取得
+        run: echo "PNPM_STORE=$(mise exec -- pnpm store path --silent)" >> "$GITHUB_ENV"
+
+      - name: pnpm ストアのキャッシュ
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.PNPM_STORE }}
+          key: pnpm-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: pnpm-${{ runner.os }}-
+
+      - name: 依存関係をインストール
+        run: mise exec -- pnpm install --frozen-lockfile
+
+      - name: 本番ビルド（VITE_* は MISE_ENV に応じた値が反映される）
+        run: mise exec -- pnpm build
+
+      - name: Cloudflare Pages へデプロイ
+        uses: cloudflare/wrangler-action@v4
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy dist --project-name=novel-studio --branch=${{ github.ref_name }}
+          gitHubToken: ${{ secrets.GITHUB_TOKEN }}

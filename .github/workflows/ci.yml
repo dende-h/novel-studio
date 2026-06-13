@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, stg]
   pull_request:
-    branches: [main]
+    branches: [main, stg]
 
 # 最小権限（読み取りのみ）
 permissions:
@@ -23,30 +23,34 @@ jobs:
       - name: チェックアウト
         uses: actions/checkout@v4
 
-      - name: pnpm セットアップ
-        uses: pnpm/action-setup@v4
+      - name: mise セットアップ（node/pnpm）
+        uses: jdx/mise-action@v4
 
-      - name: Node セットアップ
-        uses: actions/setup-node@v4
+      - name: pnpm ストアのパスを取得
+        run: echo "PNPM_STORE=$(mise exec -- pnpm store path --silent)" >> "$GITHUB_ENV"
+
+      - name: pnpm ストアのキャッシュ
+        uses: actions/cache@v4
         with:
-          node-version-file: .nvmrc
-          cache: pnpm
+          path: ${{ env.PNPM_STORE }}
+          key: pnpm-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: pnpm-${{ runner.os }}-
 
       - name: 依存関係をインストール
-        run: pnpm install --frozen-lockfile
+        run: mise exec -- pnpm install --frozen-lockfile
 
       - name: Lint（Biome）
         # --reporter=github で各診断を GitHub のアノテーション（PR の inline 注釈）として出力
-        run: pnpm exec biome ci . --reporter=github
+        run: mise exec -- pnpm exec biome ci . --reporter=github
 
       - name: 型チェック
-        run: pnpm typecheck
+        run: mise exec -- pnpm typecheck
 
       - name: ユニットテスト（Vitest）
-        run: pnpm test
+        run: mise exec -- pnpm test
 
       - name: 本番ビルド
-        run: pnpm build
+        run: mise exec -- pnpm build
 
   e2e:
     name: E2E（Playwright）
@@ -55,23 +59,27 @@ jobs:
       - name: チェックアウト
         uses: actions/checkout@v4
 
-      - name: pnpm セットアップ
-        uses: pnpm/action-setup@v4
+      - name: mise セットアップ（node/pnpm）
+        uses: jdx/mise-action@v4
 
-      - name: Node セットアップ
-        uses: actions/setup-node@v4
+      - name: pnpm ストアのパスを取得
+        run: echo "PNPM_STORE=$(mise exec -- pnpm store path --silent)" >> "$GITHUB_ENV"
+
+      - name: pnpm ストアのキャッシュ
+        uses: actions/cache@v4
         with:
-          node-version-file: .nvmrc
-          cache: pnpm
+          path: ${{ env.PNPM_STORE }}
+          key: pnpm-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: pnpm-${{ runner.os }}-
 
       - name: 依存関係をインストール
-        run: pnpm install --frozen-lockfile
+        run: mise exec -- pnpm install --frozen-lockfile
 
       - name: Playwright ブラウザをインストール
-        run: pnpm exec playwright install --with-deps chromium
+        run: mise exec -- pnpm exec playwright install --with-deps chromium
 
       - name: E2E テスト
-        run: pnpm test:e2e
+        run: mise exec -- pnpm test:e2e
 
       - name: レポートをアップロード（失敗時の調査用）
         if: ${{ !cancelled() }}
