@@ -36,7 +36,8 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Lint（Biome）
-        run: pnpm lint
+        # --reporter=github で各診断を GitHub のアノテーション（PR の inline 注釈）として出力
+        run: pnpm exec biome ci . --reporter=github
 
       - name: 型チェック
         run: pnpm typecheck
