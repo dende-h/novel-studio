@@ -1,0 +1,16 @@
+node_modules
+dist
+dist-ssr
+coverage
+*.local
+.DS_Store
+.vite
+dev-dist
+
+# TypeScript / ビルド成果物
+*.tsbuildinfo
+
+# Playwright
+test-results
+playwright-report
+.playwright
