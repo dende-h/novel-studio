@@ -1,0 +1,23 @@
+@import "tailwindcss";
+
+/* 組版表現（ライブプレビュー＆LP の縦書きサンプル共通） */
+.dots {
+  font-style: normal;
+  -webkit-text-emphasis: filled dot;
+  text-emphasis: filled dot;
+}
+
+.preview ruby rt {
+  font-size: 0.5em;
+}
+
+.preview .blank {
+  min-height: 1em;
+}
+
+.preview .scene-break {
+  border: none;
+  border-top: 1px solid #d6d3d1;
+  margin: 1.5em auto;
+  width: 40%;
+}
