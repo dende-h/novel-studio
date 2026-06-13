@@ -10,6 +10,14 @@ dev-dist
 # TypeScript / ビルド成果物
 *.tsbuildinfo
 
+# mise（ローカル上書き・秘密値はコミットしない）
+mise.local.toml
+mise.*.local.toml
+
+# Cloudflare Pages（ローカルの Functions シークレット）
+.dev.vars
+.dev.vars.*
+
 # Playwright
 test-results
 playwright-report

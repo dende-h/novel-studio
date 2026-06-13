@@ -1,0 +1,3 @@
+# MISE_ENV=staging のとき mise.toml に上書き適用される（stg ブランチ用）。
+[env]
+VITE_APP_ENV = "staging"

@@ -1,0 +1,3 @@
+# MISE_ENV=production のとき mise.toml に上書き適用される（main ブランチ用）。
+[env]
+VITE_APP_ENV = "production"
