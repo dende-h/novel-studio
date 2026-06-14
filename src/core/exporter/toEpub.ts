@@ -40,6 +40,11 @@ export function buildContainerXml(): string {
 </container>`
 }
 
+/** EPUB3 必須の dcterms:modified は秒精度の UTC（ミリ秒・タイムゾーン無し）で出力する。 */
+function toUtcSeconds(ms: number): string {
+  return new Date(ms).toISOString().replace(/\.\d{3}Z$/, 'Z')
+}
+
 export function buildPackageOpf(work: Work): string {
   const manifestItems = work.episodes
     .map(
@@ -48,12 +53,21 @@ export function buildPackageOpf(work: Work): string {
     )
     .join('\n')
   const spineItems = work.episodes.map((ep) => `<itemref idref="${epubId(ep)}" />`).join('\n')
+  // 著者・あらすじは入力があるときだけ dc:creator / dc:description を足す（空白のみは無視）。
+  const author = work.author?.trim()
+  const description = work.description?.trim()
+  const creatorLine = author ? `\n<dc:creator>${escapeXml(author)}</dc:creator>` : ''
+  const descriptionLine = description
+    ? `\n<dc:description>${escapeXml(description)}</dc:description>`
+    : ''
+  const modified = toUtcSeconds(work.updatedAt ?? 0)
   return `<?xml version="1.0" encoding="UTF-8"?>
 <package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="bookid" xml:lang="ja">
 <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
 <dc:identifier id="bookid">urn:uuid:${work.id}</dc:identifier>
-<dc:title>${escapeXml(work.title)}</dc:title>
+<dc:title>${escapeXml(work.title)}</dc:title>${creatorLine}${descriptionLine}
 <dc:language>ja</dc:language>
+<meta property="dcterms:modified">${modified}</meta>
 <meta property="rendition:layout">reflowable</meta>
 <meta property="rendition:spread">auto</meta>
 <meta property="rendition:flow">paginated</meta>

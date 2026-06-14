@@ -182,4 +182,95 @@ describe('editorStore（自前ストア・useSyncExternalStore 用）', () => {
     await store.openWork(id)
     expect(store.getSnapshot().snapshots.length).toBeGreaterThan(0)
   })
+
+  it('deleteWork は作品と履歴を削除し、開いていれば状態をリセットする', async () => {
+    await store.createWork('消す作')
+    await store.createEpisode('話')
+    store.setDraft('本文')
+    await store.save()
+    const id = store.getSnapshot().work?.id as string
+    expect(store.getSnapshot().snapshots.length).toBeGreaterThan(0)
+
+    await store.deleteWork(id)
+    const s = store.getSnapshot()
+    expect(s.workList.find((w) => w.id === id)).toBeUndefined()
+    expect(s.work).toBeNull()
+    expect(s.currentEpisodeId).toBeNull()
+    expect(s.draft).toBe('')
+    expect(s.snapshots).toEqual([])
+    // 履歴も永続層から消えている
+    await store.openWork(id) // 既に無いので何も起きない
+    expect(store.getSnapshot().work).toBeNull()
+  })
+
+  it('deleteWork は開いていない作品なら一覧から消すだけで現在の編集を保つ', async () => {
+    await store.createWork('残す作')
+    const keepId = store.getSnapshot().work?.id as string
+    await store.createWork('消す作') // これが開いている
+    await store.deleteWork(keepId)
+    const s = store.getSnapshot()
+    expect(s.workList.find((w) => w.id === keepId)).toBeUndefined()
+    expect(s.work?.title).toBe('消す作')
+  })
+
+  it('deleteEpisode は話を削除し、現在話なら別の話へ切り替える', async () => {
+    await store.createWork('作')
+    await store.createEpisode('第一話')
+    const first = store.getSnapshot().work?.episodes[0]?.id as string
+    await store.createEpisode('第二話')
+    const second = store.getSnapshot().currentEpisodeId as string
+    await store.deleteEpisode(second)
+    const s = store.getSnapshot()
+    expect(s.work?.episodes).toHaveLength(1)
+    expect(s.work?.episodes[0]?.id).toBe(first)
+    expect(s.currentEpisodeId).toBe(first)
+  })
+
+  it('deleteEpisode は最後の話を消すと現在話なし・draft 空にする', async () => {
+    await store.createWork('作')
+    await store.createEpisode('唯一の話')
+    const only = store.getSnapshot().currentEpisodeId as string
+    await store.deleteEpisode(only)
+    const s = store.getSnapshot()
+    expect(s.work?.episodes).toHaveLength(0)
+    expect(s.currentEpisodeId).toBeNull()
+    expect(s.draft).toBe('')
+  })
+
+  it('deleteEpisode は現在話でない話を消しても現在の編集を保つ', async () => {
+    await store.createWork('作')
+    await store.createEpisode('第一話')
+    const first = store.getSnapshot().work?.episodes[0]?.id as string
+    await store.createEpisode('第二話')
+    store.setDraft('第二話の下書き')
+    await store.deleteEpisode(first)
+    const s = store.getSnapshot()
+    expect(s.work?.episodes).toHaveLength(1)
+    expect(s.currentEpisodeId).toBe('id3')
+    expect(s.draft).toBe('第二話の下書き')
+  })
+
+  it('updateWorkMeta は著者・あらすじ・タイトルを更新して永続化する', async () => {
+    await store.createWork('旧題')
+    const id = store.getSnapshot().work?.id as string
+    await store.updateWorkMeta(id, { title: '新題', author: '著者名', description: 'あらすじ' })
+    const s = store.getSnapshot()
+    expect(s.work?.title).toBe('新題')
+    expect(s.work?.author).toBe('著者名')
+    expect(s.work?.description).toBe('あらすじ')
+    expect(s.workList.find((w) => w.id === id)?.title).toBe('新題')
+    expect(s.workList.find((w) => w.id === id)?.author).toBe('著者名')
+    // 永続化されている（再読込で残る）
+    await store.openWork(id)
+    expect(store.getSnapshot().work?.author).toBe('著者名')
+  })
+
+  it('updateWorkMeta は開いていない作品も更新できる', async () => {
+    await store.createWork('A')
+    const aId = store.getSnapshot().work?.id as string
+    await store.createWork('B') // 開いているのは B
+    await store.updateWorkMeta(aId, { author: 'Aの著者' })
+    expect(store.getSnapshot().work?.title).toBe('B')
+    expect(store.getSnapshot().workList.find((w) => w.id === aId)?.author).toBe('Aの著者')
+  })
 })

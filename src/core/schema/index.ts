@@ -31,7 +31,10 @@ export const WorkSchema = z.object({
   id: z.string(),
   title: z.string(),
   episodes: z.array(EpisodeSchema),
-  // 最終更新時刻（ライブラリの「最終編集」表示用）。旧データ互換のため任意。
+  // 著者名・あらすじ（EPUB の dc:creator / dc:description に反映）。任意・旧データ互換。
+  author: z.string().optional(),
+  description: z.string().optional(),
+  // 最終更新時刻（ライブラリの「最終編集」表示・EPUB の dcterms:modified 用）。旧データ互換のため任意。
   updatedAt: z.number().optional(),
 })
 export type Work = z.infer<typeof WorkSchema>

@@ -16,6 +16,10 @@ export interface WorkSummary {
   episodeCount: number
   /** 総文字数（派生値） */
   charCount: number
+  /** 著者名（メタ編集ダイアログの初期値・カード表示用） */
+  author?: string
+  /** あらすじ（メタ編集ダイアログの初期値用） */
+  description?: string
   /** 最終更新時刻（未設定の旧データは undefined） */
   updatedAt?: number
 }
@@ -42,6 +46,8 @@ export class WorkRepository {
         title: parsed.title,
         episodeCount: parsed.episodes.length,
         charCount: countWorkChars(parsed),
+        author: parsed.author,
+        description: parsed.description,
         updatedAt: parsed.updatedAt,
       }
     })

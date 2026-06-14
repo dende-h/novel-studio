@@ -38,8 +38,21 @@ export interface EditorStore {
   save(): Promise<void>
   /** 履歴の版を現在話の下書きへ復元する（保存はユーザー操作に委ねる＝非破壊） */
   restoreSnapshot(snapshotId: string): void
+  /** 作品を削除（履歴も削除）。開いている作品なら状態をリセットする。 */
+  deleteWork(id: string): Promise<void>
+  /** 現在の作品から話を削除。現在話なら別の話（無ければ無し）へ切り替える。 */
+  deleteEpisode(episodeId: string): Promise<void>
+  /** 作品メタ（タイトル・著者・あらすじ）を更新して永続化する。 */
+  updateWorkMeta(id: string, meta: WorkMeta): Promise<void>
   importWorks(works: Work[]): Promise<void>
   getAllWorks(): Promise<Work[]>
+}
+
+/** 作品メタ編集の入力（指定したキーのみ上書き）。 */
+export interface WorkMeta {
+  title?: string
+  author?: string
+  description?: string
 }
 
 export interface EditorStoreDeps {
@@ -181,6 +194,54 @@ export function createEditorStore({
         dirty: true,
         status: 'idle',
       })
+    },
+
+    async deleteWork(id) {
+      await repo.deleteWork(id)
+      await snapshotRepo.clear(id)
+      const workList = await repo.listWorks()
+      if (state.work?.id === id) {
+        set({
+          workList,
+          work: null,
+          currentEpisodeId: null,
+          draft: '',
+          dirty: false,
+          status: 'idle',
+          snapshots: [],
+        })
+      } else {
+        set({ workList })
+      }
+    },
+
+    async deleteEpisode(episodeId) {
+      if (!state.work) return
+      const episodes = state.work.episodes.filter((e) => e.id !== episodeId)
+      const work: Work = { ...state.work, episodes, updatedAt: now() }
+      await repo.saveWork(work)
+      if (state.currentEpisodeId === episodeId) {
+        const next = episodes[0] ?? null
+        set({
+          work,
+          currentEpisodeId: next?.id ?? null,
+          draft: next ? blocksToKakuyomu(next.blocks) : '',
+          dirty: false,
+          status: 'idle',
+        })
+      } else {
+        set({ work })
+      }
+      await refreshList()
+    },
+
+    async updateWorkMeta(id, meta) {
+      const existing = await repo.getWork(id)
+      if (!existing) return
+      const work: Work = { ...existing, ...meta, updatedAt: now() }
+      await repo.saveWork(work)
+      if (state.work?.id === id) set({ work })
+      await refreshList()
     },
 
     async importWorks(works) {

@@ -1,4 +1,13 @@
-import { Archive, BookOpen, CircleHelp, FlaskConical, Library, Plus, Settings } from 'lucide-react'
+import {
+  Archive,
+  BookOpen,
+  CircleHelp,
+  FlaskConical,
+  Library,
+  Plus,
+  Settings,
+  Trash2,
+} from 'lucide-react'
 import type { ComponentType } from 'react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/ui/components/ui/button'
@@ -23,6 +32,8 @@ interface SideNavProps {
   episodes?: EpisodeItem[]
   currentEpisodeId?: string | null
   onSelectEpisode?: (id: string) => void
+  /** 話の削除（指定時のみ各話に削除ボタンを表示） */
+  onDeleteEpisode?: (id: string) => void
 }
 
 interface NavRowProps {
@@ -64,6 +75,7 @@ export function SideNav({
   episodes,
   currentEpisodeId,
   onSelectEpisode,
+  onDeleteEpisode,
 }: SideNavProps) {
   const initial = projectTitle.trim().charAt(0) || 'N'
   return (
@@ -118,7 +130,7 @@ export function SideNav({
               {episodes.map((e) => {
                 const isCurrent = e.id === currentEpisodeId
                 return (
-                  <li key={e.id} className="relative">
+                  <li key={e.id} className="group relative flex items-center gap-1">
                     {isCurrent ? (
                       <span className="-left-[17px] -translate-y-1/2 absolute top-1/2 size-1.5 rounded-full bg-primary" />
                     ) : null}
@@ -127,7 +139,7 @@ export function SideNav({
                       onClick={() => onSelectEpisode?.(e.id)}
                       aria-current={isCurrent ? 'true' : undefined}
                       className={cn(
-                        'block w-full truncate py-1 text-left text-sm transition-colors',
+                        'block min-w-0 flex-1 truncate py-1 text-left text-sm transition-colors',
                         isCurrent
                           ? 'font-medium text-primary'
                           : 'text-on-surface-variant hover:text-primary',
@@ -135,6 +147,16 @@ export function SideNav({
                     >
                       {e.title}
                     </button>
+                    {onDeleteEpisode ? (
+                      <button
+                        type="button"
+                        onClick={() => onDeleteEpisode(e.id)}
+                        aria-label={`「${e.title}」を削除`}
+                        className="shrink-0 rounded p-1 text-on-surface-variant/60 opacity-0 transition-opacity hover:text-destructive focus-visible:opacity-100 group-hover:opacity-100"
+                      >
+                        <Trash2 className="size-3.5" />
+                      </button>
+                    ) : null}
                   </li>
                 )
               })}

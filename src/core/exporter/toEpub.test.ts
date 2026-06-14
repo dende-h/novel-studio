@@ -62,6 +62,34 @@ describe('toEpub（EPUB3 縦書き・純生成）', () => {
     expect(opf).toContain('nav.xhtml')
   })
 
+  it('buildPackageOpf はメタ情報（著者・概要）を dc:creator / dc:description に出力しエスケープする', () => {
+    const opf = buildPackageOpf({
+      ...work,
+      author: '山田 <太郎>',
+      description: 'あらすじ & 概要',
+    })
+    expect(opf).toContain('<dc:creator>山田 &lt;太郎&gt;</dc:creator>')
+    expect(opf).toContain('<dc:description>あらすじ &amp; 概要</dc:description>')
+  })
+
+  it('buildPackageOpf は著者・概要が無ければ dc:creator / dc:description を出さない', () => {
+    const opf = buildPackageOpf(work)
+    expect(opf).not.toContain('<dc:creator>')
+    expect(opf).not.toContain('<dc:description>')
+  })
+
+  it('buildPackageOpf は空白のみの著者・概要を出力しない', () => {
+    const opf = buildPackageOpf({ ...work, author: '   ', description: '\n  \n' })
+    expect(opf).not.toContain('<dc:creator>')
+    expect(opf).not.toContain('<dc:description>')
+  })
+
+  it('buildPackageOpf は EPUB3 必須の dcterms:modified を updatedAt から秒精度UTCで出力', () => {
+    const updatedAt = Date.UTC(2026, 5, 14, 5, 30, 0)
+    const opf = buildPackageOpf({ ...work, updatedAt })
+    expect(opf).toContain('<meta property="dcterms:modified">2026-06-14T05:30:00Z</meta>')
+  })
+
   it('buildNavXhtml は話タイトルを目次リンクに列挙', () => {
     const nav = buildNavXhtml(work)
     expect(nav).toContain('epub:type="toc"')

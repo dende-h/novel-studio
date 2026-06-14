@@ -1,4 +1,4 @@
-import { BookText, Braces, Download, Folder, Globe } from 'lucide-react'
+import { BookText, Braces, Download, Folder, Globe, Pencil } from 'lucide-react'
 import { type ComponentType, useState } from 'react'
 import type { Work } from '@/core/schema'
 import { cn } from '@/lib/utils'
@@ -30,6 +30,8 @@ interface ExportDialogProps {
   work: Work | null
   /** バンドル（全作品）用 */
   getAllWorks: () => Promise<Work[]>
+  /** EPUB メタ情報を編集（指定時のみ「作品情報を編集」を表示） */
+  onEditMeta?: () => void
 }
 
 interface FormatDef {
@@ -73,7 +75,13 @@ const FORMATS: FormatDef[] = [
 ]
 
 /** 書き出しモーダル。左に形式、右に設定。core の各 exporter を配線する。 */
-export function ExportDialog({ open, onOpenChange, work, getAllWorks }: ExportDialogProps) {
+export function ExportDialog({
+  open,
+  onOpenChange,
+  work,
+  getAllWorks,
+  onEditMeta,
+}: ExportDialogProps) {
   const [format, setFormat] = useState<Format>('epub')
   const [platform, setPlatform] = useState<Platform>('narou')
   const [episodeId, setEpisodeId] = useState<string | null>(null)
@@ -148,9 +156,29 @@ export function ExportDialog({ open, onOpenChange, work, getAllWorks }: ExportDi
           <div className="flex-1 p-6 font-sans">
             {format === 'epub' && (
               <Section title="EPUB 設定">
-                <Note>
-                  1作品＝1冊として、縦書き EPUB を書き出します。電子書籍リーダーでそのまま読めます。
-                </Note>
+                <div className="space-y-4">
+                  <Note>
+                    1作品＝1冊として、縦書き EPUB
+                    を書き出します。電子書籍リーダーでそのまま読めます。
+                  </Note>
+                  <dl className="space-y-2 rounded-md border border-outline-variant/30 p-4 text-sm">
+                    <MetaRow label="タイトル" value={work?.title} />
+                    <MetaRow label="著者" value={work?.author} />
+                    <MetaRow label="あらすじ" value={work?.description} />
+                  </dl>
+                  {onEditMeta ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={onEditMeta}
+                      className="gap-2 text-primary"
+                    >
+                      <Pencil className="size-4" />
+                      作品情報を編集
+                    </Button>
+                  ) : null}
+                </div>
               </Section>
             )}
 
@@ -255,5 +283,24 @@ function Note({ children }: { children: React.ReactNode }) {
     <p className="rounded-md bg-surface-container-low p-4 text-on-surface-variant text-sm leading-relaxed">
       {children}
     </p>
+  )
+}
+
+function MetaRow({ label, value }: { label: string; value?: string }) {
+  const text = value?.trim()
+  return (
+    <div className="flex gap-3">
+      <dt className="w-16 shrink-0 text-on-surface-variant text-xs uppercase tracking-wider">
+        {label}
+      </dt>
+      <dd
+        className={cn(
+          'min-w-0 flex-1 break-words',
+          text ? 'text-on-surface' : 'text-on-surface-variant/60',
+        )}
+      >
+        {text || '未設定'}
+      </dd>
+    </div>
   )
 }
