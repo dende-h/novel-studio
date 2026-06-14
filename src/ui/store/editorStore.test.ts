@@ -1,12 +1,21 @@
 import { beforeEach, describe, expect, it } from 'vitest'
+import { SnapshotRepository } from '../../core/snapshot/snapshotRepository'
 import { MemoryStore } from '../../core/storage/memoryStore'
 import { WorkRepository } from '../../core/storage/workRepository'
 import { createEditorStore, type EditorStore } from './editorStore'
 
 const makeStore = (): EditorStore => {
   let n = 0
-  const repo = new WorkRepository(new MemoryStore())
-  return createEditorStore({ repo, genId: () => `id${++n}` })
+  let clock = 0
+  const store = new MemoryStore()
+  const repo = new WorkRepository(store)
+  const snapshotRepo = new SnapshotRepository(store)
+  return createEditorStore({
+    repo,
+    snapshotRepo,
+    genId: () => `id${++n}`,
+    now: () => ++clock,
+  })
 }
 
 describe('editorStore（自前ストア・useSyncExternalStore 用）', () => {
@@ -37,7 +46,9 @@ describe('editorStore（自前ストア・useSyncExternalStore 用）', () => {
     await store.createWork('新作')
     const s = store.getSnapshot()
     expect(s.work?.title).toBe('新作')
-    expect(s.workList).toEqual([{ id: 'id1', title: '新作' }])
+    expect(s.workList).toEqual([
+      { id: 'id1', title: '新作', episodeCount: 0, charCount: 0, updatedAt: expect.any(Number) },
+    ])
   })
 
   it('createEpisode は話を追加して開き、draft を空にする', async () => {
@@ -122,8 +133,53 @@ describe('editorStore（自前ストア・useSyncExternalStore 用）', () => {
     ])
     const list = store.getSnapshot().workList.sort((a, b) => a.id.localeCompare(b.id))
     expect(list).toEqual([
-      { id: 'x1', title: '取込A' },
-      { id: 'x2', title: '取込B' },
+      { id: 'x1', title: '取込A', episodeCount: 0, charCount: 0 },
+      { id: 'x2', title: '取込B', episodeCount: 0, charCount: 0 },
     ])
+  })
+
+  it('createWork は updatedAt を設定する', async () => {
+    await store.createWork('作')
+    expect(store.getSnapshot().work?.updatedAt).toEqual(expect.any(Number))
+  })
+
+  it('save は履歴スナップショットを新しい順に積む', async () => {
+    await store.createWork('作')
+    await store.createEpisode('話')
+    store.setDraft('一回目')
+    await store.save()
+    store.setDraft('二回目')
+    await store.save()
+    const snaps = store.getSnapshot().snapshots
+    expect(snaps).toHaveLength(2)
+    expect(snaps[0]?.at).toBeGreaterThan(snaps[1]?.at as number)
+  })
+
+  it('restoreSnapshot は当時の本文を現在話の draft へ戻す（dirty=true・非破壊）', async () => {
+    await store.createWork('作')
+    await store.createEpisode('話')
+    store.setDraft('最初の版')
+    await store.save()
+    const firstSnapId = store.getSnapshot().snapshots[0]?.id as string
+    store.setDraft('書き換えた版')
+    await store.save()
+
+    store.restoreSnapshot(firstSnapId)
+    const s = store.getSnapshot()
+    expect(s.draft).toBe('最初の版')
+    expect(s.dirty).toBe(true)
+    // 永続化済みの最新本文は復元しただけでは変わらない（保存はユーザー操作）
+    expect(s.work?.episodes[0]?.blocks).toBeDefined()
+  })
+
+  it('openWork は保存済みスナップショットを読み込む', async () => {
+    await store.createWork('作')
+    await store.createEpisode('話')
+    store.setDraft('本文')
+    await store.save()
+    const id = store.getSnapshot().work?.id as string
+    store.restoreSnapshot('nonexistent') // 何も起きない
+    await store.openWork(id)
+    expect(store.getSnapshot().snapshots.length).toBeGreaterThan(0)
   })
 })

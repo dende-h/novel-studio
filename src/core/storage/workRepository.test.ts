@@ -39,14 +39,15 @@ describe('WorkRepository（対 MemoryStore）', () => {
     expect((await r.getWork('w1'))?.title).toBe('v2')
   })
 
-  it('listWorks は保存済み全件の要約(id,title)', async () => {
+  it('listWorks は保存済み全件の要約(id,title,話数,文字数)', async () => {
     const r = repo()
     await r.saveWork(work('w1', 'A'))
     await r.saveWork(work('w2', 'B'))
     const list = (await r.listWorks()).sort((a, b) => a.id.localeCompare(b.id))
+    // work() は 1話・傍点「重要」(2文字) を持つ
     expect(list).toEqual([
-      { id: 'w1', title: 'A' },
-      { id: 'w2', title: 'B' },
+      { id: 'w1', title: 'A', episodeCount: 1, charCount: 2 },
+      { id: 'w2', title: 'B', episodeCount: 1, charCount: 2 },
     ])
   })
 

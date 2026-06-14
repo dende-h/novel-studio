@@ -1,6 +1,8 @@
 import { blocksToKakuyomu } from '../../core/exporter/toKakuyomu'
 import { parseEpisodeBody } from '../../core/parser/parseNotation'
 import type { Episode, Work } from '../../core/schema'
+import type { Snapshot } from '../../core/snapshot'
+import type { SnapshotRepository } from '../../core/snapshot/snapshotRepository'
 import type { WorkRepository, WorkSummary } from '../../core/storage/workRepository'
 
 /**
@@ -20,6 +22,8 @@ export interface EditorState {
   draft: string
   dirty: boolean
   status: SaveStatus
+  /** 現在の作品のスナップショット履歴（新しい順） */
+  snapshots: Snapshot[]
 }
 
 export interface EditorStore {
@@ -32,13 +36,17 @@ export interface EditorStore {
   openEpisode(id: string): void
   setDraft(text: string): void
   save(): Promise<void>
+  /** 履歴の版を現在話の下書きへ復元する（保存はユーザー操作に委ねる＝非破壊） */
+  restoreSnapshot(snapshotId: string): void
   importWorks(works: Work[]): Promise<void>
   getAllWorks(): Promise<Work[]>
 }
 
 export interface EditorStoreDeps {
   repo: WorkRepository
+  snapshotRepo: SnapshotRepository
   genId: () => string
+  now: () => number
 }
 
 const INITIAL: EditorState = {
@@ -48,12 +56,18 @@ const INITIAL: EditorState = {
   draft: '',
   dirty: false,
   status: 'idle',
+  snapshots: [],
 }
 
 const currentEpisode = (s: EditorState): Episode | undefined =>
   s.work?.episodes.find((e) => e.id === s.currentEpisodeId)
 
-export function createEditorStore({ repo, genId }: EditorStoreDeps): EditorStore {
+export function createEditorStore({
+  repo,
+  snapshotRepo,
+  genId,
+  now,
+}: EditorStoreDeps): EditorStore {
   let state: EditorState = INITIAL
   const listeners = new Set<() => void>()
 
@@ -84,9 +98,16 @@ export function createEditorStore({ repo, genId }: EditorStoreDeps): EditorStore
     },
 
     async createWork(title) {
-      const work: Work = { id: genId(), title, episodes: [] }
+      const work: Work = { id: genId(), title, episodes: [], updatedAt: now() }
       await repo.saveWork(work)
-      set({ work, currentEpisodeId: null, draft: '', dirty: false, status: 'idle' })
+      set({
+        work,
+        currentEpisodeId: null,
+        draft: '',
+        dirty: false,
+        status: 'idle',
+        snapshots: [],
+      })
       await refreshList()
     },
 
@@ -100,13 +121,18 @@ export function createEditorStore({ repo, genId }: EditorStoreDeps): EditorStore
         draft: first ? blocksToKakuyomu(first.blocks) : '',
         dirty: false,
         status: 'idle',
+        snapshots: await snapshotRepo.list(work.id),
       })
     },
 
     async createEpisode(title) {
       if (!state.work) return
       const episode: Episode = { id: genId(), title, blocks: [] }
-      const work: Work = { ...state.work, episodes: [...state.work.episodes, episode] }
+      const work: Work = {
+        ...state.work,
+        episodes: [...state.work.episodes, episode],
+        updatedAt: now(),
+      }
       await repo.saveWork(work)
       set({ work, currentEpisodeId: episode.id, draft: '', dirty: false, status: 'idle' })
     },
@@ -134,10 +160,27 @@ export function createEditorStore({ repo, genId }: EditorStoreDeps): EditorStore
       const work: Work = {
         ...state.work,
         episodes: state.work.episodes.map((e) => (e.id === ep.id ? { ...e, blocks } : e)),
+        updatedAt: now(),
       }
       await repo.saveWork(work)
-      set({ work, dirty: false, status: 'saved' })
+      const snapshots = await snapshotRepo.append(work, now(), genId())
+      set({ work, dirty: false, status: 'saved', snapshots })
       await refreshList()
+    },
+
+    restoreSnapshot(snapshotId) {
+      const snap = state.snapshots.find((s) => s.id === snapshotId)
+      if (!snap) return
+      // 現在開いている話の当時の版を優先。無ければ先頭話にフォールバック。
+      const ep =
+        snap.work.episodes.find((e) => e.id === state.currentEpisodeId) ?? snap.work.episodes[0]
+      if (!ep) return
+      set({
+        currentEpisodeId: ep.id,
+        draft: blocksToKakuyomu(ep.blocks),
+        dirty: true,
+        status: 'idle',
+      })
     },
 
     async importWorks(works) {

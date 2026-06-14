@@ -1,0 +1,317 @@
+<!DOCTYPE html><html class="light" lang="en"><head>
+<meta charset="utf-8">
+<meta content="width=device-width, initial-scale=1.0" name="viewport">
+<title>プロジェクトの書き出し - Manuscript Studio</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com" rel="preconnect">
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=Source+Serif+4:wght@400;500;600&amp;display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
+<script id="tailwind-config">
+        tailwind.config = {
+          darkMode: "class",
+          theme: {
+            extend: {
+              "colors": {
+                      "on-primary-fixed": "#081c32",
+                      "on-error": "#ffffff",
+                      "surface-container": "#f0eded",
+                      "inverse-on-surface": "#f3f0f0",
+                      "on-secondary": "#ffffff",
+                      "surface": "#fcf9f8",
+                      "on-error-container": "#93000a",
+                      "secondary-container": "#fdc39a",
+                      "primary-fixed-dim": "#b5c8e4",
+                      "secondary-fixed-dim": "#f4bb92",
+                      "tertiary-container": "#503b18",
+                      "surface-container-highest": "#e4e2e1",
+                      "secondary": "#805533",
+                      "secondary-fixed": "#ffdcc5",
+                      "error": "#ba1a1a",
+                      "surface-dim": "#dcd9d9",
+                      "on-primary": "#ffffff",
+                      "primary-container": "#2e4057",
+                      "surface-container-lowest": "#ffffff",
+                      "surface-variant": "#e4e2e1",
+                      "error-container": "#ffdad6",
+                      "tertiary-fixed": "#ffdeae",
+                      "on-tertiary-fixed": "#281900",
+                      "outline-variant": "#c4c6cd",
+                      "tertiary": "#382505",
+                      "on-secondary-fixed": "#301400",
+                      "on-surface-variant": "#44474d",
+                      "on-tertiary-container": "#c3a579",
+                      "on-background": "#1b1c1c",
+                      "surface-bright": "#fcf9f8",
+                      "primary-fixed": "#d2e4ff",
+                      "on-secondary-container": "#794e2e",
+                      "on-secondary-fixed-variant": "#653d1e",
+                      "tertiary-fixed-dim": "#e2c293",
+                      "surface-container-high": "#eae7e7",
+                      "primary": "#172a40",
+                      "surface-container-low": "#f6f3f2",
+                      "outline": "#74777d",
+                      "inverse-primary": "#b5c8e4",
+                      "on-tertiary-fixed-variant": "#59431f",
+                      "on-surface": "#1b1c1c",
+                      "on-primary-fixed-variant": "#36485f",
+                      "background": "#fcf9f8",
+                      "on-tertiary": "#ffffff",
+                      "surface-tint": "#4e6078",
+                      "on-primary-container": "#99acc7",
+                      "inverse-surface": "#303030"
+              },
+              "borderRadius": {
+                      "DEFAULT": "0.125rem",
+                      "lg": "0.25rem",
+                      "xl": "0.5rem",
+                      "full": "0.75rem"
+              },
+              "spacing": {
+                      "gutter": "32px",
+                      "editor-max-width": "720px",
+                      "unit": "4px",
+                      "margin-mobile": "16px",
+                      "sidebar-width": "260px",
+                      "margin-desktop": "48px"
+              },
+              "fontFamily": {
+                      "label-sm": [
+                              "Inter"
+                      ],
+                      "label-md": [
+                              "Inter"
+                      ],
+                      "body-md": [
+                              "Source Serif 4"
+                      ],
+                      "headline-md": [
+                              "Source Serif 4"
+                      ],
+                      "body-lg": [
+                              "Source Serif 4"
+                      ],
+                      "display-lg": [
+                              "Source Serif 4"
+                      ],
+                      "headline-lg": [
+                              "Source Serif 4"
+                      ]
+              },
+              "fontSize": {
+                      "label-sm": [
+                              "12px",
+                              {
+                                      "lineHeight": "1.2",
+                                      "fontWeight": "400"
+                              }
+                      ],
+                      "label-md": [
+                              "14px",
+                              {
+                                      "lineHeight": "1.2",
+                                      "letterSpacing": "0.01em",
+                                      "fontWeight": "500"
+                              }
+                      ],
+                      "body-md": [
+                              "18px",
+                              {
+                                      "lineHeight": "1.7",
+                                      "fontWeight": "400"
+                              }
+                      ],
+                      "headline-md": [
+                              "24px",
+                              {
+                                      "lineHeight": "1.4",
+                                      "fontWeight": "500"
+                              }
+                      ],
+                      "body-lg": [
+                              "20px",
+                              {
+                                      "lineHeight": "1.8",
+                                      "fontWeight": "400"
+                              }
+                      ],
+                      "display-lg": [
+                              "42px",
+                              {
+                                      "lineHeight": "1.2",
+                                      "letterSpacing": "-0.02em",
+                                      "fontWeight": "600"
+                              }
+                      ],
+                      "headline-lg": [
+                              "32px",
+                              {
+                                      "lineHeight": "1.3",
+                                      "fontWeight": "600"
+                              }
+                      ]
+              }
+            },
+          }
+        }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .material-symbols-outlined.fill {
+            font-variation-settings: 'FILL' 1;
+        }
+        
+        /* Modal Backdrop */
+        .modal-backdrop {
+            background-color: rgba(27, 28, 28, 0.4);
+            backdrop-filter: blur(4px);
+        }
+
+        /* Tategaki Preview specific */
+        .tategaki-text {
+            writing-mode: vertical-rl;
+            text-orientation: upright;
+        }
+    </style>
+</head>
+<body class="bg-background text-on-background font-body-md min-h-screen flex items-center justify-center">
+<!-- Export Modal -->
+<div class="modal-backdrop fixed inset-0 z-50 flex items-center justify-center p-4 md:p-gutter">
+<div class="bg-surface w-full max-w-4xl shadow-[0_20px_40px_-15px_rgba(0,0,0,0.1)] border border-outline-variant/30 flex flex-col max-h-[921px] overflow-hidden rounded-full">
+<!-- Modal Header -->
+<header class="flex items-center justify-between p-6 border-b border-outline-variant/30 bg-surface-bright">
+<div>
+<h2 class="text-primary font-headline-lg text-headline-lg">プロジェクトの書き出し</h2>
+<p class="font-label-md text-label-md text-on-surface-variant mt-1">プロジェクト・アルファ - 執筆中</p>
+</div>
+<button class="p-2 text-on-surface-variant hover:bg-surface-container-highest rounded-full transition-colors">
+<span class="material-symbols-outlined">close</span>
+</button>
+</header>
+<!-- Modal Body (Two Columns) -->
+<div class="flex-1 overflow-y-auto flex flex-col md:flex-row">
+<!-- Left Column: Export Options List -->
+<nav class="w-full md:w-1/3 border-r border-outline-variant/30 bg-surface-container-low p-4 flex flex-col gap-2">
+<!-- Option 1: EPUB/E-book (Active) -->
+<button class="w-full text-left p-4 rounded-lg bg-surface-container-highest border-l-4 border-primary transition-colors flex items-start gap-3">
+<span class="material-symbols-outlined text-primary mt-0.5">book</span>
+<div>
+<h3 class="font-label-md text-label-md text-primary font-bold">EPUB / 電子書籍</h3>
+<p class="font-label-sm text-label-sm text-on-surface-variant mt-1">縦書き対応の電子書籍標準フォーマット</p>
+</div>
+</button>
+<!-- Option 2: Web Platform -->
+<button class="w-full text-left p-4 rounded-lg hover:bg-surface-container-high transition-colors flex items-start gap-3 text-on-surface-variant group">
+<span class="material-symbols-outlined group-hover:text-primary transition-colors mt-0.5">language</span>
+<div>
+<h3 class="font-label-md text-label-md group-hover:text-primary transition-colors">Web投稿形式</h3>
+<p class="font-label-sm text-label-sm mt-1">「なろう」「カクヨム」などの投稿用記法</p>
+</div>
+</button>
+<!-- Option 3: Folder Sync -->
+<button class="w-full text-left p-4 rounded-lg hover:bg-surface-container-high transition-colors flex items-start gap-3 text-on-surface-variant group">
+<span class="material-symbols-outlined group-hover:text-primary transition-colors mt-0.5">folder_eye</span>
+<div>
+<h3 class="font-label-md text-label-md group-hover:text-primary transition-colors">ローカル同期</h3>
+<p class="font-label-sm text-label-sm mt-1">指定したフォルダへテキストを同期</p>
+</div>
+</button>
+<!-- Option 4: JSON Bundle -->
+<button class="w-full text-left p-4 rounded-lg hover:bg-surface-container-high transition-colors flex items-start gap-3 text-on-surface-variant group">
+<span class="material-symbols-outlined group-hover:text-primary transition-colors mt-0.5">data_object</span>
+<div>
+<h3 class="font-label-md text-label-md group-hover:text-primary transition-colors">構造化データ</h3>
+<p class="font-label-sm text-label-sm mt-1">バックアップ用のJSONデータ一括出力</p>
+</div>
+</button>
+</nav>
+<!-- Right Column: Settings & Preview -->
+<div class="flex-1 bg-surface flex flex-col h-full">
+<div class="p-6 md:p-8 flex-1 overflow-y-auto">
+<h3 class="text-primary mb-6 border-b border-outline-variant/30 pb-2 font-headline-lg text-headline-lg">EPUB 設定</h3>
+<div class="space-y-8">
+<!-- Configuration Section -->
+<section>
+<h4 class="font-label-md text-label-md text-on-surface-variant mb-4 uppercase tracking-wider">スタイルとレイアウト</h4>
+<div class="bg-surface-container-low rounded-lg p-4 border border-outline-variant/20">
+<label class="flex items-center justify-between cursor-pointer">
+<div>
+<span class="font-label-md text-label-md text-on-surface block">縦書き</span>
+<span class="font-label-sm text-label-sm text-on-surface-variant">伝統的な縦書きレイアウトで出力します</span>
+</div>
+<div class="relative inline-block w-10 mr-2 align-middle select-none transition duration-200 ease-in">
+<input checked="" class="toggle-checkbox absolute block w-5 h-5 rounded-full bg-white border-4 appearance-none cursor-pointer border-primary translate-x-5" id="toggle1" name="toggle" type="checkbox">
+<label class="toggle-label block overflow-hidden h-5 rounded-full bg-primary-container cursor-pointer" for="toggle1"></label>
+</div>
+</label>
+</div>
+</section>
+<!-- Metadata Section -->
+<section>
+<h4 class="font-label-md text-label-md text-on-surface-variant mb-4 uppercase tracking-wider">書籍情報</h4>
+<div class="space-y-4">
+<div>
+<input class="w-full bg-transparent border-0 border-b border-outline-variant focus:border-primary focus:ring-0 px-0 py-2 font-body-md text-body-md text-on-surface placeholder-on-surface-variant/50" placeholder="Book Title" type="text" value="タイトル: プロジェクト・アルファ">
+</div>
+<div>
+<input class="w-full bg-transparent border-0 border-b border-outline-variant focus:border-primary focus:ring-0 px-0 py-2 font-body-md text-body-md text-on-surface placeholder-on-surface-variant/50" placeholder="Author" type="text" value="著者名">
+</div>
+</div>
+</section>
+<!-- Preview Section -->
+<section>
+<h4 class="font-label-md text-label-md text-on-surface-variant mb-4 uppercase tracking-wider">プレビュー</h4>
+<!-- Preview Container simulating a device screen -->
+<div class="bg-surface-container-highest rounded-lg p-8 flex justify-center items-center min-h-[300px] border border-outline-variant/20">
+<!-- The "Page" -->
+<div class="bg-surface shadow-sm p-6 w-[240px] h-[320px] rounded border border-outline-variant/10 overflow-hidden relative">
+<!-- Decorative book binding line -->
+<div class="absolute right-0 top-0 bottom-0 w-1 bg-surface-variant"></div>
+<!-- Tategaki Text Simulation -->
+<div class="tategaki-text h-full w-full font-body-md text-label-md leading-loose text-on-surface pr-4">
+<p class="mb-4">春はあけぼの。</p>
+<p class="mb-4">やうやう白くなりゆく山ぎは、少し明かりて、紫だちたる雲の細くたなびきたる。</p>
+</div>
+</div>
+</div>
+<p class="font-label-sm text-label-sm text-on-surface-variant text-center mt-2">Preview illustrates general flow, not exact typography rendering on specific devices.</p>
+</section>
+</div>
+</div>
+<!-- Modal Footer Actions -->
+<div class="p-4 border-t border-outline-variant/30 bg-surface-bright flex justify-end gap-4">
+<button class="px-6 py-2 rounded font-label-md text-label-md text-primary border border-outline-variant/50 hover:bg-surface-container-low transition-colors">
+                            Cancel
+                        </button>
+<button class="px-6 py-2 rounded font-label-md text-label-md bg-primary text-on-primary hover:bg-primary/90 transition-colors flex items-center gap-2 shadow-sm"><span class="material-symbols-outlined text-[18px]">download</span>書き出し</button>
+</div>
+</div>
+</div>
+</div>
+</div>
+<style>
+        /* Minimalist Checkbox Toggle Styles */
+        .toggle-checkbox:checked {
+            right: 0;
+            border-color: #172a40; /* primary */
+        }
+        .toggle-checkbox:checked + .toggle-label {
+            background-color: #2e4057; /* primary-container */
+        }
+        .toggle-checkbox {
+            right: 0;
+            z-index: 1;
+            border-color: #c4c6cd; /* outline-variant */
+            transition: all 0.2s ease;
+        }
+        .toggle-label {
+            background-color: #e4e2e1; /* surface-variant */
+            transition: all 0.2s ease;
+        }
+    </style>
+
+
+</body></html>

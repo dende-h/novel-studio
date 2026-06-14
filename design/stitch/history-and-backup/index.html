@@ -1,0 +1,257 @@
+<!DOCTYPE html><html lang="ja"><head>
+<meta charset="utf-8">
+<meta content="width=device-width, initial-scale=1.0" name="viewport">
+<title>Manuscript Studio - ローカル・セーフティネット</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=Source+Serif+4:wght@400;500;600&amp;display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "surface-variant": "#e4e2e1",
+                        "primary-fixed-dim": "#b5c8e4",
+                        "outline-variant": "#c4c6cd",
+                        "on-tertiary-container": "#c3a579",
+                        "secondary": "#805533",
+                        "tertiary-fixed-dim": "#e2c293",
+                        "secondary-container": "#fdc39a",
+                        "inverse-surface": "#303030",
+                        "inverse-primary": "#b5c8e4",
+                        "on-primary-fixed": "#081c32",
+                        "surface": "#fcf9f8",
+                        "secondary-fixed-dim": "#f4bb92",
+                        "secondary-fixed": "#ffdcc5",
+                        "error-container": "#ffdad6",
+                        "tertiary-fixed": "#ffdeae",
+                        "primary-container": "#2e4057",
+                        "on-secondary-fixed": "#301400",
+                        "on-tertiary-fixed": "#281900",
+                        "surface-container-lowest": "#ffffff",
+                        "on-tertiary-fixed-variant": "#59431f",
+                        "inverse-on-surface": "#f3f0f0",
+                        "surface-container-high": "#eae7e7",
+                        "on-primary": "#ffffff",
+                        "surface-dim": "#dcd9d9",
+                        "on-secondary-fixed-variant": "#653d1e",
+                        "surface-tint": "#4e6078",
+                        "outline": "#74777d",
+                        "background": "#fcf9f8",
+                        "surface-container": "#f0eded",
+                        "on-surface-variant": "#44474d",
+                        "on-primary-fixed-variant": "#36485f",
+                        "primary": "#172a40",
+                        "surface-container-highest": "#e4e2e1",
+                        "on-error": "#ffffff",
+                        "surface-bright": "#fcf9f8",
+                        "tertiary": "#382505",
+                        "on-surface": "#1b1c1c",
+                        "on-primary-container": "#99acc7",
+                        "error": "#ba1a1a",
+                        "tertiary-container": "#503b18",
+                        "on-secondary": "#ffffff",
+                        "on-error-container": "#93000a",
+                        "on-tertiary": "#ffffff",
+                        "surface-container-low": "#f6f3f2",
+                        "on-secondary-container": "#794e2e",
+                        "primary-fixed": "#d2e4ff",
+                        "on-background": "#1b1c1c"
+                    },
+                    borderRadius: {
+                        "DEFAULT": "0.125rem",
+                        "lg": "0.25rem",
+                        "xl": "0.5rem",
+                        "full": "0.75rem"
+                    },
+                    spacing: {
+                        "gutter": "32px",
+                        "editor-max-width": "720px",
+                        "unit": "4px",
+                        "margin-mobile": "16px",
+                        "sidebar-width": "260px",
+                        "margin-desktop": "48px"
+                    },
+                    fontFamily: {
+                        "label-sm": ["Inter"],
+                        "label-md": ["Inter"],
+                        "body-md": ["Source Serif 4"],
+                        "headline-md": ["Source Serif 4"],
+                        "body-lg": ["Source Serif 4"],
+                        "display-lg": ["Source Serif 4"],
+                        "headline-lg": ["Source Serif 4"]
+                    },
+                    fontSize: {
+                        "label-sm": ["12px", { "lineHeight": "1.2", "fontWeight": "400" }],
+                        "label-md": ["14px", { "lineHeight": "1.2", "letterSpacing": "0.01em", "fontWeight": "500" }],
+                        "body-md": ["18px", { "lineHeight": "1.7", "fontWeight": "400" }],
+                        "headline-md": ["24px", { "lineHeight": "1.4", "fontWeight": "500" }],
+                        "body-lg": ["20px", { "lineHeight": "1.8", "fontWeight": "400" }],
+                        "display-lg": ["42px", { "lineHeight": "1.2", "letterSpacing": "-0.02em", "fontWeight": "600" }],
+                        "headline-lg": ["32px", { "lineHeight": "1.3", "fontWeight": "600" }]
+                    }
+                }
+            }
+        }
+    </script>
+<style>
+        body { font-family: 'Source Serif 4', serif; }
+        .ui-sans { font-family: 'Inter', sans-serif; }
+    </style>
+</head>
+<body class="bg-background text-on-surface h-screen overflow-hidden flex flex-col selection:bg-primary-fixed selection:text-on-primary-fixed">
+<header class="fixed top-0 left-0 w-full z-50 flex justify-between items-center px-gutter h-16 bg-surface/80 backdrop-blur-md border-b border-outline-variant/30">
+<div class="flex items-center gap-4">
+<span class="font-headline-md text-headline-md font-semibold text-primary">Manuscript Studio</span>
+</div>
+<div class="flex items-center gap-4">
+<button class="ui-sans font-label-md text-label-md text-on-surface-variant hover:bg-surface-container-low px-4 py-2 rounded transition-colors border border-outline-variant/50">保存</button>
+<button class="ui-sans font-label-md text-label-md bg-primary text-on-primary hover:opacity-80 px-4 py-2 rounded transition-opacity">書き出し</button>
+<div class="flex items-center gap-2 ml-2 border-l border-outline-variant/30 pl-4">
+<button class="p-2 rounded-full hover:bg-surface-container-low transition-colors text-primary" title="Sync Status">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 0;">cloud_done</span>
+</button>
+<button class="p-2 rounded-full hover:bg-surface-container-low transition-colors text-on-surface-variant" title="Settings">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 0;">settings</span>
+</button>
+</div>
+</div>
+</header>
+<div class="flex h-full pt-16">
+<nav class="hidden md:flex flex-col bg-surface-container-low w-sidebar-width h-full border-r border-outline-variant/20 py-6 flex-shrink-0">
+<div class="px-6 mb-8">
+<h2 class="font-label-md text-label-md font-bold text-on-surface uppercase tracking-wider mb-1">プロジェクト・アルファ</h2>
+<p class="font-label-sm text-label-sm text-on-surface-variant">執筆中</p>
+</div>
+<div class="flex-1 flex flex-col gap-1 px-3">
+<button class="flex items-center gap-3 px-3 py-2 rounded w-full text-left font-label-md text-label-md text-on-surface-variant hover:bg-surface-container-high transition-all duration-200">
+<span class="material-symbols-outlined text-[20px]">library_books</span>
+                    コレクション
+                </button>
+<button class="flex items-center gap-3 px-3 py-2 rounded w-full text-left font-label-md text-label-md text-primary border-l-4 border-primary bg-surface-container scale-[0.98] transition-transform">
+<span class="material-symbols-outlined text-[20px]" style="font-variation-settings: 'FILL' 1;">menu_book</span>
+                    エピソード
+                </button>
+<button class="flex items-center gap-3 px-3 py-2 rounded w-full text-left font-label-md text-label-md text-on-surface-variant hover:bg-surface-container-high transition-all duration-200">
+<span class="material-symbols-outlined text-[20px]">microwave</span>
+                    リサーチ
+                </button>
+<button class="flex items-center gap-3 px-3 py-2 rounded w-full text-left font-label-md text-label-md text-on-surface-variant hover:bg-surface-container-high transition-all duration-200">
+<span class="material-symbols-outlined text-[20px]">inventory_2</span>
+                    アーカイブ
+                </button>
+</div>
+<div class="px-6 mt-auto">
+<button class="w-full py-2 flex items-center justify-center gap-2 border border-outline-variant/50 rounded font-label-md text-label-md text-on-surface hover:bg-surface-container-high transition-colors">
+<span class="material-symbols-outlined text-[18px]">add</span>
+                    新しいエピソードを追加
+                </button>
+</div>
+</nav>
+<main class="flex-1 overflow-y-auto bg-background flex justify-center relative">
+<article class="w-full max-w-editor-max-width px-gutter py-margin-desktop outline-none">
+<h1 class="font-display-lg text-display-lg text-on-surface mb-8">第四章：記憶の建築</h1>
+<p class="font-body-md text-body-md text-on-surface-variant mb-6 text-justify leading-relaxed">
+                    The city did not grow organically. It was constructed, layer by deliberate layer, upon the bedrock of forgotten iterations. Architect Elias Thorne sat at his drafting table, the harsh light of the solitary lamp casting long, distorted shadows across the vellum. He traced the lines of the old district, noting where the streets veered inexplicably, bending around structures that no longer existed.
+                </p>
+<p class="font-body-md text-body-md text-on-surface-variant mb-6 text-justify leading-relaxed">
+                    He had spent the better part of the decade attempting to map these negative spaces. They held a resonance, a quiet vibration that one could feel only in the dead of night when the modern machinery ceased its rhythmic hum. The locals whispered about the 'echo-forms,' spectral buildings that appeared in the periphery of vision when the mist rolled in off the estuary.
+                </p>
+<p class="font-body-md text-body-md text-on-surface-variant mb-6 text-justify leading-relaxed">
+                    Tonight, however, his focus was drawn to a specific anomaly near the central plaza. According to the archives, the square had always been open, designed for public gatherings and the solstice festivals. Yet, his latest cross-referencing with ground-penetrating radar data suggested a massive, submerged foundation right in the center. A foundation that matched no known historical record of the city.
+                </p>
+</article>
+<div class="fixed bottom-6 right-[380px] ui-sans font-label-sm text-label-sm text-on-surface-variant/60 tracking-widest pointer-events-none">
+                1,204文字 • 最終編集：たった今
+            </div>
+</main>
+<aside class="w-[340px] flex-shrink-0 border-l border-outline-variant/20 flex flex-col h-full z-10 shadow-[-4px_0_24px_rgba(0,0,0,0.02)] bg-surface-container-low">
+<div class="p-6 border-b border-outline-variant/20 bg-surface-bright">
+<div class="flex items-center justify-between mb-2">
+<h3 class="font-headline-md text-headline-md text-on-surface">ローカル・セーフティネット</h3>
+<span class="material-symbols-outlined text-outline" style="font-variation-settings: 'FILL' 0;">history</span>
+</div>
+<p class="font-label-md text-label-md text-on-surface-variant flex items-center gap-1.5 mt-2 bg-surface-container-lowest border border-outline-variant/30 rounded px-2 py-1 inline-flex">
+<span class="material-symbols-outlined text-[14px] text-primary">database</span>
+                    IndexedDBに保護されています
+                </p>
+<p class="font-label-sm text-label-sm text-outline mt-3">
+                    オートセーブは端末内にのみ保存されます。執筆の履歴を継続的に記録します。
+                </p>
+</div>
+<div class="flex-1 overflow-y-auto p-4 space-y-3 bg-surface-container-low">
+<div class="group relative rounded border border-primary/30 bg-surface-bright p-4 transition-all rounded-xl">
+<div class="absolute -left-[1px] top-4 bottom-4 w-[3px] bg-primary rounded-r"></div>
+<div class="flex justify-between items-start mb-2">
+<div>
+<span class="ui-sans font-label-md text-label-md font-semibold text-on-surface block">現在のセッション</span>
+<span class="ui-sans font-label-sm text-label-sm text-primary">たった今</span>
+</div>
+<span class="ui-sans font-label-sm text-label-sm bg-surface-container px-2 py-0.5 rounded text-on-surface-variant">+ 42文字</span>
+</div>
+<p class="font-body-md text-[14px] leading-snug text-on-surface-variant/80 line-clamp-2 mt-2 italic border-l-2 border-outline-variant/30 pl-2 tracking-normal">
+                        "Yet, his latest cross-referencing with ground-penetrating radar data suggested a massive, submerged foundation..."
+                    </p>
+</div>
+<div class="group rounded border border-outline-variant/20 hover:border-outline-variant/40 bg-surface-container-low hover:bg-surface-bright p-4 transition-all relative rounded-xl">
+<div class="flex justify-between items-start mb-2">
+<div>
+<span class="ui-sans font-label-md text-label-md text-on-surface block">自動保存</span>
+<span class="ui-sans font-label-sm text-label-sm text-on-surface-variant">14分前</span>
+</div>
+<button class="opacity-0 group-hover:opacity-100 ui-sans font-label-sm text-label-sm text-primary border border-primary/30 hover:bg-primary/5 px-3 py-1 rounded transition-all">
+                            復元
+                        </button>
+</div>
+<p class="font-body-md text-[14px] leading-snug text-outline line-clamp-2 mt-2 italic border-l-2 border-outline-variant/20 pl-2 tracking-normal">
+                        "They held a resonance, a quiet vibration that one could feel only in the dead of night..."
+                    </p>
+</div>
+<div class="group rounded border border-outline-variant/20 hover:border-outline-variant/40 bg-surface-container-low hover:bg-surface-bright p-4 transition-all relative rounded-xl">
+<div class="flex justify-between items-start mb-2">
+<div>
+<span class="ui-sans font-label-md text-label-md text-on-surface block">自動保存</span>
+<span class="ui-sans font-label-sm text-label-sm text-on-surface-variant">45分前</span>
+</div>
+<button class="opacity-0 group-hover:opacity-100 ui-sans font-label-sm text-label-sm text-primary border border-primary/30 hover:bg-primary/5 px-3 py-1 rounded transition-all">
+                            復元
+                        </button>
+</div>
+<p class="font-body-md text-[14px] leading-snug text-outline line-clamp-2 mt-2 italic border-l-2 border-outline-variant/20 pl-2 tracking-normal">
+                        "Architect Elias Thorne sat at his drafting table, the harsh light of the solitary lamp casting long..."
+                    </p>
+<div class="mt-3 ui-sans font-label-sm text-label-sm text-error flex items-center gap-1 opacity-80">
+<span class="material-symbols-outlined text-[14px]">remove</span>
+                        180文字を削除
+                    </div>
+</div>
+<div class="relative py-4">
+<div aria-hidden="true" class="absolute inset-0 flex items-center">
+<div class="w-full border-t border-outline-variant/20"></div>
+</div>
+<div class="relative flex justify-center">
+<span class="px-2 ui-sans font-label-sm text-label-sm text-outline tracking-wider bg-surface-container-low">昨日</span>
+</div>
+</div>
+<div class="group rounded border border-outline-variant/20 hover:border-outline-variant/40 bg-surface-container-low hover:bg-surface-bright p-4 transition-all relative rounded-xl">
+<div class="flex justify-between items-start mb-2">
+<div>
+<span class="ui-sans font-label-md text-label-md text-on-surface block">手動保存</span>
+<span class="ui-sans font-label-sm text-label-sm text-on-surface-variant">11月12日 23:30</span>
+</div>
+<button class="opacity-0 group-hover:opacity-100 ui-sans font-label-sm text-label-sm text-primary border border-primary/30 hover:bg-primary/5 px-3 py-1 rounded transition-all">
+                            復元
+                        </button>
+</div>
+<p class="font-body-md text-[14px] leading-snug text-outline line-clamp-2 mt-2 italic border-l-2 border-outline-variant/20 pl-2 tracking-normal">
+                        "The city did not grow organically. It was constructed, layer by deliberate layer..."
+                    </p>
+</div>
+</div>
+</aside>
+</div>
+
+
+</body></html>

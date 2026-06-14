@@ -1,31 +1,28 @@
-import { useEffect, useMemo, useRef } from 'react'
-import { importBundle } from '../core/bundle'
-import { blocksToHtml } from '../core/exporter/toHtml'
-import { parseEpisodeBody } from '../core/parser/parseNotation'
-import { readFileText, triggerDownload } from './_utils/download'
-import {
-  episodeKakuyomuExport,
-  episodeNarouExport,
-  workEpubExport,
-  workFolderZipExport,
-  worksBundleExport,
-} from './_utils/exporters'
-import { EditorPane } from './components/EditorPane/editor-pane'
-import { PreviewPane } from './components/PreviewPane/preview-pane'
-import { StatusBar } from './components/StatusBar/status-bar'
-import { WorkSidebar } from './components/WorkSidebar/work-sidebar'
-import { useAutosave } from './hooks/use-autosave'
-import { useEditorStore } from './hooks/use-editor-store'
-import type { EditorStore } from './store/editorStore'
+import { useEffect, useMemo, useState } from 'react'
+import { blocksToHtml } from '@/core/exporter/toHtml'
+import { parseEpisodeBody } from '@/core/parser/parseNotation'
+import { AppShell } from '@/ui/components/AppShell/app-shell'
+import { EditorPane } from '@/ui/components/EditorPane/editor-pane'
+import { ExportDialog } from '@/ui/components/ExportDialog/export-dialog'
+import { HistoryPanel } from '@/ui/components/HistoryPanel/history-panel'
+import { PreviewPane } from '@/ui/components/PreviewPane/preview-pane'
+import { SideNav } from '@/ui/components/SideNav/side-nav'
+import { TitlePromptDialog } from '@/ui/components/TitlePromptDialog/title-prompt-dialog'
+import { useAutosave } from '@/ui/hooks/use-autosave'
+import { useEditorStore } from '@/ui/hooks/use-editor-store'
+import type { EditorStore } from '@/ui/store/editorStore'
 
 interface AppProps {
   store: EditorStore
+  /** 入口（ライブラリ）へ戻る */
   onExit?: () => void
 }
 
+/** 原稿エディタ（サイドバー＋本文／プレビュー＋履歴）。 */
 export function App({ store, onExit }: AppProps) {
   const state = useEditorStore(store)
-  const fileInput = useRef<HTMLInputElement>(null)
+  const [newEpisodeOpen, setNewEpisodeOpen] = useState(false)
+  const [exportOpen, setExportOpen] = useState(false)
 
   useEffect(() => {
     void store.init()
@@ -36,135 +33,77 @@ export function App({ store, onExit }: AppProps) {
 
   const work = state.work
   const episode = work?.episodes.find((e) => e.id === state.currentEpisodeId) ?? null
-  const liveEpisode = episode ? { ...episode, blocks: parseEpisodeBody(state.draft) } : null
 
-  const newWork = () => {
-    const title = window.prompt('作品タイトル', '無題の作品')
-    if (title != null) void store.createWork(title || '無題の作品')
-  }
-  const newEpisode = () => {
-    const title = window.prompt('話タイトル', `第${(work?.episodes.length ?? 0) + 1}話`)
-    if (title != null) void store.createEpisode(title || '無題の話')
-  }
-
-  const exportEpub = async () => {
-    await store.save()
-    const w = store.getSnapshot().work
-    if (w) triggerDownload(workEpubExport(w))
-  }
-  const exportFolder = async () => {
-    await store.save()
-    const w = store.getSnapshot().work
-    if (w) triggerDownload(workFolderZipExport(w))
-  }
-  const exportBundle = async () => {
-    await store.save()
-    triggerDownload(worksBundleExport(await store.getAllWorks()))
-  }
-  const onImportFile = async (file: File | undefined) => {
-    if (!file) return
-    await store.importWorks(importBundle(await readFileText(file)))
+  const openExport = async () => {
+    if (episode) await store.save()
+    setExportOpen(true)
   }
 
   return (
-    <div className="flex h-dvh flex-col">
-      <header className="flex items-center gap-2 border-neutral-200 border-b px-3 py-2">
-        <h1 className="font-bold text-sm">
-          <button
-            type="button"
-            onClick={onExit}
-            disabled={!onExit}
-            title="入り口に戻る"
-            className="rounded transition hover:text-neutral-500 disabled:cursor-default"
-          >
-            novel-studio
-          </button>
-        </h1>
-        <div className="ml-auto flex flex-wrap items-center gap-1 text-xs">
-          <button
-            type="button"
-            onClick={() =>
-              liveEpisode && work && triggerDownload(episodeNarouExport(work.title, liveEpisode))
-            }
-            disabled={!liveEpisode}
-            className="rounded border px-2 py-1 disabled:opacity-40"
-          >
-            なろう
-          </button>
-          <button
-            type="button"
-            onClick={() =>
-              liveEpisode && work && triggerDownload(episodeKakuyomuExport(work.title, liveEpisode))
-            }
-            disabled={!liveEpisode}
-            className="rounded border px-2 py-1 disabled:opacity-40"
-          >
-            カクヨム
-          </button>
-          <button
-            type="button"
-            onClick={exportEpub}
-            disabled={!work}
-            className="rounded border px-2 py-1 disabled:opacity-40"
-          >
-            EPUB
-          </button>
-          <button
-            type="button"
-            onClick={exportFolder}
-            disabled={!work}
-            className="rounded border px-2 py-1 disabled:opacity-40"
-          >
-            フォルダ
-          </button>
-          <button type="button" onClick={exportBundle} className="rounded border px-2 py-1">
-            バンドル出力
-          </button>
-          <button
-            type="button"
-            onClick={() => fileInput.current?.click()}
-            className="rounded border px-2 py-1"
-          >
-            取り込み
-          </button>
-          <input
-            ref={fileInput}
-            type="file"
-            accept="application/json,.json"
-            className="hidden"
-            aria-label="バンドル取り込み"
-            onChange={(e) =>
-              void onImportFile(e.target.files?.[0]).then(() => {
-                if (fileInput.current) fileInput.current.value = ''
-              })
-            }
-          />
-          <StatusBar dirty={state.dirty} status={state.status} />
-        </div>
-      </header>
-
-      <div className="flex min-h-0 flex-1">
-        <WorkSidebar
-          workList={state.workList}
-          currentWorkId={work?.id ?? null}
+    <AppShell
+      onBrandClick={onExit}
+      saveStatus={{ dirty: state.dirty, status: state.status }}
+      onExport={() => void openExport()}
+      sidebar={
+        <SideNav
+          projectTitle={work?.title ?? 'novel-studio'}
+          projectSubtitle="執筆中"
+          active="episodes"
+          onNavigateCollection={() => onExit?.()}
+          cta={{
+            label: '新しいエピソードを追加',
+            onClick: () => setNewEpisodeOpen(true),
+            disabled: !work,
+          }}
           episodes={work?.episodes.map((e) => ({ id: e.id, title: e.title })) ?? []}
           currentEpisodeId={state.currentEpisodeId}
-          onSelectWork={(id) => void store.openWork(id)}
           onSelectEpisode={(id) => store.openEpisode(id)}
-          onNewWork={newWork}
-          onNewEpisode={newEpisode}
         />
-        {episode ? (
-          <main className="grid min-h-0 flex-1 grid-cols-2 divide-x divide-neutral-200">
+      }
+      aside={
+        episode ? (
+          <HistoryPanel
+            snapshots={state.snapshots}
+            currentEpisodeId={state.currentEpisodeId}
+            onRestore={(id) => store.restoreSnapshot(id)}
+          />
+        ) : undefined
+      }
+    >
+      {episode ? (
+        <>
+          <div className="flex h-full w-1/2 min-w-0 border-outline-variant/20 border-r">
             <EditorPane value={state.draft} onChange={(v) => store.setDraft(v)} />
+          </div>
+          <div className="h-full w-1/2 min-w-0">
             <PreviewPane html={previewHtml} />
-          </main>
-        ) : (
-          <main className="flex flex-1 items-center justify-center text-neutral-400 text-sm">
-            {work ? '「新規話」で話を追加して書き始める' : '「新規作品」から始める'}
-          </main>
-        )}
-      </div>
-    </div>
+          </div>
+        </>
+      ) : (
+        <div className="flex flex-1 items-center justify-center p-8 text-center text-on-surface-variant text-sm">
+          {work
+            ? '「新しいエピソードを追加」で書き始めましょう'
+            : 'ライブラリから作品を開いてください'}
+        </div>
+      )}
+
+      <TitlePromptDialog
+        open={newEpisodeOpen}
+        onOpenChange={setNewEpisodeOpen}
+        title="新しいエピソード"
+        description="この作品に追加する話のタイトルを入力します。"
+        label="話タイトル"
+        placeholder={`第${(work?.episodes.length ?? 0) + 1}話`}
+        defaultValue={`第${(work?.episodes.length ?? 0) + 1}話`}
+        submitLabel="追加"
+        onSubmit={(title) => void store.createEpisode(title)}
+      />
+      <ExportDialog
+        open={exportOpen}
+        onOpenChange={setExportOpen}
+        work={state.work}
+        getAllWorks={() => store.getAllWorks()}
+      />
+    </AppShell>
   )
 }

@@ -1,23 +1,157 @@
 @import "tailwindcss";
+@import "tw-animate-css";
 
-/* 組版表現（ライブプレビュー＆LP の縦書きサンプル共通） */
+@custom-variant dark (&:is(.dark *));
+
+/*
+ * Manuscript Studio デザインシステム（Stitch / Material 3 由来）。
+ * Material 3 のパレットを shadcn セマンティックトークンへマップしつつ、
+ * 拡張トークン（surface-container 等）も color として公開して画面再現に使う。
+ */
+:root {
+  --radius: 0.5rem;
+
+  /* shadcn セマンティック */
+  --background: #fcf9f8;
+  --foreground: #1b1c1c;
+  --card: #ffffff;
+  --card-foreground: #1b1c1c;
+  --popover: #ffffff;
+  --popover-foreground: #1b1c1c;
+  --primary: #172a40;
+  --primary-foreground: #ffffff;
+  --secondary: #eae7e7;
+  --secondary-foreground: #1b1c1c;
+  --muted: #f0eded;
+  --muted-foreground: #44474d;
+  --accent: #eae7e7;
+  --accent-foreground: #1b1c1c;
+  --destructive: #ba1a1a;
+  --destructive-foreground: #ffffff;
+  --border: #c4c6cd;
+  --input: #c4c6cd;
+  --ring: #172a40;
+
+  /* Material 3 拡張 */
+  --surface: #fcf9f8;
+  --surface-container-lowest: #ffffff;
+  --surface-container-low: #f6f3f2;
+  --surface-container: #f0eded;
+  --surface-container-high: #eae7e7;
+  --surface-container-highest: #e4e2e1;
+  --surface-bright: #fcf9f8;
+  --surface-variant: #e4e2e1;
+  --on-surface: #1b1c1c;
+  --on-surface-variant: #44474d;
+  --outline: #74777d;
+  --outline-variant: #c4c6cd;
+  --primary-container: #2e4057;
+  --on-primary-container: #99acc7;
+  --secondary-color: #805533;
+  --secondary-container: #fdc39a;
+  --on-secondary-container: #794e2e;
+  --error: #ba1a1a;
+  --error-container: #ffdad6;
+  --on-error-container: #93000a;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  /* Material 3 拡張 → ユーティリティ（bg-surface-container-low, text-on-surface-variant 等） */
+  --color-surface: var(--surface);
+  --color-surface-container-lowest: var(--surface-container-lowest);
+  --color-surface-container-low: var(--surface-container-low);
+  --color-surface-container: var(--surface-container);
+  --color-surface-container-high: var(--surface-container-high);
+  --color-surface-container-highest: var(--surface-container-highest);
+  --color-surface-bright: var(--surface-bright);
+  --color-surface-variant: var(--surface-variant);
+  --color-on-surface: var(--on-surface);
+  --color-on-surface-variant: var(--on-surface-variant);
+  --color-outline: var(--outline);
+  --color-outline-variant: var(--outline-variant);
+  --color-primary-container: var(--primary-container);
+  --color-on-primary-container: var(--on-primary-container);
+  --color-brand-secondary: var(--secondary-color);
+  --color-secondary-container: var(--secondary-container);
+  --color-on-secondary-container: var(--on-secondary-container);
+  --color-error: var(--error);
+  --color-error-container: var(--error-container);
+  --color-on-error-container: var(--on-error-container);
+
+  --font-sans: "Inter Variable", system-ui, sans-serif;
+  --font-serif: "Source Serif 4 Variable", Georgia, serif;
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+
+  --spacing-sidebar: 260px;
+  --spacing-gutter: 32px;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground font-serif antialiased;
+  }
+}
+
+/* 組版表現（ライブプレビュー＆縦書きサンプル共通） */
 .dots {
   font-style: normal;
   -webkit-text-emphasis: filled dot;
   text-emphasis: filled dot;
 }
 
+/*
+ * 本文プレビューは日本語の明朝体を最優先にする。本文 UI フォント（Source Serif 4）は
+ * CJK グリフを持たず、縦書き時にフォールバックの字送りメトリクスが崩れて文字が重なるため。
+ * 明朝体はシステム同梱フォントを利用（追加バンドル不要）、Latin は Source Serif 4 へフォールバック。
+ */
+.preview {
+  font-family:
+    "Hiragino Mincho ProN", "Yu Mincho", YuMincho, "MS PMincho", "Noto Serif CJK JP",
+    "Noto Serif JP", "IPAmjMincho", "IPAGothic", "Source Serif 4 Variable", serif;
+}
+
 .preview ruby rt {
   font-size: 0.5em;
+  color: var(--on-surface-variant);
 }
 
+/* 空行は段落の積み上げ方向（block 軸）に 1 行分の余白を作る＝縦書きでは列の隙間になる。 */
 .preview .blank {
-  min-height: 1em;
+  min-block-size: 1em;
 }
 
+/* シーン区切りは論理プロパティで横書き＝水平線／縦書き＝垂直線の双方に対応させる。 */
 .preview .scene-break {
   border: none;
-  border-top: 1px solid #d6d3d1;
-  margin: 1.5em auto;
-  width: 40%;
+  border-block-start: 1px solid var(--outline-variant);
+  margin-block: 1.5em;
+  margin-inline: auto;
+  inline-size: 40%;
 }
