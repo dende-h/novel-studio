@@ -20,37 +20,40 @@ export function PreviewPane({ html }: PreviewPaneProps) {
 
   return (
     <div className="relative h-full min-h-0 overflow-auto bg-[#f9f9f9] px-10 py-16 shadow-[inset_1px_0_10px_rgba(0,0,0,0.02)]">
-      {/* フローティングツールバー */}
-      <div className="absolute top-4 right-6 z-10 flex items-center gap-1 rounded-full border border-outline-variant/20 bg-surface-container-lowest px-2 py-1.5 shadow-sm">
+      {/* 組み方向の切替（セグメント型トグル。選択中を塗りつぶしで明示） */}
+      <fieldset
+        aria-label="本文の組み方向"
+        className="absolute top-4 right-6 z-10 m-0 flex min-w-0 items-center gap-1 rounded-full border border-outline-variant/20 bg-surface-container-lowest p-1 shadow-sm"
+      >
         <button
           type="button"
-          aria-label="横書き"
           aria-pressed={!vertical}
           onClick={() => setOrientation('horizontal')}
           className={cn(
-            'flex size-8 items-center justify-center rounded-full transition-colors',
+            'flex items-center gap-1.5 rounded-full px-3 py-1.5 font-sans font-medium text-xs transition-colors',
             !vertical
-              ? 'bg-primary/10 text-primary'
+              ? 'bg-primary text-primary-foreground shadow-sm'
               : 'text-on-surface-variant hover:bg-surface-container-high',
           )}
         >
-          <Columns2 className="size-4" />
+          <Rows2 className="size-3.5" />
+          横書き
         </button>
         <button
           type="button"
-          aria-label="縦書き"
           aria-pressed={vertical}
           onClick={() => setOrientation('vertical')}
           className={cn(
-            'flex size-8 items-center justify-center rounded-full transition-colors',
+            'flex items-center gap-1.5 rounded-full px-3 py-1.5 font-sans font-medium text-xs transition-colors',
             vertical
-              ? 'bg-primary/10 text-primary'
+              ? 'bg-primary text-primary-foreground shadow-sm'
               : 'text-on-surface-variant hover:bg-surface-container-high',
           )}
         >
-          <Rows2 className="size-4" />
+          <Columns2 className="size-3.5" />
+          縦書き
         </button>
-      </div>
+      </fieldset>
 
       {/* 紙面 */}
       <article
