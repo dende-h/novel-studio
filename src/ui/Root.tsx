@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { App } from './App'
 import { Library } from './components/Library/library'
+import { SmallScreenNotice } from './components/SmallScreenNotice/small-screen-notice'
 import { useHashRoute } from './hooks/use-hash-route'
 import type { EditorStore } from './store/editorStore'
 
@@ -17,8 +18,15 @@ export function Root({ store }: RootProps) {
     void store.init()
   }, [store])
 
-  if (route === '/write') {
-    return <App store={store} onExit={() => navigate('/')} />
-  }
-  return <Library store={store} onEnterEditor={() => navigate('/write')} />
+  return (
+    <>
+      {route === '/write' ? (
+        <App store={store} onExit={() => navigate('/')} />
+      ) : (
+        <Library store={store} onEnterEditor={() => navigate('/write')} />
+      )}
+      {/* スマホ等の狭い画面（lg 未満）では本体を覆って非対応を案内する。 */}
+      <SmallScreenNotice />
+    </>
+  )
 }

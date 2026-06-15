@@ -45,7 +45,7 @@ export function AppShell({
       <div className="relative flex min-h-0 flex-1">
         {sidebar}
         <main className="flex min-h-0 min-w-0 flex-1">{children}</main>
-        {/* 右ペイン（履歴）。lg 以上は行内の列、lg 未満は本文を狭めないようオーバーレイ表示。 */}
+        {/* 右ペイン（履歴）。xl 以上は行内の列、xl 未満（対応下限〜）は本文を狭めないようオーバーレイ表示。 */}
         {aside ? (
           <>
             {onCloseAside ? (
@@ -53,10 +53,10 @@ export function AppShell({
                 type="button"
                 aria-label="履歴ドロワーを閉じる"
                 onClick={onCloseAside}
-                className="absolute inset-0 z-30 bg-black/30 lg:hidden"
+                className="absolute inset-0 z-30 bg-black/30 xl:hidden"
               />
             ) : null}
-            <div className="absolute inset-y-0 right-0 z-40 flex shrink-0 shadow-2xl lg:static lg:z-auto lg:shadow-none">
+            <div className="absolute inset-y-0 right-0 z-40 flex shrink-0 shadow-2xl xl:static xl:z-auto xl:shadow-none">
               {aside}
             </div>
           </>
