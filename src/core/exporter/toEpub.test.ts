@@ -102,6 +102,20 @@ describe('toEpub（EPUB3 縦書き・純生成）', () => {
     expect(buildStyleCss()).toContain('writing-mode: vertical-rl')
   })
 
+  it('buildStyleCss は縦中横（text-combine-upright）を含む', () => {
+    expect(buildStyleCss()).toContain('text-combine-upright: all')
+  })
+
+  it('episodeToXhtml はタイトル h1 内の半角数字を縦中横 span で包む', () => {
+    const x = episodeToXhtml({
+      id: 'e9',
+      title: '第12話',
+      blocks: [{ id: 'b9', type: 'paragraph', inlines: [{ type: 'text', text: '5年後' }] }],
+    })
+    expect(x).toContain('<h1>第<span class="tcy">12</span>話</h1>')
+    expect(x).toContain('<span class="tcy">5</span>年後')
+  })
+
   it('buildEpubFiles は EPUB に必要な全ファイルを束ねる', () => {
     const files = buildEpubFiles(work)
     const paths = files.map((f) => f.path)

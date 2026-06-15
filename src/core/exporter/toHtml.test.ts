@@ -34,4 +34,21 @@ describe('blocksToHtml（ライブプレビュー描画）', () => {
       '<p><ruby>a&lt;b<rt>よ&amp;み</rt></ruby></p>',
     )
   })
+
+  it('1〜2 桁の半角数字は縦中横 span で包む', () => {
+    expect(blocksToHtml(parseEpisodeBody('第1話'))).toBe('<p>第<span class="tcy">1</span>話</p>')
+    expect(blocksToHtml(parseEpisodeBody('12月3日'))).toBe(
+      '<p><span class="tcy">12</span>月<span class="tcy">3</span>日</p>',
+    )
+  })
+
+  it('3 桁以上の半角数字は縦中横にしない（横倒し回避は漢数字に委ねる）', () => {
+    expect(blocksToHtml(parseEpisodeBody('西暦2026年'))).toBe('<p>西暦2026年</p>')
+  })
+
+  it('傍点内の数字も縦中横で包む', () => {
+    expect(blocksToHtml(parseEpisodeBody('《《30》》'))).toBe(
+      '<p><em class="dots"><span class="tcy">30</span></em></p>',
+    )
+  })
 })

@@ -1,5 +1,5 @@
 import type { Episode, Work } from '../schema'
-import { blocksToHtml } from './toHtml'
+import { blocksToHtml, wrapTcy } from './toHtml'
 
 /**
  * 正本 → EPUB3（縦書き）構成ファイルの純生成。
@@ -25,7 +25,7 @@ export function episodeToXhtml(ep: Episode): string {
 <link rel="stylesheet" type="text/css" href="../style.css" />
 </head>
 <body>
-<h1>${escapeXml(ep.title)}</h1>
+<h1>${wrapTcy(escapeXml(ep.title))}</h1>
 ${blocksToHtml(ep.blocks)}
 </body>
 </html>`
@@ -119,6 +119,11 @@ em.dots {
   font-style: normal;
   text-emphasis: filled dot;
   -webkit-text-emphasis: filled dot;
+}
+.tcy {
+  text-combine-upright: all;
+  -webkit-text-combine: horizontal;
+  -epub-text-combine: horizontal;
 }
 hr.scene-break { border: none; margin: 2em 0; }`
 }

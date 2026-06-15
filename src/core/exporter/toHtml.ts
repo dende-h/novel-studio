@@ -10,6 +10,18 @@ function escapeHtml(s: string): string {
   return s.replace(/[&<>]/g, (c) => (c === '&' ? '&amp;' : c === '<' ? '&lt;' : '&gt;'))
 }
 
+/**
+ * 縦書き時に半角数字が横倒し（text-orientation: mixed の既定挙動）になるのを防ぐため、
+ * 1〜2 桁の連続半角数字を縦中横（CSS text-combine-upright）用の span で包む。
+ * 3 桁以上はそのまま（縦中横で 1 マスに潰すと読めないため、漢数字推奨という組版慣習に従う）。
+ * 入力は HTML エスケープ済み文字列を渡すこと（数字は実体参照に含まれないため順序は安全）。
+ */
+export function wrapTcy(escaped: string): string {
+  return escaped.replace(/\d+/g, (run) =>
+    run.length <= 2 ? `<span class="tcy">${run}</span>` : run,
+  )
+}
+
 export function blocksToHtml(blocks: Block[]): string {
   return blocks.map(blockToHtml).join('')
 }
@@ -23,10 +35,10 @@ function blockToHtml(block: Block): string {
 function inlineToHtml(inline: Inline): string {
   switch (inline.type) {
     case 'text':
-      return escapeHtml(inline.text)
+      return wrapTcy(escapeHtml(inline.text))
     case 'ruby':
       return `<ruby>${escapeHtml(inline.base)}<rt>${escapeHtml(inline.reading)}</rt></ruby>`
     case 'emphasisDots':
-      return `<em class="dots">${escapeHtml(inline.text)}</em>`
+      return `<em class="dots">${wrapTcy(escapeHtml(inline.text))}</em>`
   }
 }

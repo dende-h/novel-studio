@@ -152,6 +152,12 @@
   color: var(--on-surface-variant);
 }
 
+/* 縦中横: 1〜2 桁の半角数字を正立させる（横書き時は no-op）。EPUB 出力と挙動を揃える。 */
+.preview .tcy {
+  text-combine-upright: all;
+  -webkit-text-combine: horizontal;
+}
+
 /* 空行は段落の積み上げ方向（block 軸）に 1 行分の余白を作る＝縦書きでは列の隙間になる。 */
 .preview .blank {
   min-block-size: 1em;
