@@ -59,7 +59,9 @@ export function HistoryPanel({
         </p>
       </div>
 
-      <ScrollArea className="min-h-0 flex-1">
+      {/* Radix ScrollArea は子を display:table でラップしコンテンツ幅に伸びるため、
+          長い無改行文字列でカードが横へはみ出す。内側ラッパを block に固定して折返しを効かせる。 */}
+      <ScrollArea className="min-h-0 flex-1 [&_[data-slot=scroll-area-viewport]>div]:!block">
         <div className="space-y-3 p-4">
           {snapshots.length === 0 ? (
             <p className="px-2 py-8 text-center text-on-surface-variant/60 text-sm">
