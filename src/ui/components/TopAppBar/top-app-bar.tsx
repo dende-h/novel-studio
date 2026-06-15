@@ -1,4 +1,5 @@
-import { CircleDot, Cloud, CloudCheck, Download, LoaderCircle } from 'lucide-react'
+import { CircleDot, Cloud, CloudCheck, Download, History, LoaderCircle } from 'lucide-react'
+import { cn } from '@/lib/utils'
 import { Button } from '@/ui/components/ui/button'
 import type { SaveStatus } from '@/ui/store/editorStore'
 
@@ -16,6 +17,9 @@ interface TopAppBarProps {
   /** 書き出しダイアログを開く。未指定なら非表示 */
   onExport?: () => void
   exportDisabled?: boolean
+  /** 履歴ドロワーの開閉トグル。未指定なら非表示 */
+  onToggleHistory?: () => void
+  historyOpen?: boolean
 }
 
 function SaveIndicator({ dirty, status }: SaveState) {
@@ -51,13 +55,15 @@ function SaveIndicator({ dirty, status }: SaveState) {
   )
 }
 
-/** 全画面共通のトップバー（ブランド・保存状態・書き出し）。 */
+/** 全画面共通のトップバー（ブランド・保存状態・履歴・書き出し）。 */
 export function TopAppBar({
   brand = 'novel-studio',
   onBrandClick,
   saveStatus,
   onExport,
   exportDisabled,
+  onToggleHistory,
+  historyOpen,
 }: TopAppBarProps) {
   return (
     <header className="flex h-16 shrink-0 items-center justify-between border-outline-variant/30 border-b bg-surface/80 px-gutter backdrop-blur-md">
@@ -73,6 +79,21 @@ export function TopAppBar({
       </div>
       <div className="flex items-center gap-4">
         {saveStatus ? <SaveIndicator {...saveStatus} /> : null}
+        {onToggleHistory ? (
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={onToggleHistory}
+            aria-label="履歴"
+            aria-pressed={historyOpen}
+            className={cn(
+              'text-on-surface-variant hover:text-primary',
+              historyOpen && 'bg-primary/10 text-primary',
+            )}
+          >
+            <History className="size-5" aria-hidden />
+          </Button>
+        ) : null}
         {onExport ? (
           <Button onClick={onExport} disabled={exportDisabled} className="gap-2">
             <Download className="size-4" aria-hidden />

@@ -1,4 +1,4 @@
-import { Database, RotateCcw } from 'lucide-react'
+import { Database, RotateCcw, X } from 'lucide-react'
 import type { Snapshot } from '@/core/snapshot'
 import { formatRelative } from '@/ui/_utils/format'
 import { Button } from '@/ui/components/ui/button'
@@ -8,6 +8,8 @@ interface HistoryPanelProps {
   snapshots: Snapshot[]
   currentEpisodeId: string | null
   onRestore: (snapshotId: string) => void
+  /** ドロワーを閉じる（任意・指定時のみ閉じるボタンを表示） */
+  onClose?: () => void
   /** 相対時刻の基準（テスト用に注入可） */
   now?: number
 }
@@ -23,13 +25,30 @@ export function snapshotExcerpt(snap: Snapshot, episodeId: string | null): strin
 }
 
 /** 履歴とバックアップ（ローカル・セーフティネット）。 */
-export function HistoryPanel({ snapshots, currentEpisodeId, onRestore, now }: HistoryPanelProps) {
+export function HistoryPanel({
+  snapshots,
+  currentEpisodeId,
+  onRestore,
+  onClose,
+  now,
+}: HistoryPanelProps) {
   const base = now ?? Date.now()
   return (
     <aside className="flex w-[340px] shrink-0 flex-col border-outline-variant/20 border-l bg-surface-container-low font-sans shadow-[-4px_0_24px_rgba(0,0,0,0.02)]">
       <div className="border-outline-variant/20 border-b bg-surface-bright p-6">
         <div className="mb-2 flex items-center justify-between">
           <h3 className="font-serif text-base text-on-surface">ローカル・セーフティネット</h3>
+          {onClose ? (
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={onClose}
+              aria-label="履歴を閉じる"
+              className="-mr-2 size-8 text-on-surface-variant hover:text-on-surface"
+            >
+              <X className="size-4" aria-hidden />
+            </Button>
+          ) : null}
         </div>
         <p className="mt-2 inline-flex items-center gap-1.5 rounded border border-outline-variant/30 bg-surface-container-lowest px-2 py-1 text-on-surface-variant text-xs">
           <Database className="size-3.5 text-primary" />

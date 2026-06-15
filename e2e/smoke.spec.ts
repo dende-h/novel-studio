@@ -68,6 +68,37 @@ test('話の削除 → 一覧から消える', async ({ page }) => {
   await expect(page.getByRole('button', { name: '第一話', exact: true })).toHaveCount(0)
 })
 
+test('履歴ドロワーをトグルで開閉できる', async ({ page }) => {
+  await page.goto('/')
+  await page.getByRole('button', { name: '新しいプロジェクト' }).click()
+  await page.getByLabel('作品タイトル').fill('履歴作品')
+  await page.getByRole('button', { name: '作成して書き始める' }).click()
+
+  await page.getByRole('button', { name: '新しいエピソードを追加' }).click()
+  await page.getByLabel('話タイトル').fill('第一話')
+  await page.getByRole('button', { name: '追加' }).click()
+
+  // 初期は履歴ドロワー非表示
+  await expect(page.getByText('ローカル・セーフティネット')).toHaveCount(0)
+
+  // 履歴トグルで開く → 閉じるボタンで閉じる
+  await page.getByRole('button', { name: '履歴' }).click()
+  await expect(page.getByText('ローカル・セーフティネット')).toBeVisible()
+  await page.getByRole('button', { name: '履歴を閉じる' }).click()
+  await expect(page.getByText('ローカル・セーフティネット')).toHaveCount(0)
+})
+
+test('サイドバーのコレクションでライブラリへ戻れる', async ({ page }) => {
+  await page.goto('/')
+  await page.getByRole('button', { name: '新しいプロジェクト' }).click()
+  await page.getByLabel('作品タイトル').fill('戻る作品')
+  await page.getByRole('button', { name: '作成して書き始める' }).click()
+
+  // エディタからコレクションでライブラリへ
+  await page.getByRole('button', { name: 'コレクション' }).click()
+  await expect(page.getByRole('heading', { name: 'マイライブラリ' })).toBeVisible()
+})
+
 test('作品の削除 → ライブラリから消える', async ({ page }) => {
   await page.goto('/')
   await page.getByRole('button', { name: '新しいプロジェクト' }).click()

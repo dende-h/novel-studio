@@ -115,7 +115,7 @@ export function ExportDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl gap-0 overflow-hidden p-0">
+      <DialogContent className="md:max-w-3xl lg:max-w-5xl gap-0 overflow-hidden p-0">
         <DialogHeader className="border-outline-variant/30 border-b px-6 py-4 text-left">
           <DialogTitle className="font-serif text-primary text-xl">
             プロジェクトの書き出し

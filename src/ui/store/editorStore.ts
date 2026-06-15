@@ -60,6 +60,8 @@ export interface EditorStoreDeps {
   snapshotRepo: SnapshotRepository
   genId: () => string
   now: () => number
+  /** 履歴の集約間隔(ms)。連続編集中はこの間隔内の保存を最新版へ合体し、版の氾濫を防ぐ。 */
+  snapshotMinIntervalMs: number
 }
 
 const INITIAL: EditorState = {
@@ -80,6 +82,7 @@ export function createEditorStore({
   snapshotRepo,
   genId,
   now,
+  snapshotMinIntervalMs,
 }: EditorStoreDeps): EditorStore {
   let state: EditorState = INITIAL
   const listeners = new Set<() => void>()
@@ -168,15 +171,21 @@ export function createEditorStore({
     async save() {
       const ep = currentEpisode(state)
       if (!state.work || !ep) return
-      set({ status: 'saving' })
       const blocks = parseEpisodeBody(state.draft)
+      // 本文に変化が無ければ永続化もスナップショットも行わない（保存の氾濫を防ぐ）
+      if (JSON.stringify(ep.blocks) === JSON.stringify(blocks)) {
+        set({ dirty: false, status: 'saved' })
+        return
+      }
+      set({ status: 'saving' })
       const work: Work = {
         ...state.work,
         episodes: state.work.episodes.map((e) => (e.id === ep.id ? { ...e, blocks } : e)),
         updatedAt: now(),
       }
       await repo.saveWork(work)
-      const snapshots = await snapshotRepo.append(work, now(), genId())
+      // 連続編集中は最新版へ合体し、間隔を空けた保存だけ新しい版として積む
+      const snapshots = await snapshotRepo.record(work, now(), genId(), snapshotMinIntervalMs)
       set({ work, dirty: false, status: 'saved', snapshots })
       await refreshList()
     },

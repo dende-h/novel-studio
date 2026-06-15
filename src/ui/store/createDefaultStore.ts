@@ -3,6 +3,9 @@ import { IdbStore } from '../../core/storage/idbStore'
 import { WorkRepository } from '../../core/storage/workRepository'
 import { createEditorStore, type EditorStore } from './editorStore'
 
+/** 履歴の集約間隔：連続編集中はこの間隔内の保存を最新版へ合体する（90秒）。 */
+const SNAPSHOT_MIN_INTERVAL_MS = 90_000
+
 /** 本番用ストア：IndexedDB 永続化＋crypto.randomUUID の id 採番。 */
 export function createDefaultStore(): EditorStore {
   const store = new IdbStore('novel-studio')
@@ -13,5 +16,6 @@ export function createDefaultStore(): EditorStore {
     snapshotRepo,
     genId: () => crypto.randomUUID(),
     now: () => Date.now(),
+    snapshotMinIntervalMs: SNAPSHOT_MIN_INTERVAL_MS,
   })
 }

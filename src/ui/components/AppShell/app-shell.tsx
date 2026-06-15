@@ -6,6 +6,9 @@ interface AppShellProps {
   saveStatus?: SaveState
   onExport?: () => void
   exportDisabled?: boolean
+  /** 履歴ドロワーの開閉トグル（任意） */
+  onToggleHistory?: () => void
+  historyOpen?: boolean
   /** 左サイドバー（SideNav） */
   sidebar: ReactNode
   /** メイン領域 */
@@ -20,6 +23,8 @@ export function AppShell({
   saveStatus,
   onExport,
   exportDisabled,
+  onToggleHistory,
+  historyOpen,
   sidebar,
   children,
   aside,
@@ -31,6 +36,8 @@ export function AppShell({
         saveStatus={saveStatus}
         onExport={onExport}
         exportDisabled={exportDisabled}
+        onToggleHistory={onToggleHistory}
+        historyOpen={historyOpen}
       />
       <div className="flex min-h-0 flex-1">
         {sidebar}

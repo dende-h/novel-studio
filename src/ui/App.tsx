@@ -20,12 +20,16 @@ interface AppProps {
   onExit?: () => void
 }
 
+/** 自動保存：本文の入力が止まってから保存するまでの待ち時間(ms)。 */
+const AUTOSAVE_DELAY_MS = 1500
+
 /** 原稿エディタ（サイドバー＋本文／プレビュー＋履歴）。 */
 export function App({ store, onExit }: AppProps) {
   const state = useEditorStore(store)
   const [newEpisodeOpen, setNewEpisodeOpen] = useState(false)
   const [exportOpen, setExportOpen] = useState(false)
   const [metaOpen, setMetaOpen] = useState(false)
+  const [historyOpen, setHistoryOpen] = useState(false)
   const [deleteEpisodeTarget, setDeleteEpisodeTarget] = useState<{
     id: string
     title: string
@@ -36,7 +40,7 @@ export function App({ store, onExit }: AppProps) {
   }, [store])
 
   const previewHtml = useMemo(() => blocksToHtml(parseEpisodeBody(state.draft)), [state.draft])
-  useAutosave(state.draft, state.dirty, () => void store.save(), 800)
+  useAutosave(state.draft, state.dirty, () => void store.save(), AUTOSAVE_DELAY_MS)
 
   const work = state.work
   const episode = work?.episodes.find((e) => e.id === state.currentEpisodeId) ?? null
@@ -51,6 +55,8 @@ export function App({ store, onExit }: AppProps) {
       onBrandClick={onExit}
       saveStatus={{ dirty: state.dirty, status: state.status }}
       onExport={() => void openExport()}
+      onToggleHistory={episode ? () => setHistoryOpen((v) => !v) : undefined}
+      historyOpen={historyOpen}
       sidebar={
         <SideNav
           projectTitle={work?.title ?? 'novel-studio'}
@@ -72,21 +78,22 @@ export function App({ store, onExit }: AppProps) {
         />
       }
       aside={
-        episode ? (
+        historyOpen && episode ? (
           <HistoryPanel
             snapshots={state.snapshots}
             currentEpisodeId={state.currentEpisodeId}
             onRestore={(id) => store.restoreSnapshot(id)}
+            onClose={() => setHistoryOpen(false)}
           />
         ) : undefined
       }
     >
       {episode ? (
         <>
-          <div className="flex h-full w-1/2 min-w-0 border-outline-variant/20 border-r">
+          <div className="flex h-full min-w-0 basis-3/5 border-outline-variant/20 border-r">
             <EditorPane value={state.draft} onChange={(v) => store.setDraft(v)} />
           </div>
-          <div className="h-full w-1/2 min-w-0">
+          <div className="h-full min-w-0 basis-2/5">
             <PreviewPane html={previewHtml} />
           </div>
         </>

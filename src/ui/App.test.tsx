@@ -11,7 +11,13 @@ const makeStore = (kv: KeyValueStore = new MemoryStore()): EditorStore => {
   let n = 0
   const repo = new WorkRepository(kv)
   const snapshotRepo = new SnapshotRepository(kv)
-  return createEditorStore({ repo, snapshotRepo, genId: () => `id${++n}`, now: () => Date.now() })
+  return createEditorStore({
+    repo,
+    snapshotRepo,
+    genId: () => `id${++n}`,
+    now: () => Date.now(),
+    snapshotMinIntervalMs: 0,
+  })
 }
 
 const seedWorkEpisode = async (store: EditorStore) => {
@@ -72,7 +78,7 @@ describe('App（エディタ結合：本文/プレビュー・自動保存・履
     expect(await screen.findByRole('button', { name: '序章' })).toBeInTheDocument()
   })
 
-  it('保存すると履歴パネルに版が記録される', async () => {
+  it('保存すると履歴パネルに版が記録される（トグルで開閉できる）', async () => {
     const store = makeStore()
     await seedWorkEpisode(store)
     render(<App store={store} />)
@@ -82,7 +88,16 @@ describe('App（エディタ結合：本文/プレビュー・自動保存・履
     })
     await waitFor(() => expect(screen.getByText('保存済み')).toBeInTheDocument(), { timeout: 2000 })
 
+    // 初期は履歴ドロワー非表示
+    expect(screen.queryByText('ローカル・セーフティネット')).toBeNull()
+
+    // 履歴トグルで開く
+    fireEvent.click(screen.getByRole('button', { name: '履歴' }))
     expect(screen.getByText('ローカル・セーフティネット')).toBeInTheDocument()
     expect(screen.getByText('現在の版')).toBeInTheDocument()
+
+    // 閉じるボタンで閉じる
+    fireEvent.click(screen.getByRole('button', { name: '履歴を閉じる' }))
+    expect(screen.queryByText('ローカル・セーフティネット')).toBeNull()
   })
 })

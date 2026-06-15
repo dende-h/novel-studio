@@ -4,7 +4,7 @@ import { MemoryStore } from '../../core/storage/memoryStore'
 import { WorkRepository } from '../../core/storage/workRepository'
 import { createEditorStore, type EditorStore } from './editorStore'
 
-const makeStore = (): EditorStore => {
+const makeStore = (opts?: { now?: () => number; snapshotMinIntervalMs?: number }): EditorStore => {
   let n = 0
   let clock = 0
   const store = new MemoryStore()
@@ -14,7 +14,9 @@ const makeStore = (): EditorStore => {
     repo,
     snapshotRepo,
     genId: () => `id${++n}`,
-    now: () => ++clock,
+    now: opts?.now ?? (() => ++clock),
+    // 既定 0：間隔判定で常に新版を積む（既存テストの挙動を維持）
+    snapshotMinIntervalMs: opts?.snapshotMinIntervalMs ?? 0,
   })
 }
 
@@ -153,6 +155,47 @@ describe('editorStore（自前ストア・useSyncExternalStore 用）', () => {
     const snaps = store.getSnapshot().snapshots
     expect(snaps).toHaveLength(2)
     expect(snaps[0]?.at).toBeGreaterThan(snaps[1]?.at as number)
+  })
+
+  it('本文が変わらない save は版を増やさず書き込みもしない（status=saved・dirty=false）', async () => {
+    await store.createWork('作')
+    await store.createEpisode('話')
+    store.setDraft('本文')
+    await store.save()
+    const before = store.getSnapshot().snapshots
+    expect(before).toHaveLength(1)
+
+    // 下書きを変えずに再保存 → 版は増えず、スナップショット参照も不変
+    await store.save()
+    const s = store.getSnapshot()
+    expect(s.snapshots).toHaveLength(1)
+    expect(s.snapshots).toBe(before)
+    expect(s.status).toBe('saved')
+    expect(s.dirty).toBe(false)
+  })
+
+  it('間隔内の連続 save は版を集約し、間隔超過で版が増える', async () => {
+    let t = 0
+    const s = makeStore({ now: () => t, snapshotMinIntervalMs: 100 })
+    await s.createWork('作')
+    await s.createEpisode('話')
+
+    t = 1000
+    s.setDraft('一回目')
+    await s.save()
+    expect(s.getSnapshot().snapshots).toHaveLength(1)
+
+    // 間隔内（+50）で別内容を保存 → 版は増えず集約（最新版を内容だけ差し替え）
+    t = 1050
+    s.setDraft('二回目')
+    await s.save()
+    expect(s.getSnapshot().snapshots).toHaveLength(1)
+
+    // 間隔超過（+250）→ 新しい版が増える
+    t = 1300
+    s.setDraft('三回目')
+    await s.save()
+    expect(s.getSnapshot().snapshots).toHaveLength(2)
   })
 
   it('restoreSnapshot は当時の本文を現在話の draft へ戻す（dirty=true・非破壊）', async () => {
