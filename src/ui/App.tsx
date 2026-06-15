@@ -57,6 +57,7 @@ export function App({ store, onExit }: AppProps) {
       onExport={() => void openExport()}
       onToggleHistory={episode ? () => setHistoryOpen((v) => !v) : undefined}
       historyOpen={historyOpen}
+      onCloseAside={() => setHistoryOpen(false)}
       sidebar={
         <SideNav
           projectTitle={work?.title ?? 'novel-studio'}

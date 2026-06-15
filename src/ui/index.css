@@ -135,6 +135,16 @@
   font-family:
     "Hiragino Mincho ProN", "Yu Mincho", YuMincho, "MS PMincho", "Noto Serif CJK JP",
     "Noto Serif JP", "IPAmjMincho", "IPAGothic", "Source Serif 4 Variable", serif;
+  /* URL や英数字など分割点のない長い連続文字列も紙面内で折り返す（縦書き＝列／横書き＝行）。
+     これが無いと 1 行に長文を書いた際、プレビューが紙面外へ飛び出す。 */
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+/* 段落自体も折り返し対象に含める（-webkit-box 等で固有幅化するのを防ぐ）。 */
+.preview p {
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .preview ruby rt {

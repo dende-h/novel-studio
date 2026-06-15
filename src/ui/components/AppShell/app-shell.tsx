@@ -15,6 +15,8 @@ interface AppShellProps {
   children: ReactNode
   /** 右ペイン（履歴など・任意） */
   aside?: ReactNode
+  /** オーバーレイ時の背景（スクリム）クリックで右ペインを閉じる（任意） */
+  onCloseAside?: () => void
 }
 
 /** トップバー＋サイドバー＋メイン（＋任意の右ペイン）の共通レイアウト。 */
@@ -28,6 +30,7 @@ export function AppShell({
   sidebar,
   children,
   aside,
+  onCloseAside,
 }: AppShellProps) {
   return (
     <div className="flex h-dvh flex-col bg-background text-foreground">
@@ -39,10 +42,25 @@ export function AppShell({
         onToggleHistory={onToggleHistory}
         historyOpen={historyOpen}
       />
-      <div className="flex min-h-0 flex-1">
+      <div className="relative flex min-h-0 flex-1">
         {sidebar}
         <main className="flex min-h-0 min-w-0 flex-1">{children}</main>
-        {aside}
+        {/* 右ペイン（履歴）。lg 以上は行内の列、lg 未満は本文を狭めないようオーバーレイ表示。 */}
+        {aside ? (
+          <>
+            {onCloseAside ? (
+              <button
+                type="button"
+                aria-label="履歴ドロワーを閉じる"
+                onClick={onCloseAside}
+                className="absolute inset-0 z-30 bg-black/30 lg:hidden"
+              />
+            ) : null}
+            <div className="absolute inset-y-0 right-0 z-40 flex shrink-0 shadow-2xl lg:static lg:z-auto lg:shadow-none">
+              {aside}
+            </div>
+          </>
+        ) : null}
       </div>
     </div>
   )

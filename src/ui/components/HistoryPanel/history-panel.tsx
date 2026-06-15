@@ -75,15 +75,15 @@ export function HistoryPanel({
                   key={snap.id}
                   className={
                     current
-                      ? 'relative rounded-xl border border-primary/30 bg-surface-bright p-4'
-                      : 'group relative rounded-xl border border-outline-variant/20 bg-surface-container-low p-4 transition-colors hover:border-outline-variant/40 hover:bg-surface-bright'
+                      ? 'relative min-w-0 overflow-hidden rounded-xl border border-primary/30 bg-surface-bright p-4'
+                      : 'group relative min-w-0 overflow-hidden rounded-xl border border-outline-variant/20 bg-surface-container-low p-4 transition-colors hover:border-outline-variant/40 hover:bg-surface-bright'
                   }
                 >
                   {current ? (
                     <span className="-left-px absolute top-4 bottom-4 w-[3px] rounded-r bg-primary" />
                   ) : null}
                   <div className="mb-2 flex items-start justify-between gap-2">
-                    <div>
+                    <div className="min-w-0">
                       <span className="block font-semibold text-on-surface text-sm">
                         {current ? '現在の版' : '自動保存'}
                       </span>
@@ -100,14 +100,14 @@ export function HistoryPanel({
                         variant="outline"
                         size="sm"
                         onClick={() => onRestore(snap.id)}
-                        className="h-7 gap-1 border-primary/30 px-2 text-primary text-xs opacity-0 transition-opacity hover:bg-primary/5 hover:text-primary focus-visible:opacity-100 group-hover:opacity-100"
+                        className="h-7 shrink-0 gap-1 border-primary/30 px-2 text-primary text-xs opacity-0 transition-opacity hover:bg-primary/5 hover:text-primary focus-visible:opacity-100 group-hover:opacity-100"
                       >
                         <RotateCcw className="size-3" />
                         復元
                       </Button>
                     )}
                   </div>
-                  <p className="mt-2 line-clamp-2 border-outline-variant/30 border-l-2 pl-2 font-serif text-[13px] text-on-surface-variant/80 italic leading-snug">
+                  <p className="mt-2 line-clamp-2 [overflow-wrap:anywhere] break-words border-outline-variant/30 border-l-2 pl-2 font-serif text-[13px] text-on-surface-variant/80 italic leading-snug">
                     {snapshotExcerpt(snap, currentEpisodeId) || '（本文なし）'}
                   </p>
                 </div>
