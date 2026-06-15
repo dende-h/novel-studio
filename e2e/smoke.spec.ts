@@ -68,6 +68,28 @@ test('話の削除 → 一覧から消える', async ({ page }) => {
   await expect(page.getByRole('button', { name: '第一話', exact: true })).toHaveCount(0)
 })
 
+test('本文欄がエディタペイン幅いっぱいに広がる（折り返しが狭くならない）', async ({ page }) => {
+  await page.goto('/')
+  await page.getByRole('button', { name: '新しいプロジェクト' }).click()
+  await page.getByLabel('作品タイトル').fill('幅テスト')
+  await page.getByRole('button', { name: '作成して書き始める' }).click()
+  await page.getByRole('button', { name: '新しいエピソードを追加' }).click()
+  await page.getByLabel('話タイトル').fill('第一話')
+  await page.getByRole('button', { name: '追加' }).click()
+
+  const textarea = page.getByRole('textbox', { name: '本文' })
+  await textarea.waitFor()
+  // エディタペイン（main 直下の最初の div）の内幅
+  const paneWidth = await page.evaluate(() => {
+    const pane = document.querySelector('main > div')
+    return pane instanceof HTMLElement ? pane.clientWidth : 0
+  })
+  const box = await textarea.boundingBox()
+  // textarea が固有幅(~312px)に縮まず、ペイン幅の9割以上を占有する
+  expect(paneWidth).toBeGreaterThan(400)
+  expect(box?.width ?? 0).toBeGreaterThan(paneWidth * 0.9)
+})
+
 test('履歴ドロワーをトグルで開閉できる', async ({ page }) => {
   await page.goto('/')
   await page.getByRole('button', { name: '新しいプロジェクト' }).click()

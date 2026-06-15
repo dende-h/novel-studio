@@ -9,7 +9,7 @@ export function EditorPane({ value, onChange }: EditorPaneProps) {
   const chars = value.length
 
   return (
-    <div className="relative flex h-full min-h-0 flex-col bg-surface">
+    <div className="relative flex h-full min-h-0 w-full flex-col bg-surface">
       {/* ツールバー */}
       <div className="flex h-12 shrink-0 items-center justify-between border-outline-variant/10 border-b bg-surface-container-lowest/50 px-6">
         <div className="flex items-center gap-4 font-sans text-on-surface-variant text-xs">

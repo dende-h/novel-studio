@@ -90,7 +90,7 @@ export function App({ store, onExit }: AppProps) {
     >
       {episode ? (
         <>
-          <div className="flex h-full min-w-0 basis-3/5 border-outline-variant/20 border-r">
+          <div className="h-full min-w-0 basis-3/5 border-outline-variant/20 border-r">
             <EditorPane value={state.draft} onChange={(v) => store.setDraft(v)} />
           </div>
           <div className="h-full min-w-0 basis-2/5">
