@@ -2,11 +2,17 @@ import { fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import { SideNav } from './side-nav'
 
+// 作品を開いている（エディタ）状態の基本 props。
+// この状態でのみ「現在の作品」スコープカード内に エピソード/辞書/話リスト が現れる。
 const baseProps = {
-  projectTitle: '作品タイトル',
+  projectTitle: 'novel-studio',
+  projectSubtitle: 'ライブラリ',
   active: 'episodes' as const,
   onNavigateCollection: () => {},
   cta: { label: '新しいエピソードを追加', onClick: () => {} },
+  workTitle: '作品タイトル',
+  onNavigateEpisodes: () => {},
+  onNavigateGlossary: () => {},
 }
 
 describe('SideNav（サイドバー）', () => {
@@ -51,7 +57,7 @@ describe('SideNav（サイドバー）', () => {
     expect(screen.queryByRole('button', { name: '「第一話」を削除' })).toBeNull()
   })
 
-  it('編集中はエピソード行が active かつ非 disabled（グレーアウトしない）', () => {
+  it('作品オープン中はエピソード行が active かつ非 disabled（グレーアウトしない）', () => {
     render(<SideNav {...baseProps} active="episodes" />)
     const ep = screen.getByRole('button', { name: 'エピソード' })
     expect(ep).toHaveAttribute('aria-current', 'page')
@@ -74,7 +80,7 @@ describe('SideNav（サイドバー）', () => {
     expect(onNavigateCollection).toHaveBeenCalledTimes(1)
   })
 
-  it('辞書行: onNavigateGlossary 指定で押下可能・発火し、active=glossary で aria-current', () => {
+  it('辞書行: active=glossary で aria-current・押下で onNavigateGlossary を発火する', () => {
     const onNavigateGlossary = vi.fn()
     render(<SideNav {...baseProps} active="glossary" onNavigateGlossary={onNavigateGlossary} />)
     const g = screen.getByRole('button', { name: '辞書' })
@@ -84,8 +90,32 @@ describe('SideNav（サイドバー）', () => {
     expect(onNavigateGlossary).toHaveBeenCalledTimes(1)
   })
 
-  it('辞書行: onNavigateGlossary 未指定かつ非 active なら無効', () => {
-    render(<SideNav {...baseProps} active="episodes" />)
-    expect(screen.getByRole('button', { name: '辞書' })).toBeDisabled()
+  it('作品スコープカードに「現在の作品」見出しと作品名を表示する', () => {
+    render(<SideNav {...baseProps} workTitle="月と剣の物語" />)
+    const card = screen.getByRole('group', { name: '現在の作品' })
+    expect(card).toBeInTheDocument()
+    expect(screen.getByText('月と剣の物語')).toBeInTheDocument()
+  })
+
+  it('ライブラリ状態（workTitle 未指定）はエピソード/辞書ボタンを出さず、空状態の案内を表示する', () => {
+    render(
+      <SideNav
+        projectTitle="novel-studio"
+        projectSubtitle="ライブラリ"
+        active="collection"
+        onNavigateCollection={() => {}}
+        cta={{ label: '新しいプロジェクト', onClick: () => {} }}
+      />,
+    )
+    // グレーアウトした兄弟ではなく、そもそも操作可能な行を出さない。
+    expect(screen.queryByRole('button', { name: 'エピソード' })).toBeNull()
+    expect(screen.queryByRole('button', { name: '辞書' })).toBeNull()
+    // 作品を開けば使えることを案内する空状態。
+    expect(screen.getByText(/作品を開くと/)).toBeInTheDocument()
+    // コレクション（ホーム）はこの状態で active。
+    expect(screen.getByRole('button', { name: 'コレクション' })).toHaveAttribute(
+      'aria-current',
+      'page',
+    )
   })
 })

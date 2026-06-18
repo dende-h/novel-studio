@@ -121,8 +121,9 @@ export function App({ store, onExit }: AppProps) {
       }}
       sidebar={
         <SideNav
-          projectTitle={work?.title ?? 'novel-studio'}
-          projectSubtitle={onEpisodes ? '執筆中' : '辞書'}
+          projectTitle="novel-studio"
+          projectSubtitle="ライブラリ"
+          workTitle={work?.title}
           active={activeScreen}
           onNavigateCollection={() => onExit?.()}
           onNavigateEpisodes={work ? () => setActiveScreen('episodes') : undefined}
