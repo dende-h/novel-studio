@@ -182,7 +182,7 @@ export function App({ store, onExit }: AppProps) {
         />
       ) : episode ? (
         <>
-          <div className="h-full min-w-0 basis-3/5 border-outline-variant/20 border-r">
+          <div className="h-full min-w-0 basis-1/2 border-outline-variant/20 border-r">
             <EditorPane
               value={state.draft}
               onChange={(v) => store.setDraft(v)}
@@ -190,7 +190,7 @@ export function App({ store, onExit }: AppProps) {
               onCreateEntry={(name) => store.addGlossaryEntry({ name })}
             />
           </div>
-          <div className="h-full min-w-0 basis-2/5">
+          <div className="h-full min-w-0 basis-1/2">
             <PreviewPane html={previewHtml} onRefClick={onRefClick} />
           </div>
         </>
