@@ -185,13 +185,16 @@ export function SideNav({
                 />
               </div>
 
-              {/* 話サブリスト（カード内・最下段でスクロール） */}
+              {/* 話サブリスト（カード内・最下段でスクロール）。
+                  flex-col で「現在の草稿」ラベルを固定し、ScrollArea は h-full（百分率）
+                  ではなく flex-1 min-h-0 で残り高さを受ける。深いネストでも高さが確実に
+                  解決し、スクロールがカード内に収まる。 */}
               {episodes && episodes.length > 0 ? (
-                <div className="mt-3 min-h-0 flex-1">
-                  <div className="mb-2 px-2 font-sans text-[11px] text-on-surface-variant/70 uppercase tracking-widest">
+                <div className="mt-3 flex min-h-0 flex-1 flex-col">
+                  <div className="mb-2 shrink-0 px-2 font-sans text-[11px] text-on-surface-variant/70 uppercase tracking-widest">
                     現在の草稿
                   </div>
-                  <ScrollArea className="h-full">
+                  <ScrollArea className="min-h-0 flex-1">
                     <ul className="ml-2 space-y-1 border-outline-variant/30 border-l pl-3">
                       {episodes.map((e) => {
                         const isCurrent = e.id === currentEpisodeId
