@@ -11,6 +11,12 @@ importers:
       '@fontsource-variable/inter':
         specifier: 5.2.8
         version: 5.2.8
+      '@fontsource-variable/noto-sans-jp':
+        specifier: 5.2.10
+        version: 5.2.10
+      '@fontsource-variable/noto-serif-jp':
+        specifier: 5.2.9
+        version: 5.2.9
       '@fontsource-variable/source-serif-4':
         specifier: 5.2.9
         version: 5.2.9
@@ -683,6 +689,12 @@ packages:
 
   '@fontsource-variable/inter@5.2.8':
     resolution: {integrity: sha512-kOfP2D+ykbcX/P3IFnokOhVRNoTozo5/JxhAIVYLpea/UBmCQ/YWPBfWIDuBImXX/15KH+eKh4xpEUyS2sQQGQ==}
+
+  '@fontsource-variable/noto-sans-jp@5.2.10':
+    resolution: {integrity: sha512-m0XfZ38rZtCaGAuAQL0cBPQ6fc/RguYEOqw66zvuLOV9vNRUBf9MFqyoazTu2JVCRIcnkrxbwF29UUaHHgTKdg==}
+
+  '@fontsource-variable/noto-serif-jp@5.2.9':
+    resolution: {integrity: sha512-FBQiejB8H0Jifs6BzC1yD32MKwdOLk63B/Dwaefauly0b36I6kL1L3a8zre7SWETP3zfe1eP0/H6DUR96jePpg==}
 
   '@fontsource-variable/source-serif-4@5.2.9':
     resolution: {integrity: sha512-PPcxjLFk/fS0WHg79pDM2YNvz61kC+oYZ5cWZZyCS0DHpJncmuYOuiZAsvj4tDxlWPBEvxxcRLQQNmSaRbPkqw==}
@@ -3978,6 +3990,10 @@ snapshots:
   '@floating-ui/utils@0.2.11': {}
 
   '@fontsource-variable/inter@5.2.8': {}
+
+  '@fontsource-variable/noto-sans-jp@5.2.10': {}
+
+  '@fontsource-variable/noto-serif-jp@5.2.9': {}
 
   '@fontsource-variable/source-serif-4@5.2.9': {}
 

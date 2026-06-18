@@ -127,14 +127,25 @@
 }
 
 /*
+ * 本文エディタは日本語ゴシックを最優先にする。バンドルした Noto Sans JP を先頭に置き、
+ * どの端末でも同じ字形・字送りで書けるようにする（未ロード時/オフラインはシステムゴシックへ）。
+ */
+.editor {
+  font-family:
+    "Noto Sans JP Variable", "Hiragino Kaku Gothic ProN", "Yu Gothic", "Yu Gothic UI",
+    Meiryo, "Inter Variable", system-ui, sans-serif;
+}
+
+/*
  * 本文プレビューは日本語の明朝体を最優先にする。本文 UI フォント（Source Serif 4）は
  * CJK グリフを持たず、縦書き時にフォールバックの字送りメトリクスが崩れて文字が重なるため。
- * 明朝体はシステム同梱フォントを利用（追加バンドル不要）、Latin は Source Serif 4 へフォールバック。
+ * バンドルした Noto Serif JP を先頭に置き端末差をなくす（未ロード時はシステム明朝へ）。
  */
 .preview {
   font-family:
-    "Hiragino Mincho ProN", "Yu Mincho", YuMincho, "MS PMincho", "Noto Serif CJK JP",
-    "Noto Serif JP", "IPAmjMincho", "IPAGothic", "Source Serif 4 Variable", serif;
+    "Noto Serif JP Variable", "Hiragino Mincho ProN", "Yu Mincho", YuMincho, "MS PMincho",
+    "Noto Serif CJK JP", "Noto Serif JP", "IPAmjMincho", "IPAGothic", "Source Serif 4 Variable",
+    serif;
   /* URL や英数字など分割点のない長い連続文字列も紙面内で折り返す（縦書き＝列／横書き＝行）。
      これが無いと 1 行に長文を書いた際、プレビューが紙面外へ飛び出す。 */
   overflow-wrap: anywhere;

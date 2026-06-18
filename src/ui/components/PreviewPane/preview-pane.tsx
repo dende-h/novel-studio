@@ -94,10 +94,10 @@ export function PreviewPane({ html, onRefClick }: PreviewPaneProps) {
       <article
         ref={articleRef}
         className={cn(
-          'preview mx-auto rounded-md border border-outline-variant/10 bg-surface-container-lowest p-12 font-serif text-[18px] text-on-surface shadow-[0_2px_20px_rgba(0,0,0,0.04)] lg:p-16',
+          'preview mx-auto rounded-md border border-outline-variant/10 bg-surface-container-lowest p-12 font-serif text-[16px] text-on-surface shadow-[0_2px_20px_rgba(0,0,0,0.04)] lg:p-16',
           vertical
-            ? 'h-[min(760px,72vh)] min-h-[480px] w-fit max-w-none leading-[2.6] tracking-[0.08em] [writing-mode:vertical-rl]'
-            : 'w-full max-w-[720px] leading-[1.9]',
+            ? 'h-[min(760px,72vh)] min-h-[480px] w-fit max-w-none leading-[2.4] tracking-[0.08em] [writing-mode:vertical-rl]'
+            : 'w-full max-w-[720px] leading-[1.7]',
         )}
         // biome-ignore lint/security/noDangerouslySetInnerHtml: HTML は core/toHtml で全エスケープ済み
         dangerouslySetInnerHTML={{ __html: html }}

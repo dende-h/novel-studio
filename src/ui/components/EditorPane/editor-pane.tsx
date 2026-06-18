@@ -185,7 +185,7 @@ export function EditorPane({ value, onChange, glossary = [], onCreateEntry }: Ed
         aria-label="本文"
         aria-controls={open ? listId : undefined}
         aria-activedescendant={open ? optionId(activeIndex) : undefined}
-        className="min-h-0 flex-1 resize-none border-none bg-transparent p-10 font-serif text-[18px] text-on-surface leading-[1.8] outline-none placeholder:text-on-surface-variant/40 lg:p-14"
+        className="editor min-h-0 flex-1 resize-none border-none bg-transparent p-10 text-[16px] text-on-surface leading-[1.6] outline-none placeholder:text-on-surface-variant/40 lg:p-14"
         value={value}
         onChange={(e) => {
           onChange(e.target.value)
