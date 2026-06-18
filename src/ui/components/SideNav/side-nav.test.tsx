@@ -73,4 +73,19 @@ describe('SideNav（サイドバー）', () => {
     fireEvent.click(col)
     expect(onNavigateCollection).toHaveBeenCalledTimes(1)
   })
+
+  it('辞書行: onNavigateGlossary 指定で押下可能・発火し、active=glossary で aria-current', () => {
+    const onNavigateGlossary = vi.fn()
+    render(<SideNav {...baseProps} active="glossary" onNavigateGlossary={onNavigateGlossary} />)
+    const g = screen.getByRole('button', { name: '辞書' })
+    expect(g).toHaveAttribute('aria-current', 'page')
+    expect(g).not.toBeDisabled()
+    fireEvent.click(g)
+    expect(onNavigateGlossary).toHaveBeenCalledTimes(1)
+  })
+
+  it('辞書行: onNavigateGlossary 未指定かつ非 active なら無効', () => {
+    render(<SideNav {...baseProps} active="episodes" />)
+    expect(screen.getByRole('button', { name: '辞書' })).toBeDisabled()
+  })
 })

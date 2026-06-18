@@ -10,6 +10,12 @@ function escapeHtml(s: string): string {
   return s.replace(/[&<>]/g, (c) => (c === '&' ? '&amp;' : c === '<' ? '&lt;' : '&gt;'))
 }
 
+function escapeAttr(s: string): string {
+  return s.replace(/[&<>"]/g, (c) =>
+    c === '&' ? '&amp;' : c === '<' ? '&lt;' : c === '>' ? '&gt;' : '&quot;',
+  )
+}
+
 /**
  * 縦書き時に半角数字が横倒し（text-orientation: mixed の既定挙動）になるのを防ぐため、
  * 1〜2 桁の連続半角数字を縦中横（CSS text-combine-upright）用の span で包む。
@@ -22,17 +28,22 @@ export function wrapTcy(escaped: string): string {
   )
 }
 
-export function blocksToHtml(blocks: Block[]): string {
-  return blocks.map(blockToHtml).join('')
+/**
+ * @param resolvedNames 解決済み @参照名の集合。
+ *   - 指定あり（プレビュー）: ref を `<span class="ref">`（解決）/ `ref ref--unresolved`（未解決）で描画。
+ *   - 未指定（EPUB 等）: ref は名前のプレーンテキストへ degrade（リンク化しない）。辞書非依存を保つ。
+ */
+export function blocksToHtml(blocks: Block[], resolvedNames?: Set<string>): string {
+  return blocks.map((b) => blockToHtml(b, resolvedNames)).join('')
 }
 
-function blockToHtml(block: Block): string {
+function blockToHtml(block: Block, resolvedNames?: Set<string>): string {
   if (block.type === 'sceneBreak') return '<hr class="scene-break" />'
   if (block.inlines.length === 0) return '<p class="blank"></p>'
-  return `<p>${block.inlines.map(inlineToHtml).join('')}</p>`
+  return `<p>${block.inlines.map((inl) => inlineToHtml(inl, resolvedNames)).join('')}</p>`
 }
 
-function inlineToHtml(inline: Inline): string {
+function inlineToHtml(inline: Inline, resolvedNames?: Set<string>): string {
   switch (inline.type) {
     case 'text':
       return wrapTcy(escapeHtml(inline.text))
@@ -40,5 +51,14 @@ function inlineToHtml(inline: Inline): string {
       return `<ruby>${escapeHtml(inline.base)}<rt>${escapeHtml(inline.reading)}</rt></ruby>`
     case 'emphasisDots':
       return `<em class="dots">${wrapTcy(escapeHtml(inline.text))}</em>`
+    case 'ref': {
+      const label = wrapTcy(escapeHtml(inline.name))
+      // プレーンモード（EPUB 等）= リンク化せずテキストノードへ
+      if (!resolvedNames) return label
+      const key = inline.name.trim()
+      const resolved = key !== '' && resolvedNames.has(key)
+      const cls = resolved ? 'ref' : 'ref ref--unresolved'
+      return `<span class="${cls}" data-ref-name="${escapeAttr(inline.name)}">${label}</span>`
+    }
   }
 }

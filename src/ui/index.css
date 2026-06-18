@@ -171,3 +171,29 @@
   margin-inline: auto;
   inline-size: 40%;
 }
+
+/*
+ * @参照リンク。解決済みは控えめなグレーの下線リンク（読みの邪魔をしない）、
+ * 未解決（辞書未登録）は破線下線＋やや薄色で「未登録」を示す。クリックで辞書を引く。
+ * 縦書きでも下線は字の左側に出る（論理プロパティ任せ）ので writing-mode 非依存。
+ */
+.preview .ref {
+  color: var(--on-surface-variant);
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--on-surface-variant) 45%, transparent);
+  text-underline-offset: 0.18em;
+  cursor: pointer;
+  border-radius: 2px;
+}
+.preview .ref:hover {
+  color: var(--primary);
+  text-decoration-color: var(--primary);
+}
+.preview .ref--unresolved {
+  color: color-mix(in srgb, var(--on-surface-variant) 70%, transparent);
+  text-decoration-style: dashed;
+}
+.preview .ref:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}

@@ -20,7 +20,9 @@ export function snapshotExcerpt(snap: Snapshot, episodeId: string | null): strin
   if (!ep) return ''
   const para = ep.blocks.find((b) => b.type === 'paragraph')
   if (para?.type !== 'paragraph') return ''
-  const text = para.inlines.map((i) => (i.type === 'ruby' ? i.base : i.text)).join('')
+  const text = para.inlines
+    .map((i) => (i.type === 'ruby' ? i.base : i.type === 'ref' ? i.name : i.text))
+    .join('')
   return text.slice(0, 60)
 }
 

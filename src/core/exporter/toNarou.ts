@@ -28,5 +28,8 @@ function inlineToNarou(inline: Inline): string {
     case 'emphasisDots':
       // なろうに傍点記法は無い → 各文字にルビ「・」で degrade
       return [...inline.text].map((ch) => `｜${ch}《・》`).join('')
+    case 'ref':
+      // @参照記法はなろうに無い → 名前のプレーンテキストへ degrade（exporter は辞書非依存）
+      return inline.name
   }
 }

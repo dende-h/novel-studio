@@ -116,6 +116,17 @@ describe('toEpub（EPUB3 縦書き・純生成）', () => {
     expect(x).toContain('<span class="tcy">5</span>年後')
   })
 
+  it('GE-E1: @参照は EPUB ではプレーン名へ degrade（リンク化しない＝辞書非依存）', () => {
+    const x = episodeToXhtml({
+      id: 'e9',
+      title: '第九話',
+      blocks: [{ id: 'b9', type: 'paragraph', inlines: [{ type: 'ref', name: 'アリス' }] }],
+    })
+    expect(x).toContain('<p>アリス</p>')
+    expect(x).not.toContain('class="ref"')
+    expect(x).not.toContain('data-ref-name')
+  })
+
   it('buildEpubFiles は EPUB に必要な全ファイルを束ねる', () => {
     const files = buildEpubFiles(work)
     const paths = files.map((f) => f.path)

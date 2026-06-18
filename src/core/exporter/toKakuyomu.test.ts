@@ -42,4 +42,8 @@ describe('blocksToKakuyomu', () => {
       ]),
     ).toBe('｜カオス《混沌》')
   })
+
+  it('GE-K1: @参照は名前のプレーンへ degrade する（カクヨムに記法が無い）', () => {
+    expect(blocksToKakuyomu(parseEpisodeBody('私は[[アリス]]'))).toBe('私はアリス')
+  })
 })

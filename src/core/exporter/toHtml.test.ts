@@ -51,4 +51,34 @@ describe('blocksToHtml（ライブプレビュー描画）', () => {
       '<p><em class="dots"><span class="tcy">30</span></em></p>',
     )
   })
+
+  // ── @参照 ref の描画（P1・D-GLOS-PREVIEW-API = resolvedNames Set） ──
+  it('GE-H1: 解決済み ref は span.ref で名前を描画（未解決クラス無し）', () => {
+    const html = blocksToHtml(parseEpisodeBody('[[アリス]]'), new Set(['アリス']))
+    expect(html).toBe('<p><span class="ref" data-ref-name="アリス">アリス</span></p>')
+  })
+
+  it('GE-H2: 未解決 ref は ref--unresolved マーカーを持つ', () => {
+    const html = blocksToHtml(parseEpisodeBody('[[未登録]]'), new Set(['アリス']))
+    expect(html).toBe(
+      '<p><span class="ref ref--unresolved" data-ref-name="未登録">未登録</span></p>',
+    )
+  })
+
+  it('GE-H2: 空名 ref は常に未解決', () => {
+    expect(blocksToHtml(parseEpisodeBody('[[]]'), new Set())).toBe(
+      '<p><span class="ref ref--unresolved" data-ref-name=""></span></p>',
+    )
+  })
+
+  it('GE-H3: resolvedNames 未指定（EPUB 等 plain モード）は ref をプレーン化', () => {
+    expect(blocksToHtml(parseEpisodeBody('私は[[アリス]]'))).toBe('<p>私はアリス</p>')
+  })
+
+  it('ref 名もエスケープ／数字は縦中横', () => {
+    const html = blocksToHtml(parseEpisodeBody('[[A<2]]'), new Set(['A<2']))
+    expect(html).toBe(
+      '<p><span class="ref" data-ref-name="A&lt;2">A&lt;<span class="tcy">2</span></span></p>',
+    )
+  })
 })

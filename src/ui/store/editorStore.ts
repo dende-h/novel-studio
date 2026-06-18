@@ -1,6 +1,7 @@
-import { blocksToKakuyomu } from '../../core/exporter/toKakuyomu'
+import { blocksToNotation } from '../../core/exporter/blocksToNotation'
+import { renameEntry, resolveRef } from '../../core/glossary'
 import { parseEpisodeBody } from '../../core/parser/parseNotation'
-import type { Episode, Work } from '../../core/schema'
+import type { Episode, GlossaryEntry, Work } from '../../core/schema'
 import type { Snapshot } from '../../core/snapshot'
 import type { SnapshotRepository } from '../../core/snapshot/snapshotRepository'
 import type { WorkRepository, WorkSummary } from '../../core/storage/workRepository'
@@ -8,7 +9,7 @@ import type { WorkRepository, WorkSummary } from '../../core/storage/workReposit
 /**
  * 執筆エディタの自前最小ストア（useSyncExternalStore 用）。
  * - draft = 現在話の生記法テキスト。保存時に parseEpisodeBody で正本 blocks へ。
- * - 話を開く時は blocksToKakuyomu でロスレスに記法テキストへ戻す。
+ * - 話を開く時は blocksToNotation でロスレスに記法テキストへ戻す（@参照 [[名前]] を含む）。
  * - 状態は immutable に差し替え、getSnapshot は同一状態で同一参照（再描画安定）。
  * 状態ロジックは React 非依存に保ち、Container が subscribe/getSnapshot を橋渡しする。
  */
@@ -46,6 +47,33 @@ export interface EditorStore {
   updateWorkMeta(id: string, meta: WorkMeta): Promise<void>
   importWorks(works: Work[]): Promise<void>
   getAllWorks(): Promise<Work[]>
+  /** 辞書 entry を新規作成して永続化し、作成した entry を返す（name/別名の完全同名は拒否）。 */
+  addGlossaryEntry(input: NewGlossaryEntry): Promise<GlossaryEntry>
+  /** 辞書 entry の name 以外のフィールドを更新（name 変更は renameGlossaryEntry）。 */
+  updateGlossaryEntry(id: string, patch: GlossaryFieldPatch): Promise<void>
+  /** 辞書 entry を改名（①旧名を別名へ退避 ②opts.rewriteBody で本文 ref も書換）。同名は拒否。 */
+  renameGlossaryEntry(id: string, newName: string, opts?: { rewriteBody?: boolean }): Promise<void>
+  /** 辞書 entry を削除（本文の ref はそのまま＝未解決化する）。 */
+  deleteGlossaryEntry(id: string): Promise<void>
+}
+
+/** 辞書 entry 新規作成の入力（id/createdAt/updatedAt はストアが付与）。 */
+export interface NewGlossaryEntry {
+  name: string
+  aliases?: string[]
+  category?: string
+  reading?: string
+  summary?: string
+  body?: string
+}
+
+/** 辞書 entry のフィールド更新パッチ（name は対象外＝renameGlossaryEntry を使う）。 */
+export interface GlossaryFieldPatch {
+  aliases?: string[]
+  category?: string
+  reading?: string
+  summary?: string
+  body?: string
 }
 
 /** 作品メタ編集の入力（指定したキーのみ上書き）。 */
@@ -134,7 +162,7 @@ export function createEditorStore({
       set({
         work,
         currentEpisodeId: first?.id ?? null,
-        draft: first ? blocksToKakuyomu(first.blocks) : '',
+        draft: first ? blocksToNotation(first.blocks) : '',
         dirty: false,
         status: 'idle',
         snapshots: await snapshotRepo.list(work.id),
@@ -158,7 +186,7 @@ export function createEditorStore({
       if (!ep) return
       set({
         currentEpisodeId: id,
-        draft: blocksToKakuyomu(ep.blocks),
+        draft: blocksToNotation(ep.blocks),
         dirty: false,
         status: 'idle',
       })
@@ -199,7 +227,7 @@ export function createEditorStore({
       if (!ep) return
       set({
         currentEpisodeId: ep.id,
-        draft: blocksToKakuyomu(ep.blocks),
+        draft: blocksToNotation(ep.blocks),
         dirty: true,
         status: 'idle',
       })
@@ -234,7 +262,7 @@ export function createEditorStore({
         set({
           work,
           currentEpisodeId: next?.id ?? null,
-          draft: next ? blocksToKakuyomu(next.blocks) : '',
+          draft: next ? blocksToNotation(next.blocks) : '',
           dirty: false,
           status: 'idle',
         })
@@ -262,6 +290,100 @@ export function createEditorStore({
       const list = await repo.listWorks()
       const works = await Promise.all(list.map((w) => repo.getWork(w.id)))
       return works.filter((w): w is Work => w !== undefined)
+    },
+
+    async addGlossaryEntry(input) {
+      if (!state.work) throw new Error('作品が開かれていません')
+      const entries = state.work.glossary ?? []
+      const ts = now()
+      const entry: GlossaryEntry = {
+        id: genId(),
+        name: input.name,
+        aliases: input.aliases ?? [],
+        ...(input.category !== undefined ? { category: input.category } : {}),
+        ...(input.reading !== undefined ? { reading: input.reading } : {}),
+        ...(input.summary !== undefined ? { summary: input.summary } : {}),
+        ...(input.body !== undefined ? { body: input.body } : {}),
+        createdAt: ts,
+        updatedAt: ts,
+      }
+      // D-GLOS-UNIQUE: 新 entry の name/別名が既存 entry の name/別名と完全一致したら拒否
+      for (const key of [entry.name, ...entry.aliases]) {
+        if (key.trim() === '') continue
+        if (resolveRef(key, entries)) throw new Error(`「${key}」は既存の項目と重複しています`)
+      }
+      const work: Work = { ...state.work, glossary: [...entries, entry], updatedAt: ts }
+      await repo.saveWork(work)
+      set({ work })
+      await refreshList()
+      return entry
+    },
+
+    async updateGlossaryEntry(id, patch) {
+      if (!state.work) return
+      const entries = state.work.glossary ?? []
+      const cur = entries.find((e) => e.id === id)
+      if (!cur) return
+      // 別名を変更するときは他 entry の name/別名との衝突を拒否（D-GLOS-UNIQUE）
+      if (patch.aliases) {
+        const others = entries.filter((e) => e.id !== id)
+        for (const a of patch.aliases) {
+          if (a.trim() === '') continue
+          if (resolveRef(a, others)) throw new Error(`「${a}」は既存の項目と重複しています`)
+        }
+      }
+      const ts = now()
+      const updated: GlossaryEntry = { ...cur, ...patch, updatedAt: ts }
+      const work: Work = {
+        ...state.work,
+        glossary: entries.map((e) => (e.id === id ? updated : e)),
+        updatedAt: ts,
+      }
+      await repo.saveWork(work)
+      set({ work })
+      await refreshList()
+    },
+
+    async renameGlossaryEntry(id, newName, opts) {
+      if (!state.work) return
+      // renameEntry が衝突を throw・no-op なら同一参照を返す（自動エイリアス＋任意の本文書換）
+      const renamed = renameEntry(state.work, id, newName, opts ?? {})
+      if (renamed === state.work) return
+      const ts = now()
+      const work: Work = {
+        ...renamed,
+        glossary: (renamed.glossary ?? []).map((e) => (e.id === id ? { ...e, updatedAt: ts } : e)),
+        updatedAt: ts,
+      }
+      await repo.saveWork(work)
+      const patch: Partial<EditorState> = { work }
+      // rewriteBody で現在話の本文が変わったら draft も再生成する。
+      // そうしないと古い名前を保持した draft が次の save で本文を巻き戻してしまう。
+      // 未保存編集（dirty）中は上書きを避け、ユーザーの下書きを優先する。
+      if (opts?.rewriteBody && !state.dirty) {
+        const ep = work.episodes.find((e) => e.id === state.currentEpisodeId)
+        if (ep) {
+          patch.draft = blocksToNotation(ep.blocks)
+          patch.dirty = false
+        }
+      }
+      set(patch)
+      await refreshList()
+    },
+
+    async deleteGlossaryEntry(id) {
+      if (!state.work) return
+      const entries = state.work.glossary ?? []
+      if (!entries.some((e) => e.id === id)) return
+      // 本文の ref はそのまま残す＝解決先を失い未解決リンク化する（仕様どおり）
+      const work: Work = {
+        ...state.work,
+        glossary: entries.filter((e) => e.id !== id),
+        updatedAt: now(),
+      }
+      await repo.saveWork(work)
+      set({ work })
+      await refreshList()
     },
   }
 }

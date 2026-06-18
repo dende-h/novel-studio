@@ -1,12 +1,12 @@
-import { blocksToKakuyomu } from '../exporter/toKakuyomu'
+import { blocksToNotation } from '../exporter/blocksToNotation'
 import { parseEpisodeBody } from '../parser/parseNotation'
-import type { Work } from '../schema'
+import type { GlossaryEntry, Work } from '../schema'
 
 /**
  * 作品 ⇄ ローカルフォルダ（話ごとテキスト）の往復。
  * 外部サイト入稿に加え、外部 Claude（Claude Code）で本文を編集する橋を兼ねる。
- * 本文はロスレスなカクヨム記法（傍点ネイティブ）。block id は本文から位置で再導出するため、
- * 安定 id/タイトルは manifest.json に保持する。
+ * 本文はロスレスな正本記法（傍点ネイティブ・@参照は [[名前]] で保存）。
+ * block id は本文から位置で再導出するため、安定 id/タイトル・辞書は manifest.json に保持する。
  */
 
 export interface FolderFile {
@@ -18,6 +18,7 @@ interface Manifest {
   id: string
   title: string
   episodes: { id: string; title: string; file: string }[]
+  glossary?: GlossaryEntry[]
 }
 
 const MANIFEST = 'manifest.json'
@@ -29,12 +30,14 @@ export function workToFolder(work: Work): FolderFile[] {
     id: work.id,
     title: work.title,
     episodes: work.episodes.map((ep, i) => ({ id: ep.id, title: ep.title, file: episodeFile(i) })),
+    // 辞書（@参照の解決先）は manifest に相乗りで往復させる。空/未設定なら省略。
+    ...(work.glossary && work.glossary.length > 0 ? { glossary: work.glossary } : {}),
   }
   return [
     { path: MANIFEST, content: JSON.stringify(manifest, null, 2) },
     ...work.episodes.map((ep, i) => ({
       path: episodeFile(i),
-      content: blocksToKakuyomu(ep.blocks),
+      content: blocksToNotation(ep.blocks),
     })),
   ]
 }
@@ -52,5 +55,6 @@ export function folderToWork(files: FolderFile[]): Work {
       if (body === undefined) throw new Error(`本文ファイルが見つかりません: ${e.file}`)
       return { id: e.id, title: e.title, blocks: parseEpisodeBody(body) }
     }),
+    ...(manifest.glossary ? { glossary: manifest.glossary } : {}),
   }
 }

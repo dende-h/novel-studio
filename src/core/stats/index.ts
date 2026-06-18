@@ -14,6 +14,9 @@ const inlineLength = (i: Inline): number => {
       return i.base.length
     case 'emphasisDots':
       return i.text.length
+    case 'ref':
+      // @参照は表示・各書き出しとも名前のプレーン文字列になるので名前長で数える
+      return i.name.length
   }
 }
 

@@ -1,5 +1,6 @@
 import {
   Archive,
+  BookMarked,
   BookOpen,
   CircleHelp,
   FlaskConical,
@@ -13,7 +14,7 @@ import { cn } from '@/lib/utils'
 import { Button } from '@/ui/components/ui/button'
 import { ScrollArea } from '@/ui/components/ui/scroll-area'
 
-export type NavKey = 'collection' | 'episodes' | 'research' | 'archive'
+export type NavKey = 'collection' | 'episodes' | 'glossary' | 'research' | 'archive'
 
 interface EpisodeItem {
   id: string
@@ -28,6 +29,10 @@ interface SideNavProps {
   onNavigateCollection: () => void
   /** 主要 CTA（新しいプロジェクト / 新しいエピソード） */
   cta: { label: string; onClick: () => void; disabled?: boolean }
+  /** エピソード画面へ切替（指定時のみ「エピソード」行を押下可能にする） */
+  onNavigateEpisodes?: () => void
+  /** 辞書画面へ切替（指定時のみ「辞書」行を押下可能にする） */
+  onNavigateGlossary?: () => void
   /** エディタ時の話サブリスト */
   episodes?: EpisodeItem[]
   currentEpisodeId?: string | null
@@ -79,6 +84,8 @@ export function SideNav({
   projectSubtitle,
   active,
   onNavigateCollection,
+  onNavigateEpisodes,
+  onNavigateGlossary,
   cta,
   episodes,
   currentEpisodeId,
@@ -126,7 +133,15 @@ export function SideNav({
           icon={BookOpen}
           label="エピソード"
           active={active === 'episodes'}
-          disabled={active !== 'episodes'}
+          onClick={onNavigateEpisodes}
+          disabled={active !== 'episodes' && !onNavigateEpisodes}
+        />
+        <NavRow
+          icon={BookMarked}
+          label="辞書"
+          active={active === 'glossary'}
+          onClick={onNavigateGlossary}
+          disabled={active !== 'glossary' && !onNavigateGlossary}
         />
         <NavRow icon={FlaskConical} label="リサーチ" badge="準備中" />
         <NavRow icon={Archive} label="アーカイブ" badge="準備中" />

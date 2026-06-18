@@ -28,5 +28,8 @@ function inlineToKakuyomu(inline: Inline): string {
     case 'emphasisDots':
       // カクヨムは傍点記法ネイティブ → そのまま往復
       return `《《${inline.text}》》`
+    case 'ref':
+      // @参照記法はカクヨムに無い → 名前のプレーンテキストへ degrade（exporter は辞書非依存）
+      return inline.name
   }
 }

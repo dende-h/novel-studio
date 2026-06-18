@@ -63,4 +63,54 @@ describe('folder（話ごとテキスト往復・外部Claude編集の橋）', (
     const restored = folderToWork(workToFolder(work))
     expect(restored.episodes[0]!.blocks.some((b) => b.type === 'sceneBreak')).toBe(true)
   })
+
+  // ── @参照 / 辞書の往復（P1） ──
+  const glossaryWork: Work = {
+    id: 'w2',
+    title: '辞書つき',
+    episodes: [
+      {
+        id: 'e1',
+        title: '第一話',
+        blocks: [
+          {
+            id: 'b1',
+            type: 'paragraph',
+            inlines: [
+              { type: 'text', text: '私は' },
+              { type: 'ref', name: 'アリス' },
+              { type: 'text', text: 'に会った' },
+            ],
+          },
+        ],
+      },
+    ],
+    glossary: [
+      {
+        id: 'g1',
+        name: 'アリス',
+        aliases: ['アリ'],
+        category: '人物',
+        reading: 'ありす',
+        summary: '主人公',
+        createdAt: 1,
+        updatedAt: 2,
+      },
+    ],
+  }
+
+  it('GFD1: folder 往復で Work.glossary が manifest 経由で完全復元', () => {
+    expect(folderToWork(workToFolder(glossaryWork))).toEqual(glossaryWork)
+  })
+
+  it('GFD2: 本文 ref は .txt に [[名前]] のまま（degrade しない）', () => {
+    const ep = workToFolder(glossaryWork).find((f) => f.path.endsWith('.txt'))
+    expect(ep?.content).toBe('私は[[アリス]]に会った')
+  })
+
+  it('GFD3: folderToWork で [[名前]] が ref inline へ往復恒等', () => {
+    const restored = folderToWork(workToFolder(glossaryWork))
+    const block = restored.episodes[0]!.blocks[0]
+    expect(block?.type === 'paragraph' && block.inlines[1]).toEqual({ type: 'ref', name: 'アリス' })
+  })
 })

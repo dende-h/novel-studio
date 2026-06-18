@@ -14,4 +14,15 @@ describe('blocksToNarou', () => {
     const blocks = parseEpisodeBody('《《重要》》')
     expect(blocksToNarou(blocks)).toBe('｜重《・》｜要《・》')
   })
+
+  it('GE-N1: @参照は名前のプレーンへ degrade する', () => {
+    expect(blocksToNarou(parseEpisodeBody('[[アリス]]'))).toBe('アリス')
+  })
+
+  it('GE-MIX: ref+ルビ+text 混在行が欠落・重複なく連結される', () => {
+    // 剣 は漢字のみ親文字なので自動ルビ（｜省略）で出る
+    expect(blocksToNarou(parseEpisodeBody('私は[[アリス]]と剣《つるぎ》を'))).toBe(
+      '私はアリスと剣《つるぎ》を',
+    )
+  })
 })

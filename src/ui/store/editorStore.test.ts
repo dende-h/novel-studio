@@ -316,4 +316,159 @@ describe('editorStore（自前ストア・useSyncExternalStore 用）', () => {
     expect(store.getSnapshot().work?.title).toBe('B')
     expect(store.getSnapshot().workList.find((w) => w.id === aId)?.author).toBe('Aの著者')
   })
+
+  describe('辞書 CRUD（glossary を Work へ相乗り）', () => {
+    // 現在話の本文から最初の ref inline の name を取り出す（rewriteBody / 未解決化の検証用）
+    const firstRefName = (s: EditorStore, epIdx = 0): string | undefined => {
+      const ep = s.getSnapshot().work?.episodes[epIdx]
+      for (const b of ep?.blocks ?? []) {
+        if (b.type !== 'paragraph') continue
+        for (const i of b.inlines) if (i.type === 'ref') return i.name
+      }
+      return undefined
+    }
+
+    it('addGlossaryEntry は entry を作成して返し、work.glossary へ積む', async () => {
+      await store.createWork('作')
+      const entry = await store.addGlossaryEntry({ name: 'アリス' })
+      expect(entry.id).toBe('id2') // id1=work
+      expect(entry.createdAt).toEqual(expect.any(Number))
+      expect(entry.updatedAt).toEqual(expect.any(Number))
+      const s = store.getSnapshot()
+      expect(s.work?.glossary).toHaveLength(1)
+      expect(s.work?.glossary?.[0]?.name).toBe('アリス')
+    })
+
+    it('addGlossaryEntry は別名・カテゴリ・読み・概要・本文を保持し、永続化される', async () => {
+      await store.createWork('作')
+      const id = store.getSnapshot().work?.id as string
+      await store.addGlossaryEntry({
+        name: 'アリス',
+        aliases: ['Alice'],
+        category: '人物',
+        reading: 'ありす',
+        summary: '主人公',
+        body: '詳細メモ',
+      })
+      await store.openWork(id) // 再読込で残る
+      const g = store.getSnapshot().work?.glossary?.[0]
+      expect(g?.aliases).toEqual(['Alice'])
+      expect(g?.category).toBe('人物')
+      expect(g?.reading).toBe('ありす')
+      expect(g?.summary).toBe('主人公')
+      expect(g?.body).toBe('詳細メモ')
+    })
+
+    it('addGlossaryEntry は work.updatedAt を更新する', async () => {
+      const s = makeStore({
+        now: (() => {
+          let t = 10
+          return () => ++t
+        })(),
+      })
+      await s.createWork('作')
+      const before = s.getSnapshot().work?.updatedAt as number
+      await s.addGlossaryEntry({ name: 'アリス' })
+      expect(s.getSnapshot().work?.updatedAt).toBeGreaterThan(before)
+    })
+
+    it('addGlossaryEntry は既存 name と完全一致する name を拒否（D-GLOS-UNIQUE）', async () => {
+      await store.createWork('作')
+      await store.addGlossaryEntry({ name: 'アリス' })
+      await expect(store.addGlossaryEntry({ name: 'アリス' })).rejects.toThrow()
+      expect(store.getSnapshot().work?.glossary).toHaveLength(1)
+    })
+
+    it('addGlossaryEntry は既存の別名と完全一致する name を拒否', async () => {
+      await store.createWork('作')
+      await store.addGlossaryEntry({ name: 'アリス', aliases: ['アリサ'] })
+      await expect(store.addGlossaryEntry({ name: 'アリサ' })).rejects.toThrow()
+    })
+
+    it('addGlossaryEntry は作品が開かれていなければ throw', async () => {
+      await expect(store.addGlossaryEntry({ name: 'アリス' })).rejects.toThrow()
+    })
+
+    it('updateGlossaryEntry は name 以外を更新して永続化（name は不変）', async () => {
+      await store.createWork('作')
+      const id = store.getSnapshot().work?.id as string
+      const entry = await store.addGlossaryEntry({ name: 'アリス' })
+      await store.updateGlossaryEntry(entry.id, { summary: '主人公', category: '人物' })
+      await store.openWork(id)
+      const g = store.getSnapshot().work?.glossary?.[0]
+      expect(g?.name).toBe('アリス')
+      expect(g?.summary).toBe('主人公')
+      expect(g?.category).toBe('人物')
+    })
+
+    it('updateGlossaryEntry は別名変更時に他 entry との衝突を拒否', async () => {
+      await store.createWork('作')
+      await store.addGlossaryEntry({ name: 'アリス' })
+      const bob = await store.addGlossaryEntry({ name: 'ボブ' })
+      await expect(store.updateGlossaryEntry(bob.id, { aliases: ['アリス'] })).rejects.toThrow()
+    })
+
+    it('updateGlossaryEntry は存在しない id では何もしない', async () => {
+      await store.createWork('作')
+      await store.addGlossaryEntry({ name: 'アリス' })
+      await store.updateGlossaryEntry('nope', { summary: 'x' })
+      expect(store.getSnapshot().work?.glossary).toHaveLength(1)
+    })
+
+    it('renameGlossaryEntry は name を変更し旧名を別名へ退避（自動エイリアス）', async () => {
+      await store.createWork('作')
+      const entry = await store.addGlossaryEntry({ name: 'アリス' })
+      await store.renameGlossaryEntry(entry.id, 'アリサ')
+      const g = store.getSnapshot().work?.glossary?.find((e) => e.id === entry.id)
+      expect(g?.name).toBe('アリサ')
+      expect(g?.aliases).toContain('アリス')
+    })
+
+    it('renameGlossaryEntry(rewriteBody) は本文 ref と現在話 draft を新名へ同期する', async () => {
+      await store.createWork('作')
+      await store.createEpisode('話')
+      store.setDraft('[[アリス]]が笑う')
+      await store.save()
+      const entry = await store.addGlossaryEntry({ name: 'アリス' })
+      await store.renameGlossaryEntry(entry.id, 'アリサ', { rewriteBody: true })
+      // 本文 blocks の ref が新名へ
+      expect(firstRefName(store)).toBe('アリサ')
+      // draft も同期され、次の save で巻き戻らない
+      expect(store.getSnapshot().draft).toBe('[[アリサ]]が笑う')
+    })
+
+    it('renameGlossaryEntry は衝突する新名を拒否する', async () => {
+      await store.createWork('作')
+      await store.addGlossaryEntry({ name: 'ボブ' })
+      const alice = await store.addGlossaryEntry({ name: 'アリス' })
+      await expect(store.renameGlossaryEntry(alice.id, 'ボブ')).rejects.toThrow()
+    })
+
+    it('renameGlossaryEntry は同名（no-op）では別名を増やさない', async () => {
+      await store.createWork('作')
+      const entry = await store.addGlossaryEntry({ name: 'アリス' })
+      await store.renameGlossaryEntry(entry.id, 'アリス')
+      const g = store.getSnapshot().work?.glossary?.find((e) => e.id === entry.id)
+      expect(g?.aliases).toEqual([])
+    })
+
+    it('deleteGlossaryEntry は entry を消すが本文 ref は残す（未解決化）', async () => {
+      await store.createWork('作')
+      await store.createEpisode('話')
+      store.setDraft('[[アリス]]が笑う')
+      await store.save()
+      const entry = await store.addGlossaryEntry({ name: 'アリス' })
+      await store.deleteGlossaryEntry(entry.id)
+      const s = store.getSnapshot()
+      expect(s.work?.glossary ?? []).toHaveLength(0)
+      expect(firstRefName(store)).toBe('アリス') // ref はそのまま残る
+    })
+
+    it('deleteGlossaryEntry は存在しない id では何もしない', async () => {
+      await store.createWork('作')
+      await store.addGlossaryEntry({ name: 'アリス' })
+      await store.deleteGlossaryEntry('nope')
+      expect(store.getSnapshot().work?.glossary).toHaveLength(1)
+    })
+  })
 })

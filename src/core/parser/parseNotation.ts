@@ -34,6 +34,17 @@ export function parseInlines(line: string): Inline[] {
 
   let i = 0
   while (i < line.length) {
+    // @参照: [[名前]]（P1）。区切りは ]] または行末。前後 trim（半角/全角空白）。
+    // 中身の存在に関わらず常に ref（未終端・空も ref 化）。name 内部は非解釈の literal。
+    if (line.startsWith('[[', i)) {
+      const end = line.indexOf(']]', i + 2)
+      const inner = end === -1 ? line.slice(i + 2) : line.slice(i + 2, end)
+      flush()
+      inlines.push({ type: 'ref', name: inner.trim() })
+      i = end === -1 ? line.length : end + 2
+      continue
+    }
+
     // 傍点: 《《 ... 》》
     if (line.startsWith('《《', i)) {
       const end = line.indexOf('》》', i + 2)

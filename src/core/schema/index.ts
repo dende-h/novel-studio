@@ -9,7 +9,7 @@ export const InlineSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('text'), text: z.string() }),
   z.object({ type: z.literal('ruby'), base: z.string(), reading: z.string() }),
   z.object({ type: z.literal('emphasisDots'), text: z.string() }), // 傍点
-  // 将来: { type: 'ref'; name: string }  // @参照（P1）
+  z.object({ type: z.literal('ref'), name: z.string() }), // @参照（P1）。name は辞書 entry の name/alias で解決
 ])
 export type Inline = z.infer<typeof InlineSchema>
 
@@ -27,6 +27,23 @@ export const EpisodeSchema = z.object({
 })
 export type Episode = z.infer<typeof EpisodeSchema>
 
+/**
+ * オブジェクト辞書の1項目（@参照の解決先）。P1。作品ごと（Work 相乗り）。
+ * name + aliases が解決キー（trim 後の完全一致）。reading はサジェスト/ソート用で解決対象外。
+ */
+export const GlossaryEntrySchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  aliases: z.array(z.string()),
+  category: z.string().optional(),
+  reading: z.string().optional(),
+  summary: z.string().optional(),
+  body: z.string().optional(),
+  createdAt: z.number(),
+  updatedAt: z.number(),
+})
+export type GlossaryEntry = z.infer<typeof GlossaryEntrySchema>
+
 export const WorkSchema = z.object({
   id: z.string(),
   title: z.string(),
@@ -36,5 +53,7 @@ export const WorkSchema = z.object({
   description: z.string().optional(),
   // 最終更新時刻（ライブラリの「最終編集」表示・EPUB の dcterms:modified 用）。旧データ互換のため任意。
   updatedAt: z.number().optional(),
+  // オブジェクト辞書（@参照の解決先）。P1。旧データ互換のため任意。
+  glossary: z.array(GlossaryEntrySchema).optional(),
 })
 export type Work = z.infer<typeof WorkSchema>
