@@ -59,6 +59,10 @@ export function App({ store, onExit }: AppProps) {
     id: string
     title: string
   } | null>(null)
+  const [renameEpisodeTarget, setRenameEpisodeTarget] = useState<{
+    id: string
+    title: string
+  } | null>(null)
 
   useEffect(() => {
     void store.init()
@@ -139,6 +143,10 @@ export function App({ store, onExit }: AppProps) {
             store.openEpisode(id)
             setActiveScreen('episodes')
           }}
+          onRenameEpisode={(id) => {
+            const ep = work?.episodes.find((e) => e.id === id)
+            if (ep) setRenameEpisodeTarget({ id, title: ep.title })
+          }}
           onDeleteEpisode={(id) => {
             const ep = work?.episodes.find((e) => e.id === id)
             if (ep) setDeleteEpisodeTarget({ id, title: ep.title })
@@ -213,6 +221,21 @@ export function App({ store, onExit }: AppProps) {
         defaultValue={`第${(work?.episodes.length ?? 0) + 1}話`}
         submitLabel="追加"
         onSubmit={(title) => void store.createEpisode(title)}
+      />
+      {/* 話タイトルの変更（現在のタイトルをプリフィル・本文には影響しない）。 */}
+      <TitlePromptDialog
+        open={renameEpisodeTarget !== null}
+        onOpenChange={(o) => {
+          if (!o) setRenameEpisodeTarget(null)
+        }}
+        title="話のタイトルを変更"
+        description="この話の表示名を変更します。本文には影響しません。"
+        label="話タイトル"
+        defaultValue={renameEpisodeTarget?.title ?? ''}
+        submitLabel="変更"
+        onSubmit={(title) => {
+          if (renameEpisodeTarget) void store.renameEpisode(renameEpisodeTarget.id, title)
+        }}
       />
       {/* 未解決 @参照クリックからのクイック作成（名前プリフィル）。 */}
       <GlossaryEntryForm

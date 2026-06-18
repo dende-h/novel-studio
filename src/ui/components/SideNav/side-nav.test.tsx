@@ -45,6 +45,33 @@ describe('SideNav（サイドバー）', () => {
     expect(onDeleteEpisode).toHaveBeenCalledWith('e1')
   })
 
+  it('話のタイトル変更ボタンで onRenameEpisode を呼ぶ', () => {
+    const onRenameEpisode = vi.fn()
+    render(
+      <SideNav
+        {...baseProps}
+        episodes={[{ id: 'e1', title: '第一話' }]}
+        currentEpisodeId="e1"
+        onSelectEpisode={() => {}}
+        onRenameEpisode={onRenameEpisode}
+      />,
+    )
+    fireEvent.click(screen.getByRole('button', { name: '「第一話」のタイトルを変更' }))
+    expect(onRenameEpisode).toHaveBeenCalledWith('e1')
+  })
+
+  it('onRenameEpisode 未指定なら変更ボタンを出さない', () => {
+    render(
+      <SideNav
+        {...baseProps}
+        episodes={[{ id: 'e1', title: '第一話' }]}
+        currentEpisodeId="e1"
+        onSelectEpisode={() => {}}
+      />,
+    )
+    expect(screen.queryByRole('button', { name: '「第一話」のタイトルを変更' })).toBeNull()
+  })
+
   it('onDeleteEpisode 未指定なら削除ボタンを出さない', () => {
     render(
       <SideNav

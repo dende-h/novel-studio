@@ -293,6 +293,53 @@ describe('editorStore（自前ストア・useSyncExternalStore 用）', () => {
     expect(s.draft).toBe('第二話の下書き')
   })
 
+  it('renameEpisode は話タイトルを変更して永続化する（本文は不変）', async () => {
+    await store.createWork('作')
+    await store.createEpisode('旧タイトル')
+    const id = store.getSnapshot().currentEpisodeId as string
+    store.setDraft('本文はそのまま')
+    await store.save()
+    await store.renameEpisode(id, '新タイトル')
+    const s = store.getSnapshot()
+    expect(s.work?.episodes[0]?.title).toBe('新タイトル')
+    // 本文・現在話・下書きは保たれる
+    expect(s.currentEpisodeId).toBe(id)
+    expect(s.draft).toBe('本文はそのまま')
+    // 永続化されている（再読込で残る）
+    const workId = s.work?.id as string
+    await store.openWork(workId)
+    expect(store.getSnapshot().work?.episodes[0]?.title).toBe('新タイトル')
+  })
+
+  it('renameEpisode は前後の空白を除去する', async () => {
+    await store.createWork('作')
+    await store.createEpisode('話')
+    const id = store.getSnapshot().currentEpisodeId as string
+    await store.renameEpisode(id, '  整形済み  ')
+    expect(store.getSnapshot().work?.episodes[0]?.title).toBe('整形済み')
+  })
+
+  it('renameEpisode は空文字を無視する（タイトルを保つ）', async () => {
+    await store.createWork('作')
+    await store.createEpisode('元の話')
+    const id = store.getSnapshot().currentEpisodeId as string
+    await store.renameEpisode(id, '   ')
+    expect(store.getSnapshot().work?.episodes[0]?.title).toBe('元の話')
+  })
+
+  it('renameEpisode は現在話でない話の改名でも現在の編集を保つ', async () => {
+    await store.createWork('作')
+    await store.createEpisode('第一話')
+    const first = store.getSnapshot().work?.episodes[0]?.id as string
+    await store.createEpisode('第二話')
+    store.setDraft('第二話の下書き')
+    await store.renameEpisode(first, '第一話・改')
+    const s = store.getSnapshot()
+    expect(s.work?.episodes.find((e) => e.id === first)?.title).toBe('第一話・改')
+    expect(s.draft).toBe('第二話の下書き')
+    expect(s.dirty).toBe(true)
+  })
+
   it('updateWorkMeta は著者・あらすじ・タイトルを更新して永続化する', async () => {
     await store.createWork('旧題')
     const id = store.getSnapshot().work?.id as string

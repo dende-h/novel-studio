@@ -43,6 +43,8 @@ export interface EditorStore {
   deleteWork(id: string): Promise<void>
   /** 現在の作品から話を削除。現在話なら別の話（無ければ無し）へ切り替える。 */
   deleteEpisode(episodeId: string): Promise<void>
+  /** 現在の作品の話タイトルを変更して永続化する（空文字・無変更は無視・本文は不変）。 */
+  renameEpisode(episodeId: string, title: string): Promise<void>
   /** 作品メタ（タイトル・著者・あらすじ）を更新して永続化する。 */
   updateWorkMeta(id: string, meta: WorkMeta): Promise<void>
   importWorks(works: Work[]): Promise<void>
@@ -269,6 +271,24 @@ export function createEditorStore({
       } else {
         set({ work })
       }
+      await refreshList()
+    },
+
+    async renameEpisode(episodeId, title) {
+      if (!state.work) return
+      const trimmed = title.trim()
+      const target = state.work.episodes.find((e) => e.id === episodeId)
+      // 空文字・無変更・該当なしは no-op（本文/下書き/スナップショットには触れない）。
+      if (trimmed === '' || !target || target.title === trimmed) return
+      const work: Work = {
+        ...state.work,
+        episodes: state.work.episodes.map((e) =>
+          e.id === episodeId ? { ...e, title: trimmed } : e,
+        ),
+        updatedAt: now(),
+      }
+      await repo.saveWork(work)
+      set({ work })
       await refreshList()
     },
 

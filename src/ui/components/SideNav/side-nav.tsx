@@ -6,6 +6,7 @@ import {
   FlaskConical,
   FolderOpen,
   Library,
+  Pencil,
   Plus,
   Settings,
   Trash2,
@@ -44,6 +45,8 @@ interface SideNavProps {
   episodes?: EpisodeItem[]
   currentEpisodeId?: string | null
   onSelectEpisode?: (id: string) => void
+  /** 話のタイトル変更（指定時のみ各話に変更ボタンを表示） */
+  onRenameEpisode?: (id: string) => void
   /** 話の削除（指定時のみ各話に削除ボタンを表示） */
   onDeleteEpisode?: (id: string) => void
 }
@@ -98,6 +101,7 @@ export function SideNav({
   episodes,
   currentEpisodeId,
   onSelectEpisode,
+  onRenameEpisode,
   onDeleteEpisode,
 }: SideNavProps) {
   const initial = (projectTitle.trim().charAt(0) || 'N').toUpperCase()
@@ -216,6 +220,16 @@ export function SideNav({
                             >
                               {e.title}
                             </button>
+                            {onRenameEpisode ? (
+                              <button
+                                type="button"
+                                onClick={() => onRenameEpisode(e.id)}
+                                aria-label={`「${e.title}」のタイトルを変更`}
+                                className="shrink-0 rounded p-1 text-on-surface-variant/60 opacity-0 transition-opacity hover:text-primary focus-visible:opacity-100 group-hover:opacity-100"
+                              >
+                                <Pencil className="size-3.5" />
+                              </button>
+                            ) : null}
                             {onDeleteEpisode ? (
                               <button
                                 type="button"
