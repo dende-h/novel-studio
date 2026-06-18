@@ -93,13 +93,17 @@ export function EditorPane({ value, onChange, glossary = [], onCreateEntry }: Ed
         setSuggest(null)
         return
       }
+      // getCaretCoordinates は textarea 自身のボーダーボックス基準。ポップアップは
+      // relative な親（ツールバー＋本文を含む root div）基準で absolute 配置されるため、
+      // textarea のコンテナ内オフセット（ツールバー高さぶん下／左端ぶん）を足して座標系を合わせる。
+      // これを省くとポップアップがツールバー高さぶん上にずれ、入力中の行に被ってしまう。
       const c = getCaretCoordinates(el, at)
       setSuggest({
         at,
         triggerLen,
         query: text.slice(at + triggerLen, caret),
-        top: c.top + c.height,
-        left: c.left,
+        top: el.offsetTop + c.top + c.height,
+        left: el.offsetLeft + c.left,
       })
       setActiveIndex(0)
     },
