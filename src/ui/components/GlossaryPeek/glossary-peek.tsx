@@ -4,6 +4,7 @@ import type { GlossaryEntry } from '@/core/schema'
 import { Badge } from '@/ui/components/ui/badge'
 import { Button } from '@/ui/components/ui/button'
 import { ScrollArea } from '@/ui/components/ui/scroll-area'
+import { ZoomableImage } from '@/ui/components/ui/zoomable-image'
 
 interface GlossaryPeekProps {
   entry: GlossaryEntry
@@ -26,10 +27,10 @@ export function GlossaryPeek({ entry, appearances, onClose, onEdit }: GlossaryPe
         <div className="mb-1 flex items-start justify-between gap-2">
           <div className="flex min-w-0 items-start gap-3">
             {entry.thumbnail ? (
-              <img
+              <ZoomableImage
                 src={entry.thumbnail}
-                alt=""
-                className="size-16 shrink-0 rounded-md border border-outline-variant/20 object-cover"
+                alt={entry.name}
+                className="size-16 rounded-md border border-outline-variant/20 object-cover"
               />
             ) : null}
             <div className="min-w-0">

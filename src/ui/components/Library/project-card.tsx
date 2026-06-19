@@ -12,6 +12,7 @@ import {
   CardHeader,
   CardTitle,
 } from '@/ui/components/ui/card'
+import { ZoomableImage } from '@/ui/components/ui/zoomable-image'
 
 interface ProjectCardProps {
   summary: WorkSummary
@@ -38,10 +39,11 @@ export function ProjectCard({
     <Card className="min-h-[220px] justify-between gap-4 transition-colors hover:bg-surface-container-low">
       <CardHeader>
         {coverImage ? (
-          <img
+          <ZoomableImage
             src={coverImage}
-            alt=""
-            className="mb-2 h-24 w-auto max-w-[5rem] rounded-md border border-outline-variant/20 object-contain"
+            alt="表紙"
+            className="h-24 w-auto max-w-[5rem] rounded-md border border-outline-variant/20 object-contain"
+            wrapperClassName="mb-2"
           />
         ) : null}
         <CardTitle className="font-serif text-on-surface text-xl">{title}</CardTitle>

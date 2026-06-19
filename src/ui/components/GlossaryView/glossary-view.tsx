@@ -12,6 +12,7 @@ import { Badge } from '@/ui/components/ui/badge'
 import { Button } from '@/ui/components/ui/button'
 import { Input } from '@/ui/components/ui/input'
 import { ScrollArea } from '@/ui/components/ui/scroll-area'
+import { ZoomableImage } from '@/ui/components/ui/zoomable-image'
 import { RenameEntryDialog } from './rename-entry-dialog'
 
 interface GlossaryViewProps {
@@ -221,10 +222,10 @@ function EntryCard({
       <div className="flex items-start justify-between gap-2">
         <div className="flex min-w-0 items-start gap-3">
           {entry.thumbnail ? (
-            <img
+            <ZoomableImage
               src={entry.thumbnail}
-              alt=""
-              className="size-12 shrink-0 rounded-md border border-outline-variant/20 object-cover"
+              alt={entry.name}
+              className="size-12 rounded-md border border-outline-variant/20 object-cover"
             />
           ) : null}
           <div className="min-w-0">
