@@ -364,6 +364,30 @@ describe('editorStore（自前ストア・useSyncExternalStore 用）', () => {
     expect(store.getSnapshot().workList.find((w) => w.id === aId)?.author).toBe('Aの著者')
   })
 
+  it('updateWorkMeta は表紙(coverImage)を設定・空文字で削除する', async () => {
+    await store.createWork('作')
+    const id = store.getSnapshot().work?.id as string
+    await store.updateWorkMeta(id, { coverImage: 'data:image/jpeg;base64,SGk=' })
+    expect(store.getSnapshot().work?.coverImage).toBe('data:image/jpeg;base64,SGk=')
+    expect(store.getSnapshot().workList.find((w) => w.id === id)?.coverImage).toBe(
+      'data:image/jpeg;base64,SGk=',
+    )
+    // 空文字で削除（キーが落ちる）。
+    await store.updateWorkMeta(id, { coverImage: '' })
+    expect(store.getSnapshot().work?.coverImage).toBeUndefined()
+    // 永続化（再読込で残る）。
+    await store.openWork(id)
+    expect(store.getSnapshot().work?.coverImage).toBeUndefined()
+  })
+
+  it('updateWorkMeta は coverImage 未指定なら既存の表紙を据え置く', async () => {
+    await store.createWork('作')
+    const id = store.getSnapshot().work?.id as string
+    await store.updateWorkMeta(id, { coverImage: 'data:image/jpeg;base64,SGk=' })
+    await store.updateWorkMeta(id, { title: '改題' })
+    expect(store.getSnapshot().work?.coverImage).toBe('data:image/jpeg;base64,SGk=')
+  })
+
   describe('辞書 CRUD（glossary を Work へ相乗り）', () => {
     // 現在話の本文から最初の ref inline の name を取り出す（rewriteBody / 未解決化の検証用）
     const firstRefName = (s: EditorStore, epIdx = 0): string | undefined => {
@@ -460,6 +484,28 @@ describe('editorStore（自前ストア・useSyncExternalStore 用）', () => {
       await store.addGlossaryEntry({ name: 'アリス' })
       await store.updateGlossaryEntry('nope', { summary: 'x' })
       expect(store.getSnapshot().work?.glossary).toHaveLength(1)
+    })
+
+    it('サムネ(thumbnail) を作成時に保持し、更新で差し替え・空文字で削除する', async () => {
+      await store.createWork('作')
+      const entry = await store.addGlossaryEntry({
+        name: 'アリス',
+        thumbnail: 'data:image/jpeg;base64,SGk=',
+      })
+      const read = () => store.getSnapshot().work?.glossary?.find((e) => e.id === entry.id)
+      expect(read()?.thumbnail).toBe('data:image/jpeg;base64,SGk=')
+      await store.updateGlossaryEntry(entry.id, { thumbnail: 'data:image/jpeg;base64,Qm8=' })
+      expect(read()?.thumbnail).toBe('data:image/jpeg;base64,Qm8=')
+      // 空文字で削除（キーが落ちる）。
+      await store.updateGlossaryEntry(entry.id, { thumbnail: '' })
+      expect(read()?.thumbnail).toBeUndefined()
+    })
+
+    it('addGlossaryEntry は空文字サムネを付与しない（クイック作成・未設定経路）', async () => {
+      await store.createWork('作')
+      const entry = await store.addGlossaryEntry({ name: 'アリス', thumbnail: '' })
+      expect(entry.thumbnail).toBeUndefined()
+      expect('thumbnail' in entry).toBe(false)
     })
 
     it('renameGlossaryEntry は name を変更し旧名を別名へ退避（自動エイリアス）', async () => {

@@ -1,5 +1,6 @@
 import { useEffect, useId, useState } from 'react'
 import type { GlossaryEntry } from '@/core/schema'
+import { thumbnailToDataUrl } from '@/ui/_utils/imageResizer'
 import { Button } from '@/ui/components/ui/button'
 import {
   Dialog,
@@ -20,6 +21,8 @@ export interface GlossaryFormValues {
   reading: string
   summary: string
   body: string
+  /** サムネ画像の data URL。空文字 '' は未設定／削除を表す。 */
+  thumbnail: string
 }
 
 interface GlossaryEntryFormProps {
@@ -66,8 +69,10 @@ export function GlossaryEntryForm({
   const [category, setCategory] = useState('')
   const [summary, setSummary] = useState('')
   const [body, setBody] = useState('')
+  const [thumbnail, setThumbnail] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [imageBusy, setImageBusy] = useState(false)
 
   // 開くたびに初期値へ同期する。
   useEffect(() => {
@@ -78,9 +83,25 @@ export function GlossaryEntryForm({
     setCategory(initial?.category ?? '')
     setSummary(initial?.summary ?? '')
     setBody(initial?.body ?? '')
+    setThumbnail(initial?.thumbnail ?? '')
     setError(null)
     setBusy(false)
+    setImageBusy(false)
   }, [open, initial])
+
+  // 選択画像を 256 正方形クロップの JPEG data URL にして state へ。失敗は error 表示。
+  const onPickImage = async (file: File | undefined) => {
+    if (!file) return
+    setImageBusy(true)
+    setError(null)
+    try {
+      setThumbnail(await thumbnailToDataUrl(file))
+    } catch {
+      setError('画像の読み込みに失敗しました')
+    } finally {
+      setImageBusy(false)
+    }
+  }
 
   const isEdit = mode === 'edit'
   const canSubmit = isEdit || name.trim().length > 0
@@ -97,6 +118,7 @@ export function GlossaryEntryForm({
         reading: reading.trim(),
         summary: summary.trim(),
         body: body.trim(),
+        thumbnail,
       })
       onOpenChange(false)
     } catch (e) {
@@ -112,7 +134,7 @@ export function GlossaryEntryForm({
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle className="font-serif text-primary">
-            {isEdit ? '辞書項目を編集' : '辞書に追加'}
+            {isEdit ? '図鑑項目を編集' : '図鑑に追加'}
           </DialogTitle>
           <DialogDescription>
             {isEdit
@@ -199,6 +221,46 @@ export function GlossaryEntryForm({
               rows={4}
             />
           </div>
+          <div className="space-y-2">
+            <Label htmlFor={`${uid}-thumbnail`}>サムネイル画像</Label>
+            <div className="flex items-center gap-3">
+              {thumbnail ? (
+                <img
+                  src={thumbnail}
+                  alt="サムネイルのプレビュー"
+                  className="size-16 shrink-0 rounded-md border border-outline-variant/30 object-cover"
+                />
+              ) : (
+                <div className="flex size-16 shrink-0 items-center justify-center rounded-md border border-outline-variant/30 border-dashed text-on-surface-variant/40 text-xs">
+                  なし
+                </div>
+              )}
+              <div className="flex min-w-0 flex-col gap-1.5">
+                <input
+                  id={`${uid}-thumbnail`}
+                  type="file"
+                  accept="image/*"
+                  onChange={(e) => {
+                    void onPickImage(e.target.files?.[0])
+                    e.target.value = ''
+                  }}
+                  className="block w-full text-on-surface-variant text-sm file:mr-3 file:rounded-md file:border-0 file:bg-secondary file:px-3 file:py-1.5 file:font-medium file:text-secondary-foreground file:text-sm hover:file:bg-secondary/80"
+                />
+                <div className="flex items-center gap-3 text-on-surface-variant/70 text-xs">
+                  <span>{imageBusy ? '処理中…' : '正方形に切り抜いて保存（任意）'}</span>
+                  {thumbnail ? (
+                    <button
+                      type="button"
+                      onClick={() => setThumbnail('')}
+                      className="text-destructive hover:underline"
+                    >
+                      削除
+                    </button>
+                  ) : null}
+                </div>
+              </div>
+            </div>
+          </div>
           {error ? (
             <p role="alert" className="text-destructive text-sm">
               {error}
@@ -213,7 +275,7 @@ export function GlossaryEntryForm({
             >
               キャンセル
             </Button>
-            <Button type="submit" disabled={!canSubmit || busy}>
+            <Button type="submit" disabled={!canSubmit || busy || imageBusy}>
               {isEdit ? '保存' : '作成'}
             </Button>
           </DialogFooter>

@@ -52,7 +52,7 @@ export function GlossaryView({
       {/* ヘッダ */}
       <header className="flex items-center justify-between gap-4 border-outline-variant/20 border-b px-8 py-5">
         <div>
-          <h1 className="font-bold font-serif text-on-surface text-xl">辞書</h1>
+          <h1 className="font-bold font-serif text-on-surface text-xl">図鑑</h1>
           <p className="text-on-surface-variant text-xs">
             {entries.length > 0 ? `${entries.length} 項目` : '本文に [[名前]] で参照できる項目'}
           </p>
@@ -68,7 +68,7 @@ export function GlossaryView({
         <div className="relative">
           <Search className="-translate-y-1/2 absolute top-1/2 left-3 size-4 text-on-surface-variant/60" />
           <Input
-            aria-label="辞書を検索"
+            aria-label="図鑑を検索"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="名前・別名・読みで検索"
@@ -103,7 +103,7 @@ export function GlossaryView({
           {visible.length === 0 ? (
             <p className="py-16 text-center text-on-surface-variant text-sm">
               {entries.length === 0
-                ? 'まだ辞書がありません。「新規」または本文の @ から追加できます。'
+                ? 'まだ図鑑がありません。「新規」または本文の @ から追加できます。'
                 : '該当する項目がありません。'}
             </p>
           ) : (
@@ -164,7 +164,7 @@ export function GlossaryView({
         title="この項目を削除しますか？"
         description={
           deleteTarget
-            ? `「${deleteTarget.name}」を辞書から削除します。本文中の参照は残り、未解決リンクになります。`
+            ? `「${deleteTarget.name}」を図鑑から削除します。本文中の参照は残り、未解決リンクになります。`
             : undefined
         }
         confirmLabel="削除する"
@@ -219,21 +219,30 @@ function EntryCard({
   return (
     <li className="group flex flex-col gap-2 rounded-lg border border-outline-variant/20 bg-surface-container-lowest p-4 transition-colors hover:border-outline-variant/40">
       <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0">
-          <div className="flex items-baseline gap-2">
-            <h3 className="truncate font-medium font-serif text-base text-on-surface">
-              {entry.name}
-            </h3>
-            {entry.reading ? (
-              <span className="shrink-0 text-on-surface-variant/70 text-xs">{entry.reading}</span>
+        <div className="flex min-w-0 items-start gap-3">
+          {entry.thumbnail ? (
+            <img
+              src={entry.thumbnail}
+              alt=""
+              className="size-12 shrink-0 rounded-md border border-outline-variant/20 object-cover"
+            />
+          ) : null}
+          <div className="min-w-0">
+            <div className="flex items-baseline gap-2">
+              <h3 className="truncate font-medium font-serif text-base text-on-surface">
+                {entry.name}
+              </h3>
+              {entry.reading ? (
+                <span className="shrink-0 text-on-surface-variant/70 text-xs">{entry.reading}</span>
+              ) : null}
+            </div>
+            {entry.category ? (
+              <Badge variant="secondary" className="mt-1 gap-1">
+                <Tag className="size-3" />
+                {entry.category}
+              </Badge>
             ) : null}
           </div>
-          {entry.category ? (
-            <Badge variant="secondary" className="mt-1 gap-1">
-              <Tag className="size-3" />
-              {entry.category}
-            </Badge>
-          ) : null}
         </div>
         {/* 行内アクション（ホバー/フォーカスで出現） */}
         <div className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">

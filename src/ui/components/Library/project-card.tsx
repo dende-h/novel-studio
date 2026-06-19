@@ -33,10 +33,17 @@ export function ProjectCard({
   onEditMeta,
   onDelete,
 }: ProjectCardProps) {
-  const { title, episodeCount, charCount, author, updatedAt } = summary
+  const { title, episodeCount, charCount, author, updatedAt, coverImage } = summary
   return (
     <Card className="min-h-[220px] justify-between gap-4 transition-colors hover:bg-surface-container-low">
       <CardHeader>
+        {coverImage ? (
+          <img
+            src={coverImage}
+            alt=""
+            className="mb-2 h-24 w-auto max-w-[5rem] rounded-md border border-outline-variant/20 object-contain"
+          />
+        ) : null}
         <CardTitle className="font-serif text-on-surface text-xl">{title}</CardTitle>
         <CardAction>
           <Badge variant="secondary" className="font-sans uppercase tracking-wider">

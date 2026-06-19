@@ -139,4 +139,45 @@ describe('toEpub（EPUB3 縦書き・純生成）', () => {
     expect(paths).toContain('OEBPS/text/ep-e2.xhtml')
     expect(files.find((f) => f.path === 'mimetype')?.content).toBe('application/epub+zip')
   })
+
+  // 表紙画像（coverImage）。"Hi" の JPEG ではないがバイト化の検証には十分。
+  const COVER = 'data:image/jpeg;base64,SGk='
+  const withCover: Work = { ...work, coverImage: COVER }
+
+  it('buildPackageOpf は hasCover で cover-image item と <meta name="cover"> を出す', () => {
+    const opf = buildPackageOpf(withCover, true)
+    expect(opf).toContain('<meta name="cover" content="cover-image" />')
+    expect(opf).toContain(
+      '<item id="cover-image" href="images/cover.jpg" media-type="image/jpeg" properties="cover-image" />',
+    )
+  })
+
+  it('buildPackageOpf は hasCover=false で表紙宣言を出さない', () => {
+    const opf = buildPackageOpf(work)
+    expect(opf).not.toContain('cover-image')
+    expect(opf).not.toContain('name="cover"')
+  })
+
+  it('buildEpubFiles は coverImage があれば cover.jpg バイトと OPF 宣言を揃えて出す', () => {
+    const files = buildEpubFiles(withCover)
+    const cover = files.find((f) => f.path === 'OEBPS/images/cover.jpg')
+    expect(cover?.content).toBeInstanceOf(Uint8Array)
+    expect(Array.from(cover?.content as Uint8Array)).toEqual([72, 105])
+    const opf = files.find((f) => f.path === 'OEBPS/content.opf')?.content as string
+    expect(opf).toContain('properties="cover-image"')
+  })
+
+  it('buildEpubFiles は coverImage が無ければ cover.jpg も宣言も出さない', () => {
+    const files = buildEpubFiles(work)
+    expect(files.find((f) => f.path === 'OEBPS/images/cover.jpg')).toBeUndefined()
+    const opf = files.find((f) => f.path === 'OEBPS/content.opf')?.content as string
+    expect(opf).not.toContain('cover-image')
+  })
+
+  it('buildEpubFiles は不正な data URL を表紙なしへフォールバック（宣言とファイルを揃える）', () => {
+    const files = buildEpubFiles({ ...work, coverImage: 'data:image/jpeg;base64,@@notbase64@@' })
+    expect(files.find((f) => f.path === 'OEBPS/images/cover.jpg')).toBeUndefined()
+    const opf = files.find((f) => f.path === 'OEBPS/content.opf')?.content as string
+    expect(opf).not.toContain('cover-image')
+  })
 })

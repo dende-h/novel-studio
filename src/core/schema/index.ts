@@ -39,6 +39,11 @@ export const GlossaryEntrySchema = z.object({
   reading: z.string().optional(),
   summary: z.string().optional(),
   body: z.string().optional(),
+  // サムネイル画像（リサイズ済み JPEG の data URL）。P1.1。1枚・任意・旧データ互換。
+  thumbnail: z
+    .string()
+    .refine((s) => s.startsWith('data:image/'), 'data URL が必要')
+    .optional(),
   createdAt: z.number(),
   updatedAt: z.number(),
 })
@@ -55,5 +60,10 @@ export const WorkSchema = z.object({
   updatedAt: z.number().optional(),
   // オブジェクト辞書（@参照の解決先）。P1。旧データ互換のため任意。
   glossary: z.array(GlossaryEntrySchema).optional(),
+  // 表紙画像（リサイズ済み JPEG の data URL）。P1.1。EPUB cover 用・1枚・任意・旧データ互換。
+  coverImage: z
+    .string()
+    .refine((s) => s.startsWith('data:image/'), 'data URL が必要')
+    .optional(),
 })
 export type Work = z.infer<typeof WorkSchema>

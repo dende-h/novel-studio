@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { SideNav } from './side-nav'
 
 // 作品を開いている（エディタ）状態の基本 props。
-// この状態でのみ「現在の作品」スコープカード内に エピソード/辞書/話リスト が現れる。
+// この状態でのみ「現在の作品」スコープカード内に エピソード/図鑑/話リスト が現れる。
 const baseProps = {
   projectTitle: 'novel-studio',
   projectSubtitle: 'ライブラリ',
@@ -107,10 +107,10 @@ describe('SideNav（サイドバー）', () => {
     expect(onNavigateCollection).toHaveBeenCalledTimes(1)
   })
 
-  it('辞書行: active=glossary で aria-current・押下で onNavigateGlossary を発火する', () => {
+  it('図鑑行: active=glossary で aria-current・押下で onNavigateGlossary を発火する', () => {
     const onNavigateGlossary = vi.fn()
     render(<SideNav {...baseProps} active="glossary" onNavigateGlossary={onNavigateGlossary} />)
-    const g = screen.getByRole('button', { name: '辞書' })
+    const g = screen.getByRole('button', { name: '図鑑' })
     expect(g).toHaveAttribute('aria-current', 'page')
     expect(g).not.toBeDisabled()
     fireEvent.click(g)
@@ -124,7 +124,7 @@ describe('SideNav（サイドバー）', () => {
     expect(screen.getByText('月と剣の物語')).toBeInTheDocument()
   })
 
-  it('ライブラリ状態（workTitle 未指定）はエピソード/辞書ボタンを出さず、空状態の案内を表示する', () => {
+  it('ライブラリ状態（workTitle 未指定）はエピソード/図鑑ボタンを出さず、空状態の案内を表示する', () => {
     render(
       <SideNav
         projectTitle="novel-studio"
@@ -136,7 +136,7 @@ describe('SideNav（サイドバー）', () => {
     )
     // グレーアウトした兄弟ではなく、そもそも操作可能な行を出さない。
     expect(screen.queryByRole('button', { name: 'エピソード' })).toBeNull()
-    expect(screen.queryByRole('button', { name: '辞書' })).toBeNull()
+    expect(screen.queryByRole('button', { name: '図鑑' })).toBeNull()
     // 作品を開けば使えることを案内する空状態。
     expect(screen.getByText(/作品を開くと/)).toBeInTheDocument()
     // コレクション（ホーム）はこの状態で active。

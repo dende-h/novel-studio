@@ -32,6 +32,8 @@ const toFieldPatch = (v: GlossaryFormValues) => ({
   reading: emptyToUndef(v.reading),
   summary: emptyToUndef(v.summary),
   body: emptyToUndef(v.body),
+  // サムネは空文字をそのまま渡す（更新時 '' = 削除指示。作成時は addGlossaryEntry が空を弾く）。
+  thumbnail: v.thumbnail,
 })
 
 interface AppProps {
@@ -268,7 +270,12 @@ export function App({ store, onExit }: AppProps) {
         <WorkMetaDialog
           open={metaOpen}
           onOpenChange={setMetaOpen}
-          initial={{ title: work.title, author: work.author, description: work.description }}
+          initial={{
+            title: work.title,
+            author: work.author,
+            description: work.description,
+            coverImage: work.coverImage,
+          }}
           onSubmit={(values) => void store.updateWorkMeta(work.id, values)}
         />
       ) : null}

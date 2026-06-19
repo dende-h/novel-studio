@@ -31,7 +31,10 @@ export function workToFolder(work: Work): FolderFile[] {
     title: work.title,
     episodes: work.episodes.map((ep, i) => ({ id: ep.id, title: ep.title, file: episodeFile(i) })),
     // 辞書（@参照の解決先）は manifest に相乗りで往復させる。空/未設定なら省略。
-    ...(work.glossary && work.glossary.length > 0 ? { glossary: work.glossary } : {}),
+    // 画像（サムネ）は manifest を肥大化させ外部編集に不要なので落とす（正本往復は bundle が担う）。
+    ...(work.glossary && work.glossary.length > 0
+      ? { glossary: work.glossary.map(({ thumbnail: _thumbnail, ...e }) => e) }
+      : {}),
   }
   return [
     { path: MANIFEST, content: JSON.stringify(manifest, null, 2) },

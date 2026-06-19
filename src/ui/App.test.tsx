@@ -45,7 +45,7 @@ describe('App（エディタ結合：本文/プレビュー・自動保存・履
     })
   })
 
-  it('プレビューの @参照は辞書に在れば解決リンク、無ければ未解決点線で描く', async () => {
+  it('プレビューの @参照は図鑑に在れば解決リンク、無ければ未解決点線で描く', async () => {
     const store = makeStore()
     await seedWorkEpisode(store)
     await store.addGlossaryEntry({ name: 'アリス' })
@@ -97,7 +97,7 @@ describe('App（エディタ結合：本文/プレビュー・自動保存・履
     expect(await screen.findByRole('button', { name: '序章' })).toBeInTheDocument()
   })
 
-  it('サイドバー「辞書」で辞書画面へ切替え、作成した項目が一覧に出てプレビューで解決する', async () => {
+  it('サイドバー「図鑑」で図鑑画面へ切替え、作成した項目が一覧に出てプレビューで解決する', async () => {
     const store = makeStore()
     await seedWorkEpisode(store)
     render(<App store={store} />)
@@ -111,9 +111,9 @@ describe('App（エディタ結合：本文/プレビュー・自動保存・履
       expect(ref?.classList.contains('ref--unresolved')).toBe(true)
     })
 
-    // 辞書画面へ → 作成
-    fireEvent.click(screen.getByRole('button', { name: '辞書' }))
-    expect(await screen.findByRole('heading', { name: '辞書' })).toBeInTheDocument()
+    // 図鑑画面へ → 作成
+    fireEvent.click(screen.getByRole('button', { name: '図鑑' }))
+    expect(await screen.findByRole('heading', { name: '図鑑' })).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: '新規' }))
     fireEvent.change(screen.getByLabelText('名前'), { target: { value: 'アリス' } })
     fireEvent.click(screen.getByRole('button', { name: '作成' }))

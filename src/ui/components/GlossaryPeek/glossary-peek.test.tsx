@@ -53,7 +53,7 @@ describe('GlossaryPeek（用語のチラ見）', () => {
     )
     fireEvent.click(screen.getByRole('button', { name: 'ピークを閉じる' }))
     expect(onClose).toHaveBeenCalledTimes(1)
-    fireEvent.click(screen.getByRole('button', { name: '辞書で編集' }))
+    fireEvent.click(screen.getByRole('button', { name: '図鑑で編集' }))
     expect(onEdit).toHaveBeenCalledTimes(1)
   })
 })

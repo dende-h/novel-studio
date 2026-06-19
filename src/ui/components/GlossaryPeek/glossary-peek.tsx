@@ -24,11 +24,20 @@ export function GlossaryPeek({ entry, appearances, onClose, onEdit }: GlossaryPe
     <aside className="flex w-[340px] shrink-0 flex-col border-outline-variant/20 border-l bg-surface-container-low font-sans shadow-[-4px_0_24px_rgba(0,0,0,0.02)]">
       <div className="border-outline-variant/20 border-b bg-surface-bright p-6">
         <div className="mb-1 flex items-start justify-between gap-2">
-          <div className="min-w-0">
-            <h3 className="break-words font-serif text-lg text-on-surface">{entry.name}</h3>
-            {entry.reading ? (
-              <p className="mt-0.5 text-on-surface-variant/70 text-xs">{entry.reading}</p>
+          <div className="flex min-w-0 items-start gap-3">
+            {entry.thumbnail ? (
+              <img
+                src={entry.thumbnail}
+                alt=""
+                className="size-16 shrink-0 rounded-md border border-outline-variant/20 object-cover"
+              />
             ) : null}
+            <div className="min-w-0">
+              <h3 className="break-words font-serif text-lg text-on-surface">{entry.name}</h3>
+              {entry.reading ? (
+                <p className="mt-0.5 text-on-surface-variant/70 text-xs">{entry.reading}</p>
+              ) : null}
+            </div>
           </div>
           <Button
             variant="ghost"
@@ -76,7 +85,7 @@ export function GlossaryPeek({ entry, appearances, onClose, onEdit }: GlossaryPe
       <div className="border-outline-variant/20 border-t p-4">
         <Button variant="outline" onClick={onEdit} className="w-full gap-2 text-primary">
           <Pencil className="size-4" aria-hidden />
-          辞書で編集
+          図鑑で編集
         </Button>
       </div>
     </aside>

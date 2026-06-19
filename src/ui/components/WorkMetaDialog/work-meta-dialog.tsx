@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { coverToDataUrl } from '@/ui/_utils/imageResizer'
 import { Button } from '@/ui/components/ui/button'
 import {
   Dialog,
@@ -16,6 +17,8 @@ export interface WorkMetaValues {
   title: string
   author: string
   description: string
+  /** 表紙画像の data URL。空文字 '' は未設定／削除を表す。 */
+  coverImage: string
 }
 
 interface WorkMetaDialogProps {
@@ -31,6 +34,9 @@ export function WorkMetaDialog({ open, onOpenChange, initial, onSubmit }: WorkMe
   const [title, setTitle] = useState(initial.title ?? '')
   const [author, setAuthor] = useState(initial.author ?? '')
   const [description, setDescription] = useState(initial.description ?? '')
+  const [coverImage, setCoverImage] = useState(initial.coverImage ?? '')
+  const [imageBusy, setImageBusy] = useState(false)
+  const [imageError, setImageError] = useState<string | null>(null)
 
   // 開くたびに最新の初期値へ同期する。
   useEffect(() => {
@@ -38,10 +44,27 @@ export function WorkMetaDialog({ open, onOpenChange, initial, onSubmit }: WorkMe
       setTitle(initial.title ?? '')
       setAuthor(initial.author ?? '')
       setDescription(initial.description ?? '')
+      setCoverImage(initial.coverImage ?? '')
+      setImageBusy(false)
+      setImageError(null)
     }
-  }, [open, initial.title, initial.author, initial.description])
+  }, [open, initial.title, initial.author, initial.description, initial.coverImage])
 
   const canSubmit = title.trim().length > 0
+
+  // 選択画像を比率維持・長辺1400の JPEG data URL にして state へ。失敗は表示。
+  const onPickCover = async (file: File | undefined) => {
+    if (!file) return
+    setImageBusy(true)
+    setImageError(null)
+    try {
+      setCoverImage(await coverToDataUrl(file))
+    } catch {
+      setImageError('画像の読み込みに失敗しました')
+    } finally {
+      setImageBusy(false)
+    }
+  }
 
   const submit = () => {
     if (!canSubmit) return
@@ -49,6 +72,7 @@ export function WorkMetaDialog({ open, onOpenChange, initial, onSubmit }: WorkMe
       title: title.trim(),
       author: author.trim(),
       description: description.trim(),
+      coverImage,
     })
     onOpenChange(false)
   }
@@ -98,6 +122,49 @@ export function WorkMetaDialog({ open, onOpenChange, initial, onSubmit }: WorkMe
               rows={4}
             />
           </div>
+          <div className="space-y-2">
+            <Label htmlFor="work-meta-cover">表紙画像</Label>
+            <div className="flex items-start gap-3">
+              {coverImage ? (
+                <img
+                  src={coverImage}
+                  alt="表紙のプレビュー"
+                  className="h-24 w-auto max-w-[6rem] shrink-0 rounded-md border border-outline-variant/30 object-contain"
+                />
+              ) : (
+                <div className="flex h-24 w-16 shrink-0 items-center justify-center rounded-md border border-outline-variant/30 border-dashed text-on-surface-variant/40 text-xs">
+                  なし
+                </div>
+              )}
+              <div className="flex min-w-0 flex-col gap-1.5">
+                <input
+                  id="work-meta-cover"
+                  type="file"
+                  accept="image/*"
+                  onChange={(e) => {
+                    void onPickCover(e.target.files?.[0])
+                    e.target.value = ''
+                  }}
+                  className="block w-full text-on-surface-variant text-sm file:mr-3 file:rounded-md file:border-0 file:bg-secondary file:px-3 file:py-1.5 file:font-medium file:text-secondary-foreground file:text-sm hover:file:bg-secondary/80"
+                />
+                <div className="flex items-center gap-3 text-on-surface-variant/70 text-xs">
+                  <span>
+                    {imageBusy ? '処理中…' : 'EPUB に埋め込む表紙（縦横比はそのまま・任意）'}
+                  </span>
+                  {coverImage ? (
+                    <button
+                      type="button"
+                      onClick={() => setCoverImage('')}
+                      className="text-destructive hover:underline"
+                    >
+                      削除
+                    </button>
+                  ) : null}
+                </div>
+                {imageError ? <span className="text-destructive text-xs">{imageError}</span> : null}
+              </div>
+            </div>
+          </div>
           <DialogFooter>
             <Button
               type="button"
@@ -107,7 +174,7 @@ export function WorkMetaDialog({ open, onOpenChange, initial, onSubmit }: WorkMe
             >
               キャンセル
             </Button>
-            <Button type="submit" disabled={!canSubmit}>
+            <Button type="submit" disabled={!canSubmit || imageBusy}>
               保存
             </Button>
           </DialogFooter>

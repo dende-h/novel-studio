@@ -55,6 +55,13 @@ describe('WorkRepository（対 MemoryStore）', () => {
     expect(await repo().listWorks()).toEqual([])
   })
 
+  it('listWorks は表紙画像(coverImage)を要約に含める（ライブラリカード表示用）', async () => {
+    const r = repo()
+    await r.saveWork({ ...work('w1', 'A'), coverImage: 'data:image/jpeg;base64,SGk=' })
+    const [summary] = await r.listWorks()
+    expect(summary?.coverImage).toBe('data:image/jpeg;base64,SGk=')
+  })
+
   it('deleteWork → getWork=undefined・listWorks から消える', async () => {
     const r = repo()
     await r.saveWork(work('w1', 'A'))

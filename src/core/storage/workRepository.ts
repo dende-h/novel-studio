@@ -22,6 +22,8 @@ export interface WorkSummary {
   description?: string
   /** 最終更新時刻（未設定の旧データは undefined） */
   updatedAt?: number
+  /** 表紙画像の data URL（ライブラリカード表示用。未設定なら undefined） */
+  coverImage?: string
 }
 
 export class WorkRepository {
@@ -49,6 +51,7 @@ export class WorkRepository {
         author: parsed.author,
         description: parsed.description,
         updatedAt: parsed.updatedAt,
+        coverImage: parsed.coverImage,
       }
     })
   }

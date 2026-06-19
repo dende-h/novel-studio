@@ -183,7 +183,7 @@ export function SideNav({
                 />
                 <NavRow
                   icon={BookMarked}
-                  label="辞書"
+                  label="図鑑"
                   active={active === 'glossary'}
                   onClick={onNavigateGlossary}
                 />
@@ -252,7 +252,7 @@ export function SideNav({
             /* 空状態: 作品を開く前。グレーアウト兄弟を置き換える案内＋装飾プレビュー。 */
             <div className="px-2 pb-2">
               <p className="mb-3 text-on-surface-variant/70 text-xs leading-relaxed">
-                作品を開くとエピソードと辞書がここに表示されます。
+                作品を開くとエピソードと図鑑がここに表示されます。
               </p>
               <div aria-hidden="true" className="space-y-1 opacity-40">
                 <div className="flex items-center gap-3 rounded-md px-4 py-2 font-medium font-sans text-on-surface-variant text-sm">
@@ -261,7 +261,7 @@ export function SideNav({
                 </div>
                 <div className="flex items-center gap-3 rounded-md px-4 py-2 font-medium font-sans text-on-surface-variant text-sm">
                   <BookMarked className="size-5 shrink-0" />
-                  <span>辞書</span>
+                  <span>図鑑</span>
                 </div>
               </div>
             </div>

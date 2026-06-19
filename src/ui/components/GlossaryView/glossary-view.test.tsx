@@ -51,7 +51,7 @@ function setup(over: Partial<React.ComponentProps<typeof GlossaryView>> = {}) {
   return props
 }
 
-describe('GlossaryView（辞書一覧・検索・カテゴリ・CRUD）', () => {
+describe('GlossaryView（図鑑一覧・検索・カテゴリ・CRUD）', () => {
   it('項目名・概要・登場数を一覧表示する', () => {
     setup()
     expect(screen.getByRole('heading', { name: 'アリス' })).toBeInTheDocument()
@@ -63,7 +63,7 @@ describe('GlossaryView（辞書一覧・検索・カテゴリ・CRUD）', () => 
 
   it('検索は name・別名・読みに部分一致（body 等は対象外）', () => {
     setup()
-    fireEvent.change(screen.getByLabelText('辞書を検索'), { target: { value: 'ありす' } })
+    fireEvent.change(screen.getByLabelText('図鑑を検索'), { target: { value: 'ありす' } })
     expect(screen.getByRole('heading', { name: 'アリス' })).toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: '王都' })).toBeNull()
   })
@@ -125,6 +125,6 @@ describe('GlossaryView（辞書一覧・検索・カテゴリ・CRUD）', () => 
 
   it('項目が無い時は空状態を表示', () => {
     setup({ entries: [] })
-    expect(screen.getByText(/まだ辞書がありません/)).toBeInTheDocument()
+    expect(screen.getByText(/まだ図鑑がありません/)).toBeInTheDocument()
   })
 })

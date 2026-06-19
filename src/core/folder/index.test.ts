@@ -113,4 +113,17 @@ describe('folder（話ごとテキスト往復・外部Claude編集の橋）', (
     const block = restored.episodes[0]!.blocks[0]
     expect(block?.type === 'paragraph' && block.inlines[1]).toEqual({ type: 'ref', name: 'アリス' })
   })
+
+  it('GFD4: サムネ画像は manifest に出さない（肥大化防止・正本往復は bundle が担う）', () => {
+    const withThumb: Work = {
+      ...glossaryWork,
+      glossary: [{ ...glossaryWork.glossary![0]!, thumbnail: 'data:image/jpeg;base64,SGk=' }],
+    }
+    const manifest = workToFolder(withThumb).find((f) => f.path === 'manifest.json')!
+    expect(manifest.content).not.toContain('thumbnail')
+    expect(manifest.content).not.toContain('data:image')
+    // 画像以外のフィールドは保持する。
+    const parsed = JSON.parse(manifest.content)
+    expect(parsed.glossary[0].name).toBe('アリス')
+  })
 })

@@ -36,6 +36,8 @@ describe('WorkMetaDialog（作品メタ編集）', () => {
       title: '新題',
       author: '山田太郎',
       description: '物語の概要',
+      // 表紙未設定は空文字（= 変更なし／削除指示）として届く。
+      coverImage: '',
     })
     expect(onOpenChange).toHaveBeenCalledWith(false)
   })

@@ -67,6 +67,8 @@ export interface NewGlossaryEntry {
   reading?: string
   summary?: string
   body?: string
+  /** サムネ画像の data URL。空文字/未指定なら付与しない。 */
+  thumbnail?: string
 }
 
 /** 辞書 entry のフィールド更新パッチ（name は対象外＝renameGlossaryEntry を使う）。 */
@@ -76,6 +78,8 @@ export interface GlossaryFieldPatch {
   reading?: string
   summary?: string
   body?: string
+  /** サムネ画像の data URL。空文字 '' は削除（キーを落とす）、undefined は据え置き。 */
+  thumbnail?: string
 }
 
 /** 作品メタ編集の入力（指定したキーのみ上書き）。 */
@@ -83,6 +87,8 @@ export interface WorkMeta {
   title?: string
   author?: string
   description?: string
+  /** 表紙画像の data URL。空文字 '' は削除（キーを落とす）、undefined は据え置き。 */
+  coverImage?: string
 }
 
 export interface EditorStoreDeps {
@@ -295,7 +301,11 @@ export function createEditorStore({
     async updateWorkMeta(id, meta) {
       const existing = await repo.getWork(id)
       if (!existing) return
-      const work: Work = { ...existing, ...meta, updatedAt: now() }
+      // coverImage は空文字 '' を「削除」とする（undefined＝据え置きと区別するため別扱い）。
+      const { coverImage, ...rest } = meta
+      const work: Work = { ...existing, ...rest, updatedAt: now() }
+      if (coverImage === '') delete work.coverImage
+      else if (coverImage !== undefined) work.coverImage = coverImage
       await repo.saveWork(work)
       if (state.work?.id === id) set({ work })
       await refreshList()
@@ -324,6 +334,8 @@ export function createEditorStore({
         ...(input.reading !== undefined ? { reading: input.reading } : {}),
         ...(input.summary !== undefined ? { summary: input.summary } : {}),
         ...(input.body !== undefined ? { body: input.body } : {}),
+        // 空文字/未指定は付与しない（クイック作成・サムネ未設定の作成経路を許容）。
+        ...(input.thumbnail ? { thumbnail: input.thumbnail } : {}),
         createdAt: ts,
         updatedAt: ts,
       }
@@ -354,6 +366,8 @@ export function createEditorStore({
       }
       const ts = now()
       const updated: GlossaryEntry = { ...cur, ...patch, updatedAt: ts }
+      // thumbnail は空文字 '' を「削除」とする（undefined＝据え置きと区別）。
+      if (patch.thumbnail === '') delete updated.thumbnail
       const work: Work = {
         ...state.work,
         glossary: entries.map((e) => (e.id === id ? updated : e)),
