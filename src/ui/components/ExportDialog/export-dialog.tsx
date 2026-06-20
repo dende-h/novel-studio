@@ -1,7 +1,9 @@
-import { BookText, Braces, Download, Folder, Globe, Pencil } from 'lucide-react'
+import { BookText, Braces, Copy, Download, Folder, Globe, Pencil, Sparkles } from 'lucide-react'
 import { type ComponentType, useState } from 'react'
+import { workToPlainText } from '@/core/exporter/toPlainText'
 import type { Work } from '@/core/schema'
 import { cn } from '@/lib/utils'
+import { copyText } from '@/ui/_utils/clipboard'
 import { triggerDownload } from '@/ui/_utils/download'
 import {
   episodeKakuyomuExport,
@@ -20,7 +22,7 @@ import {
   DialogTitle,
 } from '@/ui/components/ui/dialog'
 
-type Format = 'epub' | 'web' | 'folder' | 'bundle'
+type Format = 'epub' | 'web' | 'folder' | 'bundle' | 'ai'
 type Platform = 'narou' | 'kakuyomu'
 
 interface ExportDialogProps {
@@ -66,6 +68,13 @@ const FORMATS: FormatDef[] = [
     needsWork: true,
   },
   {
+    key: 'ai',
+    icon: Sparkles,
+    title: 'AI へコピー',
+    desc: '本文をまとめて AI に読ませる用にコピー',
+    needsWork: true,
+  },
+  {
     key: 'bundle',
     icon: Braces,
     title: '構造化データ',
@@ -85,6 +94,7 @@ export function ExportDialog({
   const [format, setFormat] = useState<Format>('epub')
   const [platform, setPlatform] = useState<Platform>('narou')
   const [episodeId, setEpisodeId] = useState<string | null>(null)
+  const [copied, setCopied] = useState<'ok' | 'err' | null>(null)
 
   const episodes = work?.episodes ?? []
   const selectedEpisode = episodes.find((e) => e.id === episodeId) ?? episodes[0] ?? null
@@ -92,11 +102,21 @@ export function ExportDialog({
   const canExport =
     format === 'bundle'
       ? true
-      : format === 'web'
+      : format === 'web' || format === 'ai'
         ? Boolean(work) && episodes.length > 0
         : Boolean(work)
 
+  // ダイアログを閉じるときはコピー結果メッセージをリセット
+  const handleOpenChange = (next: boolean) => {
+    if (!next) setCopied(null)
+    onOpenChange(next)
+  }
+
   const handleExport = async () => {
+    if (format === 'ai') {
+      if (work) setCopied((await copyText(workToPlainText(work))) ? 'ok' : 'err')
+      return // コピーはダイアログを閉じず、結果メッセージを見せる
+    }
     if (format === 'bundle') {
       triggerDownload(worksBundleExport(await getAllWorks()))
     } else if (work) {
@@ -114,7 +134,7 @@ export function ExportDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="md:max-w-3xl lg:max-w-5xl gap-0 overflow-hidden p-0">
         <DialogHeader className="border-outline-variant/30 border-b px-6 py-4 text-left">
           <DialogTitle className="font-serif text-primary text-xl">
@@ -132,7 +152,10 @@ export function ExportDialog({
                 <button
                   key={key}
                   type="button"
-                  onClick={() => setFormat(key)}
+                  onClick={() => {
+                    setFormat(key)
+                    setCopied(null)
+                  }}
                   className={cn(
                     'flex items-start gap-3 rounded-md p-3 text-left font-sans transition-colors',
                     active
@@ -243,6 +266,33 @@ export function ExportDialog({
               </Section>
             )}
 
+            {format === 'ai' && (
+              <Section title="AI へコピー">
+                <div className="space-y-4">
+                  <Note>
+                    作品全体をプレーンテキストにまとめてクリップボードへコピーします。Claude や
+                    ChatGPT
+                    などに貼り付けて、感想・推敲・要約などを頼めます。ルビは「親文字（よみ）」、
+                    @参照は名前に展開されます。
+                  </Note>
+                  <p className="rounded-md border border-outline-variant/30 p-3 text-on-surface-variant text-xs leading-relaxed">
+                    ※ コピーした本文を AI
+                    サービスに貼ると、その提供元へ内容が送信されます。未公開原稿の扱いにご注意ください。
+                  </p>
+                  {copied === 'ok' && (
+                    <p className="text-primary text-sm">
+                      コピーしました。AI のチャットに貼り付けてください。
+                    </p>
+                  )}
+                  {copied === 'err' && (
+                    <p className="text-destructive text-sm">
+                      コピーに失敗しました。ブラウザの権限をご確認ください。
+                    </p>
+                  )}
+                </div>
+              </Section>
+            )}
+
             {format === 'bundle' && (
               <Section title="構造化データ（JSON）">
                 <Note>
@@ -254,12 +304,16 @@ export function ExportDialog({
         </div>
 
         <DialogFooter className="border-outline-variant/30 border-t px-6 py-4">
-          <Button variant="outline" onClick={() => onOpenChange(false)} className="text-primary">
+          <Button
+            variant="outline"
+            onClick={() => handleOpenChange(false)}
+            className="text-primary"
+          >
             キャンセル
           </Button>
           <Button onClick={handleExport} disabled={!canExport} className="gap-2">
-            <Download className="size-4" />
-            書き出し
+            {format === 'ai' ? <Copy className="size-4" /> : <Download className="size-4" />}
+            {format === 'ai' ? 'コピー' : '書き出し'}
           </Button>
         </DialogFooter>
       </DialogContent>
