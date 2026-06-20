@@ -20,6 +20,11 @@
 | 同期単位 | **Work 単位**（バンドル全体ではなく作品ごとに差分同期）。 |
 | 同期トリガ | **2点のみ**：ログイン時＝全 Work の双方向同期／自動保存時＝編集中 Work の push（pull しない）。手動「今すぐ同期」は任意の保険。 |
 | プラン境界 | **2段**：ゲスト（未登録・無料・ローカル無制限・同期なし）／会員（登録・有料・＋自動同期・複数端末・自動バックアップ）。詳細は §1.1。 |
+| 認証・課金 | **Clerk**（認証）＋ **Clerk Billing／裏 Stripe**（課金）。会員/プラン判定は Worker が **Clerk JWT** で検証。価格＝月額 ¥500／年額 ¥4,800。詳細は §5（D-SYNC-AUTH/PRICE）。 |
+| 容量・レート | **1 GB/user・25 MB/work・60 req/min/user**。超過は**同期だけ停止**（ローカルは無制限）。 |
+| 削除 | **ソフト削除＋ローカルゴミ箱30日**。同期は active/purge のみ、編集 vs 削除は LWW（編集勝ち＝復活）。 |
+| 画像同期 | 作品あたり **doc/media の2オブジェクト分割**、変わった側だけ送る（gzip→暗号化）。 |
+| テレメトリ | 当面 **Cloudflare Web Analytics のみ**（原稿/PII 非送信）。 |
 
 ## 1.1 アカウント・プラン境界と未ログイン時の挙動
 
@@ -41,7 +46,7 @@
 - **新規作成・編集・書き出し**：ゲスト・会員とも制限なし。
 
 ### 利用者数の把握
-会員＝課金者数は正確に分かるが、無料ゲストは匿名のため会員登録だけでは全体規模が見えない。全体を知るには匿名テレメトリが必要（§6 の未決・推奨方針あり）。
+会員＝課金者数は正確に分かるが、無料ゲストは匿名のため会員登録だけでは全体規模が見えない。全体像は **Cloudflare Web Analytics**（エッジ計測・Cookie レス・原稿/PII 非送信）で概数を取る（D-SYNC-TELEMETRY）。
 
 ## 1.2 有料クラウド束（cloud bundle）
 
@@ -71,27 +76,31 @@
 - 正本は従来どおり Work JSON（`repo.saveWork`）。
 - 各 Work の `updatedAt`（既存）を同期判定に流用。
 - 端末ごとに `lastSyncedAt`（最後にサーバと突き合わせた時刻）を保持。
+- 各 Work の**ローカル状態** active／trashed（ゴミ箱・ローカルのみ・起動時チェックで30日後に自動 purge）。trashed は同期しない（D-SYNC-TOMBSTONE）。
+- 同期スキップ用に、最後に送った **doc_hash / media_hash** をローカルに保持（変更検知・D-SYNC-MEDIA）。
 
 ### サーバ（Cloudflare 前提）
 - **D1**（メタ・同期判定の真実）：
   ```
-  works(user_id, work_id, updated_at, deleted, blob_key, size, synced_at)
+  works(user_id, work_id, updated_at, deleted,
+        doc_key, doc_hash, media_key, media_hash, size, synced_at)
     PRIMARY KEY (user_id, work_id)
+  sessions(user_id, session_token, rotated_at)   -- 単一アクティブ強制（新ログインで回転）
   ```
-- **R2**（本体）：Work JSON バンドルを at-rest 暗号化して格納（`blob_key` で参照）。
-- **サーバ**：Cloudflare Workers（Pages Functions）。認証トークンを検証し、Work 単位で出し入れ。
+- **R2**（本体）：Work を**2オブジェクト**で格納（D-SYNC-MEDIA）＝`doc`（テキスト/構造）＋`media`（画像 data URL 群）。各オブジェクトは **gzip → at-rest 暗号化**。変わった側だけ更新（`*_hash` 比較）。
+- **サーバ**：Cloudflare Workers（Pages Functions）。**Clerk JWT を検証**（会員/プラン判定込み・D-SYNC-AUTH/PRICE）し、Work 単位で doc/media を出し入れ。
 
 ## 3. 同期プロトコル
 
-1. **Push**：ローカルで `updatedAt > lastSyncedAt` の Work をアップロード（メタ＝D1、本体＝R2）。
-2. **Pull**：サーバ側で `updated_at` がローカルより新しい Work をダウンロードし、`importWorks`（既存）で反映。
+1. **Push**：`updatedAt > lastSyncedAt` の Work を対象に、**doc/media のうち hash が変わった側だけ** gzip→暗号化して R2 へ、メタを D1 へ（D-SYNC-MEDIA）。**trashed の Work は push しない**（D-SYNC-TOMBSTONE）。
+2. **Pull**：サーバ側で `updated_at` がローカルより新しい Work をダウンロードし、`importWorks`（既存）で反映。**削除の伝播**＝D1 `deleted=1` の Work はローカルを snapshot へ退避してから除去（編集 vs 削除は LWW・編集勝ち＝復活）。purge 時に R2 doc/media を削除し、サーバ tombstone は ~30 日保持して物理削除（D-SYNC-TOMBSTONE）。
 3. **競合（残余ケースのみ）**：単一セッション（§1）により同時編集は通常起きない。例外はオフライン編集中に別端末ログインされた取り残し（§3 末尾）。その場合は `updatedAt` の新しい方を採用し、**負けた方の Work をローカル snapshot（`snap:<workId>`・既存機構）へ退避**してから上書き＝丸ごと消失を防ぐ安全網。
 4. 完了後に `lastSyncedAt` を更新。
 
 ### トリガ（D-SYNC-TRIGGER）
 同期点は**2つだけ**。ユーザーは同期を意識しない:
 - **ログイン時＝全体の双方向同期**：全 Work を突き合わせ、サーバが新しいものを pull、ローカルに未送信（`updatedAt > lastSyncedAt`）があれば push。
-- **自動保存時＝編集中 Work の push**：既存の自動保存（`editorStore.save()`）にフックし、その作品だけをアップロード。**pull はしない**（編集中に他端末の変更を引っ張らない）。
+- **自動保存時＝編集中 Work の push**：既存の自動保存（`editorStore.save()`）にフックし、その作品の**変わった側（doc/media）だけ**をアップロード。連打を避けるため同一 Work は**最小 ~30 秒に coalesce**し、閉じる/画面遷移時に flush（D-SYNC-CAPACITY）。**pull はしない**（編集中に他端末の変更を引っ張らない）。
 - **オフライン**：push 失敗は無視してよい。未送信分は次のログイン/自動保存時に `updatedAt > lastSyncedAt` で自然に拾われる（専用の再送キューは持たない）。
 - **手動**：「今すぐ同期」ボタンは保険として任意。
 - ログアウト中は一切同期しない（optin 維持）。
@@ -123,15 +132,22 @@
 | **D-PLAN-LOCALDATA** | ローカルデータ主権。未ログインでも既存ローカル作品は全件閲覧/編集/書き出し可。プラン境界は「同期」にのみ適用。新規作成・編集・書き出し・ローカル保存は誰でも無制限・無料（隠さない・消さない）。 |
 | **D-PLAN-BUNDLE** | 有料は単一プランで「クラウド束」を提供（段を増やさない）。束＝同期（アンカー）／複数端末／自動バックアップ／AI・MCP アクセス／（将来）容量・クラウド版履歴。原則「サーバが要るもの＝有料、純ローカル＝無料」。書き出しは無料に残す。詳細は §1.2。 |
 | **D-PLAN-AI** | AI・MCP アクセスは有料クラウド束の一機能。形＝**read-only リモート MCP**（Streamable HTTP・同期インフラ上の認証付きエンドポイント・`list_works`/`get_work`/`get_glossary`）。**推論はユーザーの AI が行い我々は保存テキストを返すだけ**（自前 AI なし）。設定コピーで各自の AI に接続。常駐不要ゆえ Tauri を待たず同期と同時期に出せる（ローカル stdio MCP は Tauri 後段）。本文流出は opt-in＋明示表示。 |
+| **D-SYNC-AUTH** | マネージド認証＝**Clerk**。単一アクティブセッション強制は Clerk セッションに加え**自前 D1 のセッショントークン（新ログインで回転）**を併用し、Worker は **Clerk JWT を検証**。会員/プラン判定も同 JWT クレームで行う（D-SYNC-PRICE と一本化）。「サーバ最小」に対し、認証・課金の整合を自前で抱えない利得を優先。 |
+| **D-SYNC-TOMBSTONE** | 削除はソフト削除＋**ローカルゴミ箱30日**。状態＝active／trashed（ローカルのみ・**同期しない**・自動保存 push もしない）／purged。ゴミ箱は起動時チェックで30日後に自動 purge。同期対象は active と purge（削除）のみ：purge で D1 `deleted=1`＋R2 doc/media 削除。pull 側は削除を「ローカルを snapshot へ退避→除去」で適用。編集 vs 削除は LWW（編集が新しければ復活）。サーバ tombstone は purge 後 ~30 日保持して物理削除。 |
+| **D-SYNC-CAPACITY** | 1 GB/user・25 MB/work（blob）。クライアント push は同一 Work 最小 ~30 秒に coalesce（＋閉じる/画面遷移時に flush）。サーバ側レート上限 60 req/min/user。超過は**同期だけ停止**＝ローカルは無制限のまま（D-PLAN-LOCALDATA）。 |
+| **D-SYNC-MEDIA** | 同期表現を作品あたり **R2 2オブジェクトに分割**＝「本文オブジェクト（テキスト/構造）」＋「画像オブジェクト（data URL 群）」。**変わった側だけ**アップロード（hash 比較で未変更はスキップ）。暗号化**前に gzip**。画像単位の content-addressing/dedup は将来最適化。ローカルは方式A（Work JSON 相乗り・P1.1 画像）を維持。 |
+| **D-SYNC-PRICE** | 課金基盤＝**Clerk Billing（裏 Stripe）**。価格＝**月額 ¥500／年額 ¥4,800**（年は実質2ヶ月分お得）、トライアル無し。会員判定は Worker が検証する Clerk JWT クレームで行い、**Stripe ↔ 自前 D1 のサブスク状態同期は持たない**（D-SYNC-AUTH と同一線）。 |
+| **D-SYNC-TELEMETRY** | 当面 **Cloudflare Web Analytics のみ**（エッジ計測・Cookie レス・**原稿/PII は構造上非送信**）で利用者数の概数を取る。継続率/ファネルが要れば **PostHog を匿名・自ドメイン中継・無料枠**で後付け。不可侵＝原稿/タイトル/本文/辞書/PII は送らない。 |
 
-## 6. 未決事項（次に詰める）
+## 6. 旧・未決事項 → すべて §5 へ移動済み
 
-- [ ] **削除の伝播（tombstone）**：片端末の削除を pull 側へ伝える仕組み。D1 `deleted` フラグ＋保持期間。物理削除のタイミング。
-- [ ] **認証方式**：magic link / OAuth / passkey / email+password。「サーバ最小」哲学から外部 Auth（Supabase/Clerk 等）か magic link を優先検討。**要件＝単一アクティブセッション管理（新ログインで旧セッション無効化）ができること**（D-SYNC-SESSION）。
-- [ ] **価格と課金基盤**：プラン段は確定（D-PLAN-TIERS＝ゲスト無料／会員有料）。残るは価格・有料の同期容量上限・課金基盤（Stripe 等）。
-- [ ] **利用者数テレメトリ**：無料ゲストが匿名のため、全体規模は会員数だけでは見えない。【推奨】最小・匿名・**原稿内容は送らない**・オプトアウト可能なテレメトリ（インストール/DAU・アプリ版・ロケール程度）を入れて「未公開原稿はローカルのみ」哲学と両立させる。要否と最小項目を確定する。
-- [ ] **容量・レート制限**：1 ユーザーあたりの R2 容量上限、同期頻度の制限。
-- [ ] **画像（data URL）込みの同期サイズ**：表紙/図鑑サムネは Work JSON 相乗り（方式A）なので同期 blob が膨らむ。圧縮/分離の要否。
+2026-06 の grill で旧 §6 の6項目をすべて決定し §5 に移した：削除伝播＝**D-SYNC-TOMBSTONE**／認証方式＝**D-SYNC-AUTH**／価格・課金基盤＝**D-SYNC-PRICE**／利用者数テレメトリ＝**D-SYNC-TELEMETRY**／容量・レート＝**D-SYNC-CAPACITY**／画像込み同期サイズ＝**D-SYNC-MEDIA**。
+
+### 実装段階で詰める細部（仕様判断は不要）
+- **暗号化の具体**：at-rest 方式（AES-GCM 等）・鍵管理（Workers Secrets / KMS）・gzip との順序（gzip → 暗号化）。
+- **画像 dedup**：画像単位 content-addressing による端末間 dedup は将来最適化（まずは作品あたり doc/media 2分割で十分）。
+- **PostHog 導入**：必要になった時点での匿名設定・自ドメイン中継（リバースプロキシ）の配線。
+- **MCP 書き込み tool**：read-only の次段（§7）。
 
 ## 7. スコープ外（将来・本書では実装しない）
 
@@ -152,3 +168,8 @@
 - [ ] 会員が未ログイン（ログアウト/セッション切れ/別端末ログインの押し出し）で開いても、ローカルの全作品が見え・編集/書き出しでき、「同期停止中」バナーとログイン導線が出る。
 - [ ] ログイン状態は永続化され、再起動しても再ログインを求められない（ログアウトは明示的操作か別端末ログインの押し出しのみ）。
 - [ ] サーバに保存されたデータが at-rest 暗号化されている。
+- [ ] 一方の端末で作品を削除すると、もう一方で pull 後に消え、消える前の版が snapshot に退避されている（編集 vs 削除は編集が勝つ）。
+- [ ] ゴミ箱に入れた作品は30日間ローカルに残り（同期されず）、期間経過後に自動削除される。
+- [ ] 本文のみ編集して同期すると画像オブジェクトは再送されない（doc/media 分割・変更側のみ送信）。
+- [ ] 容量上限（1 GB/user・25 MB/work）超過時は同期だけが止まり、ローカルの執筆・書き出しは継続できる。
+- [ ] 課金（月額/年額）で会員になると同期が有効化し、解約/失効で「同期停止中」へ戻る（ローカルデータは保持）。
