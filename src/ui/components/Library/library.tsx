@@ -1,11 +1,13 @@
-import { Plus } from 'lucide-react'
+import { Plus, Upload } from 'lucide-react'
 import { useState } from 'react'
 import type { WorkSummary } from '@/core/storage/workRepository'
 import { AppShell } from '@/ui/components/AppShell/app-shell'
 import { ConfirmDialog } from '@/ui/components/ConfirmDialog/confirm-dialog'
 import { ExportDialog } from '@/ui/components/ExportDialog/export-dialog'
+import { ImportDialog } from '@/ui/components/ImportDialog/import-dialog'
 import { SideNav } from '@/ui/components/SideNav/side-nav'
 import { TitlePromptDialog } from '@/ui/components/TitlePromptDialog/title-prompt-dialog'
+import { Button } from '@/ui/components/ui/button'
 import { WorkMetaDialog } from '@/ui/components/WorkMetaDialog/work-meta-dialog'
 import { useEditorStore } from '@/ui/hooks/use-editor-store'
 import type { EditorStore } from '@/ui/store/editorStore'
@@ -22,6 +24,7 @@ export function Library({ store, onEnterEditor }: LibraryProps) {
   const state = useEditorStore(store)
   const [newOpen, setNewOpen] = useState(false)
   const [exportOpen, setExportOpen] = useState(false)
+  const [importOpen, setImportOpen] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<WorkSummary | null>(null)
   const [metaTarget, setMetaTarget] = useState<WorkSummary | null>(null)
   const now = Date.now()
@@ -58,6 +61,14 @@ export function Library({ store, onEnterEditor }: LibraryProps) {
               <h1 className="mb-1 font-serif text-4xl text-on-surface">マイライブラリ</h1>
               <p className="text-on-surface-variant">執筆中の原稿と下書き</p>
             </div>
+            <Button
+              variant="outline"
+              onClick={() => setImportOpen(true)}
+              className="gap-2 text-primary"
+            >
+              <Upload className="size-4" />
+              取り込み
+            </Button>
           </header>
 
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
@@ -105,6 +116,11 @@ export function Library({ store, onEnterEditor }: LibraryProps) {
         onOpenChange={setExportOpen}
         work={state.work}
         getAllWorks={() => store.getAllWorks()}
+      />
+      <ImportDialog
+        open={importOpen}
+        onOpenChange={setImportOpen}
+        onImport={(works) => store.importWorks(works)}
       />
       <WorkMetaDialog
         open={metaTarget !== null}
