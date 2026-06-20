@@ -4,7 +4,11 @@ import { MemoryStore } from '../../core/storage/memoryStore'
 import { WorkRepository } from '../../core/storage/workRepository'
 import { createEditorStore, type EditorStore } from './editorStore'
 
-const makeStore = (opts?: { now?: () => number; snapshotMinIntervalMs?: number }): EditorStore => {
+const makeStore = (opts?: {
+  now?: () => number
+  snapshotMinIntervalMs?: number
+  trashTtlMs?: number
+}): EditorStore => {
   let n = 0
   let clock = 0
   const store = new MemoryStore()
@@ -17,6 +21,8 @@ const makeStore = (opts?: { now?: () => number; snapshotMinIntervalMs?: number }
     now: opts?.now ?? (() => ++clock),
     // 既定 0：間隔判定で常に新版を積む（既存テストの挙動を維持）
     snapshotMinIntervalMs: opts?.snapshotMinIntervalMs ?? 0,
+    // 既定は十分大きく＝テスト中に勝手に期限切れ purge しない
+    trashTtlMs: opts?.trashTtlMs ?? Number.MAX_SAFE_INTEGER,
   })
 }
 
@@ -226,7 +232,7 @@ describe('editorStore（自前ストア・useSyncExternalStore 用）', () => {
     expect(store.getSnapshot().snapshots.length).toBeGreaterThan(0)
   })
 
-  it('deleteWork は作品と履歴を削除し、開いていれば状態をリセットする', async () => {
+  it('trashWork は active からゴミ箱へ移し、開いていれば状態をリセットする（履歴は保持）', async () => {
     await store.createWork('消す作')
     await store.createEpisode('話')
     store.setDraft('本文')
@@ -234,25 +240,85 @@ describe('editorStore（自前ストア・useSyncExternalStore 用）', () => {
     const id = store.getSnapshot().work?.id as string
     expect(store.getSnapshot().snapshots.length).toBeGreaterThan(0)
 
-    await store.deleteWork(id)
+    await store.trashWork(id)
     const s = store.getSnapshot()
     expect(s.workList.find((w) => w.id === id)).toBeUndefined()
+    expect(s.trashList.map((t) => t.id)).toContain(id)
     expect(s.work).toBeNull()
     expect(s.currentEpisodeId).toBeNull()
     expect(s.draft).toBe('')
     expect(s.snapshots).toEqual([])
-    // 履歴も永続層から消えている
-    await store.openWork(id) // 既に無いので何も起きない
+    // active としては開けない（ゴミ箱に居る）
+    await store.openWork(id)
     expect(store.getSnapshot().work).toBeNull()
   })
 
-  it('deleteWork は開いていない作品なら一覧から消すだけで現在の編集を保つ', async () => {
+  it('restoreWork はゴミ箱から active へ戻し、履歴も復元される', async () => {
+    await store.createWork('戻す作')
+    await store.createEpisode('話')
+    store.setDraft('本文')
+    await store.save()
+    const id = store.getSnapshot().work?.id as string
+
+    await store.trashWork(id)
+    await store.restoreWork(id)
+    const s = store.getSnapshot()
+    expect(s.workList.find((w) => w.id === id)?.title).toBe('戻す作')
+    expect(s.trashList).toEqual([])
+    // 履歴は捨てる時に消していないので、開き直すと残っている
+    await store.openWork(id)
+    expect(store.getSnapshot().snapshots.length).toBeGreaterThan(0)
+  })
+
+  it('purgeWork はゴミ箱の1件と履歴を完全削除する', async () => {
+    await store.createWork('完全削除作')
+    await store.createEpisode('話')
+    store.setDraft('本文')
+    await store.save()
+    const id = store.getSnapshot().work?.id as string
+
+    await store.trashWork(id)
+    await store.purgeWork(id)
+    const s = store.getSnapshot()
+    expect(s.trashList).toEqual([])
+    // 復元しようとしても戻らない
+    await store.restoreWork(id)
+    expect(store.getSnapshot().workList.find((w) => w.id === id)).toBeUndefined()
+  })
+
+  it('emptyTrash はゴミ箱を全件空にする', async () => {
+    await store.createWork('A')
+    const a = store.getSnapshot().work?.id as string
+    await store.createWork('B')
+    const b = store.getSnapshot().work?.id as string
+    await store.trashWork(a)
+    await store.trashWork(b)
+    expect(store.getSnapshot().trashList).toHaveLength(2)
+    await store.emptyTrash()
+    expect(store.getSnapshot().trashList).toEqual([])
+  })
+
+  it('init は保持期間を過ぎたゴミ箱項目を自動 purge する', async () => {
+    let t = 0
+    const s = makeStore({ now: () => t, trashTtlMs: 100 })
+    await s.createWork('古い作')
+    const id = s.getSnapshot().work?.id as string
+    t = 10
+    await s.trashWork(id) // trashedAt=10
+    expect(s.getSnapshot().trashList.map((x) => x.id)).toEqual([id])
+    t = 200 // 10+100 <= 200 → 期限切れ
+    await s.init()
+    expect(s.getSnapshot().trashList).toEqual([])
+  })
+
+  it('trashWork は開いていない作品ならゴミ箱へ移すだけで現在の編集を保つ', async () => {
     await store.createWork('残す作')
     const keepId = store.getSnapshot().work?.id as string
     await store.createWork('消す作') // これが開いている
-    await store.deleteWork(keepId)
+    await store.trashWork(keepId)
     const s = store.getSnapshot()
     expect(s.workList.find((w) => w.id === keepId)).toBeUndefined()
+    expect(s.trashList.map((t) => t.id)).toContain(keepId)
     expect(s.work?.title).toBe('消す作')
   })
 

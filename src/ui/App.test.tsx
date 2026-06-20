@@ -17,6 +17,7 @@ const makeStore = (kv: KeyValueStore = new MemoryStore()): EditorStore => {
     genId: () => `id${++n}`,
     now: () => Date.now(),
     snapshotMinIntervalMs: 0,
+    trashTtlMs: Number.MAX_SAFE_INTEGER,
   })
 }
 

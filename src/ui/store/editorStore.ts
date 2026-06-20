@@ -4,7 +4,7 @@ import { parseEpisodeBody } from '../../core/parser/parseNotation'
 import type { Episode, GlossaryEntry, Work } from '../../core/schema'
 import type { Snapshot } from '../../core/snapshot'
 import type { SnapshotRepository } from '../../core/snapshot/snapshotRepository'
-import type { WorkRepository, WorkSummary } from '../../core/storage/workRepository'
+import type { TrashSummary, WorkRepository, WorkSummary } from '../../core/storage/workRepository'
 
 /**
  * 執筆エディタの自前最小ストア（useSyncExternalStore 用）。
@@ -25,6 +25,8 @@ export interface EditorState {
   status: SaveStatus
   /** 現在の作品のスナップショット履歴（新しい順） */
   snapshots: Snapshot[]
+  /** ゴミ箱の作品一覧（退避時刻つき・新しい順） */
+  trashList: TrashSummary[]
 }
 
 export interface EditorStore {
@@ -39,8 +41,14 @@ export interface EditorStore {
   save(): Promise<void>
   /** 履歴の版を現在話の下書きへ復元する（保存はユーザー操作に委ねる＝非破壊） */
   restoreSnapshot(snapshotId: string): void
-  /** 作品を削除（履歴も削除）。開いている作品なら状態をリセットする。 */
-  deleteWork(id: string): Promise<void>
+  /** 作品をゴミ箱へ移す（30日後に自動削除）。履歴は復元のため保持。開いている作品なら状態をリセット。 */
+  trashWork(id: string): Promise<void>
+  /** ゴミ箱から作品を復元する（active へ戻す）。 */
+  restoreWork(id: string): Promise<void>
+  /** ゴミ箱の1件を完全に削除する（履歴も削除・不可逆）。 */
+  purgeWork(id: string): Promise<void>
+  /** ゴミ箱を空にする（全件を完全削除・不可逆）。 */
+  emptyTrash(): Promise<void>
   /** 現在の作品から話を削除。現在話なら別の話（無ければ無し）へ切り替える。 */
   deleteEpisode(episodeId: string): Promise<void>
   /** 現在の作品の話タイトルを変更して永続化する（空文字・無変更は無視・本文は不変）。 */
@@ -98,6 +106,8 @@ export interface EditorStoreDeps {
   now: () => number
   /** 履歴の集約間隔(ms)。連続編集中はこの間隔内の保存を最新版へ合体し、版の氾濫を防ぐ。 */
   snapshotMinIntervalMs: number
+  /** ゴミ箱の保持期間(ms)。init() でこれを過ぎた退避作品を自動 purge する。 */
+  trashTtlMs: number
 }
 
 const INITIAL: EditorState = {
@@ -108,6 +118,7 @@ const INITIAL: EditorState = {
   dirty: false,
   status: 'idle',
   snapshots: [],
+  trashList: [],
 }
 
 const currentEpisode = (s: EditorState): Episode | undefined =>
@@ -119,6 +130,7 @@ export function createEditorStore({
   genId,
   now,
   snapshotMinIntervalMs,
+  trashTtlMs,
 }: EditorStoreDeps): EditorStore {
   let state: EditorState = INITIAL
   const listeners = new Set<() => void>()
@@ -135,6 +147,13 @@ export function createEditorStore({
     set({ workList: await repo.listWorks() })
   }
 
+  const refreshTrash = async () => {
+    const trash = await repo.listTrash()
+    // 退避時刻の新しい順（最近捨てたものが上）
+    trash.sort((a, b) => b.trashedAt - a.trashedAt)
+    set({ trashList: trash })
+  }
+
   return {
     getSnapshot: () => state,
 
@@ -146,7 +165,11 @@ export function createEditorStore({
     },
 
     async init() {
+      // 起動時にゴミ箱の期限切れ（30日超）を自動 purge し、履歴も掃除する。
+      const purged = await repo.purgeExpiredTrash(now(), trashTtlMs)
+      for (const id of purged) await snapshotRepo.clear(id)
       await refreshList()
+      await refreshTrash()
     },
 
     async createWork(title) {
@@ -241,9 +264,9 @@ export function createEditorStore({
       })
     },
 
-    async deleteWork(id) {
-      await repo.deleteWork(id)
-      await snapshotRepo.clear(id)
+    async trashWork(id) {
+      // ソフト削除：履歴（snap:<id>）は復元のため残し、本体だけ trash 名前空間へ退避。
+      await repo.trashWork(id, now())
       const workList = await repo.listWorks()
       if (state.work?.id === id) {
         set({
@@ -258,6 +281,27 @@ export function createEditorStore({
       } else {
         set({ workList })
       }
+      await refreshTrash()
+    },
+
+    async restoreWork(id) {
+      await repo.restoreWork(id)
+      await refreshList()
+      await refreshTrash()
+    },
+
+    async purgeWork(id) {
+      await repo.purgeTrashedWork(id)
+      await snapshotRepo.clear(id)
+      await refreshTrash()
+    },
+
+    async emptyTrash() {
+      for (const t of state.trashList) {
+        await repo.purgeTrashedWork(t.id)
+        await snapshotRepo.clear(t.id)
+      }
+      await refreshTrash()
     },
 
     async deleteEpisode(episodeId) {

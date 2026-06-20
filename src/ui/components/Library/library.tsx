@@ -1,4 +1,4 @@
-import { Plus, Upload } from 'lucide-react'
+import { Plus, Trash2, Upload } from 'lucide-react'
 import { useState } from 'react'
 import type { WorkSummary } from '@/core/storage/workRepository'
 import { AppShell } from '@/ui/components/AppShell/app-shell'
@@ -7,9 +7,11 @@ import { ExportDialog } from '@/ui/components/ExportDialog/export-dialog'
 import { ImportDialog } from '@/ui/components/ImportDialog/import-dialog'
 import { SideNav } from '@/ui/components/SideNav/side-nav'
 import { TitlePromptDialog } from '@/ui/components/TitlePromptDialog/title-prompt-dialog'
+import { TrashDialog } from '@/ui/components/TrashDialog/trash-dialog'
 import { Button } from '@/ui/components/ui/button'
 import { WorkMetaDialog } from '@/ui/components/WorkMetaDialog/work-meta-dialog'
 import { useEditorStore } from '@/ui/hooks/use-editor-store'
+import { TRASH_TTL_MS } from '@/ui/store/createDefaultStore'
 import type { EditorStore } from '@/ui/store/editorStore'
 import { ProjectCard } from './project-card'
 
@@ -25,6 +27,7 @@ export function Library({ store, onEnterEditor }: LibraryProps) {
   const [newOpen, setNewOpen] = useState(false)
   const [exportOpen, setExportOpen] = useState(false)
   const [importOpen, setImportOpen] = useState(false)
+  const [trashOpen, setTrashOpen] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<WorkSummary | null>(null)
   const [metaTarget, setMetaTarget] = useState<WorkSummary | null>(null)
   const now = Date.now()
@@ -61,14 +64,29 @@ export function Library({ store, onEnterEditor }: LibraryProps) {
               <h1 className="mb-1 font-serif text-4xl text-on-surface">マイライブラリ</h1>
               <p className="text-on-surface-variant">執筆中の原稿と下書き</p>
             </div>
-            <Button
-              variant="outline"
-              onClick={() => setImportOpen(true)}
-              className="gap-2 text-primary"
-            >
-              <Upload className="size-4" />
-              取り込み
-            </Button>
+            <div className="flex items-center gap-2">
+              {state.trashList.length > 0 && (
+                <Button
+                  variant="ghost"
+                  onClick={() => setTrashOpen(true)}
+                  className="gap-2 text-on-surface-variant"
+                >
+                  <Trash2 className="size-4" />
+                  ゴミ箱
+                  <span className="rounded-full bg-surface-container-highest px-1.5 text-xs">
+                    {state.trashList.length}
+                  </span>
+                </Button>
+              )}
+              <Button
+                variant="outline"
+                onClick={() => setImportOpen(true)}
+                className="gap-2 text-primary"
+              >
+                <Upload className="size-4" />
+                取り込み
+              </Button>
+            </div>
           </header>
 
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
@@ -141,16 +159,27 @@ export function Library({ store, onEnterEditor }: LibraryProps) {
         onOpenChange={(o) => {
           if (!o) setDeleteTarget(null)
         }}
-        title="作品を削除しますか？"
+        title="作品をゴミ箱へ移動しますか？"
         description={
           deleteTarget
-            ? `「${deleteTarget.title}」と全ての話・履歴が削除されます。この操作は取り消せません。`
+            ? `「${deleteTarget.title}」をゴミ箱へ移動します。30日後に自動的に削除されますが、それまでは元に戻せます。`
             : undefined
         }
-        confirmLabel="削除する"
+        confirmLabel="ゴミ箱へ移動"
+        destructive={false}
         onConfirm={() => {
-          if (deleteTarget) void store.deleteWork(deleteTarget.id)
+          if (deleteTarget) void store.trashWork(deleteTarget.id)
         }}
+      />
+      <TrashDialog
+        open={trashOpen}
+        onOpenChange={setTrashOpen}
+        trash={state.trashList}
+        now={now}
+        ttlMs={TRASH_TTL_MS}
+        onRestore={(id) => void store.restoreWork(id)}
+        onPurge={(id) => void store.purgeWork(id)}
+        onEmpty={() => void store.emptyTrash()}
       />
     </AppShell>
   )

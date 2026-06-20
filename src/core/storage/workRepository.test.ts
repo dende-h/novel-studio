@@ -77,3 +77,60 @@ describe('WorkRepository（対 MemoryStore）', () => {
     expect(await r.getWork('w1')).toEqual(w)
   })
 })
+
+describe('WorkRepository ゴミ箱（trash）', () => {
+  it('trashWork → active から消え、ゴミ箱一覧に退避時刻つきで現れる', async () => {
+    const r = repo()
+    await r.saveWork(work('w1', 'A'))
+    await r.trashWork('w1', 1000)
+    expect(await r.getWork('w1')).toBeUndefined()
+    expect(await r.listWorks()).toEqual([])
+    const trash = await r.listTrash()
+    expect(trash).toEqual([
+      { id: 'w1', title: 'A', episodeCount: 1, charCount: 2, trashedAt: 1000 },
+    ])
+  })
+
+  it('trashWork（存在しない id）は no-op', async () => {
+    const r = repo()
+    await r.trashWork('nope', 1000)
+    expect(await r.listTrash()).toEqual([])
+  })
+
+  it('restoreWork → active へ戻りゴミ箱から消える（本体は無損失）', async () => {
+    const r = repo()
+    const w = work('w1', 'A')
+    await r.saveWork(w)
+    await r.trashWork('w1', 1000)
+    const restored = await r.restoreWork('w1')
+    expect(restored).toEqual(w)
+    expect(await r.getWork('w1')).toEqual(w)
+    expect(await r.listTrash()).toEqual([])
+  })
+
+  it('restoreWork（ゴミ箱に無い id）は undefined', async () => {
+    expect(await repo().restoreWork('nope')).toBeUndefined()
+  })
+
+  it('purgeTrashedWork → ゴミ箱から完全に消える（active には戻らない）', async () => {
+    const r = repo()
+    await r.saveWork(work('w1', 'A'))
+    await r.trashWork('w1', 1000)
+    await r.purgeTrashedWork('w1')
+    expect(await r.listTrash()).toEqual([])
+    expect(await r.getWork('w1')).toBeUndefined()
+  })
+
+  it('purgeExpiredTrash は trashedAt+ttl<=now のみ削除し、削除した id を返す', async () => {
+    const r = repo()
+    await r.saveWork(work('old', 'O'))
+    await r.saveWork(work('new', 'N'))
+    await r.trashWork('old', 0)
+    await r.trashWork('new', 1000)
+    const ttl = 100
+    // now=200 → old(0+100<=200)は期限切れ、new(1000+100>200)は残る
+    const purged = await r.purgeExpiredTrash(200, ttl)
+    expect(purged).toEqual(['old'])
+    expect((await r.listTrash()).map((t) => t.id)).toEqual(['new'])
+  })
+})
