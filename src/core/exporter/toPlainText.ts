@@ -1,4 +1,4 @@
-import type { Block, Inline, Work } from '../schema'
+import type { Block, GlossaryEntry, Inline, Work } from '../schema'
 
 /**
  * 正本 → AI が読める / コピーできるプレーンテキスト。
@@ -50,4 +50,30 @@ export function workToPlainText(work: Work): string {
     sections.push(`## ${ep.title}\n\n${blocksToPlainText(ep.blocks)}`)
   }
   return sections.join('\n\n')
+}
+
+/** 図鑑1項目 → 見出し＋メタ（分類/よみ/別名）＋要約＋本文。画像・内部 id/時刻は持ち込まない。 */
+function entryToPlainText(entry: GlossaryEntry): string {
+  const meta: string[] = []
+  if (entry.category) meta.push(`分類: ${entry.category}`)
+  if (entry.reading) meta.push(`よみ: ${entry.reading}`)
+  if (entry.aliases.length > 0) meta.push(`別名: ${entry.aliases.join(', ')}`)
+
+  const head = [`## ${entry.name}`]
+  if (meta.length > 0) head.push(meta.join(' ・ '))
+
+  const blocks = [head.join('\n')]
+  if (entry.summary) blocks.push(entry.summary)
+  if (entry.body) blocks.push(entry.body)
+  return blocks.join('\n\n')
+}
+
+/**
+ * 図鑑（オブジェクト辞書）→ AI が読める1ドキュメント。
+ * read-only リモート MCP の `get_glossary` ペイロード、および「図鑑も一緒にコピー」導線の共通土台。
+ * 入力の並び順を保つ（並べ替えは呼び出し側の責務）。空なら空文字。
+ */
+export function glossaryToPlainText(glossary: GlossaryEntry[]): string {
+  if (glossary.length === 0) return ''
+  return ['# 図鑑', ...glossary.map(entryToPlainText)].join('\n\n')
 }

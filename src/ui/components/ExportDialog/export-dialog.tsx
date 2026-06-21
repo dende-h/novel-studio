@@ -1,6 +1,6 @@
 import { BookText, Braces, Copy, Download, Folder, Globe, Pencil, Sparkles } from 'lucide-react'
-import { type ComponentType, useState } from 'react'
-import { workToPlainText } from '@/core/exporter/toPlainText'
+import { type ComponentType, useId, useState } from 'react'
+import { glossaryToPlainText, workToPlainText } from '@/core/exporter/toPlainText'
 import type { Work } from '@/core/schema'
 import { cn } from '@/lib/utils'
 import { copyText } from '@/ui/_utils/clipboard'
@@ -21,6 +21,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/ui/components/ui/dialog'
+import { Label } from '@/ui/components/ui/label'
+import { Switch } from '@/ui/components/ui/switch'
 
 type Format = 'epub' | 'web' | 'folder' | 'bundle' | 'ai'
 type Platform = 'narou' | 'kakuyomu'
@@ -95,6 +97,9 @@ export function ExportDialog({
   const [platform, setPlatform] = useState<Platform>('narou')
   const [episodeId, setEpisodeId] = useState<string | null>(null)
   const [copied, setCopied] = useState<'ok' | 'err' | null>(null)
+  const [includeGlossary, setIncludeGlossary] = useState(false)
+  const glossaryToggleId = useId()
+  const glossaryCount = work?.glossary?.length ?? 0
 
   const episodes = work?.episodes ?? []
   const selectedEpisode = episodes.find((e) => e.id === episodeId) ?? episodes[0] ?? null
@@ -114,7 +119,14 @@ export function ExportDialog({
 
   const handleExport = async () => {
     if (format === 'ai') {
-      if (work) setCopied((await copyText(workToPlainText(work))) ? 'ok' : 'err')
+      if (work) {
+        const glossary = work.glossary ?? []
+        const text =
+          includeGlossary && glossary.length > 0
+            ? `${workToPlainText(work)}\n\n${glossaryToPlainText(glossary)}`
+            : workToPlainText(work)
+        setCopied((await copyText(text)) ? 'ok' : 'err')
+      }
       return // コピーはダイアログを閉じず、結果メッセージを見せる
     }
     if (format === 'bundle') {
@@ -275,6 +287,24 @@ export function ExportDialog({
                     などに貼り付けて、感想・推敲・要約などを頼めます。ルビは「親文字（よみ）」、
                     @参照は名前に展開されます。
                   </Note>
+                  {glossaryCount > 0 && (
+                    <div className="flex items-center justify-between gap-3 rounded-md border border-outline-variant/30 p-3">
+                      <Label
+                        htmlFor={glossaryToggleId}
+                        className="font-normal text-on-surface text-sm"
+                      >
+                        登録した図鑑も一緒にコピー
+                        <span className="mt-0.5 block text-on-surface-variant text-xs">
+                          人物・用語などの設定（{glossaryCount} 件）を本文の後ろに付けます。
+                        </span>
+                      </Label>
+                      <Switch
+                        id={glossaryToggleId}
+                        checked={includeGlossary}
+                        onCheckedChange={setIncludeGlossary}
+                      />
+                    </div>
+                  )}
                   <p className="rounded-md border border-outline-variant/30 p-3 text-on-surface-variant text-xs leading-relaxed">
                     ※ コピーした本文を AI
                     サービスに貼ると、その提供元へ内容が送信されます。未公開原稿の扱いにご注意ください。
