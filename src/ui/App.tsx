@@ -256,7 +256,6 @@ export function App({ store, onExit }: AppProps) {
         open={exportOpen}
         onOpenChange={setExportOpen}
         work={state.work}
-        getAllWorks={() => store.getAllWorks()}
         onEditMeta={
           work
             ? () => {

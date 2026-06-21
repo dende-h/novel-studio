@@ -1,7 +1,10 @@
-import { Plus, Trash2, Upload } from 'lucide-react'
+import { Database, Plus, Trash2, Upload } from 'lucide-react'
 import { useState } from 'react'
 import type { WorkSummary } from '@/core/storage/workRepository'
+import { triggerDownload } from '@/ui/_utils/download'
+import { worksBundleExport } from '@/ui/_utils/exporters'
 import { AppShell } from '@/ui/components/AppShell/app-shell'
+import { BackupDialog } from '@/ui/components/BackupDialog/backup-dialog'
 import { ConfirmDialog } from '@/ui/components/ConfirmDialog/confirm-dialog'
 import { ExportDialog } from '@/ui/components/ExportDialog/export-dialog'
 import { ImportDialog } from '@/ui/components/ImportDialog/import-dialog'
@@ -27,6 +30,7 @@ export function Library({ store, onEnterEditor }: LibraryProps) {
   const [newOpen, setNewOpen] = useState(false)
   const [exportOpen, setExportOpen] = useState(false)
   const [importOpen, setImportOpen] = useState(false)
+  const [backupOpen, setBackupOpen] = useState(false)
   const [trashOpen, setTrashOpen] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<WorkSummary | null>(null)
   const [metaTarget, setMetaTarget] = useState<WorkSummary | null>(null)
@@ -76,6 +80,16 @@ export function Library({ store, onEnterEditor }: LibraryProps) {
                   <span className="rounded-full bg-surface-container-highest px-1.5 text-xs">
                     {state.trashList.length}
                   </span>
+                </Button>
+              )}
+              {state.workList.length > 0 && (
+                <Button
+                  variant="outline"
+                  onClick={() => setBackupOpen(true)}
+                  className="gap-2 text-primary"
+                >
+                  <Database className="size-4" />
+                  バックアップ
                 </Button>
               )}
               <Button
@@ -129,11 +143,12 @@ export function Library({ store, onEnterEditor }: LibraryProps) {
         submitLabel="作成して書き始める"
         onSubmit={(title) => void handleCreate(title)}
       />
-      <ExportDialog
-        open={exportOpen}
-        onOpenChange={setExportOpen}
-        work={state.work}
-        getAllWorks={() => store.getAllWorks()}
+      <ExportDialog open={exportOpen} onOpenChange={setExportOpen} work={state.work} />
+      <BackupDialog
+        open={backupOpen}
+        onOpenChange={setBackupOpen}
+        workCount={state.workList.length}
+        onExport={async () => triggerDownload(worksBundleExport(await store.getAllWorks()))}
       />
       <ImportDialog
         open={importOpen}

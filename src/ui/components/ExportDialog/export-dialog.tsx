@@ -1,4 +1,4 @@
-import { BookText, Braces, Copy, Download, Folder, Globe, Pencil, Sparkles } from 'lucide-react'
+import { BookText, Copy, Download, Folder, Globe, Pencil, Sparkles } from 'lucide-react'
 import { type ComponentType, useId, useState } from 'react'
 import { glossaryToPlainText, workToPlainText } from '@/core/exporter/toPlainText'
 import type { Work } from '@/core/schema'
@@ -10,7 +10,6 @@ import {
   episodeNarouExport,
   workEpubExport,
   workFolderZipExport,
-  worksBundleExport,
 } from '@/ui/_utils/exporters'
 import { Button } from '@/ui/components/ui/button'
 import {
@@ -24,7 +23,7 @@ import {
 import { Label } from '@/ui/components/ui/label'
 import { Switch } from '@/ui/components/ui/switch'
 
-type Format = 'epub' | 'web' | 'folder' | 'bundle' | 'ai'
+type Format = 'epub' | 'web' | 'folder' | 'ai'
 type Platform = 'narou' | 'kakuyomu'
 
 interface ExportDialogProps {
@@ -32,8 +31,6 @@ interface ExportDialogProps {
   onOpenChange: (open: boolean) => void
   /** 書き出し対象。エディタは現在の作品、ライブラリは選択カードの作品。 */
   work: Work | null
-  /** バンドル（全作品）用 */
-  getAllWorks: () => Promise<Work[]>
   /** EPUB メタ情報を編集（指定時のみ「作品情報を編集」を表示） */
   onEditMeta?: () => void
 }
@@ -43,8 +40,6 @@ interface FormatDef {
   icon: ComponentType<{ className?: string }>
   title: string
   desc: string
-  /** バンドル以外は作品が必要 */
-  needsWork: boolean
 }
 
 const FORMATS: FormatDef[] = [
@@ -53,46 +48,29 @@ const FORMATS: FormatDef[] = [
     icon: BookText,
     title: 'EPUB / 電子書籍',
     desc: '縦書き対応の電子書籍標準フォーマット',
-    needsWork: true,
   },
   {
     key: 'web',
     icon: Globe,
     title: 'Web投稿形式',
     desc: '「なろう」「カクヨム」などの投稿用記法',
-    needsWork: true,
   },
   {
     key: 'folder',
     icon: Folder,
     title: 'フォルダ(ZIP)',
     desc: '話ごとのテキストをまとめて書き出し',
-    needsWork: true,
   },
   {
     key: 'ai',
     icon: Sparkles,
     title: 'AI へコピー',
     desc: '本文をまとめて AI に読ませる用にコピー',
-    needsWork: true,
-  },
-  {
-    key: 'bundle',
-    icon: Braces,
-    title: '構造化データ',
-    desc: 'バックアップ用の JSON データ一括出力',
-    needsWork: false,
   },
 ]
 
 /** 書き出しモーダル。左に形式、右に設定。core の各 exporter を配線する。 */
-export function ExportDialog({
-  open,
-  onOpenChange,
-  work,
-  getAllWorks,
-  onEditMeta,
-}: ExportDialogProps) {
+export function ExportDialog({ open, onOpenChange, work, onEditMeta }: ExportDialogProps) {
   const [format, setFormat] = useState<Format>('epub')
   const [platform, setPlatform] = useState<Platform>('narou')
   const [episodeId, setEpisodeId] = useState<string | null>(null)
@@ -105,11 +83,7 @@ export function ExportDialog({
   const selectedEpisode = episodes.find((e) => e.id === episodeId) ?? episodes[0] ?? null
 
   const canExport =
-    format === 'bundle'
-      ? true
-      : format === 'web' || format === 'ai'
-        ? Boolean(work) && episodes.length > 0
-        : Boolean(work)
+    format === 'web' || format === 'ai' ? Boolean(work) && episodes.length > 0 : Boolean(work)
 
   // ダイアログを閉じるときはコピー結果メッセージをリセット
   const handleOpenChange = (next: boolean) => {
@@ -129,9 +103,7 @@ export function ExportDialog({
       }
       return // コピーはダイアログを閉じず、結果メッセージを見せる
     }
-    if (format === 'bundle') {
-      triggerDownload(worksBundleExport(await getAllWorks()))
-    } else if (work) {
+    if (work) {
       if (format === 'epub') triggerDownload(workEpubExport(work))
       else if (format === 'folder') triggerDownload(workFolderZipExport(work))
       else if (format === 'web' && selectedEpisode) {
@@ -152,7 +124,7 @@ export function ExportDialog({
           <DialogTitle className="font-serif text-primary text-xl">
             プロジェクトの書き出し
           </DialogTitle>
-          <DialogDescription>{work ? work.title : '全作品のバックアップ'}</DialogDescription>
+          <DialogDescription>{work?.title ?? 'プロジェクト'}</DialogDescription>
         </DialogHeader>
 
         <div className="flex min-h-[360px] flex-col md:flex-row">
@@ -320,14 +292,6 @@ export function ExportDialog({
                     </p>
                   )}
                 </div>
-              </Section>
-            )}
-
-            {format === 'bundle' && (
-              <Section title="構造化データ（JSON）">
-                <Note>
-                  すべての作品を 1つの JSON にまとめてバックアップします。取り込みで復元できます。
-                </Note>
               </Section>
             )}
           </div>

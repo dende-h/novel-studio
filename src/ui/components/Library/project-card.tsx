@@ -38,14 +38,6 @@ export function ProjectCard({
   return (
     <Card className="min-h-[220px] justify-between gap-4 transition-colors hover:bg-surface-container-low">
       <CardHeader>
-        {coverImage ? (
-          <ZoomableImage
-            src={coverImage}
-            alt="表紙"
-            className="h-24 w-auto max-w-[5rem] rounded-md border border-outline-variant/20 object-contain"
-            wrapperClassName="mb-2"
-          />
-        ) : null}
         <CardTitle className="font-serif text-on-surface text-xl">{title}</CardTitle>
         <CardAction>
           <Badge variant="secondary" className="font-sans uppercase tracking-wider">
@@ -56,7 +48,15 @@ export function ProjectCard({
           {updatedAt ? `${formatRelative(updatedAt, now)}に編集` : '未保存'}
         </CardDescription>
       </CardHeader>
-      <CardContent>
+      <CardContent className="flex flex-col gap-3">
+        {coverImage ? (
+          <ZoomableImage
+            src={coverImage}
+            alt="表紙"
+            className="h-40 w-auto max-w-full rounded-md border border-outline-variant/20 object-contain"
+            wrapperClassName="mx-auto"
+          />
+        ) : null}
         <div className="font-sans text-on-surface-variant text-sm">
           {author ? <span className="mr-3">著者: {author}</span> : null}
           {formatCount(charCount)} 文字
@@ -65,9 +65,8 @@ export function ProjectCard({
       <CardFooter className="mt-auto items-center justify-between border-outline-variant/20 border-t pt-4">
         <Button
           variant="ghost"
-          size="sm"
           onClick={onWrite}
-          className="gap-2 px-2 text-primary hover:text-primary"
+          className="gap-2 bg-primary/10 font-medium text-primary hover:bg-primary/15 hover:text-primary"
         >
           <PenLine className="size-4" />
           執筆
@@ -84,12 +83,13 @@ export function ProjectCard({
           </Button>
           <Button
             variant="ghost"
-            size="icon"
+            size="sm"
             onClick={onEditMeta}
             aria-label="情報を編集"
-            className="text-on-surface-variant hover:text-primary"
+            className="gap-2 px-2 text-on-surface-variant hover:text-primary"
           >
             <Pencil className="size-4" />
+            情報
           </Button>
           <Button
             variant="ghost"
