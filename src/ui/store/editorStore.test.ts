@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest'
+import { ProfileRepository } from '../../core/profile'
 import { SnapshotRepository } from '../../core/snapshot/snapshotRepository'
 import { MemoryStore } from '../../core/storage/memoryStore'
 import { WorkRepository } from '../../core/storage/workRepository'
@@ -14,9 +15,11 @@ const makeStore = (opts?: {
   const store = new MemoryStore()
   const repo = new WorkRepository(store)
   const snapshotRepo = new SnapshotRepository(store)
+  const profileRepo = new ProfileRepository(store)
   return createEditorStore({
     repo,
     snapshotRepo,
+    profileRepo,
     genId: () => `id${++n}`,
     now: opts?.now ?? (() => ++clock),
     // 既定 0：間隔判定で常に新版を積む（既存テストの挙動を維持）
@@ -57,6 +60,55 @@ describe('editorStore（自前ストア・useSyncExternalStore 用）', () => {
     expect(s.workList).toEqual([
       { id: 'id1', title: '新作', episodeCount: 0, charCount: 0, updatedAt: expect.any(Number) },
     ])
+  })
+
+  it('workList は updatedAt の新しい順（降順）に並ぶ', async () => {
+    await store.createWork('古い作')
+    await store.createWork('新しい作')
+    const titles = store.getSnapshot().workList.map((w) => w.title)
+    expect(titles).toEqual(['新しい作', '古い作'])
+  })
+
+  describe('プロフィール（ペンネーム・アバター）', () => {
+    it('updateProfile は state へ反映し、空文字は未設定として落とす', async () => {
+      await store.updateProfile({ penName: '  夢野久作  ', avatar: 'data:image/jpeg;base64,AA' })
+      expect(store.getSnapshot().profile).toEqual({
+        penName: '夢野久作',
+        avatar: 'data:image/jpeg;base64,AA',
+      })
+
+      await store.updateProfile({ penName: '夢野久作', avatar: '' })
+      expect(store.getSnapshot().profile).toEqual({ penName: '夢野久作' })
+    })
+
+    it('init はプロフィールを読み込む（別ストアで同一 MemoryStore を共有）', async () => {
+      const kv = new MemoryStore()
+      const make = () =>
+        createEditorStore({
+          repo: new WorkRepository(kv),
+          snapshotRepo: new SnapshotRepository(kv),
+          profileRepo: new ProfileRepository(kv),
+          genId: () => 'x',
+          now: () => 1,
+          snapshotMinIntervalMs: 0,
+          trashTtlMs: Number.MAX_SAFE_INTEGER,
+        })
+      await make().updateProfile({ penName: '保存者', avatar: '' })
+      const reloaded = make()
+      await reloaded.init()
+      expect(reloaded.getSnapshot().profile).toEqual({ penName: '保存者' })
+    })
+
+    it('createWork はペンネームを著者の既定に入れる', async () => {
+      await store.updateProfile({ penName: '初期著者', avatar: '' })
+      await store.createWork('新作')
+      expect(store.getSnapshot().work?.author).toBe('初期著者')
+    })
+
+    it('ペンネーム未設定なら著者は付かない', async () => {
+      await store.createWork('新作')
+      expect(store.getSnapshot().work?.author).toBeUndefined()
+    })
   })
 
   it('createEpisode は話を追加して開き、draft を空にする', async () => {

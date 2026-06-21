@@ -1,6 +1,7 @@
-import { Database, Plus, Trash2, Upload } from 'lucide-react'
+import { Database, LayoutGrid, List, Plus, Trash2, Upload } from 'lucide-react'
 import { useState } from 'react'
 import type { WorkSummary } from '@/core/storage/workRepository'
+import { cn } from '@/lib/utils'
 import { triggerDownload } from '@/ui/_utils/download'
 import { worksBundleExport } from '@/ui/_utils/exporters'
 import { AppShell } from '@/ui/components/AppShell/app-shell'
@@ -8,6 +9,7 @@ import { BackupDialog } from '@/ui/components/BackupDialog/backup-dialog'
 import { ConfirmDialog } from '@/ui/components/ConfirmDialog/confirm-dialog'
 import { ExportDialog } from '@/ui/components/ExportDialog/export-dialog'
 import { ImportDialog } from '@/ui/components/ImportDialog/import-dialog'
+import { ProfileDialog } from '@/ui/components/ProfileDialog/profile-dialog'
 import { SideNav } from '@/ui/components/SideNav/side-nav'
 import { TitlePromptDialog } from '@/ui/components/TitlePromptDialog/title-prompt-dialog'
 import { TrashDialog } from '@/ui/components/TrashDialog/trash-dialog'
@@ -17,6 +19,11 @@ import { useEditorStore } from '@/ui/hooks/use-editor-store'
 import { TRASH_TTL_MS } from '@/ui/store/createDefaultStore'
 import type { EditorStore } from '@/ui/store/editorStore'
 import { ProjectCard } from './project-card'
+import { ProjectRow } from './project-row'
+
+/** カード／リストの表示切替を localStorage に記憶するキー。 */
+const VIEW_STORAGE_KEY = 'library-view'
+type LibraryView = 'card' | 'list'
 
 interface LibraryProps {
   store: EditorStore
@@ -31,10 +38,27 @@ export function Library({ store, onEnterEditor }: LibraryProps) {
   const [exportOpen, setExportOpen] = useState(false)
   const [importOpen, setImportOpen] = useState(false)
   const [backupOpen, setBackupOpen] = useState(false)
+  const [profileOpen, setProfileOpen] = useState(false)
   const [trashOpen, setTrashOpen] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<WorkSummary | null>(null)
   const [metaTarget, setMetaTarget] = useState<WorkSummary | null>(null)
+  const [view, setView] = useState<LibraryView>(() => {
+    try {
+      return localStorage.getItem(VIEW_STORAGE_KEY) === 'list' ? 'list' : 'card'
+    } catch {
+      return 'card'
+    }
+  })
   const now = Date.now()
+
+  const changeView = (next: LibraryView) => {
+    setView(next)
+    try {
+      localStorage.setItem(VIEW_STORAGE_KEY, next)
+    } catch {
+      // localStorage 不可（プライベートモード等）でも表示切替自体は機能させる
+    }
+  }
 
   const handleWrite = async (id: string) => {
     await store.openWork(id)
@@ -44,10 +68,18 @@ export function Library({ store, onEnterEditor }: LibraryProps) {
     await store.openWork(id)
     setExportOpen(true)
   }
-  const handleCreate = async (title: string) => {
-    await store.createWork(title)
-    onEnterEditor()
-  }
+  // 作成しても自動では遷移しない（一覧の先頭に出る）。執筆は「執筆」ボタンから。
+  const handleCreate = (title: string) => void store.createWork(title)
+
+  // カード／リストで共有する作品ごとのハンドラ束。
+  const itemProps = (w: WorkSummary) => ({
+    summary: w,
+    now,
+    onWrite: () => void handleWrite(w.id),
+    onExport: () => void handleExport(w.id),
+    onEditMeta: () => setMetaTarget(w),
+    onDelete: () => setDeleteTarget(w),
+  })
 
   return (
     <AppShell
@@ -58,6 +90,8 @@ export function Library({ store, onEnterEditor }: LibraryProps) {
           active="collection"
           onNavigateCollection={() => {}}
           cta={{ label: '新しいプロジェクト', onClick: () => setNewOpen(true) }}
+          profile={state.profile}
+          onEditProfile={() => setProfileOpen(true)}
         />
       }
     >
@@ -69,6 +103,38 @@ export function Library({ store, onEnterEditor }: LibraryProps) {
               <p className="text-on-surface-variant">執筆中の原稿と下書き</p>
             </div>
             <div className="flex items-center gap-2">
+              {state.workList.length > 0 && (
+                <div className="flex items-center rounded-md border border-outline-variant/40 p-0.5">
+                  <button
+                    type="button"
+                    aria-label="カード表示"
+                    aria-pressed={view === 'card'}
+                    onClick={() => changeView('card')}
+                    className={cn(
+                      'rounded p-1.5 transition-colors',
+                      view === 'card'
+                        ? 'bg-surface-container-highest text-primary'
+                        : 'text-on-surface-variant hover:text-primary',
+                    )}
+                  >
+                    <LayoutGrid className="size-4" />
+                  </button>
+                  <button
+                    type="button"
+                    aria-label="リスト表示"
+                    aria-pressed={view === 'list'}
+                    onClick={() => changeView('list')}
+                    className={cn(
+                      'rounded p-1.5 transition-colors',
+                      view === 'list'
+                        ? 'bg-surface-container-highest text-primary'
+                        : 'text-on-surface-variant hover:text-primary',
+                    )}
+                  >
+                    <List className="size-4" />
+                  </button>
+                </div>
+              )}
               {state.trashList.length > 0 && (
                 <Button
                   variant="ghost"
@@ -103,32 +169,44 @@ export function Library({ store, onEnterEditor }: LibraryProps) {
             </div>
           </header>
 
-          <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-            {state.workList.map((w) => (
-              <ProjectCard
-                key={w.id}
-                summary={w}
-                now={now}
-                onWrite={() => void handleWrite(w.id)}
-                onExport={() => void handleExport(w.id)}
-                onEditMeta={() => setMetaTarget(w)}
-                onDelete={() => setDeleteTarget(w)}
-              />
-            ))}
+          {view === 'card' ? (
+            <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+              {state.workList.map((w) => (
+                <ProjectCard key={w.id} {...itemProps(w)} />
+              ))}
 
-            {/* 新規プロジェクト */}
-            <button
-              type="button"
-              onClick={() => setNewOpen(true)}
-              className="group flex min-h-[220px] flex-col items-center justify-center rounded-xl border-2 border-outline-variant/50 border-dashed font-sans text-on-surface-variant transition-colors hover:bg-surface-container-low"
-            >
-              <div className="mb-4 flex size-12 items-center justify-center rounded-full bg-surface-container-highest transition-colors group-hover:bg-primary group-hover:text-on-primary">
-                <Plus className="size-5" />
-              </div>
-              <h3 className="font-semibold font-serif text-lg text-on-surface">新規プロジェクト</h3>
-              <p className="text-sm">白紙から始める</p>
-            </button>
-          </div>
+              {/* 新規プロジェクト（カード） */}
+              <button
+                type="button"
+                onClick={() => setNewOpen(true)}
+                className="group flex min-h-[220px] flex-col items-center justify-center rounded-xl border-2 border-outline-variant/50 border-dashed font-sans text-on-surface-variant transition-colors hover:bg-surface-container-low"
+              >
+                <div className="mb-4 flex size-12 items-center justify-center rounded-full bg-surface-container-highest transition-colors group-hover:bg-primary group-hover:text-on-primary">
+                  <Plus className="size-5" />
+                </div>
+                <h3 className="font-semibold font-serif text-lg text-on-surface">
+                  新規プロジェクト
+                </h3>
+                <p className="text-sm">白紙から始める</p>
+              </button>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-2">
+              {state.workList.map((w) => (
+                <ProjectRow key={w.id} {...itemProps(w)} />
+              ))}
+
+              {/* 新規プロジェクト（行） */}
+              <button
+                type="button"
+                onClick={() => setNewOpen(true)}
+                className="group flex items-center justify-center gap-2 rounded-lg border-2 border-outline-variant/50 border-dashed py-3 font-sans text-on-surface-variant transition-colors hover:bg-surface-container-low"
+              >
+                <Plus className="size-4" />
+                新規プロジェクト
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
@@ -140,8 +218,8 @@ export function Library({ store, onEnterEditor }: LibraryProps) {
         label="作品タイトル"
         placeholder="無題の作品"
         defaultValue="無題の作品"
-        submitLabel="作成して書き始める"
-        onSubmit={(title) => void handleCreate(title)}
+        submitLabel="作成"
+        onSubmit={(title) => handleCreate(title)}
       />
       <ExportDialog open={exportOpen} onOpenChange={setExportOpen} work={state.work} />
       <BackupDialog
@@ -155,6 +233,12 @@ export function Library({ store, onEnterEditor }: LibraryProps) {
         onOpenChange={setImportOpen}
         onImport={(works) => store.importWorks(works)}
       />
+      <ProfileDialog
+        open={profileOpen}
+        onOpenChange={setProfileOpen}
+        initial={{ penName: state.profile.penName ?? '', avatar: state.profile.avatar ?? '' }}
+        onSubmit={(values) => void store.updateProfile(values)}
+      />
       <WorkMetaDialog
         open={metaTarget !== null}
         onOpenChange={(o) => {
@@ -164,6 +248,8 @@ export function Library({ store, onEnterEditor }: LibraryProps) {
           title: metaTarget?.title,
           author: metaTarget?.author,
           description: metaTarget?.description,
+          // 表紙を初期値に含めないと、保存時に '' 扱いとなり既存表紙が消えてしまう。
+          coverImage: metaTarget?.coverImage,
         }}
         onSubmit={(values) => {
           if (metaTarget) void store.updateWorkMeta(metaTarget.id, values)

@@ -10,6 +10,7 @@ import {
   Plus,
   Settings,
   Trash2,
+  UserRound,
 } from 'lucide-react'
 import { type ComponentType, useId } from 'react'
 import { cn } from '@/lib/utils'
@@ -32,6 +33,10 @@ interface SideNavProps {
   onNavigateCollection: () => void
   /** 主要 CTA（新しいプロジェクト / 新しいエピソード） */
   cta: { label: string; onClick: () => void; disabled?: boolean }
+  /** 作者プロフィール（ペンネーム・アバター）。onEditProfile と併せて指定時のみ CTA 上に表示。 */
+  profile?: { penName?: string; avatar?: string }
+  /** プロフィール編集を開く。指定時のみプロフィール欄を表示。 */
+  onEditProfile?: () => void
   /**
    * 開いている作品のタイトル。指定時は「現在の作品」スコープカードを中身入りで描く。
    * 省略時（ライブラリ）はカードを空状態（作品を開く前の案内）で描く。
@@ -97,6 +102,8 @@ export function SideNav({
   onNavigateEpisodes,
   onNavigateGlossary,
   cta,
+  profile,
+  onEditProfile,
   workTitle,
   episodes,
   currentEpisodeId,
@@ -122,6 +129,43 @@ export function SideNav({
           ) : null}
         </div>
       </div>
+
+      {/* 作者プロフィール（ペンネーム・アバター）。CTA の上に置く。 */}
+      {onEditProfile ? (
+        <div className="mb-4 px-6">
+          <button
+            type="button"
+            onClick={onEditProfile}
+            aria-label="プロフィールを編集"
+            className="group flex w-full items-center gap-3 rounded-lg border border-outline-variant/30 bg-surface-container-lowest px-3 py-2.5 text-left transition-colors hover:bg-surface-container"
+          >
+            {profile?.avatar ? (
+              <img
+                src={profile.avatar}
+                alt=""
+                className="size-9 shrink-0 rounded-full object-cover"
+              />
+            ) : (
+              <div className="flex size-9 shrink-0 items-center justify-center rounded-full bg-secondary-container text-on-secondary-container">
+                <UserRound className="size-5" />
+              </div>
+            )}
+            <div className="min-w-0 flex-1">
+              {profile?.penName ? (
+                <div className="truncate font-medium text-on-surface text-sm">
+                  {profile.penName}
+                </div>
+              ) : (
+                <div className="truncate text-on-surface-variant text-sm">ペンネーム未設定</div>
+              )}
+              <div className="truncate text-on-surface-variant/60 text-xs">
+                {profile?.penName ? 'プロフィールを編集' : 'タップして登録'}
+              </div>
+            </div>
+            <Pencil className="size-3.5 shrink-0 text-on-surface-variant/50 transition-colors group-hover:text-primary" />
+          </button>
+        </div>
+      ) : null}
 
       {/* CTA */}
       <div className="mb-6 px-6">

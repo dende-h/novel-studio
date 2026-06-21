@@ -1,5 +1,6 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
+import { ProfileRepository } from '../core/profile'
 import { SnapshotRepository } from '../core/snapshot/snapshotRepository'
 import { MemoryStore } from '../core/storage/memoryStore'
 import type { KeyValueStore } from '../core/storage/types'
@@ -11,9 +12,11 @@ const makeStore = (kv: KeyValueStore = new MemoryStore()): EditorStore => {
   let n = 0
   const repo = new WorkRepository(kv)
   const snapshotRepo = new SnapshotRepository(kv)
+  const profileRepo = new ProfileRepository(kv)
   return createEditorStore({
     repo,
     snapshotRepo,
+    profileRepo,
     genId: () => `id${++n}`,
     now: () => Date.now(),
     snapshotMinIntervalMs: 0,

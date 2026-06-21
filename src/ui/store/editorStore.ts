@@ -1,6 +1,7 @@
 import { blocksToNotation } from '../../core/exporter/blocksToNotation'
 import { renameEntry, resolveRef } from '../../core/glossary'
 import { parseEpisodeBody } from '../../core/parser/parseNotation'
+import type { Profile, ProfileRepository } from '../../core/profile'
 import type { Episode, GlossaryEntry, Work } from '../../core/schema'
 import type { Snapshot } from '../../core/snapshot'
 import type { SnapshotRepository } from '../../core/snapshot/snapshotRepository'
@@ -27,6 +28,8 @@ export interface EditorState {
   snapshots: Snapshot[]
   /** ゴミ箱の作品一覧（退避時刻つき・新しい順） */
   trashList: TrashSummary[]
+  /** 作者プロフィール（ペンネーム・アバター）。未設定なら空オブジェクト。 */
+  profile: Profile
 }
 
 export interface EditorStore {
@@ -65,6 +68,14 @@ export interface EditorStore {
   renameGlossaryEntry(id: string, newName: string, opts?: { rewriteBody?: boolean }): Promise<void>
   /** 辞書 entry を削除（本文の ref はそのまま＝未解決化する）。 */
   deleteGlossaryEntry(id: string): Promise<void>
+  /** 作者プロフィール（ペンネーム・アバター）を更新して永続化する。空文字は未設定として扱う。 */
+  updateProfile(input: ProfileInput): Promise<void>
+}
+
+/** プロフィール編集の入力（ダイアログが現在値を丸ごと持って submit する。空文字＝未設定）。 */
+export interface ProfileInput {
+  penName: string
+  avatar: string
 }
 
 /** 辞書 entry 新規作成の入力（id/createdAt/updatedAt はストアが付与）。 */
@@ -102,6 +113,7 @@ export interface WorkMeta {
 export interface EditorStoreDeps {
   repo: WorkRepository
   snapshotRepo: SnapshotRepository
+  profileRepo: ProfileRepository
   genId: () => string
   now: () => number
   /** 履歴の集約間隔(ms)。連続編集中はこの間隔内の保存を最新版へ合体し、版の氾濫を防ぐ。 */
@@ -119,6 +131,7 @@ const INITIAL: EditorState = {
   status: 'idle',
   snapshots: [],
   trashList: [],
+  profile: {},
 }
 
 const currentEpisode = (s: EditorState): Episode | undefined =>
@@ -127,6 +140,7 @@ const currentEpisode = (s: EditorState): Episode | undefined =>
 export function createEditorStore({
   repo,
   snapshotRepo,
+  profileRepo,
   genId,
   now,
   snapshotMinIntervalMs,
@@ -143,8 +157,12 @@ export function createEditorStore({
     emit()
   }
 
+  // ライブラリ一覧は最終更新の新しい順（updatedAt 降順・未設定の旧データは末尾）。
+  const sortByUpdatedDesc = (list: WorkSummary[]): WorkSummary[] =>
+    [...list].sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0))
+
   const refreshList = async () => {
-    set({ workList: await repo.listWorks() })
+    set({ workList: sortByUpdatedDesc(await repo.listWorks()) })
   }
 
   const refreshTrash = async () => {
@@ -170,10 +188,19 @@ export function createEditorStore({
       for (const id of purged) await snapshotRepo.clear(id)
       await refreshList()
       await refreshTrash()
+      set({ profile: await profileRepo.get() })
     },
 
     async createWork(title) {
-      const work: Work = { id: genId(), title, episodes: [], updatedAt: now() }
+      // 著者はプロフィールのペンネームを既定にする（未設定ならキーを付けない）。
+      const author = state.profile.penName
+      const work: Work = {
+        id: genId(),
+        title,
+        episodes: [],
+        updatedAt: now(),
+        ...(author ? { author } : {}),
+      }
       await repo.saveWork(work)
       set({
         work,
@@ -267,7 +294,7 @@ export function createEditorStore({
     async trashWork(id) {
       // ソフト削除：履歴（snap:<id>）は復元のため残し、本体だけ trash 名前空間へ退避。
       await repo.trashWork(id, now())
-      const workList = await repo.listWorks()
+      const workList = sortByUpdatedDesc(await repo.listWorks())
       if (state.work?.id === id) {
         set({
           workList,
@@ -462,6 +489,16 @@ export function createEditorStore({
       await repo.saveWork(work)
       set({ work })
       await refreshList()
+    },
+
+    async updateProfile(input) {
+      // ダイアログが現在値を丸ごと持つので、空文字のフィールドは未設定として落とす。
+      const profile: Profile = {}
+      const penName = input.penName.trim()
+      if (penName) profile.penName = penName
+      if (input.avatar) profile.avatar = input.avatar
+      await profileRepo.save(profile)
+      set({ profile })
     },
   }
 }

@@ -1,5 +1,6 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
-import { describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { ProfileRepository } from '@/core/profile'
 import { SnapshotRepository } from '@/core/snapshot/snapshotRepository'
 import { MemoryStore } from '@/core/storage/memoryStore'
 import { WorkRepository } from '@/core/storage/workRepository'
@@ -12,12 +13,46 @@ const makeStore = (): EditorStore => {
   return createEditorStore({
     repo: new WorkRepository(kv),
     snapshotRepo: new SnapshotRepository(kv),
+    profileRepo: new ProfileRepository(kv),
     genId: () => `id${++n}`,
     now: () => Date.now(),
     snapshotMinIntervalMs: 0,
     trashTtlMs: Number.MAX_SAFE_INTEGER,
   })
 }
+
+// 表示切替（カード／リスト）は localStorage に記憶されるのでテスト間で隔離する
+beforeEach(() => {
+  localStorage.clear()
+})
+
+describe('Library 作成・表示', () => {
+  it('「作成」してもエディタへ遷移せず、一覧に作品が増える', async () => {
+    const store = makeStore()
+    const onEnter = vi.fn()
+    render(<Library store={store} onEnterEditor={onEnter} />)
+
+    fireEvent.click(screen.getByRole('button', { name: /新規プロジェクト/ }))
+    const input = await screen.findByLabelText('作品タイトル')
+    fireEvent.change(input, { target: { value: '新しい物語' } })
+    fireEvent.click(screen.getByRole('button', { name: '作成' }))
+
+    expect(await screen.findByText('新しい物語')).toBeInTheDocument()
+    expect(onEnter).not.toHaveBeenCalled()
+  })
+
+  it('リスト表示に切り替えても作品が出て、執筆で遷移する', async () => {
+    const store = makeStore()
+    await store.createWork('一覧作')
+    const onEnter = vi.fn()
+    render(<Library store={store} onEnterEditor={onEnter} />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'リスト表示' }))
+    expect(screen.getByText('一覧作')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: '執筆' }))
+    await waitFor(() => expect(onEnter).toHaveBeenCalled())
+  })
+})
 
 describe('Library ゴミ箱導線', () => {
   it('削除→ゴミ箱へ移動→復元 が UI で一周する', async () => {

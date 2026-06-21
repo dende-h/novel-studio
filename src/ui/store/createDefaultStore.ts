@@ -1,3 +1,4 @@
+import { ProfileRepository } from '../../core/profile'
 import { SnapshotRepository } from '../../core/snapshot/snapshotRepository'
 import { IdbStore } from '../../core/storage/idbStore'
 import { WorkRepository } from '../../core/storage/workRepository'
@@ -14,9 +15,11 @@ export function createDefaultStore(): EditorStore {
   const store = new IdbStore('novel-studio')
   const repo = new WorkRepository(store)
   const snapshotRepo = new SnapshotRepository(store)
+  const profileRepo = new ProfileRepository(store)
   return createEditorStore({
     repo,
     snapshotRepo,
+    profileRepo,
     genId: () => crypto.randomUUID(),
     now: () => Date.now(),
     snapshotMinIntervalMs: SNAPSHOT_MIN_INTERVAL_MS,

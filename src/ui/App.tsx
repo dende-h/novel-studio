@@ -1,3 +1,4 @@
+import { Plus } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { blocksToHtml } from '@/core/exporter/toHtml'
 import { categoriesOf, findAppearances, resolvedNameSet, resolveRef } from '@/core/glossary'
@@ -15,6 +16,7 @@ import { GlossaryPeek } from '@/ui/components/GlossaryPeek/glossary-peek'
 import { GlossaryView } from '@/ui/components/GlossaryView/glossary-view'
 import { HistoryPanel } from '@/ui/components/HistoryPanel/history-panel'
 import { PreviewPane } from '@/ui/components/PreviewPane/preview-pane'
+import { ProfileDialog } from '@/ui/components/ProfileDialog/profile-dialog'
 import { SideNav } from '@/ui/components/SideNav/side-nav'
 import { TitlePromptDialog } from '@/ui/components/TitlePromptDialog/title-prompt-dialog'
 import { WorkMetaDialog } from '@/ui/components/WorkMetaDialog/work-meta-dialog'
@@ -51,6 +53,7 @@ export function App({ store, onExit }: AppProps) {
   const [newEpisodeOpen, setNewEpisodeOpen] = useState(false)
   const [exportOpen, setExportOpen] = useState(false)
   const [metaOpen, setMetaOpen] = useState(false)
+  const [profileOpen, setProfileOpen] = useState(false)
   const [historyOpen, setHistoryOpen] = useState(false)
   const [activeScreen, setActiveScreen] = useState<'episodes' | 'glossary'>('episodes')
   // プレビューの @参照クリックで開く右 aside ピーク（entry は id で引いて常に最新を見る）。
@@ -139,6 +142,8 @@ export function App({ store, onExit }: AppProps) {
             onClick: () => setNewEpisodeOpen(true),
             disabled: !work,
           }}
+          profile={state.profile}
+          onEditProfile={() => setProfileOpen(true)}
           episodes={work?.episodes.map((e) => ({ id: e.id, title: e.title })) ?? []}
           currentEpisodeId={state.currentEpisodeId}
           onSelectEpisode={(id) => {
@@ -205,11 +210,25 @@ export function App({ store, onExit }: AppProps) {
             <PreviewPane html={previewHtml} onRefClick={onRefClick} />
           </div>
         </>
+      ) : work ? (
+        <div className="flex flex-1 items-center justify-center p-8">
+          <button
+            type="button"
+            onClick={() => setNewEpisodeOpen(true)}
+            className="group flex flex-col items-center justify-center rounded-xl border-2 border-outline-variant/50 border-dashed px-12 py-10 font-sans text-on-surface-variant transition-colors hover:bg-surface-container-low"
+          >
+            <div className="mb-4 flex size-12 items-center justify-center rounded-full bg-surface-container-highest transition-colors group-hover:bg-primary group-hover:text-on-primary">
+              <Plus className="size-5" />
+            </div>
+            <h3 className="font-semibold font-serif text-lg text-on-surface">
+              新しいエピソードを追加
+            </h3>
+            <p className="text-sm">白紙から書き始める</p>
+          </button>
+        </div>
       ) : (
         <div className="flex flex-1 items-center justify-center p-8 text-center text-on-surface-variant text-sm">
-          {work
-            ? '「新しいエピソードを追加」で書き始めましょう'
-            : 'ライブラリから作品を開いてください'}
+          ライブラリから作品を開いてください
         </div>
       )}
 
@@ -278,6 +297,12 @@ export function App({ store, onExit }: AppProps) {
           onSubmit={(values) => void store.updateWorkMeta(work.id, values)}
         />
       ) : null}
+      <ProfileDialog
+        open={profileOpen}
+        onOpenChange={setProfileOpen}
+        initial={{ penName: state.profile.penName ?? '', avatar: state.profile.avatar ?? '' }}
+        onSubmit={(values) => void store.updateProfile(values)}
+      />
       <ConfirmDialog
         open={deleteEpisodeTarget !== null}
         onOpenChange={(o) => {
