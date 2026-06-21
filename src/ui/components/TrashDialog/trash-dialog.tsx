@@ -55,7 +55,7 @@ export function TrashDialog({
         <DialogHeader>
           <DialogTitle className="font-serif text-primary text-xl">ゴミ箱</DialogTitle>
           <DialogDescription>
-            削除した作品は30日間ここに残り、いつでも元に戻せます。期間を過ぎると自動的に完全削除されます。
+            削除した作品は30日間ここに残り、いつでも元に戻せます。完全に削除すると、本文だけでなく執筆履歴（版）も元に戻せなくなります。期間を過ぎると自動的に完全削除されます。
           </DialogDescription>
         </DialogHeader>
 
@@ -79,7 +79,7 @@ export function TrashDialog({
                     </div>
                     {confirming === t.id ? (
                       <div className="flex shrink-0 items-center gap-2">
-                        <span className="text-destructive text-xs">完全に削除？</span>
+                        <span className="text-destructive text-xs">履歴ごと完全に削除？</span>
                         <Button
                           type="button"
                           size="sm"
@@ -136,7 +136,7 @@ export function TrashDialog({
           {trash.length > 0 ? (
             confirming === 'empty' ? (
               <div className="flex items-center gap-2">
-                <span className="text-destructive text-xs">全件を完全に削除？</span>
+                <span className="text-destructive text-xs">全件を履歴ごと完全に削除？</span>
                 <Button
                   type="button"
                   size="sm"
