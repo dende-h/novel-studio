@@ -6,7 +6,18 @@ import { VitePWA } from 'vite-plugin-pwa'
 import { defineConfig } from 'vitest/config'
 
 export default defineConfig({
-  plugins: [react(), tailwindcss(), VitePWA({ registerType: 'autoUpdate' })],
+  plugins: [
+    react(),
+    tailwindcss(),
+    VitePWA({
+      registerType: 'autoUpdate',
+      workbox: {
+        // Clerk チャンクは pk 設定時のみ動的 import される。ゲスト（大多数）に
+        // precache させない（lazy 資産は precache 対象外にする方針。JP フォントと同じ規律）。
+        globIgnores: ['**/clerk-gate-*.js'],
+      },
+    }),
+  ],
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),

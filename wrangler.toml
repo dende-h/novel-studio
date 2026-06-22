@@ -1,0 +1,21 @@
+# Cloudflare Pages（Functions＋バインディング）の設定。
+# 既存の GitHub Actions デプロイ（wrangler pages deploy dist）はこの設定を自動で読む。
+# セットアップ手順は docs/requirement/05-sync-setup.md を参照。
+name = "novel-studio"
+pages_build_output_dir = "dist"
+compatibility_date = "2024-11-01"
+# @clerk/backend は Node 互換 API を使うため nodejs_compat を付ける。
+compatibility_flags = ["nodejs_compat"]
+
+# --- バインディング ---------------------------------------------------------
+# `wrangler d1 create novel-studio`（2026-06-22 作成・APAC）の database_id。
+# binding 名は Functions 側（functions/api/session/* の Env.DB）に合わせて DB。
+[[d1_databases]]
+binding = "DB"
+database_name = "novel-studio"
+database_id = "811bad99-8040-4c46-9192-26623aeabc99"
+
+# 同期本体（Phase 2）で有効化する。`wrangler r2 bucket create novel-studio-media` 後。
+# [[r2_buckets]]
+# binding = "MEDIA"
+# bucket_name = "novel-studio-media"

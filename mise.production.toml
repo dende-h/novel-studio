@@ -1,3 +1,6 @@
 # MISE_ENV=production のとき mise.toml に上書き適用される（main ブランチ用）。
 [env]
 VITE_APP_ENV = "production"
+# Clerk publishable key（公開可）。本番用の pk_live_... をここに設定する。
+# 未設定の間はゲスト＝完全ローカル動作（認証 UI は出ない）。手順は docs/requirement/05-sync-setup.md。
+# VITE_CLERK_PUBLISHABLE_KEY = "pk_live_xxx"

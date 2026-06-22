@@ -1,5 +1,6 @@
-import { CircleDot, Cloud, CloudCheck, Download, History, LoaderCircle } from 'lucide-react'
+import { CircleDot, Cloud, CloudCheck, Download, History, LoaderCircle, LogIn } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { useAuth } from '@/ui/auth/auth-context'
 import { Button } from '@/ui/components/ui/button'
 import type { SaveStatus } from '@/ui/store/editorStore'
 
@@ -55,6 +56,43 @@ function SaveIndicator({ dirty, status }: SaveState) {
   )
 }
 
+/** アカウント（同期・認証）。Clerk 構成時（publishable key あり）のみ表示。 */
+function AccountControl() {
+  const auth = useAuth()
+  if (!auth.available) return null
+  if (auth.status === 'member') {
+    return (
+      <div className="flex items-center gap-2">
+        <span className="max-w-[10rem] truncate font-sans text-on-surface-variant text-xs">
+          {auth.displayName ?? 'サインイン中'}
+        </span>
+        <button
+          type="button"
+          onClick={auth.signOut}
+          className="shrink-0 font-sans text-on-surface-variant text-xs transition-colors hover:text-primary hover:underline"
+        >
+          サインアウト
+        </button>
+      </div>
+    )
+  }
+  if (auth.status === 'guest') {
+    return (
+      <Button
+        variant="ghost"
+        size="sm"
+        onClick={auth.openSignIn}
+        className="gap-2 text-on-surface-variant hover:text-primary"
+      >
+        <LogIn className="size-4" aria-hidden />
+        同期するにはサインイン
+      </Button>
+    )
+  }
+  // 'loading'：判定中はちらつき防止で何も出さない。
+  return null
+}
+
 /** 全画面共通のトップバー（ブランド・保存状態・履歴・書き出し）。 */
 export function TopAppBar({
   brand = 'novel-studio',
@@ -100,6 +138,7 @@ export function TopAppBar({
             書き出し
           </Button>
         ) : null}
+        <AccountControl />
       </div>
     </header>
   )

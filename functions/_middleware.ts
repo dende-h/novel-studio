@@ -19,6 +19,14 @@ interface MiddlewareContext {
 }
 
 export async function onRequest(context: MiddlewareContext): Promise<Response> {
+  // /api/* は各 Function 側で Clerk(Bearer JWT) を検証する。ここでベーシック認証
+  // （Basic ヘッダ前提）に通すと Bearer リクエストが 401 になり stg でセッション API が
+  // 全て弾かれるため、API パスはミドルウェアの対象外にする。
+  const url = new URL(context.request.url)
+  if (url.pathname.startsWith('/api/')) {
+    return context.next()
+  }
+
   const { BASIC_AUTH_USER, BASIC_AUTH_PASS } = context.env
 
   // 認証情報が無い環境（=本番）は素通しする。
