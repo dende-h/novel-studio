@@ -116,7 +116,7 @@ export function SideNav({
   // 作品が開いていれば中身入りカード、未オープンなら空状態カード。
   const workOpen = workTitle !== undefined
   return (
-    <nav className="flex w-sidebar shrink-0 flex-col border-outline-variant/20 border-r bg-surface-container-low py-6 font-sans">
+    <nav className="flex w-sidebar shrink-0 flex-col overflow-y-auto border-outline-variant/20 border-r bg-surface-container-low py-6 font-sans">
       {/* アプリのアイデンティティ見出し（両状態で固定） */}
       <div className="mb-6 flex items-center gap-3 px-6">
         <div className="flex size-10 shrink-0 items-center justify-center rounded-md bg-secondary-container font-bold font-serif text-lg text-on-secondary-container">
@@ -181,7 +181,7 @@ export function SideNav({
       </div>
 
       {/* 中段: ホーム → 作品スコープカード → 作品非依存 */}
-      <div className="flex min-h-0 flex-1 flex-col px-4">
+      <div className="flex flex-1 flex-col px-4">
         <NavRow
           icon={Library}
           label="コレクション"
@@ -197,7 +197,7 @@ export function SideNav({
           className={cn(
             'mt-3 flex flex-col rounded-lg border bg-surface-container-lowest p-2',
             workOpen
-              ? 'min-h-0 flex-1 border-outline-variant/30'
+              ? 'min-h-[14rem] flex-1 border-outline-variant/30'
               : 'shrink-0 border-outline-variant/40 border-dashed',
           )}
         >
