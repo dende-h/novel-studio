@@ -19,3 +19,18 @@ database_id = "811bad99-8040-4c46-9192-26623aeabc99"
 [[r2_buckets]]
 binding = "MEDIA"
 bucket_name = "novel-studio-media"
+
+# --- プレビュー（stg ブランチ）専用バインディング -----------------------------
+# トップレベルは local＋本番(production)に適用される。stg は本番ブランチ(main)と
+# 一致しないため Pages が自動で preview 環境として扱い、ここで D1・R2 を上書きする
+# → 本番ユーザーデータと stg テストデータを物理的に分離する。
+# 注意: D1・R2 は non-inheritable キー。preview を上書きするなら preview に「両方」必須
+#       （片方だけだとデプロイ検証に落ちる）。
+[[env.preview.d1_databases]]
+binding = "DB"
+database_name = "novel-studio-stg"
+database_id = "b41dafd3-26fb-4e2e-823a-031a3398d4f5"
+
+[[env.preview.r2_buckets]]
+binding = "MEDIA"
+bucket_name = "novel-studio-media-stg"
