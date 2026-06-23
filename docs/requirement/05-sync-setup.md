@@ -8,6 +8,9 @@
 - **公開可の鍵**（`pk_*` publishable key）＝クライアントに露出してよい。mise（`VITE_` 接頭辞）で管理。
 - **秘密の鍵**（`CLERK_SECRET_KEY`・`ENCRYPTION_KEY` 等）＝git にも CI にも載せない。
   `wrangler pages secret put`（本番）／`.dev.vars`（ローカル・gitignore 済み）でのみ投入する。
+- **wrangler の呼び方**：素の `wrangler` は PATH に無い（devDependency）。本書の `wrangler ...` は
+  すべて**プロジェクト直下で `pnpm exec wrangler ...`**（または `npx wrangler`）として実行する。
+  `wrangler login` も `pnpm exec wrangler login`。
 
 ---
 
