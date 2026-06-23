@@ -7,6 +7,7 @@
 import type { Work } from '../schema'
 import { resolvePush } from './lww'
 import type { LocalSyncMeta, ManifestEntry } from './manifest'
+import { PROFILE_WORK_ID } from './manifest'
 import { type LocalEntry, planAutosavePush, planLoginSync } from './plan'
 import { joinWork, splitWork, type WorkDoc, type WorkMedia } from './split'
 
@@ -103,7 +104,8 @@ async function pushOne(
 
 /** ログイン時の全双方向同期。 */
 export async function runLoginSync(deps: SyncDeps): Promise<LoginSyncResult> {
-  const remote = await deps.getManifest()
+  // プロフィール（予約 workId）は別パイプライン（runProfileSync）で同期する。作品一覧から除外する。
+  const remote = (await deps.getManifest()).filter((e) => e.workId !== PROFILE_WORK_ID)
   const remoteMap = new Map(remote.map((e) => [e.workId, e]))
   const locals = await deps.listLocalWorks()
 

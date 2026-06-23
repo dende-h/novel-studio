@@ -12,6 +12,8 @@ export const ProfileSchema = z.object({
     .string()
     .refine((s) => s.startsWith('data:image/'), 'data URL が必要')
     .optional(),
+  // 端末間 LWW 用の最終更新時刻（epoch ms）。クラウド同期で勝者を決めるのに使う。
+  updatedAt: z.number().optional(),
 })
 export type Profile = z.infer<typeof ProfileSchema>
 

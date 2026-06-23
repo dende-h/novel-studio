@@ -6,8 +6,10 @@
 export interface SyncBridge {
   onSaved: (workId: string) => void
   onPurged: (workId: string) => void
+  /** プロフィール（ペンネーム・アバター）保存通知（同期 push のトリガ）。 */
+  onProfileSaved: () => void
 }
 
 export function createSyncBridge(): SyncBridge {
-  return { onSaved: () => {}, onPurged: () => {} }
+  return { onSaved: () => {}, onPurged: () => {}, onProfileSaved: () => {} }
 }

@@ -6,6 +6,7 @@
  * ゲスト（未ログイン・トークン無し）では isEnabled() が false を返し、すべて no-op になる。
  */
 
+import type { ProfileRepository } from '@/core/profile'
 import type { Work } from '@/core/schema'
 import type { SnapshotRepository } from '@/core/snapshot/snapshotRepository'
 import type { SyncMetaRepository } from '@/core/storage/syncMetaRepository'
@@ -15,7 +16,8 @@ import {
   runAutosavePush as engineAutosavePush,
   runLoginSync as engineLoginSync,
 } from '@/core/sync/engine'
-import type { ManifestEntry } from '@/core/sync/manifest'
+import { type ManifestEntry, PROFILE_WORK_ID } from '@/core/sync/manifest'
+import { type ProfileSyncDeps, pushProfileChange, runProfileSync } from '@/core/sync/profile-sync'
 
 /** バナー表示用の同期フェーズ。 */
 export type SyncPhase =
@@ -43,6 +45,7 @@ export interface SyncControllerDeps {
   repo: WorkRepository
   snapshotRepo: SnapshotRepository
   syncMetaRepo: SyncMetaRepository
+  profileRepo: ProfileRepository
   hashPart(value: unknown): Promise<string>
   genId(): string
   now(): number
@@ -59,6 +62,8 @@ export interface SyncControllerDeps {
 export interface SyncController {
   /** ログイン時の全双方向同期。完了後の結果（無効時は null）。 */
   runLoginSync(): Promise<LoginSyncResult | null>
+  /** プロフィール（ペンネーム・アバター）変更時の差分 push（pull はしない）。 */
+  syncProfile(): Promise<void>
   /** 保存通知。workId を pending に積み、debounce 後に push する。 */
   notifyChanged(workId: string): void
   /** pending を即時 flush（話の切替・タブ非表示・オンライン復帰時など）。 */
@@ -70,7 +75,7 @@ export interface SyncController {
 }
 
 export function createSyncController(deps: SyncControllerDeps): SyncController {
-  const { api, repo, snapshotRepo, syncMetaRepo, hashPart, genId, now } = deps
+  const { api, repo, snapshotRepo, syncMetaRepo, profileRepo, hashPart, genId, now } = deps
 
   const pending = new Set<string>()
   let timer: ReturnType<typeof setTimeout> | null = null
@@ -102,6 +107,27 @@ export function createSyncController(deps: SyncControllerDeps): SyncController {
     },
     getSyncMeta: (workId) => syncMetaRepo.get(workId),
     setSyncMeta: (meta) => syncMetaRepo.set(meta),
+    hashPart,
+    now,
+  }
+
+  // プロフィール同期の I/O。予約 workId `__profile__` で Work と同じ API・暗号化 R2 に相乗りする。
+  const profileDeps: ProfileSyncDeps = {
+    getRemoteEntry: async () => {
+      const entries = await api.getManifest()
+      return entries.find((e) => e.workId === PROFILE_WORK_ID) ?? null
+    },
+    pullProfile: () => api.pullWork(PROFILE_WORK_ID),
+    pushProfile: async (payload) => {
+      const { status, result } = await api.pushWork(PROFILE_WORK_ID, payload)
+      if (status === 409) blocked = 'paused-superseded'
+      else if (status === 507 || status === 413) blocked = 'paused-capacity'
+      return result
+    },
+    loadLocalProfile: () => profileRepo.get(),
+    saveLocalProfile: (profile) => profileRepo.save(profile),
+    getMeta: () => syncMetaRepo.get(PROFILE_WORK_ID),
+    setMeta: (meta) => syncMetaRepo.set(meta),
     hashPart,
     now,
   }
@@ -157,7 +183,15 @@ export function createSyncController(deps: SyncControllerDeps): SyncController {
     async runLoginSync() {
       clearTimer()
       pending.clear() // 全双方向同期が pending の push も包含するため、二重送信を防ぐ。
-      return withPhase(() => engineLoginSync(engineDeps))
+      return withPhase(async () => {
+        const res = await engineLoginSync(engineDeps)
+        await runProfileSync(profileDeps) // プロフィールも同じ枠で双方向同期する。
+        return res
+      })
+    },
+
+    async syncProfile() {
+      await withPhase(() => pushProfileChange(profileDeps))
     },
 
     notifyChanged(workId) {

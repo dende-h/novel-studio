@@ -49,6 +49,7 @@ export function useSync(
     if (!available || status !== 'member' || !userId || !sessionReady) {
       bridge.onSaved = () => {}
       bridge.onPurged = () => {}
+      bridge.onProfileSaved = () => {}
       setPhase('idle')
       return
     }
@@ -66,6 +67,7 @@ export function useSync(
 
     bridge.onSaved = (id) => controller.notifyChanged(id)
     bridge.onPurged = (id) => void controller.purge(id)
+    bridge.onProfileSaved = () => void controller.syncProfile()
 
     // 初回ログイン同期 → 完了後にエディタの一覧を再読込（pull した作品を反映）。
     void (async () => {
@@ -92,6 +94,7 @@ export function useSync(
       controllerRef.current = null
       bridge.onSaved = () => {}
       bridge.onPurged = () => {}
+      bridge.onProfileSaved = () => {}
     }
   }, [available, status, userId, store, bridge, sessionReady])
 

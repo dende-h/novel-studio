@@ -21,6 +21,7 @@ const syncBridge = createSyncBridge()
 const store = createDefaultStore({
   onSaved: (id) => syncBridge.onSaved(id),
   onPurged: (id) => syncBridge.onPurged(id),
+  onProfileSaved: () => syncBridge.onProfileSaved(),
 })
 
 createRoot(root).render(

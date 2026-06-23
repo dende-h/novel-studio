@@ -16,6 +16,8 @@ export interface DefaultStoreOptions {
   onSaved?: (workId: string) => void
   /** 作品を完全削除（purge）した直後の通知（リモートのトゥームストーン化）。 */
   onPurged?: (workId: string) => void
+  /** プロフィール（ペンネーム・アバター）が永続化された直後の通知（同期 push のトリガ）。 */
+  onProfileSaved?: () => void
 }
 
 /** 本番用ストア：IndexedDB 永続化＋crypto.randomUUID の id 採番。 */
@@ -34,5 +36,6 @@ export function createDefaultStore(opts: DefaultStoreOptions = {}): EditorStore 
     trashTtlMs: TRASH_TTL_MS,
     onSaved: opts.onSaved,
     onPurged: opts.onPurged,
+    onProfileSaved: opts.onProfileSaved,
   })
 }

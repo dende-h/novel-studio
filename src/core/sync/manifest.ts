@@ -35,3 +35,10 @@ export interface LocalSyncMeta {
   /** 最後に push/pull で一致させた時刻（epoch ms）。 */
   syncedAt: number
 }
+
+/**
+ * 作者プロフィール（ペンネーム・アバター）を載せる予約 workId。
+ * 通常の Work と同じ同期パイプライン（manifest/work API・暗号化 R2）に相乗りさせつつ、
+ * ライブラリの作品一覧には出さない（engine.runLoginSync が除外する）。
+ */
+export const PROFILE_WORK_ID = '__profile__'

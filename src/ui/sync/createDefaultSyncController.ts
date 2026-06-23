@@ -4,6 +4,7 @@
  * pull で書いた Work はエディタストア側からも（再 init で）読める。
  */
 
+import { ProfileRepository } from '@/core/profile'
 import { SnapshotRepository } from '@/core/snapshot/snapshotRepository'
 import { IdbStore } from '@/core/storage/idbStore'
 import { SyncMetaRepository } from '@/core/storage/syncMetaRepository'
@@ -26,6 +27,7 @@ export function createDefaultSyncController(opts: DefaultSyncControllerOptions):
   const repo = new WorkRepository(store)
   const snapshotRepo = new SnapshotRepository(store)
   const syncMetaRepo = new SyncMetaRepository(store, opts.userId)
+  const profileRepo = new ProfileRepository(store)
   const { getToken } = opts
 
   return createSyncController({
@@ -38,6 +40,7 @@ export function createDefaultSyncController(opts: DefaultSyncControllerOptions):
     repo,
     snapshotRepo,
     syncMetaRepo,
+    profileRepo,
     hashPart,
     genId: () => crypto.randomUUID(),
     now: () => Date.now(),

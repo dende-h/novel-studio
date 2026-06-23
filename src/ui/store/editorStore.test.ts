@@ -75,10 +75,15 @@ describe('editorStore（自前ストア・useSyncExternalStore 用）', () => {
       expect(store.getSnapshot().profile).toEqual({
         penName: '夢野久作',
         avatar: 'data:image/jpeg;base64,AA',
+        // updatedAt は端末間 LWW（クラウド同期）用に毎回打たれる。
+        updatedAt: expect.any(Number),
       })
 
       await store.updateProfile({ penName: '夢野久作', avatar: '' })
-      expect(store.getSnapshot().profile).toEqual({ penName: '夢野久作' })
+      expect(store.getSnapshot().profile).toEqual({
+        penName: '夢野久作',
+        updatedAt: expect.any(Number),
+      })
     })
 
     it('init はプロフィールを読み込む（別ストアで同一 MemoryStore を共有）', async () => {
@@ -96,7 +101,7 @@ describe('editorStore（自前ストア・useSyncExternalStore 用）', () => {
       await make().updateProfile({ penName: '保存者', avatar: '' })
       const reloaded = make()
       await reloaded.init()
-      expect(reloaded.getSnapshot().profile).toEqual({ penName: '保存者' })
+      expect(reloaded.getSnapshot().profile).toEqual({ penName: '保存者', updatedAt: 1 })
     })
 
     it('createWork はペンネームを著者の既定に入れる', async () => {

@@ -8,6 +8,7 @@ import type { SyncBridge } from './sync-bridge'
 const { controller, createSpy, authState } = vi.hoisted(() => {
   const controller = {
     runLoginSync: vi.fn(() => Promise.resolve(null)),
+    syncProfile: vi.fn(() => Promise.resolve()),
     notifyChanged: vi.fn(),
     flush: vi.fn(() => Promise.resolve()),
     purge: vi.fn(() => Promise.resolve()),
@@ -34,7 +35,7 @@ vi.mock('./createDefaultSyncController', () => ({ createDefaultSyncController: c
 const { useSync } = await import('./use-sync')
 
 const store = { init: vi.fn(() => Promise.resolve()) } as unknown as EditorStore
-const bridge: SyncBridge = { onSaved: () => {}, onPurged: () => {} }
+const bridge: SyncBridge = { onSaved: () => {}, onPurged: () => {}, onProfileSaved: () => {} }
 
 describe('useSync（同期の起動ゲート）', () => {
   beforeEach(() => {

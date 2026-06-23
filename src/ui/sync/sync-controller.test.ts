@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { ProfileRepository } from '@/core/profile'
 import type { Work } from '@/core/schema'
 import { SnapshotRepository } from '@/core/snapshot/snapshotRepository'
 import { MemoryStore } from '@/core/storage/memoryStore'
@@ -14,6 +15,7 @@ function harness() {
   const repo = new WorkRepository(store)
   const snapshotRepo = new SnapshotRepository(store)
   const syncMetaRepo = new SyncMetaRepository(store, 'user_1')
+  const profileRepo = new ProfileRepository(store)
 
   const calls = {
     manifest: 0,
@@ -49,6 +51,7 @@ function harness() {
     repo,
     snapshotRepo,
     syncMetaRepo,
+    profileRepo,
     hashPart: async (v) => JSON.stringify(v),
     genId: () => 'id',
     now: () => 1000,
@@ -166,7 +169,8 @@ describe('createSyncController — runLoginSync / purge', () => {
     h.controller.notifyChanged('w1') // pending＋タイマー
     const res = await h.controller.runLoginSync()
     expect(res).not.toBeNull()
-    expect(h.calls.manifest).toBe(1)
+    // Work 用（engineLoginSync）とプロフィール用（runProfileSync）で manifest を 2 回読む。
+    expect(h.calls.manifest).toBe(2)
     const pushedDuringLogin = h.calls.push.length
     await vi.advanceTimersByTimeAsync(DEBOUNCE) // タイマーは解除済み → 追加 push なし
     expect(h.calls.push.length).toBe(pushedDuringLogin)

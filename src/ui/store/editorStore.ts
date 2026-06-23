@@ -128,6 +128,8 @@ export interface EditorStoreDeps {
   onSaved?: (workId: string) => void
   /** 作品を完全削除（purge）した直後の通知。リモートのトゥームストーン化に使う。 */
   onPurged?: (workId: string) => void
+  /** プロフィール（ペンネーム・アバター）が永続化された直後の通知（同期 push のトリガ）。 */
+  onProfileSaved?: () => void
 }
 
 const INITIAL: EditorState = {
@@ -155,6 +157,7 @@ export function createEditorStore({
   trashTtlMs,
   onSaved,
   onPurged,
+  onProfileSaved,
 }: EditorStoreDeps): EditorStore {
   let state: EditorState = INITIAL
   const listeners = new Set<() => void>()
@@ -162,6 +165,7 @@ export function createEditorStore({
   // 永続化／purge を同期コントローラへ通知する（注入が無ければ no-op＝ゲスト）。
   const notifySaved = (workId: string) => onSaved?.(workId)
   const notifyPurged = (workId: string) => onPurged?.(workId)
+  const notifyProfileSaved = () => onProfileSaved?.()
 
   const emit = () => {
     for (const l of listeners) l()
@@ -520,12 +524,14 @@ export function createEditorStore({
 
     async updateProfile(input) {
       // ダイアログが現在値を丸ごと持つので、空文字のフィールドは未設定として落とす。
-      const profile: Profile = {}
+      // updatedAt は端末間 LWW 用（クラウド同期の勝者判定）。
+      const profile: Profile = { updatedAt: now() }
       const penName = input.penName.trim()
       if (penName) profile.penName = penName
       if (input.avatar) profile.avatar = input.avatar
       await profileRepo.save(profile)
       set({ profile })
+      notifyProfileSaved()
     },
   }
 }
