@@ -253,3 +253,18 @@ test('作品の削除 → ライブラリから消える', async ({ page }) => {
   await page.getByRole('button', { name: 'ゴミ箱へ移動' }).click()
   await expect(page.getByText('消える作品')).toHaveCount(0)
 })
+
+test('ゲスト（pk 不在）では同期 UI が一切出ない（Phase 2 ゲスト回帰）', async ({ page }) => {
+  // pnpm dev は VITE_CLERK_PUBLISHABLE_KEY 無しで起動するため常にゲスト。
+  // 同期コードは結線済み（main→Root→useSync）だが、ゲストでは全層 no-op になり
+  // SyncStatusBanner は null を返す。見出しが出る＝同期コードを積んでも壊れず、
+  // かつバナー文言・「今すぐ同期」が一切出ないことを確認する（執筆動作は他テストが担保）。
+  await page.goto('/')
+  await expect(page.getByRole('heading', { name: 'マイライブラリ' })).toBeVisible()
+
+  await expect(page.getByText('別の端末でログイン')).toHaveCount(0)
+  await expect(page.getByText('保存容量の上限')).toHaveCount(0)
+  await expect(page.getByText('オフラインのため同期を保留')).toHaveCount(0)
+  await expect(page.getByText('同期中…')).toHaveCount(0)
+  await expect(page.getByRole('button', { name: '今すぐ同期' })).toHaveCount(0)
+})

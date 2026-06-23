@@ -120,6 +120,14 @@ export interface EditorStoreDeps {
   snapshotMinIntervalMs: number
   /** ゴミ箱の保持期間(ms)。init() でこれを過ぎた退避作品を自動 purge する。 */
   trashTtlMs: number
+  /**
+   * 作品の本文・メタ・辞書が永続化された直後の通知（Phase 2 同期トリガ）。
+   * 同期コントローラが workId を coalesce してクラウドへ push する。ゲスト時は no-op。
+   * trash 退避は同期対象外なので通知しない（削除は onPurged で伝播）。
+   */
+  onSaved?: (workId: string) => void
+  /** 作品を完全削除（purge）した直後の通知。リモートのトゥームストーン化に使う。 */
+  onPurged?: (workId: string) => void
 }
 
 const INITIAL: EditorState = {
@@ -145,9 +153,15 @@ export function createEditorStore({
   now,
   snapshotMinIntervalMs,
   trashTtlMs,
+  onSaved,
+  onPurged,
 }: EditorStoreDeps): EditorStore {
   let state: EditorState = INITIAL
   const listeners = new Set<() => void>()
+
+  // 永続化／purge を同期コントローラへ通知する（注入が無ければ no-op＝ゲスト）。
+  const notifySaved = (workId: string) => onSaved?.(workId)
+  const notifyPurged = (workId: string) => onPurged?.(workId)
 
   const emit = () => {
     for (const l of listeners) l()
@@ -211,6 +225,7 @@ export function createEditorStore({
         snapshots: [],
       })
       await refreshList()
+      notifySaved(work.id)
     },
 
     async openWork(id) {
@@ -237,6 +252,7 @@ export function createEditorStore({
       }
       await repo.saveWork(work)
       set({ work, currentEpisodeId: episode.id, draft: '', dirty: false, status: 'idle' })
+      notifySaved(work.id)
     },
 
     openEpisode(id) {
@@ -274,6 +290,7 @@ export function createEditorStore({
       const snapshots = await snapshotRepo.record(work, now(), genId(), snapshotMinIntervalMs)
       set({ work, dirty: false, status: 'saved', snapshots })
       await refreshList()
+      notifySaved(work.id)
     },
 
     restoreSnapshot(snapshotId) {
@@ -315,18 +332,21 @@ export function createEditorStore({
       await repo.restoreWork(id)
       await refreshList()
       await refreshTrash()
+      notifySaved(id)
     },
 
     async purgeWork(id) {
       await repo.purgeTrashedWork(id)
       await snapshotRepo.clear(id)
       await refreshTrash()
+      notifyPurged(id)
     },
 
     async emptyTrash() {
       for (const t of state.trashList) {
         await repo.purgeTrashedWork(t.id)
         await snapshotRepo.clear(t.id)
+        notifyPurged(t.id)
       }
       await refreshTrash()
     },
@@ -349,6 +369,7 @@ export function createEditorStore({
         set({ work })
       }
       await refreshList()
+      notifySaved(work.id)
     },
 
     async renameEpisode(episodeId, title) {
@@ -367,6 +388,7 @@ export function createEditorStore({
       await repo.saveWork(work)
       set({ work })
       await refreshList()
+      notifySaved(work.id)
     },
 
     async updateWorkMeta(id, meta) {
@@ -380,6 +402,7 @@ export function createEditorStore({
       await repo.saveWork(work)
       if (state.work?.id === id) set({ work })
       await refreshList()
+      notifySaved(work.id)
     },
 
     async importWorks(works) {
@@ -419,6 +442,7 @@ export function createEditorStore({
       await repo.saveWork(work)
       set({ work })
       await refreshList()
+      notifySaved(work.id)
       return entry
     },
 
@@ -447,6 +471,7 @@ export function createEditorStore({
       await repo.saveWork(work)
       set({ work })
       await refreshList()
+      notifySaved(work.id)
     },
 
     async renameGlossaryEntry(id, newName, opts) {
@@ -474,6 +499,7 @@ export function createEditorStore({
       }
       set(patch)
       await refreshList()
+      notifySaved(work.id)
     },
 
     async deleteGlossaryEntry(id) {
@@ -489,6 +515,7 @@ export function createEditorStore({
       await repo.saveWork(work)
       set({ work })
       await refreshList()
+      notifySaved(work.id)
     },
 
     async updateProfile(input) {

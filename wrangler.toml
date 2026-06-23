@@ -15,7 +15,7 @@ binding = "DB"
 database_name = "novel-studio"
 database_id = "811bad99-8040-4c46-9192-26623aeabc99"
 
-# 同期本体（Phase 2）で有効化する。`wrangler r2 bucket create novel-studio-media` 後。
-# [[r2_buckets]]
-# binding = "MEDIA"
-# bucket_name = "novel-studio-media"
+# 同期本体（Phase 2）の暗号化ブロブ置き場。`wrangler r2 bucket create novel-studio-media` 後に有効。
+[[r2_buckets]]
+binding = "MEDIA"
+bucket_name = "novel-studio-media"
