@@ -8,9 +8,12 @@ const POLL_MS = 60_000
  * 単一アクティブセッションの監視。member になったら claim → 定期／フォーカス時に status 確認。
  * 別端末に奪われたら superseded=true（同期停止バナー用）。Phase 1 は監視と通知のみ（同期はしない）。
  */
-export function useSessionGuard(): { superseded: boolean } {
+export function useSessionGuard(): { superseded: boolean; claimed: boolean } {
   const { status, userId, getToken } = useAuth()
   const [superseded, setSuperseded] = useState(false)
+  // claim が完了し localStorage にセッショントークンを保存し終えたか。
+  // sync（use-sync）はこれが true になるまで起動しない（claim 前の空トークン同期＝409 を防ぐ）。
+  const [claimed, setClaimed] = useState(false)
   // getToken の参照変化で effect が再実行されないよう ref に退避する。
   const getTokenRef = useRef(getToken)
   getTokenRef.current = getToken
@@ -22,6 +25,7 @@ export function useSessionGuard(): { superseded: boolean } {
   useEffect(() => {
     if (status !== 'member') {
       setSuperseded(false)
+      setClaimed(false)
       claimedForRef.current = null
       claimingRef.current = false
       return
@@ -48,6 +52,7 @@ export function useSessionGuard(): { superseded: boolean } {
     void (async () => {
       if (claimedForRef.current === userId) {
         // この端末は既に claim 済み → status 確認のみ。
+        if (alive) setClaimed(true)
         await check()
         return
       }
@@ -65,6 +70,8 @@ export function useSessionGuard(): { superseded: boolean } {
         return
       }
       claimedForRef.current = userId
+      // トークンを保存し終えてから sync を解禁する（claim 前の空トークン同期＝409 を防ぐ）。
+      if (alive) setClaimed(true)
       if (!alive) return
       await check()
     })()
@@ -77,5 +84,5 @@ export function useSessionGuard(): { superseded: boolean } {
     }
   }, [status, userId])
 
-  return { superseded }
+  return { superseded, claimed }
 }

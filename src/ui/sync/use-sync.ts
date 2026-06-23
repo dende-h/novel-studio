@@ -13,11 +13,20 @@ export interface UseSyncResult {
 }
 
 /**
- * クラウド同期の結線（Phase 2・Slice 2c）。member になったら同期コントローラを生成し、
- * ①初回ログイン全双方向同期 → 一覧再読込、②保存通知（bridge）→ debounce push、
- * ③タブ非表示・オンライン復帰・離脱時の flush を担う。ゲスト・loading では何もしない（no-op）。
+ * クラウド同期の結線（Phase 2・Slice 2c）。member かつ sessionReady（claim 完了）になったら
+ * 同期コントローラを生成し、①初回ログイン全双方向同期 → 一覧再読込、②保存通知（bridge）→
+ * debounce push、③タブ非表示・オンライン復帰・離脱時の flush を担う。
+ *
+ * sessionReady を待つのが要点：claim が localStorage にセッショントークンを保存する前に同期を
+ * 走らせると、空トークンで X-Session-Token を送り全 API が 409（superseded）で落ちる。claim 解禁
+ * 前のローカル編集は、解禁後の login-sync が push で拾うのでデータ欠落はない。
+ * ゲスト・loading・claim 前では何もしない（no-op）。
  */
-export function useSync(store: EditorStore, bridge: SyncBridge): UseSyncResult {
+export function useSync(
+  store: EditorStore,
+  bridge: SyncBridge,
+  sessionReady: boolean,
+): UseSyncResult {
   const { available, status, userId, getToken } = useAuth()
   const [phase, setPhase] = useState<SyncPhase>('idle')
   // getToken の参照変化で effect を作り直さないよう ref に退避する。
@@ -36,7 +45,8 @@ export function useSync(store: EditorStore, bridge: SyncBridge): UseSyncResult {
   }, [store])
 
   useEffect(() => {
-    if (!available || status !== 'member' || !userId) {
+    // sessionReady（claim 完了）まで起動しない。member でも claim 前は no-op に留める。
+    if (!available || status !== 'member' || !userId || !sessionReady) {
       bridge.onSaved = () => {}
       bridge.onPurged = () => {}
       setPhase('idle')
@@ -83,7 +93,7 @@ export function useSync(store: EditorStore, bridge: SyncBridge): UseSyncResult {
       bridge.onSaved = () => {}
       bridge.onPurged = () => {}
     }
-  }, [available, status, userId, store, bridge])
+  }, [available, status, userId, store, bridge, sessionReady])
 
   return { phase, syncNow }
 }

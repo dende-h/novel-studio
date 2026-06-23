@@ -18,9 +18,10 @@ interface RootProps {
 export function Root({ store, syncBridge }: RootProps) {
   const { route, navigate } = useHashRoute()
   // 単一アクティブセッションの監視（別端末に奪われたら同期停止バナーを出す）。
-  const { superseded } = useSessionGuard()
+  // claimed=セッション claim 完了。これが立つまで sync は起動しない（claim 前の 409 を防ぐ）。
+  const { superseded, claimed } = useSessionGuard()
   // クラウド同期の結線（ログイン時の全同期・autosave push・状態フェーズ）。
-  const { phase, syncNow } = useSync(store, syncBridge)
+  const { phase, syncNow } = useSync(store, syncBridge, claimed)
 
   // ライブラリで保存済み作品一覧を表示するため、入口で一覧を読み込む。
   useEffect(() => {
