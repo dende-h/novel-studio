@@ -6,6 +6,11 @@ export interface AuthState {
   /** Clerk が構成されているか（publishable key あり）。false の間は認証 UI を出さない。 */
   available: boolean
   status: AuthStatus
+  /**
+   * Clerk にサインイン済みか。`status === 'member'`（サインイン済み かつ 課金）とは別軸で、
+   * 「サインイン済みだが未課金」（status は guest）を見分けて「アップグレードで同期」CTA を出すのに使う。
+   */
+  isSignedIn: boolean
   userId: string | null
   /** 表示用の名前（Clerk のフルネーム／メール）。 */
   displayName: string | null
@@ -20,6 +25,7 @@ export interface AuthState {
 export const GUEST_AUTH_STATE: AuthState = {
   available: false,
   status: 'guest',
+  isSignedIn: false,
   userId: null,
   displayName: null,
   openSignIn: () => {},
