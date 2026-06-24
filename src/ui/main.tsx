@@ -8,6 +8,7 @@ import '@fontsource-variable/noto-serif-jp'
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { AuthProvider } from './auth/auth-provider'
+import { ToastProvider } from './components/Toast/toast'
 import { Root } from './Root'
 import { createDefaultStore } from './store/createDefaultStore'
 import { createSyncBridge } from './sync/sync-bridge'
@@ -27,7 +28,9 @@ const store = createDefaultStore({
 createRoot(root).render(
   <StrictMode>
     <AuthProvider>
-      <Root store={store} syncBridge={syncBridge} />
+      <ToastProvider>
+        <Root store={store} syncBridge={syncBridge} />
+      </ToastProvider>
     </AuthProvider>
   </StrictMode>,
 )

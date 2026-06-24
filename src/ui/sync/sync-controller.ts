@@ -20,12 +20,7 @@ import { type ManifestEntry, PROFILE_WORK_ID } from '@/core/sync/manifest'
 import { type ProfileSyncDeps, pushProfileChange, runProfileSync } from '@/core/sync/profile-sync'
 
 /** バナー表示用の同期フェーズ。 */
-export type SyncPhase =
-  | 'idle'
-  | 'syncing'
-  | 'paused-offline'
-  | 'paused-capacity'
-  | 'paused-superseded'
+export type SyncPhase = 'idle' | 'syncing' | 'paused-offline' | 'paused-capacity'
 
 /** push の HTTP 結果（_api/sync.ts の PushResponse と同形）。 */
 interface PushResponse {
@@ -57,6 +52,11 @@ export interface SyncControllerDeps {
   debounceMs: number
   /** フェーズ変化の通知（バナー用）。 */
   onStatus?: (phase: SyncPhase) => void
+  /**
+   * 別端末ログインでこの端末が無効化された（409 superseded）ときの通知。
+   * 呼び出し側はこの端末を強制ログアウト（ゲスト化）する。
+   */
+  onSuperseded?: () => void
 }
 
 export interface SyncController {
@@ -90,7 +90,7 @@ export function createSyncController(deps: SyncControllerDeps): SyncController {
     pullWork: (workId) => api.pullWork(workId),
     pushWork: async (workId, payload) => {
       const { status, result } = await api.pushWork(workId, payload)
-      if (status === 409) blocked = 'paused-superseded'
+      if (status === 409) deps.onSuperseded?.()
       else if (status === 507 || status === 413) blocked = 'paused-capacity'
       return result
     },
@@ -120,7 +120,7 @@ export function createSyncController(deps: SyncControllerDeps): SyncController {
     pullProfile: () => api.pullWork(PROFILE_WORK_ID),
     pushProfile: async (payload) => {
       const { status, result } = await api.pushWork(PROFILE_WORK_ID, payload)
-      if (status === 409) blocked = 'paused-superseded'
+      if (status === 409) deps.onSuperseded?.()
       else if (status === 507 || status === 413) blocked = 'paused-capacity'
       return result
     },

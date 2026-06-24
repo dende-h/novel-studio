@@ -20,6 +20,8 @@ export interface DefaultSyncControllerOptions {
   userId: string
   isEnabled: () => boolean
   onStatus?: (phase: SyncPhase) => void
+  /** 別端末ログインでこの端末が無効化された（409 superseded）ときの通知。 */
+  onSuperseded?: () => void
 }
 
 export function createDefaultSyncController(opts: DefaultSyncControllerOptions): SyncController {
@@ -48,5 +50,6 @@ export function createDefaultSyncController(opts: DefaultSyncControllerOptions):
     isOnline: () => navigator.onLine,
     debounceMs: DEBOUNCE_MS,
     onStatus: opts.onStatus,
+    onSuperseded: opts.onSuperseded,
   })
 }

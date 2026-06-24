@@ -26,12 +26,16 @@ export function useSync(
   store: EditorStore,
   bridge: SyncBridge,
   sessionReady: boolean,
+  onSuperseded: () => void,
 ): UseSyncResult {
   const { available, status, userId, getToken } = useAuth()
   const [phase, setPhase] = useState<SyncPhase>('idle')
   // getToken の参照変化で effect を作り直さないよう ref に退避する。
   const getTokenRef = useRef(getToken)
   getTokenRef.current = getToken
+  // onSuperseded（別端末ログインによる強制ログアウト）も同様に ref へ退避する。
+  const onSupersededRef = useRef(onSuperseded)
+  onSupersededRef.current = onSuperseded
   // 手動同期から「今アクティブなコントローラ」を参照するための ref。
   const controllerRef = useRef<SyncController | null>(null)
 
@@ -62,6 +66,7 @@ export function useSync(
       onStatus: (p) => {
         if (alive) setPhase(p)
       },
+      onSuperseded: () => onSupersededRef.current(),
     })
     controllerRef.current = controller
 

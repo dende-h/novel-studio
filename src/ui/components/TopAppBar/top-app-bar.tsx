@@ -1,4 +1,12 @@
-import { CircleDot, Cloud, CloudCheck, Download, History, LoaderCircle, LogIn } from 'lucide-react'
+import {
+  CircleDot,
+  Cloud,
+  CloudCheck,
+  CloudOff,
+  Download,
+  History,
+  LoaderCircle,
+} from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/ui/auth/auth-context'
 import { Button } from '@/ui/components/ui/button'
@@ -77,6 +85,7 @@ function AccountControl() {
     )
   }
   if (auth.status === 'guest') {
+    // 3経路（別端末に奪われた／サブスク失効／未ログイン）が全部ゲストに収束＝一律「同期オフ」。
     return (
       <Button
         variant="ghost"
@@ -84,8 +93,8 @@ function AccountControl() {
         onClick={auth.openSignIn}
         className="gap-2 text-on-surface-variant hover:text-primary"
       >
-        <LogIn className="size-4" aria-hidden />
-        同期するにはサインイン
+        <CloudOff className="size-4" aria-hidden />
+        同期オフ（ログインで同期）
       </Button>
     )
   }

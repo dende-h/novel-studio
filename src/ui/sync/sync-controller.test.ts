@@ -27,6 +27,7 @@ function harness() {
   let enabled = true
   let online = true
   const statuses: SyncPhase[] = []
+  const superseded = { count: 0 }
 
   const controller = createSyncController({
     api: {
@@ -59,6 +60,9 @@ function harness() {
     isOnline: () => online,
     debounceMs: DEBOUNCE,
     onStatus: (p) => statuses.push(p),
+    onSuperseded: () => {
+      superseded.count++
+    },
   })
 
   return {
@@ -67,6 +71,7 @@ function harness() {
     syncMetaRepo,
     calls,
     statuses,
+    superseded,
     setPushStatus: (s: number) => {
       pushStatus = s
     },
@@ -143,13 +148,14 @@ describe('createSyncController — ゲスト/オフライン', () => {
 })
 
 describe('createSyncController — エラーフェーズ', () => {
-  it('push が 409 なら paused-superseded を通知', async () => {
+  it('push が 409 なら onSuperseded を呼ぶ（フェーズは idle に戻す）', async () => {
     const h = harness()
     h.setPushStatus(409)
     await h.repo.saveWork(work('w1'))
     h.controller.notifyChanged('w1')
     await h.controller.flush()
-    expect(h.statuses.at(-1)).toBe('paused-superseded')
+    expect(h.superseded.count).toBe(1)
+    expect(h.statuses.at(-1)).toBe('idle')
   })
 
   it('push が 507 なら paused-capacity を通知', async () => {

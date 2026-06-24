@@ -36,6 +36,7 @@ const { useSync } = await import('./use-sync')
 
 const store = { init: vi.fn(() => Promise.resolve()) } as unknown as EditorStore
 const bridge: SyncBridge = { onSaved: () => {}, onPurged: () => {}, onProfileSaved: () => {} }
+const onSuperseded = () => {}
 
 describe('useSync（同期の起動ゲート）', () => {
   beforeEach(() => {
@@ -54,13 +55,13 @@ describe('useSync（同期の起動ゲート）', () => {
   })
 
   it('sessionReady=false の間はコントローラを生成せず login-sync も走らせない', () => {
-    renderHook(() => useSync(store, bridge, false))
+    renderHook(() => useSync(store, bridge, false, onSuperseded))
     expect(createSpy).not.toHaveBeenCalled()
     expect(controller.runLoginSync).not.toHaveBeenCalled()
   })
 
   it('sessionReady=true になって初めて生成＋login-sync→一覧再読込', async () => {
-    const { rerender } = renderHook(({ ready }) => useSync(store, bridge, ready), {
+    const { rerender } = renderHook(({ ready }) => useSync(store, bridge, ready, onSuperseded), {
       initialProps: { ready: false },
     })
     expect(controller.runLoginSync).not.toHaveBeenCalled()
@@ -79,7 +80,7 @@ describe('useSync（同期の起動ゲート）', () => {
       userId: '',
       getToken: () => Promise.resolve(null as unknown as string),
     }
-    renderHook(() => useSync(store, bridge, true))
+    renderHook(() => useSync(store, bridge, true, onSuperseded))
     expect(createSpy).not.toHaveBeenCalled()
     expect(controller.runLoginSync).not.toHaveBeenCalled()
   })

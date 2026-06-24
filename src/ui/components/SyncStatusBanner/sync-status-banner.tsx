@@ -2,8 +2,6 @@ import { CloudOff, RefreshCw, TriangleAlert } from 'lucide-react'
 import type { SyncPhase } from '@/ui/sync/sync-controller'
 
 interface SyncStatusBannerProps {
-  /** 別端末にセッションを奪われ、この端末の同期が停止しているか（セッション監視由来）。 */
-  superseded: boolean
   /** 同期コントローラのフェーズ（push 由来の停止・進捗）。 */
   phase?: SyncPhase
   /** 手動で全同期を再試行（オフライン復帰・容量解消後）。 */
@@ -11,20 +9,11 @@ interface SyncStatusBannerProps {
 }
 
 /**
- * 同期状態バナー（Phase 2）。優先度の高い順に「別端末で停止 > 容量超過 > オフライン > 同期中」を表示。
- * superseded はセッション監視（useSessionGuard）と push の 409 の両方を統合する。
- * 一時停止（容量・オフライン）では「今すぐ同期」で手動再試行できる。superseded は再ログインが必要なので出さない。
+ * 同期状態バナー（Phase 2）。優先度の高い順に「容量超過 > オフライン > 同期中」を表示。
+ * 一時停止（容量・オフライン）では「今すぐ同期」で手動再試行できる。
+ * 別端末ログインによる無効化は強制サインアウト＋トースト（Root）で扱い、ここには出さない。
  */
-export function SyncStatusBanner({ superseded, phase = 'idle', onSyncNow }: SyncStatusBannerProps) {
-  const supersededActive = superseded || phase === 'paused-superseded'
-
-  if (supersededActive) {
-    return (
-      <Bar tone="alert" role="alert" icon={<TriangleAlert className="size-4 shrink-0" />}>
-        別の端末でログインされたため、この端末の同期は停止しています。続けるにはこの端末で再度ログインしてください。
-      </Bar>
-    )
-  }
+export function SyncStatusBanner({ phase = 'idle', onSyncNow }: SyncStatusBannerProps) {
   if (phase === 'paused-capacity') {
     return (
       <Bar
