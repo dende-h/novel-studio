@@ -9,7 +9,7 @@
  */
 
 import { canonicalize } from '../../../src/core/sync/normalize'
-import { type ClerkEnv, json, verifyUserId } from '../_lib/auth'
+import { type ClerkEnv, json, verifyMember } from '../_lib/auth'
 import { decryptPart, encryptPart, importKey, sha256Hex } from '../_lib/crypto'
 import { r2Key } from '../_lib/r2keys'
 import { checkRateLimit } from '../_lib/ratelimit'
@@ -62,12 +62,15 @@ async function quotaUsedBytes(db: D1Database, userId: string): Promise<number> {
   return row?.total ?? 0
 }
 
-/** 認証・work id・セッションをまとめて検証。失敗時は Response、成功時は識別子を返す。 */
+/** 認証・課金・work id・セッションをまとめて検証。失敗時は Response、成功時は識別子を返す。 */
 async function authorize(
   context: Parameters<PagesFunction<Env>>[0],
 ): Promise<{ userId: string; workId: string } | Response> {
-  const userId = await verifyUserId(context.request, context.env)
-  if (!userId) return json({ error: 'unauthorized' }, 401)
+  // 検査順：401（未認証）→ 402（未課金）→ 400（不正）→ 409（別端末）→ …（PUT 側で 429/413/507）。
+  const member = await verifyMember(context.request, context.env)
+  if (!member) return json({ error: 'unauthorized' }, 401)
+  if (!member.isMember) return json({ error: 'subscription_required' }, 402)
+  const { userId } = member
 
   const workId = new URL(context.request.url).searchParams.get('id')
   if (!workId) return json({ error: 'missing_id' }, 400)

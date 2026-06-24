@@ -3,14 +3,18 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 // Clerk 検証・セッション照合・レート制限はモック（暗号化と保存ロジックを実物で通す）。
+// 既定は会員（isMember=true）。未課金/未認証は各テストで mockResolvedValueOnce で差し替える。
 vi.mock('../_lib/auth', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../_lib/auth')>()
-  return { ...actual, verifyUserId: vi.fn(async () => 'user_1') }
+  return { ...actual, verifyMember: vi.fn(async () => ({ userId: 'user_1', isMember: true })) }
 })
 vi.mock('../_lib/session-check', () => ({ isCurrentSession: vi.fn(async () => true) }))
 vi.mock('../_lib/ratelimit', () => ({ checkRateLimit: vi.fn(async () => true), RATE_LIMIT: 60 }))
 
+import { verifyMember } from '../_lib/auth'
 import { onRequestDelete, onRequestGet, onRequestPut } from './work'
+
+const verifyMemberMock = vi.mocked(verifyMember)
 
 const KEY_B64 = btoa(String.fromCharCode(...new Uint8Array(32).fill(7)))
 
@@ -238,6 +242,21 @@ describe('PUT → GET（暗号化を通したラウンドトリップ）', () =>
     await onRequestPut(ctx(putReq({ updatedAt: 200, parts: ['media'], media: null })))
     const getBody = (await (await onRequestGet(ctx(getReq()))).json()) as { media: unknown }
     expect(getBody.media).toBeNull()
+  })
+})
+
+describe('課金・認証ゲート', () => {
+  it('未認証（verifyMember=null）は 401', async () => {
+    verifyMemberMock.mockResolvedValueOnce(null)
+    const res = await onRequestGet(ctx(getReq()))
+    expect(res.status).toBe(401)
+  })
+
+  it('未課金（isMember=false）は 402（subscription_required）', async () => {
+    verifyMemberMock.mockResolvedValueOnce({ userId: 'user_1', isMember: false })
+    const res = await onRequestPut(ctx(putReq({ updatedAt: 100, parts: ['doc'], doc: DOC })))
+    expect(res.status).toBe(402)
+    expect((await res.json()) as { error: string }).toEqual({ error: 'subscription_required' })
   })
 })
 

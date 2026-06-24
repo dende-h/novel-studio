@@ -5,15 +5,17 @@
  */
 
 import type { ManifestEntry } from '../../../src/core/sync/manifest'
-import { type ClerkEnv, json, verifyUserId } from '../_lib/auth'
+import { type ClerkEnv, json, verifyMember } from '../_lib/auth'
 
 interface Env extends ClerkEnv {
   DB: D1Database
 }
 
 export const onRequestGet: PagesFunction<Env> = async (context) => {
-  const userId = await verifyUserId(context.request, context.env)
-  if (!userId) return json({ error: 'unauthorized' }, 401)
+  const member = await verifyMember(context.request, context.env)
+  if (!member) return json({ error: 'unauthorized' }, 401)
+  if (!member.isMember) return json({ error: 'subscription_required' }, 402)
+  const { userId } = member
 
   const { results } = await context.env.DB.prepare(
     `SELECT work_id, updated_at, deleted, doc_hash, media_hash, (doc_size + media_size) AS size
