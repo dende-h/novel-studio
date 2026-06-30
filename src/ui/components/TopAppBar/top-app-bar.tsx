@@ -7,8 +7,10 @@ import {
   History,
   LoaderCircle,
 } from 'lucide-react'
+import { useState } from 'react'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/ui/auth/auth-context'
+import { UpgradeDialog } from '@/ui/components/UpgradeDialog/upgrade-dialog'
 import { Button } from '@/ui/components/ui/button'
 import type { SaveStatus } from '@/ui/store/editorStore'
 
@@ -67,6 +69,7 @@ function SaveIndicator({ dirty, status }: SaveState) {
 /** アカウント（同期・認証）。Clerk 構成時（publishable key あり）のみ表示。 */
 function AccountControl() {
   const auth = useAuth()
+  const [upgradeOpen, setUpgradeOpen] = useState(false)
   if (!auth.available) return null
   if (auth.status === 'member') {
     return (
@@ -85,7 +88,33 @@ function AccountControl() {
     )
   }
   if (auth.status === 'guest') {
-    // 3経路（別端末に奪われた／サブスク失効／未ログイン）が全部ゲストに収束＝一律「同期オフ」。
+    // サインイン済みだが未課金（登録直後・解約後グレース外）＝別軸 isSignedIn で判別。
+    // 同期は使えないが「アップグレードで同期」課金導線を出す（既にサインインしているので
+    // openSignIn ではなく料金表へ）。サインアウトも併置して、課金しない離脱経路も残す。
+    if (auth.isSignedIn) {
+      return (
+        <div className="flex items-center gap-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setUpgradeOpen(true)}
+            className="gap-2 text-on-surface-variant hover:text-primary"
+          >
+            <Cloud className="size-4" aria-hidden />
+            アップグレードで同期
+          </Button>
+          <button
+            type="button"
+            onClick={auth.signOut}
+            className="shrink-0 font-sans text-on-surface-variant text-xs transition-colors hover:text-primary hover:underline"
+          >
+            サインアウト
+          </button>
+          <UpgradeDialog open={upgradeOpen} onOpenChange={setUpgradeOpen} />
+        </div>
+      )
+    }
+    // 3経路（別端末に奪われた／サブスク失効→削除／未ログイン）が全部ゲストに収束＝一律「同期オフ」。
     return (
       <Button
         variant="ghost"
