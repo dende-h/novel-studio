@@ -20,8 +20,9 @@ interface UpgradeDialogProps {
 /**
  * 「アップグレードで同期」課金導線（Phase 4 Slice E）。サインイン済みだが未課金のユーザーに
  * 有料クラウド束（同期／複数端末／自動バックアップ／AI・MCP アクセス）の料金表を見せ、Clerk
- * Billing の checkout に繋ぐ。課金成立で `has({ plan })` が真になり `deriveStatus` が member へ遷移し、
- * 同期が起動する。Clerk 無効（pk なし）な環境では呼び出し元の AccountControl 自体が描画されない。
+ * Billing の checkout に繋ぐ。課金成立後は料金表がフルリロードして新しい plan クレーム入りトークンを
+ * 取り直し（`clerk-pricing` の `newSubscriptionRedirectUrl`）、`deriveStatus` が member へ遷移して同期が
+ * 起動する。Clerk 無効（pk なし）な環境では呼び出し元の AccountControl 自体が描画されない。
  */
 export function UpgradeDialog({ open, onOpenChange }: UpgradeDialogProps) {
   return (
