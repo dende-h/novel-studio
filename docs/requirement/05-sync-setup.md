@@ -150,6 +150,55 @@ Clerk ログインの自動化は不安定なため、双方向同期の受け�
       復帰で自動 flush（or「今すぐ同期」）。
 - [ ] **ゲスト回帰**：サインアウト → 同期 UI が消え、ローカルの全作品が無傷で編集・書き出しできる。
 
+## 10. Phase 4（課金 / Clerk Billing）の手配
+
+Freemium の有料軸（クラウド束）を実際に課金できるようにする手配。**コードはリポジトリに実装済み**で
+（下記）、**有効化に必要な「ダッシュボード設定＋秘密鍵」だけがこの章の手作業**。設定が済むまでは
+`has({ plan })` が常に偽＝全員ゲスト（同期 API は 402）になるので、**この章を終えるまで stg/本番へ
+push しない**（ローカルコミットのみで温存する）。
+
+> 実装済みコード（参考）：会員判定 `functions/api/_lib/auth.ts:verifyMember`・同期ゲート
+> `functions/api/sync/{manifest,work}.ts`（402 `subscription_required`）・クライアント判定
+> `src/ui/auth/derive-status.ts`／`clerk-gate.tsx`・課金導線 `src/ui/components/UpgradeDialog/`＋
+> `src/ui/auth/clerk-pricing.tsx`・失効 webhook `functions/api/webhooks/clerk.ts`＋
+> `functions/api/_lib/svix.ts`＋`src/core/billing/webhook-event.ts`。プラン slug の単一定数は
+> `src/core/billing/plan.ts`（`PLAN_KEY = 'cloud'`）。
+
+### 10-1. Clerk Billing 有効化＋プラン作成（dev → prod 各アプリ）
+- [ ] Clerk Dashboard → 対象アプリ → **Billing** → Enable（Clerk Billing／裏 Stripe）。Stripe を接続し
+      通貨を **JPY** にする。
+- [ ] **プランを作成**：slug = **`cloud`**（`src/core/billing/plan.ts` の `PLAN_KEY` と一致。別名にする
+      なら `PLAN_KEY` を 1 箇所書き換える）。価格 **月額 ¥500／年額 ¥4,800**、トライアル無し。
+- [ ] 会員判定はセッショントークンの plan クレーム（`has({ plan: 'cloud' })`）で行う。Billing 有効化で
+      クレームが付与される。Dashboard → Sessions → Customize session token に billing claim の明示追加が
+      要るかは Clerk の仕様確認のうえ設定（要れば追加）。
+
+### 10-2. 失効 webhook（Slice D）の登録
+- [ ] Dashboard → **Webhooks** → Add endpoint。
+      - stg：`https://stg.novel-studio-b2m.pages.dev/api/webhooks/clerk`
+      - 本番：`https://novel-studio-b2m.pages.dev/api/webhooks/clerk`
+      （`/api/*` はミドルウェアのベーシック認証対象外なので Clerk から直接到達できる）
+- [ ] 購読イベント：**`subscriptionItem.ended`**（最低限これ 1 つ。他イベントはコードが ACK して無視）。
+- [ ] 表示される **Signing Secret（`whsec_...`）** を控える。
+- [ ] **`CLERK_WEBHOOK_SECRET` を配置**（git/CI に載せない）：
+      - ローカル：`.dev.vars` に `CLERK_WEBHOOK_SECRET=whsec_...`
+      - stg：Cloudflare Pages → Settings → Variables and Secrets → **Preview** に Secret 追加。
+      - 本番：同 → **Production**（または `pnpm exec wrangler pages secret put CLERK_WEBHOOK_SECRET`）。
+      > 未設定だと webhook は破壊的処理を一切せず 500 を返す（安全側）。設定不備で誤削除は起きない。
+- [ ] **ペイロード形の最終確認**：Clerk の Event Catalog で `subscriptionItem.ended` の実 JSON
+      （`data.plan.slug`／`data.payer.user_id`）を確認。形が違っても `interpretBillingEvent` は
+      「削除しない（ignore）」側に倒れるので破壊は起きない。差異があればパスを調整する（要テスト追加）。
+
+### 10-3. 受け入れ（stg・2 ブラウザ §9 と同じ要領）
+- [ ] 未課金でサインイン → ヘッダーが「**アップグレードで同期**」になり、クリックで料金表が出る。
+- [ ] 課金（月額/年額）→ member 化し同期が起動する（`05-sync.md §8` の課金項目）。
+- [ ] 解約 → 期末まで member 継続・同期継続（`cancel_at_period_end`・グレース期間）。
+- [ ] 失効（期末到来）→ webhook で R2/D1 と Clerk ユーザーが削除され全端末が強制ログアウト（ゲスト
+      「同期オフ」へ）。**端末内ローカルの原稿は残る**（`D-PLAN-LOCALDATA`）。
+
+> 補足：stg で課金→同期まで通すには Phase 2 の手配（§7：R2 バケット作成・`ENCRYPTION_KEY` の
+> **Preview** 投入・`0002` マイグレーション適用）も揃っている必要がある。Slice F と一緒に確認する。
+
 ---
 
 ## 既知の確認事項（実装/運用時に裏取り）

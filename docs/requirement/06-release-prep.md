@@ -125,13 +125,19 @@ novel-studio を **本番（production）で実際に動かす**ために必要�
 
 ## D. スコープ外（将来フェーズ）
 
-- **Phase 4（課金）**：Clerk Billing で member ゲート。現状 member 判定はサインイン済みスタブのため、
-  「課金で同期有効化」は未実装（`05-sync.md §8` の該当項目も ⏳）。設計確定（`05-sync.md` D-SYNC-PRICE）：
-  会員/プラン判定＝Clerk JWT クレーム（client `has({plan})`＝UX／server `toAuth().has({plan})`＝強制力）。
+- **Phase 4（課金）**：Clerk Billing で member ゲート。設計確定（`05-sync.md` D-SYNC-PRICE）：会員/プラン
+  判定＝Clerk JWT クレーム（client `has({plan})`＝UX／server `toAuth().has({plan})`＝強制力）。
   **解約＝期末まで継続予約**（`cancel_at_period_end`、グレース期間は同期継続）。**失効＝Clerk 失効 webhook を
   トリガにクラウドのアカウント＋データ削除＋全端末強制ログアウト**。削除はクラウドのみ・**ローカル原稿は保持**
   （D-PLAN-LOCALDATA）。新規シークレット `CLERK_WEBHOOK_SECRET` が要る（`.dev.vars`／ダッシュボードのみ・
   git/CI 非搭載）。
+  - **実装状況**：Slice A（セッションUX）・B（サーバ 402 ゲート `verifyMember`）・C（クライアント
+    `deriveStatus`）・D（失効 webhook → R2/D1 purge＋`deleteUser`）・E（アップグレード課金導線＝
+    `<PricingTable />` ダイアログ）まで**コード実装済み**（ユニット/結合テスト緑）。
+  - **残るは Slice F＝ダッシュボード設定（手作業）**：Clerk Billing 有効化＋プラン作成（slug `cloud`＝
+    `src/core/billing/plan.ts` の `PLAN_KEY`）＋webhook 登録＋`CLERK_WEBHOOK_SECRET` 配置。手順は
+    **`05-sync-setup.md §10`**。F 完了まで `has({plan})` が常に偽＝全員 402 になるため、**B〜E は stg/本番へ
+    push せずローカルコミットで温存**する（F と同時に揃えて push）。
 - **セッション UX（Slice A・実装済み）**：別端末ログインで押し出された旧端末は**強制サインアウト（→ゲスト）＋
   トースト1回**で通知（旧「同期停止中」常駐バナーは撤去）。ゲストはヘッダー一律「同期オフ（ログインで同期）」。
 - **鍵ローテーション運用**：A-4 の通り現状は単一鍵固定。鍵 ID 付きエンベロープ暗号化等は将来。
