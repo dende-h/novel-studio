@@ -10,6 +10,11 @@ vi.mock('@/ui/components/UpgradeDialog/upgrade-dialog', () => ({
     open ? <div data-testid="upgrade-dialog" /> : null,
 }))
 
+// 会員の UserButton も lazy で Clerk を読み込むのでスタブ化（描画されることだけ観測する）。
+vi.mock('@/ui/auth/clerk-user-button', () => ({
+  default: () => <div data-testid="user-button" />,
+}))
+
 describe('TopAppBar（トップバー）', () => {
   it('onToggleHistory 指定時は履歴トグルを表示し、クリックで発火する', () => {
     const onToggleHistory = vi.fn()
@@ -92,15 +97,11 @@ describe('TopAppBar / AccountControl（同期アカウント表示）', () => {
     expect(signOut).toHaveBeenCalledTimes(1)
   })
 
-  it('会員（member）は表示名とサインアウトを出し、アップグレード導線は出さない', () => {
-    const signOut = vi.fn()
-    renderWithAuth(
-      authState({ status: 'member', isSignedIn: true, displayName: '紫式部', signOut }),
-    )
-    expect(screen.getByText('紫式部')).toBeInTheDocument()
+  it('会員（member）は Clerk UserButton（解約/サインアウト内包）を出し、アップグレード導線は出さない', async () => {
+    renderWithAuth(authState({ status: 'member', isSignedIn: true, displayName: '紫式部' }))
+    // lazy 解決後に UserButton が出る（解約・グレース中の再開・サインアウトは Clerk 側のメニュー）。
+    expect(await screen.findByTestId('user-button')).toBeInTheDocument()
     expect(screen.queryByText('アップグレードで同期')).toBeNull()
-    fireEvent.click(screen.getByRole('button', { name: 'サインアウト' }))
-    expect(signOut).toHaveBeenCalledTimes(1)
   })
 
   it('判定中（loading）は何も出さない（ちらつき防止）', () => {

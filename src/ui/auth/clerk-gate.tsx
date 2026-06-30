@@ -1,5 +1,5 @@
 import { ClerkProvider, useClerk, useAuth as useClerkAuth, useUser } from '@clerk/clerk-react'
-import type { ReactNode } from 'react'
+import { type ReactNode, useEffect } from 'react'
 import { PLAN_KEY } from '@/core/billing/plan'
 import { clearSessionToken } from '@/ui/_api/session'
 import { AuthContext, type AuthState } from './auth-context'
@@ -10,6 +10,16 @@ function ClerkAuthBridge({ children }: { children: ReactNode }) {
   const { isLoaded, isSignedIn, has, getToken } = useClerkAuth()
   const { user } = useUser()
   const clerk = useClerk()
+
+  // サインアウト（user が消える）で端末ローカルのセッショントークンを破棄する。明示的 signOut だけ
+  // でなく、UserButton 内蔵のサインアウトや別端末ログインの押し出しも捕捉する（単一アクティブ
+  // セッションの後始末・clearSessionToken は冪等）。
+  useEffect(() => {
+    const unsub = clerk.addListener((res) => {
+      if (!res.user) clearSessionToken()
+    })
+    return unsub
+  }, [clerk])
 
   const signedIn = isSignedIn === true
   // 会員判定は Clerk JWT クレーム（has({ plan: PLAN_KEY })）が単一の真実＝サーバ verifyMember と同条件。

@@ -7,12 +7,16 @@ import {
   History,
   LoaderCircle,
 } from 'lucide-react'
-import { useState } from 'react'
+import { lazy, Suspense, useState } from 'react'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/ui/auth/auth-context'
 import { UpgradeDialog } from '@/ui/components/UpgradeDialog/upgrade-dialog'
 import { Button } from '@/ui/components/ui/button'
 import type { SaveStatus } from '@/ui/store/editorStore'
+
+// 会員のアカウント操作（解約／サインアウト）は Clerk の UserButton。@clerk/clerk-react を含むので
+// 別チャンク化し、会員描画時だけ lazy import する（ゲストの主バンドルに Clerk を混ぜない）。
+const ClerkUserButton = lazy(() => import('@/ui/auth/clerk-user-button'))
 
 export interface SaveState {
   dirty: boolean
@@ -72,19 +76,18 @@ function AccountControl() {
   const [upgradeOpen, setUpgradeOpen] = useState(false)
   if (!auth.available) return null
   if (auth.status === 'member') {
+    // Clerk UserButton にアカウント管理（解約／グレース中の再開）とサインアウトを集約。
+    // チャンク読み込み中は表示名だけ出してレイアウトの揺れを防ぐ。
     return (
-      <div className="flex items-center gap-2">
-        <span className="max-w-[10rem] truncate font-sans text-on-surface-variant text-xs">
-          {auth.displayName ?? 'サインイン中'}
-        </span>
-        <button
-          type="button"
-          onClick={auth.signOut}
-          className="shrink-0 font-sans text-on-surface-variant text-xs transition-colors hover:text-primary hover:underline"
-        >
-          サインアウト
-        </button>
-      </div>
+      <Suspense
+        fallback={
+          <span className="max-w-[10rem] truncate font-sans text-on-surface-variant text-xs">
+            {auth.displayName ?? 'サインイン中'}
+          </span>
+        }
+      >
+        <ClerkUserButton />
+      </Suspense>
     )
   }
   if (auth.status === 'guest') {
