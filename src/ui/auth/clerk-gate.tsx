@@ -13,10 +13,11 @@ function ClerkAuthBridge({ children }: { children: ReactNode }) {
 
   // サインアウト（user が消える）で端末ローカルのセッショントークンを破棄する。明示的 signOut だけ
   // でなく、UserButton 内蔵のサインアウトや別端末ログインの押し出しも捕捉する（単一アクティブ
-  // セッションの後始末・clearSessionToken は冪等）。
+  // セッションの後始末・clearSessionToken は冪等）。`clerk.loaded` を条件にして、ハイドレーション前の
+  // 一時的な user=null で有効トークンを誤消去しない（＝「ロード済み かつ サインアウト」だけで破棄）。
   useEffect(() => {
     const unsub = clerk.addListener((res) => {
-      if (!res.user) clearSessionToken()
+      if (clerk.loaded && !res.user) clearSessionToken()
     })
     return unsub
   }, [clerk])
