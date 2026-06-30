@@ -98,10 +98,13 @@ async function deleteCloudAccount(env: Env, userId: string): Promise<void> {
     cursor = listed.truncated ? listed.cursor : undefined
   } while (cursor)
 
-  // 2. D1: 同期メタ・セッション（＝強制サインアウト）・レート制限の残骸を削除。
-  await env.DB.prepare('DELETE FROM works WHERE user_id = ?').bind(userId).run()
-  await env.DB.prepare('DELETE FROM sessions WHERE user_id = ?').bind(userId).run()
-  await env.DB.prepare('DELETE FROM rate_limits WHERE user_id = ?').bind(userId).run()
+  // 2. D1: 同期メタ・セッション（＝強制サインアウト）・レート制限の残骸を削除。batch で 1 往復に
+  //    まとめる＝暗黙トランザクションで「3 本の途中で中断して片肺削除」を防ぐ（冪等性は維持）。
+  await env.DB.batch([
+    env.DB.prepare('DELETE FROM works WHERE user_id = ?').bind(userId),
+    env.DB.prepare('DELETE FROM sessions WHERE user_id = ?').bind(userId),
+    env.DB.prepare('DELETE FROM rate_limits WHERE user_id = ?').bind(userId),
+  ])
 
   // 3. Clerk ユーザー削除。404（既に削除済み＝再送・手動削除）は冪等として無視し、
   //    それ以外の失敗は throw して呼び出し側で 500→再送に繋ぐ（握りつぶさない）。

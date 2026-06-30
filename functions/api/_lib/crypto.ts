@@ -10,7 +10,8 @@
 
 const IV_BYTES = 12
 
-function base64ToBytes(b64: string): Uint8Array {
+/** base64 文字列を生バイト列に。svix 署名検証（`svix.ts`）と暗号鍵取り込みで共有する。 */
+export function base64ToBytes(b64: string): Uint8Array {
   const bin = atob(b64)
   const bytes = new Uint8Array(bin.length)
   for (let i = 0; i < bin.length; i++) {

@@ -16,29 +16,13 @@ vi.mock('@clerk/backend', () => ({
 
 import { PLAN_KEY } from '../../../src/core/billing/plan'
 import { verifySvix } from '../_lib/svix'
+// verifySvix と同じ規約で実署名を作る共有ヘルパ（テストは本物の HMAC で検証する）。
+import { signSvix as sign } from '../_lib/svix-test-util'
 import { onRequestPost } from './clerk'
 
 const verifySvixMock = vi.mocked(verifySvix)
 
 const SECRET = `whsec_${btoa('0123456789abcdef0123456789abcdef')}`
-
-/** verifySvix と同じ規約で実署名を作る（テストは本物の HMAC で検証する）。 */
-async function sign(secret: string, id: string, ts: string, body: string): Promise<string> {
-  const raw = atob(secret.replace(/^whsec_/, ''))
-  const keyBytes = new Uint8Array(raw.length)
-  for (let i = 0; i < raw.length; i++) keyBytes[i] = raw.charCodeAt(i)
-  const key = await crypto.subtle.importKey(
-    'raw',
-    keyBytes,
-    { name: 'HMAC', hash: 'SHA-256' },
-    false,
-    ['sign'],
-  )
-  const mac = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(`${id}.${ts}.${body}`))
-  let bin = ''
-  for (const b of new Uint8Array(mac)) bin += String.fromCharCode(b)
-  return btoa(bin)
-}
 
 /** R2/D1 のスパイ付きフェイク env を作る。R2 は 2 ページ（truncated を辿る）を返す。 */
 function makeEnv() {
@@ -70,6 +54,8 @@ function makeEnv() {
     prepare(sql: string) {
       const binds: unknown[] = []
       const stmt = {
+        sql,
+        binds,
         bind(...args: unknown[]) {
           binds.push(...args)
           return stmt
@@ -80,6 +66,11 @@ function makeEnv() {
         },
       }
       return stmt
+    },
+    // 本番は env.DB.batch([...])（1 往復・暗黙トランザクション）。fake は順番どおり記録する。
+    async batch(stmts: Array<{ sql: string; binds: unknown[] }>) {
+      for (const s of stmts) dbStatements.push({ sql: s.sql, binds: s.binds })
+      return stmts.map(() => ({}))
     },
   } as unknown as D1Database
 

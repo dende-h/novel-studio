@@ -1,28 +1,12 @@
 // @vitest-environment node
 import { describe, expect, it } from 'vitest'
 import { verifySvix } from './svix'
+// verifySvix とは独立に署名を作る共有ヘルパ（検証器のクロスチェック）。
+import { signSvix as sign } from './svix-test-util'
 
 const SECRET = `whsec_${btoa('0123456789abcdef0123456789abcdef')}`
 const NOW_MS = 1_700_000_000_000
 const TS = String(Math.floor(NOW_MS / 1000))
-
-/** verifySvix とは独立に署名を作る（検証器のクロスチェック）。 */
-async function sign(secret: string, id: string, ts: string, body: string): Promise<string> {
-  const raw = atob(secret.replace(/^whsec_/, ''))
-  const keyBytes = new Uint8Array(raw.length)
-  for (let i = 0; i < raw.length; i++) keyBytes[i] = raw.charCodeAt(i)
-  const key = await crypto.subtle.importKey(
-    'raw',
-    keyBytes,
-    { name: 'HMAC', hash: 'SHA-256' },
-    false,
-    ['sign'],
-  )
-  const mac = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(`${id}.${ts}.${body}`))
-  let bin = ''
-  for (const b of new Uint8Array(mac)) bin += String.fromCharCode(b)
-  return btoa(bin)
-}
 
 const BODY = JSON.stringify({ type: 'subscriptionItem.ended', data: {} })
 

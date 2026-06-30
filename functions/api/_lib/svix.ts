@@ -8,6 +8,8 @@
  * リプレイ・時計ずれ対策として `svix-timestamp` の許容ずれ（既定 5 分）も検査する。
  */
 
+import { base64ToBytes } from './crypto'
+
 const TOLERANCE_SEC = 5 * 60
 
 export interface SvixHeaders {
@@ -62,13 +64,6 @@ function timingSafeEqual(a: string, b: string): boolean {
   let diff = 0
   for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i)
   return diff === 0
-}
-
-function base64ToBytes(b64: string): Uint8Array {
-  const bin = atob(b64)
-  const bytes = new Uint8Array(bin.length)
-  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i)
-  return bytes
 }
 
 function bytesToBase64(bytes: Uint8Array): string {
