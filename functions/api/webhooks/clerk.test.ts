@@ -106,7 +106,10 @@ async function ctx(
 
 const endedEvent = (userId = 'user_42', slug = PLAN_KEY) => ({
   type: 'subscriptionItem.ended',
-  data: { plan: { slug }, payer: { type: 'user', user_id: userId } },
+  data: {
+    plan: { slug },
+    payer: { object: 'commerce_payer', organization_id: '', user_id: userId },
+  },
 })
 
 beforeEach(() => {
@@ -199,11 +202,14 @@ describe('POST /api/webhooks/clerk（失効→クラウド削除）', () => {
     expect(deleteUser).not.toHaveBeenCalled()
   })
 
-  it('organization payer の ended は 200・何も削除しない', async () => {
+  it('organization 払いの ended は 200・何も削除しない', async () => {
     const { env, r2Deleted, dbStatements } = makeEnv()
     const ev = {
       type: 'subscriptionItem.ended',
-      data: { plan: { slug: PLAN_KEY }, payer: { type: 'organization', organization_id: 'org_1' } },
+      data: {
+        plan: { slug: PLAN_KEY },
+        payer: { object: 'commerce_payer', organization_id: 'org_1', user_id: '' },
+      },
     }
     const res = await onRequestPost(await ctx(ev, env))
     expect(res.status).toBe(200)

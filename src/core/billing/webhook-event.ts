@@ -22,10 +22,12 @@ const TERMINAL_TYPES = new Set(['subscriptionItem.ended'])
  *   1. type が終端イベント（`subscriptionItem.ended`）であること。
  *   2. 終了したプランが我々の有料プラン（`PLAN_KEY`）であること。
  *      ── 無料プランの ended は**アップグレード時にも発火**するため、これが無いと昇格で誤削除する。
- *   3. payer が user で `user_id` を持つこと（organization は対象外）。
+ *   3. 個人（user）払いで `user_id` を持つこと（organization 払いは対象外）。
  *
- * フィールドパス（`data.plan.slug` / `data.payer.user_id` 等）は Clerk Dashboard の Event Catalog で
- * Slice F に最終確認する。形が違っても「削除しない（ignore）」側に倒れるので破壊は起きない。
+ * フィールドパスは Slice F で実 `subscriptionItem.ended` ペイロードに照合済み：`data.plan.slug`／
+ * `data.payer.user_id`。payer は `commerce_payer` で、個人払いは `organization_id` が空文字・
+ * 組織払いは `organization_id` が入る（`type` フィールドは無い）。形が違っても「削除しない（ignore）」
+ * 側に倒れるので破壊は起きない。
  */
 export function interpretBillingEvent(event: unknown): BillingAction {
   if (!isRecord(event)) return { kind: 'ignore', reason: 'not_an_object' }
@@ -44,8 +46,11 @@ export function interpretBillingEvent(event: unknown): BillingAction {
 
   const payer = isRecord(data.payer) ? data.payer : null
   if (!payer) return { kind: 'ignore', reason: 'no_payer' }
-  if (payer.type !== 'user')
-    return { kind: 'ignore', reason: `payer_not_user:${String(payer.type)}` }
+
+  // 組織払いは対象外＝個人（user）払いのみ削除する。commerce_payer は組織払いだと organization_id が
+  // 入り、個人払いだと空文字。organization_id があれば必ず ignore（安全側）。
+  const orgId = typeof payer.organization_id === 'string' ? payer.organization_id.trim() : ''
+  if (orgId) return { kind: 'ignore', reason: `payer_organization:${orgId}` }
 
   // 空文字だけでなく空白のみ（truthy だが無意味な値）も弾く＝安全側。
   const userId = typeof payer.user_id === 'string' && payer.user_id.trim() ? payer.user_id : null
@@ -54,12 +59,10 @@ export function interpretBillingEvent(event: unknown): BillingAction {
   return { kind: 'delete-account', userId }
 }
 
-/** 終了したプランの slug を取り出す。`data.plan.slug` を第一候補、`data.plan_slug` をフォールバック。 */
+/** 終了したプランの slug を取り出す（実ペイロードは `data.plan.slug`）。 */
 function readPlanSlug(data: Record<string, unknown>): string | null {
   const plan = isRecord(data.plan) ? data.plan : null
-  if (plan && typeof plan.slug === 'string') return plan.slug
-  if (typeof data.plan_slug === 'string') return data.plan_slug
-  return null
+  return plan && typeof plan.slug === 'string' ? plan.slug : null
 }
 
 function isRecord(v: unknown): v is Record<string, unknown> {

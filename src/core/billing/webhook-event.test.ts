@@ -2,10 +2,16 @@ import { describe, expect, it } from 'vitest'
 import { PLAN_KEY } from './plan'
 import { interpretBillingEvent } from './webhook-event'
 
-// 代表的なペイロード形（フィールドパスは Slice F で Event Catalog に最終確認する想定）。
-const endedOurPlan = (userId = 'user_1') => ({
+// 実 subscriptionItem.ended ペイロード形（Slice F で Clerk Testing タブに照合済み）。
+// payer は commerce_payer で、個人払いは organization_id が空文字・user_id が入る（type フィールドは無い）。
+const endedOurPlan = (userId = 'user_1', slug: string = PLAN_KEY) => ({
   type: 'subscriptionItem.ended',
-  data: { plan: { slug: PLAN_KEY }, payer: { type: 'user', user_id: userId } },
+  data: {
+    object: 'subscription_item',
+    status: 'ended',
+    plan: { slug, name: 'クラウド追加' },
+    payer: { object: 'commerce_payer', organization_id: '', user_id: userId },
+  },
 })
 
 describe('interpretBillingEvent（破壊的処理の単一判断点）', () => {
@@ -16,76 +22,85 @@ describe('interpretBillingEvent（破壊的処理の単一判断点）', () => {
     })
   })
 
-  it('無料/別プランの ended は ignore（昇格時の誤削除を防ぐ必須ガード）', () => {
+  it('実ペイロード形（commerce_payer・extra フィールド込み）を正しく解釈する', () => {
     const ev = {
       type: 'subscriptionItem.ended',
-      data: { plan: { slug: 'free' }, payer: { type: 'user', user_id: 'u1' } },
+      data: {
+        id: 'csub_item_x',
+        object: 'subscription_item',
+        status: 'ended',
+        plan_id: 'cplan_x',
+        plan: { id: 'cplan_x', name: 'クラウド追加', slug: PLAN_KEY, currency: 'USD' },
+        payer: {
+          object: 'commerce_payer',
+          organization_id: '',
+          user_id: 'user_real',
+          email: 'a@b.c',
+        },
+      },
     }
-    expect(interpretBillingEvent(ev)).toEqual({ kind: 'ignore', reason: 'other_plan:free' })
+    expect(interpretBillingEvent(ev)).toEqual({ kind: 'delete-account', userId: 'user_real' })
+  })
+
+  it('無料/別プランの ended は ignore（昇格時の誤削除を防ぐ必須ガード）', () => {
+    expect(interpretBillingEvent(endedOurPlan('u1', 'free_user'))).toEqual({
+      kind: 'ignore',
+      reason: 'other_plan:free_user',
+    })
   })
 
   it('canceled（期末解約予約・member 継続）は ignore', () => {
-    const ev = {
-      type: 'subscriptionItem.canceled',
-      data: { plan: { slug: PLAN_KEY }, payer: { type: 'user', user_id: 'u1' } },
-    }
+    const ev = { ...endedOurPlan('u1'), type: 'subscriptionItem.canceled' }
     expect(interpretBillingEvent(ev).kind).toBe('ignore')
   })
 
   it('pastDue（支払い遅延・グレース中）は ignore', () => {
-    const ev = {
-      type: 'subscriptionItem.pastDue',
-      data: { plan: { slug: PLAN_KEY }, payer: { type: 'user', user_id: 'u1' } },
-    }
+    const ev = { ...endedOurPlan('u1'), type: 'subscriptionItem.pastDue' }
     expect(interpretBillingEvent(ev).kind).toBe('ignore')
   })
 
-  it('organization payer は ignore（個人アカウントのみ対象）', () => {
+  it('organization 払い（organization_id あり）は ignore（個人アカウントのみ対象）', () => {
     const ev = {
       type: 'subscriptionItem.ended',
-      data: { plan: { slug: PLAN_KEY }, payer: { type: 'organization', organization_id: 'org_1' } },
+      data: {
+        plan: { slug: PLAN_KEY },
+        payer: { object: 'commerce_payer', organization_id: 'org_1', user_id: '' },
+      },
     }
     expect(interpretBillingEvent(ev)).toEqual({
       kind: 'ignore',
-      reason: 'payer_not_user:organization',
+      reason: 'payer_organization:org_1',
     })
   })
 
   it('user_id 欠落は ignore', () => {
     const ev = {
       type: 'subscriptionItem.ended',
-      data: { plan: { slug: PLAN_KEY }, payer: { type: 'user' } },
+      data: { plan: { slug: PLAN_KEY }, payer: { object: 'commerce_payer', organization_id: '' } },
     }
     expect(interpretBillingEvent(ev)).toEqual({ kind: 'ignore', reason: 'no_user_id' })
   })
 
   it('空文字 user_id は ignore', () => {
-    const ev = {
-      type: 'subscriptionItem.ended',
-      data: { plan: { slug: PLAN_KEY }, payer: { type: 'user', user_id: '' } },
-    }
-    expect(interpretBillingEvent(ev)).toEqual({ kind: 'ignore', reason: 'no_user_id' })
+    expect(interpretBillingEvent(endedOurPlan(''))).toEqual({
+      kind: 'ignore',
+      reason: 'no_user_id',
+    })
   })
 
   it('空白のみ user_id は ignore（truthy だが無意味な値を弾く）', () => {
-    const ev = {
-      type: 'subscriptionItem.ended',
-      data: { plan: { slug: PLAN_KEY }, payer: { type: 'user', user_id: '   ' } },
-    }
-    expect(interpretBillingEvent(ev)).toEqual({ kind: 'ignore', reason: 'no_user_id' })
+    expect(interpretBillingEvent(endedOurPlan('   '))).toEqual({
+      kind: 'ignore',
+      reason: 'no_user_id',
+    })
   })
 
   it('plan slug 欠落は ignore（安全側＝削除しない）', () => {
-    const ev = { type: 'subscriptionItem.ended', data: { payer: { type: 'user', user_id: 'u1' } } }
-    expect(interpretBillingEvent(ev)).toEqual({ kind: 'ignore', reason: 'other_plan:none' })
-  })
-
-  it('data.plan_slug フォールバックでも解釈できる', () => {
     const ev = {
       type: 'subscriptionItem.ended',
-      data: { plan_slug: PLAN_KEY, payer: { type: 'user', user_id: 'u9' } },
+      data: { payer: { object: 'commerce_payer', organization_id: '', user_id: 'u1' } },
     }
-    expect(interpretBillingEvent(ev)).toEqual({ kind: 'delete-account', userId: 'u9' })
+    expect(interpretBillingEvent(ev)).toEqual({ kind: 'ignore', reason: 'other_plan:none' })
   })
 
   it('オブジェクトでない/型不正は ignore', () => {

@@ -185,9 +185,11 @@ push しない**（ローカルコミットのみで温存する）。
       - stg：Cloudflare Pages → Settings → Variables and Secrets → **Preview** に Secret 追加。
       - 本番：同 → **Production**（または `pnpm exec wrangler pages secret put CLERK_WEBHOOK_SECRET`）。
       > 未設定だと webhook は破壊的処理を一切せず 500 を返す（安全側）。設定不備で誤削除は起きない。
-- [ ] **ペイロード形の最終確認**：Clerk の Event Catalog で `subscriptionItem.ended` の実 JSON
-      （`data.plan.slug`／`data.payer.user_id`）を確認。形が違っても `interpretBillingEvent` は
-      「削除しない（ignore）」側に倒れるので破壊は起きない。差異があればパスを調整する（要テスト追加）。
+- [x] **ペイロード形の確認済み**（Testing タブの実 `subscriptionItem.ended`）：`data.plan.slug` と
+      `data.payer.user_id` は一致。ただし payer は **`commerce_payer`** で `type` フィールドは無く、
+      個人払いは `organization_id` が空文字・組織払いは `organization_id` が入る。`interpretBillingEvent`
+      はこれに合わせ「organization_id があれば ignore／空なら user_id で削除」に調整済み。形が違っても
+      「削除しない（ignore）」側に倒れるので破壊は起きない。
 
 ### 10-3. 受け入れ（stg・2 ブラウザ §9 と同じ要領）
 - [ ] 未課金でサインイン → ヘッダーが「**アップグレードで同期**」になり、クリックで料金表が出る。
