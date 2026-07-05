@@ -20,6 +20,15 @@ const remote = (over: Partial<ManifestEntry> = {}): ManifestEntry => ({
   ...over,
 })
 
+const EMPTY_PLAN = {
+  toPull: [],
+  toPush: [],
+  toTrashLocal: [],
+  toRestoreLocal: [],
+  toPushTrash: [],
+  snapshotBeforePull: [],
+}
+
 describe('planLoginSync（ログイン時の全双方向計画）', () => {
   it('ローカルのみ → push', () => {
     const plan = planLoginSync([local()], [])
@@ -35,12 +44,12 @@ describe('planLoginSync（ログイン時の全双方向計画）', () => {
 
   it('リモートのみ・削除済み → 何もしない', () => {
     const plan = planLoginSync([], [remote({ deleted: true })])
-    expect(plan).toEqual({ toPull: [], toPush: [], toTrashLocal: [], snapshotBeforePull: [] })
+    expect(plan).toEqual(EMPTY_PLAN)
   })
 
   it('両方あり・ハッシュ一致 → 何もしない', () => {
     const plan = planLoginSync([local()], [remote()])
-    expect(plan).toEqual({ toPull: [], toPush: [], toTrashLocal: [], snapshotBeforePull: [] })
+    expect(plan).toEqual(EMPTY_PLAN)
   })
 
   it('両方あり・remote が新しく内容差 → pull＋退避', () => {
@@ -85,6 +94,63 @@ describe('planLoginSync（ログイン時の全双方向計画）', () => {
     )
     expect(plan.toPush.sort()).toEqual(['a', 'b'])
     expect(plan.toPull).toEqual(['c'])
+  })
+})
+
+describe('planLoginSync（ゴミ箱状態の同期＝共有ゴミ箱）', () => {
+  // trashed のローカルは updatedAt に trashedAt（ゴミ箱へ入れた時刻）を入れて渡す規約。
+  const trashedLocal = (at: number, over: Partial<LocalEntry> = {}): LocalEntry =>
+    local({ trashedAt: at, updatedAt: at, docHash: '', ...over })
+
+  it('【回帰の核】別端末で削除→pull で復活しない：ローカル trashed（新）→ サーバへ trash 伝播', () => {
+    const plan = planLoginSync([trashedLocal(20)], [remote({ updatedAt: 10 })])
+    expect(plan.toPushTrash).toEqual(['w1'])
+    expect(plan.toPull).toEqual([]) // ← 旧実装ではここが ['w1']（復活）だった
+    expect(plan.toTrashLocal).toEqual([])
+  })
+
+  it('リモートが trashed・ローカル active（古い）→ ローカルもゴミ箱へ（削除の伝播）', () => {
+    const plan = planLoginSync(
+      [local({ updatedAt: 10 })],
+      [remote({ updatedAt: 20, trashedAt: 20 })],
+    )
+    expect(plan.toTrashLocal).toEqual(['w1'])
+    expect(plan.toPull).toEqual([])
+  })
+
+  it('リモートが trashed・ローカル active の編集が新しい → 復活（push で active 化）', () => {
+    const plan = planLoginSync(
+      [local({ updatedAt: 30, docHash: 'new' })],
+      [remote({ updatedAt: 20, trashedAt: 20 })],
+    )
+    expect(plan.toPush).toEqual(['w1'])
+    expect(plan.toTrashLocal).toEqual([])
+  })
+
+  it('ローカル trashed・リモート active が新しい（他端末で復元/編集）→ ローカルを復元', () => {
+    const plan = planLoginSync([trashedLocal(10)], [remote({ updatedAt: 20 })])
+    expect(plan.toRestoreLocal).toEqual(['w1'])
+    expect(plan.toPushTrash).toEqual([])
+  })
+
+  it('両方 trashed → 何もしない', () => {
+    const plan = planLoginSync([trashedLocal(20)], [remote({ updatedAt: 20, trashedAt: 20 })])
+    expect(plan).toEqual(EMPTY_PLAN)
+  })
+
+  it('ローカルのみ trashed（未同期のゴミ箱）→ 何もしない（push しない）', () => {
+    const plan = planLoginSync([trashedLocal(20)], [])
+    expect(plan).toEqual(EMPTY_PLAN)
+  })
+
+  it('リモートのみ trashed（手元に無い）→ materialize しない', () => {
+    const plan = planLoginSync([], [remote({ updatedAt: 20, trashedAt: 20 })])
+    expect(plan).toEqual(EMPTY_PLAN)
+  })
+
+  it('リモート purged・ローカル trashed → ローカル TTL に任せる（何もしない）', () => {
+    const plan = planLoginSync([trashedLocal(10)], [remote({ deleted: true, updatedAt: 20 })])
+    expect(plan).toEqual(EMPTY_PLAN)
   })
 })
 

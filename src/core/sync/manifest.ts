@@ -7,10 +7,12 @@
 /** サーバ上の 1 Work の同期メタ（D1 works の 1 行に対応）。 */
 export interface ManifestEntry {
   workId: string
-  /** 最終更新時刻（epoch ms）。LWW の比較キー。 */
+  /** 最終更新時刻（epoch ms）。LWW の比較キー（編集・trash・restore で更新）。 */
   updatedAt: number
-  /** ソフトデリート済みか（purge 済み = true）。 */
+  /** ソフトデリート済みか（purge 済み = true・blob 削除）。 */
   deleted: boolean
+  /** ゴミ箱に入れた時刻（epoch ms）。0/未設定 = 通常（active）。>0 = trashed（blob 保持・共有ゴミ箱）。 */
+  trashedAt?: number
   /** doc パート（本文＝画像を除いた Work）の SHA-256（hex）。 */
   docHash: string
   /** media パート（coverImage＋thumbnails）の SHA-256（hex）。media 無しは ''。 */
