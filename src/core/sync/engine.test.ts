@@ -41,18 +41,33 @@ interface Calls {
   pulled: string[]
   saved: Work[]
   snapshotted: string[]
-  trashed: string[]
+  trashed: Array<{ workId: string; trashedAt: number }>
+  restored: string[]
+  trashPushed: Array<{ workId: string; trashed: boolean; updatedAt: number }>
 }
 
-function makeDeps(locals: Work[], remotes: Array<{ entry: ManifestEntry; data: PullResult }>) {
+function makeDeps(
+  locals: Work[],
+  remotes: Array<{ entry: ManifestEntry; data: PullResult }>,
+  trashedLocals: Array<{ workId: string; trashedAt: number }> = [],
+) {
   const localWorks = new Map(locals.map((w) => [w.id, structuredClone(w)]))
+  const localTrash = new Map(trashedLocals.map((t) => [t.workId, t.trashedAt]))
   const remoteEntries = remotes.map((r) => r.entry)
   const remoteData = new Map(remotes.map((r) => [r.entry.workId, r.data]))
   const serverHashes = new Map(
     remoteEntries.map((e) => [e.workId, { docHash: e.docHash, mediaHash: e.mediaHash }]),
   )
   const syncMeta = new Map<string, LocalSyncMeta>()
-  const calls: Calls = { pushed: [], pulled: [], saved: [], snapshotted: [], trashed: [] }
+  const calls: Calls = {
+    pushed: [],
+    pulled: [],
+    saved: [],
+    snapshotted: [],
+    trashed: [],
+    restored: [],
+    trashPushed: [],
+  }
 
   const deps: SyncDeps = {
     async getManifest() {
@@ -77,6 +92,9 @@ function makeDeps(locals: Work[], remotes: Array<{ entry: ManifestEntry; data: P
     async listLocalWorks() {
       return [...localWorks.values()]
     },
+    async listLocalTrashed() {
+      return [...localTrash.entries()].map(([workId, trashedAt]) => ({ workId, trashedAt }))
+    },
     async loadLocalWork(workId) {
       const w = localWorks.get(workId)
       return w ? structuredClone(w) : null
@@ -85,9 +103,19 @@ function makeDeps(locals: Work[], remotes: Array<{ entry: ManifestEntry; data: P
       localWorks.set(work.id, structuredClone(work))
       calls.saved.push(structuredClone(work))
     },
-    async trashLocalWork(workId) {
+    async trashLocalWork(workId, trashedAt) {
       localWorks.delete(workId)
-      calls.trashed.push(workId)
+      localTrash.set(workId, trashedAt)
+      calls.trashed.push({ workId, trashedAt })
+    },
+    async restoreLocalWork(work) {
+      localWorks.set(work.id, structuredClone(work))
+      localTrash.delete(work.id)
+      calls.restored.push(work.id)
+    },
+    async pushTrashState(workId, body) {
+      calls.trashPushed.push({ workId, ...body })
+      return true
     },
     async snapshotLocal(work) {
       calls.snapshotted.push(work.id)
@@ -167,7 +195,7 @@ describe('runLoginSync', () => {
     const { deps, calls } = makeDeps([w5], [remoteOf(w5)])
     const res = await runLoginSync(deps)
 
-    expect(res).toEqual({ pulled: [], pushed: [], trashed: [] })
+    expect(res).toEqual({ pulled: [], pushed: [], trashed: [], restored: [], trashPropagated: [] })
     expect(calls.pushed).toEqual([])
     expect(calls.pulled).toEqual([])
   })
@@ -179,7 +207,8 @@ describe('runLoginSync', () => {
     const res = await runLoginSync(deps)
 
     expect(res.trashed).toEqual(['w6'])
-    expect(calls.trashed).toEqual(['w6'])
+    // purge の適用は trashedAt をサーバの updated_at（削除時刻）に揃える。
+    expect(calls.trashed).toEqual([{ workId: 'w6', trashedAt: 200 }])
     expect(calls.pulled).toEqual([])
   })
 
@@ -198,8 +227,49 @@ describe('runLoginSync', () => {
     const { deps, calls } = makeDeps([], [remoteOf(remoteWork, { deleted: true })])
     const res = await runLoginSync(deps)
 
-    expect(res).toEqual({ pulled: [], pushed: [], trashed: [] })
+    expect(res).toEqual({ pulled: [], pushed: [], trashed: [], restored: [], trashPropagated: [] })
     expect(calls.pulled).toEqual([])
+  })
+
+  it('【回帰の核】ローカル trashed（新）＋リモート active → 復活せず trash を伝播', async () => {
+    const remoteWork = mkWork('t1', { updatedAt: 100 })
+    const { deps, calls } = makeDeps(
+      [], // active には無い
+      [remoteOf(remoteWork)], // サーバは active
+      [{ workId: 't1', trashedAt: 200 }], // ローカルはゴミ箱（trash が新しい）
+    )
+    const res = await runLoginSync(deps)
+
+    expect(res.trashPropagated).toEqual(['t1'])
+    expect(res.pulled).toEqual([]) // ← 旧実装はここで pull（復活）していた
+    expect(calls.trashPushed).toEqual([{ workId: 't1', trashed: true, updatedAt: 200 }])
+    expect(calls.saved).toEqual([]) // 復活の保存が起きない
+  })
+
+  it('リモートが trashed・ローカル active（古い）→ ローカルもゴミ箱へ（trashedAt を揃える）', async () => {
+    const local = mkWork('t2', { updatedAt: 100 })
+    const remoteWork = mkWork('t2', { updatedAt: 200 })
+    const remote = remoteOf(remoteWork)
+    remote.entry.trashedAt = 200 // リモートは trashed
+    const { deps, calls } = makeDeps([local], [remote])
+    const res = await runLoginSync(deps)
+
+    expect(res.trashed).toEqual(['t2'])
+    expect(calls.trashed).toEqual([{ workId: 't2', trashedAt: 200 }])
+  })
+
+  it('ローカル trashed・リモート active が新しい（他端末で復元/編集）→ ローカルを復元', async () => {
+    const remoteWork = mkWork('t3', { updatedAt: 300 })
+    const { deps, calls } = makeDeps(
+      [],
+      [remoteOf(remoteWork)], // サーバ active・新しい
+      [{ workId: 't3', trashedAt: 100 }], // ローカルはゴミ箱（古い）
+    )
+    const res = await runLoginSync(deps)
+
+    expect(res.restored).toEqual(['t3'])
+    expect(calls.restored).toEqual(['t3'])
+    expect(calls.trashPushed).toEqual([]) // 伝播はしない
   })
 })
 

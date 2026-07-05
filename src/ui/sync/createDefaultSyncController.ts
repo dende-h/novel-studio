@@ -9,7 +9,7 @@ import { SnapshotRepository } from '@/core/snapshot/snapshotRepository'
 import { IdbStore } from '@/core/storage/idbStore'
 import { SyncMetaRepository } from '@/core/storage/syncMetaRepository'
 import { WorkRepository } from '@/core/storage/workRepository'
-import { deleteWork, getManifest, hashPart, pullWork, pushWork } from '@/ui/_api/sync'
+import { deleteWork, getManifest, hashPart, patchWork, pullWork, pushWork } from '@/ui/_api/sync'
 import { createSyncController, type SyncController, type SyncPhase } from './sync-controller'
 
 /** autosave push の合体間隔（30 秒・D-SYNC のトリガ仕様）。 */
@@ -37,6 +37,7 @@ export function createDefaultSyncController(opts: DefaultSyncControllerOptions):
       getManifest: () => getManifest(getToken),
       pullWork: (id) => pullWork(getToken, id),
       pushWork: (id, payload) => pushWork(getToken, id, payload),
+      patchWork: (id, body) => patchWork(getToken, id, body),
       deleteWork: (id) => deleteWork(getToken, id),
     },
     repo,

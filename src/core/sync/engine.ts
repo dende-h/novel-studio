@@ -39,9 +39,16 @@ export interface SyncDeps {
   pullWork(workId: string): Promise<PullResult | null>
   pushWork(workId: string, payload: PushPayload): Promise<PushResult | null>
   listLocalWorks(): Promise<Work[]>
+  /** ローカルのゴミ箱作品（共有ゴミ箱の同期対象）。id と trashedAt だけでよい。 */
+  listLocalTrashed(): Promise<Array<{ workId: string; trashedAt: number }>>
   loadLocalWork(workId: string): Promise<Work | null>
   saveLocalWork(work: Work): Promise<void>
-  trashLocalWork(workId: string): Promise<void>
+  /** リモート削除を適用：ローカル active をゴミ箱へ（trashedAt はサーバの時刻に揃える）。 */
+  trashLocalWork(workId: string, trashedAt: number): Promise<void>
+  /** リモートが勝ったゴミ箱復元：ゴミ箱から出して active 内容で保存する。 */
+  restoreLocalWork(work: Work): Promise<void>
+  /** ローカルのゴミ箱状態をサーバへ伝播（PATCH）。成功で true。 */
+  pushTrashState(workId: string, body: { trashed: boolean; updatedAt: number }): Promise<boolean>
   /** 上書き前の敗者保全（スナップショット履歴へ退避）。 */
   snapshotLocal(work: Work): Promise<void>
   getSyncMeta(workId: string): Promise<LocalSyncMeta | null>
@@ -54,7 +61,12 @@ export interface SyncDeps {
 export interface LoginSyncResult {
   pulled: string[]
   pushed: string[]
+  /** リモート削除を適用してローカルをゴミ箱へ送った id。 */
   trashed: string[]
+  /** リモートが勝ってローカルのゴミ箱から復元した id（共有ゴミ箱）。 */
+  restored: string[]
+  /** ローカルのゴミ箱状態をサーバへ伝播した id（共有ゴミ箱）。 */
+  trashPropagated: string[]
 }
 
 interface Digest {
@@ -121,9 +133,28 @@ export async function runLoginSync(deps: SyncDeps): Promise<LoginSyncResult> {
       mediaHash: d.mediaHash,
     })
   }
+  // ローカルのゴミ箱作品も同期対象に含める（updatedAt に trashedAt を入れて LWW の時計にする）。
+  // これで「ローカル trashed + リモート active」が pull（復活）ではなく trash 伝播に回る。
+  const trashed = await deps.listLocalTrashed()
+  const trashedAtMap = new Map(trashed.map((t) => [t.workId, t.trashedAt]))
+  for (const t of trashed) {
+    localEntries.push({
+      workId: t.workId,
+      updatedAt: t.trashedAt,
+      docHash: '',
+      mediaHash: '',
+      trashedAt: t.trashedAt,
+    })
+  }
 
   const plan = planLoginSync(localEntries, remote)
-  const result: LoginSyncResult = { pulled: [], pushed: [], trashed: [] }
+  const result: LoginSyncResult = {
+    pulled: [],
+    pushed: [],
+    trashed: [],
+    restored: [],
+    trashPropagated: [],
+  }
 
   // pull の前に敗者をスナップショット退避。
   for (const id of plan.snapshotBeforePull) {
@@ -156,9 +187,37 @@ export async function runLoginSync(deps: SyncDeps): Promise<LoginSyncResult> {
     }
   }
 
+  // リモート削除（trash/purge）をローカルに適用。trashedAt はサーバの時刻に揃える。
   for (const id of plan.toTrashLocal) {
-    await deps.trashLocalWork(id)
+    const r = remoteMap.get(id)
+    const at = r && (r.trashedAt ?? 0) > 0 ? (r.trashedAt as number) : (r?.updatedAt ?? deps.now())
+    await deps.trashLocalWork(id, at)
     result.trashed.push(id)
+  }
+
+  // 他端末で復元/編集された（リモート active が新しい）→ ローカルのゴミ箱から復元。
+  for (const id of plan.toRestoreLocal) {
+    const pulled = await deps.pullWork(id)
+    if (!pulled) continue
+    const work = joinWork(pulled.doc as WorkDoc, pulled.media as WorkMedia | null)
+    work.updatedAt = pulled.updatedAt
+    await deps.restoreLocalWork(work)
+    const r = remoteMap.get(id)
+    await deps.setSyncMeta({
+      workId: id,
+      docHash: r?.docHash ?? '',
+      mediaHash: r?.mediaHash ?? '',
+      syncedAt: deps.now(),
+    })
+    result.restored.push(id)
+  }
+
+  // ローカルのゴミ箱状態が勝ち → サーバへ trashed を伝播（blob は保持）。
+  for (const id of plan.toPushTrash) {
+    const at = trashedAtMap.get(id) ?? deps.now()
+    if (await deps.pushTrashState(id, { trashed: true, updatedAt: at })) {
+      result.trashPropagated.push(id)
+    }
   }
 
   return result

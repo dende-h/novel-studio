@@ -32,6 +32,11 @@ export interface SyncApi {
   getManifest(): Promise<ManifestEntry[]>
   pullWork(workId: string): Promise<PullResult | null>
   pushWork(workId: string, payload: PushPayload): Promise<PushResponse>
+  /** ゴミ箱状態の伝播（PATCH）。status を返す（409=別端末）。 */
+  patchWork(
+    workId: string,
+    body: { trashed: boolean; updatedAt: number },
+  ): Promise<{ status: number }>
   deleteWork(workId: string): Promise<boolean>
 }
 
@@ -99,9 +104,20 @@ export function createSyncController(deps: SyncControllerDeps): SyncController {
       const works = await Promise.all(summaries.map((s) => repo.getWork(s.id)))
       return works.filter((w): w is Work => w !== undefined)
     },
+    listLocalTrashed: async () =>
+      (await repo.listTrash()).map((t) => ({ workId: t.id, trashedAt: t.trashedAt })),
     loadLocalWork: async (workId) => (await repo.getWork(workId)) ?? null,
     saveLocalWork: (work) => repo.saveWork(work),
-    trashLocalWork: (workId) => repo.trashWork(workId, now()),
+    trashLocalWork: (workId, trashedAt) => repo.trashWork(workId, trashedAt),
+    restoreLocalWork: async (work) => {
+      await repo.saveWork(work)
+      await repo.purgeTrashedWork(work.id)
+    },
+    pushTrashState: async (workId, body) => {
+      const { status } = await api.patchWork(workId, body)
+      if (status === 409) deps.onSuperseded?.()
+      return status >= 200 && status < 300
+    },
     snapshotLocal: async (work) => {
       await snapshotRepo.append(work, now(), genId())
     },

@@ -44,6 +44,9 @@ function harness() {
         if (pushStatus !== 200) return { status: pushStatus, result: null }
         return { status: 200, result: { docHash: 'sd', mediaHash: '', size: 1 } }
       },
+      async patchWork() {
+        return { status: 200 }
+      },
       async deleteWork(id) {
         calls.del.push(id)
         return true

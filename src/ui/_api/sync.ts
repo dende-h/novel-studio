@@ -90,6 +90,26 @@ export async function pushWork(
   }
 }
 
+/** PATCH /api/sync/work — ゴミ箱状態の伝播（trash/restore・blob 保持）。status を返す（0=失敗/オフライン）。 */
+export async function patchWork(
+  getToken: GetToken,
+  workId: string,
+  body: { trashed: boolean; updatedAt: number },
+): Promise<{ status: number }> {
+  const headers = await authHeaders(getToken)
+  if (!headers) return { status: 0 }
+  try {
+    const res = await fetch(`/api/sync/work?id=${encodeURIComponent(workId)}`, {
+      method: 'PATCH',
+      headers: { ...headers, 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+    return { status: res.status }
+  } catch {
+    return { status: 0 }
+  }
+}
+
 /** DELETE /api/sync/work — purge（R2 削除＋トゥームストーン化）。 */
 export async function deleteWork(getToken: GetToken, workId: string): Promise<boolean> {
   const headers = await authHeaders(getToken)
