@@ -8,7 +8,8 @@ export interface AuthState {
   status: AuthStatus
   /**
    * Clerk にサインイン済みか。`status === 'member'`（サインイン済み かつ 課金）とは別軸で、
-   * 「サインイン済みだが未課金」（status は guest）を見分けて「アップグレードで同期」CTA を出すのに使う。
+   * 「サインイン済みだが未課金」（status は guest）を見分け、Root が全画面オンボーディング
+   * （購読 or サインアウト）を出すのに使う。
    */
   isSignedIn: boolean
   userId: string | null

@@ -4,6 +4,7 @@ import { useAuth } from './auth/auth-context'
 import { useSessionGuard } from './auth/use-session-guard'
 import { Library } from './components/Library/library'
 import { SmallScreenNotice } from './components/SmallScreenNotice/small-screen-notice'
+import { SyncOnboarding } from './components/SyncOnboarding/sync-onboarding'
 import { SyncStatusBanner } from './components/SyncStatusBanner/sync-status-banner'
 import { useToast } from './components/Toast/toast'
 import { useHashRoute } from './hooks/use-hash-route'
@@ -19,7 +20,7 @@ interface RootProps {
 /** 入口（ライブラリ）とエディタをハッシュで切り替えるトップレベル Container。 */
 export function Root({ store, syncBridge }: RootProps) {
   const { route, navigate } = useHashRoute()
-  const { status, signOut } = useAuth()
+  const { status, isSignedIn, signOut } = useAuth()
   const { show } = useToast()
 
   // 別端末ログインでこの端末が無効化されたとき：強制サインアウト（→ゲスト化）＋トースト1回。
@@ -49,6 +50,17 @@ export function Root({ store, syncBridge }: RootProps) {
   useEffect(() => {
     void store.init()
   }, [store])
+
+  // 未課金でサインイン済み：中途半端な状態を残さず、専用オンボーディングで「購読する or ローカルの
+  // まま使う（＝サインアウトしてゲスト）」の二択に収束させる（§1.1「アカウント＝有料会員だけが持つ」）。
+  if (status === 'guest' && isSignedIn) {
+    return (
+      <>
+        <SyncOnboarding onUseLocal={signOut} />
+        <SmallScreenNotice />
+      </>
+    )
+  }
 
   return (
     <>
