@@ -14,6 +14,10 @@ export const TRASH_TTL_MS = 30 * 24 * 60 * 60 * 1000
 export interface DefaultStoreOptions {
   /** 作品が永続化された直後の通知（同期 push のトリガ）。 */
   onSaved?: (workId: string) => void
+  /** ゴミ箱へ移動した直後の通知（共有ゴミ箱の即時伝播）。 */
+  onTrashed?: (workId: string, trashedAt: number) => void
+  /** ゴミ箱から復元した直後の通知（共有ゴミ箱の即時伝播）。 */
+  onRestored?: (workId: string, updatedAt: number) => void
   /** 作品を完全削除（purge）した直後の通知（リモートのトゥームストーン化）。 */
   onPurged?: (workId: string) => void
   /** プロフィール（ペンネーム・アバター）が永続化された直後の通知（同期 push のトリガ）。 */
@@ -35,6 +39,8 @@ export function createDefaultStore(opts: DefaultStoreOptions = {}): EditorStore 
     snapshotMinIntervalMs: SNAPSHOT_MIN_INTERVAL_MS,
     trashTtlMs: TRASH_TTL_MS,
     onSaved: opts.onSaved,
+    onTrashed: opts.onTrashed,
+    onRestored: opts.onRestored,
     onPurged: opts.onPurged,
     onProfileSaved: opts.onProfileSaved,
   })

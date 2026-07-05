@@ -21,6 +21,8 @@ if (!root) throw new Error('#root not found')
 const syncBridge = createSyncBridge()
 const store = createDefaultStore({
   onSaved: (id) => syncBridge.onSaved(id),
+  onTrashed: (id, at) => syncBridge.onTrashed(id, at),
+  onRestored: (id, at) => syncBridge.onRestored(id, at),
   onPurged: (id) => syncBridge.onPurged(id),
   onProfileSaved: () => syncBridge.onProfileSaved(),
 })

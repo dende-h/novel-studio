@@ -9,6 +9,8 @@ const makeStore = (opts?: {
   now?: () => number
   snapshotMinIntervalMs?: number
   trashTtlMs?: number
+  onTrashed?: (workId: string, trashedAt: number) => void
+  onRestored?: (workId: string, updatedAt: number) => void
 }): EditorStore => {
   let n = 0
   let clock = 0
@@ -26,6 +28,8 @@ const makeStore = (opts?: {
     snapshotMinIntervalMs: opts?.snapshotMinIntervalMs ?? 0,
     // 既定は十分大きく＝テスト中に勝手に期限切れ purge しない
     trashTtlMs: opts?.trashTtlMs ?? Number.MAX_SAFE_INTEGER,
+    onTrashed: opts?.onTrashed,
+    onRestored: opts?.onRestored,
   })
 }
 
@@ -325,6 +329,25 @@ describe('editorStore（自前ストア・useSyncExternalStore 用）', () => {
     // 履歴は捨てる時に消していないので、開き直すと残っている
     await store.openWork(id)
     expect(store.getSnapshot().snapshots.length).toBeGreaterThan(0)
+  })
+
+  it('trashWork は onTrashed（共有ゴミ箱の即時伝播）を trashedAt 付きで通知する', async () => {
+    const onTrashed: Array<{ id: string; at: number }> = []
+    const s = makeStore({ now: () => 4242, onTrashed: (id, at) => onTrashed.push({ id, at }) })
+    await s.createWork('捨てる作')
+    const id = s.getSnapshot().work?.id as string
+    await s.trashWork(id)
+    expect(onTrashed).toEqual([{ id, at: 4242 }])
+  })
+
+  it('restoreWork は onRestored（共有ゴミ箱の即時伝播）を通知する', async () => {
+    const onRestored: string[] = []
+    const s = makeStore({ onRestored: (id) => onRestored.push(id) })
+    await s.createWork('戻す作')
+    const id = s.getSnapshot().work?.id as string
+    await s.trashWork(id)
+    await s.restoreWork(id)
+    expect(onRestored).toEqual([id])
   })
 
   it('purgeWork はゴミ箱の1件と履歴を完全削除する', async () => {

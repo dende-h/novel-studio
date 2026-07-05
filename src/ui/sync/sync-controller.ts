@@ -73,6 +73,10 @@ export interface SyncController {
   notifyChanged(workId: string): void
   /** pending を即時 flush（話の切替・タブ非表示・オンライン復帰時など）。 */
   flush(): Promise<void>
+  /** ゴミ箱へ移動をリモートへ即時伝播（共有ゴミ箱・blob 保持）。 */
+  trash(workId: string, trashedAt: number): Promise<void>
+  /** ゴミ箱から復元をリモートへ即時伝播（共有ゴミ箱）。 */
+  restore(workId: string, updatedAt: number): Promise<void>
   /** 完全削除をリモートへ伝播（トゥームストーン化）。 */
   purge(workId: string): Promise<void>
   /** タイマー破棄（アンマウント・サインアウト時）。 */
@@ -223,6 +227,21 @@ export function createSyncController(deps: SyncControllerDeps): SyncController {
     async flush() {
       clearTimer()
       await flushPending()
+    },
+
+    async trash(workId, trashedAt) {
+      // ゴミ箱状態のみ伝播（内容 push は不要）。オフライン/未ログインでも次のログイン同期で
+      // engine が listLocalTrashed→toPushTrash で回収するので取りこぼさない。
+      pending.delete(workId)
+      if (!deps.isEnabled() || !deps.isOnline()) return
+      const { status } = await api.patchWork(workId, { trashed: true, updatedAt: trashedAt })
+      if (status === 409) deps.onSuperseded?.()
+    },
+
+    async restore(workId, updatedAt) {
+      if (!deps.isEnabled() || !deps.isOnline()) return
+      const { status } = await api.patchWork(workId, { trashed: false, updatedAt })
+      if (status === 409) deps.onSuperseded?.()
     },
 
     async purge(workId) {

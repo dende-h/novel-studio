@@ -52,6 +52,8 @@ export function useSync(
     // sessionReady（claim 完了）まで起動しない。member でも claim 前は no-op に留める。
     if (!available || status !== 'member' || !userId || !sessionReady) {
       bridge.onSaved = () => {}
+      bridge.onTrashed = () => {}
+      bridge.onRestored = () => {}
       bridge.onPurged = () => {}
       bridge.onProfileSaved = () => {}
       setPhase('idle')
@@ -71,6 +73,8 @@ export function useSync(
     controllerRef.current = controller
 
     bridge.onSaved = (id) => controller.notifyChanged(id)
+    bridge.onTrashed = (id, trashedAt) => void controller.trash(id, trashedAt)
+    bridge.onRestored = (id, updatedAt) => void controller.restore(id, updatedAt)
     bridge.onPurged = (id) => void controller.purge(id)
     bridge.onProfileSaved = () => void controller.syncProfile()
 
@@ -98,6 +102,8 @@ export function useSync(
       controller.dispose()
       controllerRef.current = null
       bridge.onSaved = () => {}
+      bridge.onTrashed = () => {}
+      bridge.onRestored = () => {}
       bridge.onPurged = () => {}
       bridge.onProfileSaved = () => {}
     }

@@ -21,6 +21,7 @@ function harness() {
     manifest: 0,
     pull: [] as string[],
     push: [] as Array<{ id: string; parts: Array<'doc' | 'media'> }>,
+    patch: [] as Array<{ id: string; trashed: boolean; updatedAt: number }>,
     del: [] as string[],
   }
   let pushStatus = 200
@@ -44,8 +45,9 @@ function harness() {
         if (pushStatus !== 200) return { status: pushStatus, result: null }
         return { status: 200, result: { docHash: 'sd', mediaHash: '', size: 1 } }
       },
-      async patchWork() {
-        return { status: 200 }
+      async patchWork(id, body) {
+        calls.patch.push({ id, ...body })
+        return { status: pushStatus }
       },
       async deleteWork(id) {
         calls.del.push(id)
@@ -200,5 +202,24 @@ describe('createSyncController — runLoginSync / purge', () => {
     await h.controller.purge('w1')
     expect(h.calls.del).toEqual([])
     expect(await h.syncMetaRepo.get('w1')).toBeNull()
+  })
+
+  it('trash は patchWork(trashed=true) を即時に呼ぶ（共有ゴミ箱）', async () => {
+    const h = harness()
+    await h.controller.trash('w1', 4242)
+    expect(h.calls.patch).toEqual([{ id: 'w1', trashed: true, updatedAt: 4242 }])
+  })
+
+  it('restore は patchWork(trashed=false) を即時に呼ぶ（共有ゴミ箱）', async () => {
+    const h = harness()
+    await h.controller.restore('w1', 5000)
+    expect(h.calls.patch).toEqual([{ id: 'w1', trashed: false, updatedAt: 5000 }])
+  })
+
+  it('trash はオフラインなら patchWork を呼ばない（次のログイン同期が回収）', async () => {
+    const h = harness()
+    h.setOnline(false)
+    await h.controller.trash('w1', 4242)
+    expect(h.calls.patch).toEqual([])
   })
 })

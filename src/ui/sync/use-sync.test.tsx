@@ -35,7 +35,13 @@ vi.mock('./createDefaultSyncController', () => ({ createDefaultSyncController: c
 const { useSync } = await import('./use-sync')
 
 const store = { init: vi.fn(() => Promise.resolve()) } as unknown as EditorStore
-const bridge: SyncBridge = { onSaved: () => {}, onPurged: () => {}, onProfileSaved: () => {} }
+const bridge: SyncBridge = {
+  onSaved: () => {},
+  onTrashed: () => {},
+  onRestored: () => {},
+  onPurged: () => {},
+  onProfileSaved: () => {},
+}
 const onSuperseded = () => {}
 
 describe('useSync（同期の起動ゲート）', () => {

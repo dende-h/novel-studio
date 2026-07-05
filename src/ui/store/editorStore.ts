@@ -123,9 +123,12 @@ export interface EditorStoreDeps {
   /**
    * 作品の本文・メタ・辞書が永続化された直後の通知（Phase 2 同期トリガ）。
    * 同期コントローラが workId を coalesce してクラウドへ push する。ゲスト時は no-op。
-   * trash 退避は同期対象外なので通知しない（削除は onPurged で伝播）。
    */
   onSaved?: (workId: string) => void
+  /** ゴミ箱へ移動した直後の通知（共有ゴミ箱の即時伝播＝サーバへ trashed を PATCH）。 */
+  onTrashed?: (workId: string, trashedAt: number) => void
+  /** ゴミ箱から復元した直後の通知（共有ゴミ箱の即時伝播＝サーバへ restore を PATCH）。 */
+  onRestored?: (workId: string, updatedAt: number) => void
   /** 作品を完全削除（purge）した直後の通知。リモートのトゥームストーン化に使う。 */
   onPurged?: (workId: string) => void
   /** プロフィール（ペンネーム・アバター）が永続化された直後の通知（同期 push のトリガ）。 */
@@ -156,6 +159,8 @@ export function createEditorStore({
   snapshotMinIntervalMs,
   trashTtlMs,
   onSaved,
+  onTrashed,
+  onRestored,
   onPurged,
   onProfileSaved,
 }: EditorStoreDeps): EditorStore {
@@ -164,6 +169,8 @@ export function createEditorStore({
 
   // 永続化／purge を同期コントローラへ通知する（注入が無ければ no-op＝ゲスト）。
   const notifySaved = (workId: string) => onSaved?.(workId)
+  const notifyTrashed = (workId: string, trashedAt: number) => onTrashed?.(workId, trashedAt)
+  const notifyRestored = (workId: string, updatedAt: number) => onRestored?.(workId, updatedAt)
   const notifyPurged = (workId: string) => onPurged?.(workId)
   const notifyProfileSaved = () => onProfileSaved?.()
 
@@ -314,7 +321,8 @@ export function createEditorStore({
 
     async trashWork(id) {
       // ソフト削除：履歴（snap:<id>）は復元のため残し、本体だけ trash 名前空間へ退避。
-      await repo.trashWork(id, now())
+      const trashedAt = now()
+      await repo.trashWork(id, trashedAt)
       const workList = sortByUpdatedDesc(await repo.listWorks())
       if (state.work?.id === id) {
         set({
@@ -330,13 +338,16 @@ export function createEditorStore({
         set({ workList })
       }
       await refreshTrash()
+      // 共有ゴミ箱：ゴミ箱状態をリモートへ即時伝播（端末切替でも相手が気づける）。
+      notifyTrashed(id, trashedAt)
     },
 
     async restoreWork(id) {
       await repo.restoreWork(id)
       await refreshList()
       await refreshTrash()
-      notifySaved(id)
+      // 復元をリモートへ即時伝播（trashed_at=0）。内容 push は差分無しだと飛ばないため PATCH で確実に。
+      notifyRestored(id, now())
     },
 
     async purgeWork(id) {

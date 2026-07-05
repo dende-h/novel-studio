@@ -5,11 +5,21 @@
  */
 export interface SyncBridge {
   onSaved: (workId: string) => void
+  /** ゴミ箱へ移動（共有ゴミ箱の即時伝播）。 */
+  onTrashed: (workId: string, trashedAt: number) => void
+  /** ゴミ箱から復元（共有ゴミ箱の即時伝播）。 */
+  onRestored: (workId: string, updatedAt: number) => void
   onPurged: (workId: string) => void
   /** プロフィール（ペンネーム・アバター）保存通知（同期 push のトリガ）。 */
   onProfileSaved: () => void
 }
 
 export function createSyncBridge(): SyncBridge {
-  return { onSaved: () => {}, onPurged: () => {}, onProfileSaved: () => {} }
+  return {
+    onSaved: () => {},
+    onTrashed: () => {},
+    onRestored: () => {},
+    onPurged: () => {},
+    onProfileSaved: () => {},
+  }
 }
