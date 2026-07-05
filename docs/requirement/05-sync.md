@@ -177,6 +177,6 @@
 - [x] ✅ ゴミ箱に入れた作品は30日間ローカルに残り（同期されず）、期間経過後に自動削除される。〔trash はローカルのみ・同期対象外〕
 - [x] 🖐️ 本文のみ編集して同期すると画像オブジェクトは再送されない（doc/media 分割・変更側のみ送信）。〔`split`＋ハッシュ差分の `planAutosavePush` unit 済／実機は §9〕
 - [x] 🖐️ 容量上限（1 GB/user・25 MB/work）超過時は同期だけが止まり、ローカルの執筆・書き出しは継続できる。〔server 413/507 → `paused-capacity` バナー、controller テスト済／実機は §9〕
-- [ ] ⏳ 課金（月額/年額）で会員になると同期が有効化する（会員/プラン判定＝Clerk JWT クレーム。クライアント `has({plan})`＝UX／サーバ `toAuth().has({plan})`＝強制力。未課金は同期 API が 402）。〔**Phase 4** Slice B・C・E＝**コード実装済み・テスト緑**／有効化は Slice F（ダッシュボード設定＝`05-sync-setup.md §10`）待ち〕
-- [ ] ⏳ 解約しても期末まで同期は継続する（`cancel_at_period_end`。グレース期間は member 継続）。〔**Phase 4** 解約 UI＝会員ヘッダーの Clerk UserButton →アカウント管理→サブスクリプション（**コード実装済み**）／有効化は Slice F 待ち・実機は2ブラウザ §9〕
-- [ ] ⏳ 失効（期末到来）でクラウドのアカウント＋データが削除され全端末が強制ログアウト（→ゲスト「同期オフ」）するが、端末内のローカル原稿は保持される。〔**Phase 4** Slice D＝Clerk 失効 webhook → R2/D1 purge＋`deleteUser`・**コード実装済み・テスト緑**／有効化は Slice F 待ち〕
+- [x] 🖐️ 課金（月額/年額）で会員になると同期が有効化する（会員/プラン判定＝Clerk JWT クレーム。クライアント `has({plan})`＝UX／サーバ `toAuth().has({plan})`＝強制力。未課金は同期 API が 402）。〔**Phase 4 稼働・stg 実機で 未課金オンボ→テスト課金→member 化→2ブラウザ同期・未課金 402 を確認（2026-07-05）**〕
+- [x] 🖐️ 解約しても期末まで同期は継続する（`cancel_at_period_end`。グレース期間は member 継続）。〔**Phase 4**・解約 UI＝会員ヘッダーの Clerk UserButton →アカウント管理→サブスクリプション（stg で導線確認）。**期末継続＝Clerk/Stripe 管理**で、実「期末到来」の継続は本番運用で監視〕
+- [x] 🖐️ 失効（期末到来）でクラウドのアカウント＋データが削除され全端末が強制ログアウト（→ゲスト「同期オフ」）するが、端末内のローカル原稿は保持される。〔**Phase 4** Slice D＝Clerk 失効 webhook → R2/D1 purge＋`deleteUser`。**webhook 登録＋署名検証＋実 `subscriptionItem.ended` ペイロード形（`commerce_payer`）照合を stg で確認**。実「失効→削除」E2E は実期末（本番運用）で確認〕
