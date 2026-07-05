@@ -77,7 +77,7 @@
 - 正本は従来どおり Work JSON（`repo.saveWork`）。
 - 各 Work の `updatedAt`（既存）を同期判定に流用。
 - 端末ごとに `lastSyncedAt`（最後にサーバと突き合わせた時刻）を保持。
-- 各 Work の**ローカル状態** active／trashed（ゴミ箱・ローカルのみ・起動時チェックで30日後に自動 purge）。trashed は同期しない（D-SYNC-TOMBSTONE）。
+- 各 Work の**ローカル状態** active／trashed（ゴミ箱・起動時チェックで30日後に自動 purge）。**trashed も同期する（共有ゴミ箱・D-SYNC-TOMBSTONE 改）**：削除・復元が端末間で伝播する。
 - 同期スキップ用に、最後に送った **doc_hash / media_hash** をローカルに保持（変更検知・D-SYNC-MEDIA）。
 
 ### サーバ（Cloudflare 前提）
@@ -93,7 +93,7 @@
 
 ## 3. 同期プロトコル
 
-1. **Push**：`updatedAt > lastSyncedAt` の Work を対象に、**doc/media のうち hash が変わった側だけ** gzip→暗号化して R2 へ、メタを D1 へ（D-SYNC-MEDIA）。**trashed の Work は push しない**（D-SYNC-TOMBSTONE）。
+1. **Push**：`updatedAt > lastSyncedAt` の Work を対象に、**doc/media のうち hash が変わった側だけ** gzip→暗号化して R2 へ、メタを D1 へ（D-SYNC-MEDIA）。**trashed の Work は内容 push はしないが、ゴミ箱状態は `PATCH` で伝播する**（共有ゴミ箱・D-SYNC-TOMBSTONE 改）。
 2. **Pull**：サーバ側で `updated_at` がローカルより新しい Work をダウンロードし、`importWorks`（既存）で反映。**削除の伝播**＝D1 `deleted=1` の Work はローカルを snapshot へ退避してから除去（編集 vs 削除は LWW・編集勝ち＝復活）。purge 時に R2 doc/media を削除し、サーバ tombstone は ~30 日保持して物理削除（D-SYNC-TOMBSTONE）。
 3. **競合（残余ケースのみ）**：単一セッション（§1）により同時編集は通常起きない。例外はオフライン編集中に別端末ログインされた取り残し（§3 末尾）。その場合は `updatedAt` の新しい方を採用し、**負けた方の Work をローカル snapshot（`snap:<workId>`・既存機構）へ退避**してから上書き＝丸ごと消失を防ぐ安全網。
 4. 完了後に `lastSyncedAt` を更新。
@@ -134,7 +134,7 @@
 | **D-PLAN-BUNDLE** | 有料は単一プランで「クラウド束」を提供（段を増やさない）。束＝同期（アンカー）／複数端末／自動バックアップ／AI・MCP アクセス／（将来）容量・クラウド版履歴。原則「サーバが要るもの＝有料、純ローカル＝無料」。書き出しは無料に残す。詳細は §1.2。 |
 | **D-PLAN-AI** | AI・MCP アクセスは有料クラウド束の一機能。形＝**read-only リモート MCP**（Streamable HTTP・同期インフラ上の認証付きエンドポイント・`list_works`/`get_work`/`get_glossary`）。**推論はユーザーの AI が行い我々は保存テキストを返すだけ**（自前 AI なし）。設定コピーで各自の AI に接続。常駐不要ゆえ Tauri を待たず同期と同時期に出せる（ローカル stdio MCP は Tauri 後段）。本文流出は opt-in＋明示表示。 |
 | **D-SYNC-AUTH** | マネージド認証＝**Clerk**。単一アクティブセッション強制は Clerk セッションに加え**自前 D1 のセッショントークン（新ログインで回転）**を併用し、Worker は **Clerk JWT を検証**。会員/プラン判定も同 JWT クレームで行う（D-SYNC-PRICE と一本化）。「サーバ最小」に対し、認証・課金の整合を自前で抱えない利得を優先。 |
-| **D-SYNC-TOMBSTONE** | 削除はソフト削除＋**ローカルゴミ箱30日**。状態＝active／trashed（ローカルのみ・**同期しない**・自動保存 push もしない）／purged。ゴミ箱は起動時チェックで30日後に自動 purge。同期対象は active と purge（削除）のみ：purge で D1 `deleted=1`＋R2 doc/media 削除。pull 側は削除を「ローカルを snapshot へ退避→除去」で適用。編集 vs 削除は LWW（編集が新しければ復活）。サーバ tombstone は purge 後 ~30 日保持して物理削除。 |
+| **D-SYNC-TOMBSTONE**（改訂・共有ゴミ箱） | 削除はソフト削除＋**ゴミ箱30日**。状態＝active／trashed／purged の3つ。**trashed も同期する（共有ゴミ箱）**：D1 `works.trashed_at`（>0=trashed・blob 保持）で表し、削除・復元・完全削除をすべて端末間へ伝播する。これで「別端末で削除→pull で復活」「各端末でゴミ箱が増殖」を解消する（旧設計＝trashed をローカルのみで持ち非同期にしていたのが原因）。**伝播**＝ゴミ箱移動/復元は `PATCH /api/sync/work`（blob 保持で `trashed_at` を更新）で即時＋ログイン同期でも回収（engine が `listLocalTrashed`→`toPushTrash`/`toRestoreLocal`）。**purge**＝`DELETE`（D1 `deleted=1`＋R2 doc/media 削除）。**LWW**＝`updated_at` を時計に、trashed の時計は `trashed_at`。編集 vs 削除は新しい方が勝つ（編集が新しければ復活）。30日 TTL は `trashed_at` 基準で自動 purge。サーバ tombstone は purge 後 ~30 日保持して物理削除。migration `0003_trash_sync` で `trashed_at` 追加。 |
 | **D-SYNC-CAPACITY** | 1 GB/user・25 MB/work（blob）。クライアント push は同一 Work 最小 ~30 秒に coalesce（＋閉じる/画面遷移時に flush）。サーバ側レート上限 60 req/min/user。超過は**同期だけ停止**＝ローカルは無制限のまま（D-PLAN-LOCALDATA）。 |
 | **D-SYNC-MEDIA** | 同期表現を作品あたり **R2 2オブジェクトに分割**＝「本文オブジェクト（テキスト/構造）」＋「画像オブジェクト（data URL 群）」。**変わった側だけ**アップロード（hash 比較で未変更はスキップ）。暗号化**前に gzip**。画像単位の content-addressing/dedup は将来最適化。ローカルは方式A（Work JSON 相乗り・P1.1 画像）を維持。 |
 | **D-SYNC-PRICE** | 課金基盤＝**Clerk Billing（裏 Stripe）**。価格＝**月額 ¥500／年額 ¥4,800**（年は実質2ヶ月分お得）、トライアル無し。会員判定は Worker が検証する Clerk JWT クレームで行い、**Stripe ↔ 自前 D1 のサブスク状態同期は持たない**（D-SYNC-AUTH と同一線）。**解約＝期末まで継続予約（`cancel_at_period_end`。グレース期間中は member 継続・同期継続・再契約取消も可）。失効（期末到来）＝Clerk 失効 webhook をトリガにクラウドのアカウント＋データを削除し全端末を強制ログアウト（ローカル保持＝D-PLAN-LOCALDATA）。webhook は一度きりのアカウント終了フックでありサブスク状態ミラーではないため本決定の趣旨を壊さない。** |
@@ -174,7 +174,7 @@
 - [x] ✅ ログイン状態は永続化され、再起動しても再ログインを求められない（ログアウトは明示的操作か別端末ログインの押し出しのみ）。〔Clerk セッション・Phase 0＋1〕
 - [x] 🖐️ サーバに保存されたデータが at-rest 暗号化されている。〔`crypto.ts` の gzip→AES-GCM round-trip unit 済／実機は R2 オブジェクト目視〕
 - [x] 🖐️ 一方の端末で作品を削除すると、もう一方で pull 後に消え、消える前の版が snapshot に退避されている（編集 vs 削除は編集が勝つ）。〔engine の resurrect/trash 分岐 unit 済／実機は §9〕
-- [x] ✅ ゴミ箱に入れた作品は30日間ローカルに残り（同期されず）、期間経過後に自動削除される。〔trash はローカルのみ・同期対象外〕
+- [x] ✅ ゴミ箱に入れた作品は30日間残り、期間経過後に自動削除される。**ゴミ箱状態は端末間で同期する（共有ゴミ箱）**＝別端末で削除したものが復活せず、ゴミ箱が増殖しない。復元も端末をまたいで反映（D-SYNC-TOMBSTONE 改）。〔plan/engine の共有ゴミ箱マトリクス unit 済／実機は §9〕
 - [x] 🖐️ 本文のみ編集して同期すると画像オブジェクトは再送されない（doc/media 分割・変更側のみ送信）。〔`split`＋ハッシュ差分の `planAutosavePush` unit 済／実機は §9〕
 - [x] 🖐️ 容量上限（1 GB/user・25 MB/work）超過時は同期だけが止まり、ローカルの執筆・書き出しは継続できる。〔server 413/507 → `paused-capacity` バナー、controller テスト済／実機は §9〕
 - [x] 🖐️ 課金（月額/年額）で会員になると同期が有効化する（会員/プラン判定＝Clerk JWT クレーム。クライアント `has({plan})`＝UX／サーバ `toAuth().has({plan})`＝強制力。未課金は同期 API が 402）。〔**Phase 4 稼働・stg 実機で 未課金オンボ→テスト課金→member 化→2ブラウザ同期・未課金 402 を確認（2026-07-05）**〕
