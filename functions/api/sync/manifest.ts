@@ -18,7 +18,7 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
   const { userId } = member
 
   const { results } = await context.env.DB.prepare(
-    `SELECT work_id, updated_at, deleted, doc_hash, media_hash, (doc_size + media_size) AS size
+    `SELECT work_id, updated_at, deleted, trashed_at, doc_hash, media_hash, (doc_size + media_size) AS size
      FROM works WHERE user_id = ?`,
   )
     .bind(userId)
@@ -26,6 +26,7 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
       work_id: string
       updated_at: number
       deleted: number
+      trashed_at: number
       doc_hash: string
       media_hash: string
       size: number
@@ -35,6 +36,7 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
     workId: r.work_id,
     updatedAt: r.updated_at,
     deleted: r.deleted === 1,
+    trashedAt: r.trashed_at,
     docHash: r.doc_hash,
     mediaHash: r.media_hash,
     size: r.size,

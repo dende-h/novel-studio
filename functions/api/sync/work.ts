@@ -1,8 +1,9 @@
 /// <reference types="@cloudflare/workers-types" />
 /**
- * /api/sync/work?id=<workId> — 1 Work の pull / push / purge（Phase 2）。
+ * /api/sync/work?id=<workId> — 1 Work の pull / push / trash・restore / purge（Phase 2＋共有ゴミ箱）。
  *   GET    = pull（R2 から doc/media を復号・展開して平文で返す）
- *   PUT    = push（平文 part を受け取り canonicalize→gzip→AES-GCM で R2 保存・D1 upsert）
+ *   PUT    = push（平文 part を受け取り canonicalize→gzip→AES-GCM で R2 保存・D1 upsert＝active 化）
+ *   PATCH  = trash / restore（blob は保持し trashed_at だけ更新・共有ゴミ箱の状態伝播）
  *   DELETE = purge（R2 ブロブ削除・D1 を deleted=1 のトゥームストーンに）
  * 平文を TLS で送り、at-rest 暗号化はサーバが行う（E2E 暗号化ではない）。
  * push の検査順：session(409) → rate(429) → size(413) → quota(507) → R2 put → D1 upsert。
@@ -26,6 +27,7 @@ interface WorkRow {
   work_id: string
   updated_at: number
   deleted: number
+  trashed_at: number
   doc_key: string
   doc_hash: string
   doc_size: number
@@ -191,12 +193,13 @@ export const onRequestPut: PagesFunction<Env> = async (context) => {
   if (deleteMedia) await context.env.MEDIA.delete(r2Key(userId, workId, 'media'))
 
   const now = Date.now()
+  // 内容の push は active 化を意味する（deleted=0・trashed_at=0）＝サーバ側 restore も兼ねる。
   await context.env.DB.prepare(
     `INSERT INTO works
-       (user_id, work_id, updated_at, deleted, doc_key, doc_hash, doc_size, media_key, media_hash, media_size, synced_at)
-     VALUES (?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?)
+       (user_id, work_id, updated_at, deleted, trashed_at, doc_key, doc_hash, doc_size, media_key, media_hash, media_size, synced_at)
+     VALUES (?, ?, ?, 0, 0, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(user_id, work_id) DO UPDATE SET
-       updated_at = excluded.updated_at, deleted = 0,
+       updated_at = excluded.updated_at, deleted = 0, trashed_at = 0,
        doc_key = excluded.doc_key, doc_hash = excluded.doc_hash, doc_size = excluded.doc_size,
        media_key = excluded.media_key, media_hash = excluded.media_hash, media_size = excluded.media_size,
        synced_at = excluded.synced_at`,
@@ -216,6 +219,44 @@ export const onRequestPut: PagesFunction<Env> = async (context) => {
     .run()
 
   return json({ docHash, mediaHash, size: workSize })
+}
+
+interface PatchBody {
+  updatedAt: number
+  /** true = ゴミ箱へ（trashed_at を updatedAt に）／false = 復元（trashed_at を 0 に）。 */
+  trashed: boolean
+}
+
+/**
+ * PATCH = ゴミ箱状態の伝播（共有ゴミ箱）。blob は保持し trashed_at と updated_at（LWW 時計）だけ更新。
+ * サーバに未知の Work（未同期）や purge 済みには適用しない（404）＝クライアントはローカルで処理する。
+ */
+export const onRequestPatch: PagesFunction<Env> = async (context) => {
+  const auth = await authorize(context)
+  if (auth instanceof Response) return auth
+  const { userId, workId } = auth
+
+  let body: PatchBody
+  try {
+    body = (await context.request.json()) as PatchBody
+  } catch {
+    return json({ error: 'bad_request' }, 400)
+  }
+  if (typeof body.updatedAt !== 'number' || typeof body.trashed !== 'boolean') {
+    return json({ error: 'bad_request' }, 400)
+  }
+
+  const existing = await getRow(context.env.DB, userId, workId)
+  if (!existing || existing.deleted === 1) return json({ error: 'not_found' }, 404)
+
+  const trashedAt = body.trashed ? body.updatedAt : 0
+  await context.env.DB.prepare(
+    'UPDATE works SET trashed_at = ?, updated_at = ?, synced_at = ? WHERE user_id = ? AND work_id = ?',
+  )
+    .bind(trashedAt, body.updatedAt, Date.now(), userId, workId)
+    .run()
+
+  return json({ ok: true, updatedAt: body.updatedAt, trashedAt })
 }
 
 export const onRequestDelete: PagesFunction<Env> = async (context) => {

@@ -12,7 +12,7 @@ vi.mock('../_lib/session-check', () => ({ isCurrentSession: vi.fn(async () => tr
 vi.mock('../_lib/ratelimit', () => ({ checkRateLimit: vi.fn(async () => true), RATE_LIMIT: 60 }))
 
 import { verifyMember } from '../_lib/auth'
-import { onRequestDelete, onRequestGet, onRequestPut } from './work'
+import { onRequestDelete, onRequestGet, onRequestPatch, onRequestPut } from './work'
 
 const verifyMemberMock = vi.mocked(verifyMember)
 
@@ -23,6 +23,7 @@ interface Row {
   work_id: string
   updated_at: number
   deleted: number
+  trashed_at?: number
   doc_key: string
   doc_hash: string
   doc_size: number
@@ -128,6 +129,16 @@ function makeWorksDb(): D1Database {
                 synced_at,
               })
             }
+          } else if (sql.startsWith('UPDATE works SET trashed_at')) {
+            const [trashed_at, updated_at, synced_at, user_id, work_id] = args as [
+              number,
+              number,
+              number,
+              string,
+              string,
+            ]
+            const ex = rows.get(k(user_id, work_id))
+            if (ex) Object.assign(ex, { trashed_at, updated_at, synced_at })
           }
           return { success: true }
         },
@@ -192,6 +203,12 @@ const delReq = () =>
   new Request('https://x/api/sync/work?id=w1', {
     method: 'DELETE',
     headers: { 'X-Session-Token': 't' },
+  })
+const patchReq = (body: unknown) =>
+  new Request('https://x/api/sync/work?id=w1', {
+    method: 'PATCH',
+    headers: { 'X-Session-Token': 't', 'content-type': 'application/json' },
+    body: JSON.stringify(body),
   })
 
 const DOC = { id: 'w1', title: '物語', episodes: [] }
@@ -272,5 +289,41 @@ describe('バリデーションと削除', () => {
     expect(del.status).toBe(200)
     const get = await onRequestGet(ctx(getReq()))
     expect(get.status).toBe(404)
+  })
+})
+
+describe('PATCH（ゴミ箱状態の伝播＝共有ゴミ箱）', () => {
+  it('trash=true で trashed_at を updatedAt にセットし、blob は保持（GET は 200）', async () => {
+    await onRequestPut(ctx(putReq({ updatedAt: 100, parts: ['doc'], doc: DOC })))
+    const res = await onRequestPatch(ctx(patchReq({ updatedAt: 200, trashed: true })))
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual({ ok: true, updatedAt: 200, trashedAt: 200 })
+    // blob 保持＝trashed でも GET は本文を返す（復元用）。
+    expect((await onRequestGet(ctx(getReq()))).status).toBe(200)
+  })
+
+  it('trash=false で trashed_at を 0 に戻す（復元）', async () => {
+    await onRequestPut(ctx(putReq({ updatedAt: 100, parts: ['doc'], doc: DOC })))
+    await onRequestPatch(ctx(patchReq({ updatedAt: 200, trashed: true })))
+    const res = await onRequestPatch(ctx(patchReq({ updatedAt: 300, trashed: false })))
+    expect(await res.json()).toEqual({ ok: true, updatedAt: 300, trashedAt: 0 })
+  })
+
+  it('サーバに無い Work の PATCH は 404', async () => {
+    const res = await onRequestPatch(ctx(patchReq({ updatedAt: 200, trashed: true })))
+    expect(res.status).toBe(404)
+  })
+
+  it('purge 済み（deleted=1）の PATCH は 404', async () => {
+    await onRequestPut(ctx(putReq({ updatedAt: 100, parts: ['doc'], doc: DOC })))
+    await onRequestDelete(ctx(delReq()))
+    const res = await onRequestPatch(ctx(patchReq({ updatedAt: 200, trashed: true })))
+    expect(res.status).toBe(404)
+  })
+
+  it('不正な body は 400', async () => {
+    await onRequestPut(ctx(putReq({ updatedAt: 100, parts: ['doc'], doc: DOC })))
+    const res = await onRequestPatch(ctx(patchReq({ updatedAt: 'x', trashed: true })))
+    expect(res.status).toBe(400)
   })
 })
