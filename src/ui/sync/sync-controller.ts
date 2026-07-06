@@ -11,10 +11,17 @@ import type { Work } from '@/core/schema'
 import type { SnapshotRepository } from '@/core/snapshot/snapshotRepository'
 import type { SyncMetaRepository } from '@/core/storage/syncMetaRepository'
 import type { WorkRepository } from '@/core/storage/workRepository'
-import type { LoginSyncResult, PullResult, PushPayload, SyncDeps } from '@/core/sync/engine'
+import type {
+  LoginSyncResult,
+  PullResult,
+  PushPayload,
+  RestoreResult,
+  SyncDeps,
+} from '@/core/sync/engine'
 import {
   runAutosavePush as engineAutosavePush,
   runLoginSync as engineLoginSync,
+  restoreFromCloud as engineRestoreFromCloud,
 } from '@/core/sync/engine'
 import { type ManifestEntry, PROFILE_WORK_ID } from '@/core/sync/manifest'
 import { type ProfileSyncDeps, pushProfileChange, runProfileSync } from '@/core/sync/profile-sync'
@@ -65,8 +72,10 @@ export interface SyncControllerDeps {
 }
 
 export interface SyncController {
-  /** ログイン時の全双方向同期。完了後の結果（無効時は null）。 */
+  /** ログイン時のクラウドバックアップ（一方向 push）。完了後の結果（無効時は null）。 */
   runLoginSync(): Promise<LoginSyncResult | null>
+  /** クラウドから明示リストア（取り込み）。ローカルは上書きしない。無効時は null。 */
+  restoreFromCloud(): Promise<RestoreResult | null>
   /** プロフィール（ペンネーム・アバター）変更時の差分 push（pull はしない）。 */
   syncProfile(): Promise<void>
   /** 保存通知。workId を pending に積み、debounce 後に push する。 */
@@ -128,6 +137,7 @@ export function createSyncController(deps: SyncControllerDeps): SyncController {
     getSyncMeta: (workId) => syncMetaRepo.get(workId),
     setSyncMeta: (meta) => syncMetaRepo.set(meta),
     hashPart,
+    genId,
     now,
   }
 
@@ -208,6 +218,10 @@ export function createSyncController(deps: SyncControllerDeps): SyncController {
         await runProfileSync(profileDeps) // プロフィールも同じ枠で双方向同期する。
         return res
       })
+    },
+
+    async restoreFromCloud() {
+      return withPhase(() => engineRestoreFromCloud(engineDeps))
     },
 
     async syncProfile() {

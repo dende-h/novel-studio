@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import type { RestoreResult } from '@/core/sync/engine'
 import { useAuth } from '@/ui/auth/auth-context'
 import type { EditorStore } from '@/ui/store/editorStore'
 import { createDefaultSyncController } from './createDefaultSyncController'
@@ -8,8 +9,10 @@ import type { SyncController, SyncPhase } from './sync-controller'
 export interface UseSyncResult {
   /** バナー表示用の現在フェーズ。 */
   phase: SyncPhase
-  /** 手動で全双方向同期を起動（オフライン復帰・容量解消後の再試行など）。 */
+  /** 手動でクラウドバックアップ（push）を起動（オフライン復帰・容量解消後の再試行など）。 */
   syncNow: () => void
+  /** クラウドから明示リストア（取り込み）。取り込み結果を返す（無効時は null）。 */
+  restoreFromCloud: () => Promise<RestoreResult | null>
 }
 
 /**
@@ -46,6 +49,14 @@ export function useSync(
       await controller.runLoginSync()
       await store.init()
     })()
+  }, [store])
+
+  const restoreFromCloud = useCallback(async () => {
+    const controller = controllerRef.current
+    if (!controller) return null
+    const res = await controller.restoreFromCloud()
+    await store.init() // 取り込んだ作品を一覧へ反映。
+    return res
   }, [store])
 
   useEffect(() => {
@@ -109,5 +120,5 @@ export function useSync(
     }
   }, [available, status, userId, store, bridge, sessionReady])
 
-  return { phase, syncNow }
+  return { phase, syncNow, restoreFromCloud }
 }

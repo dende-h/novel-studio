@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { Work } from '../schema'
 import type { PullResult, PushPayload, SyncDeps } from './engine'
-import { runAutosavePush, runLoginSync } from './engine'
+import { restoreFromCloud, runAutosavePush, runLoginSync } from './engine'
 import type { LocalSyncMeta, ManifestEntry } from './manifest'
 import { splitWork } from './split'
 
@@ -51,6 +51,7 @@ function makeDeps(
   remotes: Array<{ entry: ManifestEntry; data: PullResult }>,
   trashedLocals: Array<{ workId: string; trashedAt: number }> = [],
 ) {
+  let copyN = 0
   const localWorks = new Map(locals.map((w) => [w.id, structuredClone(w)]))
   const localTrash = new Map(trashedLocals.map((t) => [t.workId, t.trashedAt]))
   const remoteEntries = remotes.map((r) => r.entry)
@@ -129,6 +130,9 @@ function makeDeps(
     async hashPart(value) {
       return fakeHash(value)
     },
+    genId() {
+      return `copy${++copyN}`
+    },
     now() {
       return 9999
     },
@@ -206,6 +210,51 @@ describe('runLoginSync（クラウドバックアップ＝一方向 push・自�
     await runLoginSync(deps)
     expect(calls.pushed).toEqual([{ workId: 'a1', parts: ['doc'] }])
     expect(calls.trashed).toEqual([]) // ゴミ箱の伝播はしない
+  })
+})
+
+describe('restoreFromCloud（明示リストア＝ローカルを上書きしない取り込み）', () => {
+  it('ローカルに無い作品はそのまま取り込む（active）', async () => {
+    const remoteWork = mkWork('r1', { title: 'Cloud', updatedAt: 200 })
+    const { deps, calls } = makeDeps([], [remoteOf(remoteWork)])
+    const res = await restoreFromCloud(deps)
+
+    expect(res.imported).toEqual(['r1'])
+    expect(res.copied).toEqual([])
+    expect(calls.saved).toHaveLength(1)
+    expect(calls.saved[0]).toEqual(remoteWork)
+  })
+
+  it('同一内容はスキップ（取り込まない）', async () => {
+    const w = mkWork('r2', { updatedAt: 100 })
+    const { deps, calls } = makeDeps([w], [remoteOf(w)])
+    const res = await restoreFromCloud(deps)
+
+    expect(res).toEqual({ imported: [], copied: [] })
+    expect(calls.saved).toEqual([])
+  })
+
+  it('別内容がある → 複製（別 id・タイトルに（クラウド版））で取り込み、ローカルは不変', async () => {
+    const local = mkWork('r3', { title: '手元', updatedAt: 100 })
+    const remoteWork = mkWork('r3', { title: 'クラウド', updatedAt: 200 })
+    const { deps, calls } = makeDeps([local], [remoteOf(remoteWork)])
+    const res = await restoreFromCloud(deps)
+
+    expect(res.imported).toEqual([])
+    expect(res.copied).toEqual(['copy1'])
+    const saved = calls.saved[0]
+    expect(saved?.id).toBe('copy1')
+    expect(saved?.title).toBe('クラウド（クラウド版）')
+    // 元の 'r3'（手元）は上書きされていない。
+    expect(calls.saved.some((s) => s.id === 'r3')).toBe(false)
+  })
+
+  it('削除済み（purge）とプロフィールは取り込み対象外', async () => {
+    const del = mkWork('r4', { updatedAt: 100 })
+    const { deps, calls } = makeDeps([], [remoteOf(del, { deleted: true })])
+    const res = await restoreFromCloud(deps)
+    expect(res).toEqual({ imported: [], copied: [] })
+    expect(calls.saved).toEqual([])
   })
 })
 

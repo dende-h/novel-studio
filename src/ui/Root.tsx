@@ -43,8 +43,23 @@ export function Root({ store, syncBridge }: RootProps) {
   // 単一アクティブセッションの監視。claimed=セッション claim 完了。
   // これが立つまで sync は起動しない（claim 前の 409 を防ぐ）。
   const { claimed } = useSessionGuard(handleSuperseded)
-  // クラウド同期の結線（ログイン時の全同期・autosave push・状態フェーズ）。
-  const { phase, syncNow } = useSync(store, syncBridge, claimed, handleSuperseded)
+  // クラウド同期の結線（ログイン時のバックアップ push・autosave push・明示リストア）。
+  const { phase, syncNow, restoreFromCloud } = useSync(store, syncBridge, claimed, handleSuperseded)
+
+  // 会員のみ「クラウドから取り込む」を提供。取り込み結果をトーストで知らせる。
+  const onRestoreFromCloud =
+    status === 'member'
+      ? async () => {
+          const res = await restoreFromCloud()
+          if (!res) return
+          const n = res.imported.length + res.copied.length
+          show(
+            n === 0
+              ? 'クラウドに新しく取り込む作品はありませんでした'
+              : `クラウドから ${n} 件を取り込みました${res.copied.length ? `（うち ${res.copied.length} 件は複製）` : ''}`,
+          )
+        }
+      : undefined
 
   // ライブラリで保存済み作品一覧を表示するため、入口で一覧を読み込む。
   useEffect(() => {
@@ -68,7 +83,11 @@ export function Root({ store, syncBridge }: RootProps) {
       {route === '/write' ? (
         <App store={store} onExit={() => navigate('/')} />
       ) : (
-        <Library store={store} onEnterEditor={() => navigate('/write')} />
+        <Library
+          store={store}
+          onEnterEditor={() => navigate('/write')}
+          onRestoreFromCloud={onRestoreFromCloud}
+        />
       )}
       {/* スマホ等の狭い画面（lg 未満）では本体を覆って非対応を案内する。 */}
       <SmallScreenNotice />

@@ -9,7 +9,7 @@ import { resolvePush } from './lww'
 import type { LocalSyncMeta, ManifestEntry } from './manifest'
 import { PROFILE_WORK_ID } from './manifest'
 import { planAutosavePush } from './plan'
-import { splitWork, type WorkDoc, type WorkMedia } from './split'
+import { joinWork, splitWork, type WorkDoc, type WorkMedia } from './split'
 
 /** push の本文（平文 part を含む）。media を null で送ると削除。 */
 export interface PushPayload {
@@ -55,6 +55,8 @@ export interface SyncDeps {
   setSyncMeta(meta: LocalSyncMeta): Promise<void>
   /** canonicalize → SHA-256(hex)。クライアント・サーバで同一であること。 */
   hashPart(value: unknown): Promise<string>
+  /** 複製取り込み時の新規 Work id 採番。 */
+  genId(): string
   now(): number
 }
 
@@ -146,6 +148,59 @@ export async function runLoginSync(deps: SyncDeps): Promise<LoginSyncResult> {
     if (await pushOne(deps, work, digest, r)) {
       result.pushed.push(work.id)
     }
+  }
+
+  return result
+}
+
+export interface RestoreResult {
+  /** ローカルに無かったので新規取り込みした workId（そのまま active）。 */
+  imported: string[]
+  /** ローカルに別内容があったので複製（別 workId）で取り込んだ新 workId。 */
+  copied: string[]
+}
+
+/**
+ * クラウドから明示リストア（取り込み）。**ローカルを絶対に上書きしない**安全な取り込み:
+ *   - ローカルに無い作品 → そのまま取り込む（active）。
+ *   - ローカルに同一内容がある → 何もしない（スキップ）。
+ *   - ローカルに別内容がある → **複製（別 id・タイトルに「（クラウド版）」）で取り込み**、両方残す。
+ * 版履歴／置換の選択は後段（版履歴 UI）で足す。ここは「消えない取り込み」を担保する土台。
+ */
+export async function restoreFromCloud(deps: SyncDeps): Promise<RestoreResult> {
+  const remote = (await deps.getManifest()).filter(
+    (e) => e.workId !== PROFILE_WORK_ID && !e.deleted,
+  )
+  const result: RestoreResult = { imported: [], copied: [] }
+
+  for (const r of remote) {
+    const local = await deps.loadLocalWork(r.workId)
+    if (!local) {
+      const pulled = await deps.pullWork(r.workId)
+      if (!pulled) continue
+      const work = joinWork(pulled.doc as WorkDoc, pulled.media as WorkMedia | null)
+      work.updatedAt = pulled.updatedAt
+      await deps.saveLocalWork(work)
+      await deps.setSyncMeta({
+        workId: r.workId,
+        docHash: r.docHash,
+        mediaHash: r.mediaHash,
+        syncedAt: deps.now(),
+      })
+      result.imported.push(r.workId)
+      continue
+    }
+    const d = await digestWork(deps, local)
+    if (d.docHash === r.docHash && d.mediaHash === r.mediaHash) continue // 同一 → 取り込み不要
+    // 別内容 → 複製で取り込み（ローカルを上書きしない）。
+    const pulled = await deps.pullWork(r.workId)
+    if (!pulled) continue
+    const copy = joinWork(pulled.doc as WorkDoc, pulled.media as WorkMedia | null)
+    copy.id = deps.genId()
+    copy.title = `${copy.title}（クラウド版）`
+    copy.updatedAt = deps.now()
+    await deps.saveLocalWork(copy)
+    result.copied.push(copy.id)
   }
 
   return result
