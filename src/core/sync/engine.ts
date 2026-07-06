@@ -8,8 +8,8 @@ import type { Work } from '../schema'
 import { resolvePush } from './lww'
 import type { LocalSyncMeta, ManifestEntry } from './manifest'
 import { PROFILE_WORK_ID } from './manifest'
-import { type LocalEntry, planAutosavePush, planLoginSync } from './plan'
-import { joinWork, splitWork, type WorkDoc, type WorkMedia } from './split'
+import { planAutosavePush } from './plan'
+import { splitWork, type WorkDoc, type WorkMedia } from './split'
 
 /** push の本文（平文 part を含む）。media を null で送ると削除。 */
 export interface PushPayload {
@@ -114,40 +114,22 @@ async function pushOne(
   return true
 }
 
-/** ログイン時の全双方向同期。 */
+/**
+ * ログイン時のクラウドバックアップ（**一方向 push のみ・自動 pull なし**）。
+ *
+ * ローカル IndexedDB を常に正本とし、クラウドへはバックアップとして push するだけ。自動 pull で
+ * ローカルを上書きしない（ログアウト中の編集喪失・ゴミ箱の復活を構造的に防ぐ）。別端末の変更は
+ * 明示的な「取り込み／復元」で取得する。ゴミ箱はローカルのみ（同期しない）。
+ *
+ * 版履歴（版ごと保持）が入るまでは、**新しいクラウドバックアップを古いローカルで上書きしない**よう
+ * `updatedAt` で保護する（古いローカルはスキップ＝クラウドの新しい版を守る）。
+ */
 export async function runLoginSync(deps: SyncDeps): Promise<LoginSyncResult> {
-  // プロフィール（予約 workId）は別パイプライン（runProfileSync）で同期する。作品一覧から除外する。
+  // プロフィール（予約 workId）は別パイプライン（runProfileSync）で扱う。作品一覧から除外する。
   const remote = (await deps.getManifest()).filter((e) => e.workId !== PROFILE_WORK_ID)
   const remoteMap = new Map(remote.map((e) => [e.workId, e]))
   const locals = await deps.listLocalWorks()
 
-  const digests = new Map<string, Digest>()
-  const localEntries: LocalEntry[] = []
-  for (const work of locals) {
-    const d = await digestWork(deps, work)
-    digests.set(work.id, d)
-    localEntries.push({
-      workId: work.id,
-      updatedAt: work.updatedAt ?? 0,
-      docHash: d.docHash,
-      mediaHash: d.mediaHash,
-    })
-  }
-  // ローカルのゴミ箱作品も同期対象に含める（updatedAt に trashedAt を入れて LWW の時計にする）。
-  // これで「ローカル trashed + リモート active」が pull（復活）ではなく trash 伝播に回る。
-  const trashed = await deps.listLocalTrashed()
-  const trashedAtMap = new Map(trashed.map((t) => [t.workId, t.trashedAt]))
-  for (const t of trashed) {
-    localEntries.push({
-      workId: t.workId,
-      updatedAt: t.trashedAt,
-      docHash: '',
-      mediaHash: '',
-      trashedAt: t.trashedAt,
-    })
-  }
-
-  const plan = planLoginSync(localEntries, remote)
   const result: LoginSyncResult = {
     pulled: [],
     pushed: [],
@@ -156,67 +138,13 @@ export async function runLoginSync(deps: SyncDeps): Promise<LoginSyncResult> {
     trashPropagated: [],
   }
 
-  // pull の前に敗者をスナップショット退避。
-  for (const id of plan.snapshotBeforePull) {
-    const work = await deps.loadLocalWork(id)
-    if (work) await deps.snapshotLocal(work)
-  }
-
-  for (const id of plan.toPull) {
-    const pulled = await deps.pullWork(id)
-    if (!pulled) continue
-    const work = joinWork(pulled.doc as WorkDoc, pulled.media as WorkMedia | null)
-    work.updatedAt = pulled.updatedAt
-    await deps.saveLocalWork(work)
-    const r = remoteMap.get(id)
-    await deps.setSyncMeta({
-      workId: id,
-      docHash: r?.docHash ?? '',
-      mediaHash: r?.mediaHash ?? '',
-      syncedAt: deps.now(),
-    })
-    result.pulled.push(id)
-  }
-
-  for (const id of plan.toPush) {
-    const work = await deps.loadLocalWork(id)
-    if (!work) continue
-    const digest = digests.get(id) ?? (await digestWork(deps, work))
-    if (await pushOne(deps, work, digest, remoteMap.get(id))) {
-      result.pushed.push(id)
-    }
-  }
-
-  // リモート削除（trash/purge）をローカルに適用。trashedAt はサーバの時刻に揃える。
-  for (const id of plan.toTrashLocal) {
-    const r = remoteMap.get(id)
-    const at = r && (r.trashedAt ?? 0) > 0 ? (r.trashedAt as number) : (r?.updatedAt ?? deps.now())
-    await deps.trashLocalWork(id, at)
-    result.trashed.push(id)
-  }
-
-  // 他端末で復元/編集された（リモート active が新しい）→ ローカルのゴミ箱から復元。
-  for (const id of plan.toRestoreLocal) {
-    const pulled = await deps.pullWork(id)
-    if (!pulled) continue
-    const work = joinWork(pulled.doc as WorkDoc, pulled.media as WorkMedia | null)
-    work.updatedAt = pulled.updatedAt
-    await deps.restoreLocalWork(work)
-    const r = remoteMap.get(id)
-    await deps.setSyncMeta({
-      workId: id,
-      docHash: r?.docHash ?? '',
-      mediaHash: r?.mediaHash ?? '',
-      syncedAt: deps.now(),
-    })
-    result.restored.push(id)
-  }
-
-  // ローカルのゴミ箱状態が勝ち → サーバへ trashed を伝播（blob は保持）。
-  for (const id of plan.toPushTrash) {
-    const at = trashedAtMap.get(id) ?? deps.now()
-    if (await deps.pushTrashState(id, { trashed: true, updatedAt: at })) {
-      result.trashPropagated.push(id)
+  for (const work of locals) {
+    const r = remoteMap.get(work.id)
+    // クラウドの方が新しいバックアップ＝古いローカルで上書きしない（別端末のバックアップを守る）。
+    if (r && (work.updatedAt ?? 0) < r.updatedAt) continue
+    const digest = await digestWork(deps, work)
+    if (await pushOne(deps, work, digest, r)) {
+      result.pushed.push(work.id)
     }
   }
 

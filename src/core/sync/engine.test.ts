@@ -137,15 +137,16 @@ function makeDeps(
   return { deps, calls, syncMeta, localWorks }
 }
 
-describe('runLoginSync', () => {
-  it('ローカルのみの Work は push し、同期メタを記録する', async () => {
+// バックアップ専用（一方向 push・自動 pull なし）。ローカルを正本に、クラウドへ push するだけ。
+const EMPTY = { pulled: [], pushed: [], trashed: [], restored: [], trashPropagated: [] }
+
+describe('runLoginSync（クラウドバックアップ＝一方向 push・自動 pull なし）', () => {
+  it('ローカルのみの Work は push（バックアップ）し同期メタを記録する', async () => {
     const w1 = mkWork('w1')
     const { deps, calls, syncMeta } = makeDeps([w1], [])
     const res = await runLoginSync(deps)
 
     expect(res.pushed).toEqual(['w1'])
-    expect(res.pulled).toEqual([])
-    expect(res.trashed).toEqual([])
     expect(calls.pushed).toEqual([{ workId: 'w1', parts: ['doc'] }])
     expect(syncMeta.get('w1')?.docHash).toBe(fakeHash(splitWork(w1).doc))
     expect(syncMeta.get('w1')?.syncedAt).toBe(9999)
@@ -158,118 +159,53 @@ describe('runLoginSync', () => {
     expect(calls.pushed).toEqual([{ workId: 'wm', parts: ['doc', 'media'] }])
   })
 
-  it('リモートのみ（生存）の Work は pull して保存する', async () => {
+  it('【自動 pull なし】リモートのみ（ローカルに無い）は取得しない＝ローカル不変', async () => {
     const remoteWork = mkWork('w2', { title: 'Remote', updatedAt: 200 })
     const { deps, calls } = makeDeps([], [remoteOf(remoteWork)])
     const res = await runLoginSync(deps)
 
-    expect(res.pulled).toEqual(['w2'])
-    expect(calls.saved).toHaveLength(1)
-    expect(calls.saved[0]).toEqual(remoteWork)
+    expect(res).toEqual(EMPTY)
+    expect(calls.pulled).toEqual([]) // 自動 pull しない（別端末の変更は明示リストアで取得）
+    expect(calls.saved).toEqual([]) // ローカルを勝手に書かない
   })
 
-  it('両方あり・リモートが新しく内容が違う → pull＋上書き前にスナップショット退避', async () => {
+  it('【上書き防止】クラウドの方が新しい → 古いローカルで上書きしない（push も pull もしない）', async () => {
     const local = mkWork('w3', { title: 'Local', updatedAt: 100 })
     const remoteWork = mkWork('w3', { title: 'Remote', updatedAt: 200 })
     const { deps, calls } = makeDeps([local], [remoteOf(remoteWork)])
     const res = await runLoginSync(deps)
 
-    expect(res.pulled).toEqual(['w3'])
-    expect(calls.snapshotted).toEqual(['w3'])
-    expect(calls.saved[0]?.title).toBe('Remote')
+    expect(res).toEqual(EMPTY)
+    expect(calls.pushed).toEqual([]) // クラウドの新しいバックアップを守る
+    expect(calls.saved).toEqual([]) // ローカルも書き換えない（ログアウト中の編集喪失を防ぐ）
   })
 
-  it('両方あり・ローカルが新しい → push（退避なし）', async () => {
+  it('ローカルが新しい → push（バックアップ）', async () => {
     const local = mkWork('w4', { title: 'Local', updatedAt: 300 })
     const remoteWork = mkWork('w4', { title: 'Remote', updatedAt: 100 })
     const { deps, calls } = makeDeps([local], [remoteOf(remoteWork)])
     const res = await runLoginSync(deps)
 
     expect(res.pushed).toEqual(['w4'])
-    expect(calls.snapshotted).toEqual([])
     expect(calls.pulled).toEqual([])
   })
 
-  it('両方あり・内容一致 → 何もしない（noop）', async () => {
+  it('内容一致 → 何もしない（noop）', async () => {
     const w5 = mkWork('w5', { updatedAt: 100 })
     const { deps, calls } = makeDeps([w5], [remoteOf(w5)])
     const res = await runLoginSync(deps)
 
-    expect(res).toEqual({ pulled: [], pushed: [], trashed: [], restored: [], trashPropagated: [] })
+    expect(res).toEqual(EMPTY)
     expect(calls.pushed).toEqual([])
-    expect(calls.pulled).toEqual([])
   })
 
-  it('リモート削除済み・ローカルが古い → ローカルもゴミ箱へ（削除伝播）', async () => {
-    const local = mkWork('w6', { updatedAt: 100 })
-    const remoteWork = mkWork('w6', { updatedAt: 200 })
-    const { deps, calls } = makeDeps([local], [remoteOf(remoteWork, { deleted: true })])
-    const res = await runLoginSync(deps)
-
-    expect(res.trashed).toEqual(['w6'])
-    // purge の適用は trashedAt をサーバの updated_at（削除時刻）に揃える。
-    expect(calls.trashed).toEqual([{ workId: 'w6', trashedAt: 200 }])
-    expect(calls.pulled).toEqual([])
-  })
-
-  it('リモート削除済み・ローカルが新しい → push で復活', async () => {
-    const local = mkWork('w7', { updatedAt: 300 })
-    const remoteWork = mkWork('w7', { updatedAt: 100 })
-    const { deps, calls } = makeDeps([local], [remoteOf(remoteWork, { deleted: true })])
-    const res = await runLoginSync(deps)
-
-    expect(res.pushed).toEqual(['w7'])
-    expect(calls.trashed).toEqual([])
-  })
-
-  it('リモートのみ・削除済み → 何もしない', async () => {
-    const remoteWork = mkWork('w8', { updatedAt: 200 })
-    const { deps, calls } = makeDeps([], [remoteOf(remoteWork, { deleted: true })])
-    const res = await runLoginSync(deps)
-
-    expect(res).toEqual({ pulled: [], pushed: [], trashed: [], restored: [], trashPropagated: [] })
-    expect(calls.pulled).toEqual([])
-  })
-
-  it('【回帰の核】ローカル trashed（新）＋リモート active → 復活せず trash を伝播', async () => {
-    const remoteWork = mkWork('t1', { updatedAt: 100 })
-    const { deps, calls } = makeDeps(
-      [], // active には無い
-      [remoteOf(remoteWork)], // サーバは active
-      [{ workId: 't1', trashedAt: 200 }], // ローカルはゴミ箱（trash が新しい）
-    )
-    const res = await runLoginSync(deps)
-
-    expect(res.trashPropagated).toEqual(['t1'])
-    expect(res.pulled).toEqual([]) // ← 旧実装はここで pull（復活）していた
-    expect(calls.trashPushed).toEqual([{ workId: 't1', trashed: true, updatedAt: 200 }])
-    expect(calls.saved).toEqual([]) // 復活の保存が起きない
-  })
-
-  it('リモートが trashed・ローカル active（古い）→ ローカルもゴミ箱へ（trashedAt を揃える）', async () => {
-    const local = mkWork('t2', { updatedAt: 100 })
-    const remoteWork = mkWork('t2', { updatedAt: 200 })
-    const remote = remoteOf(remoteWork)
-    remote.entry.trashedAt = 200 // リモートは trashed
-    const { deps, calls } = makeDeps([local], [remote])
-    const res = await runLoginSync(deps)
-
-    expect(res.trashed).toEqual(['t2'])
-    expect(calls.trashed).toEqual([{ workId: 't2', trashedAt: 200 }])
-  })
-
-  it('ローカル trashed・リモート active が新しい（他端末で復元/編集）→ ローカルを復元', async () => {
-    const remoteWork = mkWork('t3', { updatedAt: 300 })
-    const { deps, calls } = makeDeps(
-      [],
-      [remoteOf(remoteWork)], // サーバ active・新しい
-      [{ workId: 't3', trashedAt: 100 }], // ローカルはゴミ箱（古い）
-    )
-    const res = await runLoginSync(deps)
-
-    expect(res.restored).toEqual(['t3'])
-    expect(calls.restored).toEqual(['t3'])
-    expect(calls.trashPushed).toEqual([]) // 伝播はしない
+  it('ローカルのゴミ箱作品は同期対象外＝push もされない（ゴミ箱はローカルのみ）', async () => {
+    // listLocalWorks は active のみを返す規約。ゴミ箱は含まれないので push されない。
+    const active = mkWork('a1', { updatedAt: 100 })
+    const { deps, calls } = makeDeps([active], [])
+    await runLoginSync(deps)
+    expect(calls.pushed).toEqual([{ workId: 'a1', parts: ['doc'] }])
+    expect(calls.trashed).toEqual([]) // ゴミ箱の伝播はしない
   })
 })
 
