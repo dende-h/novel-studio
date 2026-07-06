@@ -78,6 +78,41 @@ export class WorkRepository {
     await this.store.delete(keyOf(id))
   }
 
+  /** 全作品を本体つきで取得（全体バックアップ用）。 */
+  async listWorksFull(): Promise<Work[]> {
+    const keys = await this.store.keys('work:')
+    const works = await Promise.all(keys.map((k) => this.store.get(k)))
+    return works.map((w) => WorkSchema.parse(w))
+  }
+
+  /** ゴミ箱を本体つきで取得（全体バックアップ用）。 */
+  async listTrashFull(): Promise<Array<{ work: Work; trashedAt: number }>> {
+    const keys = await this.store.keys('trash:')
+    const records = await Promise.all(keys.map((k) => this.store.get<TrashedRecord>(k)))
+    return records
+      .filter((r): r is TrashedRecord => r !== undefined)
+      .map((r) => ({ work: WorkSchema.parse(r.work), trashedAt: r.trashedAt }))
+  }
+
+  /**
+   * 全体バックアップの復元：既存の全作品・ゴミ箱を消してから与えられた状態で**全置換**する。
+   * 呼び出し側は置換前に安全バックアップを取ること（不可逆な置換）。スナップショット履歴は触らない。
+   */
+  async replaceAll(works: Work[], trash: Array<{ work: Work; trashedAt: number }>): Promise<void> {
+    const workKeys = await this.store.keys('work:')
+    const trashKeys = await this.store.keys('trash:')
+    await Promise.all([...workKeys, ...trashKeys].map((k) => this.store.delete(k)))
+    await Promise.all(works.map((w) => this.store.set(keyOf(w.id), WorkSchema.parse(w))))
+    await Promise.all(
+      trash.map((t) =>
+        this.store.set<TrashedRecord>(trashKeyOf(t.work.id), {
+          work: WorkSchema.parse(t.work),
+          trashedAt: t.trashedAt,
+        }),
+      ),
+    )
+  }
+
   /**
    * 作品をゴミ箱へ退避（active → trashed）。`work:<id>` を消し `trash:<id>` へ移す。
    * 別名前空間なので listWorks（同期対象）には出ず、ローカルにのみ残る。存在しなければ no-op。

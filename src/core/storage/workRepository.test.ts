@@ -134,3 +134,34 @@ describe('WorkRepository ゴミ箱（trash）', () => {
     expect((await r.listTrash()).map((t) => t.id)).toEqual(['new'])
   })
 })
+
+describe('WorkRepository 全体バックアップ（listWorksFull / listTrashFull / replaceAll）', () => {
+  it('listWorksFull は本体つきで全作品を返す', async () => {
+    const r = repo()
+    await r.saveWork(work('a', 'A'))
+    await r.saveWork(work('b', 'B'))
+    const all = await r.listWorksFull()
+    expect(all.map((w) => w.id).sort()).toEqual(['a', 'b'])
+    expect(all[0]?.episodes.length).toBeGreaterThan(0) // 要約ではなく本体
+  })
+
+  it('listTrashFull は本体＋trashedAt を返す', async () => {
+    const r = repo()
+    await r.saveWork(work('t', 'T'))
+    await r.trashWork('t', 555)
+    expect(await r.listTrashFull()).toEqual([{ work: work('t', 'T'), trashedAt: 555 }])
+  })
+
+  it('replaceAll は既存の作品・ゴミ箱を全消去してから置換する（全置換）', async () => {
+    const r = repo()
+    await r.saveWork(work('old1', '旧'))
+    await r.saveWork(work('old2', '旧2'))
+    await r.trashWork('old2', 100)
+
+    await r.replaceAll([work('new', '新')], [{ work: work('trash', 'ゴミ'), trashedAt: 900 }])
+
+    expect((await r.listWorks()).map((w) => w.id)).toEqual(['new']) // 旧作品は消えた
+    expect(await r.getWork('old1')).toBeUndefined()
+    expect((await r.listTrash()).map((t) => t.id)).toEqual(['trash']) // ゴミ箱も置換
+  })
+})
