@@ -1,7 +1,9 @@
-import { useCallback, useEffect, useRef } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { App } from './App'
 import { useAuth } from './auth/auth-context'
 import { useSessionGuard } from './auth/use-session-guard'
+import { createDefaultBackupService } from './backup/backup-service'
+import { CloudBackupDialog } from './components/CloudBackupDialog/cloud-backup-dialog'
 import { Library } from './components/Library/library'
 import { SmallScreenNotice } from './components/SmallScreenNotice/small-screen-notice'
 import { SyncOnboarding } from './components/SyncOnboarding/sync-onboarding'
@@ -20,8 +22,17 @@ interface RootProps {
 /** 入口（ライブラリ）とエディタをハッシュで切り替えるトップレベル Container。 */
 export function Root({ store, syncBridge }: RootProps) {
   const { route, navigate } = useHashRoute()
-  const { status, isSignedIn, signOut } = useAuth()
+  const { status, isSignedIn, signOut, getToken } = useAuth()
   const { show } = useToast()
+  const getTokenRef = useRef(getToken)
+  getTokenRef.current = getToken
+
+  // 会員のみクラウド全体バックアップ・復元を提供（IndexedDB＋/api/backup を結線）。
+  const backupService = useMemo(
+    () => (status === 'member' ? createDefaultBackupService(() => getTokenRef.current()) : null),
+    [status],
+  )
+  const [backupOpen, setBackupOpen] = useState(false)
 
   // 別端末ログインでこの端末が無効化されたとき：強制サインアウト（→ゲスト化）＋トースト1回。
   // 旧 superseded バナーは廃止し、ヘッダーの「同期オフ」表示に一本化する。
@@ -43,23 +54,8 @@ export function Root({ store, syncBridge }: RootProps) {
   // 単一アクティブセッションの監視。claimed=セッション claim 完了。
   // これが立つまで sync は起動しない（claim 前の 409 を防ぐ）。
   const { claimed } = useSessionGuard(handleSuperseded)
-  // クラウド同期の結線（ログイン時のバックアップ push・autosave push・明示リストア）。
-  const { phase, syncNow, restoreFromCloud } = useSync(store, syncBridge, claimed, handleSuperseded)
-
-  // 会員のみ「クラウドから取り込む」を提供。取り込み結果をトーストで知らせる。
-  const onRestoreFromCloud =
-    status === 'member'
-      ? async () => {
-          const res = await restoreFromCloud()
-          if (!res) return
-          const n = res.imported.length + res.copied.length
-          show(
-            n === 0
-              ? 'クラウドに新しく取り込む作品はありませんでした'
-              : `クラウドから ${n} 件を取り込みました${res.copied.length ? `（うち ${res.copied.length} 件は複製）` : ''}`,
-          )
-        }
-      : undefined
+  // クラウド同期の結線（ログイン時のバックアップ push・autosave push）。
+  const { phase, syncNow } = useSync(store, syncBridge, claimed, handleSuperseded)
 
   // ライブラリで保存済み作品一覧を表示するため、入口で一覧を読み込む。
   useEffect(() => {
@@ -86,7 +82,16 @@ export function Root({ store, syncBridge }: RootProps) {
         <Library
           store={store}
           onEnterEditor={() => navigate('/write')}
-          onRestoreFromCloud={onRestoreFromCloud}
+          onOpenCloudBackup={backupService ? () => setBackupOpen(true) : undefined}
+        />
+      )}
+      {backupService && (
+        <CloudBackupDialog
+          open={backupOpen}
+          onOpenChange={setBackupOpen}
+          service={backupService}
+          onNotify={show}
+          onRestored={() => store.init()}
         />
       )}
       {/* スマホ等の狭い画面（lg 未満）では本体を覆って非対応を案内する。 */}

@@ -1,13 +1,4 @@
-import {
-  CloudDownload,
-  Database,
-  LayoutGrid,
-  List,
-  LoaderCircle,
-  Plus,
-  Trash2,
-  Upload,
-} from 'lucide-react'
+import { CloudDownload, Database, LayoutGrid, List, Plus, Trash2, Upload } from 'lucide-react'
 import { useState } from 'react'
 import type { WorkSummary } from '@/core/storage/workRepository'
 import { cn } from '@/lib/utils'
@@ -38,12 +29,12 @@ interface LibraryProps {
   store: EditorStore
   /** エディタ（/write）へ遷移 */
   onEnterEditor: () => void
-  /** クラウドから取り込む（会員のみ・未指定なら非表示）。 */
-  onRestoreFromCloud?: () => Promise<void>
+  /** クラウドバックアップ管理を開く（会員のみ・未指定なら非表示）。 */
+  onOpenCloudBackup?: () => void
 }
 
 /** 入口＝マイライブラリ（作品グリッド）。 */
-export function Library({ store, onEnterEditor, onRestoreFromCloud }: LibraryProps) {
+export function Library({ store, onEnterEditor, onOpenCloudBackup }: LibraryProps) {
   const state = useEditorStore(store)
   const [newOpen, setNewOpen] = useState(false)
   const [exportOpen, setExportOpen] = useState(false)
@@ -51,7 +42,6 @@ export function Library({ store, onEnterEditor, onRestoreFromCloud }: LibraryPro
   const [backupOpen, setBackupOpen] = useState(false)
   const [profileOpen, setProfileOpen] = useState(false)
   const [trashOpen, setTrashOpen] = useState(false)
-  const [restoring, setRestoring] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<WorkSummary | null>(null)
   const [metaTarget, setMetaTarget] = useState<WorkSummary | null>(null)
   const [view, setView] = useState<LibraryView>(() => {
@@ -178,26 +168,14 @@ export function Library({ store, onEnterEditor, onRestoreFromCloud }: LibraryPro
                 <Upload className="size-4" />
                 取り込み
               </Button>
-              {onRestoreFromCloud && (
+              {onOpenCloudBackup && (
                 <Button
                   variant="outline"
-                  onClick={async () => {
-                    setRestoring(true)
-                    try {
-                      await onRestoreFromCloud()
-                    } finally {
-                      setRestoring(false)
-                    }
-                  }}
-                  disabled={restoring}
+                  onClick={onOpenCloudBackup}
                   className="gap-2 text-primary"
                 >
-                  {restoring ? (
-                    <LoaderCircle className="size-4 animate-spin" />
-                  ) : (
-                    <CloudDownload className="size-4" />
-                  )}
-                  クラウドから取り込む
+                  <CloudDownload className="size-4" />
+                  クラウドバックアップ
                 </Button>
               )}
             </div>
