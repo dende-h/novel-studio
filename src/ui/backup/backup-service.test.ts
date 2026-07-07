@@ -40,8 +40,7 @@ describe('createBackupService', () => {
     expect(JSON.parse(created[0] ?? '{}').works[0].id).toBe('a')
   })
 
-  it('restore は「置換前に現在を安全退避」→ 取得 → 全置換 の順で行う', async () => {
-    // 事前に別状態のバックアップを1つ入れておく（これを復元する）。
+  it('復元は既定では安全退避しない（バックアップを増やさない）', async () => {
     const target = serializeBackup({ works: [work('restored')], trash: [], profile: {} }, 50)
     const { deps, created, replaced, remote } = makeDeps()
     remote.set('target', target)
@@ -50,10 +49,20 @@ describe('createBackupService', () => {
     const ok = await svc.restore('target')
 
     expect(ok).toBe(true)
+    expect(created).toHaveLength(0) // 安全退避（作成）は起きない
+    expect(replaced[0]?.works.map((w) => w.id)).toEqual(['restored']) // 全置換はする
+  })
+
+  it('backupCurrent:true のときだけ、置換前に現在を安全退避してから全置換する', async () => {
+    const target = serializeBackup({ works: [work('restored')], trash: [], profile: {} }, 50)
+    const { deps, created, replaced, remote } = makeDeps()
+    remote.set('target', target)
+
+    const svc = createBackupService(deps)
+    await svc.restore('target', { backupCurrent: true })
+
     // 置換前に現在（works=[a]）を安全退避している。
     expect(JSON.parse(created[0] ?? '{}').works[0].id).toBe('a')
-    // 取得したバックアップ（restored）で全置換している。
-    expect(replaced).toHaveLength(1)
     expect(replaced[0]?.works.map((w) => w.id)).toEqual(['restored'])
   })
 

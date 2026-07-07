@@ -29,8 +29,11 @@ export interface BackupService {
   backupNow(): Promise<BackupSummary | null>
   /** バックアップ一覧（新しい順）。 */
   list(): Promise<BackupSummary[]>
-  /** 指定バックアップでローカル全体を置換（復元）。置換前に現在を安全退避する。成功で true。 */
-  restore(id: string): Promise<boolean>
+  /**
+   * 指定バックアップでローカル全体を置換（復元）。成功で true。
+   * `backupCurrent: true` のときだけ、置換前に現在の状態をクラウドへ安全退避する（任意）。
+   */
+  restore(id: string, opts?: { backupCurrent?: boolean }): Promise<boolean>
   /** バックアップ 1 件を削除。 */
   remove(id: string): Promise<boolean>
 }
@@ -44,9 +47,12 @@ export function createBackupService(deps: BackupDeps): BackupService {
       return res ? { ...res, size: plaintext.length } : null
     },
     list: () => deps.listRemote(),
-    async restore(id) {
-      // 安全網：全置換の前に、現在のローカル状態をクラウドへ退避しておく（取り消し可能に）。
-      await deps.createRemote(serializeBackup(await deps.gather(), deps.now()))
+    async restore(id, opts = {}) {
+      // 任意の安全網：希望時だけ、全置換の前に現在のローカル状態をクラウドへ退避する
+      // （常に退避するとバックアップが増え続けるため、ユーザーが選べるようにした）。
+      if (opts.backupCurrent) {
+        await deps.createRemote(serializeBackup(await deps.gather(), deps.now()))
+      }
       const json = await deps.getRemote(id)
       if (!json) return false
       const backup = deserializeBackup(json) // version/スキーマ検証。壊れていれば throw して置換しない。

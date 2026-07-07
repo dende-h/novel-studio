@@ -38,6 +38,8 @@ export function CloudBackupDialog({
   const [backups, setBackups] = useState<BackupSummary[] | null>(null)
   const [busy, setBusy] = useState(false)
   const [confirmId, setConfirmId] = useState<string | null>(null)
+  // 復元時に「置換前の現在の状態」をクラウドへ残すか（任意・既定オフ＝バックアップを無闇に増やさない）。
+  const [keepCurrent, setKeepCurrent] = useState(false)
 
   const reload = useCallback(async () => {
     setBackups(await service.list())
@@ -65,10 +67,14 @@ export function CloudBackupDialog({
   const restore = async (id: string) => {
     setBusy(true)
     try {
-      const ok = await service.restore(id)
+      const ok = await service.restore(id, { backupCurrent: keepCurrent })
       if (ok) {
         await onRestored()
-        onNotify('このバックアップでローカルを復元しました（直前の状態は自動退避済み）')
+        onNotify(
+          keepCurrent
+            ? 'このバックアップで復元しました（置換前の状態も退避済み）'
+            : 'このバックアップでローカルを復元しました',
+        )
         onOpenChange(false)
       } else {
         onNotify('復元に失敗しました')
@@ -111,7 +117,18 @@ export function CloudBackupDialog({
           今すぐバックアップ
         </Button>
 
-        <div className="max-h-72 space-y-2 overflow-y-auto">
+        <label className="flex cursor-pointer items-center gap-2 font-sans text-on-surface-variant text-xs">
+          <input
+            type="checkbox"
+            checked={keepCurrent}
+            onChange={(e) => setKeepCurrent(e.target.checked)}
+            className="size-4 accent-primary"
+          />
+          復元するとき、置換前の現在の状態もバックアップに残す
+        </label>
+
+        {/* 件数が増えても内部スクロールで高さを抑える（モーダルが伸び続けない）。 */}
+        <div className="max-h-[45vh] space-y-2 overflow-y-auto">
           {backups === null ? (
             <p className="py-6 text-center text-on-surface-variant text-sm">読み込み中…</p>
           ) : backups.length === 0 ? (
