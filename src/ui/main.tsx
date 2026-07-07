@@ -11,27 +11,20 @@ import { AuthProvider } from './auth/auth-provider'
 import { ToastProvider } from './components/Toast/toast'
 import { Root } from './Root'
 import { createDefaultStore } from './store/createDefaultStore'
-import { createSyncBridge } from './sync/sync-bridge'
 import './index.css'
 
 const root = document.getElementById('root')
 if (!root) throw new Error('#root not found')
 
-// ストアの保存通知を、ログイン中だけ生成される同期コントローラへ後付けで繋ぐ間接層。
-const syncBridge = createSyncBridge()
-const store = createDefaultStore({
-  onSaved: (id) => syncBridge.onSaved(id),
-  onTrashed: (id, at) => syncBridge.onTrashed(id, at),
-  onRestored: (id, at) => syncBridge.onRestored(id, at),
-  onPurged: (id) => syncBridge.onPurged(id),
-  onProfileSaved: () => syncBridge.onProfileSaved(),
-})
+// クラウドは自動同期ではなく明示バックアップ/復元モデル（Root の CloudBackupDialog）。
+// ストアはローカル正本のみで、保存通知（同期トリガ）は持たない。
+const store = createDefaultStore()
 
 createRoot(root).render(
   <StrictMode>
     <AuthProvider>
       <ToastProvider>
-        <Root store={store} syncBridge={syncBridge} />
+        <Root store={store} />
       </ToastProvider>
     </AuthProvider>
   </StrictMode>,
