@@ -56,13 +56,13 @@ function renderWithAuth(value: AuthState) {
 describe('TopAppBar / AccountControl（同期アカウント表示）', () => {
   it('Clerk 未構成（available=false）ではアカウント表示を出さない', () => {
     renderWithAuth(authState({ available: false }))
-    expect(screen.queryByText('同期オフ（ログインで同期）')).toBeNull()
+    expect(screen.queryByText('ログインでクラウドバックアップ')).toBeNull()
   })
 
-  it('未ログインのゲストは「同期オフ（ログインで同期）」を出し、クリックで openSignIn', () => {
+  it('未ログインのゲストは「ログインでクラウドバックアップ」を出し、クリックで openSignIn', () => {
     const openSignIn = vi.fn()
     renderWithAuth(authState({ status: 'guest', isSignedIn: false, openSignIn }))
-    const btn = screen.getByRole('button', { name: /同期オフ（ログインで同期）/ })
+    const btn = screen.getByRole('button', { name: /ログインでクラウドバックアップ/ })
     fireEvent.click(btn)
     expect(openSignIn).toHaveBeenCalledTimes(1)
   })
@@ -75,6 +75,6 @@ describe('TopAppBar / AccountControl（同期アカウント表示）', () => {
 
   it('判定中（loading）は何も出さない（ちらつき防止）', () => {
     renderWithAuth(authState({ status: 'loading' }))
-    expect(screen.queryByText('同期オフ（ログインで同期）')).toBeNull()
+    expect(screen.queryByText('ログインでクラウドバックアップ')).toBeNull()
   })
 })

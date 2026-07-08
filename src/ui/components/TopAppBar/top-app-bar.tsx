@@ -1,9 +1,9 @@
 import {
+  Check,
   CircleDot,
-  Cloud,
-  CloudCheck,
   CloudOff,
   Download,
+  HardDrive,
   History,
   LoaderCircle,
 } from 'lucide-react'
@@ -48,7 +48,7 @@ function SaveIndicator({ dirty, status }: SaveState) {
   if (status === 'saved' && !dirty) {
     return (
       <span className="flex items-center gap-1.5 font-sans text-on-surface-variant text-xs">
-        <CloudCheck className="size-4 text-primary" aria-hidden />
+        <Check className="size-4 text-primary" aria-hidden />
         保存済み
       </span>
     )
@@ -63,13 +63,13 @@ function SaveIndicator({ dirty, status }: SaveState) {
   }
   return (
     <span className="flex items-center gap-1.5 font-sans text-on-surface-variant/60 text-xs">
-      <Cloud className="size-4" aria-hidden />
+      <HardDrive className="size-4" aria-hidden />
       ローカル保存
     </span>
   )
 }
 
-/** アカウント（同期・認証）。Clerk 構成時（publishable key あり）のみ表示。 */
+/** アカウント（クラウドバックアップ・認証）。Clerk 構成時（publishable key あり）のみ表示。 */
 function AccountControl() {
   const auth = useAuth()
   if (!auth.available) return null
@@ -89,9 +89,8 @@ function AccountControl() {
     )
   }
   if (auth.status === 'guest') {
-    // 3経路（別端末に奪われた／サブスク失効→削除／未ログイン）が全部ゲストに収束＝一律「同期オフ」。
-    // 「サインイン済みだが未課金」は AccountControl ではなく Root の全画面オンボーディングが担うため、
-    // ここに来る guest は実質「未サインイン」だけ。クリックでサインイン。
+    // クラウド未接続のゲスト。「サインイン済みだが未課金」は Root の全画面オンボーディングが担うため、
+    // ここに来る guest は実質「未サインイン」だけ。クリックでサインイン → クラウドバックアップが使える。
     return (
       <Button
         variant="ghost"
@@ -100,7 +99,7 @@ function AccountControl() {
         className="gap-2 text-on-surface-variant hover:text-primary"
       >
         <CloudOff className="size-4" aria-hidden />
-        同期オフ（ログインで同期）
+        ログインでクラウドバックアップ
       </Button>
     )
   }
