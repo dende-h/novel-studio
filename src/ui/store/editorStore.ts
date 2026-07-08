@@ -120,19 +120,6 @@ export interface EditorStoreDeps {
   snapshotMinIntervalMs: number
   /** ゴミ箱の保持期間(ms)。init() でこれを過ぎた退避作品を自動 purge する。 */
   trashTtlMs: number
-  /**
-   * 作品の本文・メタ・辞書が永続化された直後の通知（Phase 2 同期トリガ）。
-   * 同期コントローラが workId を coalesce してクラウドへ push する。ゲスト時は no-op。
-   */
-  onSaved?: (workId: string) => void
-  /** ゴミ箱へ移動した直後の通知（共有ゴミ箱の即時伝播＝サーバへ trashed を PATCH）。 */
-  onTrashed?: (workId: string, trashedAt: number) => void
-  /** ゴミ箱から復元した直後の通知（共有ゴミ箱の即時伝播＝サーバへ restore を PATCH）。 */
-  onRestored?: (workId: string, updatedAt: number) => void
-  /** 作品を完全削除（purge）した直後の通知。リモートのトゥームストーン化に使う。 */
-  onPurged?: (workId: string) => void
-  /** プロフィール（ペンネーム・アバター）が永続化された直後の通知（同期 push のトリガ）。 */
-  onProfileSaved?: () => void
 }
 
 const INITIAL: EditorState = {
@@ -158,21 +145,9 @@ export function createEditorStore({
   now,
   snapshotMinIntervalMs,
   trashTtlMs,
-  onSaved,
-  onTrashed,
-  onRestored,
-  onPurged,
-  onProfileSaved,
 }: EditorStoreDeps): EditorStore {
   let state: EditorState = INITIAL
   const listeners = new Set<() => void>()
-
-  // 永続化／purge を同期コントローラへ通知する（注入が無ければ no-op＝ゲスト）。
-  const notifySaved = (workId: string) => onSaved?.(workId)
-  const notifyTrashed = (workId: string, trashedAt: number) => onTrashed?.(workId, trashedAt)
-  const notifyRestored = (workId: string, updatedAt: number) => onRestored?.(workId, updatedAt)
-  const notifyPurged = (workId: string) => onPurged?.(workId)
-  const notifyProfileSaved = () => onProfileSaved?.()
 
   const emit = () => {
     for (const l of listeners) l()
@@ -236,7 +211,6 @@ export function createEditorStore({
         snapshots: [],
       })
       await refreshList()
-      notifySaved(work.id)
     },
 
     async openWork(id) {
@@ -263,7 +237,6 @@ export function createEditorStore({
       }
       await repo.saveWork(work)
       set({ work, currentEpisodeId: episode.id, draft: '', dirty: false, status: 'idle' })
-      notifySaved(work.id)
     },
 
     openEpisode(id) {
@@ -301,7 +274,6 @@ export function createEditorStore({
       const snapshots = await snapshotRepo.record(work, now(), genId(), snapshotMinIntervalMs)
       set({ work, dirty: false, status: 'saved', snapshots })
       await refreshList()
-      notifySaved(work.id)
     },
 
     restoreSnapshot(snapshotId) {
@@ -339,7 +311,6 @@ export function createEditorStore({
       }
       await refreshTrash()
       // 共有ゴミ箱：ゴミ箱状態をリモートへ即時伝播（端末切替でも相手が気づける）。
-      notifyTrashed(id, trashedAt)
     },
 
     async restoreWork(id) {
@@ -347,21 +318,18 @@ export function createEditorStore({
       await refreshList()
       await refreshTrash()
       // 復元をリモートへ即時伝播（trashed_at=0）。内容 push は差分無しだと飛ばないため PATCH で確実に。
-      notifyRestored(id, now())
     },
 
     async purgeWork(id) {
       await repo.purgeTrashedWork(id)
       await snapshotRepo.clear(id)
       await refreshTrash()
-      notifyPurged(id)
     },
 
     async emptyTrash() {
       for (const t of state.trashList) {
         await repo.purgeTrashedWork(t.id)
         await snapshotRepo.clear(t.id)
-        notifyPurged(t.id)
       }
       await refreshTrash()
     },
@@ -384,7 +352,6 @@ export function createEditorStore({
         set({ work })
       }
       await refreshList()
-      notifySaved(work.id)
     },
 
     async renameEpisode(episodeId, title) {
@@ -403,7 +370,6 @@ export function createEditorStore({
       await repo.saveWork(work)
       set({ work })
       await refreshList()
-      notifySaved(work.id)
     },
 
     async updateWorkMeta(id, meta) {
@@ -417,7 +383,6 @@ export function createEditorStore({
       await repo.saveWork(work)
       if (state.work?.id === id) set({ work })
       await refreshList()
-      notifySaved(work.id)
     },
 
     async importWorks(works) {
@@ -457,7 +422,6 @@ export function createEditorStore({
       await repo.saveWork(work)
       set({ work })
       await refreshList()
-      notifySaved(work.id)
       return entry
     },
 
@@ -486,7 +450,6 @@ export function createEditorStore({
       await repo.saveWork(work)
       set({ work })
       await refreshList()
-      notifySaved(work.id)
     },
 
     async renameGlossaryEntry(id, newName, opts) {
@@ -514,7 +477,6 @@ export function createEditorStore({
       }
       set(patch)
       await refreshList()
-      notifySaved(work.id)
     },
 
     async deleteGlossaryEntry(id) {
@@ -530,7 +492,6 @@ export function createEditorStore({
       await repo.saveWork(work)
       set({ work })
       await refreshList()
-      notifySaved(work.id)
     },
 
     async updateProfile(input) {
@@ -542,7 +503,6 @@ export function createEditorStore({
       if (input.avatar) profile.avatar = input.avatar
       await profileRepo.save(profile)
       set({ profile })
-      notifyProfileSaved()
     },
   }
 }
