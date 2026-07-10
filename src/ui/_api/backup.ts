@@ -38,6 +38,22 @@ export async function createBackup(
   }
 }
 
+/** MCP 用ライブスナップショットを上書き保存（版は作らない）。成功で true。 */
+export async function putLiveBackup(getToken: GetToken, plaintext: string): Promise<boolean> {
+  const headers = await authHeader(getToken)
+  if (!headers) return false
+  try {
+    const res = await fetch('/api/backup', {
+      method: 'PUT',
+      headers: { ...headers, 'content-type': 'application/json' },
+      body: plaintext,
+    })
+    return res.ok
+  } catch {
+    return false
+  }
+}
+
 /** バックアップ一覧（新しい順）。未ログイン/失敗は空配列。 */
 export async function listBackups(getToken: GetToken): Promise<BackupSummary[]> {
   const headers = await authHeader(getToken)

@@ -8,6 +8,7 @@ const work = (id: string): Work => ({ id, title: id, episodes: [], updatedAt: 1 
 function makeDeps(over: Partial<BackupDeps> = {}) {
   const state = { works: [work('a')], trash: [], profile: { penName: 'p' } }
   const created: string[] = []
+  const live: string[] = []
   const replaced: Array<{ works: Work[] }> = []
   const remote = new Map<string, string>()
   const deps: BackupDeps = {
@@ -21,6 +22,10 @@ function makeDeps(over: Partial<BackupDeps> = {}) {
       remote.set(id, plaintext)
       return { id, createdAt: created.length }
     },
+    putLiveRemote: async (plaintext) => {
+      live.push(plaintext)
+      return true
+    },
     listRemote: async () =>
       [...remote.keys()].map((id) => ({ id, createdAt: Number(id), size: 0 })),
     getRemote: async (id) => remote.get(id) ?? null,
@@ -28,10 +33,18 @@ function makeDeps(over: Partial<BackupDeps> = {}) {
     now: () => 100,
     ...over,
   }
-  return { deps, created, replaced, remote, state }
+  return { deps, created, live, replaced, remote, state }
 }
 
 describe('createBackupService', () => {
+  it('pushLive は現在の全状態をライブスナップショットに上書きする（版は作らない）', async () => {
+    const { deps, live, created } = makeDeps()
+    const svc = createBackupService(deps)
+    await svc.pushLive()
+    expect(JSON.parse(live[0] ?? '{}').works[0].id).toBe('a')
+    expect(created).toHaveLength(0) // 版バックアップは作らない
+  })
+
   it('backupNow は現在の全状態を直列化して保存する', async () => {
     const { deps, created } = makeDeps()
     const svc = createBackupService(deps)

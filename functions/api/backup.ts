@@ -77,6 +77,24 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
   return json({ id, createdAt })
 }
 
+/**
+ * PUT = MCP 用ライブスナップショット。**版は作らず 1 オブジェクト `${userId}/live` に上書き**する
+ * （AI が最新の作品を読めるよう会員の編集をデバウンスで反映・一覧やバックアップ世代には出ない）。
+ */
+export const onRequestPut: PagesFunction<Env> = async (context) => {
+  const m = await requireMember(context)
+  if ('error' in m) return m.error
+  const { userId } = m
+
+  const plaintext = await context.request.text()
+  if (!plaintext || plaintext.length > MAX_BACKUP_BYTES) return json({ error: 'bad_request' }, 400)
+
+  const key = await importKey(context.env.ENCRYPTION_KEY)
+  const blob = await encryptPart(plaintext, key, `${userId}:live`)
+  await context.env.MEDIA.put(`${userId}/live`, blob as unknown as ArrayBuffer)
+  return json({ ok: true })
+}
+
 export const onRequestGet: PagesFunction<Env> = async (context) => {
   const m = await requireMember(context)
   if ('error' in m) return m.error

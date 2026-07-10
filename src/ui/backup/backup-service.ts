@@ -7,6 +7,7 @@ import {
   deleteBackup as apiDelete,
   getBackup as apiGet,
   listBackups as apiList,
+  putLiveBackup as apiPutLive,
   type BackupSummary,
 } from '@/ui/_api/backup'
 
@@ -18,6 +19,8 @@ export interface BackupDeps {
   /** 全置換で現在のローカル状態を上書きする（不可逆・呼び出し前に安全退避済み）。 */
   replaceAll(state: BackupState): Promise<void>
   createRemote(plaintext: string): Promise<{ id: string; createdAt: number } | null>
+  /** MCP 用ライブスナップショットを上書き保存（版は作らない）。 */
+  putLiveRemote(plaintext: string): Promise<boolean>
   listRemote(): Promise<BackupSummary[]>
   getRemote(id: string): Promise<string | null>
   deleteRemote(id: string): Promise<boolean>
@@ -36,6 +39,8 @@ export interface BackupService {
   restore(id: string, opts?: { backupCurrent?: boolean }): Promise<boolean>
   /** バックアップ 1 件を削除。 */
   remove(id: string): Promise<boolean>
+  /** MCP 用ライブスナップショットを現在の全状態で上書き（AI に最新を読ませる）。 */
+  pushLive(): Promise<void>
 }
 
 /** 純ロジック（直列化）と注入 I/O を束ねる。破壊的処理（restore の replaceAll）の単一経路。 */
@@ -60,6 +65,9 @@ export function createBackupService(deps: BackupDeps): BackupService {
       return true
     },
     remove: (id) => deps.deleteRemote(id),
+    async pushLive() {
+      await deps.putLiveRemote(serializeBackup(await deps.gather(), deps.now()))
+    },
   }
 }
 
@@ -79,6 +87,7 @@ export function createDefaultBackupService(getToken: () => Promise<string | null
       await profileRepo.save(state.profile)
     },
     createRemote: (plaintext) => apiCreate(getToken, plaintext),
+    putLiveRemote: (plaintext) => apiPutLive(getToken, plaintext),
     listRemote: () => apiList(getToken),
     getRemote: (id) => apiGet(getToken, id),
     deleteRemote: (id) => apiDelete(getToken, id),
