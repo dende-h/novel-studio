@@ -1,4 +1,4 @@
-import { CloudDownload, Database, LayoutGrid, List, Plus, Trash2, Upload } from 'lucide-react'
+import { Bot, CloudDownload, Database, LayoutGrid, List, Plus, Trash2, Upload } from 'lucide-react'
 import { useState } from 'react'
 import type { WorkSummary } from '@/core/storage/workRepository'
 import { cn } from '@/lib/utils'
@@ -31,10 +31,12 @@ interface LibraryProps {
   onEnterEditor: () => void
   /** クラウドバックアップ管理を開く（会員のみ・未指定なら非表示）。 */
   onOpenCloudBackup?: () => void
+  /** AI・MCP 接続の管理を開く（会員のみ・未指定なら非表示）。 */
+  onOpenMcp?: () => void
 }
 
 /** 入口＝マイライブラリ（作品グリッド）。 */
-export function Library({ store, onEnterEditor, onOpenCloudBackup }: LibraryProps) {
+export function Library({ store, onEnterEditor, onOpenCloudBackup, onOpenMcp }: LibraryProps) {
   const state = useEditorStore(store)
   const [newOpen, setNewOpen] = useState(false)
   const [exportOpen, setExportOpen] = useState(false)
@@ -176,6 +178,12 @@ export function Library({ store, onEnterEditor, onOpenCloudBackup }: LibraryProp
                 >
                   <CloudDownload className="size-4" />
                   クラウドバックアップ
+                </Button>
+              )}
+              {onOpenMcp && (
+                <Button variant="outline" onClick={onOpenMcp} className="gap-2 text-primary">
+                  <Bot className="size-4" />
+                  AI に接続
                 </Button>
               )}
             </div>
