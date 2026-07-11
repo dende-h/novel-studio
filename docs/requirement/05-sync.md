@@ -21,6 +21,16 @@
 > - **課金ゲート**：member 判定・402 は `/api/backup`（`verifyMember`）に集約（旧 `/api/sync/*` は退役）。
 > - **ゴミ箱**：ローカルのみ（同期しない）。全体バックアップには含まれ、復元で一緒に戻る。
 > - **作品ごとの版履歴（クラウド版）** は将来の enhancement（本改訂では全体スナップショットのみ）。
+> - **AI・MCP アクセス（read-only リモート MCP）**：手動バックアップとは別に、接続した会員の編集を
+>   デバウンスで **1 オブジェクト `${userId}/live` に上書き**する「ライブスナップショット」を自動保存し
+>   （`PUT /api/backup`・版は増えない・`use-live-snapshot`）、MCP エンドポイント `/api/mcp`
+>   （Streamable HTTP・JSON-RPC 2.0・`functions/api/_lib/mcp-server`）がこれを復号して読む。
+>   認証は **AI クライアント用の専用トークン**（`Authorization: Bearer mcp_…`・`mcp_tokens`／migration 0004・
+>   SHA-256 ハッシュのみ保存・`/api/mcp/token` で発行/失効）で、Clerk JWT ではない（AI クライアントは
+>   Clerk 認証を張れないため）。データ源が「同期済み作品」ではなく**接続時だけ上げるライブスナップショット**
+>   な点が、自動同期廃止に伴う本改訂での差分。ツールは read-only 3種（`list_works`/`get_work`/`get_glossary`）。
+>   未接続・非会員は一切 push しない＝opt-in した会員のデータだけが上がる（漏洩境界＝§1.2）。UI は
+>   「AI に接続」（`McpConnectDialog`・会員のみ）。
 >
 > 以降の本文は設計の経緯として残すが、**現行の挙動は上記が優先**する。
 
