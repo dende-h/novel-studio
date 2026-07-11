@@ -44,13 +44,21 @@ function CopyRow({ label, value }: { label: string; value: string }) {
     }
   }
   return (
-    <div className="space-y-1">
+    <div className="min-w-0 space-y-1">
       <p className="font-sans text-on-surface-variant text-xs">{label}</p>
-      <div className="flex items-stretch gap-2">
-        <code className="min-w-0 flex-1 overflow-x-auto whitespace-nowrap rounded-md bg-surface-container-highest px-2 py-1.5 font-mono text-on-surface text-xs">
+      <div className="flex min-w-0 items-stretch gap-2">
+        {/* URL/トークン/コマンドは長い1トークンになりがち。break-all で必ず折り返し、grid 列が
+            max-content まで広がってダイアログをはみ出すのを防ぐ（max-h＋スクロールで縦も抑制）。 */}
+        <code className="max-h-24 min-w-0 flex-1 overflow-y-auto whitespace-pre-wrap break-all rounded-md bg-surface-container-highest px-2 py-1.5 font-mono text-on-surface text-xs">
           {value}
         </code>
-        <Button size="icon" variant="outline" onClick={copy} aria-label={`${label}をコピー`}>
+        <Button
+          size="icon"
+          variant="outline"
+          onClick={copy}
+          aria-label={`${label}をコピー`}
+          className="shrink-0"
+        >
           {copied ? (
             <Check className="size-4 text-primary" aria-hidden />
           ) : (
@@ -165,7 +173,7 @@ export function McpConnectDialog({
 
         {/* 発行直後だけ平文トークンを表示（再表示できない） */}
         {plaintext && (
-          <div className="space-y-2 rounded-lg border border-primary/30 bg-primary/5 p-3">
+          <div className="min-w-0 space-y-2 rounded-lg border border-primary/30 bg-primary/5 p-3">
             <p className="font-sans text-on-surface text-xs">
               <strong>トークンを発行しました。</strong>
               この画面を閉じると<strong>二度と表示できません</strong>
@@ -178,7 +186,7 @@ export function McpConnectDialog({
         {status === null ? (
           <p className="py-4 text-center text-on-surface-variant text-sm">読み込み中…</p>
         ) : connected ? (
-          <div className="space-y-3">
+          <div className="min-w-0 space-y-3">
             <p className="font-sans text-on-surface text-sm">
               接続中
               {status.createdAt != null && (
