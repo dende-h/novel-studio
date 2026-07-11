@@ -1,5 +1,5 @@
 import { Bot, Check, Copy, LoaderCircle, RefreshCw, TriangleAlert, Unplug } from 'lucide-react'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   generateMcpToken,
   getMcpTokenStatus,
@@ -113,14 +113,18 @@ export function McpConnectDialog({
     onConnectedChange(s.hasToken)
   }, [getToken, onConnectedChange])
 
+  // 「開いた瞬間」だけリセット＆読込する。開いている間の再レンダー（親が毎回新しい getToken を
+  // 渡す等で load の識別子が変わる）で発行直後の平文トークンが消えないようにするための防御。
+  const prevOpen = useRef(false)
   useEffect(() => {
-    if (open) {
-      setPlaintext(null)
-      setAgreed(false)
-      setReissue(false)
-      setStatus(null)
-      void load()
-    }
+    const justOpened = open && !prevOpen.current
+    prevOpen.current = open
+    if (!justOpened) return
+    setPlaintext(null)
+    setAgreed(false)
+    setReissue(false)
+    setStatus(null)
+    void load()
   }, [open, load])
 
   const generate = async () => {

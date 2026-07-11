@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { getMcpTokenStatus } from './_api/mcp'
 import { App } from './App'
 import { useAuth } from './auth/auth-context'
@@ -24,6 +24,9 @@ export function Root({ store }: RootProps) {
   const { show } = useToast()
   const getTokenRef = useRef(getToken)
   getTokenRef.current = getToken
+  // 子（ダイアログ・effect）へ渡す安定した参照。毎レンダーで新関数を渡すと子の useEffect が
+  // 再実行され、発行直後のトークン表示が消える等の不具合を招くため固定する。
+  const getTokenStable = useCallback(() => getTokenRef.current(), [])
 
   // 会員のみクラウド全体バックアップ・復元を提供（IndexedDB＋/api/backup を結線）。
   // 単一アクティブセッションは撤去したので、複数端末に常時ログインでき、押し出しは起きない。
@@ -47,8 +50,8 @@ export function Root({ store }: RootProps) {
       setMcpConnected(false)
       return
     }
-    void getMcpTokenStatus(() => getTokenRef.current()).then((s) => setMcpConnected(s.hasToken))
-  }, [status])
+    void getMcpTokenStatus(getTokenStable).then((s) => setMcpConnected(s.hasToken))
+  }, [status, getTokenStable])
 
   // 接続済み会員の編集をデバウンスでライブスナップショットへ反映（AI が最新を読める）。
   useLiveSnapshot(store, backupService, mcpConnected)
@@ -89,8 +92,8 @@ export function Root({ store }: RootProps) {
         <McpConnectDialog
           open={mcpOpen}
           onOpenChange={setMcpOpen}
-          getToken={() => getTokenRef.current()}
-          pushLive={() => backupService.pushLive()}
+          getToken={getTokenStable}
+          pushLive={backupService.pushLive}
           onConnectedChange={setMcpConnected}
           onNotify={show}
         />
