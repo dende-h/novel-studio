@@ -8,6 +8,7 @@ import { triggerDownload } from '@/ui/_utils/download'
 import {
   episodeKakuyomuExport,
   episodeNarouExport,
+  workAiTextExport,
   workEpubExport,
   workFolderZipExport,
 } from '@/ui/_utils/exporters'
@@ -64,8 +65,8 @@ const FORMATS: FormatDef[] = [
   {
     key: 'ai',
     icon: Sparkles,
-    title: 'AI へコピー',
-    desc: '本文をまとめて AI に読ませる用にコピー',
+    title: 'AI に渡す',
+    desc: 'ChatGPT・Gemini などに読ませる（コピー / ファイル）',
   },
 ]
 
@@ -89,6 +90,11 @@ export function ExportDialog({ open, onOpenChange, work, onEditMeta }: ExportDia
   const handleOpenChange = (next: boolean) => {
     if (!next) setCopied(null)
     onOpenChange(next)
+  }
+
+  // 長編はコピペだと途中で切れるため、同じ本文を .txt に保存し ChatGPT/Gemini へ添付できるようにする。
+  const saveAiFile = () => {
+    if (work) triggerDownload(workAiTextExport(work, includeGlossary))
   }
 
   const handleExport = async () => {
@@ -251,13 +257,17 @@ export function ExportDialog({ open, onOpenChange, work, onEditMeta }: ExportDia
             )}
 
             {format === 'ai' && (
-              <Section title="AI へコピー">
+              <Section title="AI に渡す">
                 <div className="space-y-4">
                   <Note>
-                    作品全体をプレーンテキストにまとめてクリップボードへコピーします。Claude や
-                    ChatGPT
-                    などに貼り付けて、感想・推敲・要約などを頼めます。ルビは「親文字（よみ）」、
-                    @参照は名前に展開されます。
+                    作品全体をプレーンテキストにして、ChatGPT・Gemini・Claude
+                    などに読ませ、感想・推敲・要約などを頼めます。ルビは「親文字（よみ）」、@参照は名前に展開されます。
+                    <span className="mt-2 block">
+                      <strong>短い作品</strong>は「コピー」してチャットに貼り付け。
+                      <strong>長い作品</strong>はコピペだと途中で切れることがあるので、
+                      <strong>ファイルに保存</strong>して、ChatGPT / Gemini
+                      の「＋（ファイル添付）」からアップロードするのが確実です。
+                    </span>
                   </Note>
                   {glossaryCount > 0 && (
                     <div className="flex items-center justify-between gap-3 rounded-md border border-outline-variant/30 p-3">
@@ -265,7 +275,7 @@ export function ExportDialog({ open, onOpenChange, work, onEditMeta }: ExportDia
                         htmlFor={glossaryToggleId}
                         className="font-normal text-on-surface text-sm"
                       >
-                        登録した図鑑も一緒にコピー
+                        登録した図鑑も一緒に渡す
                         <span className="mt-0.5 block text-on-surface-variant text-xs">
                           人物・用語などの設定（{glossaryCount} 件）を本文の後ろに付けます。
                         </span>
@@ -277,9 +287,19 @@ export function ExportDialog({ open, onOpenChange, work, onEditMeta }: ExportDia
                       />
                     </div>
                   )}
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={saveAiFile}
+                    disabled={!canExport}
+                    className="w-full gap-2 text-primary"
+                  >
+                    <Download className="size-4" />
+                    ファイルに保存（アップロード用 .txt）
+                  </Button>
                   <p className="rounded-md border border-outline-variant/30 p-3 text-on-surface-variant text-xs leading-relaxed">
-                    ※ コピーした本文を AI
-                    サービスに貼ると、その提供元へ内容が送信されます。未公開原稿の扱いにご注意ください。
+                    ※ 本文を AI
+                    サービスに渡すと、その提供元へ内容が送信されます。未公開原稿の扱いにご注意ください。
                   </p>
                   {copied === 'ok' && (
                     <p className="text-primary text-sm">

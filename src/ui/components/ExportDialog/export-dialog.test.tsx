@@ -36,10 +36,10 @@ function makeWorkWithGlossary(): Work {
   }
 }
 
-describe('ExportDialog（AI へコピー）', () => {
+describe('ExportDialog（AI に渡す）', () => {
   it('AI 形式を選ぶとコピー操作になり、本文をクリップボードへ書いて完了表示を出す', async () => {
     render(<ExportDialog open onOpenChange={() => {}} work={makeWork()} />)
-    fireEvent.click(screen.getByText('AI へコピー'))
+    fireEvent.click(screen.getByText('AI に渡す'))
     fireEvent.click(screen.getByRole('button', { name: 'コピー' }))
     await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1))
     expect(writeText).toHaveBeenCalledWith(expect.stringContaining('# 銀河の詩'))
@@ -49,8 +49,8 @@ describe('ExportDialog（AI へコピー）', () => {
 
   it('「図鑑も一緒にコピー」を ON にすると本文の後ろに図鑑が付く', async () => {
     render(<ExportDialog open onOpenChange={() => {}} work={makeWorkWithGlossary()} />)
-    fireEvent.click(screen.getByText('AI へコピー'))
-    fireEvent.click(screen.getByRole('switch', { name: /図鑑も一緒にコピー/ }))
+    fireEvent.click(screen.getByText('AI に渡す'))
+    fireEvent.click(screen.getByRole('switch', { name: /図鑑も一緒に渡す/ }))
     fireEvent.click(screen.getByRole('button', { name: 'コピー' }))
     await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1))
     const text = writeText.mock.calls[0]?.[0] as string
@@ -62,7 +62,7 @@ describe('ExportDialog（AI へコピー）', () => {
 
   it('図鑑トグルが OFF（既定）なら本文だけコピーする', async () => {
     render(<ExportDialog open onOpenChange={() => {}} work={makeWorkWithGlossary()} />)
-    fireEvent.click(screen.getByText('AI へコピー'))
+    fireEvent.click(screen.getByText('AI に渡す'))
     fireEvent.click(screen.getByRole('button', { name: 'コピー' }))
     await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1))
     expect(writeText.mock.calls[0]?.[0] as string).not.toContain('# 図鑑')
@@ -71,7 +71,7 @@ describe('ExportDialog（AI へコピー）', () => {
   it('コピー失敗時はエラー表示を出す', async () => {
     writeText.mockRejectedValueOnce(new Error('denied'))
     render(<ExportDialog open onOpenChange={() => {}} work={makeWork()} />)
-    fireEvent.click(screen.getByText('AI へコピー'))
+    fireEvent.click(screen.getByText('AI に渡す'))
     fireEvent.click(screen.getByRole('button', { name: 'コピー' }))
     expect(await screen.findByText(/コピーに失敗しました/)).toBeInTheDocument()
   })
