@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ProfileRepository } from '@/core/profile'
 import { SnapshotRepository } from '@/core/snapshot/snapshotRepository'
+import { ActivityRepository } from '@/core/storage/activityRepository'
 import { MemoryStore } from '@/core/storage/memoryStore'
 import { WorkRepository } from '@/core/storage/workRepository'
 import { createEditorStore, type EditorStore } from '@/ui/store/editorStore'
@@ -14,6 +15,7 @@ const makeStore = (): EditorStore => {
     repo: new WorkRepository(kv),
     snapshotRepo: new SnapshotRepository(kv),
     profileRepo: new ProfileRepository(kv),
+    activityRepo: new ActivityRepository(kv),
     genId: () => `id${++n}`,
     now: () => Date.now(),
     snapshotMinIntervalMs: 0,

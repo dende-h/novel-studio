@@ -1,5 +1,6 @@
 import { ProfileRepository } from '../../core/profile'
 import { SnapshotRepository } from '../../core/snapshot/snapshotRepository'
+import { ActivityRepository } from '../../core/storage/activityRepository'
 import { IdbStore } from '../../core/storage/idbStore'
 import { WorkRepository } from '../../core/storage/workRepository'
 import { createEditorStore, type EditorStore } from './editorStore'
@@ -16,13 +17,20 @@ export function createDefaultStore(): EditorStore {
   const repo = new WorkRepository(store)
   const snapshotRepo = new SnapshotRepository(store)
   const profileRepo = new ProfileRepository(store)
+  const activityRepo = new ActivityRepository(store)
   return createEditorStore({
     repo,
     snapshotRepo,
     profileRepo,
+    activityRepo,
     genId: () => crypto.randomUUID(),
     now: () => Date.now(),
     snapshotMinIntervalMs: SNAPSHOT_MIN_INTERVAL_MS,
     trashTtlMs: TRASH_TTL_MS,
   })
+}
+
+/** 執筆活動ページ（読み取り専用）が同じ IndexedDB を参照するためのリポジトリ。 */
+export function createDefaultActivityRepository(): ActivityRepository {
+  return new ActivityRepository(new IdbStore('novel-studio'))
 }

@@ -1,4 +1,14 @@
-import { Bot, CloudDownload, Database, LayoutGrid, List, Plus, Trash2, Upload } from 'lucide-react'
+import {
+  Bot,
+  CloudDownload,
+  Database,
+  LayoutGrid,
+  List,
+  Plus,
+  Sprout,
+  Trash2,
+  Upload,
+} from 'lucide-react'
 import { useState } from 'react'
 import type { WorkSummary } from '@/core/storage/workRepository'
 import { cn } from '@/lib/utils'
@@ -33,10 +43,18 @@ interface LibraryProps {
   onOpenCloudBackup?: () => void
   /** AI・MCP 接続の管理を開く（会員のみ・未指定なら非表示）。 */
   onOpenMcp?: () => void
+  /** 執筆活動（草・ストリーク）ページを開く。 */
+  onOpenActivity?: () => void
 }
 
 /** 入口＝マイライブラリ（作品グリッド）。 */
-export function Library({ store, onEnterEditor, onOpenCloudBackup, onOpenMcp }: LibraryProps) {
+export function Library({
+  store,
+  onEnterEditor,
+  onOpenCloudBackup,
+  onOpenMcp,
+  onOpenActivity,
+}: LibraryProps) {
   const state = useEditorStore(store)
   const [newOpen, setNewOpen] = useState(false)
   const [exportOpen, setExportOpen] = useState(false)
@@ -150,6 +168,16 @@ export function Library({ store, onEnterEditor, onOpenCloudBackup, onOpenMcp }: 
                   <span className="rounded-full bg-surface-container-highest px-1.5 text-xs">
                     {state.trashList.length}
                   </span>
+                </Button>
+              )}
+              {onOpenActivity && (
+                <Button
+                  variant="ghost"
+                  onClick={onOpenActivity}
+                  className="gap-2 text-on-surface-variant"
+                >
+                  <Sprout className="size-4" />
+                  執筆の記録
                 </Button>
               )}
               {state.workList.length > 0 && (

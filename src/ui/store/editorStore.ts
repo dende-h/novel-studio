@@ -5,6 +5,8 @@ import type { Profile, ProfileRepository } from '../../core/profile'
 import type { Episode, GlossaryEntry, Work } from '../../core/schema'
 import type { Snapshot } from '../../core/snapshot'
 import type { SnapshotRepository } from '../../core/snapshot/snapshotRepository'
+import { countWorkChars } from '../../core/stats'
+import type { ActivityRepository } from '../../core/storage/activityRepository'
 import type { TrashSummary, WorkRepository, WorkSummary } from '../../core/storage/workRepository'
 
 /**
@@ -114,6 +116,8 @@ export interface EditorStoreDeps {
   repo: WorkRepository
   snapshotRepo: SnapshotRepository
   profileRepo: ProfileRepository
+  /** 執筆活動（日別の文字数増減）の記録先。純ローカル。 */
+  activityRepo: ActivityRepository
   genId: () => string
   now: () => number
   /** 履歴の集約間隔(ms)。連続編集中はこの間隔内の保存を最新版へ合体し、版の氾濫を防ぐ。 */
@@ -141,6 +145,7 @@ export function createEditorStore({
   repo,
   snapshotRepo,
   profileRepo,
+  activityRepo,
   genId,
   now,
   snapshotMinIntervalMs,
@@ -270,6 +275,8 @@ export function createEditorStore({
         updatedAt: now(),
       }
       await repo.saveWork(work)
+      // 本文の純増減を日別の執筆活動へ記録（草・ストリーク用）。state.work は保存前の旧状態。
+      await activityRepo.record(countWorkChars(work) - countWorkChars(state.work), now())
       // 連続編集中は最新版へ合体し、間隔を空けた保存だけ新しい版として積む
       const snapshots = await snapshotRepo.record(work, now(), genId(), snapshotMinIntervalMs)
       set({ work, dirty: false, status: 'saved', snapshots })

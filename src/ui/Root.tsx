@@ -3,6 +3,7 @@ import { getMcpTokenStatus } from './_api/mcp'
 import { App } from './App'
 import { useAuth } from './auth/auth-context'
 import { createDefaultBackupService } from './backup/backup-service'
+import { ActivityPage } from './components/ActivityPage/activity-page'
 import { CloudBackupDialog } from './components/CloudBackupDialog/cloud-backup-dialog'
 import { Library } from './components/Library/library'
 import { McpConnectDialog } from './components/McpConnectDialog/mcp-connect-dialog'
@@ -11,6 +12,7 @@ import { SyncOnboarding } from './components/SyncOnboarding/sync-onboarding'
 import { useToast } from './components/Toast/toast'
 import { useHashRoute } from './hooks/use-hash-route'
 import { useLiveSnapshot } from './hooks/use-live-snapshot'
+import { createDefaultActivityRepository } from './store/createDefaultStore'
 import type { EditorStore } from './store/editorStore'
 
 interface RootProps {
@@ -34,6 +36,8 @@ export function Root({ store }: RootProps) {
     () => (status === 'member' ? createDefaultBackupService(() => getTokenRef.current()) : null),
     [status],
   )
+  // 執筆活動（草・ストリーク）は純ローカル・誰でも使える（同じ IndexedDB を読む）。
+  const activityRepo = useMemo(() => createDefaultActivityRepository(), [])
   const [backupOpen, setBackupOpen] = useState(false)
   const [mcpOpen, setMcpOpen] = useState(false)
   // AI・MCP 接続済みか（トークン発行済み）。接続時のみ編集をライブスナップショットへ送る。
@@ -67,6 +71,15 @@ export function Root({ store }: RootProps) {
     )
   }
 
+  if (route === '/activity') {
+    return (
+      <>
+        <ActivityPage repo={activityRepo} onExit={() => navigate('/')} />
+        <SmallScreenNotice />
+      </>
+    )
+  }
+
   return (
     <>
       {route === '/write' ? (
@@ -77,6 +90,7 @@ export function Root({ store }: RootProps) {
           onEnterEditor={() => navigate('/write')}
           onOpenCloudBackup={backupService ? () => setBackupOpen(true) : undefined}
           onOpenMcp={backupService ? () => setMcpOpen(true) : undefined}
+          onOpenActivity={() => navigate('/activity')}
         />
       )}
       {backupService && (

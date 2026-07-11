@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { ProfileRepository } from '../../core/profile'
 import { SnapshotRepository } from '../../core/snapshot/snapshotRepository'
+import { ActivityRepository } from '../../core/storage/activityRepository'
 import { MemoryStore } from '../../core/storage/memoryStore'
 import { WorkRepository } from '../../core/storage/workRepository'
 import { createEditorStore, type EditorStore } from './editorStore'
@@ -16,10 +17,12 @@ const makeStore = (opts?: {
   const repo = new WorkRepository(store)
   const snapshotRepo = new SnapshotRepository(store)
   const profileRepo = new ProfileRepository(store)
+  const activityRepo = new ActivityRepository(store)
   return createEditorStore({
     repo,
     snapshotRepo,
     profileRepo,
+    activityRepo,
     genId: () => `id${++n}`,
     now: opts?.now ?? (() => ++clock),
     // 既定 0：間隔判定で常に新版を積む（既存テストの挙動を維持）
@@ -93,6 +96,7 @@ describe('editorStore（自前ストア・useSyncExternalStore 用）', () => {
           repo: new WorkRepository(kv),
           snapshotRepo: new SnapshotRepository(kv),
           profileRepo: new ProfileRepository(kv),
+          activityRepo: new ActivityRepository(kv),
           genId: () => 'x',
           now: () => 1,
           snapshotMinIntervalMs: 0,
