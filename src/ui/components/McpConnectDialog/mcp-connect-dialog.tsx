@@ -90,7 +90,22 @@ export function McpConnectDialog({
   const [reissue, setReissue] = useState(false)
 
   const mcpUrl = `${window.location.origin}/api/mcp`
-  const command = `claude mcp add --transport http novel-studio ${mcpUrl} --header "Authorization: Bearer ${plaintext ?? '<発行したトークン>'}"`
+  // 各 AI クライアントに合わせて貼れる設定（実トークンを埋め込む。平文が無い＝再表示不可）。
+  const authHeader = plaintext ? `Bearer ${plaintext}` : ''
+  const jsonConfig = plaintext
+    ? JSON.stringify(
+        {
+          mcpServers: {
+            'novel-studio': { url: mcpUrl, headers: { Authorization: `Bearer ${plaintext}` } },
+          },
+        },
+        null,
+        2,
+      )
+    : ''
+  const cliCommand = plaintext
+    ? `claude mcp add --transport http novel-studio ${mcpUrl} --header "Authorization: Bearer ${plaintext}"`
+    : ''
 
   const load = useCallback(async () => {
     const s = await getMcpTokenStatus(getToken)
@@ -154,7 +169,7 @@ export function McpConnectDialog({
             AI に接続（MCP）
           </DialogTitle>
           <DialogDescription>
-            対応 AI（Claude Code / Claude Desktop など）が、あなたの作品を
+            リモート MCP に対応する AI（Claude / ChatGPT / Gemini / Grok など）が、あなたの作品を
             <strong>読む</strong>ためのアクセスを発行します。AI は<strong>読み取り専用</strong>
             で、書き込み・削除はできません。
           </DialogDescription>
@@ -171,15 +186,30 @@ export function McpConnectDialog({
           </p>
         </div>
 
-        {/* 発行直後だけ平文トークンを表示（再表示できない） */}
+        {/* 発行直後だけ設定を表示（トークン平文は再表示できない）。各 AI にコピペで貼れる形で並べる。 */}
         {plaintext && (
           <div className="min-w-0 space-y-2 rounded-lg border border-primary/30 bg-primary/5 p-3">
             <p className="font-sans text-on-surface text-xs">
-              <strong>トークンを発行しました。</strong>
+              <strong>接続情報を発行しました。</strong>
               この画面を閉じると<strong>二度と表示できません</strong>
-              。今すぐコピーして設定してください。
+              。今すぐコピーして、お使いの AI に設定してください。
             </p>
-            <CopyRow label="アクセストークン" value={plaintext} />
+            <CopyRow label="① アクセストークン" value={plaintext} />
+            <CopyRow label="② MCP サーバー URL" value={mcpUrl} />
+            <CopyRow
+              label="③ Authorization ヘッダー（ヘッダー欄がある AI 用）"
+              value={authHeader}
+            />
+            <CopyRow
+              label="設定 JSON（url＋headers 形式：Claude Desktop / Cursor など）"
+              value={jsonConfig}
+            />
+            <CopyRow label="Claude Code（CLI・コマンド一発）" value={cliCommand} />
+            <p className="font-sans text-on-surface-variant text-xs leading-relaxed">
+              お使いの AI に合わせて貼り付けます。<strong>ChatGPT / Gemini / Grok</strong> などは「②
+              URL」と「③ Authorization ヘッダー」を、設定ファイルに書く場合は「設定 JSON」を、
+              Claude Code はコマンドをそのまま使えます。
+            </p>
           </div>
         )}
 
@@ -194,8 +224,16 @@ export function McpConnectDialog({
               )}
             </p>
 
-            <CopyRow label="MCP サーバー URL" value={mcpUrl} />
-            <CopyRow label="Claude Code に追加するコマンド" value={command} />
+            {/* 再接続時（平文が無い）は URL のみ表示。偽トークン入りのコマンドは出さない。 */}
+            {!plaintext && (
+              <>
+                <CopyRow label="MCP サーバー URL" value={mcpUrl} />
+                <p className="font-sans text-on-surface-variant text-xs leading-relaxed">
+                  アクセストークンは<strong>発行時にしか表示されません</strong>
+                  。分からなくなった／設定をやり直す場合は「トークンを再発行」してください（設定情報がまとめて再表示されます）。
+                </p>
+              </>
+            )}
 
             <div className="flex gap-2 pt-1">
               {reissue ? (
