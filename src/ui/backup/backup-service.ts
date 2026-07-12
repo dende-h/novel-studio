@@ -1,5 +1,6 @@
 import { type BackupState, deserializeBackup, serializeBackup } from '@/core/backup'
 import { ProfileRepository } from '@/core/profile'
+import { ActivityRepository } from '@/core/storage/activityRepository'
 import { IdbStore } from '@/core/storage/idbStore'
 import { WorkRepository } from '@/core/storage/workRepository'
 import {
@@ -61,7 +62,12 @@ export function createBackupService(deps: BackupDeps): BackupService {
       const json = await deps.getRemote(id)
       if (!json) return false
       const backup = deserializeBackup(json) // version/スキーマ検証。壊れていれば throw して置換しない。
-      await deps.replaceAll({ works: backup.works, trash: backup.trash, profile: backup.profile })
+      await deps.replaceAll({
+        works: backup.works,
+        trash: backup.trash,
+        profile: backup.profile,
+        activity: backup.activity,
+      })
       return true
     },
     remove: (id) => deps.deleteRemote(id),
@@ -76,15 +82,18 @@ export function createDefaultBackupService(getToken: () => Promise<string | null
   const store = new IdbStore('novel-studio')
   const repo = new WorkRepository(store)
   const profileRepo = new ProfileRepository(store)
+  const activityRepo = new ActivityRepository(store)
   return createBackupService({
     gather: async () => ({
       works: await repo.listWorksFull(),
       trash: await repo.listTrashFull(),
       profile: await profileRepo.get(),
+      activity: await activityRepo.list(),
     }),
     replaceAll: async (state) => {
       await repo.replaceAll(state.works, state.trash)
       await profileRepo.save(state.profile)
+      await activityRepo.replaceAll(state.activity)
     },
     createRemote: (plaintext) => apiCreate(getToken, plaintext),
     putLiveRemote: (plaintext) => apiPutLive(getToken, plaintext),

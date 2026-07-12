@@ -29,4 +29,11 @@ export class ActivityRepository {
       .filter((r): r is DailyActivity => r != null)
       .sort((a, b) => a.date.localeCompare(b.date))
   }
+
+  /** 執筆活動を全置換する（クラウド復元用・既存を消してから書き込む）。 */
+  async replaceAll(days: DailyActivity[]): Promise<void> {
+    const existing = await this.store.keys(PREFIX)
+    await Promise.all(existing.map((k) => this.store.delete(k)))
+    await Promise.all(days.map((d) => this.store.set(keyOf(d.date), d)))
+  }
 }

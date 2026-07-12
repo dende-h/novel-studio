@@ -51,4 +51,14 @@ describe('ActivityRepository', () => {
     expect(await repo.record(0, at(2026, 7, 12))).toBeNull()
     expect(await repo.list()).toHaveLength(0)
   })
+
+  it('replaceAll は既存を消してから全置換する（クラウド復元）', async () => {
+    await repo.record(10, at(2026, 7, 1))
+    await repo.replaceAll([
+      { date: '2026-07-05', added: 5, removed: 0, net: 5, saves: 1, updatedAt: 1 },
+      { date: '2026-07-06', added: 8, removed: 0, net: 8, saves: 1, updatedAt: 2 },
+    ])
+    const rows = await repo.list()
+    expect(rows.map((r) => r.date)).toEqual(['2026-07-05', '2026-07-06']) // 07-01 は消えている
+  })
 })

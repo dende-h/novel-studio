@@ -1,3 +1,5 @@
+import { z } from 'zod'
+
 /**
  * 執筆活動の集計（純ロジック・React/IDB 非依存）。
  * 日別に「書いた文字数（純増減・追加・削除）と保存回数」を持ち、GitHub 風の草
@@ -7,21 +9,22 @@
  * タイムゾーン/DST に依存せず決定的にする（テスト可能）。
  */
 
-/** 日別の執筆活動 1 件。 */
-export interface DailyActivity {
+/** 日別の執筆活動 1 件（クラウドバックアップにも含めるため zod で検証可能にする）。 */
+export const DailyActivitySchema = z.object({
   /** ローカル日付 `YYYY-MM-DD`。 */
-  date: string
+  date: z.string(),
   /** その日に増えた文字数の合計（追加分のみ）。 */
-  added: number
+  added: z.number(),
   /** その日に減った文字数の合計（削除分の絶対値）。 */
-  removed: number
+  removed: z.number(),
   /** 純増減（added - removed）。 */
-  net: number
+  net: z.number(),
   /** その日の保存（＝執筆イベント）回数。 */
-  saves: number
+  saves: z.number(),
   /** 最終更新時刻（epoch ms）。 */
-  updatedAt: number
-}
+  updatedAt: z.number(),
+})
+export type DailyActivity = z.infer<typeof DailyActivitySchema>
 
 /** ローカルの timestamp(ms) → `YYYY-MM-DD`（その端末の暦日）。 */
 export function localDateKey(ms: number): string {

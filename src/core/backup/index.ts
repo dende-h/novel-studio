@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { type DailyActivity, DailyActivitySchema } from '../activity'
 import { type Profile, ProfileSchema } from '../profile'
 import { type Work, WorkSchema } from '../schema'
 
@@ -22,6 +23,8 @@ const CloudBackupSchema = z.object({
   works: z.array(WorkSchema),
   trash: z.array(TrashedEntrySchema),
   profile: ProfileSchema,
+  /** 執筆活動（草・ストリーク）。version 1 の旧バックアップには無いので既定 []（後方互換）。 */
+  activity: z.array(DailyActivitySchema).optional().default([]),
 })
 export type CloudBackup = z.infer<typeof CloudBackupSchema>
 
@@ -30,6 +33,7 @@ export interface BackupState {
   works: Work[]
   trash: TrashedEntry[]
   profile: Profile
+  activity: DailyActivity[]
 }
 
 /** 全状態を 1 つのバックアップ JSON に直列化する（暗号化前の平文）。 */

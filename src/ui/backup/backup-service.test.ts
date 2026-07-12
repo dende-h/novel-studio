@@ -6,7 +6,7 @@ import { type BackupDeps, createBackupService } from './backup-service'
 const work = (id: string): Work => ({ id, title: id, episodes: [], updatedAt: 1 })
 
 function makeDeps(over: Partial<BackupDeps> = {}) {
-  const state = { works: [work('a')], trash: [], profile: { penName: 'p' } }
+  const state = { works: [work('a')], trash: [], profile: { penName: 'p' }, activity: [] }
   const created: string[] = []
   const live: string[] = []
   const replaced: Array<{ works: Work[] }> = []
@@ -54,7 +54,10 @@ describe('createBackupService', () => {
   })
 
   it('復元は既定では安全退避しない（バックアップを増やさない）', async () => {
-    const target = serializeBackup({ works: [work('restored')], trash: [], profile: {} }, 50)
+    const target = serializeBackup(
+      { works: [work('restored')], trash: [], profile: {}, activity: [] },
+      50,
+    )
     const { deps, created, replaced, remote } = makeDeps()
     remote.set('target', target)
 
@@ -66,8 +69,28 @@ describe('createBackupService', () => {
     expect(replaced[0]?.works.map((w) => w.id)).toEqual(['restored']) // 全置換はする
   })
 
+  it('復元は執筆活動（activity）もローカルへ全置換する', async () => {
+    const day = { date: '2026-07-11', added: 40, removed: 0, net: 40, saves: 1, updatedAt: 9 }
+    const target = serializeBackup(
+      { works: [work('r')], trash: [], profile: {}, activity: [day] },
+      50,
+    )
+    let restored: unknown
+    const { deps, remote } = makeDeps({
+      replaceAll: async (s) => {
+        restored = s.activity
+      },
+    })
+    remote.set('target', target)
+    await createBackupService(deps).restore('target')
+    expect(restored).toEqual([day])
+  })
+
   it('backupCurrent:true のときだけ、置換前に現在を安全退避してから全置換する', async () => {
-    const target = serializeBackup({ works: [work('restored')], trash: [], profile: {} }, 50)
+    const target = serializeBackup(
+      { works: [work('restored')], trash: [], profile: {}, activity: [] },
+      50,
+    )
     const { deps, created, replaced, remote } = makeDeps()
     remote.set('target', target)
 

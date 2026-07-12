@@ -103,7 +103,7 @@ export function CloudBackupDialog({
         <DialogHeader>
           <DialogTitle className="font-serif text-primary">クラウドバックアップ</DialogTitle>
           <DialogDescription>
-            全作品・ゴミ箱・プロフィールをまとめてクラウドに保存します。復元は選んだ時点で
+            全作品・ゴミ箱・プロフィール・執筆記録（草）をまとめてクラウドに保存します。復元は選んだ時点で
             <strong>ローカル全体を置き換え</strong>ます（置換前に現在の状態を自動で退避）。
           </DialogDescription>
         </DialogHeader>
