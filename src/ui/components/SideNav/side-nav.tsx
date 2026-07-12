@@ -9,6 +9,7 @@ import {
   Pencil,
   Plus,
   Settings,
+  Sprout,
   Trash2,
   UserRound,
 } from 'lucide-react'
@@ -31,6 +32,8 @@ interface SideNavProps {
   active: NavKey
   /** コレクション（ライブラリ）へ */
   onNavigateCollection: () => void
+  /** 執筆の記録（草・ストリーク）へ。指定時のみ表示。 */
+  onNavigateActivity?: () => void
   /** 主要 CTA（新しいプロジェクト / 新しいエピソード） */
   cta: { label: string; onClick: () => void; disabled?: boolean }
   /** 作者プロフィール（ペンネーム・アバター）。onEditProfile と併せて指定時のみ CTA 上に表示。 */
@@ -99,6 +102,7 @@ export function SideNav({
   projectSubtitle,
   active,
   onNavigateCollection,
+  onNavigateActivity,
   onNavigateEpisodes,
   onNavigateGlossary,
   cta,
@@ -314,6 +318,9 @@ export function SideNav({
 
         {/* 作品非依存の機能（カード外） */}
         <div className="mt-3 shrink-0 space-y-1">
+          {onNavigateActivity ? (
+            <NavRow icon={Sprout} label="執筆の記録" onClick={onNavigateActivity} />
+          ) : null}
           <NavRow icon={FlaskConical} label="リサーチ" badge="準備中" />
           <NavRow icon={Archive} label="アーカイブ" badge="準備中" />
         </div>

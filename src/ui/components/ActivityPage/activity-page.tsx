@@ -1,27 +1,29 @@
 import { ArrowLeft, CalendarDays, Flame, PenLine, Sigma } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import {
-  buildHeatmap,
+  availableYears,
+  buildYear,
   type DailyActivity,
   type HeatCell,
   localDateKey,
+  monthLabels,
   summarize,
 } from '@/core/activity'
 import type { ActivityRepository } from '@/core/storage/activityRepository'
 import { cn } from '@/lib/utils'
 import { Button } from '@/ui/components/ui/button'
 
-/** 表示する週数（およそ半年）。 */
-const WEEKS = 26
-
-/** 草の濃さ（level 0〜4）→ 背景色。primary を緑の代わりに使い、アプリの色と馴染ませる。 */
+/** 草の濃さ（level 0〜4）→ 緑。GitHub と同じく淡→濃で表す。 */
 const LEVEL_BG: Record<HeatCell['level'], string> = {
   0: 'bg-surface-container-highest',
-  1: 'bg-primary/25',
-  2: 'bg-primary/45',
-  3: 'bg-primary/70',
-  4: 'bg-primary',
+  1: 'bg-green-200',
+  2: 'bg-green-400',
+  3: 'bg-green-600',
+  4: 'bg-green-800',
 }
+
+/** 曜日ラベル（日本語）。GitHub と同じく月・水・金だけ表示（0=日）。 */
+const WEEKDAY_LABEL: Record<number, string> = { 1: '月', 3: '水', 5: '金' }
 
 const fmtDate = (key: string) =>
   new Date(`${key}T00:00:00`).toLocaleDateString('ja-JP', {
@@ -38,26 +40,37 @@ interface ActivityPageProps {
 
 /**
  * 執筆活動ダッシュボード（純ローカル・無料）。日別の文字数増減から
- * 連続執筆日数（ストリーク）・GitHub 風の草（ヒートマップ）・通算をまとめて表示し、
+ * 連続執筆日数（ストリーク）・GitHub 風の草（緑ヒートマップ・年切り替え）・通算をまとめて表示し、
  * 継続のモチベーションにする。
  */
 export function ActivityPage({ repo, onExit }: ActivityPageProps) {
   const [days, setDays] = useState<DailyActivity[] | null>(null)
+  const today = localDateKey(Date.now())
+  const currentYear = Number(today.slice(0, 4))
+  const [year, setYear] = useState(currentYear)
 
   useEffect(() => {
     void repo.list().then(setDays)
   }, [repo])
 
-  const today = localDateKey(Date.now())
   const summary = useMemo(() => summarize(days ?? [], today), [days, today])
-  const heatmap = useMemo(() => {
-    const net = new Map((days ?? []).map((d) => [d.date, d.net]))
-    return buildHeatmap(net, today, WEEKS)
-  }, [days, today])
+  const years = useMemo(() => availableYears(days ?? [], currentYear), [days, currentYear])
+  const netByDate = useMemo(() => new Map((days ?? []).map((d) => [d.date, d.net])), [days])
+  const heatmap = useMemo(() => buildYear(netByDate, year, today), [netByDate, year, today])
+  const labels = useMemo(() => monthLabels(heatmap), [heatmap])
+
+  // 選択年の集計（その年の活動日数・文字数）。
+  const yearStat = useMemo(() => {
+    const inYear = (days ?? []).filter((d) => d.date.startsWith(`${year}-`))
+    return {
+      activeDays: inYear.filter((d) => d.net !== 0 || d.saves > 0).length,
+      net: inYear.reduce((n, d) => n + d.net, 0),
+    }
+  }, [days, year])
 
   return (
     <div className="min-h-screen bg-surface px-4 py-8 lg:px-8">
-      <div className="mx-auto max-w-4xl">
+      <div className="mx-auto max-w-5xl">
         <header className="mb-8 flex items-center gap-3">
           <Button variant="ghost" size="icon" onClick={onExit} aria-label="戻る">
             <ArrowLeft className="size-5" />
@@ -65,7 +78,7 @@ export function ActivityPage({ repo, onExit }: ActivityPageProps) {
           <h1 className="font-serif text-2xl text-primary">執筆の記録</h1>
         </header>
 
-        {/* サマリのカード群 */}
+        {/* サマリのカード群（通算・全期間） */}
         <div className="mb-8 grid grid-cols-2 gap-3 lg:grid-cols-4">
           <StatCard
             icon={<Flame className="size-5 text-orange-500" />}
@@ -95,47 +108,99 @@ export function ActivityPage({ repo, onExit }: ActivityPageProps) {
           />
         </div>
 
-        {/* 草（ヒートマップ） */}
-        <section className="rounded-xl border border-outline-variant/30 bg-surface-container-low p-4 lg:p-6">
-          <div className="mb-4 flex items-center justify-between">
-            <h2 className="font-sans font-semibold text-on-surface text-sm">この半年の執筆</h2>
-            <Legend />
-          </div>
+        {/* 草（年カレンダー）＋年タブ */}
+        <div className="flex flex-col gap-4 lg:flex-row">
+          <section className="min-w-0 flex-1 rounded-xl border border-outline-variant/30 bg-surface-container-low p-4 lg:p-6">
+            <p className="mb-4 font-sans text-on-surface text-sm">
+              <strong>{year}年</strong>は {yearStat.activeDays}日 書きました
+              <span className="text-on-surface-variant">
+                （{yearStat.net.toLocaleString('ja-JP')}字）
+              </span>
+            </p>
 
-          {days === null ? (
-            <p className="py-8 text-center text-on-surface-variant text-sm">読み込み中…</p>
-          ) : (
-            <div className="overflow-x-auto pb-1">
-              <div className="flex gap-1">
-                {heatmap.map((week) => (
-                  <div key={week[0]?.date} className="flex flex-col gap-1">
-                    {week.map((cell) => (
+            {days === null ? (
+              <p className="py-8 text-center text-on-surface-variant text-sm">読み込み中…</p>
+            ) : (
+              <div className="overflow-x-auto pb-1">
+                <div className="inline-block">
+                  {/* 月ラベル（週列に合わせて配置） */}
+                  <div className="mb-1 flex gap-1 pl-7 text-on-surface-variant text-xs">
+                    {labels.map((m, w) => (
                       <div
-                        key={cell.date}
-                        title={
-                          cell.future
-                            ? undefined
-                            : `${fmtDate(cell.date)}：${cell.chars > 0 ? '+' : ''}${cell.chars.toLocaleString('ja-JP')}字`
-                        }
-                        className={cn(
-                          'size-3 rounded-[3px] lg:size-3.5',
-                          cell.future ? 'bg-transparent' : LEVEL_BG[cell.level],
-                          cell.date === today && 'ring-2 ring-primary ring-offset-1',
-                        )}
-                      />
+                        // biome-ignore lint/suspicious/noArrayIndexKey: 週の並びは固定
+                        key={w}
+                        className="w-3 lg:w-3.5"
+                      >
+                        <span className="block whitespace-nowrap">{m ? `${m}月` : ''}</span>
+                      </div>
                     ))}
                   </div>
-                ))}
-              </div>
-            </div>
-          )}
 
-          {days !== null && summary.activeDays === 0 && (
-            <p className="mt-4 text-center text-on-surface-variant text-sm">
-              まだ記録がありません。エディタで書いて保存すると、ここに草が生えます 🌱
-            </p>
-          )}
-        </section>
+                  <div className="flex gap-1">
+                    {/* 曜日ラベル（月・水・金） */}
+                    <div className="flex w-7 flex-col gap-1 pr-1 text-on-surface-variant text-[10px]">
+                      {[0, 1, 2, 3, 4, 5, 6].map((d) => (
+                        <div key={d} className="flex h-3 items-center lg:h-3.5">
+                          {WEEKDAY_LABEL[d] ?? ''}
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* 週列 */}
+                    {heatmap.map((week) => (
+                      <div key={week[0]?.date} className="flex flex-col gap-1">
+                        {week.map((cell) => (
+                          <div
+                            key={cell.date}
+                            title={
+                              cell.future || cell.outOfRange
+                                ? undefined
+                                : `${fmtDate(cell.date)}：${cell.chars > 0 ? '+' : ''}${cell.chars.toLocaleString('ja-JP')}字`
+                            }
+                            className={cn(
+                              'size-3 rounded-[3px] lg:size-3.5',
+                              cell.future || cell.outOfRange
+                                ? 'bg-transparent'
+                                : LEVEL_BG[cell.level],
+                              cell.date === today && 'ring-1 ring-on-surface/40',
+                            )}
+                          />
+                        ))}
+                      </div>
+                    ))}
+                  </div>
+
+                  <Legend />
+                </div>
+              </div>
+            )}
+
+            {days !== null && summary.activeDays === 0 && (
+              <p className="mt-4 text-center text-on-surface-variant text-sm">
+                まだ記録がありません。エディタで書いて保存すると、ここに草が生えます 🌱
+              </p>
+            )}
+          </section>
+
+          {/* 年タブ */}
+          <nav className="flex shrink-0 gap-2 lg:w-24 lg:flex-col">
+            {years.map((y) => (
+              <button
+                key={y}
+                type="button"
+                onClick={() => setYear(y)}
+                className={cn(
+                  'rounded-md px-3 py-1.5 text-left font-sans text-sm transition-colors',
+                  y === year
+                    ? 'bg-primary text-on-primary'
+                    : 'text-on-surface-variant hover:bg-surface-container-high',
+                )}
+              >
+                {y}
+              </button>
+            ))}
+          </nav>
+        </div>
       </div>
     </div>
   )
@@ -171,7 +236,7 @@ function StatCard({
 
 function Legend() {
   return (
-    <div className="flex items-center gap-1 text-on-surface-variant text-xs">
+    <div className="mt-3 flex items-center justify-end gap-1 text-on-surface-variant text-xs">
       <span>少</span>
       {([0, 1, 2, 3, 4] as const).map((lv) => (
         <span key={lv} className={cn('size-3 rounded-[3px]', LEVEL_BG[lv])} />

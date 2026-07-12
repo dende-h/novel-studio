@@ -1,14 +1,4 @@
-import {
-  Bot,
-  CloudDownload,
-  Database,
-  LayoutGrid,
-  List,
-  Plus,
-  Sprout,
-  Trash2,
-  Upload,
-} from 'lucide-react'
+import { Bot, CloudDownload, Database, LayoutGrid, List, Plus, Trash2, Upload } from 'lucide-react'
 import { useState } from 'react'
 import type { WorkSummary } from '@/core/storage/workRepository'
 import { cn } from '@/lib/utils'
@@ -111,6 +101,7 @@ export function Library({
           projectSubtitle="ライブラリ"
           active="collection"
           onNavigateCollection={() => {}}
+          onNavigateActivity={onOpenActivity}
           cta={{ label: '新しいプロジェクト', onClick: () => setNewOpen(true) }}
           profile={state.profile}
           onEditProfile={() => setProfileOpen(true)}
@@ -168,16 +159,6 @@ export function Library({
                   <span className="rounded-full bg-surface-container-highest px-1.5 text-xs">
                     {state.trashList.length}
                   </span>
-                </Button>
-              )}
-              {onOpenActivity && (
-                <Button
-                  variant="ghost"
-                  onClick={onOpenActivity}
-                  className="gap-2 text-on-surface-variant"
-                >
-                  <Sprout className="size-4" />
-                  執筆の記録
                 </Button>
               )}
               {state.workList.length > 0 && (

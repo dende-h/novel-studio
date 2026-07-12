@@ -59,6 +59,11 @@ export function dayOfWeek(key: string): number {
   return anchor(key).getUTCDay()
 }
 
+/** a→b の日数差（UTC アンカーで DST 非依存）。 */
+export function daysBetween(a: string, b: string): number {
+  return Math.round((anchor(b).getTime() - anchor(a).getTime()) / 86_400_000)
+}
+
 /** 執筆イベント 1 件を当日レコードへ適用（純関数）。prev 無しは新規作成。 */
 export function applyDelta(
   prev: DailyActivity | undefined,
@@ -124,6 +129,8 @@ export interface HeatCell {
   level: 0 | 1 | 2 | 3 | 4
   /** 未来日（グリッド埋め用のプレースホルダ）。 */
   future?: boolean
+  /** 表示対象の年の外（前後月の埋めマス）。 */
+  outOfRange?: boolean
 }
 
 /**
@@ -154,6 +161,57 @@ export function buildHeatmap(
     weeks.push(col)
   }
   return weeks
+}
+
+/**
+ * 指定した暦年（1/1〜12/31）を GitHub 風グリッドにする。日〜土の 7 行で、年の前後に
+ * はみ出す埋めマスは outOfRange、当日より後は future を立てる（表示側で薄く/非表示にする）。
+ */
+export function buildYear(
+  netByDate: ReadonlyMap<string, number>,
+  year: number,
+  todayKey: string,
+): HeatCell[][] {
+  const start = `${year}-01-01`
+  const end = `${year}-12-31`
+  const gridStart = shiftDateKey(start, -dayOfWeek(start)) // 1/1 を含む週の日曜
+  const gridEnd = shiftDateKey(end, 6 - dayOfWeek(end)) // 12/31 を含む週の土曜
+  const numWeeks = Math.round(daysBetween(gridStart, gridEnd) / 7) + 1
+  const weeks: HeatCell[][] = []
+  for (let w = 0; w < numWeeks; w++) {
+    const col: HeatCell[] = []
+    for (let d = 0; d < 7; d++) {
+      const key = shiftDateKey(gridStart, w * 7 + d)
+      const chars = netByDate.get(key) ?? 0
+      col.push({
+        date: key,
+        chars,
+        level: activityLevel(chars),
+        ...(key > todayKey ? { future: true } : {}),
+        ...(key < start || key > end ? { outOfRange: true } : {}),
+      })
+    }
+    weeks.push(col)
+  }
+  return weeks
+}
+
+/**
+ * 各週列の月ラベル（その週に「1日」を含む列にだけ月番号を置く）。それ以外は null。
+ * 表示側で `${n}月` にする。範囲外（前後年）の 1 日は無視。
+ */
+export function monthLabels(weeks: readonly HeatCell[][]): (number | null)[] {
+  return weeks.map((wk) => {
+    const first = wk.find((c) => !c.outOfRange && c.date.endsWith('-01'))
+    return first ? Number(first.date.split('-')[1]) : null
+  })
+}
+
+/** データと今年から、切り替え可能な年（新しい順）を作る。データが無くても今年は含む。 */
+export function availableYears(days: readonly DailyActivity[], currentYear: number): number[] {
+  const years = new Set<number>([currentYear])
+  for (const d of days) years.add(Number(d.date.slice(0, 4)))
+  return [...years].sort((a, b) => b - a)
 }
 
 export interface ActivitySummary {

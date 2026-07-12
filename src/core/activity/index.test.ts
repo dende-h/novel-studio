@@ -2,12 +2,16 @@ import { describe, expect, it } from 'vitest'
 import {
   activityLevel,
   applyDelta,
+  availableYears,
   buildHeatmap,
+  buildYear,
   currentStreak,
   type DailyActivity,
   dayOfWeek,
+  daysBetween,
   localDateKey,
   longestStreak,
+  monthLabels,
   shiftDateKey,
   summarize,
 } from './index'
@@ -108,5 +112,39 @@ describe('summarize', () => {
     ]
     const s = summarize(days, '2026-07-12')
     expect(s).toMatchObject({ totalNet: 1000, activeDays: 3, streak: 3, today: 200 })
+  })
+})
+
+describe('年カレンダー', () => {
+  it('daysBetween は暦日数の差', () => {
+    expect(daysBetween('2026-01-01', '2026-01-08')).toBe(7)
+    expect(daysBetween('2025-12-31', '2026-01-01')).toBe(1)
+  })
+
+  it('buildYear は 7 行・全列で、年頭/年末の埋めは outOfRange、当日以降は future', () => {
+    const net = new Map([['2026-03-02', 500]])
+    const grid = buildYear(net, 2026, '2026-07-12')
+    expect(grid.every((col) => col.length === 7)).toBe(true)
+    // 先頭列の日曜は 2025-12-28（1/1 の週）＝範囲外
+    expect(grid[0]?.[0]?.date).toBe('2025-12-28')
+    expect(grid[0]?.[0]?.outOfRange).toBe(true)
+    // 3/2 のマスは記録あり
+    const march2 = grid.flat().find((c) => c.date === '2026-03-02')
+    expect(march2?.level).toBe(2)
+    // 12/31 より後（年末の埋め）や当日以降は future/outOfRange
+    const dec31 = grid.flat().find((c) => c.date === '2026-12-31')
+    expect(dec31?.future).toBe(true)
+  })
+
+  it('monthLabels は「1日を含む週」にだけ月番号を置く', () => {
+    const grid = buildYear(new Map(), 2026, '2026-12-31')
+    const labels = monthLabels(grid).filter((m): m is number => m != null)
+    expect(labels).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12])
+  })
+
+  it('availableYears はデータ＋今年を新しい順（今年は常に含む）', () => {
+    const days = [day({ date: '2024-05-01', net: 1 }), day({ date: '2025-01-01', net: 1 })]
+    expect(availableYears(days, 2026)).toEqual([2026, 2025, 2024])
+    expect(availableYears([], 2026)).toEqual([2026])
   })
 })
