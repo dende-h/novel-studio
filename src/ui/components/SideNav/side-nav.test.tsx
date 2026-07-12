@@ -91,13 +91,6 @@ describe('SideNav（サイドバー）', () => {
     expect(ep).not.toBeDisabled()
   })
 
-  it('リサーチ・アーカイブは「準備中」表示で無効（押せそうに見えない）', () => {
-    render(<SideNav {...baseProps} />)
-    expect(screen.getByRole('button', { name: /リサーチ/ })).toBeDisabled()
-    expect(screen.getByRole('button', { name: /アーカイブ/ })).toBeDisabled()
-    expect(screen.getAllByText('準備中').length).toBeGreaterThanOrEqual(2)
-  })
-
   it('コレクションは押下可能で onNavigateCollection を発火する', () => {
     const onNavigateCollection = vi.fn()
     render(<SideNav {...baseProps} onNavigateCollection={onNavigateCollection} />)

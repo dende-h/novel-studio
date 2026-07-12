@@ -1,9 +1,7 @@
 import {
-  Archive,
   BookMarked,
   BookOpen,
   CircleHelp,
-  FlaskConical,
   FolderOpen,
   Library,
   Pencil,
@@ -18,7 +16,7 @@ import { cn } from '@/lib/utils'
 import { Button } from '@/ui/components/ui/button'
 import { ScrollArea } from '@/ui/components/ui/scroll-area'
 
-export type NavKey = 'collection' | 'activity' | 'episodes' | 'glossary' | 'research' | 'archive'
+export type NavKey = 'collection' | 'activity' | 'episodes' | 'glossary'
 
 interface EpisodeItem {
   id: string
@@ -65,33 +63,25 @@ interface NavRowProps {
   active?: boolean
   onClick?: () => void
   disabled?: boolean
-  /** 「準備中」等の未実装ラベル。付与時は自動的に無効化し、押せない見た目にする。 */
-  badge?: string
 }
 
-function NavRow({ icon: Icon, label, active, onClick, disabled, badge }: NavRowProps) {
-  const isDisabled = disabled || badge !== undefined
+function NavRow({ icon: Icon, label, active, onClick, disabled }: NavRowProps) {
   return (
     <button
       type="button"
       onClick={onClick}
-      disabled={isDisabled}
+      disabled={disabled}
       aria-current={active ? 'page' : undefined}
       className={cn(
         'flex w-full items-center gap-3 rounded-md px-4 py-2.5 text-left font-medium font-sans text-sm transition-colors',
         active
           ? 'border-primary border-l-4 bg-surface-container text-primary'
           : 'text-on-surface-variant hover:bg-surface-container-high',
-        isDisabled && 'cursor-not-allowed opacity-50 hover:bg-transparent',
+        disabled && 'cursor-not-allowed opacity-50 hover:bg-transparent',
       )}
     >
       <Icon className="size-5 shrink-0" />
       <span className="flex-1 truncate">{label}</span>
-      {badge ? (
-        <span className="shrink-0 rounded-full border border-outline-variant/40 bg-surface-container px-2 py-0.5 font-medium text-[10px] text-on-surface-variant/70 tracking-wide">
-          {badge}
-        </span>
-      ) : null}
     </button>
   )
 }
@@ -319,18 +309,16 @@ export function SideNav({
         </div>
 
         {/* 作品非依存の機能（カード外） */}
-        <div className="mt-3 shrink-0 space-y-1">
-          {onNavigateActivity ? (
+        {onNavigateActivity ? (
+          <div className="mt-3 shrink-0 space-y-1">
             <NavRow
               icon={Sprout}
               label="執筆の記録"
               active={active === 'activity'}
               onClick={onNavigateActivity}
             />
-          ) : null}
-          <NavRow icon={FlaskConical} label="リサーチ" badge="準備中" />
-          <NavRow icon={Archive} label="アーカイブ" badge="準備中" />
-        </div>
+          </div>
+        ) : null}
       </div>
 
       {/* フッター */}
