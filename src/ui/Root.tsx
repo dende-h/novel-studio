@@ -74,7 +74,7 @@ export function Root({ store }: RootProps) {
   if (route === '/activity') {
     return (
       <>
-        <ActivityPage repo={activityRepo} onExit={() => navigate('/')} />
+        <ActivityPage repo={activityRepo} onNavigateCollection={() => navigate('/')} />
         <SmallScreenNotice />
       </>
     )
@@ -83,7 +83,11 @@ export function Root({ store }: RootProps) {
   return (
     <>
       {route === '/write' ? (
-        <App store={store} onExit={() => navigate('/')} />
+        <App
+          store={store}
+          onExit={() => navigate('/')}
+          onNavigateActivity={() => navigate('/activity')}
+        />
       ) : (
         <Library
           store={store}

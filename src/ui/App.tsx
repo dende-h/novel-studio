@@ -42,13 +42,15 @@ interface AppProps {
   store: EditorStore
   /** 入口（ライブラリ）へ戻る */
   onExit?: () => void
+  /** 執筆の記録（草・ストリーク）へ */
+  onNavigateActivity?: () => void
 }
 
 /** 自動保存：本文の入力が止まってから保存するまでの待ち時間(ms)。 */
 const AUTOSAVE_DELAY_MS = 1500
 
 /** 原稿エディタ（サイドバー＋本文／プレビュー＋履歴）。 */
-export function App({ store, onExit }: AppProps) {
+export function App({ store, onExit, onNavigateActivity }: AppProps) {
   const state = useEditorStore(store)
   const [newEpisodeOpen, setNewEpisodeOpen] = useState(false)
   const [exportOpen, setExportOpen] = useState(false)
@@ -135,6 +137,7 @@ export function App({ store, onExit }: AppProps) {
           workTitle={work?.title}
           active={activeScreen}
           onNavigateCollection={() => onExit?.()}
+          onNavigateActivity={onNavigateActivity}
           onNavigateEpisodes={work ? () => setActiveScreen('episodes') : undefined}
           onNavigateGlossary={work ? () => setActiveScreen('glossary') : undefined}
           cta={{

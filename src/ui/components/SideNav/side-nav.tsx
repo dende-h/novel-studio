@@ -18,7 +18,7 @@ import { cn } from '@/lib/utils'
 import { Button } from '@/ui/components/ui/button'
 import { ScrollArea } from '@/ui/components/ui/scroll-area'
 
-export type NavKey = 'collection' | 'episodes' | 'glossary' | 'research' | 'archive'
+export type NavKey = 'collection' | 'activity' | 'episodes' | 'glossary' | 'research' | 'archive'
 
 interface EpisodeItem {
   id: string
@@ -34,8 +34,8 @@ interface SideNavProps {
   onNavigateCollection: () => void
   /** 執筆の記録（草・ストリーク）へ。指定時のみ表示。 */
   onNavigateActivity?: () => void
-  /** 主要 CTA（新しいプロジェクト / 新しいエピソード） */
-  cta: { label: string; onClick: () => void; disabled?: boolean }
+  /** 主要 CTA（新しいプロジェクト / 新しいエピソード）。作成導線が無い画面（執筆の記録）では省略。 */
+  cta?: { label: string; onClick: () => void; disabled?: boolean }
   /** 作者プロフィール（ペンネーム・アバター）。onEditProfile と併せて指定時のみ CTA 上に表示。 */
   profile?: { penName?: string; avatar?: string }
   /** プロフィール編集を開く。指定時のみプロフィール欄を表示。 */
@@ -171,18 +171,20 @@ export function SideNav({
         </div>
       ) : null}
 
-      {/* CTA */}
-      <div className="mb-6 px-6">
-        <Button
-          variant="outline"
-          onClick={cta.onClick}
-          disabled={cta.disabled}
-          className="w-full gap-2 border-primary text-primary hover:bg-primary/5 hover:text-primary"
-        >
-          <Plus className="size-4" />
-          {cta.label}
-        </Button>
-      </div>
+      {/* CTA（作成導線がある画面のみ） */}
+      {cta ? (
+        <div className="mb-6 px-6">
+          <Button
+            variant="outline"
+            onClick={cta.onClick}
+            disabled={cta.disabled}
+            className="w-full gap-2 border-primary text-primary hover:bg-primary/5 hover:text-primary"
+          >
+            <Plus className="size-4" />
+            {cta.label}
+          </Button>
+        </div>
+      ) : null}
 
       {/* 中段: ホーム → 作品スコープカード → 作品非依存 */}
       <div className="flex flex-1 flex-col px-4">
@@ -319,7 +321,12 @@ export function SideNav({
         {/* 作品非依存の機能（カード外） */}
         <div className="mt-3 shrink-0 space-y-1">
           {onNavigateActivity ? (
-            <NavRow icon={Sprout} label="執筆の記録" onClick={onNavigateActivity} />
+            <NavRow
+              icon={Sprout}
+              label="執筆の記録"
+              active={active === 'activity'}
+              onClick={onNavigateActivity}
+            />
           ) : null}
           <NavRow icon={FlaskConical} label="リサーチ" badge="準備中" />
           <NavRow icon={Archive} label="アーカイブ" badge="準備中" />
