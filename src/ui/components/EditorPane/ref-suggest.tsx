@@ -1,4 +1,5 @@
 import { Plus } from 'lucide-react'
+import { matchedAlias } from '@/core/glossary'
 import type { GlossaryEntry } from '@/core/schema'
 import { cn } from '@/lib/utils'
 
@@ -48,33 +49,42 @@ export function RefSuggest({
       className="absolute z-30 max-h-64 w-64 overflow-auto rounded-md border border-outline-variant/30 bg-surface-container-lowest py-1 font-sans text-sm shadow-lg"
       style={{ top, left }}
     >
-      {candidates.map((entry, i) => (
-        <button
-          key={entry.id}
-          type="button"
-          id={optionId(i)}
-          role="option"
-          tabIndex={-1}
-          aria-selected={i === activeIndex}
-          onMouseDown={(e) => e.preventDefault()}
-          onMouseMove={() => onHover(i)}
-          onClick={() => onCommit(i)}
-          className={cn(
-            'flex w-full cursor-pointer items-baseline gap-2 px-3 py-1.5 text-left',
-            i === activeIndex ? 'bg-primary/10 text-primary' : 'text-on-surface',
-          )}
-        >
-          <span className="truncate font-serif">{entry.name}</span>
-          {entry.reading ? (
-            <span className="shrink-0 text-on-surface-variant/60 text-xs">{entry.reading}</span>
-          ) : null}
-          {entry.category ? (
-            <span className="ml-auto shrink-0 text-on-surface-variant/50 text-xs">
-              {entry.category}
-            </span>
-          ) : null}
-        </button>
-      ))}
+      {candidates.map((entry, i) => {
+        // 別名でヒットしたときだけ、その別名を添えて「なぜこの候補が出たか」を示す。
+        const alias = matchedAlias(entry, query)
+        return (
+          <button
+            key={entry.id}
+            type="button"
+            id={optionId(i)}
+            role="option"
+            tabIndex={-1}
+            aria-selected={i === activeIndex}
+            onMouseDown={(e) => e.preventDefault()}
+            onMouseMove={() => onHover(i)}
+            onClick={() => onCommit(i)}
+            className={cn(
+              'flex w-full cursor-pointer items-baseline gap-2 px-3 py-1.5 text-left',
+              i === activeIndex ? 'bg-primary/10 text-primary' : 'text-on-surface',
+            )}
+          >
+            <span className="truncate font-serif">{entry.name}</span>
+            {entry.reading ? (
+              <span className="shrink-0 text-on-surface-variant/60 text-xs">{entry.reading}</span>
+            ) : null}
+            {alias ? (
+              <span className="max-w-[7rem] shrink-0 truncate text-on-surface-variant/60 text-xs">
+                別名: {alias}
+              </span>
+            ) : null}
+            {entry.category ? (
+              <span className="ml-auto shrink-0 text-on-surface-variant/50 text-xs">
+                {entry.category}
+              </span>
+            ) : null}
+          </button>
+        )
+      })}
       {showCreate ? (
         <button
           type="button"

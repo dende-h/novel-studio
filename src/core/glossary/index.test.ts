@@ -4,6 +4,7 @@ import type { GlossaryEntry, Inline, Work } from '../schema'
 import {
   categoriesOf,
   findAppearances,
+  matchedAlias,
   matchesQuery,
   renameEntry,
   resolvedNameSet,
@@ -277,6 +278,26 @@ describe('matchesQuery（name+aliases+reading 部分一致・body 除外）', ()
   it('空 query は常に true・大文字小文字を無視', () => {
     expect(matchesQuery(entry({ name: 'Alice' }), '')).toBe(true)
     expect(matchesQuery(entry({ name: 'Alice' }), 'alice')).toBe(true)
+  })
+})
+
+describe('matchedAlias（別名ヒット時のみ該当別名を返す・表示用）', () => {
+  const e = entry({ name: '山田太郎', aliases: ['勇者', 'タロ'], reading: 'やまだたろう' })
+  it('名前に含まれない別名の部分一致で、その別名を返す', () => {
+    expect(matchedAlias(e, '勇者')).toBe('勇者')
+    expect(matchedAlias(e, 'タロ')).toBe('タロ')
+  })
+  it('名前自身が query を含むなら undefined（自明なので出さない）', () => {
+    expect(matchedAlias(e, '山田')).toBeUndefined()
+    expect(matchedAlias(e, '太郎')).toBeUndefined() // 別名ではなく名前の一部
+  })
+  it('読みだけ一致・空 query は undefined', () => {
+    expect(matchedAlias(e, 'やまだ')).toBeUndefined()
+    expect(matchedAlias(e, '')).toBeUndefined()
+  })
+  it('複数一致は先頭の別名を採る・大文字小文字を無視', () => {
+    const en = entry({ name: '愛', aliases: ['Ally', 'Al'] })
+    expect(matchedAlias(en, 'al')).toBe('Ally')
   })
 })
 

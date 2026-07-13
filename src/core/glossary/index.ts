@@ -188,6 +188,18 @@ export function matchesQuery(entry: GlossaryEntry, query: string): boolean {
 }
 
 /**
+ * その entry が query で候補に出た理由が「別名一致」のとき、該当した別名を返す（サジェスト表示用）。
+ * 名前自身が query を含むなら自明なので undefined（別名バッジは出さない）。空 query も undefined。
+ * 突合は matchesQuery と同じ（小文字化・部分一致）に揃える。複数一致は先頭を採る。
+ */
+export function matchedAlias(entry: GlossaryEntry, query: string): string | undefined {
+  const q = query.trim().toLowerCase()
+  if (q === '') return undefined
+  if (entry.name.toLowerCase().includes(q)) return undefined
+  return entry.aliases.find((a) => a.toLowerCase().includes(q))
+}
+
+/**
  * @ サジェスト候補（D-GLOS-SUGGEST-ORDER=一致度順・前方一致優先＋上限）。
  * name/aliases/reading のいずれかが query で前方一致する候補を先に、次に部分一致のみの候補。
  * 同ランクは sortEntries（五十音/コードポイント）でタイブレーク。空 query は五十音順に limit 件。
