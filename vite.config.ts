@@ -14,11 +14,13 @@ export default defineConfig({
       workbox: {
         // Clerk チャンクは pk 設定時のみ動的 import される。ゲスト（大多数）に
         // precache させない（lazy 資産は precache 対象外にする方針。JP フォントと同じ規律）。
-        globIgnores: ['**/clerk-gate-*.js'],
+        // LP（マーケティング静的ページ）はアプリの SW 資産に含めない。
+        globIgnores: ['**/clerk-gate-*.js', 'lp/**'],
         // 同期 API（/api/*）は絶対にキャッシュしない。SW をネットワーク直行（NetworkOnly）にし、
         // SPA のナビゲーションフォールバック（index.html 差し替え）の対象からも除外する。
         // これを怠ると古い manifest/work レスポンスが返り、同期が壊れる（Phase 2 の必須対策）。
-        navigateFallbackDenylist: [/^\/api\//],
+        // /lp/ は独立した静的 LP。SPA フォールバックでアプリに差し替えられないよう除外する。
+        navigateFallbackDenylist: [/^\/api\//, /^\/lp/],
         runtimeCaching: [
           {
             urlPattern: ({ url }) => url.pathname.startsWith('/api/'),
