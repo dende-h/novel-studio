@@ -1,5 +1,5 @@
 import { useCallback, useId, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { resolveRef, shouldTriggerSuggest, suggestEntries } from '@/core/glossary'
+import { resolveRef, shouldTriggerSuggest, suggestRefs } from '@/core/glossary'
 import type { GlossaryEntry } from '@/core/schema'
 import { getCaretCoordinates } from '@/ui/_utils/caretCoordinates'
 import { RefSuggest } from './ref-suggest'
@@ -45,7 +45,7 @@ export function EditorPane({ value, onChange, glossary = [], onCreateEntry }: Ed
   const optionId = useCallback((i: number) => `${uid}-ref-opt-${i}`, [uid])
 
   const candidates = useMemo(
-    () => (suggest ? suggestEntries(suggest.query, glossary) : []),
+    () => (suggest ? suggestRefs(suggest.query, glossary) : []),
     [suggest, glossary],
   )
   const showCreate = useMemo(() => {
@@ -130,8 +130,8 @@ export function EditorPane({ value, onChange, glossary = [], onCreateEntry }: Ed
       insertRef(suggest.at, caret, name)
       return
     }
-    const entry = candidates[index]
-    if (entry) insertRef(suggest.at, caret, entry.name)
+    const item = candidates[index]
+    if (item) insertRef(suggest.at, caret, item.name)
   }
 
   // 挿入後にキャレットを [[名前]] の直後へ戻す。

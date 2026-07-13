@@ -4,14 +4,13 @@ import type { GlossaryEntry, Inline, Work } from '../schema'
 import {
   categoriesOf,
   findAppearances,
-  matchedAlias,
   matchesQuery,
   renameEntry,
   resolvedNameSet,
   resolveRef,
   shouldTriggerSuggest,
   sortEntries,
-  suggestEntries,
+  suggestRefs,
 } from './index'
 
 /** epIdx 話・blockIdx 段落の inlines を取り出す（paragraph 前提）。 */
@@ -281,33 +280,13 @@ describe('matchesQuery（name+aliases+reading 部分一致・body 除外）', ()
   })
 })
 
-describe('matchedAlias（別名ヒット時のみ該当別名を返す・表示用）', () => {
-  const e = entry({ name: '山田太郎', aliases: ['勇者', 'タロ'], reading: 'やまだたろう' })
-  it('名前に含まれない別名の部分一致で、その別名を返す', () => {
-    expect(matchedAlias(e, '勇者')).toBe('勇者')
-    expect(matchedAlias(e, 'タロ')).toBe('タロ')
-  })
-  it('名前自身が query を含むなら undefined（自明なので出さない）', () => {
-    expect(matchedAlias(e, '山田')).toBeUndefined()
-    expect(matchedAlias(e, '太郎')).toBeUndefined() // 別名ではなく名前の一部
-  })
-  it('読みだけ一致・空 query は undefined', () => {
-    expect(matchedAlias(e, 'やまだ')).toBeUndefined()
-    expect(matchedAlias(e, '')).toBeUndefined()
-  })
-  it('複数一致は先頭の別名を採る・大文字小文字を無視', () => {
-    const en = entry({ name: '愛', aliases: ['Ally', 'Al'] })
-    expect(matchedAlias(en, 'al')).toBe('Ally')
-  })
-})
-
-describe('suggestEntries（一致度順・前方一致優先＋上限）', () => {
+describe('suggestRefs（別名も独立候補・挿入表記付き・一致度順）', () => {
   it('GSG1: 前方一致を部分一致より先に', () => {
     const es = [
       entry({ id: 'sub', name: 'マリア', reading: 'まりあ' }), // 'り' は部分一致
       entry({ id: 'pre', name: 'リサ', reading: 'りさ' }), // 'り' で前方一致
     ]
-    expect(suggestEntries('り', es).map((e) => e.id)).toEqual(['pre', 'sub'])
+    expect(suggestRefs('り', es).map((r) => r.entry.id)).toEqual(['pre', 'sub'])
   })
 
   it('GSG2: 同ランクは五十音でタイブレーク', () => {
@@ -315,23 +294,52 @@ describe('suggestEntries（一致度順・前方一致優先＋上限）', () =>
       entry({ id: 'b', name: 'リク', reading: 'りく' }),
       entry({ id: 'a', name: 'リア', reading: 'りあ' }),
     ]
-    expect(suggestEntries('り', es).map((e) => e.id)).toEqual(['a', 'b'])
+    expect(suggestRefs('り', es).map((r) => r.entry.id)).toEqual(['a', 'b'])
   })
 
-  it('GSG3: 空 query は五十音順に limit 件', () => {
+  it('GSG3: 空 query は正式名のみを五十音順に limit 件', () => {
     const es = [
-      entry({ id: '1', name: 'う', reading: 'う' }),
+      entry({ id: '1', name: 'う', reading: 'う', aliases: ['zzz'] }),
       entry({ id: '2', name: 'あ', reading: 'あ' }),
       entry({ id: '3', name: 'い', reading: 'い' }),
     ]
-    expect(suggestEntries('', es, 2).map((e) => e.id)).toEqual(['2', '3'])
+    const out = suggestRefs('', es, 2)
+    expect(out.map((r) => r.entry.id)).toEqual(['2', '3'])
+    expect(out.every((r) => !r.isAlias)).toBe(true) // 空 query で別名は出さない
   })
 
   it('GSG4: 既定上限は 8 件', () => {
     const es = Array.from({ length: 12 }, (_, i) =>
       entry({ id: `e${i}`, name: `名${i}`, reading: `な${i}` }),
     )
-    expect(suggestEntries('な', es)).toHaveLength(8)
+    expect(suggestRefs('な', es)).toHaveLength(8)
+  })
+
+  it('別名一致はその別名を独立候補にし、挿入表記も別名になる', () => {
+    const yggd = entry({
+      id: 'y',
+      name: 'ユグドラシル',
+      aliases: ['世界樹'],
+      reading: 'ゆぐどらしる',
+    })
+    const out = suggestRefs('世', [yggd])
+    expect(out).toHaveLength(1)
+    expect(out[0]).toMatchObject({ name: '世界樹', isAlias: true })
+    expect(out[0]?.entry.id).toBe('y') // 図鑑（正式名）へは entry で辿れる
+  })
+
+  it('正式名で引くと正式名候補（別名は出さない）', () => {
+    const yggd = entry({ id: 'y', name: 'ユグドラシル', aliases: ['世界樹'] })
+    const out = suggestRefs('ユグ', [yggd])
+    expect(out.map((r) => ({ name: r.name, isAlias: r.isAlias }))).toEqual([
+      { name: 'ユグドラシル', isAlias: false },
+    ])
+  })
+
+  it('正式名と別名の両方が一致すると 2 候補に分かれる', () => {
+    const e = entry({ id: 'e', name: '光', aliases: ['光の剣'] })
+    const out = suggestRefs('光', [e])
+    expect(out.map((r) => r.name)).toEqual(['光', '光の剣'])
   })
 })
 

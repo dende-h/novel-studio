@@ -187,38 +187,63 @@ export function matchesQuery(entry: GlossaryEntry, query: string): boolean {
   return fields.some((f) => f.toLowerCase().includes(q))
 }
 
-/**
- * その entry が query で候補に出た理由が「別名一致」のとき、該当した別名を返す（サジェスト表示用）。
- * 名前自身が query を含むなら自明なので undefined（別名バッジは出さない）。空 query も undefined。
- * 突合は matchesQuery と同じ（小文字化・部分一致）に揃える。複数一致は先頭を採る。
- */
-export function matchedAlias(entry: GlossaryEntry, query: string): string | undefined {
-  const q = query.trim().toLowerCase()
-  if (q === '') return undefined
-  if (entry.name.toLowerCase().includes(q)) return undefined
-  return entry.aliases.find((a) => a.toLowerCase().includes(q))
+/** @ サジェストの 1 候補（本文へ挿入する表記付き）。正式名と、query に一致する別名は別候補になる。 */
+export interface RefSuggestion {
+  /** 紐づく辞書 entry（表示コンテキスト用）。 */
+  entry: GlossaryEntry
+  /** 本文へ挿入する表記（正式名 or 別名そのもの）。別名候補を選ぶと本文はこの別名表記で入る。 */
+  name: string
+  /** この候補が別名か（正式名なら false）。 */
+  isAlias: boolean
 }
 
 /**
- * @ サジェスト候補（D-GLOS-SUGGEST-ORDER=一致度順・前方一致優先＋上限）。
- * name/aliases/reading のいずれかが query で前方一致する候補を先に、次に部分一致のみの候補。
- * 同ランクは sortEntries（五十音/コードポイント）でタイブレーク。空 query は五十音順に limit 件。
+ * @ サジェスト候補（D-GLOS-SUGGEST-ORDER=一致度順・前方一致優先＋上限）。正式名だけでなく、
+ * query に一致する別名も **それぞれ独立した候補** として出す。別名候補を選ぶと本文にはその別名表記が
+ * 入る（例: 別名「世界樹」を選ぶと `[[世界樹]]` が入り、resolveRef が別名解決するので図鑑に正しく紐づく）。
+ * 正式名候補は name/reading の一致で出す。同ランクは五十音（別名は表記、正式名は reading→name）で
+ * タイブレーク。空 query は正式名のみを五十音順に limit 件。
  */
-export function suggestEntries(
-  query: string,
-  entries: GlossaryEntry[],
-  limit = 8,
-): GlossaryEntry[] {
+export function suggestRefs(query: string, entries: GlossaryEntry[], limit = 8): RefSuggestion[] {
   const q = query.trim().toLowerCase()
-  if (q === '') return sortEntries(entries).slice(0, limit)
+  if (q === '') {
+    return sortEntries(entries)
+      .slice(0, limit)
+      .map((entry) => ({ entry, name: entry.name, isAlias: false }))
+  }
 
-  const matched = entries.filter((e) => matchesQuery(e, q))
-  const startsWith = (e: GlossaryEntry) =>
-    [e.name, ...e.aliases, e.reading ?? ''].some((f) => f.toLowerCase().startsWith(q))
+  const items: RefSuggestion[] = []
+  for (const entry of entries) {
+    // 正式名 or 読みが一致 → 正式名の候補。
+    if (entry.name.toLowerCase().includes(q) || (entry.reading ?? '').toLowerCase().includes(q)) {
+      items.push({ entry, name: entry.name, isAlias: false })
+    }
+    // 一致する別名はそれぞれ独立候補に（本文はこの別名表記で入る）。
+    for (const alias of entry.aliases) {
+      if (alias.toLowerCase().includes(q)) items.push({ entry, name: alias, isAlias: true })
+    }
+  }
 
-  const prefix = sortEntries(matched.filter((e) => startsWith(e)))
-  const substr = sortEntries(matched.filter((e) => !startsWith(e)))
-  return [...prefix, ...substr].slice(0, limit)
+  // 前方一致（正式名候補は reading も見る）を先に、部分一致のみを後に。
+  const startsWith = (it: RefSuggestion) =>
+    it.name.toLowerCase().startsWith(q) ||
+    (!it.isAlias && (it.entry.reading ?? '').toLowerCase().startsWith(q))
+  // 五十音キー：別名は表記、正式名は reading→name（sortKey と同じ規則）。
+  const key = (it: RefSuggestion) =>
+    it.isAlias ? it.name : it.entry.reading?.trim() || it.entry.name
+
+  return items
+    .map((it, i) => ({ it, i }))
+    .sort((a, b) => {
+      const r = (startsWith(a.it) ? 0 : 1) - (startsWith(b.it) ? 0 : 1)
+      if (r !== 0) return r
+      const ka = key(a.it)
+      const kb = key(b.it)
+      if (ka !== kb) return ka < kb ? -1 : 1
+      return a.i - b.i // 安定タイブレーク
+    })
+    .map(({ it }) => it)
+    .slice(0, limit)
 }
 
 /** 辞書のカテゴリ絞り込み用に、出現するカテゴリの一覧を重複なく返す（出現順）。 */

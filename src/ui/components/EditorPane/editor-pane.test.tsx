@@ -84,6 +84,23 @@ describe('EditorPane（@ サジェスト）', () => {
     expect(screen.queryByRole('listbox')).toBeNull()
   })
 
+  it('別名候補を選ぶと、本文はその別名表記で挿入される（世界樹→[[世界樹]]）', () => {
+    const yggd: GlossaryEntry = {
+      id: 'y',
+      name: 'ユグドラシル',
+      aliases: ['世界樹'],
+      reading: 'ゆぐどらしる',
+      createdAt: 0,
+      updatedAt: 0,
+    }
+    render(<Harness glossary={[yggd]} />)
+    const ta = screen.getByRole('textbox', { name: '本文' })
+    type(ta, '@世')
+    // 別名「世界樹」が独立候補として出る（正式名ユグドラシルは「世」に一致しない）。
+    fireEvent.click(screen.getByRole('option', { name: /世界樹/ }))
+    expect(ta).toHaveValue('[[世界樹]]')
+  })
+
   it('ArrowDown→Enter で 2 番目の候補を挿入する', () => {
     // 読み「あ」<「い」で並びを固定（アリス→アラン）。@ のみで全件を読み順に列挙。
     render(<Harness glossary={[g('アリス', 'あ'), g('アラン', 'い')]} />)
