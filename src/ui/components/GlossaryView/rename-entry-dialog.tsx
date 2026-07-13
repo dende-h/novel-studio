@@ -67,11 +67,13 @@ export function RenameEntryDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle className="font-serif text-primary">項目を改名</DialogTitle>
-          <DialogDescription>
-            旧名「{currentName}」は別名として残り、既存の参照は解決され続けます。
-          </DialogDescription>
+          <DialogTitle className="font-serif text-on-surface">項目を改名</DialogTitle>
+          <DialogDescription className="sr-only">図鑑項目の名前を変更します。</DialogDescription>
         </DialogHeader>
+        <p className="rounded-md bg-accent px-3 py-2.5 text-[12px] text-primary leading-relaxed">
+          名前を変えても大丈夫です。旧名「{currentName}
+          」は自動で別名に残り、本文中の参照はそのまま解決されます。
+        </p>
         <form
           onSubmit={(e) => {
             e.preventDefault()

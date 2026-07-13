@@ -87,6 +87,7 @@ export function Root({ store }: RootProps) {
           store={store}
           onExit={() => navigate('/')}
           onNavigateActivity={() => navigate('/activity')}
+          activityRepo={activityRepo}
         />
       ) : (
         <Library

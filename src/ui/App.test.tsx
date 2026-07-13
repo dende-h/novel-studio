@@ -91,12 +91,12 @@ describe('App（エディタ結合：本文/プレビュー・自動保存・履
     expect(await screen.findByRole('textbox', { name: '本文' })).toHaveValue('保存される本文')
   })
 
-  it('「新しいエピソードを追加」ダイアログで話を作成しサブリストに表示', async () => {
+  it('「新しいエピソード」ダイアログで話を作成しサブリストに表示', async () => {
     const store = makeStore()
     await store.createWork('作品ワン')
     render(<App store={store} />)
 
-    fireEvent.click(screen.getByRole('button', { name: '新しいエピソードを追加' }))
+    fireEvent.click(screen.getByRole('button', { name: '新しいエピソード' }))
     const input = await screen.findByLabelText('話タイトル')
     fireEvent.change(input, { target: { value: '序章' } })
     fireEvent.click(screen.getByRole('button', { name: '追加' }))
@@ -121,20 +121,20 @@ describe('App（エディタ結合：本文/プレビュー・自動保存・履
     // 図鑑画面へ → 作成
     fireEvent.click(screen.getByRole('button', { name: '図鑑' }))
     expect(await screen.findByRole('heading', { name: '図鑑' })).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: '新規' }))
+    fireEvent.click(screen.getByRole('button', { name: '新しく登録' }))
     fireEvent.change(screen.getByLabelText('名前'), { target: { value: 'アリス' } })
     fireEvent.click(screen.getByRole('button', { name: '作成' }))
     expect(await screen.findByRole('heading', { name: 'アリス' })).toBeInTheDocument()
 
-    // エピソードへ戻ると参照が解決済みリンクになる
-    fireEvent.click(screen.getByRole('button', { name: 'エピソード' }))
+    // 本文を書くへ戻ると参照が解決済みリンクになる
+    fireEvent.click(screen.getByRole('button', { name: '本文を書く' }))
     await waitFor(() => {
       const ref = document.querySelector('.preview .ref[data-ref-name="アリス"]')
       expect(ref?.classList.contains('ref--unresolved')).toBe(false)
     })
   })
 
-  it('プレビューの解決済み @参照をクリックすると aside に用語のピークが出る', async () => {
+  it('プレビューの解決済み @参照をクリックすると図鑑パネルに用語のチラ見が出る', async () => {
     const store = makeStore()
     await seedWorkEpisode(store)
     await store.addGlossaryEntry({ name: 'アリス', summary: '物語の主人公。' })
@@ -153,9 +153,77 @@ describe('App（エディタ結合：本文/プレビュー・自動保存・履
     expect(await screen.findByRole('heading', { name: 'アリス' })).toBeInTheDocument()
     expect(screen.getByText('物語の主人公。')).toBeInTheDocument()
 
-    // 閉じるとピークが消える
-    fireEvent.click(screen.getByRole('button', { name: 'ピークを閉じる' }))
+    // 閉じるとパネルが消える
+    fireEvent.click(screen.getByRole('button', { name: '図鑑パネルを閉じる' }))
     expect(screen.queryByText('物語の主人公。')).toBeNull()
+  })
+
+  it('ツールバーの「図鑑パネル」トグルで、この話に登場する用語チップが見える', async () => {
+    const store = makeStore()
+    await seedWorkEpisode(store)
+    await store.addGlossaryEntry({ name: 'アリス' })
+    render(<App store={store} />)
+
+    fireEvent.change(await screen.findByRole('textbox', { name: '本文' }), {
+      target: { value: '[[アリス]]が来た' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: '図鑑パネル' }))
+    expect(await screen.findByText('この話に登場')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'アリス' })).toBeInTheDocument()
+  })
+
+  it('一括置換：検索語の件数を出し、すべて置換で本文へ反映する', async () => {
+    const store = makeStore()
+    await seedWorkEpisode(store)
+    render(<App store={store} />)
+
+    const textarea = await screen.findByRole('textbox', { name: '本文' })
+    fireEvent.change(textarea, { target: { value: '猫が来た。猫が鳴いた。' } })
+
+    // 置換パネルを開く
+    fireEvent.click(screen.getByRole('button', { name: '置換' }))
+    expect(screen.getByText('この話の本文だけを対象に置換します')).toBeInTheDocument()
+
+    fireEvent.change(screen.getByLabelText('検索する語'), { target: { value: '猫' } })
+    expect(screen.getByText('2件 見つかりました')).toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText('置換後の語'), { target: { value: '犬' } })
+    fireEvent.click(screen.getByRole('button', { name: 'すべて置換' }))
+
+    expect(textarea).toHaveValue('犬が来た。犬が鳴いた。')
+    // 適用後はパネルが閉じる
+    expect(screen.queryByLabelText('検索する語')).toBeNull()
+  })
+
+  it('一括置換：0件のときは「すべて置換」が無効', async () => {
+    const store = makeStore()
+    await seedWorkEpisode(store)
+    render(<App store={store} />)
+
+    fireEvent.change(await screen.findByRole('textbox', { name: '本文' }), {
+      target: { value: 'こんにちは' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: '置換' }))
+    fireEvent.change(screen.getByLabelText('検索する語'), { target: { value: '猫' } })
+    expect(screen.getByText('0件 見つかりました')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'すべて置換' })).toBeDisabled()
+  })
+
+  it('プレビューの組み方向はツールバーで切替でき、既定は縦書き', async () => {
+    const store = makeStore()
+    await seedWorkEpisode(store)
+    render(<App store={store} />)
+    await screen.findByRole('textbox', { name: '本文' })
+
+    const vertical = screen.getByRole('button', { name: '縦書き' })
+    const horizontal = screen.getByRole('button', { name: '横書き' })
+    expect(vertical.getAttribute('aria-pressed')).toBe('true')
+    expect(document.querySelector('.preview')?.className).toContain('[writing-mode:vertical-rl]')
+
+    fireEvent.click(horizontal)
+    expect(horizontal.getAttribute('aria-pressed')).toBe('true')
+    expect(document.querySelector('.preview')?.className).not.toContain(
+      '[writing-mode:vertical-rl]',
+    )
   })
 
   it('プレビューの未解決 @参照をクリックすると当該名でクイック作成フォームが開く', async () => {

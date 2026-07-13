@@ -16,33 +16,13 @@ describe('PreviewPane（Presentational）', () => {
     expect(container.querySelector('.preview')).not.toBeNull()
   })
 
-  it('既定は縦書きが選択され、選択中だけが濃い塗り（横書きは淡色）', () => {
-    const { getByRole } = render(<PreviewPane html="" />)
-    const vertical = getByRole('button', { name: '縦書き' })
-    const horizontal = getByRole('button', { name: '横書き' })
-
-    expect(vertical.getAttribute('aria-pressed')).toBe('true')
-    expect(horizontal.getAttribute('aria-pressed')).toBe('false')
-    // 選択中＝濃い塗りつぶし（淡色 /10 ではない）、非選択＝塗りなし
-    expect(vertical.className).toContain('bg-primary')
-    expect(vertical.className).not.toContain('bg-primary/10')
-    expect(vertical.className).toContain('text-primary-foreground')
-    expect(horizontal.className).not.toContain('bg-primary')
-  })
-
-  it('横書きをクリックすると選択（濃い塗り）が横書きへ移る', () => {
-    const { getByRole } = render(<PreviewPane html="" />)
-    const horizontal = getByRole('button', { name: '横書き' })
-    fireEvent.click(horizontal)
-
-    expect(horizontal.getAttribute('aria-pressed')).toBe('true')
-    expect(horizontal.className).toContain('bg-primary')
-    expect(getByRole('button', { name: '縦書き' }).getAttribute('aria-pressed')).toBe('false')
-  })
-
-  it('組み方向の切替はグループとしてラベル付けされている', () => {
-    const { getByRole } = render(<PreviewPane html="" />)
-    expect(getByRole('group', { name: '本文の組み方向' })).not.toBeNull()
+  it('既定は縦書き（writing-mode: vertical-rl）、orientation=horizontal で横書きになる', () => {
+    const { container, rerender } = render(<PreviewPane html="" />)
+    expect(container.querySelector('.preview')?.className).toContain('[writing-mode:vertical-rl]')
+    rerender(<PreviewPane html="" orientation="horizontal" />)
+    expect(container.querySelector('.preview')?.className).not.toContain(
+      '[writing-mode:vertical-rl]',
+    )
   })
 })
 

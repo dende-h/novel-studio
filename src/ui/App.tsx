@@ -1,12 +1,17 @@
-import { Plus } from 'lucide-react'
+import { BookMarked, Plus, Replace } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { localDateKey } from '@/core/activity'
 import { blocksToHtml } from '@/core/exporter/toHtml'
 import { categoriesOf, findAppearances, resolvedNameSet, resolveRef } from '@/core/glossary'
 import { parseEpisodeBody } from '@/core/parser/parseNotation'
 import type { GlossaryEntry } from '@/core/schema'
+import { countWorkChars } from '@/core/stats'
+import type { ActivityRepository } from '@/core/storage/activityRepository'
+import { cn } from '@/lib/utils'
 import { AppShell } from '@/ui/components/AppShell/app-shell'
 import { ConfirmDialog } from '@/ui/components/ConfirmDialog/confirm-dialog'
 import { EditorPane } from '@/ui/components/EditorPane/editor-pane'
+import { ReplacePanel } from '@/ui/components/EditorPane/replace-panel'
 import { ExportDialog } from '@/ui/components/ExportDialog/export-dialog'
 import {
   GlossaryEntryForm,
@@ -19,6 +24,8 @@ import { PreviewPane } from '@/ui/components/PreviewPane/preview-pane'
 import { ProfileDialog } from '@/ui/components/ProfileDialog/profile-dialog'
 import { SideNav } from '@/ui/components/SideNav/side-nav'
 import { TitlePromptDialog } from '@/ui/components/TitlePromptDialog/title-prompt-dialog'
+import { useToast } from '@/ui/components/Toast/toast'
+import { Button } from '@/ui/components/ui/button'
 import { WorkMetaDialog } from '@/ui/components/WorkMetaDialog/work-meta-dialog'
 import { useAutosave } from '@/ui/hooks/use-autosave'
 import { useEditorStore } from '@/ui/hooks/use-editor-store'
@@ -44,23 +51,32 @@ interface AppProps {
   onExit?: () => void
   /** 執筆の記録（草・ストリーク）へ */
   onNavigateActivity?: () => void
+  /** 執筆活動の読み取り（ステータスバーの「今日 +N字」）。省略時は非表示。 */
+  activityRepo?: ActivityRepository
 }
 
 /** 自動保存：本文の入力が止まってから保存するまでの待ち時間(ms)。 */
 const AUTOSAVE_DELAY_MS = 1500
 
-/** 原稿エディタ（サイドバー＋本文／プレビュー＋履歴）。 */
-export function App({ store, onExit, onNavigateActivity }: AppProps) {
+/** 原稿エディタ（サイドバー＋ツールバー＋本文／プレビュー＋図鑑パネル／履歴）。 */
+export function App({ store, onExit, onNavigateActivity, activityRepo }: AppProps) {
   const state = useEditorStore(store)
+  const { show } = useToast()
   const [newEpisodeOpen, setNewEpisodeOpen] = useState(false)
   const [exportOpen, setExportOpen] = useState(false)
   const [metaOpen, setMetaOpen] = useState(false)
   const [profileOpen, setProfileOpen] = useState(false)
   const [historyOpen, setHistoryOpen] = useState(false)
   const [activeScreen, setActiveScreen] = useState<'episodes' | 'glossary'>('episodes')
-  // プレビューの @参照クリックで開く右 aside ピーク（entry は id で引いて常に最新を見る）。
+  // プレビューの組み方向（日本語小説の標準＝縦書きが既定。ツールバーで切替）。
+  const [orientation, setOrientation] = useState<'vertical' | 'horizontal'>('vertical')
+  // 一括置換パネル（この話の本文だけを対象）。
+  const [replaceOpen, setReplaceOpen] = useState(false)
+  // 図鑑パネル（この話に登場＋選択 entry のチラ見）。@参照クリックでも開く。
+  const [glossaryPanelOpen, setGlossaryPanelOpen] = useState(false)
+  // 図鑑パネルで選択中の entry（id で引いて常に最新を見る）。
   const [peekId, setPeekId] = useState<string | null>(null)
-  // 未解決 @参照クリックで起動するクイック作成（プリフィルする名前）。
+  // 未解決 @参照クリックで起動するクイック作成（プリフィルする名前。'' は空フォーム）。
   const [quickCreateName, setQuickCreateName] = useState<string | null>(null)
   const [deleteEpisodeTarget, setDeleteEpisodeTarget] = useState<{
     id: string
@@ -99,19 +115,20 @@ export function App({ store, onExit, onNavigateActivity }: AppProps) {
     [work],
   )
 
-  // ピークは id 参照で常に最新の entry を引く（改名/削除に追従し、削除されれば自動で閉じる）。
+  // パネルの選択は id 参照で常に最新の entry を引く（改名/削除に追従）。
   const peekEntry = useMemo(
     () => (peekId ? ((work?.glossary ?? []).find((e) => e.id === peekId) ?? null) : null),
     [peekId, work?.glossary],
   )
 
-  // プレビューの @参照クリック：解決済み→ピーク表示、未解決→当該名でクイック作成。
+  // プレビューの @参照クリック：解決済み→図鑑パネルで表示、未解決→当該名でクイック作成。
   const onRefClick = useCallback(
     (name: string) => {
       const entry = resolveRef(name, work?.glossary ?? [])
       if (entry) {
         setHistoryOpen(false)
         setPeekId(entry.id)
+        setGlossaryPanelOpen(true)
       } else {
         setQuickCreateName(name)
       }
@@ -119,29 +136,59 @@ export function App({ store, onExit, onNavigateActivity }: AppProps) {
     [work?.glossary],
   )
 
+  // ステータスバーの「今日 +N字」：保存が確定するたびに当日の執筆活動を読み直す。
+  const [todayNet, setTodayNet] = useState<number | null>(null)
+  useEffect(() => {
+    if (!activityRepo || state.status !== 'saved') return
+    let alive = true
+    void activityRepo.list().then((days) => {
+      if (!alive) return
+      const key = localDateKey(Date.now())
+      setTodayNet(days.find((d) => d.date === key)?.net ?? 0)
+    })
+    return () => {
+      alive = false
+    }
+  }, [activityRepo, state.status])
+
+  // ステータスバー用の行数・文字数（旧 EditorPane のチップから移設）。
+  const lineCount = state.draft === '' ? 0 : state.draft.split('\n').length
+  const charCount = state.draft.length
+
   return (
     <AppShell
       onBrandClick={onExit}
+      workTitle={work?.title}
       saveStatus={{ dirty: state.dirty, status: state.status }}
       onExport={() => void openExport()}
-      onToggleHistory={episode && onEpisodes ? () => setHistoryOpen((v) => !v) : undefined}
+      onToggleHistory={
+        episode && onEpisodes
+          ? () => {
+              setGlossaryPanelOpen(false)
+              setHistoryOpen((v) => !v)
+            }
+          : undefined
+      }
       historyOpen={historyOpen}
       onCloseAside={() => {
         setHistoryOpen(false)
-        setPeekId(null)
+        setGlossaryPanelOpen(false)
       }}
       sidebar={
         <SideNav
-          projectTitle="novel-studio"
-          projectSubtitle="ライブラリ"
           workTitle={work?.title}
+          workMeta={
+            work
+              ? `${work.episodes.length}話 ・ ${countWorkChars(work).toLocaleString('ja-JP')}字`
+              : undefined
+          }
           active={activeScreen}
           onNavigateCollection={() => onExit?.()}
           onNavigateActivity={onNavigateActivity}
           onNavigateEpisodes={work ? () => setActiveScreen('episodes') : undefined}
           onNavigateGlossary={work ? () => setActiveScreen('glossary') : undefined}
           cta={{
-            label: '新しいエピソードを追加',
+            label: '新しいエピソード',
             onClick: () => setNewEpisodeOpen(true),
             disabled: !work,
           }}
@@ -164,15 +211,20 @@ export function App({ store, onExit, onNavigateActivity }: AppProps) {
         />
       }
       aside={
-        onEpisodes && peekEntry ? (
+        onEpisodes && glossaryPanelOpen && work ? (
           <GlossaryPeek
+            entries={work.glossary ?? []}
+            draft={state.draft}
             entry={peekEntry}
-            appearances={getAppearances(peekEntry)}
-            onClose={() => setPeekId(null)}
+            appearances={peekEntry ? getAppearances(peekEntry) : null}
+            onSelect={(id) => setPeekId(id)}
+            onQuickCreate={(name) => setQuickCreateName(name)}
+            onClose={() => setGlossaryPanelOpen(false)}
             onEdit={() => {
-              setPeekId(null)
+              setGlossaryPanelOpen(false)
               setActiveScreen('glossary')
             }}
+            onNewEntry={() => setQuickCreateName('')}
           />
         ) : historyOpen && episode && onEpisodes ? (
           <HistoryPanel
@@ -187,6 +239,7 @@ export function App({ store, onExit, onNavigateActivity }: AppProps) {
       {activeScreen === 'glossary' && work ? (
         <GlossaryView
           entries={work.glossary ?? []}
+          workTitle={work.title}
           getAppearances={getAppearances}
           onCreate={async (values) => {
             await store.addGlossaryEntry({ name: values.name, ...toFieldPatch(values) })
@@ -200,19 +253,118 @@ export function App({ store, onExit, onNavigateActivity }: AppProps) {
           onDelete={(id) => void store.deleteGlossaryEntry(id)}
         />
       ) : episode ? (
-        <>
-          <div className="h-full min-w-0 basis-1/2 border-outline-variant/20 border-r">
-            <EditorPane
-              value={state.draft}
-              onChange={(v) => store.setDraft(v)}
-              glossary={work?.glossary ?? []}
-              onCreateEntry={(name) => store.addGlossaryEntry({ name })}
-            />
+        <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col">
+          {/* エディタツールバー */}
+          <div className="flex h-[46px] shrink-0 items-center justify-between gap-3 border-outline-variant/30 border-b bg-surface-container-lowest px-4">
+            <div className="flex min-w-0 items-center gap-2.5">
+              <span className="truncate font-medium font-sans text-[13px] text-on-surface">
+                {episode.title}
+              </span>
+              <span className="shrink-0 text-[11px] text-on-surface-variant/60">A1記法</span>
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                aria-pressed={replaceOpen}
+                onClick={() => setReplaceOpen((v) => !v)}
+                className={cn(
+                  'gap-1.5 text-on-surface-variant hover:text-primary',
+                  replaceOpen && 'bg-accent text-primary',
+                )}
+              >
+                <Replace className="size-4" aria-hidden />
+                置換
+              </Button>
+              {/* 組み方向の切替（プレビュー） */}
+              <fieldset
+                aria-label="本文の組み方向"
+                className="m-0 flex items-center gap-1 border-0 p-0"
+              >
+                <button
+                  type="button"
+                  aria-pressed={orientation === 'horizontal'}
+                  onClick={() => setOrientation('horizontal')}
+                  className={cn(
+                    'flex h-[26px] items-center rounded-md px-2.5 font-sans text-xs transition-colors',
+                    orientation === 'horizontal'
+                      ? 'bg-primary text-white'
+                      : 'text-on-surface-variant hover:bg-surface-container-high',
+                  )}
+                >
+                  横書き
+                </button>
+                <button
+                  type="button"
+                  aria-pressed={orientation === 'vertical'}
+                  onClick={() => setOrientation('vertical')}
+                  className={cn(
+                    'flex h-[26px] items-center rounded-md px-2.5 font-sans text-xs transition-colors',
+                    orientation === 'vertical'
+                      ? 'bg-primary text-white'
+                      : 'text-on-surface-variant hover:bg-surface-container-high',
+                  )}
+                >
+                  縦書き
+                </button>
+              </fieldset>
+              <Button
+                variant="ghost"
+                size="sm"
+                aria-label="図鑑パネル"
+                aria-pressed={glossaryPanelOpen}
+                onClick={() => {
+                  setHistoryOpen(false)
+                  setGlossaryPanelOpen((v) => !v)
+                }}
+                className={cn(
+                  'gap-1.5 text-on-surface-variant hover:text-primary',
+                  glossaryPanelOpen && 'bg-accent text-primary',
+                )}
+              >
+                <BookMarked className="size-4" aria-hidden />
+                図鑑
+              </Button>
+            </div>
           </div>
-          <div className="h-full min-w-0 basis-1/2">
-            <PreviewPane html={previewHtml} onRefClick={onRefClick} />
+
+          {/* 本文＋プレビュー */}
+          <div className="flex min-h-0 flex-1">
+            <div className="relative flex min-w-0 flex-[1.3_1_0%] flex-col border-outline-variant/30 border-r">
+              <EditorPane
+                value={state.draft}
+                onChange={(v) => store.setDraft(v)}
+                glossary={work?.glossary ?? []}
+                onCreateEntry={(name) => store.addGlossaryEntry({ name })}
+              />
+              {replaceOpen ? (
+                <ReplacePanel
+                  value={state.draft}
+                  onApply={(next, count) => {
+                    store.setDraft(next)
+                    setReplaceOpen(false)
+                    show(`${count}件を置換しました`)
+                  }}
+                  onClose={() => setReplaceOpen(false)}
+                />
+              ) : null}
+            </div>
+            <div className="min-w-0 flex-[1_1_0%]">
+              <PreviewPane html={previewHtml} onRefClick={onRefClick} orientation={orientation} />
+            </div>
           </div>
-        </>
+
+          {/* ステータスバー */}
+          <div className="flex h-[38px] shrink-0 items-center justify-between border-outline-variant/30 border-t bg-surface-container-lowest px-4">
+            <span className="font-sans text-[11px] text-on-surface-variant/60">自動保存 ON</span>
+            <span className="font-sans text-[12px] text-on-surface-variant tabular-nums">
+              {lineCount}行 ・ {charCount}文字
+              {todayNet !== null
+                ? ` ・ 今日 ${todayNet >= 0 ? '+' : ''}${todayNet.toLocaleString('ja-JP')}字`
+                : ''}
+            </span>
+          </div>
+        </div>
       ) : work ? (
         <div className="flex flex-1 items-center justify-center p-8">
           <button

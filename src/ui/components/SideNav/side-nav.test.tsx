@@ -3,14 +3,13 @@ import { describe, expect, it, vi } from 'vitest'
 import { SideNav } from './side-nav'
 
 // 作品を開いている（エディタ）状態の基本 props。
-// この状態でのみ「現在の作品」スコープカード内に エピソード/図鑑/話リスト が現れる。
+// この状態でのみ 戻るリンク／作品カード／本文を書く・図鑑／草稿の話リスト が現れる。
 const baseProps = {
-  projectTitle: 'novel-studio',
-  projectSubtitle: 'ライブラリ',
   active: 'episodes' as const,
   onNavigateCollection: () => {},
-  cta: { label: '新しいエピソードを追加', onClick: () => {} },
+  cta: { label: '新しいエピソード', onClick: () => {} },
   workTitle: '作品タイトル',
+  workMeta: '2話 ・ 1,200字',
   onNavigateEpisodes: () => {},
   onNavigateGlossary: () => {},
 }
@@ -84,17 +83,17 @@ describe('SideNav（サイドバー）', () => {
     expect(screen.queryByRole('button', { name: '「第一話」を削除' })).toBeNull()
   })
 
-  it('作品オープン中はエピソード行が active かつ非 disabled（グレーアウトしない）', () => {
+  it('作品オープン中は「本文を書く」行が active かつ非 disabled', () => {
     render(<SideNav {...baseProps} active="episodes" />)
-    const ep = screen.getByRole('button', { name: 'エピソード' })
+    const ep = screen.getByRole('button', { name: '本文を書く' })
     expect(ep).toHaveAttribute('aria-current', 'page')
     expect(ep).not.toBeDisabled()
   })
 
-  it('コレクションは押下可能で onNavigateCollection を発火する', () => {
+  it('作品オープン中の「マイライブラリ」は戻るリンクとして onNavigateCollection を発火する', () => {
     const onNavigateCollection = vi.fn()
     render(<SideNav {...baseProps} onNavigateCollection={onNavigateCollection} />)
-    const col = screen.getByRole('button', { name: 'コレクション' })
+    const col = screen.getByRole('button', { name: 'マイライブラリ' })
     expect(col).not.toBeDisabled()
     fireEvent.click(col)
     expect(onNavigateCollection).toHaveBeenCalledTimes(1)
@@ -110,32 +109,47 @@ describe('SideNav（サイドバー）', () => {
     expect(onNavigateGlossary).toHaveBeenCalledTimes(1)
   })
 
-  it('作品スコープカードに「現在の作品」見出しと作品名を表示する', () => {
-    render(<SideNav {...baseProps} workTitle="月と剣の物語" />)
-    const card = screen.getByRole('group', { name: '現在の作品' })
-    expect(card).toBeInTheDocument()
+  it('作品カードに作品名とメタ情報を表示する', () => {
+    render(<SideNav {...baseProps} workTitle="月と剣の物語" workMeta="3話 ・ 9,000字" />)
     expect(screen.getByText('月と剣の物語')).toBeInTheDocument()
+    expect(screen.getByText('3話 ・ 9,000字')).toBeInTheDocument()
   })
 
-  it('ライブラリ状態（workTitle 未指定）はエピソード/図鑑ボタンを出さず、空状態の案内を表示する', () => {
+  it('ライブラリ状態（workTitle 未指定）は本文を書く/図鑑を出さず、マイライブラリが active', () => {
     render(
       <SideNav
-        projectTitle="novel-studio"
-        projectSubtitle="ライブラリ"
         active="collection"
         onNavigateCollection={() => {}}
-        cta={{ label: '新しいプロジェクト', onClick: () => {} }}
+        cta={{ label: '新しい作品', onClick: () => {} }}
       />,
     )
-    // グレーアウトした兄弟ではなく、そもそも操作可能な行を出さない。
-    expect(screen.queryByRole('button', { name: 'エピソード' })).toBeNull()
+    expect(screen.queryByRole('button', { name: '本文を書く' })).toBeNull()
     expect(screen.queryByRole('button', { name: '図鑑' })).toBeNull()
-    // 作品を開けば使えることを案内する空状態。
-    expect(screen.getByText(/作品を開くと/)).toBeInTheDocument()
-    // コレクション（ホーム）はこの状態で active。
-    expect(screen.getByRole('button', { name: 'コレクション' })).toHaveAttribute(
+    expect(screen.getByRole('button', { name: 'マイライブラリ' })).toHaveAttribute(
       'aria-current',
       'page',
     )
+  })
+
+  it('プロフィール（ライブラリ状態）はペンネームを表示し、押下で onEditProfile を呼ぶ', () => {
+    const onEditProfile = vi.fn()
+    render(
+      <SideNav
+        active="collection"
+        onNavigateCollection={() => {}}
+        profile={{ penName: 'ぺんた' }}
+        onEditProfile={onEditProfile}
+      />,
+    )
+    const card = screen.getByRole('button', { name: 'プロフィールを編集' })
+    expect(card).toHaveTextContent('ぺんた')
+    fireEvent.click(card)
+    expect(onEditProfile).toHaveBeenCalledTimes(1)
+  })
+
+  it('設定・ヘルプは disabled で押せない', () => {
+    render(<SideNav active="collection" onNavigateCollection={() => {}} />)
+    expect(screen.getByRole('button', { name: '設定' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'ヘルプ' })).toBeDisabled()
   })
 })

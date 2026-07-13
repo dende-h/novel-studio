@@ -14,13 +14,13 @@ import { cn } from '@/lib/utils'
 import { AppShell } from '@/ui/components/AppShell/app-shell'
 import { SideNav } from '@/ui/components/SideNav/side-nav'
 
-/** 草の濃さ（level 0〜4）→ 緑。GitHub と同じく淡→濃で表す。 */
+/** 草の濃さ（level 0〜4）→ ブランドの forest 緑。GitHub と同じく淡→濃で表す。 */
 const LEVEL_BG: Record<HeatCell['level'], string> = {
-  0: 'bg-surface-container-highest',
-  1: 'bg-green-200',
-  2: 'bg-green-400',
-  3: 'bg-green-600',
-  4: 'bg-green-800',
+  0: 'bg-muted',
+  1: 'bg-forest-100',
+  2: 'bg-forest-400',
+  3: 'bg-forest-700',
+  4: 'bg-forest-900',
 }
 
 /** 曜日ラベル（日本語）。GitHub と同じく月・水・金だけ表示（0=日）。 */
@@ -73,47 +73,49 @@ export function ActivityPage({ repo, onNavigateCollection }: ActivityPageProps) 
       onBrandClick={onNavigateCollection}
       sidebar={
         <SideNav
-          projectTitle="novel-studio"
-          projectSubtitle="執筆の記録"
           active="activity"
           onNavigateCollection={onNavigateCollection}
           onNavigateActivity={() => {}}
         />
       }
     >
-      <div className="min-h-0 flex-1 overflow-y-auto px-8 py-10 md:px-16">
+      <div className="min-h-0 flex-1 overflow-y-auto px-8 py-9 md:px-10">
         <div className="mx-auto max-w-6xl pb-16">
-          <header className="mb-8">
-            <h1 className="font-serif text-2xl text-primary">執筆の記録</h1>
-            <p className="mt-1 text-on-surface-variant text-sm">
-              毎日の執筆量とつづけた日数を記録します。
+          <header className="mb-6">
+            <h1 className="font-semibold font-serif text-[26px] text-on-surface">執筆の記録</h1>
+            <p className="mt-1 text-[13px] text-on-surface-variant">
+              毎日の執筆量と、つづけた日数を記録します
             </p>
           </header>
 
           {/* サマリのカード群（通算・全期間） */}
-          <div className="mb-8 grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <div className="mb-6 grid grid-cols-2 gap-3.5 lg:grid-cols-4">
             <StatCard
-              icon={<Flame className="size-5 text-orange-500" />}
+              icon={<Flame className="size-[18px]" />}
+              tone="amber"
               label="連続執筆日数"
               value={`${summary.streak}`}
               unit="日"
               hint={summary.streak > 0 ? '継続中！' : '今日から始めよう'}
             />
             <StatCard
-              icon={<PenLine className="size-5 text-primary" />}
+              icon={<PenLine className="size-[18px]" />}
+              tone="green"
               label="今日書いた文字"
               value={summary.today.toLocaleString('ja-JP')}
               unit="字"
             />
             <StatCard
-              icon={<CalendarDays className="size-5 text-primary" />}
+              icon={<CalendarDays className="size-[18px]" />}
+              tone="blue"
               label="活動した日数"
               value={`${summary.activeDays}`}
               unit="日"
               hint={`最長 ${summary.longest} 日連続`}
             />
             <StatCard
-              icon={<Sigma className="size-5 text-primary" />}
+              icon={<Sigma className="size-[18px]" />}
+              tone="green"
               label="通算の増減"
               value={summary.totalNet.toLocaleString('ja-JP')}
               unit="字"
@@ -121,7 +123,7 @@ export function ActivityPage({ repo, onNavigateCollection }: ActivityPageProps) 
           </div>
 
           {/* 草（年カレンダー） */}
-          <section className="rounded-xl border border-outline-variant/30 bg-surface-container-low p-4 lg:p-6">
+          <section className="rounded-lg border border-outline-variant/30 bg-surface-container-lowest p-5 lg:p-6">
             <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
               <p className="font-sans text-on-surface text-sm">
                 <strong>{year}年</strong>は {yearStat.activeDays}日 書きました
@@ -218,30 +220,46 @@ export function ActivityPage({ repo, onNavigateCollection }: ActivityPageProps) 
   )
 }
 
+/** アイコンタイルのトーン（デザインシステムの status カラー）。 */
+const STAT_TONE: Record<'amber' | 'green' | 'blue', string> = {
+  amber: 'bg-orange-50 text-orange-500',
+  green: 'bg-accent text-primary',
+  blue: 'bg-blue-50 text-blue-600',
+}
+
 function StatCard({
   icon,
+  tone,
   label,
   value,
   unit,
   hint,
 }: {
   icon: React.ReactNode
+  tone: 'amber' | 'green' | 'blue'
   label: string
   value: string
   unit: string
   hint?: string
 }) {
   return (
-    <div className="rounded-xl border border-outline-variant/30 bg-surface-container-low p-4">
-      <div className="mb-1 flex items-center gap-2">
-        {icon}
-        <span className="font-sans text-on-surface-variant text-xs">{label}</span>
+    <div className="rounded-lg border border-outline-variant/30 bg-surface-container-lowest p-4">
+      <div className="mb-2.5 flex items-center gap-2.5">
+        <span
+          className={cn(
+            'flex size-9 shrink-0 items-center justify-center rounded-lg',
+            STAT_TONE[tone],
+          )}
+        >
+          {icon}
+        </span>
+        <span className="font-sans text-[12px] text-on-surface-variant">{label}</span>
       </div>
       <div className="font-serif text-on-surface">
-        <span className="text-2xl">{value}</span>
-        <span className="ml-1 text-on-surface-variant text-sm">{unit}</span>
+        <span className="text-[24px]">{value}</span>
+        <span className="ml-1 text-[13px] text-on-surface-variant">{unit}</span>
       </div>
-      {hint && <p className="mt-0.5 text-on-surface-variant text-xs">{hint}</p>}
+      {hint && <p className="mt-0.5 text-[11px] text-on-surface-variant">{hint}</p>}
     </div>
   )
 }

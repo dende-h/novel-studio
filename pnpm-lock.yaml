@@ -26,6 +26,9 @@ importers:
       '@fontsource-variable/source-serif-4':
         specifier: 5.2.9
         version: 5.2.9
+      '@fontsource/shippori-mincho-b1':
+        specifier: 5.2.8
+        version: 5.2.8
       class-variance-authority:
         specifier: 0.7.1
         version: 0.7.1
@@ -952,6 +955,9 @@ packages:
 
   '@fontsource-variable/source-serif-4@5.2.9':
     resolution: {integrity: sha512-PPcxjLFk/fS0WHg79pDM2YNvz61kC+oYZ5cWZZyCS0DHpJncmuYOuiZAsvj4tDxlWPBEvxxcRLQQNmSaRbPkqw==}
+
+  '@fontsource/shippori-mincho-b1@5.2.8':
+    resolution: {integrity: sha512-o1cB1SkgmEebPvrayqlewc9KZCI8dOwq6gxVDIL8JKGGCoiW2XSDfZIA2rPlQXofjeCQj4h+7y+/8gMtPqoR9g==}
 
   '@img/colour@1.1.0':
     resolution: {integrity: sha512-Td76q7j57o/tLVdgS746cYARfSyxk8iEfRxewL9h4OMzYhbW4TAcppl0mT4eyqXddh6L/jwoM75mo7ixa/pCeQ==}
@@ -4670,6 +4676,8 @@ snapshots:
   '@fontsource-variable/noto-serif-jp@5.2.9': {}
 
   '@fontsource-variable/source-serif-4@5.2.9': {}
+
+  '@fontsource/shippori-mincho-b1@5.2.8': {}
 
   '@img/colour@1.1.0': {}
 

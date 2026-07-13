@@ -1,24 +1,19 @@
 import type { WorkSummary } from '@/core/storage/workRepository'
+import { coverTone } from '@/ui/_utils/cover-tone'
 import { formatCount, formatRelative } from '@/ui/_utils/format'
 import { Badge } from '@/ui/components/ui/badge'
-import {
-  Card,
-  CardAction,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from '@/ui/components/ui/card'
-import { ZoomableImage } from '@/ui/components/ui/zoomable-image'
-import { type ProjectActionHandlers, SecondaryActions, WriteButton } from './project-actions'
+import type { ProjectActionHandlers } from './project-actions'
+import { ProjectMenu } from './project-menu'
 
 interface ProjectCardProps extends ProjectActionHandlers {
   summary: WorkSummary
   now: number
 }
 
-/** ライブラリの作品カード（タイトル・話数・文字数・最終編集・操作）。 */
+/**
+ * ライブラリの作品カード（本の表紙型）。カード全体のクリックで執筆へ、
+ * 副次操作（書き出し・情報を編集・ゴミ箱へ移動）は右下のケバブメニューに集約する。
+ */
 export function ProjectCard({
   summary,
   now,
@@ -27,38 +22,68 @@ export function ProjectCard({
   onEditMeta,
   onDelete,
 }: ProjectCardProps) {
-  const { title, episodeCount, charCount, author, updatedAt, coverImage } = summary
+  const { id, title, episodeCount, charCount, updatedAt, coverImage } = summary
   return (
-    <Card className="min-h-[220px] justify-between gap-4 transition-colors hover:bg-surface-container-low">
-      <CardHeader>
-        <CardTitle className="font-serif text-on-surface text-xl">{title}</CardTitle>
-        <CardAction>
-          <Badge variant="secondary" className="font-sans uppercase tracking-wider">
+    <article className="group relative flex flex-col rounded-lg border border-outline-variant/30 bg-surface-container-lowest transition-all hover:border-outline-variant/50 hover:shadow-md">
+      {/* カード全体クリック＝執筆（透明オーバーレイ。ケバブだけ上層で操作可能にする） */}
+      <button
+        type="button"
+        onClick={onWrite}
+        aria-label={`「${title}」を執筆`}
+        className="absolute inset-0 z-0 rounded-lg outline-ring/50 focus-visible:outline-2"
+      />
+
+      {/* 表紙 */}
+      <div className="pointer-events-none p-2.5 pb-0">
+        <div
+          className="relative aspect-[3/4] overflow-hidden rounded-md border border-outline-variant/30"
+          style={{ background: coverTone(id) }}
+        >
+          {coverImage ? (
+            <img src={coverImage} alt="" className="absolute inset-0 size-full object-cover" />
+          ) : (
+            <>
+              <div className="absolute inset-0 flex items-center justify-center px-3 py-4">
+                <div className="max-h-full max-w-full overflow-hidden font-medium font-serif text-[15px] text-on-surface leading-[1.9] tracking-[0.16em] [writing-mode:vertical-rl]">
+                  {title}
+                </div>
+              </div>
+              <div className="absolute bottom-2 left-2.5 font-serif text-[9px] text-on-surface-variant/50 tracking-[0.08em]">
+                novel-studio
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* メタ */}
+      <div className="pointer-events-none flex flex-col gap-1.5 px-3 pt-2.5 pb-3">
+        <div className="flex items-center gap-1.5">
+          <h3 className="min-w-0 flex-1 truncate font-medium font-sans text-[13px] text-on-surface">
+            {title}
+          </h3>
+          <span className="pointer-events-auto z-10">
+            <ProjectMenu
+              title={title}
+              onExport={onExport}
+              onEditMeta={onEditMeta}
+              onDelete={onDelete}
+            />
+          </span>
+        </div>
+        <div className="flex items-center gap-2">
+          <Badge
+            variant="secondary"
+            className="bg-primary-container font-sans text-on-primary-container"
+          >
             {episodeCount}話
           </Badge>
-        </CardAction>
-        <CardDescription className="font-sans uppercase tracking-wider">
-          {updatedAt ? `${formatRelative(updatedAt, now)}に編集` : '未保存'}
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-3">
-        {coverImage ? (
-          <ZoomableImage
-            src={coverImage}
-            alt="表紙"
-            className="h-40 w-auto max-w-full rounded-md border border-outline-variant/20 object-contain"
-            wrapperClassName="mx-auto"
-          />
-        ) : null}
-        <div className="font-sans text-on-surface-variant text-sm">
-          {author ? <span className="mr-3">著者: {author}</span> : null}
-          {formatCount(charCount)} 文字
+          <span className="text-[11px] text-on-surface-variant">{formatCount(charCount)}字</span>
         </div>
-      </CardContent>
-      <CardFooter className="mt-auto items-center justify-between border-outline-variant/20 border-t pt-4">
-        <WriteButton onWrite={onWrite} />
-        <SecondaryActions onExport={onExport} onEditMeta={onEditMeta} onDelete={onDelete} />
-      </CardFooter>
-    </Card>
+        <div className="text-[11px] text-on-surface-variant/70">
+          {updatedAt ? `${formatRelative(updatedAt, now)}に編集` : '未保存'}
+        </div>
+      </div>
+    </article>
   )
 }

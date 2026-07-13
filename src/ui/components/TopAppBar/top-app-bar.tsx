@@ -26,6 +26,8 @@ interface TopAppBarProps {
   /** ブランド名（製品識別）。クリックで入口へ戻す。 */
   brand?: string
   onBrandClick?: () => void
+  /** 開いている作品のタイトル（パンくず）。指定時のみブランド横に表示。 */
+  workTitle?: string
   /** 編集中のみ保存状態を表示 */
   saveStatus?: SaveState
   /** 書き出しダイアログを開く。未指定なら非表示 */
@@ -107,10 +109,11 @@ function AccountControl() {
   return null
 }
 
-/** 全画面共通のトップバー（ブランド・保存状態・履歴・書き出し）。 */
+/** 全画面共通のトップバー（ブランド・作品パンくず・保存状態・履歴・書き出し）。 */
 export function TopAppBar({
   brand = 'novel-studio',
   onBrandClick,
+  workTitle,
   saveStatus,
   onExport,
   exportDisabled,
@@ -118,36 +121,50 @@ export function TopAppBar({
   historyOpen,
 }: TopAppBarProps) {
   return (
-    <header className="flex h-16 shrink-0 items-center justify-between border-outline-variant/30 border-b bg-surface/80 px-gutter backdrop-blur-md">
-      <div className="flex items-center gap-6">
+    <header className="flex h-14 shrink-0 items-center justify-between border-outline-variant/30 border-b bg-surface-container-lowest px-5">
+      <div className="flex min-w-0 items-center gap-3.5">
         <button
           type="button"
           onClick={onBrandClick}
           disabled={!onBrandClick}
-          className="font-semibold font-serif text-2xl text-primary transition-opacity hover:opacity-80 disabled:cursor-default disabled:hover:opacity-100"
+          className="whitespace-nowrap font-bold font-serif text-[19px] text-on-surface tracking-[0.01em] transition-opacity hover:opacity-80 disabled:cursor-default disabled:hover:opacity-100"
         >
           {brand}
         </button>
+        {workTitle ? (
+          <span className="flex min-w-0 items-center gap-2 text-on-surface-variant text-xs">
+            <span aria-hidden="true" className="text-outline-variant">
+              ／
+            </span>
+            <span className="truncate">{workTitle}</span>
+          </span>
+        ) : null}
       </div>
-      <div className="flex items-center gap-4">
+      <div className="flex items-center gap-3">
         {saveStatus ? <SaveIndicator {...saveStatus} /> : null}
         {onToggleHistory ? (
-          <Button
-            variant="ghost"
-            size="icon"
+          <button
+            type="button"
             onClick={onToggleHistory}
             aria-label="履歴"
             aria-pressed={historyOpen}
+            title="ローカル・セーフティネット（版履歴）"
             className={cn(
-              'text-on-surface-variant hover:text-primary',
-              historyOpen && 'bg-primary/10 text-primary',
+              'flex size-8 items-center justify-center rounded-full border border-outline-variant/40 text-on-surface-variant transition-colors hover:bg-surface-container-low hover:text-on-surface',
+              historyOpen && 'border-primary/40 bg-primary/10 text-primary',
             )}
           >
-            <History className="size-5" aria-hidden />
-          </Button>
+            <History className="size-4" aria-hidden />
+          </button>
         ) : null}
         {onExport ? (
-          <Button onClick={onExport} disabled={exportDisabled} className="gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={onExport}
+            disabled={exportDisabled}
+            className="gap-2"
+          >
             <Download className="size-4" aria-hidden />
             書き出し
           </Button>

@@ -11,12 +11,13 @@ import {
 import { Badge } from '@/ui/components/ui/badge'
 import { Button } from '@/ui/components/ui/button'
 import { Input } from '@/ui/components/ui/input'
-import { ScrollArea } from '@/ui/components/ui/scroll-area'
 import { ZoomableImage } from '@/ui/components/ui/zoomable-image'
 import { RenameEntryDialog } from './rename-entry-dialog'
 
 interface GlossaryViewProps {
   entries: GlossaryEntry[]
+  /** 開いている作品のタイトル（サブタイトル表示用・任意）。 */
+  workTitle?: string
   /** entry の登場話数・参照回数（findAppearances を App が束縛して渡す）。 */
   getAppearances: (entry: GlossaryEntry) => Appearances
   onCreate: (values: GlossaryFormValues) => Promise<void> | void
@@ -28,6 +29,7 @@ interface GlossaryViewProps {
 /** @参照／オブジェクト辞書のメイン画面（一覧・検索・カテゴリ絞り込み・CRUD）。 */
 export function GlossaryView({
   entries,
+  workTitle,
   getAppearances,
   onCreate,
   onUpdate,
@@ -49,23 +51,27 @@ export function GlossaryView({
   }, [entries, query, category])
 
   return (
-    <div className="flex h-full min-w-0 flex-1 flex-col bg-surface">
-      {/* ヘッダ */}
-      <header className="flex items-center justify-between gap-4 border-outline-variant/20 border-b px-8 py-5">
-        <div>
-          <h1 className="font-bold font-serif text-on-surface text-xl">図鑑</h1>
-          <p className="text-on-surface-variant text-xs">
-            {entries.length > 0 ? `${entries.length} 項目` : '本文に [[名前]] で参照できる項目'}
-          </p>
-        </div>
-        <Button onClick={() => setCreateOpen(true)} className="gap-2">
-          <Plus className="size-4" />
-          新規
-        </Button>
-      </header>
+    <div className="min-h-0 min-w-0 flex-1 overflow-y-auto bg-surface">
+      <div className="mx-auto flex max-w-[980px] flex-col gap-4 px-8 py-9 pb-16 md:px-10">
+        {/* ヘッダ */}
+        <header className="flex flex-wrap items-end justify-between gap-4">
+          <div>
+            <h1 className="font-semibold font-serif text-[26px] text-on-surface">図鑑</h1>
+            <p className="mt-1 text-[13px] text-on-surface-variant">
+              {workTitle
+                ? `「${workTitle}」の人物・場所・用語 ・ ${entries.length}項目`
+                : entries.length > 0
+                  ? `${entries.length}項目`
+                  : '本文に [[名前]] で参照できる項目'}
+            </p>
+          </div>
+          <Button onClick={() => setCreateOpen(true)} className="gap-2">
+            <Plus className="size-4" />
+            新しく登録
+          </Button>
+        </header>
 
-      {/* 検索＋カテゴリ絞り込み */}
-      <div className="space-y-3 border-outline-variant/20 border-b px-8 py-4">
+        {/* 検索＋カテゴリ絞り込み */}
         <div className="relative">
           <Search className="-translate-y-1/2 absolute top-1/2 left-3 size-4 text-on-surface-variant/60" />
           <Input
@@ -73,12 +79,12 @@ export function GlossaryView({
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="名前・別名・読みで検索"
-            className="pl-9"
+            className="h-[42px] pl-9"
           />
         </div>
         {categories.length > 0 ? (
           <fieldset
-            className="m-0 flex min-w-0 flex-wrap items-center gap-2 border-0 p-0"
+            className="m-0 flex min-w-0 flex-wrap items-center gap-1.5 border-0 p-0"
             aria-label="カテゴリで絞り込み"
           >
             <FilterChip
@@ -96,33 +102,29 @@ export function GlossaryView({
             ))}
           </fieldset>
         ) : null}
-      </div>
 
-      {/* 一覧 */}
-      <ScrollArea className="min-h-0 flex-1">
-        <div className="px-8 py-6">
-          {visible.length === 0 ? (
-            <p className="py-16 text-center text-on-surface-variant text-sm">
-              {entries.length === 0
-                ? 'まだ図鑑がありません。「新規」または本文の @ から追加できます。'
-                : '該当する項目がありません。'}
-            </p>
-          ) : (
-            <ul className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-              {visible.map((entry) => (
-                <EntryCard
-                  key={entry.id}
-                  entry={entry}
-                  appearances={getAppearances(entry)}
-                  onEdit={() => setEditTarget(entry)}
-                  onRename={() => setRenameTarget(entry)}
-                  onDelete={() => setDeleteTarget(entry)}
-                />
-              ))}
-            </ul>
-          )}
-        </div>
-      </ScrollArea>
+        {/* 一覧 */}
+        {visible.length === 0 ? (
+          <p className="py-14 text-center text-[13px] text-on-surface-variant">
+            {entries.length === 0
+              ? 'まだ図鑑がありません。「新しく登録」または本文の @ から追加できます。'
+              : '条件に合う項目がありません。'}
+          </p>
+        ) : (
+          <ul className="grid grid-cols-[repeat(auto-fill,minmax(250px,1fr))] gap-3.5">
+            {visible.map((entry) => (
+              <EntryCard
+                key={entry.id}
+                entry={entry}
+                appearances={getAppearances(entry)}
+                onEdit={() => setEditTarget(entry)}
+                onRename={() => setRenameTarget(entry)}
+                onDelete={() => setDeleteTarget(entry)}
+              />
+            ))}
+          </ul>
+        )}
+      </div>
 
       {/* 新規作成 */}
       <GlossaryEntryForm
@@ -194,7 +196,7 @@ function FilterChip({
       className={cn(
         'rounded-full border px-3 py-1 font-sans text-xs transition-colors',
         active
-          ? 'border-primary bg-primary/10 text-primary'
+          ? 'border-primary bg-primary text-white'
           : 'border-outline-variant/40 text-on-surface-variant hover:bg-surface-container-high',
       )}
     >
@@ -217,32 +219,52 @@ function EntryCard({
   onDelete: () => void
 }) {
   const used = appearances.refCount > 0
+  const initial = entry.name.trim().charAt(0) || '？'
   return (
-    <li className="group flex flex-col gap-2 rounded-lg border border-outline-variant/20 bg-surface-container-lowest p-4 transition-colors hover:border-outline-variant/40">
-      <div className="flex items-start justify-between gap-2">
-        <div className="flex min-w-0 items-start gap-3">
-          {entry.thumbnail ? (
-            <ZoomableImage
-              src={entry.thumbnail}
-              alt={entry.name}
-              className="size-12 rounded-md border border-outline-variant/20 object-cover"
-            />
-          ) : null}
-          <div className="min-w-0">
-            <div className="flex items-baseline gap-2">
-              <h3 className="truncate font-medium font-serif text-base text-on-surface">
-                {entry.name}
-              </h3>
-              {entry.reading ? (
-                <span className="shrink-0 text-on-surface-variant/70 text-xs">{entry.reading}</span>
-              ) : null}
-            </div>
+    <li className="group flex flex-col gap-2.5 rounded-lg border border-outline-variant/30 bg-surface-container-lowest p-3.5 transition-all hover:border-outline-variant/50 hover:shadow-sm">
+      <div className="flex items-center gap-3">
+        {/* 頭文字タイル（画像があれば画像） */}
+        {entry.thumbnail ? (
+          <ZoomableImage
+            src={entry.thumbnail}
+            alt={entry.name}
+            className="size-[52px] rounded-lg border border-outline-variant/30 object-cover"
+            wrapperClassName="shrink-0"
+          />
+        ) : (
+          <div
+            aria-hidden="true"
+            className="flex size-[52px] shrink-0 items-center justify-center rounded-lg border border-outline-variant/30 bg-accent font-serif text-[20px] text-primary"
+          >
+            {initial}
+          </div>
+        )}
+        <div className="flex min-w-0 flex-1 flex-col gap-1">
+          <div className="flex items-baseline gap-2">
+            <h3 className="truncate font-semibold font-serif text-[16px] text-on-surface">
+              {entry.name}
+            </h3>
+            {entry.reading ? (
+              <span className="shrink-0 text-[11px] text-on-surface-variant/70">
+                {entry.reading}
+              </span>
+            ) : null}
+          </div>
+          <div className="flex items-center gap-2">
             {entry.category ? (
-              <Badge variant="secondary" className="mt-1 gap-1">
+              <Badge
+                variant="secondary"
+                className="gap-1 bg-primary-container text-on-primary-container"
+              >
                 <Tag className="size-3" />
                 {entry.category}
               </Badge>
             ) : null}
+            <span className="text-[11px] text-on-surface-variant/70">
+              {used
+                ? `${appearances.episodeIds.length}話・${appearances.refCount}回 登場`
+                : '未使用'}
+            </span>
           </div>
         </div>
         {/* 行内アクション（ホバー/フォーカスで出現） */}
@@ -258,14 +280,11 @@ function EntryCard({
           </IconAction>
         </div>
       </div>
-      {entry.aliases.length > 0 ? (
-        <p className="truncate text-on-surface-variant text-xs">別名: {entry.aliases.join('、')}</p>
-      ) : null}
-      {entry.summary ? (
-        <p className="line-clamp-2 text-on-surface-variant text-sm">{entry.summary}</p>
-      ) : null}
-      <p className="mt-auto text-on-surface-variant/70 text-xs">
-        {used ? `${appearances.episodeIds.length}話・${appearances.refCount}回 登場` : '未使用'}
+      <p className="truncate text-[12px] text-on-surface-variant">
+        別名: {entry.aliases.length > 0 ? entry.aliases.join('、') : 'なし'}
+      </p>
+      <p className="line-clamp-2 min-h-[40px] text-[12px] text-on-surface-variant leading-relaxed">
+        {entry.summary || '説明はまだありません。'}
       </p>
     </li>
   )

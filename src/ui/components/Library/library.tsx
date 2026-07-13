@@ -1,5 +1,16 @@
-import { Bot, CloudDownload, Database, LayoutGrid, List, Plus, Trash2, Upload } from 'lucide-react'
-import { useState } from 'react'
+import {
+  Bot,
+  CloudUpload,
+  Database,
+  Download,
+  LayoutGrid,
+  List,
+  Plus,
+  Search,
+  Trash2,
+  Upload,
+} from 'lucide-react'
+import { useId, useMemo, useState } from 'react'
 import type { WorkSummary } from '@/core/storage/workRepository'
 import { cn } from '@/lib/utils'
 import { triggerDownload } from '@/ui/_utils/download'
@@ -37,6 +48,32 @@ interface LibraryProps {
   onOpenActivity?: () => void
 }
 
+/** データ管理メニューの 1 項目。 */
+function DataMenuItem({
+  icon,
+  label,
+  onClick,
+  disabled,
+}: {
+  icon: React.ReactNode
+  label: string
+  onClick: () => void
+  disabled?: boolean
+}) {
+  return (
+    <button
+      type="button"
+      role="menuitem"
+      onClick={onClick}
+      disabled={disabled}
+      className="flex items-center gap-2.5 rounded-md px-3 py-2 text-left text-[13px] text-on-surface transition-colors hover:bg-surface-container-low disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent"
+    >
+      {icon}
+      {label}
+    </button>
+  )
+}
+
 /** 入口＝マイライブラリ（作品グリッド）。 */
 export function Library({
   store,
@@ -61,7 +98,17 @@ export function Library({
       return 'card'
     }
   })
+  // 作品名の絞り込み（タイトル部分一致・大文字小文字無視）。
+  const [query, setQuery] = useState('')
+  const [dataMenuOpen, setDataMenuOpen] = useState(false)
+  const dataMenuId = useId()
   const now = Date.now()
+
+  const visibleWorks = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    if (q === '') return state.workList
+    return state.workList.filter((w) => w.title.toLowerCase().includes(q))
+  }, [state.workList, query])
 
   const changeView = (next: LibraryView) => {
     setView(next)
@@ -97,40 +144,53 @@ export function Library({
     <AppShell
       sidebar={
         <SideNav
-          projectTitle="novel-studio"
-          projectSubtitle="ライブラリ"
           active="collection"
           onNavigateCollection={() => {}}
           onNavigateActivity={onOpenActivity}
-          cta={{ label: '新しいプロジェクト', onClick: () => setNewOpen(true) }}
+          cta={{ label: '新しい作品', onClick: () => setNewOpen(true) }}
           profile={state.profile}
           onEditProfile={() => setProfileOpen(true)}
         />
       }
     >
-      <div className="min-h-0 flex-1 overflow-y-auto px-8 py-10 md:px-16">
-        <div className="mx-auto max-w-5xl pb-16">
-          <header className="mb-10 flex items-end justify-between border-outline-variant/30 border-b pb-4">
+      <div className="min-h-0 flex-1 overflow-y-auto px-8 py-9 md:px-10">
+        <div className="mx-auto max-w-[1120px] pb-16">
+          <header className="mb-6 flex flex-wrap items-end justify-between gap-4">
             <div>
-              <h1 className="mb-1 font-serif text-4xl text-on-surface">マイライブラリ</h1>
-              <p className="text-on-surface-variant">執筆中の原稿と下書き</p>
+              <h1 className="font-semibold font-serif text-[26px] text-on-surface">
+                マイライブラリ
+              </h1>
+              <p className="mt-1 text-[13px] text-on-surface-variant">執筆中の原稿と下書き</p>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
+              {/* 作品名で検索（タイトル部分一致） */}
+              <div className="relative">
+                <Search className="-translate-y-1/2 absolute top-1/2 left-2.5 size-3.5 text-on-surface-variant/60" />
+                <input
+                  type="search"
+                  aria-label="作品名で検索"
+                  placeholder="作品名で検索"
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  className="h-[34px] w-[200px] rounded-md border border-outline-variant/40 bg-surface-container-lowest pr-3 pl-8 font-sans text-[13px] text-on-surface outline-none transition-colors placeholder:text-on-surface-variant/50 focus:border-primary"
+                />
+              </div>
               {state.workList.length > 0 && (
-                <div className="flex items-center rounded-md border border-outline-variant/40 p-0.5">
+                <div className="flex items-center gap-1">
                   <button
                     type="button"
                     aria-label="カード表示"
                     aria-pressed={view === 'card'}
                     onClick={() => changeView('card')}
                     className={cn(
-                      'rounded p-1.5 transition-colors',
+                      'flex h-[26px] items-center gap-1 rounded-md px-2.5 font-sans text-xs transition-colors',
                       view === 'card'
-                        ? 'bg-surface-container-highest text-primary'
-                        : 'text-on-surface-variant hover:text-primary',
+                        ? 'bg-primary text-white'
+                        : 'text-on-surface-variant hover:bg-surface-container-high',
                     )}
                   >
-                    <LayoutGrid className="size-4" />
+                    <LayoutGrid className="size-3.5" />
+                    カード
                   </button>
                   <button
                     type="button"
@@ -138,69 +198,107 @@ export function Library({
                     aria-pressed={view === 'list'}
                     onClick={() => changeView('list')}
                     className={cn(
-                      'rounded p-1.5 transition-colors',
+                      'flex h-[26px] items-center gap-1 rounded-md px-2.5 font-sans text-xs transition-colors',
                       view === 'list'
-                        ? 'bg-surface-container-highest text-primary'
-                        : 'text-on-surface-variant hover:text-primary',
+                        ? 'bg-primary text-white'
+                        : 'text-on-surface-variant hover:bg-surface-container-high',
                     )}
                   >
-                    <List className="size-4" />
+                    <List className="size-3.5" />
+                    リスト
                   </button>
                 </div>
               )}
               {state.trashList.length > 0 && (
                 <Button
                   variant="ghost"
+                  size="sm"
                   onClick={() => setTrashOpen(true)}
-                  className="gap-2 text-on-surface-variant"
+                  className="gap-1.5 text-on-surface-variant"
                 >
                   <Trash2 className="size-4" />
-                  ゴミ箱
-                  <span className="rounded-full bg-surface-container-highest px-1.5 text-xs">
-                    {state.trashList.length}
-                  </span>
+                  ゴミ箱・{state.trashList.length}
                 </Button>
               )}
-              {state.workList.length > 0 && (
+              {/* データ管理（バックアップ・取り込み・クラウド・AI 接続をまとめる） */}
+              <div className="relative">
                 <Button
                   variant="outline"
-                  onClick={() => setBackupOpen(true)}
-                  className="gap-2 text-primary"
+                  size="sm"
+                  aria-haspopup="menu"
+                  aria-expanded={dataMenuOpen}
+                  aria-controls={dataMenuOpen ? dataMenuId : undefined}
+                  onClick={() => setDataMenuOpen((v) => !v)}
+                  className="gap-2"
                 >
                   <Database className="size-4" />
-                  バックアップ
+                  データ管理
                 </Button>
-              )}
-              <Button
-                variant="outline"
-                onClick={() => setImportOpen(true)}
-                className="gap-2 text-primary"
-              >
-                <Upload className="size-4" />
-                取り込み
-              </Button>
-              {onOpenCloudBackup && (
-                <Button
-                  variant="outline"
-                  onClick={onOpenCloudBackup}
-                  className="gap-2 text-primary"
-                >
-                  <CloudDownload className="size-4" />
-                  クラウドバックアップ
-                </Button>
-              )}
-              {onOpenMcp && (
-                <Button variant="outline" onClick={onOpenMcp} className="gap-2 text-primary">
-                  <Bot className="size-4" />
-                  AI に接続
-                </Button>
-              )}
+                {dataMenuOpen ? (
+                  <>
+                    <button
+                      type="button"
+                      aria-label="メニューを閉じる"
+                      tabIndex={-1}
+                      onClick={() => setDataMenuOpen(false)}
+                      className="fixed inset-0 z-40 cursor-default"
+                    />
+                    <div
+                      role="menu"
+                      id={dataMenuId}
+                      className="absolute right-0 top-10 z-50 flex w-[230px] flex-col rounded-lg border border-outline-variant/30 bg-surface-container-lowest p-1.5 font-sans shadow-lg"
+                    >
+                      <DataMenuItem
+                        icon={<Download className="size-[15px]" />}
+                        label="バックアップを書き出し"
+                        disabled={state.workList.length === 0}
+                        onClick={() => {
+                          setDataMenuOpen(false)
+                          setBackupOpen(true)
+                        }}
+                      />
+                      <DataMenuItem
+                        icon={<Upload className="size-[15px]" />}
+                        label="バックアップを取り込み"
+                        onClick={() => {
+                          setDataMenuOpen(false)
+                          setImportOpen(true)
+                        }}
+                      />
+                      {onOpenCloudBackup ? (
+                        <DataMenuItem
+                          icon={<CloudUpload className="size-[15px]" />}
+                          label="クラウドバックアップ"
+                          onClick={() => {
+                            setDataMenuOpen(false)
+                            onOpenCloudBackup()
+                          }}
+                        />
+                      ) : null}
+                      {onOpenMcp ? (
+                        <DataMenuItem
+                          icon={<Bot className="size-[15px]" />}
+                          label="AI に接続（MCP）"
+                          onClick={() => {
+                            setDataMenuOpen(false)
+                            onOpenMcp()
+                          }}
+                        />
+                      ) : null}
+                    </div>
+                  </>
+                ) : null}
+              </div>
             </div>
           </header>
 
-          {view === 'card' ? (
-            <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-              {state.workList.map((w) => (
+          {query.trim() !== '' && visibleWorks.length === 0 ? (
+            <p className="py-16 text-center text-[13px] text-on-surface-variant">
+              「{query.trim()}」に一致する作品がありません。
+            </p>
+          ) : view === 'card' ? (
+            <div className="grid grid-cols-[repeat(auto-fill,minmax(176px,1fr))] gap-5">
+              {visibleWorks.map((w) => (
                 <ProjectCard key={w.id} {...itemProps(w)} />
               ))}
 
@@ -208,20 +306,16 @@ export function Library({
               <button
                 type="button"
                 onClick={() => setNewOpen(true)}
-                className="group flex min-h-[220px] flex-col items-center justify-center rounded-xl border-2 border-outline-variant/50 border-dashed font-sans text-on-surface-variant transition-colors hover:bg-surface-container-low"
+                className="flex min-h-[300px] flex-col items-center justify-center gap-2.5 rounded-lg border-[1.5px] border-outline-variant/50 border-dashed font-sans text-on-surface-variant transition-colors hover:border-primary hover:bg-accent hover:text-primary"
               >
-                <div className="mb-4 flex size-12 items-center justify-center rounded-full bg-surface-container-highest transition-colors group-hover:bg-primary group-hover:text-on-primary">
-                  <Plus className="size-5" />
-                </div>
-                <h3 className="font-semibold font-serif text-lg text-on-surface">
-                  新規プロジェクト
-                </h3>
-                <p className="text-sm">白紙から始める</p>
+                <Plus className="size-[22px]" />
+                <span className="font-medium text-[13px]">新規プロジェクト</span>
+                <span className="text-[11px] text-on-surface-variant/60">白紙から始める</span>
               </button>
             </div>
           ) : (
-            <div className="flex flex-col gap-2">
-              {state.workList.map((w) => (
+            <div className="overflow-visible rounded-lg border border-outline-variant/30 bg-surface-container-lowest">
+              {visibleWorks.map((w) => (
                 <ProjectRow key={w.id} {...itemProps(w)} />
               ))}
 
@@ -229,9 +323,9 @@ export function Library({
               <button
                 type="button"
                 onClick={() => setNewOpen(true)}
-                className="group flex items-center justify-center gap-2 rounded-lg border-2 border-outline-variant/50 border-dashed py-3 font-sans text-on-surface-variant transition-colors hover:bg-surface-container-low"
+                className="flex w-full items-center justify-center gap-2 py-3.5 font-sans text-[13px] text-on-surface-variant transition-colors hover:bg-accent hover:text-primary"
               >
-                <Plus className="size-4" />
+                <Plus className="size-[15px]" />
                 新規プロジェクト
               </button>
             </div>

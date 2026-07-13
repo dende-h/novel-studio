@@ -133,8 +133,8 @@ export function GlossaryEntryForm({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle className="font-serif text-primary">
-            {isEdit ? '図鑑項目を編集' : '図鑑に追加'}
+          <DialogTitle className="font-serif text-on-surface">
+            {isEdit ? '図鑑項目を編集' : '図鑑に登録'}
           </DialogTitle>
           <DialogDescription>
             {isEdit

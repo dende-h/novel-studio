@@ -3,6 +3,8 @@ import { type SaveState, TopAppBar } from '@/ui/components/TopAppBar/top-app-bar
 
 interface AppShellProps {
   onBrandClick?: () => void
+  /** ヘッダーのパンくずに出す作品タイトル（任意） */
+  workTitle?: string
   saveStatus?: SaveState
   onExport?: () => void
   exportDisabled?: boolean
@@ -22,6 +24,7 @@ interface AppShellProps {
 /** トップバー＋サイドバー＋メイン（＋任意の右ペイン）の共通レイアウト。 */
 export function AppShell({
   onBrandClick,
+  workTitle,
   saveStatus,
   onExport,
   exportDisabled,
@@ -36,6 +39,7 @@ export function AppShell({
     <div className="flex h-dvh flex-col bg-background text-foreground">
       <TopAppBar
         onBrandClick={onBrandClick}
+        workTitle={workTitle}
         saveStatus={saveStatus}
         onExport={onExport}
         exportDisabled={exportDisabled}

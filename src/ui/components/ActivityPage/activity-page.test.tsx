@@ -34,10 +34,10 @@ describe('ActivityPage', () => {
     expect(screen.getByText('通算の増減').parentElement?.parentElement).toHaveTextContent('800')
   })
 
-  it('左サイドバーの「コレクション」でライブラリへ戻る', async () => {
+  it('左サイドバーの「マイライブラリ」でライブラリへ戻る', async () => {
     const onNavigateCollection = vi.fn()
     render(<ActivityPage repo={fakeRepo([])} onNavigateCollection={onNavigateCollection} />)
-    fireEvent.click(await screen.findByText('コレクション'))
+    fireEvent.click(await screen.findByText('マイライブラリ'))
     expect(onNavigateCollection).toHaveBeenCalled()
   })
 

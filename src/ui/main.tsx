@@ -5,6 +5,11 @@ import '@fontsource-variable/source-serif-4'
 // unicode-range の subset 分割により、実配信は描画に必要な subset だけが遅延ロードされる。
 import '@fontsource-variable/noto-sans-jp'
 import '@fontsource-variable/noto-serif-jp'
+// 見出し・作品タイトル用のディスプレイ明朝（デザインシステム指定）。本文プレビューは
+// グリフ網羅性の高い Noto Serif JP のままにし、見出しだけ Shippori の字形を使う。
+import '@fontsource/shippori-mincho-b1/500.css'
+import '@fontsource/shippori-mincho-b1/600.css'
+import '@fontsource/shippori-mincho-b1/700.css'
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { AuthProvider } from './auth/auth-provider'

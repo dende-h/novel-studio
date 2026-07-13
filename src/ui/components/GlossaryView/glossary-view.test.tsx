@@ -75,9 +75,9 @@ describe('GlossaryView（図鑑一覧・検索・カテゴリ・CRUD）', () => 
     expect(screen.queryByRole('heading', { name: 'アリス' })).toBeNull()
   })
 
-  it('「新規」で作成フォームを開き、入力して onCreate を呼ぶ', () => {
+  it('「新しく登録」で作成フォームを開き、入力して onCreate を呼ぶ', () => {
     const { onCreate } = setup()
-    fireEvent.click(screen.getByRole('button', { name: '新規' }))
+    fireEvent.click(screen.getByRole('button', { name: '新しく登録' }))
     fireEvent.change(screen.getByLabelText('名前'), { target: { value: 'キャロル' } })
     fireEvent.click(screen.getByRole('button', { name: '作成' }))
     expect(onCreate).toHaveBeenCalledWith(expect.objectContaining({ name: 'キャロル' }))
@@ -115,7 +115,7 @@ describe('GlossaryView（図鑑一覧・検索・カテゴリ・CRUD）', () => 
     setup({
       onCreate: vi.fn().mockRejectedValue(new Error('「アリス」は既存の項目と重複しています')),
     })
-    fireEvent.click(screen.getByRole('button', { name: '新規' }))
+    fireEvent.click(screen.getByRole('button', { name: '新しく登録' }))
     fireEvent.change(screen.getByLabelText('名前'), { target: { value: 'アリス' } })
     fireEvent.click(screen.getByRole('button', { name: '作成' }))
     expect(await screen.findByRole('alert')).toHaveTextContent('重複')

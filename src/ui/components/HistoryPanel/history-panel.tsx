@@ -1,6 +1,7 @@
-import { Database, RotateCcw, X } from 'lucide-react'
+import { History, X } from 'lucide-react'
 import type { Snapshot } from '@/core/snapshot'
 import { formatRelative } from '@/ui/_utils/format'
+import { Badge } from '@/ui/components/ui/badge'
 import { Button } from '@/ui/components/ui/button'
 import { ScrollArea } from '@/ui/components/ui/scroll-area'
 
@@ -36,37 +37,39 @@ export function HistoryPanel({
 }: HistoryPanelProps) {
   const base = now ?? Date.now()
   return (
-    <aside className="flex w-[340px] shrink-0 flex-col border-outline-variant/20 border-l bg-surface-container-low font-sans shadow-[-4px_0_24px_rgba(0,0,0,0.02)]">
-      <div className="border-outline-variant/20 border-b bg-surface-bright p-6">
-        <div className="mb-2 flex items-center justify-between">
-          <h3 className="font-serif text-base text-on-surface">ローカル・セーフティネット</h3>
-          {onClose ? (
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={onClose}
-              aria-label="履歴を閉じる"
-              className="-mr-2 size-8 text-on-surface-variant hover:text-on-surface"
-            >
-              <X className="size-4" aria-hidden />
-            </Button>
-          ) : null}
-        </div>
-        <p className="mt-2 inline-flex items-center gap-1.5 rounded border border-outline-variant/30 bg-surface-container-lowest px-2 py-1 text-on-surface-variant text-xs">
-          <Database className="size-3.5 text-primary" />
+    <aside className="flex w-[300px] shrink-0 flex-col border-outline-variant/30 border-l bg-surface-container-lowest font-sans">
+      <div className="flex items-center justify-between border-outline-variant/30 border-b px-4 py-3">
+        <h3 className="font-medium text-[12px] text-on-surface tracking-widest">
+          ローカル・セーフティネット
+        </h3>
+        {onClose ? (
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={onClose}
+            aria-label="履歴を閉じる"
+            className="-mr-1.5 size-7 text-on-surface-variant hover:text-on-surface"
+          >
+            <X className="size-4" aria-hidden />
+          </Button>
+        ) : null}
+      </div>
+
+      <div className="flex flex-col gap-2 border-outline-variant/30 border-b px-4 py-3.5">
+        <Badge variant="secondary" className="w-fit bg-primary-container text-on-primary-container">
           IndexedDB に保護されています
-        </p>
-        <p className="mt-3 text-on-surface-variant/80 text-xs leading-relaxed">
-          保存のたびに端末内へ履歴を記録します。任意の版を現在の本文へ復元できます。
+        </Badge>
+        <p className="text-[11px] text-on-surface-variant leading-relaxed">
+          保存のたびに端末内へ履歴を記録します。任意の版をいつでも本文へ復元できます。
         </p>
       </div>
 
       {/* Radix ScrollArea は子を display:table でラップしコンテンツ幅に伸びるため、
           長い無改行文字列でカードが横へはみ出す。内側ラッパを block に固定して折返しを効かせる。 */}
       <ScrollArea className="min-h-0 flex-1 [&_[data-slot=scroll-area-viewport]>div]:!block">
-        <div className="space-y-3 p-4">
+        <div className="space-y-2 p-3">
           {snapshots.length === 0 ? (
-            <p className="px-2 py-8 text-center text-on-surface-variant/60 text-sm">
+            <p className="px-2 py-8 text-center text-[13px] text-on-surface-variant/60">
               まだ履歴はありません。
               <br />
               保存すると版が記録されます。
@@ -79,41 +82,34 @@ export function HistoryPanel({
                   key={snap.id}
                   className={
                     current
-                      ? 'relative min-w-0 overflow-hidden rounded-xl border border-primary/30 bg-surface-bright p-4'
-                      : 'group relative min-w-0 overflow-hidden rounded-xl border border-outline-variant/20 bg-surface-container-low p-4 transition-colors hover:border-outline-variant/40 hover:bg-surface-bright'
+                      ? 'flex min-w-0 flex-col gap-1.5 overflow-hidden rounded-lg border border-forest-400 bg-accent px-3 py-2.5'
+                      : 'group flex min-w-0 flex-col gap-1.5 overflow-hidden rounded-lg border border-outline-variant/30 bg-surface-container-lowest px-3 py-2.5 transition-colors hover:border-outline-variant/50'
                   }
                 >
-                  {current ? (
-                    <span className="-left-px absolute top-4 bottom-4 w-[3px] rounded-r bg-primary" />
-                  ) : null}
-                  <div className="mb-2 flex items-start justify-between gap-2">
-                    <div className="min-w-0">
-                      <span className="block font-semibold text-on-surface text-sm">
-                        {current ? '現在の版' : '自動保存'}
-                      </span>
-                      <span
-                        className={
-                          current ? 'text-primary text-xs' : 'text-on-surface-variant text-xs'
-                        }
-                      >
-                        {formatRelative(snap.at, base)}
-                      </span>
-                    </div>
-                    {current ? null : (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => onRestore(snap.id)}
-                        className="h-7 shrink-0 gap-1 border-primary/30 px-2 text-primary text-xs opacity-0 transition-opacity hover:bg-primary/5 hover:text-primary focus-visible:opacity-100 group-hover:opacity-100"
-                      >
-                        <RotateCcw className="size-3" />
-                        復元
-                      </Button>
-                    )}
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-medium text-[12px] text-on-surface">
+                      {current ? '現在の版' : '自動保存'}
+                    </span>
+                    <span className="text-[11px] text-on-surface-variant/70">
+                      {formatRelative(snap.at, base)}
+                    </span>
                   </div>
-                  <p className="mt-2 line-clamp-2 [overflow-wrap:anywhere] break-words border-outline-variant/30 border-l-2 pl-2 font-serif text-[13px] text-on-surface-variant/80 italic leading-snug">
+                  <p className="line-clamp-2 [overflow-wrap:anywhere] break-words border-outline-variant/40 border-l-2 pl-2 font-serif text-[11px] text-on-surface-variant leading-snug">
                     {snapshotExcerpt(snap, currentEpisodeId) || '（本文なし）'}
                   </p>
+                  {current ? null : (
+                    <div className="flex justify-end">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => onRestore(snap.id)}
+                        className="h-7 gap-1 px-2 text-on-surface-variant text-xs opacity-0 transition-opacity hover:text-primary focus-visible:opacity-100 group-hover:opacity-100"
+                      >
+                        <History className="size-3" />
+                        この版を復元
+                      </Button>
+                    </div>
+                  )}
                 </div>
               )
             })

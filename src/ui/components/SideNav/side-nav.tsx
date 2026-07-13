@@ -1,18 +1,20 @@
 import {
+  ArrowLeft,
   BookMarked,
-  BookOpen,
   CircleHelp,
-  FolderOpen,
+  FileText,
   Library,
   Pencil,
+  PenLine,
   Plus,
   Settings,
   Sprout,
   Trash2,
   UserRound,
 } from 'lucide-react'
-import { type ComponentType, useId } from 'react'
+import type { ComponentType } from 'react'
 import { cn } from '@/lib/utils'
+import { coverTone } from '@/ui/_utils/cover-tone'
 import { Button } from '@/ui/components/ui/button'
 import { ScrollArea } from '@/ui/components/ui/scroll-area'
 
@@ -24,28 +26,27 @@ interface EpisodeItem {
 }
 
 interface SideNavProps {
-  /** アプリの恒常アイデンティティ見出し（作品名ではない）。 */
-  projectTitle: string
-  projectSubtitle?: string
   active: NavKey
-  /** コレクション（ライブラリ）へ */
+  /** マイライブラリへ（ライブラリ時はホーム行・作品時は戻るリンク） */
   onNavigateCollection: () => void
   /** 執筆の記録（草・ストリーク）へ。指定時のみ表示。 */
   onNavigateActivity?: () => void
-  /** 主要 CTA（新しいプロジェクト / 新しいエピソード）。作成導線が無い画面（執筆の記録）では省略。 */
+  /** 主要 CTA（新しい作品 / 新しいエピソード）。作成導線が無い画面（執筆の記録）では省略。 */
   cta?: { label: string; onClick: () => void; disabled?: boolean }
-  /** 作者プロフィール（ペンネーム・アバター）。onEditProfile と併せて指定時のみ CTA 上に表示。 */
+  /** 作者プロフィール（ペンネーム・アバター）。onEditProfile と併せて指定時のみ表示。 */
   profile?: { penName?: string; avatar?: string }
   /** プロフィール編集を開く。指定時のみプロフィール欄を表示。 */
   onEditProfile?: () => void
   /**
-   * 開いている作品のタイトル。指定時は「現在の作品」スコープカードを中身入りで描く。
-   * 省略時（ライブラリ）はカードを空状態（作品を開く前の案内）で描く。
+   * 開いている作品のタイトル。指定時は「作品モード」（戻るリンク＋作品カード＋本文/図鑑ナビ＋草稿）。
+   * 省略時（ライブラリ・執筆の記録）は「ライブラリモード」（プロフィール＋CTA＋メインナビ）。
    */
   workTitle?: string
-  /** エピソード画面へ切替（作品オープン時のみ） */
+  /** 作品カードに出すメタ情報（例: 「3話 ・ 12,480字」）。 */
+  workMeta?: string
+  /** エディタ画面へ切替（作品オープン時のみ） */
   onNavigateEpisodes?: () => void
-  /** 辞書画面へ切替（作品オープン時のみ） */
+  /** 図鑑画面へ切替（作品オープン時のみ） */
   onNavigateGlossary?: () => void
   /** エディタ時の話サブリスト */
   episodes?: EpisodeItem[]
@@ -73,23 +74,22 @@ function NavRow({ icon: Icon, label, active, onClick, disabled }: NavRowProps) {
       disabled={disabled}
       aria-current={active ? 'page' : undefined}
       className={cn(
-        'flex w-full items-center gap-3 rounded-md px-4 py-2.5 text-left font-medium font-sans text-sm transition-colors',
+        'flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-left font-medium font-sans text-[13px] transition-colors',
         active
-          ? 'border-primary border-l-4 bg-surface-container text-primary'
-          : 'text-on-surface-variant hover:bg-surface-container-high',
-        disabled && 'cursor-not-allowed opacity-50 hover:bg-transparent',
+          ? 'bg-surface-container-lowest text-primary shadow-xs'
+          : 'text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface',
+        disabled &&
+          'cursor-not-allowed opacity-50 hover:bg-transparent hover:text-on-surface-variant',
       )}
     >
-      <Icon className="size-5 shrink-0" />
+      <Icon className="size-[15px] shrink-0" />
       <span className="flex-1 truncate">{label}</span>
     </button>
   )
 }
 
-/** 作品/話のナビゲーション（ライブラリ・エディタ共通の 260px サイドバー）。 */
+/** 作品/話のナビゲーション（ライブラリ・エディタ共通の 248px サイドバー）。 */
 export function SideNav({
-  projectTitle,
-  projectSubtitle,
   active,
   onNavigateCollection,
   onNavigateActivity,
@@ -99,173 +99,101 @@ export function SideNav({
   profile,
   onEditProfile,
   workTitle,
+  workMeta,
   episodes,
   currentEpisodeId,
   onSelectEpisode,
   onRenameEpisode,
   onDeleteEpisode,
 }: SideNavProps) {
-  const initial = (projectTitle.trim().charAt(0) || 'N').toUpperCase()
-  const scopeCaptionId = useId()
-  // 作品が開いていれば中身入りカード、未オープンなら空状態カード。
+  // 作品が開いていれば作品モード（戻る＋作品カード＋本文/図鑑）、未オープンはライブラリモード。
   const workOpen = workTitle !== undefined
+  const workInitial = (workTitle ?? '').trim().charAt(0) || '無'
   return (
-    <nav className="flex w-sidebar shrink-0 flex-col overflow-y-auto border-outline-variant/20 border-r bg-surface-container-low py-6 font-sans">
-      {/* アプリのアイデンティティ見出し（両状態で固定） */}
-      <div className="mb-6 flex items-center gap-3 px-6">
-        <div className="flex size-10 shrink-0 items-center justify-center rounded-md bg-secondary-container font-bold font-serif text-lg text-on-secondary-container">
-          {initial}
-        </div>
-        <div className="min-w-0">
-          <h2 className="truncate font-bold text-on-surface text-sm">{projectTitle}</h2>
-          {projectSubtitle ? (
-            <p className="truncate text-on-surface-variant text-xs">{projectSubtitle}</p>
-          ) : null}
-        </div>
-      </div>
-
-      {/* 作者プロフィール（ペンネーム・アバター）。CTA の上に置く。 */}
-      {onEditProfile ? (
-        <div className="mb-4 px-6">
+    <nav className="flex w-sidebar shrink-0 flex-col gap-2.5 overflow-y-auto border-outline-variant/30 border-r bg-surface-container-low px-3 pt-4 pb-3.5 font-sans">
+      {workOpen ? (
+        <>
+          {/* ライブラリへ戻る */}
           <button
             type="button"
-            onClick={onEditProfile}
-            aria-label="プロフィールを編集"
-            className="group flex w-full items-center gap-3 rounded-lg border border-outline-variant/30 bg-surface-container-lowest px-3 py-2.5 text-left transition-colors hover:bg-surface-container"
+            onClick={onNavigateCollection}
+            className="flex items-center gap-2 rounded-md px-2.5 py-2 text-left text-[13px] text-on-surface-variant transition-colors hover:bg-surface-container-high hover:text-on-surface"
           >
-            {profile?.avatar ? (
-              <img
-                src={profile.avatar}
-                alt=""
-                className="size-9 shrink-0 rounded-full object-cover"
-              />
-            ) : (
-              <div className="flex size-9 shrink-0 items-center justify-center rounded-full bg-secondary-container text-on-secondary-container">
-                <UserRound className="size-5" />
-              </div>
-            )}
-            <div className="min-w-0 flex-1">
-              {profile?.penName ? (
-                <div className="truncate font-medium text-on-surface text-sm">
-                  {profile.penName}
-                </div>
-              ) : (
-                <div className="truncate text-on-surface-variant text-sm">ペンネーム未設定</div>
-              )}
-              <div className="truncate text-on-surface-variant/60 text-xs">
-                {profile?.penName ? 'プロフィールを編集' : 'タップして登録'}
-              </div>
-            </div>
-            <Pencil className="size-3.5 shrink-0 text-on-surface-variant/50 transition-colors group-hover:text-primary" />
+            <ArrowLeft className="size-4 shrink-0" />
+            マイライブラリ
           </button>
-        </div>
-      ) : null}
 
-      {/* CTA（作成導線がある画面のみ） */}
-      {cta ? (
-        <div className="mb-6 px-6">
-          <Button
-            variant="outline"
-            onClick={cta.onClick}
-            disabled={cta.disabled}
-            className="w-full gap-2 border-primary text-primary hover:bg-primary/5 hover:text-primary"
-          >
-            <Plus className="size-4" />
-            {cta.label}
-          </Button>
-        </div>
-      ) : null}
-
-      {/* 中段: ホーム → 作品スコープカード → 作品非依存 */}
-      <div className="flex flex-1 flex-col px-4">
-        <NavRow
-          icon={Library}
-          label="コレクション"
-          active={active === 'collection'}
-          onClick={onNavigateCollection}
-        />
-
-        {/* 作品スコープカード: この箱の中身は「いま開いている作品」のもの、と境界で示す。 */}
-        {/* biome-ignore lint/a11y/useSemanticElements: ナビ内の軽量グルーピング。fieldset はフォーム用途で不適、section はランドマーク増を招くため role=group を採用。 */}
-        <div
-          role="group"
-          aria-labelledby={scopeCaptionId}
-          className={cn(
-            'mt-3 flex flex-col rounded-lg border bg-surface-container-lowest p-2',
-            workOpen
-              ? 'min-h-[14rem] flex-1 border-outline-variant/30'
-              : 'shrink-0 border-outline-variant/40 border-dashed',
-          )}
-        >
-          <div className="px-2 pt-1 pb-2">
+          {/* 現在の作品カード */}
+          <div className="flex gap-2.5 rounded-lg border border-outline-variant/30 bg-surface-container-lowest p-3">
             <div
-              id={scopeCaptionId}
-              className="font-sans text-[10px] text-on-surface-variant/60 uppercase tracking-widest"
+              aria-hidden="true"
+              className="flex h-11 w-8 shrink-0 items-center justify-center rounded border border-outline-variant/30 font-serif text-[14px] text-on-surface"
+              style={{ background: coverTone(workTitle ?? '') }}
             >
-              現在の作品
+              {workInitial}
             </div>
-            {workOpen ? (
-              <div className="mt-0.5 flex items-center gap-1.5 font-medium font-serif text-on-surface text-sm">
-                <FolderOpen className="size-3.5 shrink-0 text-primary" />
-                <span className="truncate">{workTitle}</span>
+            <div className="min-w-0">
+              <div className="line-clamp-2 font-semibold font-serif text-[13px] text-on-surface leading-normal">
+                {workTitle}
               </div>
-            ) : null}
+              {workMeta ? (
+                <div className="mt-0.5 truncate text-[11px] text-on-surface-variant">
+                  {workMeta}
+                </div>
+              ) : null}
+            </div>
           </div>
 
-          {workOpen ? (
-            <>
-              <div className="space-y-1">
-                <NavRow
-                  icon={BookOpen}
-                  label="エピソード"
-                  active={active === 'episodes'}
-                  onClick={onNavigateEpisodes}
-                />
-                <NavRow
-                  icon={BookMarked}
-                  label="図鑑"
-                  active={active === 'glossary'}
-                  onClick={onNavigateGlossary}
-                />
-              </div>
+          {/* 作品スコープのナビ */}
+          <div className="space-y-0.5">
+            <NavRow
+              icon={PenLine}
+              label="本文を書く"
+              active={active === 'episodes'}
+              onClick={onNavigateEpisodes}
+            />
+            <NavRow
+              icon={BookMarked}
+              label="図鑑"
+              active={active === 'glossary'}
+              onClick={onNavigateGlossary}
+            />
+          </div>
 
-              {/* 話サブリスト（カード内・最下段でスクロール）。
-                  flex-col で「現在の草稿」ラベルを固定し、ScrollArea は h-full（百分率）
-                  ではなく flex-1 min-h-0 で残り高さを受ける。深いネストでも高さが確実に
-                  解決し、スクロールがカード内に収まる。 */}
-              {episodes && episodes.length > 0 ? (
-                <div className="mt-3 flex min-h-0 flex-1 flex-col">
-                  <div className="mb-2 shrink-0 px-2 font-sans text-[11px] text-on-surface-variant/70 uppercase tracking-widest">
-                    現在の草稿
-                  </div>
-                  <ScrollArea className="min-h-0 flex-1">
-                    <ul className="ml-2 space-y-1 border-outline-variant/30 border-l pl-3">
-                      {episodes.map((e) => {
-                        const isCurrent = e.id === currentEpisodeId
-                        return (
-                          <li key={e.id} className="group relative flex items-center gap-1">
-                            {isCurrent ? (
-                              <span className="-left-[13px] -translate-y-1/2 absolute top-1/2 size-1.5 rounded-full bg-primary" />
-                            ) : null}
-                            <button
-                              type="button"
-                              onClick={() => onSelectEpisode?.(e.id)}
-                              aria-current={isCurrent ? 'true' : undefined}
-                              className={cn(
-                                'block min-w-0 flex-1 truncate py-1 text-left text-sm transition-colors',
-                                isCurrent
-                                  ? 'font-medium text-primary'
-                                  : 'text-on-surface-variant hover:text-primary',
-                              )}
-                            >
-                              {e.title}
-                            </button>
+          {/* 草稿（話リスト） */}
+          {episodes && episodes.length > 0 ? (
+            <div className="flex min-h-0 flex-1 flex-col">
+              <div className="shrink-0 px-3 pt-2 pb-1.5 font-medium text-[11px] text-on-surface-variant/60 tracking-widest">
+                草稿
+              </div>
+              <ScrollArea className="min-h-0 flex-1">
+                <ul className="space-y-0.5">
+                  {episodes.map((e) => {
+                    const isCurrent = e.id === currentEpisodeId
+                    return (
+                      <li key={e.id} className="group relative flex items-center">
+                        <button
+                          type="button"
+                          onClick={() => onSelectEpisode?.(e.id)}
+                          aria-current={isCurrent ? 'true' : undefined}
+                          className={cn(
+                            'flex min-w-0 flex-1 items-center gap-2.5 rounded-md px-3 py-2 text-left text-[13px] transition-colors',
+                            isCurrent
+                              ? 'bg-surface-container-lowest font-medium text-primary shadow-xs'
+                              : 'text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface',
+                          )}
+                        >
+                          <FileText className="size-[15px] shrink-0" />
+                          <span className="min-w-0 flex-1 truncate">{e.title}</span>
+                        </button>
+                        {onRenameEpisode || onDeleteEpisode ? (
+                          <span className="absolute right-1.5 flex items-center gap-0.5 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
                             {onRenameEpisode ? (
                               <button
                                 type="button"
                                 onClick={() => onRenameEpisode(e.id)}
                                 aria-label={`「${e.title}」のタイトルを変更`}
-                                className="shrink-0 rounded p-1 text-on-surface-variant/60 opacity-0 transition-opacity hover:text-primary focus-visible:opacity-100 group-hover:opacity-100"
+                                className="rounded bg-surface-container-low/90 p-1 text-on-surface-variant/70 transition-colors hover:text-primary"
                               >
                                 <Pencil className="size-3.5" />
                               </button>
@@ -275,54 +203,105 @@ export function SideNav({
                                 type="button"
                                 onClick={() => onDeleteEpisode(e.id)}
                                 aria-label={`「${e.title}」を削除`}
-                                className="shrink-0 rounded p-1 text-on-surface-variant/60 opacity-0 transition-opacity hover:text-destructive focus-visible:opacity-100 group-hover:opacity-100"
+                                className="rounded bg-surface-container-low/90 p-1 text-on-surface-variant/70 transition-colors hover:text-destructive"
                               >
                                 <Trash2 className="size-3.5" />
                               </button>
                             ) : null}
-                          </li>
-                        )
-                      })}
-                    </ul>
-                  </ScrollArea>
-                </div>
-              ) : null}
-            </>
-          ) : (
-            /* 空状態: 作品を開く前。グレーアウト兄弟を置き換える案内＋装飾プレビュー。 */
-            <div className="px-2 pb-2">
-              <p className="mb-3 text-on-surface-variant/70 text-xs leading-relaxed">
-                作品を開くとエピソードと図鑑がここに表示されます。
-              </p>
-              <div aria-hidden="true" className="space-y-1 opacity-40">
-                <div className="flex items-center gap-3 rounded-md px-4 py-2 font-medium font-sans text-on-surface-variant text-sm">
-                  <BookOpen className="size-5 shrink-0" />
-                  <span>エピソード</span>
-                </div>
-                <div className="flex items-center gap-3 rounded-md px-4 py-2 font-medium font-sans text-on-surface-variant text-sm">
-                  <BookMarked className="size-5 shrink-0" />
-                  <span>図鑑</span>
-                </div>
-              </div>
+                          </span>
+                        ) : null}
+                      </li>
+                    )
+                  })}
+                </ul>
+              </ScrollArea>
             </div>
-          )}
-        </div>
+          ) : null}
 
-        {/* 作品非依存の機能（カード外） */}
-        {onNavigateActivity ? (
-          <div className="mt-3 shrink-0 space-y-1">
+          {/* 新しいエピソード */}
+          {cta ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={cta.onClick}
+              disabled={cta.disabled}
+              className="w-full justify-center gap-1.5 text-on-surface-variant hover:text-primary"
+            >
+              <Plus className="size-4" />
+              {cta.label}
+            </Button>
+          ) : null}
+        </>
+      ) : (
+        <>
+          {/* 作者プロフィール */}
+          {onEditProfile ? (
+            <button
+              type="button"
+              onClick={onEditProfile}
+              aria-label="プロフィールを編集"
+              className="group flex w-full items-center gap-2.5 rounded-lg border border-outline-variant/30 bg-surface-container-lowest px-3 py-2.5 text-left transition-colors hover:border-outline-variant/50"
+            >
+              {profile?.avatar ? (
+                <img
+                  src={profile.avatar}
+                  alt=""
+                  className="size-8 shrink-0 rounded-full object-cover"
+                />
+              ) : (
+                <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary-container text-on-primary-container">
+                  <UserRound className="size-4" />
+                </span>
+              )}
+              <span className="min-w-0 flex-1">
+                <span className="block truncate font-medium text-[13px] text-on-surface">
+                  {profile?.penName || 'ペンネーム未設定'}
+                </span>
+                <span className="block truncate text-[11px] text-on-surface-variant">
+                  {profile?.penName ? 'プロフィールを編集' : 'タップして登録'}
+                </span>
+              </span>
+              <Pencil className="size-3.5 shrink-0 text-on-surface-variant/50 transition-colors group-hover:text-primary" />
+            </button>
+          ) : null}
+
+          {/* 新しい作品 */}
+          {cta ? (
+            <Button
+              variant="outline"
+              onClick={cta.onClick}
+              disabled={cta.disabled}
+              className="w-full gap-2 border-outline-variant/40 text-on-surface hover:border-primary hover:text-primary"
+            >
+              <Plus className="size-4" />
+              {cta.label}
+            </Button>
+          ) : null}
+
+          {/* メインナビ */}
+          <div className="mt-1 space-y-0.5">
             <NavRow
-              icon={Sprout}
-              label="執筆の記録"
-              active={active === 'activity'}
-              onClick={onNavigateActivity}
+              icon={Library}
+              label="マイライブラリ"
+              active={active === 'collection'}
+              onClick={onNavigateCollection}
             />
+            {onNavigateActivity ? (
+              <NavRow
+                icon={Sprout}
+                label="執筆の記録"
+                active={active === 'activity'}
+                onClick={onNavigateActivity}
+              />
+            ) : null}
           </div>
-        ) : null}
-      </div>
+        </>
+      )}
+
+      <div className="flex-1" />
 
       {/* フッター */}
-      <div className="mt-8 space-y-1 px-4">
+      <div className="space-y-0.5">
         <NavRow icon={Settings} label="設定" disabled />
         <NavRow icon={CircleHelp} label="ヘルプ" disabled />
       </div>

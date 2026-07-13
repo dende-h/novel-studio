@@ -39,7 +39,7 @@ describe('Library 作成・表示', () => {
     fireEvent.change(input, { target: { value: '新しい物語' } })
     fireEvent.click(screen.getByRole('button', { name: '作成' }))
 
-    expect(await screen.findByText('新しい物語')).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: '新しい物語' })).toBeInTheDocument()
     expect(onEnter).not.toHaveBeenCalled()
   })
 
@@ -50,9 +50,32 @@ describe('Library 作成・表示', () => {
     render(<Library store={store} onEnterEditor={onEnter} />)
 
     fireEvent.click(screen.getByRole('button', { name: 'リスト表示' }))
-    expect(screen.getByText('一覧作')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: '一覧作' })).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: '執筆' }))
     await waitFor(() => expect(onEnter).toHaveBeenCalled())
+  })
+})
+
+describe('Library 作品名検索', () => {
+  it('タイトル部分一致で絞り込み、不一致は空メッセージを出す', async () => {
+    const store = makeStore()
+    await store.createWork('静謐の森')
+    await store.createWork('春の列車')
+    render(<Library store={store} onEnterEditor={() => {}} />)
+    expect(await screen.findByRole('heading', { name: '静謐の森' })).toBeInTheDocument()
+
+    const search = screen.getByRole('searchbox', { name: '作品名で検索' })
+    fireEvent.change(search, { target: { value: '列車' } })
+    expect(screen.getByRole('heading', { name: '春の列車' })).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: '静謐の森' })).toBeNull()
+
+    fireEvent.change(search, { target: { value: '存在しない題名' } })
+    expect(screen.getByText(/「存在しない題名」に一致する作品がありません/)).toBeInTheDocument()
+
+    // 空に戻すと全件表示
+    fireEvent.change(search, { target: { value: '' } })
+    expect(screen.getByRole('heading', { name: '静謐の森' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: '春の列車' })).toBeInTheDocument()
   })
 })
 
@@ -63,15 +86,16 @@ describe('Library ゴミ箱導線', () => {
     render(<Library store={store} onEnterEditor={() => {}} />)
 
     // 作品カードが見えている。まだゴミ箱ボタンは無い。
-    expect(screen.getByText('テスト作')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'テスト作' })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /ゴミ箱/ })).not.toBeInTheDocument()
 
-    // 削除→確認ダイアログ「ゴミ箱へ移動」
-    fireEvent.click(screen.getByRole('button', { name: '削除' }))
+    // ケバブメニュー→「ゴミ箱へ移動」→確認ダイアログ「ゴミ箱へ移動」
+    fireEvent.click(screen.getByRole('button', { name: '「テスト作」のメニュー' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'ゴミ箱へ移動' }))
     fireEvent.click(screen.getByRole('button', { name: 'ゴミ箱へ移動' }))
 
     // カードが消え、ゴミ箱ボタン（件数つき）が出る
-    await waitFor(() => expect(screen.queryByText('テスト作')).not.toBeInTheDocument())
+    await waitFor(() => expect(screen.queryByRole('heading', { name: 'テスト作' })).toBeNull())
     const trashButton = screen.getByRole('button', { name: /ゴミ箱/ })
     expect(trashButton).toBeInTheDocument()
 
@@ -81,8 +105,10 @@ describe('Library ゴミ箱導線', () => {
     expect(within(dialog).getByText('テスト作')).toBeInTheDocument()
     fireEvent.click(within(dialog).getByRole('button', { name: '復元' }))
 
-    // 復元され、グリッドに戻る／ゴミ箱ボタンは消える
-    await waitFor(() => expect(screen.getByText('テスト作')).toBeInTheDocument())
+    // 復元され、グリッドに戻る（ダイアログ表示中は背景が aria-hidden なので hidden も探す）
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { name: 'テスト作', hidden: true })).toBeInTheDocument(),
+    )
     expect(screen.queryByRole('button', { name: /ゴミ箱/ })).not.toBeInTheDocument()
   })
 
@@ -91,9 +117,10 @@ describe('Library ゴミ箱導線', () => {
     await store.createWork('消す作')
     render(<Library store={store} onEnterEditor={() => {}} />)
 
-    fireEvent.click(screen.getByRole('button', { name: '削除' }))
+    fireEvent.click(screen.getByRole('button', { name: '「消す作」のメニュー' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'ゴミ箱へ移動' }))
     fireEvent.click(screen.getByRole('button', { name: 'ゴミ箱へ移動' }))
-    await waitFor(() => expect(screen.queryByText('消す作')).not.toBeInTheDocument())
+    await waitFor(() => expect(screen.queryByRole('heading', { name: '消す作' })).toBeNull())
 
     fireEvent.click(screen.getByRole('button', { name: /ゴミ箱/ }))
     const dialog = await screen.findByRole('dialog')
