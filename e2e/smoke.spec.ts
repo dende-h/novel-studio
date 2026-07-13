@@ -1,4 +1,24 @@
-import { expect, test } from '@playwright/test'
+import { expect, type Page, test } from '@playwright/test'
+
+/** サイドバーの「新しい作品」から作品を作る（作成後もライブラリに留まる）。 */
+const createWork = async (page: Page, title: string) => {
+  await page.getByRole('button', { name: '新しい作品' }).click()
+  await page.getByLabel('作品タイトル').fill(title)
+  await page.getByRole('button', { name: '作成', exact: true }).click()
+  await expect(page.getByRole('heading', { name: title })).toBeVisible()
+}
+
+/** 作品カード（全面クリック）でエディタへ入る。 */
+const openWriter = (page: Page, title: string) =>
+  page.getByRole('button', { name: `「${title}」を執筆` }).click()
+
+/** エディタ内で話を追加する。 */
+const addEpisode = async (page: Page, title: string) => {
+  await page.getByRole('button', { name: '新しいエピソード', exact: true }).click()
+  await page.getByLabel('話タイトル').fill(title)
+  await page.getByRole('button', { name: '追加', exact: true }).click()
+  await expect(page.getByRole('button', { name: title, exact: true })).toBeVisible()
+}
 
 test('入口にマイライブラリ見出しが出る', async ({ page }) => {
   await page.goto('/')
@@ -8,18 +28,11 @@ test('入口にマイライブラリ見出しが出る', async ({ page }) => {
 test('作品作成→執筆→ライブプレビュー→再読込で本文が永続（IndexedDB）', async ({ page }) => {
   await page.goto('/')
 
-  // 新規プロジェクト（ダイアログ）→ エディタへ
-  await page.getByRole('button', { name: '新しいプロジェクト' }).click()
-  await page.getByLabel('作品タイトル').fill('作品E2E')
-  await page.getByRole('button', { name: '作成', exact: true }).click()
-  // 作成だけでは遷移しない（一覧の先頭に出る）。執筆ボタンでエディタへ。
-  await page.getByRole('button', { name: '執筆' }).click()
+  await createWork(page, '作品E2E')
+  // 作成だけでは遷移しない（一覧に出る）。カードのクリックでエディタへ。
+  await openWriter(page, '作品E2E')
 
-  // エピソード追加（ダイアログ）
-  await page.getByRole('button', { name: '新しいエピソードを追加', exact: true }).click()
-  await page.getByLabel('話タイトル').fill('第一話')
-  await page.getByRole('button', { name: '追加', exact: true }).click()
-  await expect(page.getByRole('button', { name: '第一話', exact: true })).toBeVisible()
+  await addEpisode(page, '第一話')
 
   // 本文入力 → ライブプレビューが追従
   const textarea = page.getByRole('textbox', { name: '本文' })
@@ -30,24 +43,25 @@ test('作品作成→執筆→ライブプレビュー→再読込で本文が�
   // 自動保存を待ち、ライブラリへ戻って執筆し直しても復元できる
   await expect(page.getByText('保存済み')).toBeVisible()
   await page.goto('/')
-  await page.getByRole('button', { name: '執筆' }).click()
+  await openWriter(page, '作品E2E')
   await expect(page.getByRole('textbox', { name: '本文' })).toHaveValue('漢字《かんじ》\n《《重要》》')
 })
 
-test('作品メタ（著者・あらすじ）を編集 → カードに反映され再読込でも残る', async ({ page }) => {
+test('作品メタ（著者・あらすじ）を編集 → リスト表示に反映され再読込でも残る', async ({
+  page,
+}) => {
   await page.goto('/')
-  await page.getByRole('button', { name: '新しいプロジェクト' }).click()
-  await page.getByLabel('作品タイトル').fill('メタ作品')
-  await page.getByRole('button', { name: '作成', exact: true }).click()
+  await createWork(page, 'メタ作品')
 
-  // ライブラリへ戻り、カードの「情報を編集」からメタを入力
-  await page.goto('/')
-  await page.getByRole('button', { name: '情報を編集' }).click()
+  // カードのケバブメニュー「情報を編集」からメタを入力
+  await page.getByRole('button', { name: '「メタ作品」のメニュー' }).click()
+  await page.getByRole('menuitem', { name: '情報を編集' }).click()
   await page.getByLabel('著者').fill('山田太郎')
   await page.getByLabel('あらすじ').fill('冒険の物語')
   await page.getByRole('button', { name: '保存' }).click()
 
-  // カードに著者が反映され、再読込しても永続している
+  // リスト表示に著者が反映され、再読込しても永続している
+  await page.getByRole('button', { name: 'リスト表示' }).click()
   await expect(page.getByText('著者: 山田太郎')).toBeVisible()
   await page.goto('/')
   await expect(page.getByText('著者: 山田太郎')).toBeVisible()
@@ -55,15 +69,10 @@ test('作品メタ（著者・あらすじ）を編集 → カードに反映さ
 
 test('話の削除 → 一覧から消える', async ({ page }) => {
   await page.goto('/')
-  await page.getByRole('button', { name: '新しいプロジェクト' }).click()
-  await page.getByLabel('作品タイトル').fill('削除作品')
-  await page.getByRole('button', { name: '作成', exact: true }).click()
-  await page.getByRole('button', { name: '執筆' }).click()
+  await createWork(page, '削除作品')
+  await openWriter(page, '削除作品')
 
-  await page.getByRole('button', { name: '新しいエピソードを追加', exact: true }).click()
-  await page.getByLabel('話タイトル').fill('第一話')
-  await page.getByRole('button', { name: '追加', exact: true }).click()
-  await expect(page.getByRole('button', { name: '第一話', exact: true })).toBeVisible()
+  await addEpisode(page, '第一話')
 
   // 各話の削除ボタン → 確認ダイアログ → 削除
   // 削除ボタンは行ホバーで現れる（opacity-0 → group-hover）。行を先にホバーして可視化する。
@@ -75,38 +84,28 @@ test('話の削除 → 一覧から消える', async ({ page }) => {
 
 test('本文欄がエディタペイン幅いっぱいに広がる（折り返しが狭くならない）', async ({ page }) => {
   await page.goto('/')
-  await page.getByRole('button', { name: '新しいプロジェクト' }).click()
-  await page.getByLabel('作品タイトル').fill('幅テスト')
-  await page.getByRole('button', { name: '作成', exact: true }).click()
-  await page.getByRole('button', { name: '執筆' }).click()
-  await page.getByRole('button', { name: '新しいエピソードを追加', exact: true }).click()
-  await page.getByLabel('話タイトル').fill('第一話')
-  await page.getByRole('button', { name: '追加', exact: true }).click()
+  await createWork(page, '幅テスト')
+  await openWriter(page, '幅テスト')
+  await addEpisode(page, '第一話')
 
   const textarea = page.getByRole('textbox', { name: '本文' })
   await textarea.waitFor()
-  // エディタペイン（main 直下の最初の div）の内幅
-  const paneWidth = await page.evaluate(() => {
-    const pane = document.querySelector('main > div')
-    return pane instanceof HTMLElement ? pane.clientWidth : 0
-  })
-  const box = await textarea.boundingBox()
-  // textarea が固有幅(~312px)に縮まず、ペイン幅の9割以上を占有する
-  expect(paneWidth).toBeGreaterThan(400)
-  expect(box?.width ?? 0).toBeGreaterThan(paneWidth * 0.9)
+  // textarea が固有幅(~312px)に縮まず、エディタ列（親要素）幅の9割以上を占有する
+  const dims = await textarea.evaluate((el) => ({
+    tw: el.getBoundingClientRect().width,
+    pw: el.parentElement ? el.parentElement.getBoundingClientRect().width : 0,
+  }))
+  expect(dims.pw).toBeGreaterThan(400)
+  expect(dims.tw).toBeGreaterThan(dims.pw * 0.9)
 })
 
 test('長い無改行の本文がプレビューの紙面内で折り返す（縦書き・横書きとも飛び出さない）', async ({
   page,
 }) => {
   await page.goto('/')
-  await page.getByRole('button', { name: '新しいプロジェクト' }).click()
-  await page.getByLabel('作品タイトル').fill('折返しテスト')
-  await page.getByRole('button', { name: '作成', exact: true }).click()
-  await page.getByRole('button', { name: '執筆' }).click()
-  await page.getByRole('button', { name: '新しいエピソードを追加', exact: true }).click()
-  await page.getByLabel('話タイトル').fill('第一話')
-  await page.getByRole('button', { name: '追加', exact: true }).click()
+  await createWork(page, '折返しテスト')
+  await openWriter(page, '折返しテスト')
+  await addEpisode(page, '第一話')
 
   const textarea = page.getByRole('textbox', { name: '本文' })
   await textarea.waitFor()
@@ -126,13 +125,9 @@ test('長い無改行の本文がプレビューの紙面内で折り返す（�
 
 test('長い無改行の本文でも履歴カードがパネル幅を超えず復元ボタンが届く', async ({ page }) => {
   await page.goto('/')
-  await page.getByRole('button', { name: '新しいプロジェクト' }).click()
-  await page.getByLabel('作品タイトル').fill('履歴折返し')
-  await page.getByRole('button', { name: '作成', exact: true }).click()
-  await page.getByRole('button', { name: '執筆' }).click()
-  await page.getByRole('button', { name: '新しいエピソードを追加', exact: true }).click()
-  await page.getByLabel('話タイトル').fill('第一話')
-  await page.getByRole('button', { name: '追加', exact: true }).click()
+  await createWork(page, '履歴折返し')
+  await openWriter(page, '履歴折返し')
+  await addEpisode(page, '第一話')
 
   await page.getByRole('textbox', { name: '本文' }).fill('a'.repeat(300))
   await expect(page.getByText('保存済み')).toBeVisible()
@@ -142,7 +137,7 @@ test('長い無改行の本文でも履歴カードがパネル幅を超えず�
   await panel.waitFor()
   const card = page
     .getByText('現在の版')
-    .locator('xpath=ancestor::div[contains(@class,"rounded-xl")]')
+    .locator('xpath=ancestor::div[contains(@class,"rounded-lg")]')
   const excerpt = card.locator('p')
   // 抜粋が折り返し、横方向にはみ出さない（スクロール幅が見た目幅を超えない）
   const ex = await excerpt.evaluate((el) => ({ sw: el.scrollWidth, cw: el.clientWidth }))
@@ -161,13 +156,9 @@ test('対応下限〜の狭い画面では履歴ドロワーがオーバーレ�
   // 対応範囲（lg=1024 以上）かつ xl=1280 未満＝オーバーレイ域
   await page.setViewportSize({ width: 1100, height: 800 })
   await page.goto('/')
-  await page.getByRole('button', { name: '新しいプロジェクト' }).click()
-  await page.getByLabel('作品タイトル').fill('オーバーレイ')
-  await page.getByRole('button', { name: '作成', exact: true }).click()
-  await page.getByRole('button', { name: '執筆' }).click()
-  await page.getByRole('button', { name: '新しいエピソードを追加', exact: true }).click()
-  await page.getByLabel('話タイトル').fill('第一話')
-  await page.getByRole('button', { name: '追加', exact: true }).click()
+  await createWork(page, 'オーバーレイ')
+  await openWriter(page, 'オーバーレイ')
+  await addEpisode(page, '第一話')
   await page.getByRole('textbox', { name: '本文' }).waitFor()
 
   const paneWidth = () =>
@@ -179,20 +170,16 @@ test('対応下限〜の狭い画面では履歴ドロワーがオーバーレ�
   await page.getByRole('button', { name: '履歴' }).click()
   await expect(page.getByText('ローカル・セーフティネット')).toBeVisible()
   const after = await paneWidth()
-  // オーバーレイなので本文ペイン幅は変わらない（インライン列なら ~340px 狭まる）
+  // オーバーレイなので本文ペイン幅は変わらない（インライン列なら ~300px 狭まる）
   expect(Math.abs(after - before)).toBeLessThan(20)
 })
 
 test('履歴ドロワーをトグルで開閉できる', async ({ page }) => {
   await page.goto('/')
-  await page.getByRole('button', { name: '新しいプロジェクト' }).click()
-  await page.getByLabel('作品タイトル').fill('履歴作品')
-  await page.getByRole('button', { name: '作成', exact: true }).click()
-  await page.getByRole('button', { name: '執筆' }).click()
+  await createWork(page, '履歴作品')
+  await openWriter(page, '履歴作品')
 
-  await page.getByRole('button', { name: '新しいエピソードを追加', exact: true }).click()
-  await page.getByLabel('話タイトル').fill('第一話')
-  await page.getByRole('button', { name: '追加', exact: true }).click()
+  await addEpisode(page, '第一話')
 
   // 初期は履歴ドロワー非表示
   await expect(page.getByText('ローカル・セーフティネット')).toHaveCount(0)
@@ -204,14 +191,46 @@ test('履歴ドロワーをトグルで開閉できる', async ({ page }) => {
   await expect(page.getByText('ローカル・セーフティネット')).toHaveCount(0)
 })
 
-test('サイドバーのコレクションでライブラリへ戻れる', async ({ page }) => {
+test('エディタの一括置換で本文をまとめて書き換えられる', async ({ page }) => {
   await page.goto('/')
-  await page.getByRole('button', { name: '新しいプロジェクト' }).click()
-  await page.getByLabel('作品タイトル').fill('戻る作品')
-  await page.getByRole('button', { name: '作成', exact: true }).click()
+  await createWork(page, '置換作品')
+  await openWriter(page, '置換作品')
+  await addEpisode(page, '第一話')
 
-  // エディタからコレクションでライブラリへ
-  await page.getByRole('button', { name: 'コレクション' }).click()
+  const textarea = page.getByRole('textbox', { name: '本文' })
+  await textarea.fill('猫が来た。猫が鳴いた。')
+
+  await page.getByRole('button', { name: '置換' }).click()
+  await page.getByLabel('検索する語').fill('猫')
+  await expect(page.getByText('2件 見つかりました')).toBeVisible()
+  await page.getByLabel('置換後の語').fill('犬')
+  await page.getByRole('button', { name: 'すべて置換' }).click()
+  await expect(textarea).toHaveValue('犬が来た。犬が鳴いた。')
+})
+
+test('ライブラリの作品名検索で絞り込める', async ({ page }) => {
+  await page.goto('/')
+  await createWork(page, '静謐の森')
+  await createWork(page, '春の列車')
+
+  const search = page.getByRole('searchbox', { name: '作品名で検索' })
+  await search.fill('列車')
+  await expect(page.getByRole('heading', { name: '春の列車' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '静謐の森' })).toHaveCount(0)
+
+  await search.fill('存在しない題名')
+  await expect(page.getByText(/一致する作品がありません/)).toBeVisible()
+})
+
+test('サイドバーのマイライブラリでエディタから戻れる', async ({ page }) => {
+  await page.goto('/')
+  await createWork(page, '戻る作品')
+  await openWriter(page, '戻る作品')
+
+  // エディタのサイドバー「マイライブラリ」（戻るリンク）でライブラリへ
+  const backLink = page.getByRole('button', { name: 'マイライブラリ' })
+  await expect(backLink).toBeVisible()
+  await backLink.click()
   await expect(page.getByRole('heading', { name: 'マイライブラリ' })).toBeVisible()
 })
 
@@ -242,16 +261,13 @@ test('スマホ幅（iPad mini 横未満）では非対応案内が全面表示�
 
 test('作品の削除 → ライブラリから消える', async ({ page }) => {
   await page.goto('/')
-  await page.getByRole('button', { name: '新しいプロジェクト' }).click()
-  await page.getByLabel('作品タイトル').fill('消える作品')
-  await page.getByRole('button', { name: '作成', exact: true }).click()
+  await createWork(page, '消える作品')
 
-  // ライブラリのカードから削除 → 確認 → カードが消える
-  await page.goto('/')
-  await expect(page.getByText('消える作品')).toBeVisible()
-  await page.getByRole('button', { name: '削除', exact: true }).click()
+  // カードのケバブメニューから削除 → 確認 → カードが消える
+  await page.getByRole('button', { name: '「消える作品」のメニュー' }).click()
+  await page.getByRole('menuitem', { name: 'ゴミ箱へ移動' }).click()
   await page.getByRole('button', { name: 'ゴミ箱へ移動' }).click()
-  await expect(page.getByText('消える作品')).toHaveCount(0)
+  await expect(page.getByRole('heading', { name: '消える作品' })).toHaveCount(0)
 })
 
 test('ゲスト（pk 不在）では同期 UI が一切出ない（Phase 2 ゲスト回帰）', async ({ page }) => {
