@@ -12,6 +12,7 @@ import {
 } from '@/ui/components/ui/dialog'
 import { Input } from '@/ui/components/ui/input'
 import { Label } from '@/ui/components/ui/label'
+import { ZoomableImage } from '@/ui/components/ui/zoomable-image'
 
 export interface ProfileFormValues {
   penName: string
@@ -93,10 +94,10 @@ export function ProfileDialog({ open, onOpenChange, initial, onSubmit }: Profile
             <Label htmlFor="profile-avatar">アバター</Label>
             <div className="flex items-start gap-3">
               {avatar ? (
-                <img
+                <ZoomableImage
                   src={avatar}
-                  alt="アバターのプレビュー"
-                  className="size-16 shrink-0 rounded-full border border-outline-variant/30 object-cover"
+                  alt={penName.trim() ? `${penName.trim()}のアバター` : 'アバター'}
+                  className="size-16 rounded-full border border-outline-variant/30 object-cover"
                 />
               ) : (
                 <div className="flex size-16 shrink-0 items-center justify-center rounded-full border border-outline-variant/30 border-dashed text-on-surface-variant/40">

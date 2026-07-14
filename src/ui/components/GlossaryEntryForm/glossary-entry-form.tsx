@@ -13,6 +13,7 @@ import {
 import { Input } from '@/ui/components/ui/input'
 import { Label } from '@/ui/components/ui/label'
 import { Textarea } from '@/ui/components/ui/textarea'
+import { ZoomableImage } from '@/ui/components/ui/zoomable-image'
 
 /** 図鑑カテゴリの選択肢（プルダウンで固定）。既存データの自由入力値は編集時のみ選択肢に含めて保全する。 */
 export const GLOSSARY_CATEGORIES = ['人物', '場所', '用語', '世界観', 'アイテム'] as const
@@ -230,10 +231,10 @@ export function GlossaryEntryForm({
             <Label htmlFor={`${uid}-thumbnail`}>サムネイル画像（任意）</Label>
             <div className="flex items-center gap-3">
               {thumbnail ? (
-                <img
+                <ZoomableImage
                   src={thumbnail}
-                  alt="サムネイルのプレビュー"
-                  className="size-16 shrink-0 rounded-md border border-outline-variant/30 object-cover"
+                  alt={name.trim() ? `${name.trim()}のサムネイル` : 'サムネイル'}
+                  className="size-16 rounded-md border border-outline-variant/30 object-cover"
                 />
               ) : (
                 <div className="flex size-16 shrink-0 items-center justify-center rounded-md border border-outline-variant/30 border-dashed text-on-surface-variant/40 text-xs">

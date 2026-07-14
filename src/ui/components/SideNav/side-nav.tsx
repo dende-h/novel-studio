@@ -17,6 +17,7 @@ import { cn } from '@/lib/utils'
 import { coverTone } from '@/ui/_utils/cover-tone'
 import { Button } from '@/ui/components/ui/button'
 import { ScrollArea } from '@/ui/components/ui/scroll-area'
+import { ZoomableImage } from '@/ui/components/ui/zoomable-image'
 
 export type NavKey = 'collection' | 'activity' | 'episodes' | 'glossary'
 
@@ -236,33 +237,37 @@ export function SideNav({
         <>
           {/* 作者プロフィール */}
           {onEditProfile ? (
-            <button
-              type="button"
-              onClick={onEditProfile}
-              aria-label="プロフィールを編集"
-              className="group flex w-full items-center gap-2.5 rounded-lg border border-outline-variant/30 bg-surface-container-lowest px-3 py-2.5 text-left transition-colors hover:border-outline-variant/50"
-            >
+            <div className="group flex w-full items-center gap-2.5 rounded-lg border border-outline-variant/30 bg-surface-container-lowest px-3 py-2.5 transition-colors hover:border-outline-variant/50">
+              {/* アバターはクリックで拡大（編集は右側のテキスト/鉛筆から）。未設定時は編集ボタンの一部。 */}
               {profile?.avatar ? (
-                <img
+                <ZoomableImage
                   src={profile.avatar}
-                  alt=""
-                  className="size-8 shrink-0 rounded-full object-cover"
+                  alt={profile.penName ? `${profile.penName}のアバター` : 'アバター'}
+                  className="size-8 rounded-full object-cover"
                 />
-              ) : (
-                <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary-container text-on-primary-container">
-                  <UserRound className="size-4" />
+              ) : null}
+              <button
+                type="button"
+                onClick={onEditProfile}
+                aria-label="プロフィールを編集"
+                className="flex min-w-0 flex-1 items-center gap-2.5 text-left"
+              >
+                {profile?.avatar ? null : (
+                  <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary-container text-on-primary-container">
+                    <UserRound className="size-4" />
+                  </span>
+                )}
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate font-medium text-[13px] text-on-surface">
+                    {profile?.penName || 'ペンネーム未設定'}
+                  </span>
+                  <span className="block truncate text-[11px] text-on-surface-variant">
+                    {profile?.penName ? 'プロフィールを編集' : 'タップして登録'}
+                  </span>
                 </span>
-              )}
-              <span className="min-w-0 flex-1">
-                <span className="block truncate font-medium text-[13px] text-on-surface">
-                  {profile?.penName || 'ペンネーム未設定'}
-                </span>
-                <span className="block truncate text-[11px] text-on-surface-variant">
-                  {profile?.penName ? 'プロフィールを編集' : 'タップして登録'}
-                </span>
-              </span>
-              <Pencil className="size-3.5 shrink-0 text-on-surface-variant/50 transition-colors group-hover:text-primary" />
-            </button>
+                <Pencil className="size-3.5 shrink-0 text-on-surface-variant/50 transition-colors group-hover:text-primary" />
+              </button>
+            </div>
           ) : null}
 
           {/* 新しい作品 */}

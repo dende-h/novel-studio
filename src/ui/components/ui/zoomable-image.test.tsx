@@ -36,4 +36,17 @@ describe('ZoomableImage（クリックで拡大表示）', () => {
     fireEvent.keyDown(document.body, { key: 'Escape' })
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
   })
+
+  it('children を渡すとサムネ img でなくその中身がトリガになる（隅の虫めがね等）', () => {
+    render(
+      <ZoomableImage src={SRC} alt="表紙">
+        <span data-testid="zoom-icon">🔍</span>
+      </ZoomableImage>,
+    )
+    const trigger = screen.getByRole('button', { name: '表紙を拡大表示' })
+    expect(trigger).toContainElement(screen.getByTestId('zoom-icon'))
+    // クリックすれば同じ拡大ダイアログが開く
+    fireEvent.click(trigger)
+    expect(screen.getByAltText('表紙')).toHaveAttribute('src', SRC)
+  })
 })

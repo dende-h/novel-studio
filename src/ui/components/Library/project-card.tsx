@@ -1,7 +1,9 @@
+import { ZoomIn } from 'lucide-react'
 import type { WorkSummary } from '@/core/storage/workRepository'
 import { coverTone } from '@/ui/_utils/cover-tone'
 import { formatCount, formatRelative } from '@/ui/_utils/format'
 import { Badge } from '@/ui/components/ui/badge'
+import { ZoomableImage } from '@/ui/components/ui/zoomable-image'
 import type { ProjectActionHandlers } from './project-actions'
 import { ProjectMenu } from './project-menu'
 
@@ -40,7 +42,18 @@ export function ProjectCard({
           style={{ background: coverTone(id) }}
         >
           {coverImage ? (
-            <img src={coverImage} alt="" className="absolute inset-0 size-full object-cover" />
+            <>
+              <img src={coverImage} alt="" className="absolute inset-0 size-full object-cover" />
+              {/* カード全体は「執筆を開く」なので、表紙の拡大は隅の虫めがねに分離する
+                  （pointer-events-auto＋z-10 でオーバーレイより前面に置く）。 */}
+              <ZoomableImage
+                src={coverImage}
+                alt={`${title}の表紙`}
+                wrapperClassName="pointer-events-auto absolute top-1.5 right-1.5 z-10 rounded-full bg-black/45 p-1.5 text-white opacity-0 transition-opacity hover:bg-black/65 group-hover:opacity-100 focus-visible:opacity-100"
+              >
+                <ZoomIn className="size-4" aria-hidden />
+              </ZoomableImage>
+            </>
           ) : (
             <>
               <div className="absolute inset-0 flex items-center justify-center px-3 py-4">

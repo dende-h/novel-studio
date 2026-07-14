@@ -4,6 +4,7 @@ import { coverTone } from '@/ui/_utils/cover-tone'
 import { formatCount, formatRelative } from '@/ui/_utils/format'
 import { Badge } from '@/ui/components/ui/badge'
 import { Button } from '@/ui/components/ui/button'
+import { ZoomableImage } from '@/ui/components/ui/zoomable-image'
 import type { ProjectActionHandlers } from './project-actions'
 import { ProjectMenu } from './project-menu'
 
@@ -25,18 +26,22 @@ export function ProjectRow({
   const initial = title.trim().charAt(0) || '無'
   return (
     <div className="flex items-center gap-3.5 border-outline-variant/30 border-b px-4 py-3 transition-colors last:border-b-0 hover:bg-surface-container-low">
-      {/* 表紙サムネ（画像が無ければトーン地に頭文字） */}
-      <div
-        aria-hidden="true"
-        className="relative flex h-[54px] w-10 shrink-0 items-center justify-center overflow-hidden rounded border border-outline-variant/30 font-serif text-[16px] text-on-surface"
-        style={{ background: coverTone(id) }}
-      >
-        {coverImage ? (
-          <img src={coverImage} alt="" className="absolute inset-0 size-full object-cover" />
-        ) : (
-          initial
-        )}
-      </div>
+      {/* 表紙サムネ。画像はクリックで拡大、無ければトーン地に頭文字。 */}
+      {coverImage ? (
+        <ZoomableImage
+          src={coverImage}
+          alt={`${title}の表紙`}
+          className="h-[54px] w-10 rounded border border-outline-variant/30 object-cover"
+        />
+      ) : (
+        <div
+          aria-hidden="true"
+          className="flex h-[54px] w-10 shrink-0 items-center justify-center rounded border border-outline-variant/30 font-serif text-[16px] text-on-surface"
+          style={{ background: coverTone(id) }}
+        >
+          {initial}
+        </div>
+      )}
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
           <h3 className="truncate font-medium font-sans text-[14px] text-on-surface">{title}</h3>

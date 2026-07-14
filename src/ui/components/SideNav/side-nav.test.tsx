@@ -147,6 +147,24 @@ describe('SideNav（サイドバー）', () => {
     expect(onEditProfile).toHaveBeenCalledTimes(1)
   })
 
+  it('アバター設定時：アバターは拡大表示、編集は別ボタン（両者が独立して動く）', () => {
+    const onEditProfile = vi.fn()
+    render(
+      <SideNav
+        active="collection"
+        onNavigateCollection={() => {}}
+        profile={{ penName: 'ぺんた', avatar: 'data:image/jpeg;base64,SGk=' }}
+        onEditProfile={onEditProfile}
+      />,
+    )
+    // 編集ボタンは残る（押下で編集）
+    fireEvent.click(screen.getByRole('button', { name: 'プロフィールを編集' }))
+    expect(onEditProfile).toHaveBeenCalledTimes(1)
+    // アバターは拡大表示トリガ（クリックで編集は発火しない）
+    fireEvent.click(screen.getByRole('button', { name: 'ぺんたのアバターを拡大表示' }))
+    expect(onEditProfile).toHaveBeenCalledTimes(1)
+  })
+
   it('設定・ヘルプは disabled で押せない', () => {
     render(<SideNav active="collection" onNavigateCollection={() => {}} />)
     expect(screen.getByRole('button', { name: '設定' })).toBeDisabled()

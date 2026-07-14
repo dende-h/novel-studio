@@ -12,6 +12,7 @@ import {
 import { Input } from '@/ui/components/ui/input'
 import { Label } from '@/ui/components/ui/label'
 import { Textarea } from '@/ui/components/ui/textarea'
+import { ZoomableImage } from '@/ui/components/ui/zoomable-image'
 
 export interface WorkMetaValues {
   title: string
@@ -126,10 +127,10 @@ export function WorkMetaDialog({ open, onOpenChange, initial, onSubmit }: WorkMe
             <Label htmlFor="work-meta-cover">表紙画像</Label>
             <div className="flex items-start gap-3">
               {coverImage ? (
-                <img
+                <ZoomableImage
                   src={coverImage}
-                  alt="表紙のプレビュー"
-                  className="h-24 w-auto max-w-[6rem] shrink-0 rounded-md border border-outline-variant/30 object-contain"
+                  alt={title.trim() ? `${title.trim()}の表紙` : '表紙'}
+                  className="h-24 w-auto max-w-[6rem] rounded-md border border-outline-variant/30 object-contain"
                 />
               ) : (
                 <div className="flex h-24 w-16 shrink-0 items-center justify-center rounded-md border border-outline-variant/30 border-dashed text-on-surface-variant/40 text-xs">

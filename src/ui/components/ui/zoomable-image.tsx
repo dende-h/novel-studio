@@ -1,5 +1,6 @@
 import { X } from 'lucide-react'
 import { Dialog as DialogPrimitive } from 'radix-ui'
+import type { ReactNode } from 'react'
 import { cn } from '@/lib/utils'
 
 interface ZoomableImageProps {
@@ -11,6 +12,11 @@ interface ZoomableImageProps {
   className?: string
   /** トリガ button（ラッパ）に足す class。margin などレイアウト用。 */
   wrapperClassName?: string
+  /**
+   * トリガの中身を差し替える（省略時はサムネ <img> をトリガにする）。
+   * カード全体が別の主操作（開く/編集）を持つ場合に、隅の拡大アイコン等をトリガにするために使う。
+   */
+  children?: ReactNode
 }
 
 /**
@@ -18,7 +24,13 @@ interface ZoomableImageProps {
  * 図鑑サムネ・作品表紙など、小さく置かれた画像を原寸（ビューポート内に収まる範囲）で見るための共通部品。
  * Radix Dialog をそのまま使い、フォーカストラップ・Escape・スクロールロック・背景クリックで閉じるを得る。
  */
-export function ZoomableImage({ src, alt, className, wrapperClassName }: ZoomableImageProps) {
+export function ZoomableImage({
+  src,
+  alt,
+  className,
+  wrapperClassName,
+  children,
+}: ZoomableImageProps) {
   return (
     <DialogPrimitive.Root>
       <DialogPrimitive.Trigger
@@ -30,7 +42,7 @@ export function ZoomableImage({ src, alt, className, wrapperClassName }: Zoomabl
         )}
       >
         {/* トリガ自身に aria-label があるので内側画像は装飾扱い（読み上げ二重化を避ける）。 */}
-        <img src={src} alt="" className={className} />
+        {children ?? <img src={src} alt="" className={className} />}
       </DialogPrimitive.Trigger>
       <DialogPrimitive.Portal>
         <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/80 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0" />

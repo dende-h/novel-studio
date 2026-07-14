@@ -109,7 +109,7 @@ export function GlossaryView({
               : '条件に合う項目がありません。'}
           </p>
         ) : (
-          <ul className="grid grid-cols-[repeat(auto-fill,minmax(250px,1fr))] gap-3.5">
+          <ul className="flex flex-col gap-3">
             {visible.map((entry) => (
               <EntryCard
                 key={entry.id}
@@ -208,61 +208,63 @@ function EntryCard({
   const used = appearances.refCount > 0
   const initial = entry.name.trim().charAt(0) || '？'
   return (
-    <li className="flex flex-col gap-2.5 rounded-lg border border-outline-variant/30 bg-surface-container-lowest p-3.5 transition-all hover:border-outline-variant/50 hover:shadow-sm">
-      <div className="flex items-start gap-3">
-        {/* 頭文字タイル（画像があれば画像） */}
-        {entry.thumbnail ? (
-          <ZoomableImage
-            src={entry.thumbnail}
-            alt={entry.name}
-            className="size-[52px] rounded-lg border border-outline-variant/30 object-cover"
-            wrapperClassName="shrink-0"
-          />
-        ) : (
-          <div
-            aria-hidden="true"
-            className="flex size-[52px] shrink-0 items-center justify-center rounded-lg border border-outline-variant/30 bg-accent font-serif text-[20px] text-primary"
-          >
-            {initial}
-          </div>
-        )}
-        <div className="flex min-w-0 flex-1 flex-col gap-1">
-          <div className="flex items-baseline gap-2">
-            <h3 className="truncate font-semibold font-serif text-[16px] text-on-surface">
-              {entry.name}
-            </h3>
-            {entry.reading ? (
-              <span className="shrink-0 text-[11px] text-on-surface-variant/70">
-                {entry.reading}
-              </span>
-            ) : null}
-          </div>
-          <div className="flex min-w-0 items-center gap-2">
-            {entry.category ? (
-              <Badge
-                variant="secondary"
-                className="shrink-0 gap-1 bg-primary-container text-on-primary-container"
-              >
-                <Tag className="size-3" />
-                {entry.category}
-              </Badge>
-            ) : null}
-            <span className="truncate text-[11px] text-on-surface-variant/70">
-              {used
-                ? `${appearances.episodeIds.length}話・${appearances.refCount}回 登場`
-                : '未使用'}
-            </span>
-          </div>
+    <li className="flex gap-4 rounded-lg border border-outline-variant/30 bg-surface-container-lowest p-4 transition-all hover:border-outline-variant/50 hover:shadow-sm">
+      {/* サムネ（クリックで拡大）。画像が無ければ頭文字タイル。 */}
+      {entry.thumbnail ? (
+        <ZoomableImage
+          src={entry.thumbnail}
+          alt={entry.name}
+          className="size-20 rounded-lg border border-outline-variant/30 object-cover"
+          wrapperClassName="self-start"
+        />
+      ) : (
+        <div
+          aria-hidden="true"
+          className="flex size-20 shrink-0 items-center justify-center self-start rounded-lg border border-outline-variant/30 bg-accent font-serif text-[26px] text-primary"
+        >
+          {initial}
         </div>
-        {/* 操作は 3点リーダに集約（編集・削除）。並べたアイコンでレイアウトを崩さない */}
-        <EntryMenu name={entry.name} onEdit={onEdit} onDelete={onDelete} />
+      )}
+      <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0">
+            <div className="flex items-baseline gap-2">
+              <h3 className="truncate font-semibold font-serif text-[16px] text-on-surface">
+                {entry.name}
+              </h3>
+              {entry.reading ? (
+                <span className="shrink-0 text-[11px] text-on-surface-variant/70">
+                  {entry.reading}
+                </span>
+              ) : null}
+            </div>
+            <div className="mt-1 flex min-w-0 items-center gap-2">
+              {entry.category ? (
+                <Badge
+                  variant="secondary"
+                  className="shrink-0 gap-1 bg-primary-container text-on-primary-container"
+                >
+                  <Tag className="size-3" />
+                  {entry.category}
+                </Badge>
+              ) : null}
+              <span className="truncate text-[11px] text-on-surface-variant/70">
+                {used
+                  ? `${appearances.episodeIds.length}話・${appearances.refCount}回 登場`
+                  : '未使用'}
+              </span>
+            </div>
+          </div>
+          {/* 操作は 3点リーダに集約（編集・削除）。 */}
+          <EntryMenu name={entry.name} onEdit={onEdit} onDelete={onDelete} />
+        </div>
+        <p className="truncate text-[12px] text-on-surface-variant">
+          別名: {entry.aliases.length > 0 ? entry.aliases.join('、') : 'なし'}
+        </p>
+        <p className="line-clamp-2 text-[12px] text-on-surface-variant leading-relaxed">
+          {entry.summary || '説明はまだありません。'}
+        </p>
       </div>
-      <p className="truncate text-[12px] text-on-surface-variant">
-        別名: {entry.aliases.length > 0 ? entry.aliases.join('、') : 'なし'}
-      </p>
-      <p className="line-clamp-2 min-h-[40px] text-[12px] text-on-surface-variant leading-relaxed">
-        {entry.summary || '説明はまだありません。'}
-      </p>
     </li>
   )
 }
