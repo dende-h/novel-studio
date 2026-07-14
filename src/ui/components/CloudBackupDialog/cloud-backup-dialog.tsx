@@ -4,6 +4,7 @@ import type { BackupService, BackupSummary } from '@/ui/backup/backup-service'
 import { Button } from '@/ui/components/ui/button'
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
   DialogHeader,
@@ -108,83 +109,85 @@ export function CloudBackupDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <Button onClick={backupNow} disabled={busy} className="w-full gap-2">
-          {busy ? (
-            <LoaderCircle className="size-4 animate-spin" aria-hidden />
-          ) : (
-            <CloudUpload className="size-4" aria-hidden />
-          )}
-          今すぐバックアップ
-        </Button>
+        <DialogBody>
+          <Button onClick={backupNow} disabled={busy} className="w-full gap-2">
+            {busy ? (
+              <LoaderCircle className="size-4 animate-spin" aria-hidden />
+            ) : (
+              <CloudUpload className="size-4" aria-hidden />
+            )}
+            今すぐバックアップ
+          </Button>
 
-        <label className="flex cursor-pointer items-center gap-2 font-sans text-on-surface-variant text-xs">
-          <input
-            type="checkbox"
-            checked={keepCurrent}
-            onChange={(e) => setKeepCurrent(e.target.checked)}
-            className="size-4 accent-primary"
-          />
-          復元するとき、置換前の現在の状態もバックアップに残す
-        </label>
+          <label className="flex cursor-pointer items-center gap-2 font-sans text-on-surface-variant text-xs">
+            <input
+              type="checkbox"
+              checked={keepCurrent}
+              onChange={(e) => setKeepCurrent(e.target.checked)}
+              className="size-4 accent-primary"
+            />
+            復元するとき、置換前の現在の状態もバックアップに残す
+          </label>
 
-        {/* 件数が増えても内部スクロールで高さを抑える（モーダルが伸び続けない）。 */}
-        <div className="max-h-[45vh] space-y-2 overflow-y-auto">
-          {backups === null ? (
-            <p className="py-6 text-center text-on-surface-variant text-sm">読み込み中…</p>
-          ) : backups.length === 0 ? (
-            <p className="py-6 text-center text-on-surface-variant text-sm">
-              まだバックアップがありません。
-            </p>
-          ) : (
-            backups.map((b) => (
-              <div
-                key={b.id}
-                className="flex items-center justify-between gap-2 rounded-lg border border-outline-variant/30 px-3 py-2"
-              >
-                <span className="font-sans text-on-surface text-sm">{fmt(b.createdAt)}</span>
-                {confirmId === b.id ? (
-                  <span className="flex items-center gap-2">
-                    <span className="text-destructive text-xs">全置換で復元しますか？</span>
-                    <Button size="sm" onClick={() => restore(b.id)} disabled={busy}>
-                      復元する
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => setConfirmId(null)}
-                      disabled={busy}
-                    >
-                      取消
-                    </Button>
-                  </span>
-                ) : (
-                  <span className="flex items-center gap-1">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="gap-1 text-primary"
-                      onClick={() => setConfirmId(b.id)}
-                      disabled={busy}
-                    >
-                      <RotateCcw className="size-3.5" aria-hidden />
-                      復元
-                    </Button>
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      aria-label="このバックアップを削除"
-                      onClick={() => remove(b.id)}
-                      disabled={busy}
-                      className="text-on-surface-variant hover:text-destructive"
-                    >
-                      <Trash2 className="size-4" aria-hidden />
-                    </Button>
-                  </span>
-                )}
-              </div>
-            ))
-          )}
-        </div>
+          {/* 件数が増えても内部スクロールで高さを抑える（モーダルが伸び続けない）。 */}
+          <div className="max-h-[45vh] space-y-2 overflow-y-auto">
+            {backups === null ? (
+              <p className="py-6 text-center text-on-surface-variant text-sm">読み込み中…</p>
+            ) : backups.length === 0 ? (
+              <p className="py-6 text-center text-on-surface-variant text-sm">
+                まだバックアップがありません。
+              </p>
+            ) : (
+              backups.map((b) => (
+                <div
+                  key={b.id}
+                  className="flex items-center justify-between gap-2 rounded-lg border border-outline-variant/30 px-3 py-2"
+                >
+                  <span className="font-sans text-on-surface text-sm">{fmt(b.createdAt)}</span>
+                  {confirmId === b.id ? (
+                    <span className="flex items-center gap-2">
+                      <span className="text-destructive text-xs">全置換で復元しますか？</span>
+                      <Button size="sm" onClick={() => restore(b.id)} disabled={busy}>
+                        復元する
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => setConfirmId(null)}
+                        disabled={busy}
+                      >
+                        取消
+                      </Button>
+                    </span>
+                  ) : (
+                    <span className="flex items-center gap-1">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="gap-1 text-primary"
+                        onClick={() => setConfirmId(b.id)}
+                        disabled={busy}
+                      >
+                        <RotateCcw className="size-3.5" aria-hidden />
+                        復元
+                      </Button>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        aria-label="このバックアップを削除"
+                        onClick={() => remove(b.id)}
+                        disabled={busy}
+                        className="text-on-surface-variant hover:text-destructive"
+                      >
+                        <Trash2 className="size-4" aria-hidden />
+                      </Button>
+                    </span>
+                  )}
+                </div>
+              ))
+            )}
+          </div>
+        </DialogBody>
       </DialogContent>
     </Dialog>
   )

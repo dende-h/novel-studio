@@ -5,6 +5,7 @@ import { Badge } from '@/ui/components/ui/badge'
 import { Button } from '@/ui/components/ui/button'
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -28,6 +29,7 @@ interface GlossaryDetailDialogProps {
 /**
  * 図鑑項目の閲覧ダイアログ。カード押下で開き、内容（サムネ・読み・カテゴリ・別名・概要・登場数）を
  * ゆったり読める大きめのダイアログで表示する。ここから「編集」「削除」へ進む（カードの3点リーダは廃止）。
+ * 情報が多いときは本文（DialogBody）だけがスクロールし、ヘッダー／フッターは固定される。
  */
 export function GlossaryDetailDialog({
   open,
@@ -46,18 +48,18 @@ export function GlossaryDetailDialog({
           <>
             <DialogHeader>
               <div className="flex items-start gap-4">
-                {/* サムネはクリックで拡大。無ければ頭文字タイル。 */}
+                {/* サムネは大きめ・クリックで拡大。無ければ頭文字タイル。 */}
                 {entry.thumbnail ? (
                   <ZoomableImage
                     src={entry.thumbnail}
                     alt={entry.name}
-                    className="size-24 rounded-lg border border-outline-variant/30 object-cover"
+                    className="size-28 rounded-xl border border-outline-variant/30 object-cover"
                     wrapperClassName="self-start"
                   />
                 ) : (
                   <div
                     aria-hidden="true"
-                    className="flex size-24 shrink-0 items-center justify-center self-start rounded-lg border border-outline-variant/30 bg-accent font-serif text-[32px] text-primary"
+                    className="flex size-28 shrink-0 items-center justify-center self-start rounded-xl border border-outline-variant/30 bg-accent font-serif text-[40px] text-primary"
                   >
                     {initial}
                   </div>
@@ -95,21 +97,24 @@ export function GlossaryDetailDialog({
               </div>
             </DialogHeader>
 
-            <div className="space-y-3">
-              {entry.aliases.length > 0 ? (
+            <DialogBody>
+              <div className="space-y-1">
+                <div className="text-[11px] text-on-surface-variant/60 tracking-wide">別名</div>
                 <p className="text-[13px] text-on-surface-variant">
-                  <span className="text-on-surface-variant/60">別名: </span>
-                  {entry.aliases.join('、')}
+                  {entry.aliases.length > 0 ? entry.aliases.join('、') : 'なし'}
                 </p>
-              ) : null}
-              {entry.summary ? (
-                <p className="whitespace-pre-wrap text-[14px] text-on-surface leading-relaxed">
-                  {entry.summary}
-                </p>
-              ) : (
-                <p className="text-[14px] text-on-surface-variant/60">説明はまだありません。</p>
-              )}
-            </div>
+              </div>
+              <div className="space-y-1">
+                <div className="text-[11px] text-on-surface-variant/60 tracking-wide">概要</div>
+                {entry.summary ? (
+                  <p className="whitespace-pre-wrap text-[14px] text-on-surface leading-relaxed">
+                    {entry.summary}
+                  </p>
+                ) : (
+                  <p className="text-[14px] text-on-surface-variant/60">説明はまだありません。</p>
+                )}
+              </div>
+            </DialogBody>
 
             <DialogFooter className="sm:justify-between">
               <Button

@@ -6,6 +6,7 @@ import { readFileText } from '@/ui/_utils/download'
 import { Button } from '@/ui/components/ui/button'
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -82,72 +83,74 @@ export function ImportDialog({ open, onOpenChange, onImport }: ImportDialogProps
           </DialogDescription>
         </DialogHeader>
 
-        {/* 隠しファイル入力（ボタンから開く）。同じファイルを連続で選んでも change が発火するよう値を毎回リセット。 */}
-        <input
-          ref={inputRef}
-          type="file"
-          accept="application/json,.json"
-          className="sr-only"
-          aria-label="バックアップ JSON ファイル"
-          onChange={(e) => {
-            const file = e.target.files?.[0]
-            e.target.value = ''
-            if (file) void onPickFile(file)
-          }}
-        />
+        <DialogBody>
+          {/* 隠しファイル入力（ボタンから開く）。同じファイルを連続で選んでも change が発火するよう値を毎回リセット。 */}
+          <input
+            ref={inputRef}
+            type="file"
+            accept="application/json,.json"
+            className="sr-only"
+            aria-label="バックアップ JSON ファイル"
+            onChange={(e) => {
+              const file = e.target.files?.[0]
+              e.target.value = ''
+              if (file) void onPickFile(file)
+            }}
+          />
 
-        {phase.kind === 'pick' && (
-          <div className="space-y-4 py-2">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => inputRef.current?.click()}
-              className="w-full gap-2 text-primary"
-            >
-              <Upload className="size-4" />
-              JSON ファイルを選択
-            </Button>
-            {phase.error ? (
-              <p className="flex items-start gap-2 rounded-md bg-destructive/10 p-3 text-destructive text-sm">
-                <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden />
-                <span>{phase.error}</span>
+          {phase.kind === 'pick' && (
+            <div className="space-y-4 py-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => inputRef.current?.click()}
+                className="w-full gap-2 text-primary"
+              >
+                <Upload className="size-4" />
+                JSON ファイルを選択
+              </Button>
+              {phase.error ? (
+                <p className="flex items-start gap-2 rounded-md bg-destructive/10 p-3 text-destructive text-sm">
+                  <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden />
+                  <span>{phase.error}</span>
+                </p>
+              ) : null}
+            </div>
+          )}
+
+          {phase.kind === 'confirm' && (
+            <div className="space-y-3 py-2">
+              <p className="text-on-surface text-sm">
+                <span className="font-medium">{phase.fileName}</span> から{' '}
+                <span className="font-medium">{phase.works.length}作品</span>を取り込みます。
               </p>
-            ) : null}
-          </div>
-        )}
+              {phase.works.length > 0 ? (
+                <ul className="max-h-40 space-y-1 overflow-y-auto rounded-md border border-outline-variant/30 p-3 text-on-surface-variant text-sm">
+                  {phase.works.map((w) => (
+                    <li key={w.id} className="truncate">
+                      {w.title || '無題の作品'}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="text-on-surface-variant text-sm">取り込める作品がありません。</p>
+              )}
+              <p className="flex items-start gap-2 rounded-md bg-surface-container-low p-3 text-on-surface-variant text-xs">
+                <AlertTriangle className="mt-0.5 size-4 shrink-0 text-primary" aria-hidden />
+                <span>
+                  同じ作品（同一ID）は取り込んだ内容で上書きされます。履歴（版）は復元されません。
+                </span>
+              </p>
+            </div>
+          )}
 
-        {phase.kind === 'confirm' && (
-          <div className="space-y-3 py-2">
-            <p className="text-on-surface text-sm">
-              <span className="font-medium">{phase.fileName}</span> から{' '}
-              <span className="font-medium">{phase.works.length}作品</span>を取り込みます。
+          {phase.kind === 'done' && (
+            <p className="flex items-center gap-2 py-4 text-on-surface text-sm">
+              <CheckCircle2 className="size-5 text-primary" aria-hidden />
+              {phase.count}作品を取り込みました。
             </p>
-            {phase.works.length > 0 ? (
-              <ul className="max-h-40 space-y-1 overflow-y-auto rounded-md border border-outline-variant/30 p-3 text-on-surface-variant text-sm">
-                {phase.works.map((w) => (
-                  <li key={w.id} className="truncate">
-                    {w.title || '無題の作品'}
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p className="text-on-surface-variant text-sm">取り込める作品がありません。</p>
-            )}
-            <p className="flex items-start gap-2 rounded-md bg-surface-container-low p-3 text-on-surface-variant text-xs">
-              <AlertTriangle className="mt-0.5 size-4 shrink-0 text-primary" aria-hidden />
-              <span>
-                同じ作品（同一ID）は取り込んだ内容で上書きされます。履歴（版）は復元されません。
-              </span>
-            </p>
-          </div>
-        )}
-
-        {phase.kind === 'done' && (
-          <p className="flex items-center gap-2 py-4 text-on-surface text-sm">
-            <CheckCircle2 className="size-5 text-primary" aria-hidden />
-            {phase.count}作品を取り込みました。
-          </p>
-        )}
+          )}
+        </DialogBody>
 
         <DialogFooter>
           {phase.kind === 'confirm' ? (

@@ -3,6 +3,7 @@ import { coverToDataUrl } from '@/ui/_utils/imageResizer'
 import { Button } from '@/ui/components/ui/button'
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -92,80 +93,84 @@ export function WorkMetaDialog({ open, onOpenChange, initial, onSubmit }: WorkMe
             e.preventDefault()
             submit()
           }}
-          className="space-y-4"
+          className="flex min-h-0 flex-1 flex-col gap-4"
         >
-          <div className="space-y-2">
-            <Label htmlFor="work-meta-title">タイトル</Label>
-            <Input
-              id="work-meta-title"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              placeholder="作品タイトル"
-              autoFocus
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="work-meta-author">著者</Label>
-            <Input
-              id="work-meta-author"
-              value={author}
-              onChange={(e) => setAuthor(e.target.value)}
-              placeholder="ペンネームなど（任意）"
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="work-meta-description">あらすじ</Label>
-            <Textarea
-              id="work-meta-description"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="作品の概要・あらすじ（任意）"
-              rows={4}
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="work-meta-cover">表紙画像</Label>
-            <div className="flex items-start gap-3">
-              {coverImage ? (
-                <ZoomableImage
-                  src={coverImage}
-                  alt={title.trim() ? `${title.trim()}の表紙` : '表紙'}
-                  className="h-24 w-auto max-w-[6rem] rounded-md border border-outline-variant/30 object-contain"
-                />
-              ) : (
-                <div className="flex h-24 w-16 shrink-0 items-center justify-center rounded-md border border-outline-variant/30 border-dashed text-on-surface-variant/40 text-xs">
-                  なし
-                </div>
-              )}
-              <div className="flex min-w-0 flex-col gap-1.5">
-                <input
-                  id="work-meta-cover"
-                  type="file"
-                  accept="image/*"
-                  onChange={(e) => {
-                    void onPickCover(e.target.files?.[0])
-                    e.target.value = ''
-                  }}
-                  className="block w-full text-on-surface-variant text-sm file:mr-3 file:rounded-md file:border-0 file:bg-secondary file:px-3 file:py-1.5 file:font-medium file:text-secondary-foreground file:text-sm hover:file:bg-secondary/80"
-                />
-                <div className="flex items-center gap-3 text-on-surface-variant/70 text-xs">
-                  <span>
-                    {imageBusy ? '処理中…' : 'EPUB に埋め込む表紙（縦横比はそのまま・任意）'}
-                  </span>
-                  {coverImage ? (
-                    <button
-                      type="button"
-                      onClick={() => setCoverImage('')}
-                      className="text-destructive hover:underline"
-                    >
-                      削除
-                    </button>
+          <DialogBody>
+            <div className="space-y-2">
+              <Label htmlFor="work-meta-title">タイトル</Label>
+              <Input
+                id="work-meta-title"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                placeholder="作品タイトル"
+                autoFocus
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="work-meta-author">著者</Label>
+              <Input
+                id="work-meta-author"
+                value={author}
+                onChange={(e) => setAuthor(e.target.value)}
+                placeholder="ペンネームなど（任意）"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="work-meta-description">あらすじ</Label>
+              <Textarea
+                id="work-meta-description"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="作品の概要・あらすじ（任意）"
+                rows={4}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="work-meta-cover">表紙画像</Label>
+              <div className="flex items-start gap-3">
+                {coverImage ? (
+                  <ZoomableImage
+                    src={coverImage}
+                    alt={title.trim() ? `${title.trim()}の表紙` : '表紙'}
+                    className="h-24 w-auto max-w-[6rem] rounded-md border border-outline-variant/30 object-contain"
+                  />
+                ) : (
+                  <div className="flex h-24 w-16 shrink-0 items-center justify-center rounded-md border border-outline-variant/30 border-dashed text-on-surface-variant/40 text-xs">
+                    なし
+                  </div>
+                )}
+                <div className="flex min-w-0 flex-col gap-1.5">
+                  <input
+                    id="work-meta-cover"
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => {
+                      void onPickCover(e.target.files?.[0])
+                      e.target.value = ''
+                    }}
+                    className="block w-full text-on-surface-variant text-sm file:mr-3 file:rounded-md file:border-0 file:bg-secondary file:px-3 file:py-1.5 file:font-medium file:text-secondary-foreground file:text-sm hover:file:bg-secondary/80"
+                  />
+                  <div className="flex items-center gap-3 text-on-surface-variant/70 text-xs">
+                    <span>
+                      {imageBusy ? '処理中…' : 'EPUB に埋め込む表紙（縦横比はそのまま・任意）'}
+                    </span>
+                    {coverImage ? (
+                      <button
+                        type="button"
+                        onClick={() => setCoverImage('')}
+                        className="text-destructive hover:underline"
+                      >
+                        削除
+                      </button>
+                    ) : null}
+                  </div>
+                  {imageError ? (
+                    <span className="text-destructive text-xs">{imageError}</span>
                   ) : null}
                 </div>
-                {imageError ? <span className="text-destructive text-xs">{imageError}</span> : null}
               </div>
             </div>
-          </div>
+          </DialogBody>
           <DialogFooter>
             <Button
               type="button"

@@ -4,6 +4,7 @@ import type { TrashSummary } from '@/core/storage/workRepository'
 import { Button } from '@/ui/components/ui/button'
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -59,78 +60,80 @@ export function TrashDialog({
           </DialogDescription>
         </DialogHeader>
 
-        {trash.length === 0 ? (
-          <p className="py-8 text-center text-on-surface-variant text-sm">ゴミ箱は空です。</p>
-        ) : (
-          <ul className="max-h-80 space-y-2 overflow-y-auto py-1">
-            {trash.map((t) => {
-              const days = Math.max(0, Math.ceil((t.trashedAt + ttlMs - now) / DAY_MS))
-              return (
-                <li key={t.id} className="rounded-md border border-outline-variant/30 p-3">
-                  <div className="flex items-center gap-3">
-                    <div className="min-w-0 flex-1">
-                      <div className="truncate font-medium text-on-surface text-sm">
-                        {t.title || '無題の作品'}
+        <DialogBody>
+          {trash.length === 0 ? (
+            <p className="py-8 text-center text-on-surface-variant text-sm">ゴミ箱は空です。</p>
+          ) : (
+            <ul className="max-h-80 space-y-2 overflow-y-auto py-1">
+              {trash.map((t) => {
+                const days = Math.max(0, Math.ceil((t.trashedAt + ttlMs - now) / DAY_MS))
+                return (
+                  <li key={t.id} className="rounded-md border border-outline-variant/30 p-3">
+                    <div className="flex items-center gap-3">
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate font-medium text-on-surface text-sm">
+                          {t.title || '無題の作品'}
+                        </div>
+                        <div className="text-on-surface-variant text-xs">
+                          {t.episodeCount}話・
+                          {days > 0 ? `あと${days}日で自動削除` : 'まもなく自動削除'}
+                        </div>
                       </div>
-                      <div className="text-on-surface-variant text-xs">
-                        {t.episodeCount}話・
-                        {days > 0 ? `あと${days}日で自動削除` : 'まもなく自動削除'}
-                      </div>
+                      {confirming === t.id ? (
+                        <div className="flex shrink-0 items-center gap-2">
+                          <span className="text-destructive text-xs">履歴ごと完全に削除？</span>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="destructive"
+                            onClick={() => {
+                              onPurge(t.id)
+                              setConfirming(null)
+                            }}
+                          >
+                            削除
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => setConfirming(null)}
+                            className="text-on-surface-variant"
+                          >
+                            やめる
+                          </Button>
+                        </div>
+                      ) : (
+                        <div className="flex shrink-0 items-center gap-1">
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            onClick={() => onRestore(t.id)}
+                            className="gap-1.5 text-primary"
+                          >
+                            <RotateCcw className="size-3.5" />
+                            復元
+                          </Button>
+                          <Button
+                            type="button"
+                            size="icon-sm"
+                            variant="ghost"
+                            aria-label={`「${t.title || '無題の作品'}」を完全に削除`}
+                            onClick={() => setConfirming(t.id)}
+                            className="text-on-surface-variant hover:text-destructive"
+                          >
+                            <Trash2 className="size-4" />
+                          </Button>
+                        </div>
+                      )}
                     </div>
-                    {confirming === t.id ? (
-                      <div className="flex shrink-0 items-center gap-2">
-                        <span className="text-destructive text-xs">履歴ごと完全に削除？</span>
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="destructive"
-                          onClick={() => {
-                            onPurge(t.id)
-                            setConfirming(null)
-                          }}
-                        >
-                          削除
-                        </Button>
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => setConfirming(null)}
-                          className="text-on-surface-variant"
-                        >
-                          やめる
-                        </Button>
-                      </div>
-                    ) : (
-                      <div className="flex shrink-0 items-center gap-1">
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="outline"
-                          onClick={() => onRestore(t.id)}
-                          className="gap-1.5 text-primary"
-                        >
-                          <RotateCcw className="size-3.5" />
-                          復元
-                        </Button>
-                        <Button
-                          type="button"
-                          size="icon-sm"
-                          variant="ghost"
-                          aria-label={`「${t.title || '無題の作品'}」を完全に削除`}
-                          onClick={() => setConfirming(t.id)}
-                          className="text-on-surface-variant hover:text-destructive"
-                        >
-                          <Trash2 className="size-4" />
-                        </Button>
-                      </div>
-                    )}
-                  </div>
-                </li>
-              )
-            })}
-          </ul>
-        )}
+                  </li>
+                )
+              })}
+            </ul>
+          )}
+        </DialogBody>
 
         <DialogFooter className="sm:justify-between">
           {trash.length > 0 ? (

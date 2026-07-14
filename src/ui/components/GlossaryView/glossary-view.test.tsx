@@ -83,12 +83,14 @@ describe('GlossaryView（図鑑一覧・検索・カテゴリ・CRUD）', () => 
     expect(onCreate).toHaveBeenCalledWith(expect.objectContaining({ name: 'キャロル' }))
   })
 
-  it('カード押下で閲覧ダイアログが開き、内容を表示する', async () => {
+  it('カード押下で閲覧ダイアログが開き、読み・別名・概要・登場数を表示する', async () => {
     setup()
     fireEvent.click(screen.getByRole('button', { name: '「アリス」の詳細を開く' }))
     const dialog = await screen.findByRole('dialog')
-    expect(within(dialog).getByText('ありす')).toBeInTheDocument()
-    expect(within(dialog).getByText('主人公')).toBeInTheDocument()
+    expect(within(dialog).getByText('ありす')).toBeInTheDocument() // 読み
+    expect(within(dialog).getByText('Alice')).toBeInTheDocument() // 別名
+    expect(within(dialog).getByText('主人公')).toBeInTheDocument() // 概要
+    expect(within(dialog).getByText('2話・5回 登場')).toBeInTheDocument()
     expect(within(dialog).getByRole('button', { name: '編集' })).toBeInTheDocument()
     expect(within(dialog).getByRole('button', { name: '削除' })).toBeInTheDocument()
   })

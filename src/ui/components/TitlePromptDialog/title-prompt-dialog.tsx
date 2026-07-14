@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Button } from '@/ui/components/ui/button'
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -59,18 +60,20 @@ export function TitlePromptDialog({
             e.preventDefault()
             submit()
           }}
-          className="space-y-4"
+          className="flex min-h-0 flex-1 flex-col gap-4"
         >
-          <div className="space-y-2">
-            <Label htmlFor="title-prompt-input">{label}</Label>
-            <Input
-              id="title-prompt-input"
-              value={value}
-              onChange={(e) => setValue(e.target.value)}
-              placeholder={placeholder}
-              autoFocus
-            />
-          </div>
+          <DialogBody>
+            <div className="space-y-2">
+              <Label htmlFor="title-prompt-input">{label}</Label>
+              <Input
+                id="title-prompt-input"
+                value={value}
+                onChange={(e) => setValue(e.target.value)}
+                placeholder={placeholder}
+                autoFocus
+              />
+            </div>
+          </DialogBody>
           <DialogFooter>
             <Button
               type="button"

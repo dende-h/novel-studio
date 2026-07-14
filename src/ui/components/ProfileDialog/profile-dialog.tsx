@@ -4,6 +4,7 @@ import { thumbnailToDataUrl } from '@/ui/_utils/imageResizer'
 import { Button } from '@/ui/components/ui/button'
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -78,59 +79,63 @@ export function ProfileDialog({ open, onOpenChange, initial, onSubmit }: Profile
             e.preventDefault()
             submit()
           }}
-          className="space-y-4"
+          className="flex min-h-0 flex-1 flex-col gap-4"
         >
-          <div className="space-y-2">
-            <Label htmlFor="profile-pen-name">ペンネーム</Label>
-            <Input
-              id="profile-pen-name"
-              value={penName}
-              onChange={(e) => setPenName(e.target.value)}
-              placeholder="あなたの筆名（任意）"
-              autoFocus
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="profile-avatar">アバター</Label>
-            <div className="flex items-start gap-3">
-              {avatar ? (
-                <ZoomableImage
-                  src={avatar}
-                  alt={penName.trim() ? `${penName.trim()}のアバター` : 'アバター'}
-                  className="size-16 rounded-full border border-outline-variant/30 object-cover"
-                />
-              ) : (
-                <div className="flex size-16 shrink-0 items-center justify-center rounded-full border border-outline-variant/30 border-dashed text-on-surface-variant/40">
-                  <UserRound className="size-7" />
-                </div>
-              )}
-              <div className="flex min-w-0 flex-col gap-1.5">
-                <input
-                  id="profile-avatar"
-                  type="file"
-                  accept="image/*"
-                  onChange={(e) => {
-                    void onPickAvatar(e.target.files?.[0])
-                    e.target.value = ''
-                  }}
-                  className="block w-full text-on-surface-variant text-sm file:mr-3 file:rounded-md file:border-0 file:bg-secondary file:px-3 file:py-1.5 file:font-medium file:text-secondary-foreground file:text-sm hover:file:bg-secondary/80"
-                />
-                <div className="flex items-center gap-3 text-on-surface-variant/70 text-xs">
-                  <span>{imageBusy ? '処理中…' : '正方形に切り抜かれます（任意）'}</span>
-                  {avatar ? (
-                    <button
-                      type="button"
-                      onClick={() => setAvatar('')}
-                      className="text-destructive hover:underline"
-                    >
-                      削除
-                    </button>
+          <DialogBody>
+            <div className="space-y-2">
+              <Label htmlFor="profile-pen-name">ペンネーム</Label>
+              <Input
+                id="profile-pen-name"
+                value={penName}
+                onChange={(e) => setPenName(e.target.value)}
+                placeholder="あなたの筆名（任意）"
+                autoFocus
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="profile-avatar">アバター</Label>
+              <div className="flex items-start gap-3">
+                {avatar ? (
+                  <ZoomableImage
+                    src={avatar}
+                    alt={penName.trim() ? `${penName.trim()}のアバター` : 'アバター'}
+                    className="size-16 rounded-full border border-outline-variant/30 object-cover"
+                  />
+                ) : (
+                  <div className="flex size-16 shrink-0 items-center justify-center rounded-full border border-outline-variant/30 border-dashed text-on-surface-variant/40">
+                    <UserRound className="size-7" />
+                  </div>
+                )}
+                <div className="flex min-w-0 flex-col gap-1.5">
+                  <input
+                    id="profile-avatar"
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => {
+                      void onPickAvatar(e.target.files?.[0])
+                      e.target.value = ''
+                    }}
+                    className="block w-full text-on-surface-variant text-sm file:mr-3 file:rounded-md file:border-0 file:bg-secondary file:px-3 file:py-1.5 file:font-medium file:text-secondary-foreground file:text-sm hover:file:bg-secondary/80"
+                  />
+                  <div className="flex items-center gap-3 text-on-surface-variant/70 text-xs">
+                    <span>{imageBusy ? '処理中…' : '正方形に切り抜かれます（任意）'}</span>
+                    {avatar ? (
+                      <button
+                        type="button"
+                        onClick={() => setAvatar('')}
+                        className="text-destructive hover:underline"
+                      >
+                        削除
+                      </button>
+                    ) : null}
+                  </div>
+                  {imageError ? (
+                    <span className="text-destructive text-xs">{imageError}</span>
                   ) : null}
                 </div>
-                {imageError ? <span className="text-destructive text-xs">{imageError}</span> : null}
               </div>
             </div>
-          </div>
+          </DialogBody>
           <DialogFooter>
             <Button
               type="button"

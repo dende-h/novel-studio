@@ -4,6 +4,7 @@ import { thumbnailToDataUrl } from '@/ui/_utils/imageResizer'
 import { Button } from '@/ui/components/ui/button'
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -149,115 +150,117 @@ export function GlossaryEntryForm({
             e.preventDefault()
             void submit()
           }}
-          className="space-y-4"
+          className="flex min-h-0 flex-1 flex-col gap-4"
         >
-          <div className="space-y-2">
-            <Label htmlFor={`${uid}-name`}>名前</Label>
-            <Input
-              id={`${uid}-name`}
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="例：ユグドラシル"
-              autoFocus={!isEdit}
-            />
-          </div>
-          {isEdit ? (
-            <p className="rounded-md bg-accent px-3 py-2.5 text-[12px] text-primary leading-relaxed">
-              名前を変えても大丈夫です。旧名は自動で別名に残り、本文中の参照はそのまま解決されます。
-            </p>
-          ) : null}
-          <div className="grid grid-cols-2 gap-3">
+          <DialogBody>
             <div className="space-y-2">
-              <Label htmlFor={`${uid}-reading`}>読み（任意）</Label>
+              <Label htmlFor={`${uid}-name`}>名前</Label>
               <Input
-                id={`${uid}-reading`}
-                value={reading}
-                onChange={(e) => setReading(e.target.value)}
-                placeholder="ゆぐどらしる"
+                id={`${uid}-name`}
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="例：ユグドラシル"
+                autoFocus={!isEdit}
+              />
+            </div>
+            {isEdit ? (
+              <p className="rounded-md bg-accent px-3 py-2.5 text-[12px] text-primary leading-relaxed">
+                名前を変えても大丈夫です。旧名は自動で別名に残り、本文中の参照はそのまま解決されます。
+              </p>
+            ) : null}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label htmlFor={`${uid}-reading`}>読み（任意）</Label>
+                <Input
+                  id={`${uid}-reading`}
+                  value={reading}
+                  onChange={(e) => setReading(e.target.value)}
+                  placeholder="ゆぐどらしる"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor={`${uid}-category`}>カテゴリ</Label>
+                <select
+                  id={`${uid}-category`}
+                  value={category}
+                  onChange={(e) => setCategory(e.target.value)}
+                  className="h-9 w-full rounded-md border border-input bg-surface-container-lowest px-3 font-sans text-on-surface text-sm outline-none transition-colors focus:border-primary"
+                >
+                  <option value="">未分類</option>
+                  {GLOSSARY_CATEGORIES.map((c) => (
+                    <option key={c} value={c}>
+                      {c}
+                    </option>
+                  ))}
+                  {legacyCategory ? <option value={legacyCategory}>{legacyCategory}</option> : null}
+                </select>
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor={`${uid}-aliases`}>別名（読点区切り・任意）</Label>
+              <Input
+                id={`${uid}-aliases`}
+                value={aliases}
+                onChange={(e) => setAliases(e.target.value)}
+                placeholder="世界樹、ワールドツリー"
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor={`${uid}-category`}>カテゴリ</Label>
-              <select
-                id={`${uid}-category`}
-                value={category}
-                onChange={(e) => setCategory(e.target.value)}
-                className="h-9 w-full rounded-md border border-input bg-surface-container-lowest px-3 font-sans text-on-surface text-sm outline-none transition-colors focus:border-primary"
-              >
-                <option value="">未分類</option>
-                {GLOSSARY_CATEGORIES.map((c) => (
-                  <option key={c} value={c}>
-                    {c}
-                  </option>
-                ))}
-                {legacyCategory ? <option value={legacyCategory}>{legacyCategory}</option> : null}
-              </select>
+              <Label htmlFor={`${uid}-summary`}>概要（任意）</Label>
+              <Textarea
+                id={`${uid}-summary`}
+                value={summary}
+                onChange={(e) => setSummary(e.target.value)}
+                placeholder="一覧やパネルに表示される説明"
+                rows={4}
+              />
             </div>
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor={`${uid}-aliases`}>別名（読点区切り・任意）</Label>
-            <Input
-              id={`${uid}-aliases`}
-              value={aliases}
-              onChange={(e) => setAliases(e.target.value)}
-              placeholder="世界樹、ワールドツリー"
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor={`${uid}-summary`}>概要（任意）</Label>
-            <Textarea
-              id={`${uid}-summary`}
-              value={summary}
-              onChange={(e) => setSummary(e.target.value)}
-              placeholder="一覧やパネルに表示される説明"
-              rows={4}
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor={`${uid}-thumbnail`}>サムネイル画像（任意）</Label>
-            <div className="flex items-center gap-3">
-              {thumbnail ? (
-                <ZoomableImage
-                  src={thumbnail}
-                  alt={name.trim() ? `${name.trim()}のサムネイル` : 'サムネイル'}
-                  className="size-16 rounded-md border border-outline-variant/30 object-cover"
-                />
-              ) : (
-                <div className="flex size-16 shrink-0 items-center justify-center rounded-md border border-outline-variant/30 border-dashed text-on-surface-variant/40 text-xs">
-                  なし
-                </div>
-              )}
-              <div className="flex min-w-0 flex-col gap-1.5">
-                <input
-                  id={`${uid}-thumbnail`}
-                  type="file"
-                  accept="image/*"
-                  onChange={(e) => {
-                    void onPickImage(e.target.files?.[0])
-                    e.target.value = ''
-                  }}
-                  className="block w-full text-on-surface-variant text-sm file:mr-3 file:rounded-md file:border-0 file:bg-secondary file:px-3 file:py-1.5 file:font-medium file:text-secondary-foreground file:text-sm hover:file:bg-secondary/80"
-                />
-                <div className="flex items-center gap-3 text-on-surface-variant/70 text-xs">
-                  <span>{imageBusy ? '処理中…' : '正方形に切り抜いて保存'}</span>
-                  {thumbnail ? (
-                    <button
-                      type="button"
-                      onClick={() => setThumbnail('')}
-                      className="text-destructive hover:underline"
-                    >
-                      削除
-                    </button>
-                  ) : null}
+            <div className="space-y-2">
+              <Label htmlFor={`${uid}-thumbnail`}>サムネイル画像（任意）</Label>
+              <div className="flex items-center gap-3">
+                {thumbnail ? (
+                  <ZoomableImage
+                    src={thumbnail}
+                    alt={name.trim() ? `${name.trim()}のサムネイル` : 'サムネイル'}
+                    className="size-16 rounded-md border border-outline-variant/30 object-cover"
+                  />
+                ) : (
+                  <div className="flex size-16 shrink-0 items-center justify-center rounded-md border border-outline-variant/30 border-dashed text-on-surface-variant/40 text-xs">
+                    なし
+                  </div>
+                )}
+                <div className="flex min-w-0 flex-col gap-1.5">
+                  <input
+                    id={`${uid}-thumbnail`}
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => {
+                      void onPickImage(e.target.files?.[0])
+                      e.target.value = ''
+                    }}
+                    className="block w-full text-on-surface-variant text-sm file:mr-3 file:rounded-md file:border-0 file:bg-secondary file:px-3 file:py-1.5 file:font-medium file:text-secondary-foreground file:text-sm hover:file:bg-secondary/80"
+                  />
+                  <div className="flex items-center gap-3 text-on-surface-variant/70 text-xs">
+                    <span>{imageBusy ? '処理中…' : '正方形に切り抜いて保存'}</span>
+                    {thumbnail ? (
+                      <button
+                        type="button"
+                        onClick={() => setThumbnail('')}
+                        className="text-destructive hover:underline"
+                      >
+                        削除
+                      </button>
+                    ) : null}
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
-          {error ? (
-            <p role="alert" className="text-destructive text-sm">
-              {error}
-            </p>
-          ) : null}
+            {error ? (
+              <p role="alert" className="text-destructive text-sm">
+                {error}
+              </p>
+            ) : null}
+          </DialogBody>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               キャンセル

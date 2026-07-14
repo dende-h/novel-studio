@@ -133,9 +133,9 @@ export function ExportDialog({ open, onOpenChange, work, onEditMeta }: ExportDia
           <DialogDescription>{work?.title ?? 'プロジェクト'}</DialogDescription>
         </DialogHeader>
 
-        <div className="flex min-h-[360px] flex-col md:flex-row">
+        <div className="flex min-h-[320px] flex-1 flex-col overflow-hidden md:flex-row">
           {/* 形式リスト */}
-          <nav className="flex flex-col gap-2 border-outline-variant/30 border-b bg-surface-container-low p-4 md:w-1/3 md:border-r md:border-b-0">
+          <nav className="flex shrink-0 flex-col gap-2 border-outline-variant/30 border-b bg-surface-container-low p-4 md:w-1/3 md:overflow-y-auto md:border-r md:border-b-0">
             {FORMATS.map(({ key, icon: Icon, title, desc }) => {
               const active = format === key
               return (
@@ -166,7 +166,7 @@ export function ExportDialog({ open, onOpenChange, work, onEditMeta }: ExportDia
           </nav>
 
           {/* 設定 */}
-          <div className="flex-1 p-6 font-sans">
+          <div className="min-h-0 flex-1 overflow-y-auto p-6 font-sans">
             {format === 'epub' && (
               <Section title="EPUB 設定">
                 <div className="space-y-4">

@@ -20,6 +20,7 @@ import {
 import { Button } from '@/ui/components/ui/button'
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
   DialogHeader,
@@ -264,163 +265,168 @@ export function McpConnectDialog({
           </DialogDescription>
         </DialogHeader>
 
-        {/* 情報の流れと漏えいリスクの明示（オプトイン） */}
-        <div className="flex gap-2 rounded-lg border border-amber-500/30 bg-amber-500/5 p-3">
-          <TriangleAlert className="mt-0.5 size-4 shrink-0 text-amber-600" aria-hidden />
-          <p className="font-sans text-on-surface-variant text-xs leading-relaxed">
-            接続すると、編集した内容がクラウドに保存され AI
-            が読めるようになります。トークンは作品を読める
-            <strong>鍵</strong>
-            です。第三者に共有せず、漏れたと思ったら「接続を解除」で失効させてください。
-          </p>
-        </div>
-
-        {/* 発行直後だけ設定を表示（トークン平文は再表示できない）。主役は「AIに貼るだけ」プロンプト。 */}
-        {plaintext && (
-          <div className="min-w-0 space-y-3 rounded-lg border border-primary/30 bg-primary/5 p-3">
-            <p className="font-sans text-on-surface text-xs">
-              <strong>接続情報を発行しました。</strong>
-              この画面を閉じると<strong>二度と表示できません</strong>。今すぐ設定してください。
-            </p>
-
-            {/* 主役：AI に貼るだけの設定プロンプト */}
-            <div className="space-y-2">
-              <p className="font-sans text-on-surface text-sm leading-relaxed">
-                下のボタンでコピーして、お使いの AI（ChatGPT・Gemini・Claude・Grok・Cursor
-                など）に貼って送ってください。あとは AI が設定を手伝ってくれます。
-              </p>
-              <CopyButton label="設定おまかせプロンプトをコピー" value={setupPrompt} />
-              <button
-                type="button"
-                onClick={() => setShowPrompt((v) => !v)}
-                className="font-sans text-on-surface-variant text-xs underline underline-offset-2"
-              >
-                {showPrompt ? 'プロンプトの中身を隠す' : 'プロンプトの中身を見る'}
-              </button>
-              {showPrompt && (
-                <pre className="max-h-40 overflow-auto whitespace-pre-wrap break-words rounded-md bg-surface-container-highest p-2 font-sans text-on-surface-variant text-xs leading-relaxed">
-                  {setupPrompt}
-                </pre>
-              )}
-            </div>
-
-            {/* 補助：詳しい人向け（URL・トークンを自分で設定） */}
-            <div className="border-outline-variant/30 border-t pt-2">
-              <button
-                type="button"
-                onClick={() => setShowAdvanced((v) => !v)}
-                className="flex items-center gap-1 font-sans text-on-surface-variant text-xs"
-              >
-                <ChevronRight
-                  className={cn('size-3.5 transition-transform', showAdvanced && 'rotate-90')}
-                  aria-hidden
-                />
-                詳しい人向け（URL・トークンを自分で設定）
-              </button>
-              {showAdvanced && (
-                <div className="mt-2 space-y-2">
-                  <CopyRow label="アクセストークン" value={plaintext} />
-                  <CopyRow label="MCP サーバー URL" value={mcpUrl} />
-                  <CopyRow label="Authorization ヘッダー" value={authHeader} />
-                  <CopyRow label="設定 JSON（Cursor など url＋headers 形式）" value={jsonConfig} />
-                  <CopyRow label="Claude Code（CLI）" value={cliCommand} />
-                </div>
-              )}
-            </div>
-
+        <DialogBody>
+          {/* 情報の流れと漏えいリスクの明示（オプトイン） */}
+          <div className="flex gap-2 rounded-lg border border-amber-500/30 bg-amber-500/5 p-3">
+            <TriangleAlert className="mt-0.5 size-4 shrink-0 text-amber-600" aria-hidden />
             <p className="font-sans text-on-surface-variant text-xs leading-relaxed">
-              ※ 静的トークンで確実につながるのは <strong>Claude Code・Cursor・Gemini CLI</strong>{' '}
-              など。ChatGPT アプリや個人向け Gemini
-              アプリなどは対応しておらず、つながらないことがあります（その場合はプロンプトが正直に案内します）。
+              接続すると、編集した内容がクラウドに保存され AI
+              が読めるようになります。トークンは作品を読める
+              <strong>鍵</strong>
+              です。第三者に共有せず、漏れたと思ったら「接続を解除」で失効させてください。
             </p>
           </div>
-        )}
 
-        {status === null ? (
-          <p className="py-4 text-center text-on-surface-variant text-sm">読み込み中…</p>
-        ) : connected ? (
-          <div className="min-w-0 space-y-3">
-            <p className="font-sans text-on-surface text-sm">
-              接続中
-              {status.createdAt != null && (
-                <span className="text-on-surface-variant"> ・ 発行 {fmt(status.createdAt)}</span>
-              )}
-            </p>
+          {/* 発行直後だけ設定を表示（トークン平文は再表示できない）。主役は「AIに貼るだけ」プロンプト。 */}
+          {plaintext && (
+            <div className="min-w-0 space-y-3 rounded-lg border border-primary/30 bg-primary/5 p-3">
+              <p className="font-sans text-on-surface text-xs">
+                <strong>接続情報を発行しました。</strong>
+                この画面を閉じると<strong>二度と表示できません</strong>。今すぐ設定してください。
+              </p>
 
-            {/* 再接続時（平文が無い）は URL のみ表示。偽トークン入りのコマンドは出さない。 */}
-            {!plaintext && (
-              <>
-                <CopyRow label="MCP サーバー URL" value={mcpUrl} />
-                <p className="font-sans text-on-surface-variant text-xs leading-relaxed">
-                  アクセストークンは<strong>発行時にしか表示されません</strong>
-                  。分からなくなった／設定をやり直す場合は「トークンを再発行」してください（設定情報がまとめて再表示されます）。
+              {/* 主役：AI に貼るだけの設定プロンプト */}
+              <div className="space-y-2">
+                <p className="font-sans text-on-surface text-sm leading-relaxed">
+                  下のボタンでコピーして、お使いの AI（ChatGPT・Gemini・Claude・Grok・Cursor
+                  など）に貼って送ってください。あとは AI が設定を手伝ってくれます。
                 </p>
-              </>
-            )}
+                <CopyButton label="設定おまかせプロンプトをコピー" value={setupPrompt} />
+                <button
+                  type="button"
+                  onClick={() => setShowPrompt((v) => !v)}
+                  className="font-sans text-on-surface-variant text-xs underline underline-offset-2"
+                >
+                  {showPrompt ? 'プロンプトの中身を隠す' : 'プロンプトの中身を見る'}
+                </button>
+                {showPrompt && (
+                  <pre className="max-h-40 overflow-auto whitespace-pre-wrap break-words rounded-md bg-surface-container-highest p-2 font-sans text-on-surface-variant text-xs leading-relaxed">
+                    {setupPrompt}
+                  </pre>
+                )}
+              </div>
 
-            <div className="flex gap-2 pt-1">
-              {reissue ? (
-                <>
-                  <span className="flex-1 self-center text-destructive text-xs">
-                    再発行すると今のトークンは無効になります。
-                  </span>
-                  <Button size="sm" onClick={generate} disabled={busy}>
-                    再発行する
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => setReissue(false)}
-                    disabled={busy}
-                  >
-                    取消
-                  </Button>
-                </>
-              ) : (
-                <>
-                  <Button
-                    variant="outline"
-                    className="flex-1 gap-2"
-                    onClick={() => setReissue(true)}
-                    disabled={busy}
-                  >
-                    <RefreshCw className="size-4" aria-hidden />
-                    トークンを再発行
-                  </Button>
-                  <Button
-                    variant="outline"
-                    className="flex-1 gap-2 text-destructive hover:text-destructive"
-                    onClick={revoke}
-                    disabled={busy}
-                  >
-                    <Unplug className="size-4" aria-hidden />
-                    接続を解除
-                  </Button>
-                </>
-              )}
+              {/* 補助：詳しい人向け（URL・トークンを自分で設定） */}
+              <div className="border-outline-variant/30 border-t pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowAdvanced((v) => !v)}
+                  className="flex items-center gap-1 font-sans text-on-surface-variant text-xs"
+                >
+                  <ChevronRight
+                    className={cn('size-3.5 transition-transform', showAdvanced && 'rotate-90')}
+                    aria-hidden
+                  />
+                  詳しい人向け（URL・トークンを自分で設定）
+                </button>
+                {showAdvanced && (
+                  <div className="mt-2 space-y-2">
+                    <CopyRow label="アクセストークン" value={plaintext} />
+                    <CopyRow label="MCP サーバー URL" value={mcpUrl} />
+                    <CopyRow label="Authorization ヘッダー" value={authHeader} />
+                    <CopyRow
+                      label="設定 JSON（Cursor など url＋headers 形式）"
+                      value={jsonConfig}
+                    />
+                    <CopyRow label="Claude Code（CLI）" value={cliCommand} />
+                  </div>
+                )}
+              </div>
+
+              <p className="font-sans text-on-surface-variant text-xs leading-relaxed">
+                ※ 静的トークンで確実につながるのは <strong>Claude Code・Cursor・Gemini CLI</strong>{' '}
+                など。ChatGPT アプリや個人向け Gemini
+                アプリなどは対応しておらず、つながらないことがあります（その場合はプロンプトが正直に案内します）。
+              </p>
             </div>
-          </div>
-        ) : (
-          <div className="space-y-3">
-            <label className="flex cursor-pointer items-start gap-2 font-sans text-on-surface-variant text-xs">
-              <input
-                type="checkbox"
-                checked={agreed}
-                onChange={(e) => setAgreed(e.target.checked)}
-                className="mt-0.5 size-4 accent-primary"
-              />
-              読み取り専用であることを理解し、作品をクラウド経由で AI に読ませることに同意します。
-            </label>
-            <Button onClick={generate} disabled={busy || !agreed} className="w-full gap-2">
-              {busy ? (
-                <LoaderCircle className="size-4 animate-spin" aria-hidden />
-              ) : (
-                <Bot className="size-4" aria-hidden />
+          )}
+
+          {status === null ? (
+            <p className="py-4 text-center text-on-surface-variant text-sm">読み込み中…</p>
+          ) : connected ? (
+            <div className="min-w-0 space-y-3">
+              <p className="font-sans text-on-surface text-sm">
+                接続中
+                {status.createdAt != null && (
+                  <span className="text-on-surface-variant"> ・ 発行 {fmt(status.createdAt)}</span>
+                )}
+              </p>
+
+              {/* 再接続時（平文が無い）は URL のみ表示。偽トークン入りのコマンドは出さない。 */}
+              {!plaintext && (
+                <>
+                  <CopyRow label="MCP サーバー URL" value={mcpUrl} />
+                  <p className="font-sans text-on-surface-variant text-xs leading-relaxed">
+                    アクセストークンは<strong>発行時にしか表示されません</strong>
+                    。分からなくなった／設定をやり直す場合は「トークンを再発行」してください（設定情報がまとめて再表示されます）。
+                  </p>
+                </>
               )}
-              接続する（トークンを発行）
-            </Button>
-          </div>
-        )}
+
+              <div className="flex gap-2 pt-1">
+                {reissue ? (
+                  <>
+                    <span className="flex-1 self-center text-destructive text-xs">
+                      再発行すると今のトークンは無効になります。
+                    </span>
+                    <Button size="sm" onClick={generate} disabled={busy}>
+                      再発行する
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => setReissue(false)}
+                      disabled={busy}
+                    >
+                      取消
+                    </Button>
+                  </>
+                ) : (
+                  <>
+                    <Button
+                      variant="outline"
+                      className="flex-1 gap-2"
+                      onClick={() => setReissue(true)}
+                      disabled={busy}
+                    >
+                      <RefreshCw className="size-4" aria-hidden />
+                      トークンを再発行
+                    </Button>
+                    <Button
+                      variant="outline"
+                      className="flex-1 gap-2 text-destructive hover:text-destructive"
+                      onClick={revoke}
+                      disabled={busy}
+                    >
+                      <Unplug className="size-4" aria-hidden />
+                      接続を解除
+                    </Button>
+                  </>
+                )}
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <label className="flex cursor-pointer items-start gap-2 font-sans text-on-surface-variant text-xs">
+                <input
+                  type="checkbox"
+                  checked={agreed}
+                  onChange={(e) => setAgreed(e.target.checked)}
+                  className="mt-0.5 size-4 accent-primary"
+                />
+                読み取り専用であることを理解し、作品をクラウド経由で AI に読ませることに同意します。
+              </label>
+              <Button onClick={generate} disabled={busy || !agreed} className="w-full gap-2">
+                {busy ? (
+                  <LoaderCircle className="size-4 animate-spin" aria-hidden />
+                ) : (
+                  <Bot className="size-4" aria-hidden />
+                )}
+                接続する（トークンを発行）
+              </Button>
+            </div>
+          )}
+        </DialogBody>
       </DialogContent>
     </Dialog>
   )
