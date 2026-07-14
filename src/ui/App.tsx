@@ -2,7 +2,7 @@ import { BookMarked, Plus, Replace } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { localDateKey } from '@/core/activity'
 import { blocksToHtml } from '@/core/exporter/toHtml'
-import { categoriesOf, findAppearances, resolvedNameSet, resolveRef } from '@/core/glossary'
+import { findAppearances, resolvedNameSet, resolveRef } from '@/core/glossary'
 import { parseEpisodeBody } from '@/core/parser/parseNotation'
 import type { GlossaryEntry } from '@/core/schema'
 import { countWorkChars } from '@/core/stats'
@@ -421,7 +421,6 @@ export function App({ store, onExit, onNavigateActivity, activityRepo }: AppProp
         }}
         mode="create"
         initial={quickCreateName !== null ? { name: quickCreateName } : undefined}
-        categories={categoriesOf(work?.glossary ?? [])}
         onSubmit={async (values) => {
           await store.addGlossaryEntry({ name: values.name, ...toFieldPatch(values) })
         }}

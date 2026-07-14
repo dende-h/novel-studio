@@ -1,5 +1,5 @@
-import { Pencil, Plus, Search, Tag, Trash2, Type } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { Ellipsis, Pencil, Plus, Search, Tag, Trash2 } from 'lucide-react'
+import { useId, useMemo, useState } from 'react'
 import { type Appearances, categoriesOf, matchesQuery, sortEntries } from '@/core/glossary'
 import type { GlossaryEntry } from '@/core/schema'
 import { cn } from '@/lib/utils'
@@ -12,7 +12,6 @@ import { Badge } from '@/ui/components/ui/badge'
 import { Button } from '@/ui/components/ui/button'
 import { Input } from '@/ui/components/ui/input'
 import { ZoomableImage } from '@/ui/components/ui/zoomable-image'
-import { RenameEntryDialog } from './rename-entry-dialog'
 
 interface GlossaryViewProps {
   entries: GlossaryEntry[]
@@ -40,7 +39,6 @@ export function GlossaryView({
   const [category, setCategory] = useState<string | null>(null)
   const [createOpen, setCreateOpen] = useState(false)
   const [editTarget, setEditTarget] = useState<GlossaryEntry | null>(null)
-  const [renameTarget, setRenameTarget] = useState<GlossaryEntry | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<GlossaryEntry | null>(null)
 
   const categories = useMemo(() => categoriesOf(entries), [entries])
@@ -118,7 +116,6 @@ export function GlossaryView({
                 entry={entry}
                 appearances={getAppearances(entry)}
                 onEdit={() => setEditTarget(entry)}
-                onRename={() => setRenameTarget(entry)}
                 onDelete={() => setDeleteTarget(entry)}
               />
             ))}
@@ -131,10 +128,9 @@ export function GlossaryView({
         open={createOpen}
         onOpenChange={setCreateOpen}
         mode="create"
-        categories={categories}
         onSubmit={onCreate}
       />
-      {/* 詳細編集（name 以外） */}
+      {/* 編集（名前の変更も同じダイアログで行う。変更時は旧名が自動で別名に残る） */}
       <GlossaryEntryForm
         open={editTarget !== null}
         onOpenChange={(o) => {
@@ -142,20 +138,13 @@ export function GlossaryView({
         }}
         mode="edit"
         initial={editTarget ?? undefined}
-        categories={categories}
-        onSubmit={(values) => {
-          if (editTarget) return onUpdate(editTarget.id, values)
-        }}
-      />
-      {/* 改名 */}
-      <RenameEntryDialog
-        open={renameTarget !== null}
-        onOpenChange={(o) => {
-          if (!o) setRenameTarget(null)
-        }}
-        currentName={renameTarget?.name ?? ''}
-        onSubmit={(newName, opts) => {
-          if (renameTarget) return onRename(renameTarget.id, newName, opts)
+        onSubmit={async (values) => {
+          if (!editTarget) return
+          // 改名を先に確定（衝突は reject されダイアログに表示）、その後にフィールド更新。
+          if (values.name !== editTarget.name) {
+            await onRename(editTarget.id, values.name, { rewriteBody: false })
+          }
+          await onUpdate(editTarget.id, values)
         }}
       />
       {/* 削除確認 */}
@@ -209,20 +198,18 @@ function EntryCard({
   entry,
   appearances,
   onEdit,
-  onRename,
   onDelete,
 }: {
   entry: GlossaryEntry
   appearances: Appearances
   onEdit: () => void
-  onRename: () => void
   onDelete: () => void
 }) {
   const used = appearances.refCount > 0
   const initial = entry.name.trim().charAt(0) || '？'
   return (
-    <li className="group flex flex-col gap-2.5 rounded-lg border border-outline-variant/30 bg-surface-container-lowest p-3.5 transition-all hover:border-outline-variant/50 hover:shadow-sm">
-      <div className="flex items-center gap-3">
+    <li className="flex flex-col gap-2.5 rounded-lg border border-outline-variant/30 bg-surface-container-lowest p-3.5 transition-all hover:border-outline-variant/50 hover:shadow-sm">
+      <div className="flex items-start gap-3">
         {/* 頭文字タイル（画像があれば画像） */}
         {entry.thumbnail ? (
           <ZoomableImage
@@ -250,35 +237,25 @@ function EntryCard({
               </span>
             ) : null}
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex min-w-0 items-center gap-2">
             {entry.category ? (
               <Badge
                 variant="secondary"
-                className="gap-1 bg-primary-container text-on-primary-container"
+                className="shrink-0 gap-1 bg-primary-container text-on-primary-container"
               >
                 <Tag className="size-3" />
                 {entry.category}
               </Badge>
             ) : null}
-            <span className="text-[11px] text-on-surface-variant/70">
+            <span className="truncate text-[11px] text-on-surface-variant/70">
               {used
                 ? `${appearances.episodeIds.length}話・${appearances.refCount}回 登場`
                 : '未使用'}
             </span>
           </div>
         </div>
-        {/* 行内アクション（ホバー/フォーカスで出現） */}
-        <div className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
-          <IconAction label={`「${entry.name}」を編集`} onClick={onEdit}>
-            <Pencil className="size-4" />
-          </IconAction>
-          <IconAction label={`「${entry.name}」を改名`} onClick={onRename}>
-            <Type className="size-4" />
-          </IconAction>
-          <IconAction label={`「${entry.name}」を削除`} onClick={onDelete} destructive>
-            <Trash2 className="size-4" />
-          </IconAction>
-        </div>
+        {/* 操作は 3点リーダに集約（編集・削除）。並べたアイコンでレイアウトを崩さない */}
+        <EntryMenu name={entry.name} onEdit={onEdit} onDelete={onDelete} />
       </div>
       <p className="truncate text-[12px] text-on-surface-variant">
         別名: {entry.aliases.length > 0 ? entry.aliases.join('、') : 'なし'}
@@ -290,28 +267,73 @@ function EntryCard({
   )
 }
 
-function IconAction({
-  label,
-  onClick,
-  destructive,
-  children,
+/** 図鑑カードの操作メニュー（編集・削除）。Radix を使わない軽量実装（ProjectMenu と同型）。 */
+function EntryMenu({
+  name,
+  onEdit,
+  onDelete,
 }: {
-  label: string
-  onClick: () => void
-  destructive?: boolean
-  children: React.ReactNode
+  name: string
+  onEdit: () => void
+  onDelete: () => void
 }) {
+  const [open, setOpen] = useState(false)
+  const menuId = useId()
+
+  const run = (action: () => void) => {
+    setOpen(false)
+    action()
+  }
+
   return (
-    <button
-      type="button"
-      aria-label={label}
-      onClick={onClick}
-      className={cn(
-        'rounded p-1.5 text-on-surface-variant/70 transition-colors hover:bg-surface-container-high',
-        destructive ? 'hover:text-destructive' : 'hover:text-primary',
-      )}
-    >
-      {children}
-    </button>
+    <span className="relative inline-flex shrink-0">
+      <button
+        type="button"
+        aria-label={`「${name}」のメニュー`}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-controls={open ? menuId : undefined}
+        onClick={() => setOpen((v) => !v)}
+        className="flex size-6 items-center justify-center rounded-full text-on-surface-variant/60 transition-colors hover:bg-surface-container-high hover:text-on-surface"
+      >
+        <Ellipsis className="size-[15px]" />
+      </button>
+      {open ? (
+        <>
+          {/* スクリム（外側クリックで閉じる） */}
+          <button
+            type="button"
+            aria-label="メニューを閉じる"
+            tabIndex={-1}
+            onClick={() => setOpen(false)}
+            className="fixed inset-0 z-40 cursor-default"
+          />
+          <div
+            role="menu"
+            id={menuId}
+            className="absolute top-7 right-0 z-50 flex w-40 flex-col rounded-lg border border-outline-variant/30 bg-surface-container-lowest p-1.5 font-sans shadow-lg"
+          >
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => run(onEdit)}
+              className="flex items-center gap-2.5 rounded-md px-3 py-2 text-left text-[13px] text-on-surface transition-colors hover:bg-surface-container-low"
+            >
+              <Pencil className="size-3.5 shrink-0" />
+              編集
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => run(onDelete)}
+              className="flex items-center gap-2.5 rounded-md px-3 py-2 text-left text-[13px] text-destructive transition-colors hover:bg-error-container"
+            >
+              <Trash2 className="size-3.5 shrink-0" />
+              削除
+            </button>
+          </div>
+        </>
+      ) : null}
+    </span>
   )
 }

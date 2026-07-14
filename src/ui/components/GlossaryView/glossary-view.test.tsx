@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import type { Appearances } from '@/core/glossary'
 import type { GlossaryEntry } from '@/core/schema'
@@ -83,29 +83,49 @@ describe('GlossaryView（図鑑一覧・検索・カテゴリ・CRUD）', () => 
     expect(onCreate).toHaveBeenCalledWith(expect.objectContaining({ name: 'キャロル' }))
   })
 
-  it('編集フォームは name を読み取り専用にし、onUpdate を呼ぶ', () => {
-    const { onUpdate } = setup()
-    fireEvent.click(screen.getByRole('button', { name: '「アリス」を編集' }))
+  it('カードのメニュー「編集」でフォームを開き、名前以外の変更は onUpdate のみ呼ぶ', async () => {
+    const { onUpdate, onRename } = setup()
+    fireEvent.click(screen.getByRole('button', { name: '「アリス」のメニュー' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: '編集' }))
     const nameInput = screen.getByLabelText('名前') as HTMLInputElement
     expect(nameInput.value).toBe('アリス')
-    expect(nameInput.readOnly).toBe(true)
-    fireEvent.change(screen.getByLabelText('概要'), { target: { value: '改訂概要' } })
-    fireEvent.click(screen.getByRole('button', { name: '保存' }))
-    expect(onUpdate).toHaveBeenCalledWith('a', expect.objectContaining({ summary: '改訂概要' }))
+    expect(nameInput.readOnly).toBe(false)
+    fireEvent.change(screen.getByLabelText('概要（任意）'), { target: { value: '改訂概要' } })
+    fireEvent.click(screen.getByRole('button', { name: '保存する' }))
+    await waitFor(() =>
+      expect(onUpdate).toHaveBeenCalledWith('a', expect.objectContaining({ summary: '改訂概要' })),
+    )
+    expect(onRename).not.toHaveBeenCalled()
   })
 
-  it('改名ダイアログで rewriteBody を選び onRename を呼ぶ', () => {
-    const { onRename } = setup()
-    fireEvent.click(screen.getByRole('button', { name: '「アリス」を改名' }))
-    fireEvent.change(screen.getByLabelText('新しい名前'), { target: { value: 'アリサ' } })
-    fireEvent.click(screen.getByRole('switch'))
-    fireEvent.click(screen.getByRole('button', { name: '改名' }))
-    expect(onRename).toHaveBeenCalledWith('a', 'アリサ', { rewriteBody: true })
+  it('編集フォームで名前を変えると onRename（自動別名退避）→ onUpdate の順に呼ぶ', async () => {
+    const { onUpdate, onRename } = setup()
+    fireEvent.click(screen.getByRole('button', { name: '「アリス」のメニュー' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: '編集' }))
+    fireEvent.change(screen.getByLabelText('名前'), { target: { value: 'アリサ' } })
+    fireEvent.click(screen.getByRole('button', { name: '保存する' }))
+    await waitFor(() =>
+      expect(onRename).toHaveBeenCalledWith('a', 'アリサ', { rewriteBody: false }),
+    )
+    await waitFor(() =>
+      expect(onUpdate).toHaveBeenCalledWith('a', expect.objectContaining({ name: 'アリサ' })),
+    )
   })
 
-  it('削除は確認後に onDelete を呼ぶ', () => {
+  it('カテゴリは固定リストのプルダウン（既存の自由入力値も選択肢に残る）', () => {
+    setup()
+    fireEvent.click(screen.getByRole('button', { name: '「王都」のメニュー' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: '編集' }))
+    const select = screen.getByLabelText('カテゴリ') as HTMLSelectElement
+    const labels = Array.from(select.options).map((o) => o.textContent)
+    expect(labels).toEqual(['未分類', '人物', '場所', '用語', '世界観', 'アイテム', '地名'])
+    expect(select.value).toBe('地名') // 旧・自由入力値が保全される
+  })
+
+  it('カードのメニュー「削除」は確認後に onDelete を呼ぶ', () => {
     const { onDelete } = setup()
-    fireEvent.click(screen.getByRole('button', { name: '「アリス」を削除' }))
+    fireEvent.click(screen.getByRole('button', { name: '「アリス」のメニュー' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: '削除' }))
     const dialog = screen.getByRole('dialog')
     fireEvent.click(within(dialog).getByRole('button', { name: '削除する' }))
     expect(onDelete).toHaveBeenCalledWith('a')

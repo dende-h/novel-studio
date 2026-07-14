@@ -14,6 +14,9 @@ import { Input } from '@/ui/components/ui/input'
 import { Label } from '@/ui/components/ui/label'
 import { Textarea } from '@/ui/components/ui/textarea'
 
+/** 図鑑カテゴリの選択肢（プルダウンで固定）。既存データの自由入力値は編集時のみ選択肢に含めて保全する。 */
+export const GLOSSARY_CATEGORIES = ['人物', '場所', '用語', '世界観', 'アイテム'] as const
+
 export interface GlossaryFormValues {
   name: string
   aliases: string[]
@@ -28,12 +31,10 @@ export interface GlossaryFormValues {
 interface GlossaryEntryFormProps {
   open: boolean
   onOpenChange: (open: boolean) => void
-  /** create=新規作成（name 編集可）/ edit=詳細編集（name は読み取り専用＝改名は別操作）。 */
+  /** create=新規作成 / edit=編集（名前の変更も本ダイアログで行う＝旧名は自動で別名に残る）。 */
   mode: 'create' | 'edit'
   /** create 時の name プリフィルや edit 時の現在値。 */
   initial?: Partial<GlossaryEntry>
-  /** カテゴリ入力のオートコンプリート候補（既存カテゴリ）。 */
-  categories?: string[]
   /** 確定。衝突など失敗時は reject すると、ダイアログを閉じずにエラーを表示する。 */
   onSubmit: (values: GlossaryFormValues) => Promise<void> | void
 }
@@ -49,9 +50,9 @@ function parseAliases(raw: string): string[] {
 }
 
 /**
- * 辞書 entry の作成／詳細編集ダイアログ（WorkMetaDialog パターン）。
- * - name は create でのみ編集可。edit では読み取り専用にし、改名は RenameEntryDialog に委ねる
- *   （改名は旧名の自動エイリアス退避・本文一括書換を伴うため、フィールド編集と分離する）。
+ * 図鑑 entry の作成／編集ダイアログ。
+ * - 編集でも名前を変更できる（旧名は renameEntry が自動で別名へ退避し、本文の参照は解決され続ける）。
+ * - カテゴリは固定リストのプルダウン。既存の自由入力値は選択肢へ含めて壊さない。
  * - 衝突（同名）時は onSubmit が reject し、ダイアログを保ったままエラー文言を表示する。
  */
 export function GlossaryEntryForm({
@@ -59,7 +60,6 @@ export function GlossaryEntryForm({
   onOpenChange,
   mode,
   initial,
-  categories = [],
   onSubmit,
 }: GlossaryEntryFormProps) {
   const uid = useId()
@@ -104,7 +104,14 @@ export function GlossaryEntryForm({
   }
 
   const isEdit = mode === 'edit'
-  const canSubmit = isEdit || name.trim().length > 0
+  const canSubmit = name.trim().length > 0
+
+  // 既存データに固定リスト外のカテゴリ（旧・自由入力）があれば選択肢に含めて保全する。
+  const legacyCategory =
+    (initial?.category ?? '') !== '' &&
+    !(GLOSSARY_CATEGORIES as readonly string[]).includes(initial?.category ?? '')
+      ? (initial?.category as string)
+      : null
 
   const submit = async () => {
     if (!canSubmit || busy) return
@@ -127,8 +134,6 @@ export function GlossaryEntryForm({
     }
   }
 
-  const listId = `${uid}-categories`
-
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-lg">
@@ -136,10 +141,10 @@ export function GlossaryEntryForm({
           <DialogTitle className="font-serif text-on-surface">
             {isEdit ? '図鑑項目を編集' : '図鑑に登録'}
           </DialogTitle>
-          <DialogDescription>
+          <DialogDescription className="sr-only">
             {isEdit
-              ? '名前以外の項目を編集します。改名は「改名」から行います。'
-              : '本文に [[名前]] で参照できる項目を作成します。詳細は後から編集できます。'}
+              ? '図鑑項目の内容を編集します。'
+              : '本文に [[名前]] で参照できる項目を作成します。'}
           </DialogDescription>
         </DialogHeader>
         <form
@@ -155,74 +160,74 @@ export function GlossaryEntryForm({
               id={`${uid}-name`}
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="アリス"
-              readOnly={isEdit}
-              aria-readonly={isEdit}
+              placeholder="例：ユグドラシル"
               autoFocus={!isEdit}
             />
-            {isEdit ? (
-              <p className="text-on-surface-variant text-xs">名前の変更は「改名」から</p>
-            ) : null}
           </div>
+          {isEdit ? (
+            <p className="rounded-md bg-accent px-3 py-2.5 text-[12px] text-primary leading-relaxed">
+              名前を変えても大丈夫です。旧名は自動で別名に残り、本文中の参照はそのまま解決されます。
+            </p>
+          ) : null}
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-2">
-              <Label htmlFor={`${uid}-reading`}>読み</Label>
+              <Label htmlFor={`${uid}-reading`}>読み（任意）</Label>
               <Input
                 id={`${uid}-reading`}
                 value={reading}
                 onChange={(e) => setReading(e.target.value)}
-                placeholder="ありす（任意）"
+                placeholder="ゆぐどらしる"
               />
             </div>
             <div className="space-y-2">
               <Label htmlFor={`${uid}-category`}>カテゴリ</Label>
-              <Input
+              <select
                 id={`${uid}-category`}
                 value={category}
                 onChange={(e) => setCategory(e.target.value)}
-                placeholder="人物・地名など（任意）"
-                list={categories.length > 0 ? listId : undefined}
-              />
-              {categories.length > 0 ? (
-                <datalist id={listId}>
-                  {categories.map((c) => (
-                    <option key={c} value={c} />
-                  ))}
-                </datalist>
-              ) : null}
+                className="h-9 w-full rounded-md border border-input bg-surface-container-lowest px-3 font-sans text-on-surface text-sm outline-none transition-colors focus:border-primary"
+              >
+                <option value="">未分類</option>
+                {GLOSSARY_CATEGORIES.map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
+                {legacyCategory ? <option value={legacyCategory}>{legacyCategory}</option> : null}
+              </select>
             </div>
           </div>
           <div className="space-y-2">
-            <Label htmlFor={`${uid}-aliases`}>別名</Label>
+            <Label htmlFor={`${uid}-aliases`}>別名（読点区切り・任意）</Label>
             <Input
               id={`${uid}-aliases`}
               value={aliases}
               onChange={(e) => setAliases(e.target.value)}
-              placeholder="Alice、姫君（カンマ区切り・任意）"
+              placeholder="世界樹、ワールドツリー"
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor={`${uid}-summary`}>概要</Label>
+            <Label htmlFor={`${uid}-summary`}>概要（任意）</Label>
             <Textarea
               id={`${uid}-summary`}
               value={summary}
               onChange={(e) => setSummary(e.target.value)}
-              placeholder="一覧やピークに表示される短い説明（任意）"
-              rows={2}
+              placeholder="一覧やパネルに表示される短い説明"
+              rows={3}
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor={`${uid}-body`}>詳細メモ</Label>
+            <Label htmlFor={`${uid}-body`}>詳細メモ（任意）</Label>
             <Textarea
               id={`${uid}-body`}
               value={body}
               onChange={(e) => setBody(e.target.value)}
-              placeholder="設定・覚書など（任意）"
+              placeholder="設定・覚書など"
               rows={4}
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor={`${uid}-thumbnail`}>サムネイル画像</Label>
+            <Label htmlFor={`${uid}-thumbnail`}>サムネイル画像（任意）</Label>
             <div className="flex items-center gap-3">
               {thumbnail ? (
                 <img
@@ -247,7 +252,7 @@ export function GlossaryEntryForm({
                   className="block w-full text-on-surface-variant text-sm file:mr-3 file:rounded-md file:border-0 file:bg-secondary file:px-3 file:py-1.5 file:font-medium file:text-secondary-foreground file:text-sm hover:file:bg-secondary/80"
                 />
                 <div className="flex items-center gap-3 text-on-surface-variant/70 text-xs">
-                  <span>{imageBusy ? '処理中…' : '正方形に切り抜いて保存（任意）'}</span>
+                  <span>{imageBusy ? '処理中…' : '正方形に切り抜いて保存'}</span>
                   {thumbnail ? (
                     <button
                       type="button"
@@ -267,16 +272,11 @@ export function GlossaryEntryForm({
             </p>
           ) : null}
           <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => onOpenChange(false)}
-              className="text-primary"
-            >
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               キャンセル
             </Button>
             <Button type="submit" disabled={!canSubmit || busy || imageBusy}>
-              {isEdit ? '保存' : '作成'}
+              {isEdit ? '保存する' : '作成'}
             </Button>
           </DialogFooter>
         </form>
