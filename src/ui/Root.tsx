@@ -5,6 +5,9 @@ import { useAuth } from './auth/auth-context'
 import { createDefaultBackupService } from './backup/backup-service'
 import { ActivityPage } from './components/ActivityPage/activity-page'
 import { CloudBackupDialog } from './components/CloudBackupDialog/cloud-backup-dialog'
+import { PrivacyPage } from './components/LegalPage/privacy-page'
+import { TermsPage } from './components/LegalPage/terms-page'
+import { TokushohoPage } from './components/LegalPage/tokushoho-page'
 import { Library } from './components/Library/library'
 import { McpConnectDialog } from './components/McpConnectDialog/mcp-connect-dialog'
 import { SmallScreenNotice } from './components/SmallScreenNotice/small-screen-notice'
@@ -59,6 +62,12 @@ export function Root({ store }: RootProps) {
 
   // 接続済み会員の編集をデバウンスでライブスナップショットへ反映（AI が最新を読める）。
   useLiveSnapshot(store, backupService, mcpConnected)
+
+  // 法務ページ（利用規約・プライバシーポリシー・特商法表記）。購読前の確認にも使うため、
+  // サインイン状態・オンボーディングに関わらず常に到達できる位置に置く。
+  if (route === '/terms') return <TermsPage />
+  if (route === '/privacy') return <PrivacyPage />
+  if (route === '/tokushoho') return <TokushohoPage />
 
   // 未課金でサインイン済み：中途半端な状態を残さず、専用オンボーディングで「購読する or ローカルの
   // まま使う（＝サインアウトしてゲスト）」の二択に収束させる（§1.1「アカウント＝有料会員だけが持つ」）。
