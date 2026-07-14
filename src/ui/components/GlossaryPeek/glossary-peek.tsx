@@ -160,16 +160,12 @@ export function GlossaryPeek({
               </p>
             ) : null}
             {entry.summary ? (
-              <p className="text-[13px] text-on-surface leading-relaxed">{entry.summary}</p>
-            ) : null}
-            {entry.body ? (
-              <p className="whitespace-pre-wrap text-[13px] text-on-surface-variant leading-relaxed">
-                {entry.body}
+              <p className="whitespace-pre-wrap text-[13px] text-on-surface leading-relaxed">
+                {entry.summary}
               </p>
-            ) : null}
-            {!entry.summary && !entry.body ? (
+            ) : (
               <p className="text-[13px] text-on-surface-variant/60">説明はまだありません。</p>
-            ) : null}
+            )}
             <Button variant="outline" size="sm" onClick={onEdit} className="w-full gap-2">
               <Pencil className="size-3.5" aria-hidden />
               図鑑で編集

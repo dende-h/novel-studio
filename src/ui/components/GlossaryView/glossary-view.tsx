@@ -1,5 +1,5 @@
-import { Ellipsis, Pencil, Plus, Search, Tag, Trash2 } from 'lucide-react'
-import { useId, useMemo, useState } from 'react'
+import { Plus, Search, Tag } from 'lucide-react'
+import { useMemo, useState } from 'react'
 import { type Appearances, categoriesOf, matchesQuery, sortEntries } from '@/core/glossary'
 import type { GlossaryEntry } from '@/core/schema'
 import { cn } from '@/lib/utils'
@@ -11,7 +11,7 @@ import {
 import { Badge } from '@/ui/components/ui/badge'
 import { Button } from '@/ui/components/ui/button'
 import { Input } from '@/ui/components/ui/input'
-import { ZoomableImage } from '@/ui/components/ui/zoomable-image'
+import { GlossaryDetailDialog } from './glossary-detail-dialog'
 
 interface GlossaryViewProps {
   entries: GlossaryEntry[]
@@ -38,6 +38,8 @@ export function GlossaryView({
   const [query, setQuery] = useState('')
   const [category, setCategory] = useState<string | null>(null)
   const [createOpen, setCreateOpen] = useState(false)
+  // カード押下で開く閲覧ダイアログ。そこから編集/削除へ分岐する。
+  const [viewTarget, setViewTarget] = useState<GlossaryEntry | null>(null)
   const [editTarget, setEditTarget] = useState<GlossaryEntry | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<GlossaryEntry | null>(null)
 
@@ -115,14 +117,30 @@ export function GlossaryView({
                 key={entry.id}
                 entry={entry}
                 appearances={getAppearances(entry)}
-                onEdit={() => setEditTarget(entry)}
-                onDelete={() => setDeleteTarget(entry)}
+                onOpen={() => setViewTarget(entry)}
               />
             ))}
           </ul>
         )}
       </div>
 
+      {/* 閲覧（カード押下で開く）。ここから編集・削除へ分岐する。 */}
+      <GlossaryDetailDialog
+        open={viewTarget !== null}
+        onOpenChange={(o) => {
+          if (!o) setViewTarget(null)
+        }}
+        entry={viewTarget}
+        appearances={viewTarget ? getAppearances(viewTarget) : { episodeIds: [], refCount: 0 }}
+        onEdit={() => {
+          setEditTarget(viewTarget)
+          setViewTarget(null)
+        }}
+        onDelete={() => {
+          setDeleteTarget(viewTarget)
+          setViewTarget(null)
+        }}
+      />
       {/* 新規作成 */}
       <GlossaryEntryForm
         open={createOpen}
@@ -197,145 +215,73 @@ function FilterChip({
 function EntryCard({
   entry,
   appearances,
-  onEdit,
-  onDelete,
+  onOpen,
 }: {
   entry: GlossaryEntry
   appearances: Appearances
-  onEdit: () => void
-  onDelete: () => void
+  onOpen: () => void
 }) {
   const used = appearances.refCount > 0
   const initial = entry.name.trim().charAt(0) || '？'
   return (
-    <li className="flex gap-4 rounded-lg border border-outline-variant/30 bg-surface-container-lowest p-4 transition-all hover:border-outline-variant/50 hover:shadow-sm">
-      {/* サムネ（クリックで拡大）。画像が無ければ頭文字タイル。 */}
-      {entry.thumbnail ? (
-        <ZoomableImage
-          src={entry.thumbnail}
-          alt={entry.name}
-          className="size-20 rounded-lg border border-outline-variant/30 object-cover"
-          wrapperClassName="self-start"
-        />
-      ) : (
-        <div
-          aria-hidden="true"
-          className="flex size-20 shrink-0 items-center justify-center self-start rounded-lg border border-outline-variant/30 bg-accent font-serif text-[26px] text-primary"
-        >
-          {initial}
-        </div>
-      )}
-      <div className="flex min-w-0 flex-1 flex-col gap-1.5">
-        <div className="flex items-start justify-between gap-2">
-          <div className="min-w-0">
-            <div className="flex items-baseline gap-2">
-              <h3 className="truncate font-semibold font-serif text-[16px] text-on-surface">
-                {entry.name}
-              </h3>
-              {entry.reading ? (
-                <span className="shrink-0 text-[11px] text-on-surface-variant/70">
-                  {entry.reading}
-                </span>
-              ) : null}
-            </div>
-            <div className="mt-1 flex min-w-0 items-center gap-2">
-              {entry.category ? (
-                <Badge
-                  variant="secondary"
-                  className="shrink-0 gap-1 bg-primary-container text-on-primary-container"
-                >
-                  <Tag className="size-3" />
-                  {entry.category}
-                </Badge>
-              ) : null}
-              <span className="truncate text-[11px] text-on-surface-variant/70">
-                {used
-                  ? `${appearances.episodeIds.length}話・${appearances.refCount}回 登場`
-                  : '未使用'}
-              </span>
-            </div>
-          </div>
-          {/* 操作は 3点リーダに集約（編集・削除）。 */}
-          <EntryMenu name={entry.name} onEdit={onEdit} onDelete={onDelete} />
-        </div>
-        <p className="truncate text-[12px] text-on-surface-variant">
-          別名: {entry.aliases.length > 0 ? entry.aliases.join('、') : 'なし'}
-        </p>
-        <p className="line-clamp-2 text-[12px] text-on-surface-variant leading-relaxed">
-          {entry.summary || '説明はまだありません。'}
-        </p>
-      </div>
-    </li>
-  )
-}
-
-/** 図鑑カードの操作メニュー（編集・削除）。Radix を使わない軽量実装（ProjectMenu と同型）。 */
-function EntryMenu({
-  name,
-  onEdit,
-  onDelete,
-}: {
-  name: string
-  onEdit: () => void
-  onDelete: () => void
-}) {
-  const [open, setOpen] = useState(false)
-  const menuId = useId()
-
-  const run = (action: () => void) => {
-    setOpen(false)
-    action()
-  }
-
-  return (
-    <span className="relative inline-flex shrink-0">
+    <li>
+      {/* カード全体を押すと閲覧ダイアログが開く（そこから編集・削除へ）。 */}
       <button
         type="button"
-        aria-label={`「${name}」のメニュー`}
-        aria-haspopup="menu"
-        aria-expanded={open}
-        aria-controls={open ? menuId : undefined}
-        onClick={() => setOpen((v) => !v)}
-        className="flex size-6 items-center justify-center rounded-full text-on-surface-variant/60 transition-colors hover:bg-surface-container-high hover:text-on-surface"
+        onClick={onOpen}
+        aria-label={`「${entry.name}」の詳細を開く`}
+        className="flex w-full gap-4 rounded-lg border border-outline-variant/30 bg-surface-container-lowest p-4 text-left transition-all hover:border-outline-variant/50 hover:shadow-sm focus-visible:border-primary focus-visible:outline-none"
       >
-        <Ellipsis className="size-[15px]" />
-      </button>
-      {open ? (
-        <>
-          {/* スクリム（外側クリックで閉じる） */}
-          <button
-            type="button"
-            aria-label="メニューを閉じる"
-            tabIndex={-1}
-            onClick={() => setOpen(false)}
-            className="fixed inset-0 z-40 cursor-default"
+        {/* サムネ（拡大は詳細ダイアログ内で）。無ければ頭文字タイル。 */}
+        {entry.thumbnail ? (
+          <img
+            src={entry.thumbnail}
+            alt=""
+            className="size-20 shrink-0 self-start rounded-lg border border-outline-variant/30 object-cover"
           />
+        ) : (
           <div
-            role="menu"
-            id={menuId}
-            className="absolute top-7 right-0 z-50 flex w-40 flex-col rounded-lg border border-outline-variant/30 bg-surface-container-lowest p-1.5 font-sans shadow-lg"
+            aria-hidden="true"
+            className="flex size-20 shrink-0 items-center justify-center self-start rounded-lg border border-outline-variant/30 bg-accent font-serif text-[26px] text-primary"
           >
-            <button
-              type="button"
-              role="menuitem"
-              onClick={() => run(onEdit)}
-              className="flex items-center gap-2.5 rounded-md px-3 py-2 text-left text-[13px] text-on-surface transition-colors hover:bg-surface-container-low"
-            >
-              <Pencil className="size-3.5 shrink-0" />
-              編集
-            </button>
-            <button
-              type="button"
-              role="menuitem"
-              onClick={() => run(onDelete)}
-              className="flex items-center gap-2.5 rounded-md px-3 py-2 text-left text-[13px] text-destructive transition-colors hover:bg-error-container"
-            >
-              <Trash2 className="size-3.5 shrink-0" />
-              削除
-            </button>
+            {initial}
           </div>
-        </>
-      ) : null}
-    </span>
+        )}
+        <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+          <div className="flex items-baseline gap-2">
+            <h3 className="truncate font-semibold font-serif text-[16px] text-on-surface">
+              {entry.name}
+            </h3>
+            {entry.reading ? (
+              <span className="shrink-0 text-[11px] text-on-surface-variant/70">
+                {entry.reading}
+              </span>
+            ) : null}
+          </div>
+          <div className="flex min-w-0 items-center gap-2">
+            {entry.category ? (
+              <Badge
+                variant="secondary"
+                className="shrink-0 gap-1 bg-primary-container text-on-primary-container"
+              >
+                <Tag className="size-3" />
+                {entry.category}
+              </Badge>
+            ) : null}
+            <span className="truncate text-[11px] text-on-surface-variant/70">
+              {used
+                ? `${appearances.episodeIds.length}話・${appearances.refCount}回 登場`
+                : '未使用'}
+            </span>
+          </div>
+          <p className="truncate text-[12px] text-on-surface-variant">
+            別名: {entry.aliases.length > 0 ? entry.aliases.join('、') : 'なし'}
+          </p>
+          <p className="line-clamp-2 text-[12px] text-on-surface-variant leading-relaxed">
+            {entry.summary || '説明はまだありません。'}
+          </p>
+        </div>
+      </button>
+    </li>
   )
 }

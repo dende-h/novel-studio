@@ -24,7 +24,6 @@ export interface GlossaryFormValues {
   category: string
   reading: string
   summary: string
-  body: string
   /** サムネ画像の data URL。空文字 '' は未設定／削除を表す。 */
   thumbnail: string
 }
@@ -69,7 +68,6 @@ export function GlossaryEntryForm({
   const [aliases, setAliases] = useState('')
   const [category, setCategory] = useState('')
   const [summary, setSummary] = useState('')
-  const [body, setBody] = useState('')
   const [thumbnail, setThumbnail] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -83,7 +81,6 @@ export function GlossaryEntryForm({
     setAliases((initial?.aliases ?? []).join('、'))
     setCategory(initial?.category ?? '')
     setSummary(initial?.summary ?? '')
-    setBody(initial?.body ?? '')
     setThumbnail(initial?.thumbnail ?? '')
     setError(null)
     setBusy(false)
@@ -125,7 +122,6 @@ export function GlossaryEntryForm({
         category: category.trim(),
         reading: reading.trim(),
         summary: summary.trim(),
-        body: body.trim(),
         thumbnail,
       })
       onOpenChange(false)
@@ -213,17 +209,7 @@ export function GlossaryEntryForm({
               id={`${uid}-summary`}
               value={summary}
               onChange={(e) => setSummary(e.target.value)}
-              placeholder="一覧やパネルに表示される短い説明"
-              rows={3}
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor={`${uid}-body`}>詳細メモ（任意）</Label>
-            <Textarea
-              id={`${uid}-body`}
-              value={body}
-              onChange={(e) => setBody(e.target.value)}
-              placeholder="設定・覚書など"
+              placeholder="一覧やパネルに表示される説明"
               rows={4}
             />
           </div>

@@ -11,7 +11,6 @@ const entry: GlossaryEntry = {
   reading: 'ありす',
   category: '人物',
   summary: '物語の主人公。',
-  body: '詳細な設定メモ。',
   createdAt: 0,
   updatedAt: 0,
 }
@@ -27,7 +26,7 @@ const noop = {
 }
 
 describe('GlossaryPeek（図鑑パネル）', () => {
-  it('選択 entry の名前・読み・カテゴリ・別名・概要・本文・登場数を表示', () => {
+  it('選択 entry の名前・読み・カテゴリ・別名・概要・登場数を表示', () => {
     render(
       <GlossaryPeek entries={[entry]} draft="" entry={entry} appearances={appearances} {...noop} />,
     )
@@ -36,7 +35,6 @@ describe('GlossaryPeek（図鑑パネル）', () => {
     expect(screen.getByText('人物')).toBeInTheDocument()
     expect(screen.getByText(/Alice、姫君/)).toBeInTheDocument()
     expect(screen.getByText('物語の主人公。')).toBeInTheDocument()
-    expect(screen.getByText('詳細な設定メモ。')).toBeInTheDocument()
     expect(screen.getByText('2話・5回 登場')).toBeInTheDocument()
   })
 
@@ -45,7 +43,7 @@ describe('GlossaryPeek（図鑑パネル）', () => {
       <GlossaryPeek
         entries={[entry]}
         draft=""
-        entry={{ ...entry, summary: undefined, body: undefined }}
+        entry={{ ...entry, summary: undefined }}
         appearances={{ episodeIds: [], refCount: 0 }}
         {...noop}
       />,
