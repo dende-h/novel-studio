@@ -213,6 +213,7 @@ export function GlossaryEntryForm({
                 onChange={(e) => setSummary(e.target.value)}
                 placeholder="一覧やパネルに表示される説明"
                 rows={4}
+                className="max-h-28"
               />
             </div>
             <div className="space-y-2">
