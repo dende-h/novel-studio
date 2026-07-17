@@ -317,7 +317,7 @@ export function ExportDialog({ open, onOpenChange, work, onEditMeta }: ExportDia
           </div>
         </div>
 
-        <DialogFooter className="border-outline-variant/30 border-t px-6 py-4">
+        <DialogFooter className="mb-0 border-outline-variant/30 border-t px-6 py-4">
           <Button
             variant="outline"
             onClick={() => handleOpenChange(false)}

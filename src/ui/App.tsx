@@ -259,7 +259,7 @@ export function App({ store, onExit, onNavigateActivity, activityRepo }: AppProp
               <span className="truncate font-medium font-sans text-[13px] text-on-surface">
                 {episode.title}
               </span>
-              <span className="shrink-0 text-[11px] text-on-surface-variant/60">A1記法</span>
+
             </div>
             <div className="flex shrink-0 items-center gap-2">
               <Button
