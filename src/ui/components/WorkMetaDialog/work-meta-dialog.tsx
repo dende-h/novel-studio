@@ -116,13 +116,21 @@ export function WorkMetaDialog({ open, onOpenChange, initial, onSubmit }: WorkMe
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="work-meta-description">あらすじ</Label>
+              <div className="flex items-center justify-between">
+                <Label htmlFor="work-meta-description">あらすじ</Label>
+                <span
+                  className={`text-xs tabular-nums ${description.length >= 250 ? 'text-destructive' : 'text-on-surface-variant/50'}`}
+                >
+                  {description.length}/250
+                </span>
+              </div>
               <Textarea
                 id="work-meta-description"
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 placeholder="作品の概要・あらすじ（任意）"
                 rows={4}
+                maxLength={250}
               />
             </div>
             <div className="space-y-2">
