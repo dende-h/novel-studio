@@ -47,7 +47,7 @@ export function workEpubExport(work: Work): ExportFile {
 
 export function worksBundleExport(works: Work[]): ExportFile {
   return {
-    filename: 'novel-studio-bundle.json',
+    filename: 'kotonoha-leaf-bundle.json',
     mime: 'application/json;charset=utf-8',
     data: exportBundle(works),
   }

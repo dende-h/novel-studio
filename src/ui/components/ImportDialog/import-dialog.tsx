@@ -55,7 +55,7 @@ export function ImportDialog({ open, onOpenChange, onImport }: ImportDialogProps
       setPhase({
         kind: 'pick',
         error:
-          'このファイルは取り込めませんでした。novel-studio で書き出した構造化データ（JSON）を選んでください。',
+          'このファイルは取り込めませんでした。コトノハ-leaf- で書き出した構造化データ（JSON）を選んでください。',
       })
     }
   }

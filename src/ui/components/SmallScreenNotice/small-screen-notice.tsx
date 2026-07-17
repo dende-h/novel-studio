@@ -16,7 +16,7 @@ export function SmallScreenNotice() {
       </div>
       <p className="font-serif text-on-surface text-xl">スマートフォンには対応していません</p>
       <p className="max-w-sm text-on-surface-variant text-sm leading-relaxed">
-        novel-studio はタブレットの横画面（iPad mini 程度の幅）以上でご利用いただけます。
+        コトノハ-leaf- はタブレットの横画面（iPad mini 程度の幅）以上でご利用いただけます。
         画面を横向きにするか、より大きな画面の端末でお開きください。
       </p>
     </div>

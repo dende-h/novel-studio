@@ -22,7 +22,7 @@ export function LegalLayout({ title, dateLine, children }: LegalLayoutProps) {
           href="#/"
           className="font-bold font-serif text-[19px] text-on-surface no-underline tracking-[0.01em] transition-opacity hover:opacity-80"
         >
-          novel-studio
+          コトノハ<span className="ml-0.5 font-medium text-[13px] text-wheat-700 tracking-[0.06em]">-leaf-</span>
         </a>
       </header>
 
@@ -62,7 +62,7 @@ export function LegalLayout({ title, dateLine, children }: LegalLayoutProps) {
             <a href="#/tokushoho" className="text-on-surface-variant hover:text-primary">
               特定商取引法に基づく表記
             </a>
-            <span className="ml-auto font-serif">novel-studio</span>
+            <span className="ml-auto font-serif">コトノハ<span className="ml-0.5 font-medium text-[0.72em] text-wheat-700 tracking-[0.06em]">-leaf-</span></span>
           </div>
         </footer>
       </main>

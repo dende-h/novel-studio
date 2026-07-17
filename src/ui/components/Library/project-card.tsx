@@ -62,7 +62,7 @@ export function ProjectCard({
                 </div>
               </div>
               <div className="absolute bottom-2 left-2.5 font-serif text-[9px] text-on-surface-variant/50 tracking-[0.08em]">
-                novel-studio
+                コトノハ-leaf-
               </div>
             </>
           )}

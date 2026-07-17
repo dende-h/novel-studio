@@ -7,7 +7,7 @@ import {
   History,
   LoaderCircle,
 } from 'lucide-react'
-import { lazy, Suspense } from 'react'
+import React, { lazy, Suspense } from 'react'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/ui/auth/auth-context'
 import { Button } from '@/ui/components/ui/button'
@@ -23,8 +23,8 @@ export interface SaveState {
 }
 
 interface TopAppBarProps {
-  /** ブランド名（製品識別）。クリックで入口へ戻す。 */
-  brand?: string
+  /** ブランド表示。省略時は「コトノハ-leaf-」ロゴを描画する。 */
+  brand?: React.ReactNode
   onBrandClick?: () => void
   /** 開いている作品のタイトル（パンくず）。指定時のみブランド横に表示。 */
   workTitle?: string
@@ -111,7 +111,7 @@ function AccountControl() {
 
 /** 全画面共通のトップバー（ブランド・作品パンくず・保存状態・履歴・書き出し）。 */
 export function TopAppBar({
-  brand = 'novel-studio',
+  brand,
   onBrandClick,
   workTitle,
   saveStatus,
@@ -129,7 +129,12 @@ export function TopAppBar({
           disabled={!onBrandClick}
           className="whitespace-nowrap font-bold font-serif text-[19px] text-on-surface tracking-[0.01em] transition-opacity hover:opacity-80 disabled:cursor-default disabled:hover:opacity-100"
         >
-          {brand}
+          {brand ?? (
+            <>
+              コトノハ
+              <span className="ml-0.5 font-medium text-[13px] text-wheat-700 tracking-[0.06em]">-leaf-</span>
+            </>
+          )}
         </button>
         {workTitle ? (
           <span className="flex min-w-0 items-center gap-2 text-on-surface-variant text-xs">
