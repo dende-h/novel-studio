@@ -131,8 +131,8 @@ export function TopAppBar({
         >
           {brand ?? (
             <>
-              <img src="/logo.svg" alt="" aria-hidden className="h-7 w-7 object-contain" />
-              <img src="/app_title_text.svg" alt="コトノハ-leaf-" className="h-6 w-auto object-contain" />
+              <img src="/logo-clean.png" alt="" aria-hidden className="h-7 w-auto object-contain" />
+              <img src="/app_title_text-clean.png" alt="コトノハ-leaf-" className="h-5 w-auto object-contain" />
             </>
           )}
         </button>
