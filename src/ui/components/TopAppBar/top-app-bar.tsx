@@ -122,7 +122,7 @@ export function TopAppBar({
 }: TopAppBarProps) {
   return (
     <header className="flex h-14 shrink-0 items-center justify-between border-outline-variant/30 border-b bg-surface-container-lowest px-5">
-      <div className="flex min-w-0 items-center gap-3.5">
+      <div className="flex min-w-0 items-center gap-3.5 pl-3">
         <button
           type="button"
           onClick={onBrandClick}
@@ -131,7 +131,7 @@ export function TopAppBar({
         >
           {brand ?? (
             <>
-              <img src="/logo-clean.png" alt="" aria-hidden className="h-8 w-auto object-contain" />
+              <img src="/logo-clean.png" alt="" aria-hidden className="h-10 w-auto object-contain" />
               <img src="/app_title_text-clean.png" alt="コトノハ-leaf-" className="h-10 w-auto object-contain" />
             </>
           )}
