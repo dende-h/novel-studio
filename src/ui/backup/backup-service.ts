@@ -2,6 +2,7 @@ import { type BackupState, deserializeBackup, serializeBackup } from '@/core/bac
 import { ProfileRepository } from '@/core/profile'
 import { ActivityRepository } from '@/core/storage/activityRepository'
 import { IdbStore } from '@/core/storage/idbStore'
+import { IdeaRepository } from '@/core/storage/ideaRepository'
 import { WorkRepository } from '@/core/storage/workRepository'
 import {
   createBackup as apiCreate,
@@ -67,6 +68,7 @@ export function createBackupService(deps: BackupDeps): BackupService {
         trash: backup.trash,
         profile: backup.profile,
         activity: backup.activity,
+        ideas: backup.ideas,
       })
       return true
     },
@@ -77,24 +79,39 @@ export function createBackupService(deps: BackupDeps): BackupService {
   }
 }
 
-/** 本番用：IndexedDB('novel-studio') 上の Repository と `/api/backup` を結線する。 */
-export function createDefaultBackupService(getToken: () => Promise<string | null>): BackupService {
+/**
+ * 課金に依存しないローカル I/O（gather＝全状態収集 / replaceAll＝全置換）。
+ * IndexedDB('novel-studio') 上の Repository を束ねる。ローカル・クラウド双方の土台。
+ */
+export function createLocalBackupIO(): Pick<BackupDeps, 'gather' | 'replaceAll'> {
   const store = new IdbStore('novel-studio')
   const repo = new WorkRepository(store)
   const profileRepo = new ProfileRepository(store)
   const activityRepo = new ActivityRepository(store)
-  return createBackupService({
+  const ideaRepo = new IdeaRepository(store)
+  return {
     gather: async () => ({
       works: await repo.listWorksFull(),
       trash: await repo.listTrashFull(),
       profile: await profileRepo.get(),
       activity: await activityRepo.list(),
+      ideas: await ideaRepo.list(),
     }),
     replaceAll: async (state) => {
       await repo.replaceAll(state.works, state.trash)
       await profileRepo.save(state.profile)
       await activityRepo.replaceAll(state.activity)
+      await ideaRepo.replaceAll(state.ideas)
     },
+  }
+}
+
+/** 本番用：ローカル I/O と `/api/backup` を結線する（クラウドバックアップ・要ログイン）。 */
+export function createDefaultBackupService(getToken: () => Promise<string | null>): BackupService {
+  const io = createLocalBackupIO()
+  return createBackupService({
+    gather: io.gather,
+    replaceAll: io.replaceAll,
     createRemote: (plaintext) => apiCreate(getToken, plaintext),
     putLiveRemote: (plaintext) => apiPutLive(getToken, plaintext),
     listRemote: () => apiList(getToken),
@@ -102,4 +119,28 @@ export function createDefaultBackupService(getToken: () => Promise<string | null
     deleteRemote: (id) => apiDelete(getToken, id),
     now: () => Date.now(),
   })
+}
+
+/** ローカル（ファイル）バックアップ。課金非依存で全状態を平文 JSON 化／全置換で復元する。 */
+export interface LocalBackupService {
+  /** 現在の全状態を平文 JSON（CloudBackup 形式）で書き出す。 */
+  exportPlaintext(): Promise<string>
+  /** バックアップ JSON でローカル全体を置換（復元）。不可逆。壊れた JSON は throw。 */
+  restorePlaintext(json: string): Promise<void>
+}
+
+/**
+ * 本番用：ローカル I/O だけで完結するファイルバックアップ（誰でも使える）。
+ * io/now はテスト時に注入可能。
+ */
+export function createLocalBackupService(
+  io: Pick<BackupDeps, 'gather' | 'replaceAll'> = createLocalBackupIO(),
+  now: () => number = () => Date.now(),
+): LocalBackupService {
+  return {
+    exportPlaintext: async () => serializeBackup(await io.gather(), now()),
+    restorePlaintext: async (json) => {
+      await io.replaceAll(deserializeBackup(json))
+    },
+  }
 }

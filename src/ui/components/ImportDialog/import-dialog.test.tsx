@@ -1,5 +1,6 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
+import { serializeBackup } from '@/core/backup'
 import { exportBundle } from '@/core/bundle'
 import type { Work } from '@/core/schema'
 import { ImportDialog } from './import-dialog'
@@ -53,5 +54,20 @@ describe('ImportDialog（バックアップ取り込み）', () => {
       expect(screen.getByRole('button', { name: 'JSON ファイルを選択' })).toBeInTheDocument(),
     )
     expect(screen.queryByRole('button', { name: '取り込む' })).toBeNull()
+  })
+
+  it('全体バックアップ（createdAt あり）は全置換フローに進み onRestoreAll を呼ぶ', async () => {
+    const onRestoreAll = vi.fn().mockResolvedValue(undefined)
+    render(
+      <ImportDialog open onOpenChange={() => {}} onImport={vi.fn()} onRestoreAll={onRestoreAll} />,
+    )
+    const json = serializeBackup(
+      { works: [makeWork('a', '銀河')], trash: [], profile: {}, activity: [], ideas: [] },
+      Date.parse('2026-07-19T00:00:00Z'),
+    )
+    pick(json)
+    fireEvent.click(await screen.findByRole('button', { name: 'すべて置き換えて復元' }))
+    await waitFor(() => expect(onRestoreAll).toHaveBeenCalledWith(json))
+    expect(await screen.findByText(/全体を復元しました/)).toBeInTheDocument()
   })
 })

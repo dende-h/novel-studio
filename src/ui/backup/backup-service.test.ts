@@ -1,12 +1,18 @@
 import { describe, expect, it, vi } from 'vitest'
-import { serializeBackup } from '@/core/backup'
+import { type BackupState, deserializeBackup, serializeBackup } from '@/core/backup'
 import type { Work } from '@/core/schema'
-import { type BackupDeps, createBackupService } from './backup-service'
+import { type BackupDeps, createBackupService, createLocalBackupService } from './backup-service'
 
 const work = (id: string): Work => ({ id, title: id, episodes: [], updatedAt: 1 })
 
 function makeDeps(over: Partial<BackupDeps> = {}) {
-  const state = { works: [work('a')], trash: [], profile: { penName: 'p' }, activity: [] }
+  const state = {
+    works: [work('a')],
+    trash: [],
+    profile: { penName: 'p' },
+    activity: [],
+    ideas: [],
+  }
   const created: string[] = []
   const live: string[] = []
   const replaced: Array<{ works: Work[] }> = []
@@ -36,6 +42,58 @@ function makeDeps(over: Partial<BackupDeps> = {}) {
   return { deps, created, live, replaced, remote, state }
 }
 
+describe('createLocalBackupService（ローカル・ファイルバックアップ）', () => {
+  const io = (state: BackupState, onReplace?: (s: BackupState) => void) => ({
+    gather: async () => state,
+    replaceAll: async (s: BackupState) => {
+      onReplace?.(s)
+    },
+  })
+
+  it('exportPlaintext は現在の全状態を CloudBackup 形式 JSON にする', async () => {
+    const state: BackupState = {
+      works: [work('a')],
+      trash: [],
+      profile: { penName: 'p' },
+      activity: [],
+      ideas: [{ id: 'i1', text: 'ネタ', createdAt: 1, updatedAt: 1 }],
+    }
+    const svc = createLocalBackupService(io(state), () => 999)
+    const back = deserializeBackup(await svc.exportPlaintext())
+    expect(back.createdAt).toBe(999)
+    expect(back.works.map((w) => w.id)).toEqual(['a'])
+    expect(back.ideas.map((i) => i.id)).toEqual(['i1'])
+  })
+
+  it('restorePlaintext は JSON を全状態へ復元し replaceAll に渡す', async () => {
+    let restored: BackupState | undefined
+    const empty: BackupState = { works: [], trash: [], profile: {}, activity: [], ideas: [] }
+    const svc = createLocalBackupService(
+      io(empty, (s) => {
+        restored = s
+      }),
+    )
+    const json = serializeBackup(
+      {
+        works: [work('r')],
+        trash: [],
+        profile: {},
+        activity: [],
+        ideas: [{ id: 'i2', text: 'x', createdAt: 2, updatedAt: 2 }],
+      },
+      5,
+    )
+    await svc.restorePlaintext(json)
+    expect(restored?.works.map((w) => w.id)).toEqual(['r'])
+    expect(restored?.ideas.map((i) => i.id)).toEqual(['i2'])
+  })
+
+  it('restorePlaintext は壊れた JSON で throw する', async () => {
+    const empty: BackupState = { works: [], trash: [], profile: {}, activity: [], ideas: [] }
+    await expect(createLocalBackupService(io(empty)).restorePlaintext('not json')).rejects.toThrow()
+  })
+})
+
 describe('createBackupService', () => {
   it('pushLive は現在の全状態をライブスナップショットに上書きする（版は作らない）', async () => {
     const { deps, live, created } = makeDeps()
@@ -55,7 +113,7 @@ describe('createBackupService', () => {
 
   it('復元は既定では安全退避しない（バックアップを増やさない）', async () => {
     const target = serializeBackup(
-      { works: [work('restored')], trash: [], profile: {}, activity: [] },
+      { works: [work('restored')], trash: [], profile: {}, activity: [], ideas: [] },
       50,
     )
     const { deps, created, replaced, remote } = makeDeps()
@@ -72,7 +130,7 @@ describe('createBackupService', () => {
   it('復元は執筆活動（activity）もローカルへ全置換する', async () => {
     const day = { date: '2026-07-11', added: 40, removed: 0, net: 40, saves: 1, updatedAt: 9 }
     const target = serializeBackup(
-      { works: [work('r')], trash: [], profile: {}, activity: [day] },
+      { works: [work('r')], trash: [], profile: {}, activity: [day], ideas: [] },
       50,
     )
     let restored: unknown
@@ -86,9 +144,26 @@ describe('createBackupService', () => {
     expect(restored).toEqual([day])
   })
 
+  it('復元はネタ帳（ideas）もローカルへ全置換する', async () => {
+    const note = { id: 'i1', text: 'ネタ', createdAt: 5, updatedAt: 5 }
+    const target = serializeBackup(
+      { works: [work('r')], trash: [], profile: {}, activity: [], ideas: [note] },
+      50,
+    )
+    let restored: unknown
+    const { deps, remote } = makeDeps({
+      replaceAll: async (s) => {
+        restored = s.ideas
+      },
+    })
+    remote.set('target', target)
+    await createBackupService(deps).restore('target')
+    expect(restored).toEqual([note])
+  })
+
   it('backupCurrent:true のときだけ、置換前に現在を安全退避してから全置換する', async () => {
     const target = serializeBackup(
-      { works: [work('restored')], trash: [], profile: {}, activity: [] },
+      { works: [work('restored')], trash: [], profile: {}, activity: [], ideas: [] },
       50,
     )
     const { deps, created, replaced, remote } = makeDeps()

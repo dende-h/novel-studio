@@ -5,6 +5,7 @@ import { SnapshotRepository } from '@/core/snapshot/snapshotRepository'
 import { ActivityRepository } from '@/core/storage/activityRepository'
 import { MemoryStore } from '@/core/storage/memoryStore'
 import { WorkRepository } from '@/core/storage/workRepository'
+import type { LocalBackupService } from '@/ui/backup/backup-service'
 import { createEditorStore, type EditorStore } from '@/ui/store/editorStore'
 import { Library } from './library'
 
@@ -23,6 +24,12 @@ const makeStore = (): EditorStore => {
   })
 }
 
+/** ローカルバックアップは本テストの対象外なので no-op を渡す。 */
+const fakeLocalBackup: LocalBackupService = {
+  exportPlaintext: async () => '{}',
+  restorePlaintext: async () => {},
+}
+
 // 表示切替（カード／リスト）は localStorage に記憶されるのでテスト間で隔離する
 beforeEach(() => {
   localStorage.clear()
@@ -32,7 +39,7 @@ describe('Library 作成・表示', () => {
   it('「作成」してもエディタへ遷移せず、一覧に作品が増える', async () => {
     const store = makeStore()
     const onEnter = vi.fn()
-    render(<Library store={store} onEnterEditor={onEnter} />)
+    render(<Library store={store} onEnterEditor={onEnter} localBackup={fakeLocalBackup} />)
 
     fireEvent.click(screen.getByRole('button', { name: /新規プロジェクト/ }))
     const input = await screen.findByLabelText('作品タイトル')
@@ -47,7 +54,7 @@ describe('Library 作成・表示', () => {
     const store = makeStore()
     await store.createWork('一覧作')
     const onEnter = vi.fn()
-    render(<Library store={store} onEnterEditor={onEnter} />)
+    render(<Library store={store} onEnterEditor={onEnter} localBackup={fakeLocalBackup} />)
 
     fireEvent.click(screen.getByRole('button', { name: 'リスト表示' }))
     expect(screen.getByRole('heading', { name: '一覧作' })).toBeInTheDocument()
@@ -61,7 +68,7 @@ describe('Library 作品名検索', () => {
     const store = makeStore()
     await store.createWork('静謐の森')
     await store.createWork('春の列車')
-    render(<Library store={store} onEnterEditor={() => {}} />)
+    render(<Library store={store} onEnterEditor={() => {}} localBackup={fakeLocalBackup} />)
     expect(await screen.findByRole('heading', { name: '静謐の森' })).toBeInTheDocument()
 
     const search = screen.getByRole('searchbox', { name: '作品名で検索' })
@@ -83,7 +90,7 @@ describe('Library ゴミ箱導線', () => {
   it('削除→ゴミ箱へ移動→復元 が UI で一周する', async () => {
     const store = makeStore()
     await store.createWork('テスト作')
-    render(<Library store={store} onEnterEditor={() => {}} />)
+    render(<Library store={store} onEnterEditor={() => {}} localBackup={fakeLocalBackup} />)
 
     // 作品カードが見えている。まだゴミ箱ボタンは無い。
     expect(screen.getByRole('heading', { name: 'テスト作' })).toBeInTheDocument()
@@ -115,7 +122,7 @@ describe('Library ゴミ箱導線', () => {
   it('ゴミ箱から完全に削除すると復元できなくなる', async () => {
     const store = makeStore()
     await store.createWork('消す作')
-    render(<Library store={store} onEnterEditor={() => {}} />)
+    render(<Library store={store} onEnterEditor={() => {}} localBackup={fakeLocalBackup} />)
 
     fireEvent.click(screen.getByRole('button', { name: '「消す作」のメニュー' }))
     fireEvent.click(screen.getByRole('menuitem', { name: 'ゴミ箱へ移動' }))

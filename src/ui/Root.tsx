@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { getMcpTokenStatus } from './_api/mcp'
 import { App } from './App'
 import { useAuth } from './auth/auth-context'
-import { createDefaultBackupService } from './backup/backup-service'
+import { createDefaultBackupService, createLocalBackupService } from './backup/backup-service'
 import { ActivityPage } from './components/ActivityPage/activity-page'
 import { CloudBackupDialog } from './components/CloudBackupDialog/cloud-backup-dialog'
 import { HelpPage } from './components/HelpPage/help-page'
@@ -47,6 +47,8 @@ export function Root({ store }: RootProps) {
   )
   // 執筆活動（草・ストリーク）は純ローカル・誰でも使える（同じ IndexedDB を読む）。
   const activityRepo = useMemo(() => createDefaultActivityRepository(), [])
+  // ローカル（ファイル）バックアップも純ローカル・誰でも使える（全状態の書き出し／全置換復元）。
+  const localBackup = useMemo(() => createLocalBackupService(), [])
   // ネタ帳（アイデアの受け皿）も純ローカル・誰でも使える。
   const ideaRepo = useMemo(() => createDefaultIdeaRepository(), [])
   const [backupOpen, setBackupOpen] = useState(false)
@@ -144,6 +146,7 @@ export function Root({ store }: RootProps) {
           onOpenIdeas={() => navigate('/ideas')}
           onOpenSettings={() => navigate('/settings')}
           onOpenHelp={() => navigate('/help')}
+          localBackup={localBackup}
         />
       )}
       {backupService && (

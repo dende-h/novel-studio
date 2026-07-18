@@ -9,6 +9,7 @@ const state: BackupState = {
   trash: [{ work: work('t1', 'ゴミ'), trashedAt: 500 }],
   profile: { penName: '紫式部' },
   activity: [{ date: '2026-07-12', added: 100, removed: 0, net: 100, saves: 1, updatedAt: 1 }],
+  ideas: [{ id: 'i1', text: 'ネタ', createdAt: 10, updatedAt: 10 }],
 }
 
 describe('serializeBackup / deserializeBackup（全体バックアップの直列化）', () => {
@@ -21,11 +22,24 @@ describe('serializeBackup / deserializeBackup（全体バックアップの直�
     expect(back.trash).toEqual([{ work: work('t1', 'ゴミ'), trashedAt: 500 }])
     expect(back.profile).toEqual({ penName: '紫式部' })
     expect(back.activity.map((a) => a.date)).toEqual(['2026-07-12'])
+    expect(back.ideas.map((i) => i.id)).toEqual(['i1'])
   })
 
   it('activity 欠落の旧バックアップ（version 1）も既定 [] で復元できる（後方互換）', () => {
     const old = JSON.stringify({ version: 1, createdAt: 1, works: [], trash: [], profile: {} })
     expect(deserializeBackup(old).activity).toEqual([])
+  })
+
+  it('ideas 欠落の旧バックアップ（version 1）も既定 [] で復元できる（後方互換）', () => {
+    const old = JSON.stringify({
+      version: 1,
+      createdAt: 1,
+      works: [],
+      trash: [],
+      profile: {},
+      activity: [],
+    })
+    expect(deserializeBackup(old).ideas).toEqual([])
   })
 
   it('version 不正は弾く（壊れた/将来形のバックアップを復元しない）', () => {
@@ -39,7 +53,7 @@ describe('serializeBackup / deserializeBackup（全体バックアップの直�
   })
 
   it('空状態も往復できる', () => {
-    const json = serializeBackup({ works: [], trash: [], profile: {}, activity: [] }, 0)
+    const json = serializeBackup({ works: [], trash: [], profile: {}, activity: [], ideas: [] }, 0)
     const back = deserializeBackup(json)
     expect(back.works).toEqual([])
     expect(back.trash).toEqual([])

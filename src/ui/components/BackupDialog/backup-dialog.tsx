@@ -15,7 +15,7 @@ interface BackupDialogProps {
   onOpenChange: (open: boolean) => void
   /** バックアップ対象の作品数（説明表示用）。 */
   workCount: number
-  /** 実際の書き出し（全作品を 1つの JSON にしてダウンロード）。 */
+  /** 実際の書き出し（全状態を 1つのバックアップ JSON にしてダウンロード）。 */
   onExport: () => void | Promise<void>
 }
 
@@ -53,24 +53,26 @@ export function BackupDialog({ open, onOpenChange, workCount, onExport }: Backup
             バックアップの書き出し
           </DialogTitle>
           <DialogDescription>
-            すべての作品を 1つの構造化データ（JSON）ファイルにまとめて保存します。
+            作品・図鑑・ネタ帳・執筆記録・ゴミ箱・プロフィールを
+            1つのバックアップ（JSON）にまとめて保存します。
           </DialogDescription>
         </DialogHeader>
 
         {done ? (
           <p className="flex items-center gap-2 py-4 text-on-surface text-sm">
             <CheckCircle2 className="size-5 text-primary" aria-hidden />
-            {workCount}作品をバックアップしました。
+            すべてのデータをバックアップしました。
           </p>
         ) : (
           <div className="space-y-3 py-2">
             <p className="text-on-surface text-sm">
-              <span className="font-medium">{workCount}作品</span>をまとめて書き出します。
+              現在の<span className="font-medium">すべてのデータ</span>（作品 {workCount}{' '}
+              件を含む）をまとめて書き出します。
             </p>
             <p className="flex items-start gap-2 rounded-md bg-surface-container-low p-3 text-on-surface-variant text-xs">
               <Info className="mt-0.5 size-4 shrink-0 text-primary" aria-hidden />
               <span>
-                本文・構成・図鑑などの設定を含みます。執筆履歴（版）は含まれません。取り込みで復元できます。
+                作品・図鑑・ネタ帳・執筆記録・ゴミ箱・プロフィールを含みます。執筆履歴（版）は含まれません。取り込み時に全置換で復元できます。
               </span>
             </p>
           </div>
@@ -95,11 +97,7 @@ export function BackupDialog({ open, onOpenChange, workCount, onExport }: Backup
               >
                 キャンセル
               </Button>
-              <Button
-                onClick={() => void handleExport()}
-                disabled={busy || workCount === 0}
-                className="gap-2"
-              >
+              <Button onClick={() => void handleExport()} disabled={busy} className="gap-2">
                 <Download className="size-4" />
                 書き出す
               </Button>

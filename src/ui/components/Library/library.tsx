@@ -13,7 +13,7 @@ import { useId, useMemo, useState } from 'react'
 import type { WorkSummary } from '@/core/storage/workRepository'
 import { cn } from '@/lib/utils'
 import { triggerDownload } from '@/ui/_utils/download'
-import { worksBundleExport } from '@/ui/_utils/exporters'
+import type { LocalBackupService } from '@/ui/backup/backup-service'
 import { AppShell } from '@/ui/components/AppShell/app-shell'
 import { BackupDialog } from '@/ui/components/BackupDialog/backup-dialog'
 import { ConfirmDialog } from '@/ui/components/ConfirmDialog/confirm-dialog'
@@ -51,6 +51,8 @@ interface LibraryProps {
   onOpenSettings?: () => void
   /** ヘルプページを開く。 */
   onOpenHelp?: () => void
+  /** ローカル（ファイル）バックアップ：全状態の書き出し／全置換復元（課金非依存）。 */
+  localBackup: LocalBackupService
 }
 
 /** データ管理メニューの 1 項目。 */
@@ -89,6 +91,7 @@ export function Library({
   onOpenIdeas,
   onOpenSettings,
   onOpenHelp,
+  localBackup,
 }: LibraryProps) {
   const state = useEditorStore(store)
   const [newOpen, setNewOpen] = useState(false)
@@ -350,12 +353,20 @@ export function Library({
         open={backupOpen}
         onOpenChange={setBackupOpen}
         workCount={state.workList.length}
-        onExport={async () => triggerDownload(worksBundleExport(await store.getAllWorks()))}
+        onExport={async () => {
+          const json = await localBackup.exportPlaintext()
+          triggerDownload({
+            filename: `kotonoha-backup-${new Date().toISOString().slice(0, 10)}.json`,
+            mime: 'application/json;charset=utf-8',
+            data: json,
+          })
+        }}
       />
       <ImportDialog
         open={importOpen}
         onOpenChange={setImportOpen}
         onImport={(works) => store.importWorks(works)}
+        onRestoreAll={(json) => localBackup.restorePlaintext(json)}
       />
       <ProfileDialog
         open={profileOpen}
