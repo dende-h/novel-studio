@@ -9,6 +9,7 @@ import {
   Plus,
   Settings,
   Sprout,
+  StickyNote,
   Trash2,
   UserRound,
 } from 'lucide-react'
@@ -19,7 +20,7 @@ import { Button } from '@/ui/components/ui/button'
 import { ScrollArea } from '@/ui/components/ui/scroll-area'
 import { ZoomableImage } from '@/ui/components/ui/zoomable-image'
 
-export type NavKey = 'collection' | 'activity' | 'episodes' | 'glossary'
+export type NavKey = 'collection' | 'activity' | 'ideas' | 'episodes' | 'glossary'
 
 interface EpisodeItem {
   id: string
@@ -32,6 +33,10 @@ interface SideNavProps {
   onNavigateCollection: () => void
   /** 執筆の記録（草・ストリーク）へ。指定時のみ表示。 */
   onNavigateActivity?: () => void
+  /** ネタ帳（アイデアの受け皿）へ。指定時のみ表示。 */
+  onNavigateIdeas?: () => void
+  /** ゴミ箱を開く。指定時のみ表示（ライブラリがダイアログをホストする）。 */
+  onNavigateTrash?: () => void
   /** 設定ページへ。指定時のみフッターの「設定」を有効化。 */
   onNavigateSettings?: () => void
   /** ヘルプページへ。指定時のみフッターの「ヘルプ」を有効化。 */
@@ -98,6 +103,8 @@ export function SideNav({
   active,
   onNavigateCollection,
   onNavigateActivity,
+  onNavigateIdeas,
+  onNavigateTrash,
   onNavigateSettings,
   onNavigateHelp,
   onNavigateEpisodes,
@@ -304,6 +311,17 @@ export function SideNav({
                 active={active === 'activity'}
                 onClick={onNavigateActivity}
               />
+            ) : null}
+            {onNavigateIdeas ? (
+              <NavRow
+                icon={StickyNote}
+                label="ネタ帳"
+                active={active === 'ideas'}
+                onClick={onNavigateIdeas}
+              />
+            ) : null}
+            {onNavigateTrash ? (
+              <NavRow icon={Trash2} label="ゴミ箱" onClick={onNavigateTrash} />
             ) : null}
           </div>
         </>
