@@ -2,6 +2,7 @@ import { ProfileRepository } from '../../core/profile'
 import { SnapshotRepository } from '../../core/snapshot/snapshotRepository'
 import { ActivityRepository } from '../../core/storage/activityRepository'
 import { IdbStore } from '../../core/storage/idbStore'
+import { IdeaRepository } from '../../core/storage/ideaRepository'
 import { WorkRepository } from '../../core/storage/workRepository'
 import { createEditorStore, type EditorStore } from './editorStore'
 
@@ -33,4 +34,9 @@ export function createDefaultStore(): EditorStore {
 /** 執筆活動ページ（読み取り専用）が同じ IndexedDB を参照するためのリポジトリ。 */
 export function createDefaultActivityRepository(): ActivityRepository {
   return new ActivityRepository(new IdbStore('novel-studio'))
+}
+
+/** ネタ帳ページが同じ IndexedDB を参照するためのリポジトリ。 */
+export function createDefaultIdeaRepository(): IdeaRepository {
+  return new IdeaRepository(new IdbStore('novel-studio'))
 }

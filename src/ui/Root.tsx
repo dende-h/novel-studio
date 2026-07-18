@@ -6,6 +6,7 @@ import { createDefaultBackupService } from './backup/backup-service'
 import { ActivityPage } from './components/ActivityPage/activity-page'
 import { CloudBackupDialog } from './components/CloudBackupDialog/cloud-backup-dialog'
 import { HelpPage } from './components/HelpPage/help-page'
+import { IdeaboxPage } from './components/IdeaboxPage/idea-box-page'
 import { PrivacyPage } from './components/LegalPage/privacy-page'
 import { TermsPage } from './components/LegalPage/terms-page'
 import { TokushohoPage } from './components/LegalPage/tokushoho-page'
@@ -17,7 +18,10 @@ import { SyncOnboarding } from './components/SyncOnboarding/sync-onboarding'
 import { useToast } from './components/Toast/toast'
 import { useHashRoute } from './hooks/use-hash-route'
 import { useLiveSnapshot } from './hooks/use-live-snapshot'
-import { createDefaultActivityRepository } from './store/createDefaultStore'
+import {
+  createDefaultActivityRepository,
+  createDefaultIdeaRepository,
+} from './store/createDefaultStore'
 import type { EditorStore } from './store/editorStore'
 
 interface RootProps {
@@ -43,6 +47,8 @@ export function Root({ store }: RootProps) {
   )
   // 執筆活動（草・ストリーク）は純ローカル・誰でも使える（同じ IndexedDB を読む）。
   const activityRepo = useMemo(() => createDefaultActivityRepository(), [])
+  // ネタ帳（アイデアの受け皿）も純ローカル・誰でも使える。
+  const ideaRepo = useMemo(() => createDefaultIdeaRepository(), [])
   const [backupOpen, setBackupOpen] = useState(false)
   const [mcpOpen, setMcpOpen] = useState(false)
   // AI・MCP 接続済みか（トークン発行済み）。接続時のみ編集をライブスナップショットへ送る。
@@ -93,6 +99,22 @@ export function Root({ store }: RootProps) {
         <ActivityPage
           repo={activityRepo}
           onNavigateCollection={() => navigate('/')}
+          onNavigateIdeas={() => navigate('/ideas')}
+          onNavigateSettings={() => navigate('/settings')}
+          onNavigateHelp={() => navigate('/help')}
+        />
+        <SmallScreenNotice />
+      </>
+    )
+  }
+
+  if (route === '/ideas') {
+    return (
+      <>
+        <IdeaboxPage
+          repo={ideaRepo}
+          onNavigateCollection={() => navigate('/')}
+          onNavigateActivity={() => navigate('/activity')}
           onNavigateSettings={() => navigate('/settings')}
           onNavigateHelp={() => navigate('/help')}
         />
@@ -119,6 +141,7 @@ export function Root({ store }: RootProps) {
           onOpenCloudBackup={backupService ? () => setBackupOpen(true) : undefined}
           onOpenMcp={backupService ? () => setMcpOpen(true) : undefined}
           onOpenActivity={() => navigate('/activity')}
+          onOpenIdeas={() => navigate('/ideas')}
           onOpenSettings={() => navigate('/settings')}
           onOpenHelp={() => navigate('/help')}
         />

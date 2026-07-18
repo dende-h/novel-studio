@@ -7,7 +7,6 @@ import {
   List,
   Plus,
   Search,
-  Trash2,
   Upload,
 } from 'lucide-react'
 import { useId, useMemo, useState } from 'react'
@@ -46,6 +45,8 @@ interface LibraryProps {
   onOpenMcp?: () => void
   /** 執筆活動（草・ストリーク）ページを開く。 */
   onOpenActivity?: () => void
+  /** ネタ帳ページを開く。 */
+  onOpenIdeas?: () => void
   /** 設定ページを開く。 */
   onOpenSettings?: () => void
   /** ヘルプページを開く。 */
@@ -85,6 +86,7 @@ export function Library({
   onOpenCloudBackup,
   onOpenMcp,
   onOpenActivity,
+  onOpenIdeas,
   onOpenSettings,
   onOpenHelp,
 }: LibraryProps) {
@@ -153,6 +155,8 @@ export function Library({
           active="collection"
           onNavigateCollection={() => {}}
           onNavigateActivity={onOpenActivity}
+          onNavigateIdeas={onOpenIdeas}
+          onNavigateTrash={state.trashList.length > 0 ? () => setTrashOpen(true) : undefined}
           onNavigateSettings={onOpenSettings}
           onNavigateHelp={onOpenHelp}
           cta={{ label: '新しい作品', onClick: () => setNewOpen(true) }}
@@ -216,17 +220,6 @@ export function Library({
                     リスト
                   </button>
                 </div>
-              )}
-              {state.trashList.length > 0 && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setTrashOpen(true)}
-                  className="gap-1.5 text-on-surface-variant"
-                >
-                  <Trash2 className="size-4" />
-                  ゴミ箱・{state.trashList.length}
-                </Button>
               )}
               {/* データ管理（バックアップ・取り込み・クラウド・AI 接続をまとめる） */}
               <div className="relative">
