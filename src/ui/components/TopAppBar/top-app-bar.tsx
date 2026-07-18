@@ -127,12 +127,12 @@ export function TopAppBar({
           type="button"
           onClick={onBrandClick}
           disabled={!onBrandClick}
-          className="whitespace-nowrap font-bold font-serif text-[19px] text-on-surface tracking-[0.01em] transition-opacity hover:opacity-80 disabled:cursor-default disabled:hover:opacity-100"
+          className="flex items-center gap-2 transition-opacity hover:opacity-80 disabled:cursor-default disabled:hover:opacity-100"
         >
           {brand ?? (
             <>
-              コトノハ
-              <span className="ml-0.5 font-medium text-[13px] text-wheat-700 tracking-[0.06em]">-leaf-</span>
+              <img src="/logo.svg" alt="" aria-hidden className="h-7 w-7 object-contain" />
+              <img src="/app_title_text.svg" alt="コトノハ-leaf-" className="h-6 w-auto object-contain" />
             </>
           )}
         </button>
