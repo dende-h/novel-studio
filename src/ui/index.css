@@ -9,7 +9,12 @@
  * 既存のセマンティックトークン名（shadcn + Material 拡張名）へマップし、全画面を一括再着色する。
  */
 :root {
+  color-scheme: light;
   --radius: 0.5rem;
+
+  /* 本文（エディタ・プレビュー）の基準フォントサイズ。設定の「文字サイズ」で
+     <html> の style に上書きされる（小=13.5px / 中=既定 / 大=17px）。 */
+  --reading-font-size: 15px;
 
   /* shadcn セマンティック */
   --background: #fdfcfb; /* cream-50: ページ背景（無機質な白でなく紙の温度） */
@@ -65,6 +70,71 @@
   --wheat-500: #b98f63;
   --wheat-700: #92703f;
   --paper-100: #f3ede4;
+}
+
+/*
+ * ダークテーマ。<html class="dark"> のとき :root の各トークンを暖色系の暗色へ差し替え、
+ * セマンティックトークンで組まれた全画面を一括で再着色する（Forest × Wheat のブランドは維持）。
+ * .dark は :root と同一詳細度なので、必ず :root の後ろに置いて上書きを効かせる。
+ * ボタン緑（--primary）は白文字が乗る前提で明度を抑え、text-primary としての可読性と両立させる。
+ */
+.dark {
+  color-scheme: dark;
+
+  /* shadcn セマンティック */
+  --background: #181611; /* 暖かい極暗（無機質な黒でなく紙の温度を残す） */
+  --foreground: #d7d2c8; /* 本文（暖色オフホワイト） */
+  --card: #201d16;
+  --card-foreground: #ece8e1;
+  --popover: #221f18;
+  --popover-foreground: #ece8e1;
+  --primary: #44863a; /* forest を持ち上げた緑（白文字≒AA・text-primary も可読） */
+  --primary-foreground: #ffffff;
+  --secondary: #38301f; /* 暗い wheat チップ */
+  --secondary-foreground: #dcbd8e;
+  --muted: #262319;
+  --muted-foreground: #9c968a;
+  --accent: #202c1c; /* hover 等の控えめな緑面 */
+  --accent-foreground: #a6d29b;
+  --destructive: #e5544e;
+  --destructive-foreground: #ffffff;
+  --border: #322e26;
+  --input: #423d33;
+  --ring: #5aa24d;
+
+  /* Material 拡張 */
+  --surface: #181611;
+  --surface-container-lowest: #1f1c16; /* カード面・トップバー */
+  --surface-container-low: #232019; /* サイドバー等の面 */
+  --surface-container: #29251e;
+  --surface-container-high: #322d25;
+  --surface-container-highest: #3a352b;
+  --surface-bright: #221f18;
+  --surface-variant: #201d16; /* 読書面（プレビュー） */
+  --on-surface: #ece8e1; /* 見出し */
+  --on-surface-variant: #a49e92; /* 補助テキスト */
+  --outline: #8b8578;
+  --outline-variant: #645e53; /* /30〜/40 の透過利用で subtle 境界 */
+  --primary-container: #294424;
+  --on-primary-container: #cae4c3;
+  --secondary-color: #cba576; /* wheat-500 相当 */
+  --secondary-container: #38301f;
+  --on-secondary-container: #e0c398;
+  --error: #e5544e;
+  --error-container: #3a1e1c;
+  --on-error-container: #f4b4b0;
+
+  /* デザイン固有の追加パレット（緑・表紙トーン・アクセント） */
+  --forest-50: #1d291b;
+  --forest-100: #24331f;
+  --forest-400: #5f8a54; /* @参照リンクの下線 */
+  --forest-600: #74ab68;
+  --forest-700: #8bc47e; /* @参照リンクの文字（暗い読書面で可読な明るい緑） */
+  --forest-800: #a9d69d;
+  --forest-900: #c6e8bb; /* @参照リンク hover（最も明るい） */
+  --wheat-500: #c9a274;
+  --wheat-700: #d8bd8e; /* 「-leaf-」等の wheat 文字（暗背景で可読な明るい麦色） */
+  --paper-100: #201d16;
 }
 
 @theme inline {
@@ -160,6 +230,8 @@
  * どの端末でも同じ字形・字送りで書けるようにする（未ロード時/オフラインはシステムゴシックへ）。
  */
 .editor {
+  /* 文字サイズは設定（--reading-font-size）に追従。要素側で text-* を当てないこと。 */
+  font-size: var(--reading-font-size, 15px);
   font-family:
     "Noto Sans JP Variable", "Hiragino Kaku Gothic ProN", "Yu Gothic", "Yu Gothic UI", Meiryo,
     "Inter Variable", system-ui, sans-serif;
@@ -171,6 +243,8 @@
  * バンドルした Noto Serif JP を先頭に置き端末差をなくす（未ロード時はシステム明朝へ）。
  */
 .preview {
+  /* 文字サイズは設定（--reading-font-size）に追従。要素側で text-* を当てないこと。 */
+  font-size: var(--reading-font-size, 15px);
   font-family:
     "Noto Serif JP Variable", "Hiragino Mincho ProN", "Yu Mincho", YuMincho, "MS PMincho",
     "Noto Serif CJK JP", "Noto Serif JP", "IPAmjMincho", "IPAGothic", "Source Serif 4 Variable",

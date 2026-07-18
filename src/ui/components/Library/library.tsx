@@ -46,6 +46,10 @@ interface LibraryProps {
   onOpenMcp?: () => void
   /** 執筆活動（草・ストリーク）ページを開く。 */
   onOpenActivity?: () => void
+  /** 設定ページを開く。 */
+  onOpenSettings?: () => void
+  /** ヘルプページを開く。 */
+  onOpenHelp?: () => void
 }
 
 /** データ管理メニューの 1 項目。 */
@@ -81,6 +85,8 @@ export function Library({
   onOpenCloudBackup,
   onOpenMcp,
   onOpenActivity,
+  onOpenSettings,
+  onOpenHelp,
 }: LibraryProps) {
   const state = useEditorStore(store)
   const [newOpen, setNewOpen] = useState(false)
@@ -147,6 +153,8 @@ export function Library({
           active="collection"
           onNavigateCollection={() => {}}
           onNavigateActivity={onOpenActivity}
+          onNavigateSettings={onOpenSettings}
+          onNavigateHelp={onOpenHelp}
           cta={{ label: '新しい作品', onClick: () => setNewOpen(true) }}
           profile={state.profile}
           onEditProfile={() => setProfileOpen(true)}

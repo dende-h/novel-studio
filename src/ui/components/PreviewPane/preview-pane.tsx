@@ -61,7 +61,7 @@ export function PreviewPane({ html, onRefClick, orientation = 'vertical' }: Prev
       <article
         ref={articleRef}
         className={cn(
-          'preview font-serif text-[15px] text-on-surface',
+          'preview font-serif text-on-surface',
           vertical
             ? 'h-full w-full overflow-auto leading-[2.3] tracking-[0.05em] [writing-mode:vertical-rl]'
             : 'mx-auto w-full max-w-[640px] leading-[2.2] tracking-[0.03em]',

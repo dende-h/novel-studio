@@ -11,6 +11,21 @@
     <meta name="theme-color" content="#2c5b27" />
     <link rel="icon" href="/favicon-clean.png" type="image/png" sizes="any" />
 
+    <!-- 表示設定の先読み（描画前にテーマ・本文サイズを反映してちらつきを防ぐ）。
+         キー/値は src/ui/hooks/use-preferences.ts と一致させること。 -->
+    <script>
+      (function () {
+        try {
+          var t = localStorage.getItem('ns-theme') || 'system'
+          var dark = t === 'dark' || (t === 'system' && matchMedia('(prefers-color-scheme: dark)').matches)
+          if (dark) document.documentElement.classList.add('dark')
+          var s = localStorage.getItem('ns-reading-size')
+          var px = s === 'small' ? '13.5px' : s === 'large' ? '17px' : ''
+          if (px) document.documentElement.style.setProperty('--reading-font-size', px)
+        } catch (e) {}
+      })()
+    </script>
+
     <!-- OGP（SNS 共有時のカード。画像は LP と共通） -->
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="コトノハ-leaf-" />

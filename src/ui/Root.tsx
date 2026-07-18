@@ -5,11 +5,13 @@ import { useAuth } from './auth/auth-context'
 import { createDefaultBackupService } from './backup/backup-service'
 import { ActivityPage } from './components/ActivityPage/activity-page'
 import { CloudBackupDialog } from './components/CloudBackupDialog/cloud-backup-dialog'
+import { HelpPage } from './components/HelpPage/help-page'
 import { PrivacyPage } from './components/LegalPage/privacy-page'
 import { TermsPage } from './components/LegalPage/terms-page'
 import { TokushohoPage } from './components/LegalPage/tokushoho-page'
 import { Library } from './components/Library/library'
 import { McpConnectDialog } from './components/McpConnectDialog/mcp-connect-dialog'
+import { SettingsPage } from './components/SettingsPage/settings-page'
 import { SmallScreenNotice } from './components/SmallScreenNotice/small-screen-notice'
 import { SyncOnboarding } from './components/SyncOnboarding/sync-onboarding'
 import { useToast } from './components/Toast/toast'
@@ -69,6 +71,11 @@ export function Root({ store }: RootProps) {
   if (route === '/privacy') return <PrivacyPage />
   if (route === '/tokushoho') return <TokushohoPage />
 
+  // 設定・ヘルプはサイドバー付き本体とは独立した一枚ものページ。認証・オンボーディングに関わらず
+  // （狭い画面でも）到達できるよう、法務ページと同じくガードの手前に置く。
+  if (route === '/settings') return <SettingsPage />
+  if (route === '/help') return <HelpPage />
+
   // 未課金でサインイン済み：中途半端な状態を残さず、専用オンボーディングで「購読する or ローカルの
   // まま使う（＝サインアウトしてゲスト）」の二択に収束させる（§1.1「アカウント＝有料会員だけが持つ」）。
   if (status === 'guest' && isSignedIn) {
@@ -83,7 +90,12 @@ export function Root({ store }: RootProps) {
   if (route === '/activity') {
     return (
       <>
-        <ActivityPage repo={activityRepo} onNavigateCollection={() => navigate('/')} />
+        <ActivityPage
+          repo={activityRepo}
+          onNavigateCollection={() => navigate('/')}
+          onNavigateSettings={() => navigate('/settings')}
+          onNavigateHelp={() => navigate('/help')}
+        />
         <SmallScreenNotice />
       </>
     )
@@ -96,6 +108,8 @@ export function Root({ store }: RootProps) {
           store={store}
           onExit={() => navigate('/')}
           onNavigateActivity={() => navigate('/activity')}
+          onNavigateSettings={() => navigate('/settings')}
+          onNavigateHelp={() => navigate('/help')}
           activityRepo={activityRepo}
         />
       ) : (
@@ -105,6 +119,8 @@ export function Root({ store }: RootProps) {
           onOpenCloudBackup={backupService ? () => setBackupOpen(true) : undefined}
           onOpenMcp={backupService ? () => setMcpOpen(true) : undefined}
           onOpenActivity={() => navigate('/activity')}
+          onOpenSettings={() => navigate('/settings')}
+          onOpenHelp={() => navigate('/help')}
         />
       )}
       {backupService && (

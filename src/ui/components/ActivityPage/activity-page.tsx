@@ -38,13 +38,22 @@ interface ActivityPageProps {
   repo: ActivityRepository
   /** ライブラリ（コレクション）へ戻る。左サイドバー／ブランドから使う。 */
   onNavigateCollection: () => void
+  /** 設定ページへ（サイドバーフッター）。 */
+  onNavigateSettings?: () => void
+  /** ヘルプページへ（サイドバーフッター）。 */
+  onNavigateHelp?: () => void
 }
 
 /**
  * 執筆活動ダッシュボード（純ローカル・無料）。ライブラリ／エディタと同じ AppShell＋左サイドバーの
  * 上で、連続執筆日数（ストリーク）・GitHub 風の草（緑ヒートマップ・年切り替え）・通算をまとめて表示する。
  */
-export function ActivityPage({ repo, onNavigateCollection }: ActivityPageProps) {
+export function ActivityPage({
+  repo,
+  onNavigateCollection,
+  onNavigateSettings,
+  onNavigateHelp,
+}: ActivityPageProps) {
   const [days, setDays] = useState<DailyActivity[] | null>(null)
   const today = localDateKey(Date.now())
   const currentYear = Number(today.slice(0, 4))
@@ -76,6 +85,8 @@ export function ActivityPage({ repo, onNavigateCollection }: ActivityPageProps) 
           active="activity"
           onNavigateCollection={onNavigateCollection}
           onNavigateActivity={() => {}}
+          onNavigateSettings={onNavigateSettings}
+          onNavigateHelp={onNavigateHelp}
         />
       }
     >

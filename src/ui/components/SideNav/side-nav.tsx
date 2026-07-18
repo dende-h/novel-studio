@@ -32,6 +32,10 @@ interface SideNavProps {
   onNavigateCollection: () => void
   /** 執筆の記録（草・ストリーク）へ。指定時のみ表示。 */
   onNavigateActivity?: () => void
+  /** 設定ページへ。指定時のみフッターの「設定」を有効化。 */
+  onNavigateSettings?: () => void
+  /** ヘルプページへ。指定時のみフッターの「ヘルプ」を有効化。 */
+  onNavigateHelp?: () => void
   /** 主要 CTA（新しい作品 / 新しいエピソード）。作成導線が無い画面（執筆の記録）では省略。 */
   cta?: { label: string; onClick: () => void; disabled?: boolean }
   /** 作者プロフィール（ペンネーム・アバター）。onEditProfile と併せて指定時のみ表示。 */
@@ -94,6 +98,8 @@ export function SideNav({
   active,
   onNavigateCollection,
   onNavigateActivity,
+  onNavigateSettings,
+  onNavigateHelp,
   onNavigateEpisodes,
   onNavigateGlossary,
   cta,
@@ -307,8 +313,18 @@ export function SideNav({
 
       {/* フッター */}
       <div className="space-y-0.5">
-        <NavRow icon={Settings} label="設定" disabled />
-        <NavRow icon={CircleHelp} label="ヘルプ" disabled />
+        <NavRow
+          icon={Settings}
+          label="設定"
+          onClick={onNavigateSettings}
+          disabled={!onNavigateSettings}
+        />
+        <NavRow
+          icon={CircleHelp}
+          label="ヘルプ"
+          onClick={onNavigateHelp}
+          disabled={!onNavigateHelp}
+        />
       </div>
       {/* 法務リンク（ハッシュ遷移なので props 不要の素の anchor で飛ぶ） */}
       <div className="flex flex-wrap gap-x-3 gap-y-0.5 px-3 pt-1 text-[11px] text-on-surface-variant/60">

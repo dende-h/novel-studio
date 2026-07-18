@@ -50,6 +50,10 @@ interface AppProps {
   onExit?: () => void
   /** 執筆の記録（草・ストリーク）へ */
   onNavigateActivity?: () => void
+  /** 設定ページへ */
+  onNavigateSettings?: () => void
+  /** ヘルプページへ */
+  onNavigateHelp?: () => void
   /** 執筆活動の読み取り（ステータスバーの「今日 +N字」）。省略時は非表示。 */
   activityRepo?: ActivityRepository
 }
@@ -58,7 +62,14 @@ interface AppProps {
 const AUTOSAVE_DELAY_MS = 1500
 
 /** 原稿エディタ（サイドバー＋ツールバー＋本文／プレビュー＋図鑑パネル／履歴）。 */
-export function App({ store, onExit, onNavigateActivity, activityRepo }: AppProps) {
+export function App({
+  store,
+  onExit,
+  onNavigateActivity,
+  onNavigateSettings,
+  onNavigateHelp,
+  activityRepo,
+}: AppProps) {
   const state = useEditorStore(store)
   const { show } = useToast()
   const [newEpisodeOpen, setNewEpisodeOpen] = useState(false)
@@ -184,6 +195,8 @@ export function App({ store, onExit, onNavigateActivity, activityRepo }: AppProp
           active={activeScreen}
           onNavigateCollection={() => onExit?.()}
           onNavigateActivity={onNavigateActivity}
+          onNavigateSettings={onNavigateSettings}
+          onNavigateHelp={onNavigateHelp}
           onNavigateEpisodes={work ? () => setActiveScreen('episodes') : undefined}
           onNavigateGlossary={work ? () => setActiveScreen('glossary') : undefined}
           cta={{
@@ -259,7 +272,6 @@ export function App({ store, onExit, onNavigateActivity, activityRepo }: AppProp
               <span className="truncate font-medium font-sans text-[13px] text-on-surface">
                 {episode.title}
               </span>
-
             </div>
             <div className="flex shrink-0 items-center gap-2">
               <Button

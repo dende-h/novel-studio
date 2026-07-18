@@ -7,7 +7,8 @@ import {
   History,
   LoaderCircle,
 } from 'lucide-react'
-import React, { lazy, Suspense } from 'react'
+import type React from 'react'
+import { lazy, Suspense } from 'react'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/ui/auth/auth-context'
 import { Button } from '@/ui/components/ui/button'
@@ -131,8 +132,18 @@ export function TopAppBar({
         >
           {brand ?? (
             <>
-              <img src="/logo-clean.png" alt="" aria-hidden className="h-10 w-auto object-contain" />
-              <img src="/app_title_text-clean.png" alt="コトノハ-leaf-" className="h-10 w-auto object-contain" />
+              <img
+                src="/logo-clean.png"
+                alt=""
+                aria-hidden
+                className="h-10 w-auto object-contain"
+              />
+              {/* タイトルロゴは濃紺の文字画像。暗背景では消えるのでダーク時のみ反転して明色にする。 */}
+              <img
+                src="/app_title_text-clean.png"
+                alt="コトノハ-leaf-"
+                className="h-10 w-auto object-contain dark:opacity-90 dark:brightness-0 dark:invert"
+              />
             </>
           )}
         </button>
