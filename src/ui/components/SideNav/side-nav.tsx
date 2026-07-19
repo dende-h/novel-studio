@@ -12,6 +12,7 @@ import {
   StickyNote,
   Trash2,
   UserRound,
+  Waypoints,
 } from 'lucide-react'
 import type { ComponentType } from 'react'
 import { cn } from '@/lib/utils'
@@ -20,7 +21,7 @@ import { Button } from '@/ui/components/ui/button'
 import { ScrollArea } from '@/ui/components/ui/scroll-area'
 import { ZoomableImage } from '@/ui/components/ui/zoomable-image'
 
-export type NavKey = 'collection' | 'activity' | 'ideas' | 'episodes' | 'glossary'
+export type NavKey = 'collection' | 'activity' | 'ideas' | 'episodes' | 'glossary' | 'mindmap'
 
 interface EpisodeItem {
   id: string
@@ -58,6 +59,8 @@ interface SideNavProps {
   onNavigateEpisodes?: () => void
   /** 図鑑画面へ切替（作品オープン時のみ） */
   onNavigateGlossary?: () => void
+  /** マインドマップへ切替（作品オープン＋cloud会員時のみ） */
+  onNavigateMindmap?: () => void
   /** エディタ時の話サブリスト */
   episodes?: EpisodeItem[]
   currentEpisodeId?: string | null
@@ -109,6 +112,7 @@ export function SideNav({
   onNavigateHelp,
   onNavigateEpisodes,
   onNavigateGlossary,
+  onNavigateMindmap,
   cta,
   profile,
   onEditProfile,
@@ -172,6 +176,14 @@ export function SideNav({
               active={active === 'glossary'}
               onClick={onNavigateGlossary}
             />
+            {onNavigateMindmap ? (
+              <NavRow
+                icon={Waypoints}
+                label="マインドマップ"
+                active={active === 'mindmap'}
+                onClick={onNavigateMindmap}
+              />
+            ) : null}
           </div>
 
           {/* 草稿（話リスト） */}

@@ -1,5 +1,5 @@
 import { BookMarked, Plus, Replace } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react'
 import { localDateKey } from '@/core/activity'
 import { blocksToHtml } from '@/core/exporter/toHtml'
 import { findAppearances, resolvedNameSet, resolveRef } from '@/core/glossary'
@@ -7,6 +7,7 @@ import { parseEpisodeBody } from '@/core/parser/parseNotation'
 import type { GlossaryEntry } from '@/core/schema'
 import { countWorkChars } from '@/core/stats'
 import type { ActivityRepository } from '@/core/storage/activityRepository'
+import type { StructureRepository } from '@/core/storage/structureRepository'
 import { cn } from '@/lib/utils'
 import { AppShell } from '@/ui/components/AppShell/app-shell'
 import { ConfirmDialog } from '@/ui/components/ConfirmDialog/confirm-dialog'
@@ -56,7 +57,14 @@ interface AppProps {
   onNavigateHelp?: () => void
   /** 執筆活動の読み取り（ステータスバーの「今日 +N字」）。省略時は非表示。 */
   activityRepo?: ActivityRepository
+  /** 構造レイヤー（マインドマップ等）のリポジトリ。cloud 会員時のみ渡す。 */
+  structureRepo?: StructureRepository
+  /** cloud 会員か（構造ツールの表示・アクセス可否）。 */
+  canUseStructure?: boolean
 }
+
+/** マインドマップは React Flow を含み重いので遅延ロードする。 */
+const MindmapView = lazy(() => import('@/ui/components/MindmapView/mindmap-view'))
 
 /** 自動保存：本文の入力が止まってから保存するまでの待ち時間(ms)。 */
 const AUTOSAVE_DELAY_MS = 1500
@@ -69,6 +77,8 @@ export function App({
   onNavigateSettings,
   onNavigateHelp,
   activityRepo,
+  structureRepo,
+  canUseStructure,
 }: AppProps) {
   const state = useEditorStore(store)
   const { show } = useToast()
@@ -77,7 +87,7 @@ export function App({
   const [metaOpen, setMetaOpen] = useState(false)
   const [profileOpen, setProfileOpen] = useState(false)
   const [historyOpen, setHistoryOpen] = useState(false)
-  const [activeScreen, setActiveScreen] = useState<'episodes' | 'glossary'>('episodes')
+  const [activeScreen, setActiveScreen] = useState<'episodes' | 'glossary' | 'mindmap'>('episodes')
   // プレビューの組み方向（日本語小説の標準＝縦書きが既定。ツールバーで切替）。
   const [orientation, setOrientation] = useState<'vertical' | 'horizontal'>('vertical')
   // 一括置換パネル（この話の本文だけを対象）。
@@ -199,6 +209,9 @@ export function App({
           onNavigateHelp={onNavigateHelp}
           onNavigateEpisodes={work ? () => setActiveScreen('episodes') : undefined}
           onNavigateGlossary={work ? () => setActiveScreen('glossary') : undefined}
+          onNavigateMindmap={
+            work && canUseStructure && structureRepo ? () => setActiveScreen('mindmap') : undefined
+          }
           cta={{
             label: '新しいエピソード',
             onClick: () => setNewEpisodeOpen(true),
@@ -248,7 +261,17 @@ export function App({
         ) : undefined
       }
     >
-      {activeScreen === 'glossary' && work ? (
+      {activeScreen === 'mindmap' && work && structureRepo ? (
+        <Suspense
+          fallback={
+            <div className="grid h-full place-items-center text-on-surface-variant text-sm">
+              読み込み中…
+            </div>
+          }
+        >
+          <MindmapView repo={structureRepo} workId={work.id} />
+        </Suspense>
+      ) : activeScreen === 'glossary' && work ? (
         <GlossaryView
           entries={work.glossary ?? []}
           workTitle={work.title}

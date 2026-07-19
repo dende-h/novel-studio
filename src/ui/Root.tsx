@@ -21,6 +21,7 @@ import { useLiveSnapshot } from './hooks/use-live-snapshot'
 import {
   createDefaultActivityRepository,
   createDefaultIdeaRepository,
+  createDefaultStructureRepository,
 } from './store/createDefaultStore'
 import type { EditorStore } from './store/editorStore'
 
@@ -51,6 +52,8 @@ export function Root({ store }: RootProps) {
   const localBackup = useMemo(() => createLocalBackupService(), [])
   // ネタ帳（アイデアの受け皿）も純ローカル・誰でも使える。
   const ideaRepo = useMemo(() => createDefaultIdeaRepository(), [])
+  // 構造レイヤー（アウトライン／相関図／マインドマップ）は cloud 会員のみ利用。
+  const structureRepo = useMemo(() => createDefaultStructureRepository(), [])
   const [backupOpen, setBackupOpen] = useState(false)
   const [mcpOpen, setMcpOpen] = useState(false)
   // AI・MCP 接続済みか（トークン発行済み）。接続時のみ編集をライブスナップショットへ送る。
@@ -135,6 +138,8 @@ export function Root({ store }: RootProps) {
           onNavigateSettings={() => navigate('/settings')}
           onNavigateHelp={() => navigate('/help')}
           activityRepo={activityRepo}
+          structureRepo={structureRepo}
+          canUseStructure={status === 'member'}
         />
       ) : (
         <Library

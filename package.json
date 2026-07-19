@@ -27,6 +27,7 @@
     "@fontsource-variable/noto-serif-jp": "5.2.9",
     "@fontsource-variable/source-serif-4": "5.2.9",
     "@fontsource/shippori-mincho-b1": "5.2.8",
+    "@xyflow/react": "12.11.2",
     "class-variance-authority": "0.7.1",
     "clsx": "2.1.1",
     "lucide-react": "1.18.0",
