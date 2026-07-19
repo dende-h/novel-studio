@@ -1,128 +1,142 @@
-import '@xyflow/react/dist/style.css'
-import {
-  addEdge,
-  Background,
-  type Connection,
-  Controls,
-  type Edge,
-  MiniMap,
-  type Node,
-  type NodeMouseHandler,
-  ReactFlow,
-  useEdgesState,
-  useNodesState,
-} from '@xyflow/react'
-import { Plus } from 'lucide-react'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { addEdge, type Connection, type Node } from '@xyflow/react'
+import { Plus, StickyNote } from 'lucide-react'
+import { useCallback, useEffect, useState } from 'react'
+import type { IdeaNote } from '@/core/idea'
+import type { IdeaRepository } from '@/core/storage/ideaRepository'
 import type { StructureRepository } from '@/core/storage/structureRepository'
-import type { Structure } from '@/core/structure'
-import { fromFlow, toFlowEdges, toFlowNodes } from '@/ui/structure/flow-adapter'
+import { StructureCanvas } from '@/ui/components/StructureCanvas/structure-canvas'
+import { Button } from '@/ui/components/ui/button'
+import {
+  Dialog,
+  DialogBody,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/ui/components/ui/dialog'
+import { useStructureFlow } from '@/ui/structure/use-structure-flow'
 
 interface MindmapViewProps {
   repo: StructureRepository
   workId: string
+  /** ネタ帳（アイデアの受け皿）。取り込みボタンで使う。省略時は取り込み非表示。 */
+  ideaRepo?: IdeaRepository
 }
 
 const genId = () => crypto.randomUUID()
 
-/** 変更を永続化するまでの静止時間(ms)。 */
-const SAVE_DELAY_MS = 800
-
 /**
- * マインドマップ（構造レイヤー kind:mindmap）。React Flow の無限キャンバスで
- * ノード追加・接続・配置し、変更を Structure に書き戻して永続化する。
- * バンドルが重いので default export とし、呼び出し側で遅延ロードする。
+ * マインドマップ（構造レイヤー kind:mindmap）。共通キャンバスの上に、
+ * ノード追加・ネタ帳取り込みのツールバーを載せる。バンドルが重いので default export（遅延ロード）。
  */
-export default function MindmapView({ repo, workId }: MindmapViewProps) {
-  const [nodes, setNodes, onNodesChange] = useNodesState<Node>([])
-  const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([])
-  const baseRef = useRef<Structure | null>(null)
-  const [ready, setReady] = useState(false)
-
-  // 初期ロード：この作品の mindmap を取得（無ければ作成）。
-  useEffect(() => {
-    let alive = true
-    void (async () => {
-      const list = await repo.listByWork(workId)
-      const mm =
-        list.find((s) => s.kind === 'mindmap') ?? (await repo.create(workId, 'mindmap', '発想メモ'))
-      if (!alive) return
-      baseRef.current = mm
-      setNodes(toFlowNodes(mm))
-      setEdges(toFlowEdges(mm))
-      setReady(true)
-    })()
-    return () => {
-      alive = false
-    }
-  }, [repo, workId, setNodes, setEdges])
-
-  // 変更を静止後にまとめて永続化する。
-  useEffect(() => {
-    if (!ready || !baseRef.current) return
-    const t = setTimeout(() => {
-      const base = baseRef.current
-      if (!base) return
-      void repo.save(fromFlow(base, nodes, edges, Date.now())).then((saved) => {
-        baseRef.current = saved
-      })
-    }, SAVE_DELAY_MS)
-    return () => clearTimeout(t)
-  }, [nodes, edges, ready, repo])
+export default function MindmapView({ repo, workId, ideaRepo }: MindmapViewProps) {
+  const flow = useStructureFlow(repo, workId, 'mindmap', { title: '発想メモ' })
+  const { setNodes, setEdges } = flow
+  const [ideaOpen, setIdeaOpen] = useState(false)
+  const [ideas, setIdeas] = useState<IdeaNote[]>([])
 
   const onConnect = useCallback(
     (c: Connection) => setEdges((eds) => addEdge({ ...c, id: genId() }, eds)),
     [setEdges],
   )
 
-  const onAddNode = useCallback(() => {
-    setNodes((nds) => [
-      ...nds,
-      {
-        id: genId(),
-        position: { x: 140 + (nds.length % 5) * 40, y: 100 + (nds.length % 5) * 40 },
-        data: { label: '新しいノード' },
-      },
-    ])
-  }, [setNodes])
-
-  const onNodeDoubleClick = useCallback<NodeMouseHandler>(
-    (_, node) => {
-      const current = (node.data as { label?: unknown }).label
-      const label = window.prompt('ノードのラベル', typeof current === 'string' ? current : '')
-      if (label == null) return
-      setNodes((nds) =>
-        nds.map((n) => (n.id === node.id ? { ...n, data: { ...n.data, label } } : n)),
-      )
+  const addNodeAt = useCallback(
+    (label: string) => {
+      setNodes((nds) => [
+        ...nds,
+        {
+          id: genId(),
+          type: 'structure',
+          position: { x: 140 + (nds.length % 6) * 36, y: 100 + (nds.length % 6) * 36 },
+          data: { label },
+        } satisfies Node,
+      ])
     },
     [setNodes],
   )
 
+  const openIdeaPicker = useCallback(async () => {
+    if (!ideaRepo) return
+    setIdeas(await ideaRepo.list())
+    setIdeaOpen(true)
+  }, [ideaRepo])
+
+  // ダイアログを閉じたら一覧をクリア（次回開くとき最新を読み直す）。
+  useEffect(() => {
+    if (!ideaOpen) setIdeas([])
+  }, [ideaOpen])
+
+  const importIdea = (idea: IdeaNote) => {
+    addNodeAt(idea.text)
+    setIdeaOpen(false)
+  }
+
   return (
-    <div className="relative h-full w-full">
-      <button
-        type="button"
-        onClick={onAddNode}
-        className="absolute top-3 left-3 z-10 flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 font-sans text-[13px] text-white shadow-sm transition-colors hover:bg-primary/90"
-      >
-        <Plus className="size-4" />
-        ノードを追加
-      </button>
-      <ReactFlow
-        nodes={nodes}
-        edges={edges}
-        onNodesChange={onNodesChange}
-        onEdgesChange={onEdgesChange}
+    <>
+      <StructureCanvas
+        nodes={flow.nodes}
+        edges={flow.edges}
+        onNodesChange={flow.onNodesChange}
+        onEdgesChange={flow.onEdgesChange}
         onConnect={onConnect}
-        onNodeDoubleClick={onNodeDoubleClick}
-        deleteKeyCode={['Backspace', 'Delete']}
-        fitView
-        proOptions={{ hideAttribution: true }}
-      >
-        <Background />
-        <Controls />
-        <MiniMap pannable zoomable />
-      </ReactFlow>
-    </div>
+        onRenameNode={flow.setNodeLabel}
+        onRecolorNode={flow.setNodeColor}
+        toolbar={
+          <>
+            <Button
+              type="button"
+              size="sm"
+              onClick={() => addNodeAt('新しいノード')}
+              className="gap-1.5"
+            >
+              <Plus className="size-4" />
+              ノードを追加
+            </Button>
+            {ideaRepo ? (
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => void openIdeaPicker()}
+                className="gap-1.5 bg-surface-container-lowest/90 text-primary backdrop-blur"
+              >
+                <StickyNote className="size-4" />
+                ネタ帳から
+              </Button>
+            ) : null}
+          </>
+        }
+      />
+
+      <Dialog open={ideaOpen} onOpenChange={setIdeaOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="font-serif text-primary text-xl">
+              ネタ帳から取り込む
+            </DialogTitle>
+          </DialogHeader>
+          <DialogBody>
+            {ideas.length === 0 ? (
+              <p className="py-6 text-center text-on-surface-variant text-sm">
+                ネタ帳が空です。先にネタ帳へ書き留めておくと、ここから取り込めます。
+              </p>
+            ) : (
+              <ul className="flex max-h-80 flex-col gap-1.5 overflow-y-auto py-1">
+                {ideas.map((idea) => (
+                  <li key={idea.id}>
+                    <button
+                      type="button"
+                      onClick={() => importIdea(idea)}
+                      className="w-full rounded-md border border-outline-variant/30 bg-surface-container-lowest p-2.5 text-left font-sans text-[13px] text-on-surface transition-colors hover:border-primary/40 hover:bg-surface-container-low"
+                    >
+                      {idea.text}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </DialogBody>
+        </DialogContent>
+      </Dialog>
+    </>
   )
 }

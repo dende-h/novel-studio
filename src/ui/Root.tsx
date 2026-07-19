@@ -140,6 +140,7 @@ export function Root({ store }: RootProps) {
           activityRepo={activityRepo}
           structureRepo={structureRepo}
           canUseStructure={status === 'member'}
+          ideaRepo={ideaRepo}
         />
       ) : (
         <Library

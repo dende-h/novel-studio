@@ -7,6 +7,7 @@ import { parseEpisodeBody } from '@/core/parser/parseNotation'
 import type { GlossaryEntry } from '@/core/schema'
 import { countWorkChars } from '@/core/stats'
 import type { ActivityRepository } from '@/core/storage/activityRepository'
+import type { IdeaRepository } from '@/core/storage/ideaRepository'
 import type { StructureRepository } from '@/core/storage/structureRepository'
 import { cn } from '@/lib/utils'
 import { AppShell } from '@/ui/components/AppShell/app-shell'
@@ -61,10 +62,15 @@ interface AppProps {
   structureRepo?: StructureRepository
   /** cloud 会員か（構造ツールの表示・アクセス可否）。 */
   canUseStructure?: boolean
+  /** ネタ帳（マインドマップの取り込み用）。 */
+  ideaRepo?: IdeaRepository
 }
 
-/** マインドマップは React Flow を含み重いので遅延ロードする。 */
+/** マインドマップ・相関図は React Flow を含み重いので遅延ロードする。 */
 const MindmapView = lazy(() => import('@/ui/components/MindmapView/mindmap-view'))
+const CorrelationChartView = lazy(
+  () => import('@/ui/components/CorrelationChartView/correlation-chart-view'),
+)
 
 /** 自動保存：本文の入力が止まってから保存するまでの待ち時間(ms)。 */
 const AUTOSAVE_DELAY_MS = 1500
@@ -79,6 +85,7 @@ export function App({
   activityRepo,
   structureRepo,
   canUseStructure,
+  ideaRepo,
 }: AppProps) {
   const state = useEditorStore(store)
   const { show } = useToast()
@@ -87,7 +94,9 @@ export function App({
   const [metaOpen, setMetaOpen] = useState(false)
   const [profileOpen, setProfileOpen] = useState(false)
   const [historyOpen, setHistoryOpen] = useState(false)
-  const [activeScreen, setActiveScreen] = useState<'episodes' | 'glossary' | 'mindmap'>('episodes')
+  const [activeScreen, setActiveScreen] = useState<'episodes' | 'glossary' | 'mindmap' | 'chart'>(
+    'episodes',
+  )
   // プレビューの組み方向（日本語小説の標準＝縦書きが既定。ツールバーで切替）。
   const [orientation, setOrientation] = useState<'vertical' | 'horizontal'>('vertical')
   // 一括置換パネル（この話の本文だけを対象）。
@@ -212,6 +221,9 @@ export function App({
           onNavigateMindmap={
             work && canUseStructure && structureRepo ? () => setActiveScreen('mindmap') : undefined
           }
+          onNavigateChart={
+            work && canUseStructure && structureRepo ? () => setActiveScreen('chart') : undefined
+          }
           cta={{
             label: '新しいエピソード',
             onClick: () => setNewEpisodeOpen(true),
@@ -269,7 +281,21 @@ export function App({
             </div>
           }
         >
-          <MindmapView repo={structureRepo} workId={work.id} />
+          <MindmapView repo={structureRepo} workId={work.id} ideaRepo={ideaRepo} />
+        </Suspense>
+      ) : activeScreen === 'chart' && work && structureRepo ? (
+        <Suspense
+          fallback={
+            <div className="grid h-full place-items-center text-on-surface-variant text-sm">
+              読み込み中…
+            </div>
+          }
+        >
+          <CorrelationChartView
+            repo={structureRepo}
+            workId={work.id}
+            glossary={work.glossary ?? []}
+          />
         </Suspense>
       ) : activeScreen === 'glossary' && work ? (
         <GlossaryView

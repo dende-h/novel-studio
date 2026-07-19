@@ -13,6 +13,8 @@ export const StructureNodeSchema = z.object({
   label: z.string(),
   /** メモ本文。 */
   note: z.string().optional(),
+  /** ノードの色（マインドマップの色分け用。トークン名 or 未設定＝既定）。 */
+  color: z.string().optional(),
   /** 図鑑エントリID（相関図キャラ＝図鑑と同一実体）。 */
   glossaryRef: z.string().optional(),
   /** 本文の話ID（アウトライン＝本文と双方向同期）。 */

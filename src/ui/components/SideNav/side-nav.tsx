@@ -4,6 +4,7 @@ import {
   CircleHelp,
   FileText,
   Library,
+  Network,
   Pencil,
   PenLine,
   Plus,
@@ -21,7 +22,14 @@ import { Button } from '@/ui/components/ui/button'
 import { ScrollArea } from '@/ui/components/ui/scroll-area'
 import { ZoomableImage } from '@/ui/components/ui/zoomable-image'
 
-export type NavKey = 'collection' | 'activity' | 'ideas' | 'episodes' | 'glossary' | 'mindmap'
+export type NavKey =
+  | 'collection'
+  | 'activity'
+  | 'ideas'
+  | 'episodes'
+  | 'glossary'
+  | 'mindmap'
+  | 'chart'
 
 interface EpisodeItem {
   id: string
@@ -61,6 +69,8 @@ interface SideNavProps {
   onNavigateGlossary?: () => void
   /** マインドマップへ切替（作品オープン＋cloud会員時のみ） */
   onNavigateMindmap?: () => void
+  /** 相関図へ切替（作品オープン＋cloud会員時のみ） */
+  onNavigateChart?: () => void
   /** エディタ時の話サブリスト */
   episodes?: EpisodeItem[]
   currentEpisodeId?: string | null
@@ -113,6 +123,7 @@ export function SideNav({
   onNavigateEpisodes,
   onNavigateGlossary,
   onNavigateMindmap,
+  onNavigateChart,
   cta,
   profile,
   onEditProfile,
@@ -176,6 +187,14 @@ export function SideNav({
               active={active === 'glossary'}
               onClick={onNavigateGlossary}
             />
+            {onNavigateChart ? (
+              <NavRow
+                icon={Network}
+                label="相関図"
+                active={active === 'chart'}
+                onClick={onNavigateChart}
+              />
+            ) : null}
             {onNavigateMindmap ? (
               <NavRow
                 icon={Waypoints}
