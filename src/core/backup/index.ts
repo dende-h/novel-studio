@@ -3,11 +3,12 @@ import { type DailyActivity, DailyActivitySchema } from '../activity'
 import { type IdeaNote, IdeaNoteSchema } from '../idea'
 import { type Profile, ProfileSchema } from '../profile'
 import { type Work, WorkSchema } from '../schema'
+import { type Structure, StructureSchema } from '../structure'
 
 /**
  * クラウド全体バックアップ（Phase 2 改・バックアップ/復元モデル）。
  *
- * ローカルの全状態（全作品 active＋ゴミ箱＋プロフィール＋執筆活動＋ネタ帳）を 1 つの時刻付きスナップショットに
+ * ローカルの全状態（全作品 active＋ゴミ箱＋プロフィール＋執筆活動＋ネタ帳＋構造レイヤー）を 1 つの時刻付きスナップショットに
  * 直列化する。これを gzip→暗号化して R2 に保存し、復元時は時点を選んでローカル全体を置換する
  * （自動 pull・双方向マージは廃止）。version＋スキーマで検証し、壊れた/古い形は弾く。
  */
@@ -28,6 +29,8 @@ const CloudBackupSchema = z.object({
   activity: z.array(DailyActivitySchema).optional().default([]),
   /** ネタ帳（アイデアの受け皿）。旧バックアップには無いので既定 []（後方互換）。 */
   ideas: z.array(IdeaNoteSchema).optional().default([]),
+  /** 構造レイヤー（アウトライン／相関図／マインドマップ）。旧バックアップには無いので既定 []。 */
+  structures: z.array(StructureSchema).optional().default([]),
 })
 export type CloudBackup = z.infer<typeof CloudBackupSchema>
 
@@ -38,6 +41,7 @@ export interface BackupState {
   profile: Profile
   activity: DailyActivity[]
   ideas: IdeaNote[]
+  structures: Structure[]
 }
 
 /** 全状態を 1 つのバックアップ JSON に直列化する（暗号化前の平文）。 */

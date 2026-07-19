@@ -62,7 +62,14 @@ describe('ImportDialog（バックアップ取り込み）', () => {
       <ImportDialog open onOpenChange={() => {}} onImport={vi.fn()} onRestoreAll={onRestoreAll} />,
     )
     const json = serializeBackup(
-      { works: [makeWork('a', '銀河')], trash: [], profile: {}, activity: [], ideas: [] },
+      {
+        works: [makeWork('a', '銀河')],
+        trash: [],
+        profile: {},
+        activity: [],
+        ideas: [],
+        structures: [],
+      },
       Date.parse('2026-07-19T00:00:00Z'),
     )
     pick(json)

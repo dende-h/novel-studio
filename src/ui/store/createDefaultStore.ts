@@ -3,6 +3,7 @@ import { SnapshotRepository } from '../../core/snapshot/snapshotRepository'
 import { ActivityRepository } from '../../core/storage/activityRepository'
 import { IdbStore } from '../../core/storage/idbStore'
 import { IdeaRepository } from '../../core/storage/ideaRepository'
+import { StructureRepository } from '../../core/storage/structureRepository'
 import { WorkRepository } from '../../core/storage/workRepository'
 import { createEditorStore, type EditorStore } from './editorStore'
 
@@ -39,4 +40,9 @@ export function createDefaultActivityRepository(): ActivityRepository {
 /** ネタ帳ページが同じ IndexedDB を参照するためのリポジトリ。 */
 export function createDefaultIdeaRepository(): IdeaRepository {
   return new IdeaRepository(new IdbStore('novel-studio'))
+}
+
+/** 構造レイヤー（アウトライン／相関図／マインドマップ）用のリポジトリ。 */
+export function createDefaultStructureRepository(): StructureRepository {
+  return new StructureRepository(new IdbStore('novel-studio'))
 }

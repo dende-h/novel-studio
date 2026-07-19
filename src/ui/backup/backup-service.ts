@@ -3,6 +3,7 @@ import { ProfileRepository } from '@/core/profile'
 import { ActivityRepository } from '@/core/storage/activityRepository'
 import { IdbStore } from '@/core/storage/idbStore'
 import { IdeaRepository } from '@/core/storage/ideaRepository'
+import { StructureRepository } from '@/core/storage/structureRepository'
 import { WorkRepository } from '@/core/storage/workRepository'
 import {
   createBackup as apiCreate,
@@ -69,6 +70,7 @@ export function createBackupService(deps: BackupDeps): BackupService {
         profile: backup.profile,
         activity: backup.activity,
         ideas: backup.ideas,
+        structures: backup.structures,
       })
       return true
     },
@@ -89,6 +91,7 @@ export function createLocalBackupIO(): Pick<BackupDeps, 'gather' | 'replaceAll'>
   const profileRepo = new ProfileRepository(store)
   const activityRepo = new ActivityRepository(store)
   const ideaRepo = new IdeaRepository(store)
+  const structureRepo = new StructureRepository(store)
   return {
     gather: async () => ({
       works: await repo.listWorksFull(),
@@ -96,12 +99,14 @@ export function createLocalBackupIO(): Pick<BackupDeps, 'gather' | 'replaceAll'>
       profile: await profileRepo.get(),
       activity: await activityRepo.list(),
       ideas: await ideaRepo.list(),
+      structures: await structureRepo.list(),
     }),
     replaceAll: async (state) => {
       await repo.replaceAll(state.works, state.trash)
       await profileRepo.save(state.profile)
       await activityRepo.replaceAll(state.activity)
       await ideaRepo.replaceAll(state.ideas)
+      await structureRepo.replaceAll(state.structures)
     },
   }
 }
