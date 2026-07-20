@@ -11,13 +11,18 @@
 import type { CloudBackup } from '../../../src/core/backup'
 import type { Work } from '../../../src/core/schema'
 import { decryptPart, importKey } from '../_lib/crypto'
+import { resolveMcpAuth } from '../_lib/mcp-auth'
 import { handleMcpMessage } from '../_lib/mcp-server'
-import { resolveMcpUser } from '../_lib/mcp-token'
+import { wwwAuthenticateBearer } from '../_lib/oauth-metadata'
 
 interface Env {
   DB: D1Database
   MEDIA: R2Bucket
   ENCRYPTION_KEY: string
+  /** OAuth 認可サーバー(Clerk)の issuer URL。結線時に設定（未設定でも従来トークンは動く）。 */
+  MCP_OAUTH_ISSUER?: string
+  /** このリソースの audience（＝MCP の正準 URI）。 */
+  MCP_OAUTH_AUDIENCE?: string
 }
 
 const CORS: Record<string, string> = {
@@ -28,15 +33,18 @@ const CORS: Record<string, string> = {
   'Access-Control-Max-Age': '86400',
 }
 
-const jsonResponse = (data: unknown, status = 200) =>
+const jsonResponse = (data: unknown, status = 200, extraHeaders?: Record<string, string>) =>
   new Response(JSON.stringify(data), {
     status,
-    headers: { 'content-type': 'application/json', ...CORS },
+    headers: { 'content-type': 'application/json', ...CORS, ...extraHeaders },
   })
 
-const bearerOf = (request: Request): string => {
-  const h = request.headers.get('Authorization') ?? ''
-  return h.startsWith('Bearer ') ? h.slice(7).trim() : ''
+/** 401 応答（OAuth クライアントへ PRM の在り処を案内する WWW-Authenticate 付き）。 */
+const unauthorized = (request: Request): Response => {
+  const prm = `${new URL(request.url).origin}/api/mcp/oauth-protected-resource`
+  return jsonResponse({ error: 'unauthorized' }, 401, {
+    'WWW-Authenticate': wwwAuthenticateBearer(prm, 'invalid_token'),
+  })
 }
 
 /** ライブスナップショットを復号して作品配列を返す。未保存/壊れていれば空配列（読み取りは失敗させない）。 */
@@ -62,9 +70,10 @@ export const onRequestGet: PagesFunction<Env> = async () =>
   jsonResponse({ error: 'method_not_allowed' }, 405)
 
 export const onRequestPost: PagesFunction<Env> = async (context) => {
-  const token = bearerOf(context.request)
-  const userId = token ? await resolveMcpUser(context.env.DB, token) : null
-  if (!userId) return jsonResponse({ error: 'unauthorized' }, 401)
+  // OAuth(Clerk)アクセストークン優先・従来 mcp_ トークンにフォールバック（read-only）。
+  const principal = await resolveMcpAuth(context.request, context.env, context.env.DB)
+  if (!principal) return unauthorized(context.request)
+  const userId = principal.userId
 
   let body: unknown
   try {

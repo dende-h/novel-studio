@@ -34,3 +34,11 @@ database_id = "b41dafd3-26fb-4e2e-823a-031a3398d4f5"
 [[env.preview.r2_buckets]]
 binding = "MEDIA"
 bucket_name = "novel-studio-media-stg"
+
+# --- MCP OAuth コネクタ（結線時に設定・未設定でも従来 mcp_ トークンは動く）-------
+# Clerk を認可サーバーにするための公開値。Pages の環境変数（本番/preview）に設定する。
+# シークレットではないので [vars] でも可。値は Clerk ダッシュボードの OAuth 設定確定後に投入。
+#   MCP_OAUTH_ISSUER   = Clerk の issuer URL（.well-known/oauth-authorization-server のホスト）
+#   MCP_OAUTH_AUDIENCE = このリソースの正準 URI（例: https://<本番ホスト>/api/mcp）
+#   MCP_OAUTH_SCOPES   = 対応スコープ（スペース区切り・任意）
+# 詳細な段取りは memory: mcp-oauth-connector-plan を参照。
