@@ -66,11 +66,12 @@ interface AppProps {
   ideaRepo?: IdeaRepository
 }
 
-/** マインドマップ・相関図は React Flow を含み重いので遅延ロードする。 */
+/** 構造ツール（マインドマップ・相関図＝React Flow、アウトライン＝dnd-kit）は重いので遅延ロードする。 */
 const MindmapView = lazy(() => import('@/ui/components/MindmapView/mindmap-view'))
 const CorrelationChartView = lazy(
   () => import('@/ui/components/CorrelationChartView/correlation-chart-view'),
 )
+const OutlineView = lazy(() => import('@/ui/components/OutlineView/outline-view'))
 
 /** 自動保存：本文の入力が止まってから保存するまでの待ち時間(ms)。 */
 const AUTOSAVE_DELAY_MS = 1500
@@ -94,9 +95,9 @@ export function App({
   const [metaOpen, setMetaOpen] = useState(false)
   const [profileOpen, setProfileOpen] = useState(false)
   const [historyOpen, setHistoryOpen] = useState(false)
-  const [activeScreen, setActiveScreen] = useState<'episodes' | 'glossary' | 'mindmap' | 'chart'>(
-    'episodes',
-  )
+  const [activeScreen, setActiveScreen] = useState<
+    'episodes' | 'glossary' | 'outline' | 'mindmap' | 'chart'
+  >('episodes')
   // プレビューの組み方向（日本語小説の標準＝縦書きが既定。ツールバーで切替）。
   const [orientation, setOrientation] = useState<'vertical' | 'horizontal'>('vertical')
   // 一括置換パネル（この話の本文だけを対象）。
@@ -224,6 +225,9 @@ export function App({
           onNavigateChart={
             work && canUseStructure && structureRepo ? () => setActiveScreen('chart') : undefined
           }
+          onNavigateOutline={
+            work && canUseStructure && structureRepo ? () => setActiveScreen('outline') : undefined
+          }
           cta={{
             label: '新しいエピソード',
             onClick: () => setNewEpisodeOpen(true),
@@ -295,6 +299,25 @@ export function App({
             repo={structureRepo}
             workId={work.id}
             glossary={work.glossary ?? []}
+          />
+        </Suspense>
+      ) : activeScreen === 'outline' && work && structureRepo ? (
+        <Suspense
+          fallback={
+            <div className="grid h-full place-items-center text-on-surface-variant text-sm">
+              読み込み中…
+            </div>
+          }
+        >
+          <OutlineView
+            repo={structureRepo}
+            workId={work.id}
+            episodes={work.episodes}
+            onOpenEpisode={(id) => {
+              store.openEpisode(id)
+              setActiveScreen('episodes')
+            }}
+            onReorder={(ids) => void store.reorderEpisodes(ids)}
           />
         </Suspense>
       ) : activeScreen === 'glossary' && work ? (

@@ -467,6 +467,34 @@ describe('editorStore（自前ストア・useSyncExternalStore 用）', () => {
     expect(s.dirty).toBe(true)
   })
 
+  it('reorderEpisodes は指定 id 順に並べ替えて永続化する（双方向同期）', async () => {
+    await store.createWork('作')
+    await store.createEpisode('A')
+    const a = store.getSnapshot().work?.episodes[0]?.id as string
+    await store.createEpisode('B')
+    const b = store.getSnapshot().work?.episodes[1]?.id as string
+    await store.createEpisode('C')
+    const c = store.getSnapshot().work?.episodes[2]?.id as string
+
+    await store.reorderEpisodes([c, a, b])
+    expect(store.getSnapshot().work?.episodes.map((e) => e.title)).toEqual(['C', 'A', 'B'])
+    // 永続化されている
+    const workId = store.getSnapshot().work?.id as string
+    await store.openWork(workId)
+    expect(store.getSnapshot().work?.episodes.map((e) => e.title)).toEqual(['C', 'A', 'B'])
+  })
+
+  it('reorderEpisodes は指定漏れの話を元の相対順で末尾に補完する', async () => {
+    await store.createWork('作')
+    await store.createEpisode('A')
+    const a = store.getSnapshot().work?.episodes[0]?.id as string
+    await store.createEpisode('B')
+    await store.createEpisode('C')
+    // b/c を渡さない → 末尾に元順で残る
+    await store.reorderEpisodes([a])
+    expect(store.getSnapshot().work?.episodes.map((e) => e.title)).toEqual(['A', 'B', 'C'])
+  })
+
   it('updateWorkMeta は著者・あらすじ・タイトルを更新して永続化する', async () => {
     await store.createWork('旧題')
     const id = store.getSnapshot().work?.id as string

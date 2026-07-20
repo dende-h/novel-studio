@@ -4,6 +4,7 @@ import {
   CircleHelp,
   FileText,
   Library,
+  ListTree,
   Network,
   Pencil,
   PenLine,
@@ -28,6 +29,7 @@ export type NavKey =
   | 'ideas'
   | 'episodes'
   | 'glossary'
+  | 'outline'
   | 'mindmap'
   | 'chart'
 
@@ -67,6 +69,8 @@ interface SideNavProps {
   onNavigateEpisodes?: () => void
   /** 図鑑画面へ切替（作品オープン時のみ） */
   onNavigateGlossary?: () => void
+  /** アウトラインへ切替（作品オープン＋cloud会員時のみ） */
+  onNavigateOutline?: () => void
   /** マインドマップへ切替（作品オープン＋cloud会員時のみ） */
   onNavigateMindmap?: () => void
   /** 相関図へ切替（作品オープン＋cloud会員時のみ） */
@@ -122,6 +126,7 @@ export function SideNav({
   onNavigateHelp,
   onNavigateEpisodes,
   onNavigateGlossary,
+  onNavigateOutline,
   onNavigateMindmap,
   onNavigateChart,
   cta,
@@ -187,6 +192,14 @@ export function SideNav({
               active={active === 'glossary'}
               onClick={onNavigateGlossary}
             />
+            {onNavigateOutline ? (
+              <NavRow
+                icon={ListTree}
+                label="アウトライン"
+                active={active === 'outline'}
+                onClick={onNavigateOutline}
+              />
+            ) : null}
             {onNavigateChart ? (
               <NavRow
                 icon={Network}

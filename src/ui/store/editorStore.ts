@@ -58,6 +58,8 @@ export interface EditorStore {
   deleteEpisode(episodeId: string): Promise<void>
   /** 現在の作品の話タイトルを変更して永続化する（空文字・無変更は無視・本文は不変）。 */
   renameEpisode(episodeId: string, title: string): Promise<void>
+  /** 現在の作品の話を、指定した id 順に並べ替えて永続化する（アウトラインの双方向同期）。 */
+  reorderEpisodes(orderedIds: string[]): Promise<void>
   /** 作品メタ（タイトル・著者・あらすじ）を更新して永続化する。 */
   updateWorkMeta(id: string, meta: WorkMeta): Promise<void>
   importWorks(works: Work[]): Promise<void>
@@ -374,6 +376,22 @@ export function createEditorStore({
         ),
         updatedAt: now(),
       }
+      await repo.saveWork(work)
+      set({ work })
+      await refreshList()
+    },
+
+    async reorderEpisodes(orderedIds) {
+      if (!state.work) return
+      const byId = new Map(state.work.episodes.map((e) => [e.id, e]))
+      // orderedIds の順に並べ、漏れた話（未知IDや欠落）は元の相対順で末尾に補完する。
+      const reordered = orderedIds.map((id) => byId.get(id)).filter((e): e is Episode => e != null)
+      const seen = new Set(reordered.map((e) => e.id))
+      const rest = state.work.episodes.filter((e) => !seen.has(e.id))
+      const episodes = [...reordered, ...rest]
+      // 順序が変わらないなら no-op（保存もしない）。
+      if (episodes.every((e, i) => e.id === state.work?.episodes[i]?.id)) return
+      const work: Work = { ...state.work, episodes, updatedAt: now() }
       await repo.saveWork(work)
       set({ work })
       await refreshList()
