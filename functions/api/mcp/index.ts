@@ -73,6 +73,11 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
   // OAuth(Clerk)アクセストークン優先・従来 mcp_ トークンにフォールバック（read-only）。
   const principal = await resolveMcpAuth(context.request, context.env, context.env.DB)
   if (!principal) return unauthorized(context.request)
+  // OAuth 経路は cloud 会員のみ許可（fail-closed）。会員判定が未確定な間は非会員扱いで弾く。
+  // 従来 mcp_ トークンは会員しか発行できないため via==='token' はそのまま許可。
+  if (principal.via === 'oauth' && !principal.isMember) {
+    return jsonResponse({ error: 'forbidden', reason: 'cloud plan required' }, 403)
+  }
   const userId = principal.userId
 
   let body: unknown
