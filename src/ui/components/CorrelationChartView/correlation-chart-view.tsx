@@ -1,9 +1,10 @@
 import { addEdge, type Connection, type Node } from '@xyflow/react'
 import { Plus, UserPlus } from 'lucide-react'
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import type { GlossaryEntry } from '@/core/schema'
 import type { StructureRepository } from '@/core/storage/structureRepository'
 import { StructureCanvas } from '@/ui/components/StructureCanvas/structure-canvas'
+import { TitlePromptDialog } from '@/ui/components/TitlePromptDialog/title-prompt-dialog'
 import { Button } from '@/ui/components/ui/button'
 import {
   Dialog,
@@ -39,6 +40,9 @@ export default function CorrelationChartView({
   const flow = useStructureFlow(repo, workId, 'chart', { title: '相関図', resolveGlossary })
   const { nodes, setNodes, setEdges } = flow
   const [pickOpen, setPickOpen] = useState(false)
+  // 関係ラベル入力モーダル（window.prompt の置き換え）。繋ぎかけの接続を保持して待つ。
+  const [relOpen, setRelOpen] = useState(false)
+  const pendingConnection = useRef<Connection | null>(null)
 
   // まだ相関図に載っていない図鑑キャラ。
   const usedRefs = useMemo(
@@ -48,10 +52,20 @@ export default function CorrelationChartView({
   )
   const candidates = glossary.filter((g) => !usedRefs.has(g.id))
 
-  const onConnect = useCallback(
-    (c: Connection) => {
-      const label = window.prompt('関係（例：師弟、宿敵、恋人…）', '') ?? ''
-      setEdges((eds) => addEdge({ ...c, id: genId(), ...(label ? { label } : {}) }, eds))
+  // 接続時は関係ラベルのモーダルを開き、繋ぎかけの接続を保持する。
+  const onConnect = useCallback((c: Connection) => {
+    pendingConnection.current = c
+    setRelOpen(true)
+  }, [])
+
+  // モーダル送信：保持していた接続にラベルを付けて辺を追加（空ならラベル無し）。
+  const submitRelation = useCallback(
+    (label: string) => {
+      const c = pendingConnection.current
+      pendingConnection.current = null
+      if (!c) return
+      const trimmed = label.trim()
+      setEdges((eds) => addEdge({ ...c, id: genId(), ...(trimmed ? { label: trimmed } : {}) }, eds))
     },
     [setEdges],
   )
@@ -153,6 +167,20 @@ export default function CorrelationChartView({
           </DialogBody>
         </DialogContent>
       </Dialog>
+
+      <TitlePromptDialog
+        open={relOpen}
+        onOpenChange={(o) => {
+          setRelOpen(o)
+          if (!o) pendingConnection.current = null // キャンセル時は接続を破棄
+        }}
+        title="関係を追加"
+        description="2人のつながりを表すラベル（空欄可）"
+        label="関係"
+        placeholder="例：師弟、宿敵、恋人…"
+        submitLabel="つなぐ"
+        onSubmit={submitRelation}
+      />
     </>
   )
 }

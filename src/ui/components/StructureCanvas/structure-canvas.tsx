@@ -14,6 +14,7 @@ import {
 import { Pencil } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { useCallback, useState } from 'react'
+import { TitlePromptDialog } from '@/ui/components/TitlePromptDialog/title-prompt-dialog'
 import { NODE_COLOR_KEYS, NODE_COLORS, STRUCTURE_NODE_TYPES } from '@/ui/structure/structure-node'
 
 interface StructureCanvasProps {
@@ -49,21 +50,19 @@ export function StructureCanvas({
 }: StructureCanvasProps) {
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const selected = nodes.find((n) => n.id === selectedId) ?? null
+  // ラベル編集モーダルの対象（window.prompt の置き換え）。
+  const [renameTarget, setRenameTarget] = useState<{ id: string; current: string } | null>(null)
 
-  const promptRename = useCallback(
-    (node: Node) => {
-      const current = (node.data as { label?: unknown }).label
-      const label = window.prompt('ラベル', typeof current === 'string' ? current : '')
-      if (label != null) onRenameNode(node.id, label)
-    },
-    [onRenameNode],
-  )
+  const openRename = useCallback((node: Node) => {
+    const current = (node.data as { label?: unknown }).label
+    setRenameTarget({ id: node.id, current: typeof current === 'string' ? current : '' })
+  }, [])
 
   const onNodeDoubleClick = useCallback<NodeMouseHandler>(
     (_, node) => {
-      if (!isGlossaryNode(node)) promptRename(node)
+      if (!isGlossaryNode(node)) openRename(node)
     },
-    [promptRename],
+    [openRename],
   )
 
   return (
@@ -94,7 +93,7 @@ export function StructureCanvas({
             <button
               type="button"
               aria-label="ラベルを編集"
-              onClick={() => promptRename(selected)}
+              onClick={() => openRename(selected)}
               className="flex items-center gap-1 rounded px-1.5 py-1 text-on-surface-variant text-xs hover:bg-surface-container-high"
             >
               <Pencil className="size-3.5" />
@@ -103,6 +102,20 @@ export function StructureCanvas({
           ) : null}
         </div>
       ) : null}
+
+      <TitlePromptDialog
+        open={renameTarget !== null}
+        onOpenChange={(o) => {
+          if (!o) setRenameTarget(null)
+        }}
+        title="ラベルを編集"
+        label="ラベル"
+        defaultValue={renameTarget?.current ?? ''}
+        submitLabel="変更"
+        onSubmit={(v) => {
+          if (renameTarget) onRenameNode(renameTarget.id, v)
+        }}
+      />
 
       <ReactFlow
         nodes={nodes}
