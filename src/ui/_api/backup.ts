@@ -80,6 +80,19 @@ export async function getBackup(getToken: GetToken, id: string): Promise<string 
   }
 }
 
+/** MCP 用ライブスナップショット（AI の書き込み反映先）を平文で取得。無ければ/失敗は null。 */
+export async function getLiveBackup(getToken: GetToken): Promise<string | null> {
+  const headers = await authHeader(getToken)
+  if (!headers) return null
+  try {
+    const res = await fetch('/api/backup?live=1', { headers })
+    if (!res.ok) return null
+    return await res.text()
+  } catch {
+    return null
+  }
+}
+
 /** 1 件削除。 */
 export async function deleteBackup(getToken: GetToken, id: string): Promise<boolean> {
   const headers = await authHeader(getToken)

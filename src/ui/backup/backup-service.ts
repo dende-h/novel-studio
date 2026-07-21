@@ -9,6 +9,7 @@ import {
   createBackup as apiCreate,
   deleteBackup as apiDelete,
   getBackup as apiGet,
+  getLiveBackup as apiGetLive,
   listBackups as apiList,
   putLiveBackup as apiPutLive,
   type BackupSummary,
@@ -24,6 +25,8 @@ export interface BackupDeps {
   createRemote(plaintext: string): Promise<{ id: string; createdAt: number } | null>
   /** MCP 用ライブスナップショットを上書き保存（版は作らない）。 */
   putLiveRemote(plaintext: string): Promise<boolean>
+  /** ライブスナップショット（AI の書き込み反映先）を平文で取得。無ければ null。 */
+  getLiveRemote(): Promise<string | null>
   listRemote(): Promise<BackupSummary[]>
   getRemote(id: string): Promise<string | null>
   deleteRemote(id: string): Promise<boolean>
@@ -44,6 +47,8 @@ export interface BackupService {
   remove(id: string): Promise<boolean>
   /** MCP 用ライブスナップショットを現在の全状態で上書き（AI に最新を読ませる）。 */
   pushLive(): Promise<void>
+  /** AI がライブスナップショットに書いた変更をローカルへ取り込む（全置換）。live 無し/失敗は false。 */
+  pullLive(): Promise<boolean>
 }
 
 /** 純ロジック（直列化）と注入 I/O を束ねる。破壊的処理（restore の replaceAll）の単一経路。 */
@@ -77,6 +82,20 @@ export function createBackupService(deps: BackupDeps): BackupService {
     remove: (id) => deps.deleteRemote(id),
     async pushLive() {
       await deps.putLiveRemote(serializeBackup(await deps.gather(), deps.now()))
+    },
+    async pullLive() {
+      const json = await deps.getLiveRemote()
+      if (!json) return false
+      const backup = deserializeBackup(json) // version/スキーマ検証。壊れていれば throw して置換しない。
+      await deps.replaceAll({
+        works: backup.works,
+        trash: backup.trash,
+        profile: backup.profile,
+        activity: backup.activity,
+        ideas: backup.ideas,
+        structures: backup.structures,
+      })
+      return true
     },
   }
 }
@@ -119,6 +138,7 @@ export function createDefaultBackupService(getToken: () => Promise<string | null
     replaceAll: io.replaceAll,
     createRemote: (plaintext) => apiCreate(getToken, plaintext),
     putLiveRemote: (plaintext) => apiPutLive(getToken, plaintext),
+    getLiveRemote: () => apiGetLive(getToken),
     listRemote: () => apiList(getToken),
     getRemote: (id) => apiGet(getToken, id),
     deleteRemote: (id) => apiDelete(getToken, id),

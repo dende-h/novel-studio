@@ -31,8 +31,10 @@ function makeDeps(over: Partial<BackupDeps> = {}) {
     },
     putLiveRemote: async (plaintext) => {
       live.push(plaintext)
+      remote.set('live', plaintext)
       return true
     },
+    getLiveRemote: async () => remote.get('live') ?? null,
     listRemote: async () =>
       [...remote.keys()].map((id) => ({ id, createdAt: Number(id), size: 0 })),
     getRemote: async (id) => remote.get(id) ?? null,
@@ -121,6 +123,23 @@ describe('createBackupService', () => {
     await svc.pushLive()
     expect(JSON.parse(live[0] ?? '{}').works[0].id).toBe('a')
     expect(created).toHaveLength(0) // 版バックアップは作らない
+  })
+
+  it('pullLive はライブを取り込み全置換する（無ければ false）', async () => {
+    const { deps, replaced, remote } = makeDeps()
+    remote.set(
+      'live',
+      serializeBackup(
+        { works: [work('L')], trash: [], profile: {}, activity: [], ideas: [], structures: [] },
+        5,
+      ),
+    )
+    const svc = createBackupService(deps)
+    expect(await svc.pullLive()).toBe(true)
+    expect(replaced[0]?.works.map((w) => w.id)).toEqual(['L'])
+
+    const { deps: empty } = makeDeps()
+    expect(await createBackupService(empty).pullLive()).toBe(false)
   })
 
   it('backupNow は現在の全状態を直列化して保存する', async () => {

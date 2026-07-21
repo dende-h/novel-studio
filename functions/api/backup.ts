@@ -100,7 +100,19 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
   if ('error' in m) return m.error
   const { userId } = m
 
-  const id = new URL(context.request.url).searchParams.get('id')
+  const params = new URL(context.request.url).searchParams
+
+  // ?live=1 = MCP 用ライブスナップショットを復号ダウンロード（AI の書き込みを取り込むため）。
+  if (params.get('live') === '1') {
+    const obj = await context.env.MEDIA.get(`${userId}/live`)
+    if (!obj) return json({ error: 'not_found' }, 404)
+    const key = await importKey(context.env.ENCRYPTION_KEY)
+    const blob = new Uint8Array(await obj.arrayBuffer())
+    const plaintext = await decryptPart(blob, key, `${userId}:live`)
+    return new Response(plaintext, { headers: { 'content-type': 'application/json' } })
+  }
+
+  const id = params.get('id')
   if (id) {
     const obj = await context.env.MEDIA.get(keyOf(userId, id))
     if (!obj) return json({ error: 'not_found' }, 404)
