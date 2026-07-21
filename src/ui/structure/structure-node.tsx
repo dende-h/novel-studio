@@ -1,5 +1,7 @@
 import { Handle, type NodeProps, Position } from '@xyflow/react'
-import { BookMarked } from 'lucide-react'
+import { BookMarked, X } from 'lucide-react'
+import { useContext } from 'react'
+import { StructureCanvasContext } from './structure-canvas-context'
 
 interface Swatch {
   bg: string
@@ -37,35 +39,55 @@ export interface StructureNodeData {
 const DEFAULT_SWATCH: Swatch = { bg: '#ffffff', border: '#c9bea9', text: '#2b2620' }
 const swatch = (key?: string): Swatch => NODE_COLORS[key ?? 'default'] ?? DEFAULT_SWATCH
 
+const HANDLE_CLASS = '!size-2.5 !border-2 !border-surface-container-lowest !bg-primary/50'
+
 /**
  * 構造ビュー共通のカスタムノード。色分けと図鑑参照バッジに対応する。
- * ラベル編集はビュー側（ダブルクリック等）で行い、ここは表示に徹する。
+ * 上下左右すべてに接続点を持ち（loose モードで source/target 兼用）、どの辺からでも繋げる。
+ * hover で削除ボタンを出す。ラベル編集はビュー側（ダブルクリック等）で行う。
  */
-export function StructureFlowNode({ data, selected }: NodeProps) {
+export function StructureFlowNode({ id, data, selected }: NodeProps) {
   const d = data as StructureNodeData
   const c = swatch(d.color)
+  const ctx = useContext(StructureCanvasContext)
   return (
-    <div
-      style={{ background: c.bg, borderColor: c.border, color: c.text }}
-      className={`min-w-[96px] max-w-[220px] rounded-lg border px-3 py-2 text-center font-sans text-[13px] leading-snug shadow-sm ${
-        selected ? 'ring-2 ring-offset-1' : ''
-      }`}
-    >
-      <Handle type="target" position={Position.Top} />
-      <div className="flex items-center justify-center gap-1.5">
-        {d.isGlossary ? (
-          <BookMarked
-            className="size-3.5 shrink-0 opacity-70"
-            aria-label="図鑑のキャラ"
-            style={{ color: d.refMissing ? '#9c4d33' : c.border }}
-          />
+    <div className="group relative">
+      {/* 上下左右の接続点（loose モードで source/target 兼用）。 */}
+      <Handle id="t" type="source" position={Position.Top} className={HANDLE_CLASS} />
+      <Handle id="r" type="source" position={Position.Right} className={HANDLE_CLASS} />
+      <Handle id="b" type="source" position={Position.Bottom} className={HANDLE_CLASS} />
+      <Handle id="l" type="source" position={Position.Left} className={HANDLE_CLASS} />
+
+      <div
+        style={{ background: c.bg, borderColor: c.border, color: c.text }}
+        className={`min-w-[96px] max-w-[220px] rounded-lg border px-3 py-2 text-center font-sans text-[13px] leading-snug shadow-sm ${
+          selected ? 'ring-2 ring-offset-1' : ''
+        }`}
+      >
+        <div className="flex items-center justify-center gap-1.5">
+          {d.isGlossary ? (
+            <BookMarked
+              className="size-3.5 shrink-0 opacity-70"
+              aria-label="図鑑のキャラ"
+              style={{ color: d.refMissing ? '#9c4d33' : c.border }}
+            />
+          ) : null}
+          <span className="break-words">{d.label || '（無題）'}</span>
+        </div>
+        {d.refMissing ? (
+          <span className="mt-0.5 block text-[10px] text-[#9c4d33]">図鑑に見つかりません</span>
         ) : null}
-        <span className="break-words">{d.label || '（無題）'}</span>
       </div>
-      {d.refMissing ? (
-        <span className="mt-0.5 block text-[10px] text-[#9c4d33]">図鑑に見つかりません</span>
-      ) : null}
-      <Handle type="source" position={Position.Bottom} />
+
+      {/* 削除：hover で出現。関連する辺も一緒に消える。 */}
+      <button
+        type="button"
+        aria-label="このノードを削除"
+        onClick={() => ctx?.onDeleteNode(id)}
+        className="nodrag nopan -top-2 -right-2 absolute grid size-5 place-items-center rounded-full bg-destructive text-white opacity-0 shadow-sm transition-opacity hover:bg-destructive/90 group-hover:opacity-100"
+      >
+        <X className="size-3" />
+      </button>
     </div>
   )
 }

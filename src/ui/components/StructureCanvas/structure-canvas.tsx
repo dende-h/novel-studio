@@ -1,6 +1,7 @@
 import '@xyflow/react/dist/style.css'
 import {
   Background,
+  ConnectionMode,
   Controls,
   type Edge,
   MiniMap,
@@ -13,8 +14,10 @@ import {
 } from '@xyflow/react'
 import { Pencil } from 'lucide-react'
 import type { ReactNode } from 'react'
-import { useCallback, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
+import { STRUCTURE_EDGE_TYPES } from '@/ui/components/StructureCanvas/structure-edge'
 import { TitlePromptDialog } from '@/ui/components/TitlePromptDialog/title-prompt-dialog'
+import { StructureCanvasContext } from '@/ui/structure/structure-canvas-context'
 import { NODE_COLOR_KEYS, NODE_COLORS, STRUCTURE_NODE_TYPES } from '@/ui/structure/structure-node'
 
 interface StructureCanvasProps {
@@ -27,6 +30,10 @@ interface StructureCanvasProps {
   onRenameNode: (id: string, label: string) => void
   /** ノードの色を変更する。省略時は色パレットを出さない。 */
   onRecolorNode?: (id: string, color: string) => void
+  /** ノードを削除する（関連する辺も呼び出し側で消す）。 */
+  onDeleteNode: (id: string) => void
+  /** 辺を削除する。 */
+  onDeleteEdge: (id: string) => void
   /** ツールバー左に差し込むビュー固有のボタン群。 */
   toolbar?: ReactNode
 }
@@ -46,10 +53,13 @@ export function StructureCanvas({
   onConnect,
   onRenameNode,
   onRecolorNode,
+  onDeleteNode,
+  onDeleteEdge,
   toolbar,
 }: StructureCanvasProps) {
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const selected = nodes.find((n) => n.id === selectedId) ?? null
+  const actions = useMemo(() => ({ onDeleteNode, onDeleteEdge }), [onDeleteNode, onDeleteEdge])
   // ラベル編集モーダルの対象（window.prompt の置き換え）。
   const [renameTarget, setRenameTarget] = useState<{ id: string; current: string } | null>(null)
 
@@ -117,23 +127,28 @@ export function StructureCanvas({
         }}
       />
 
-      <ReactFlow
-        nodes={nodes}
-        edges={edges}
-        nodeTypes={STRUCTURE_NODE_TYPES}
-        onNodesChange={onNodesChange}
-        onEdgesChange={onEdgesChange}
-        onConnect={onConnect}
-        onNodeDoubleClick={onNodeDoubleClick}
-        onSelectionChange={({ nodes: sel }) => setSelectedId(sel[0]?.id ?? null)}
-        deleteKeyCode={['Backspace', 'Delete']}
-        fitView
-        proOptions={{ hideAttribution: true }}
-      >
-        <Background />
-        <Controls />
-        <MiniMap pannable zoomable />
-      </ReactFlow>
+      <StructureCanvasContext.Provider value={actions}>
+        <ReactFlow
+          nodes={nodes}
+          edges={edges}
+          nodeTypes={STRUCTURE_NODE_TYPES}
+          edgeTypes={STRUCTURE_EDGE_TYPES}
+          defaultEdgeOptions={{ type: 'deletable' }}
+          connectionMode={ConnectionMode.Loose}
+          onNodesChange={onNodesChange}
+          onEdgesChange={onEdgesChange}
+          onConnect={onConnect}
+          onNodeDoubleClick={onNodeDoubleClick}
+          onSelectionChange={({ nodes: sel }) => setSelectedId(sel[0]?.id ?? null)}
+          deleteKeyCode={['Backspace', 'Delete']}
+          fitView
+          proOptions={{ hideAttribution: true }}
+        >
+          <Background />
+          <Controls />
+          <MiniMap pannable zoomable />
+        </ReactFlow>
+      </StructureCanvasContext.Provider>
     </div>
   )
 }

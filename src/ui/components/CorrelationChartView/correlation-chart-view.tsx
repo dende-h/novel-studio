@@ -70,6 +70,19 @@ export default function CorrelationChartView({
     [setEdges],
   )
 
+  // ノード削除（関連する辺も除去）。変更は自動保存される。
+  const deleteNode = useCallback(
+    (id: string) => {
+      setNodes((nds) => nds.filter((n) => n.id !== id))
+      setEdges((eds) => eds.filter((e) => e.source !== id && e.target !== id))
+    },
+    [setNodes, setEdges],
+  )
+  const deleteEdge = useCallback(
+    (id: string) => setEdges((eds) => eds.filter((e) => e.id !== id)),
+    [setEdges],
+  )
+
   const addFreeNode = useCallback(() => {
     setNodes((nds) => [
       ...nds,
@@ -110,6 +123,8 @@ export default function CorrelationChartView({
         onConnect={onConnect}
         onRenameNode={flow.setNodeLabel}
         onRecolorNode={flow.setNodeColor}
+        onDeleteNode={deleteNode}
+        onDeleteEdge={deleteEdge}
         toolbar={
           <>
             <Button type="button" size="sm" onClick={() => setPickOpen(true)} className="gap-1.5">

@@ -34,6 +34,10 @@ export const StructureEdgeSchema = z.object({
   to: z.string(),
   label: z.string().optional(),
   kind: z.enum(['relation', 'sequence', 'association']),
+  /** 接続元の辺（相関図で上下左右どこから出たか。't'|'r'|'b'|'l'）。 */
+  fromHandle: z.string().optional(),
+  /** 接続先の辺（相関図で上下左右どこへ入ったか）。 */
+  toHandle: z.string().optional(),
 })
 export type StructureEdge = z.infer<typeof StructureEdgeSchema>
 

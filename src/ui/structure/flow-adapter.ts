@@ -33,13 +33,15 @@ export function toFlowNodes(s: Structure, resolveGlossary?: ResolveGlossary): No
   })
 }
 
-/** Structure のエッジを React Flow の Edge に変換する。 */
+/** Structure のエッジを React Flow の Edge に変換する（接続辺 t/r/b/l も復元）。 */
 export function toFlowEdges(s: Structure): Edge[] {
   return s.edges.map((e) => ({
     id: e.id,
     source: e.from,
     target: e.to,
     ...(e.label ? { label: e.label } : {}),
+    ...(e.fromHandle ? { sourceHandle: e.fromHandle } : {}),
+    ...(e.toHandle ? { targetHandle: e.toHandle } : {}),
   }))
 }
 
@@ -87,6 +89,8 @@ export function fromFlow(base: Structure, nodes: Node[], edges: Edge[], at: numb
       to: e.target,
       ...(e.label ? { label: String(e.label) } : {}),
       kind: prevEdges.get(e.id)?.kind ?? 'association',
+      ...(e.sourceHandle ? { fromHandle: e.sourceHandle } : {}),
+      ...(e.targetHandle ? { toHandle: e.targetHandle } : {}),
     })),
     updatedAt: at,
   }
