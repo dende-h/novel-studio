@@ -18,6 +18,8 @@ interface MindmapNodeData {
   isRoot?: boolean
   /** 階層（0=中心）。フォント段階・幅・見た目に使う。 */
   depth?: number
+  /** 伸びる向き（-1=左, 0=中心, 1=右）。＋ボタンの左右に使う。 */
+  dir?: number
   [key: string]: unknown
 }
 
@@ -52,6 +54,8 @@ function MindmapNode({ id, data }: NodeProps) {
   const d = data as MindmapNodeData
   const depth = typeof d.depth === 'number' ? d.depth : 0
   const tier = TIER[Math.min(depth, 2)] ?? TIER[1]
+  // 左に伸びる枝は＋を左側に置く（中心・右枝は右側）。
+  const growLeft = (typeof d.dir === 'number' ? d.dir : 0) < 0
   // 入力はローカル state で保持し、外部の再レンダーでカーソルが飛ばないようにする。
   const [text, setText] = useState(d.label)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -62,7 +66,11 @@ function MindmapNode({ id, data }: NodeProps) {
 
   return (
     <div className="group relative">
-      <Handle type="target" position={Position.Left} style={{ opacity: 0 }} />
+      {/* 左右どちらへも繋げられるよう、両側に source/target を用意（不可視）。辺側で選ぶ。 */}
+      <Handle id="tgt-l" type="target" position={Position.Left} style={{ opacity: 0 }} />
+      <Handle id="src-l" type="source" position={Position.Left} style={{ opacity: 0 }} />
+      <Handle id="tgt-r" type="target" position={Position.Right} style={{ opacity: 0 }} />
+      <Handle id="src-r" type="source" position={Position.Right} style={{ opacity: 0 }} />
 
       <div
         className={`${tier.width} ${tier.pad} ${tier.box} rounded-xl border shadow-sm transition-shadow focus-within:border-primary/60 focus-within:shadow-md`}
@@ -87,27 +95,29 @@ function MindmapNode({ id, data }: NodeProps) {
         />
       </div>
 
-      {/* ＋：右へ子ノードを生やす（hover / フォーカスで出現）。 */}
+      {/* ＋：枝の向きへ子ノードを生やす（hover / フォーカスで出現）。 */}
       <button
         type="button"
         aria-label="子ノードを追加"
         onClick={() => ctx?.onAddChild(id)}
-        className="nodrag nopan -right-3 -translate-y-1/2 absolute top-1/2 grid size-6 place-items-center rounded-full bg-primary text-white opacity-0 shadow-sm transition-opacity hover:bg-primary/90 group-focus-within:opacity-100 group-hover:opacity-100"
+        className={`nodrag nopan -translate-y-1/2 absolute top-1/2 grid size-6 place-items-center rounded-full bg-primary text-white opacity-0 shadow-sm transition-opacity hover:bg-primary/90 group-focus-within:opacity-100 group-hover:opacity-100 ${
+          growLeft ? '-left-3' : '-right-3'
+        }`}
       >
         <Plus className="size-3.5" />
       </button>
 
-      {/* 削除：hover で出現。子孫ごと消える（どのノードでも可）。 */}
+      {/* 削除：hover で出現。子孫ごと消える（どのノードでも可）。伸びる向きと反対の角に置く。 */}
       <button
         type="button"
         aria-label="このノードを削除"
         onClick={() => ctx?.onDelete(id)}
-        className="nodrag nopan -top-2 -right-2 absolute grid size-5 place-items-center rounded-full bg-surface-container-high text-on-surface-variant opacity-0 shadow-sm transition-opacity hover:text-on-surface group-hover:opacity-100"
+        className={`nodrag nopan -top-2 absolute grid size-5 place-items-center rounded-full bg-surface-container-high text-on-surface-variant opacity-0 shadow-sm transition-opacity hover:text-on-surface group-hover:opacity-100 ${
+          growLeft ? '-right-2' : '-left-2'
+        }`}
       >
         <X className="size-3" />
       </button>
-
-      <Handle type="source" position={Position.Right} style={{ opacity: 0 }} />
     </div>
   )
 }

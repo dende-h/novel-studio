@@ -97,11 +97,27 @@ export default function MindmapView({ repo, workId, ideaRepo }: MindmapViewProps
         type: 'mindmap',
         draggable: false,
         position: { x: pos[n.id]?.x ?? 0, y: pos[n.id]?.y ?? 0 },
-        data: { label: n.label, isRoot: !n.parentId, depth: pos[n.id]?.depth ?? 0 },
+        data: {
+          label: n.label,
+          isRoot: !n.parentId,
+          depth: pos[n.id]?.depth ?? 0,
+          dir: pos[n.id]?.dir ?? 0,
+        },
       })),
     )
     setRfEdges(
-      structure.edges.map((e) => ({ id: e.id, source: e.from, target: e.to, type: 'smoothstep' })),
+      structure.edges.map((e) => {
+        // 子が左枝なら親の左→子の右、右枝なら親の右→子の左へ繋ぐ。
+        const left = (pos[e.to]?.dir ?? 1) < 0
+        return {
+          id: e.id,
+          source: e.from,
+          target: e.to,
+          type: 'smoothstep',
+          sourceHandle: left ? 'src-l' : 'src-r',
+          targetHandle: left ? 'tgt-r' : 'tgt-l',
+        }
+      }),
     )
   }, [structure, setRfNodes, setRfEdges])
 
