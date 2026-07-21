@@ -1,5 +1,5 @@
 import { Handle, type NodeProps, Position } from '@xyflow/react'
-import { Plus, X } from 'lucide-react'
+import { MoreHorizontal, Plus, Trash2 } from 'lucide-react'
 import { createContext, useContext, useEffect, useRef, useState } from 'react'
 
 /** マインドマップの操作をノードへ渡すコンテキスト（＋で子を生やす・入力・削除）。 */
@@ -61,11 +61,24 @@ function MindmapNode({ id, data }: NodeProps) {
   const mySide: 'l' | 'r' = dir < 0 ? 'l' : 'r'
   // 入力はローカル state で保持し、外部の再レンダーでカーソルが飛ばないようにする。
   const [text, setText] = useState(d.label)
+  // ⋯ メニュー（削除など）。＋ボタンと離し、削除は2ステップにして誤操作を防ぐ。
+  const [menuOpen, setMenuOpen] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     if (ctx?.focusId === id) inputRef.current?.focus()
   }, [ctx?.focusId, id])
+
+  // メニュー外のクリックで閉じる（開いた瞬間のクリックで閉じないよう次ティックで登録）。
+  useEffect(() => {
+    if (!menuOpen) return
+    const close = () => setMenuOpen(false)
+    const t = setTimeout(() => document.addEventListener('click', close), 0)
+    return () => {
+      clearTimeout(t)
+      document.removeEventListener('click', close)
+    }
+  }, [menuOpen])
 
   return (
     <div className="group relative">
@@ -120,15 +133,37 @@ function MindmapNode({ id, data }: NodeProps) {
         </button>
       ) : null}
 
-      {/* 削除：hover で出現。子孫ごと消える（どのノードでも可）。 */}
-      <button
-        type="button"
-        aria-label="このノードを削除"
-        onClick={() => ctx?.onDelete(id)}
-        className="nodrag nopan -top-2 -right-2 absolute grid size-5 place-items-center rounded-full bg-surface-container-high text-on-surface-variant opacity-0 shadow-sm transition-opacity hover:text-on-surface group-hover:opacity-100"
-      >
-        <X className="size-3" />
-      </button>
+      {/* ⋯ メニュー：枠外・上部中央（＋は左右なので離れている）。開いた先の「削除」で消す＝2ステップで誤操作防止。 */}
+      <div className="-top-3.5 -translate-x-1/2 absolute left-1/2 z-10 flex flex-col items-center">
+        <button
+          type="button"
+          aria-label="ノードのメニュー"
+          aria-expanded={menuOpen}
+          onClick={() => setMenuOpen((v) => !v)}
+          className={`nodrag nopan grid size-5 place-items-center rounded-full border border-outline-variant/40 bg-surface-container-lowest text-on-surface-variant shadow-sm transition-opacity hover:text-on-surface ${
+            menuOpen
+              ? 'opacity-100'
+              : 'opacity-0 group-focus-within:opacity-100 group-hover:opacity-100'
+          }`}
+        >
+          <MoreHorizontal className="size-3.5" />
+        </button>
+        {menuOpen ? (
+          <div className="absolute bottom-full mb-1 flex flex-col overflow-hidden rounded-md border border-outline-variant/40 bg-surface-container-lowest shadow-md">
+            <button
+              type="button"
+              onClick={() => {
+                setMenuOpen(false)
+                ctx?.onDelete(id)
+              }}
+              className="nodrag nopan flex items-center gap-1.5 whitespace-nowrap px-3 py-1.5 text-[12px] text-destructive transition-colors hover:bg-destructive/10"
+            >
+              <Trash2 className="size-3.5" />
+              削除
+            </button>
+          </div>
+        ) : null}
+      </div>
     </div>
   )
 }
