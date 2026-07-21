@@ -10,6 +10,7 @@
 
 import type { CloudBackup } from '../../../src/core/backup'
 import type { Work } from '../../../src/core/schema'
+import type { Structure } from '../../../src/core/structure'
 import { decryptPart, importKey } from '../_lib/crypto'
 import { resolveMcpAuth } from '../_lib/mcp-auth'
 import { handleMcpMessage } from '../_lib/mcp-server'
@@ -50,19 +51,30 @@ const unauthorized = (request: Request): Response => {
   })
 }
 
-/** ライブスナップショットを復号して作品配列を返す。未保存/壊れていれば空配列（読み取りは失敗させない）。 */
-async function loadWorks(env: Env, userId: string): Promise<Work[]> {
+/** ライブスナップショットを復号して CloudBackup を返す。未保存/壊れていれば null（読み取りは失敗させない）。 */
+async function loadSnapshot(env: Env, userId: string): Promise<CloudBackup | null> {
   const obj = await env.MEDIA.get(`${userId}/live`)
-  if (!obj) return []
+  if (!obj) return null
   try {
     const key = await importKey(env.ENCRYPTION_KEY)
     const blob = new Uint8Array(await obj.arrayBuffer())
     const plaintext = await decryptPart(blob, key, `${userId}:live`)
-    const backup = JSON.parse(plaintext) as CloudBackup
-    return Array.isArray(backup.works) ? backup.works : []
+    return JSON.parse(plaintext) as CloudBackup
   } catch {
-    return []
+    return null
   }
+}
+
+/** ライブスナップショットから作品配列を返す。 */
+async function loadWorks(env: Env, userId: string): Promise<Work[]> {
+  const backup = await loadSnapshot(env, userId)
+  return backup && Array.isArray(backup.works) ? backup.works : []
+}
+
+/** ライブスナップショットから構造データ配列を返す。 */
+async function loadStructures(env: Env, userId: string): Promise<Structure[]> {
+  const backup = await loadSnapshot(env, userId)
+  return backup && Array.isArray(backup.structures) ? backup.structures : []
 }
 
 export const onRequestOptions: PagesFunction<Env> = async () =>
@@ -93,7 +105,10 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     )
   }
 
-  const deps = { loadWorks: () => loadWorks(context.env, userId) }
+  const deps = {
+    loadWorks: () => loadWorks(context.env, userId),
+    loadStructures: () => loadStructures(context.env, userId),
+  }
 
   // JSON-RPC バッチ（配列）にも一応対応。応答不要（通知のみ）なら 202。
   if (Array.isArray(body)) {

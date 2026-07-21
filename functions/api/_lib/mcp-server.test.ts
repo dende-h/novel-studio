@@ -1,6 +1,7 @@
 // @vitest-environment node
 import { describe, expect, it } from 'vitest'
 import type { Work } from '../../../src/core/schema'
+import { addEdge, addNode, emptyStructure, type Structure } from '../../../src/core/structure'
 import { handleMcpMessage, MCP_TOOLS, type McpDeps } from './mcp-server'
 
 const work = (over: Partial<Work> = {}): Work => ({
@@ -20,7 +21,10 @@ const work = (over: Partial<Work> = {}): Work => ({
   ...over,
 })
 
-const deps = (works: Work[]): McpDeps => ({ loadWorks: async () => works })
+const deps = (works: Work[], structures: Structure[] = []): McpDeps => ({
+  loadWorks: async () => works,
+  loadStructures: async () => structures,
+})
 const call = (name: string, args?: Record<string, unknown>) =>
   ({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } }) as const
 
@@ -47,13 +51,37 @@ describe('handleMcpMessage', () => {
     ).toBeNull()
   })
 
-  it('tools/list は read-only 3 ツールを返す', async () => {
+  it('tools/list は read-only 4 ツールを返す', async () => {
     const res = (await handleMcpMessage(
       { jsonrpc: '2.0', id: 1, method: 'tools/list' },
       deps([]),
     )) as { result: { tools: { name: string }[] } }
-    expect(res.result.tools.map((t) => t.name)).toEqual(['list_works', 'get_work', 'get_glossary'])
-    expect(MCP_TOOLS).toHaveLength(3)
+    expect(res.result.tools.map((t) => t.name)).toEqual([
+      'list_works',
+      'get_work',
+      'get_glossary',
+      'get_structures',
+    ])
+    expect(MCP_TOOLS).toHaveLength(4)
+  })
+
+  it('get_structures は相関図を図鑑名で解決して返す', async () => {
+    let chart = emptyStructure('c', 'w1', 'chart', 0)
+    chart = addNode(chart, { id: 'n1', kind: 'character', label: '', glossaryRef: 'g1' })
+    chart = addNode(chart, { id: 'n2', kind: 'character', label: '師匠' })
+    chart = addEdge(chart, { id: 'e', from: 'n1', to: 'n2', label: '師弟', kind: 'relation' })
+    const res = await handleMcpMessage(
+      call('get_structures', { work_id: 'w1' }),
+      deps([work()], [chart]),
+    )
+    const t = contentText(res)
+    expect(t).toContain('【相関図】')
+    expect(t).toContain('アカリ —（師弟）→ 師匠')
+  })
+
+  it('get_structures は構造が無ければ案内文', async () => {
+    const res = await handleMcpMessage(call('get_structures', { work_id: 'w1' }), deps([work()]))
+    expect(contentText(res)).toContain('まだありません')
   })
 
   it('list_works は id 付き一覧を返す', async () => {

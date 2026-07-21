@@ -6,8 +6,10 @@
  * 公開するのは読み取り 3 ツールのみ（list_works / get_work / get_glossary）。書き込みは無い。
  */
 
+import { structuresToPlainText } from '../../../src/core/exporter/structureToPlainText'
 import { glossaryToPlainText, workToPlainText } from '../../../src/core/exporter/toPlainText'
 import type { Work } from '../../../src/core/schema'
+import type { Structure } from '../../../src/core/structure'
 
 /** クライアントが未指定のときに名乗る MCP プロトコル版（十分に新しい安定版）。 */
 const DEFAULT_PROTOCOL_VERSION = '2025-06-18'
@@ -41,11 +43,23 @@ export const MCP_TOOLS = [
       additionalProperties: false,
     },
   },
+  {
+    name: 'get_structures',
+    description:
+      '1 作品の構造データ（アウトライン・相関図・マインドマップ）をプレーンテキストで返す。相関図は図鑑名で解決した関係一覧、アウトラインは話＋構成メモ、マインドマップはツリー。',
+    inputSchema: {
+      type: 'object',
+      properties: { work_id: { type: 'string', description: 'list_works が返す作品 id' } },
+      required: ['work_id'],
+      additionalProperties: false,
+    },
+  },
 ] as const
 
-/** 注入 I/O：復号済みライブスナップショットから作品配列を取り出して返す。 */
+/** 注入 I/O：復号済みライブスナップショットから作品・構造データを取り出して返す。 */
 export interface McpDeps {
   loadWorks(): Promise<Work[]>
+  loadStructures(): Promise<Structure[]>
 }
 
 interface JsonRpcMessage {
@@ -86,11 +100,16 @@ async function callTool(
 
   const workId = typeof args?.work_id === 'string' ? args.work_id : ''
   const work = works.find((w) => w.id === workId)
-  if (name === 'get_work' || name === 'get_glossary') {
+  if (name === 'get_work' || name === 'get_glossary' || name === 'get_structures') {
     if (!work) return text(`work_id "${workId}" の作品が見つかりません。`, true)
     if (name === 'get_work') return text(workToPlainText(work))
-    const glossary = glossaryToPlainText(work.glossary ?? [])
-    return text(glossary || '（この作品の図鑑は空です）')
+    if (name === 'get_glossary') {
+      const glossary = glossaryToPlainText(work.glossary ?? [])
+      return text(glossary || '（この作品の図鑑は空です）')
+    }
+    // get_structures：アウトライン・相関図・マインドマップをまとめて返す。
+    const structures = await deps.loadStructures()
+    return text(structuresToPlainText(structures, work))
   }
   return text(`未知のツール: ${name}`, true)
 }
