@@ -1,10 +1,26 @@
-import { addEdge, type Connection, type Node } from '@xyflow/react'
-import { Plus, StickyNote } from 'lucide-react'
-import { useCallback, useEffect, useState } from 'react'
+import '@xyflow/react/dist/style.css'
+import {
+  Background,
+  Controls,
+  type Edge,
+  type Node,
+  ReactFlow,
+  useEdgesState,
+  useNodesState,
+} from '@xyflow/react'
+import { StickyNote } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { IdeaNote } from '@/core/idea'
 import type { IdeaRepository } from '@/core/storage/ideaRepository'
 import type { StructureRepository } from '@/core/storage/structureRepository'
-import { StructureCanvas } from '@/ui/components/StructureCanvas/structure-canvas'
+import {
+  addNode,
+  addEdge as addStructEdge,
+  removeNode,
+  type Structure,
+  updateNode,
+} from '@/core/structure'
+import { MINDMAP_NODE_TYPES, MindmapContext } from '@/ui/components/MindmapView/mindmap-node'
 import { Button } from '@/ui/components/ui/button'
 import {
   Dialog,
@@ -13,7 +29,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/ui/components/ui/dialog'
-import { useStructureFlow } from '@/ui/structure/use-structure-flow'
+import { layoutTree } from '@/ui/structure/tree-layout'
 
 interface MindmapViewProps {
   repo: StructureRepository
@@ -23,35 +39,116 @@ interface MindmapViewProps {
 }
 
 const genId = () => crypto.randomUUID()
+const SAVE_DELAY_MS = 600
+
+/** ノードとその子孫をまとめて削除する（関連エッジも除去）。 */
+function removeSubtree(s: Structure, rootId: string): Structure {
+  const ids: string[] = []
+  const walk = (id: string) => {
+    ids.push(id)
+    for (const n of s.nodes) if (n.parentId === id) walk(n.id)
+  }
+  walk(rootId)
+  return ids.reduce((acc, id) => removeNode(acc, id), s)
+}
 
 /**
- * マインドマップ（構造レイヤー kind:mindmap）。共通キャンバスの上に、
- * ノード追加・ネタ帳取り込みのツールバーを載せる。バンドルが重いので default export（遅延ロード）。
+ * マインドマップ（構造レイヤー kind:mindmap）。中心ノードから＋で枝を生やす自動レイアウトのツリー。
+ * ドラッグはせず、操作は「ノードへの入力」と「＋で子を生やす」の2つだけ。default export（遅延ロード）。
  */
 export default function MindmapView({ repo, workId, ideaRepo }: MindmapViewProps) {
-  const flow = useStructureFlow(repo, workId, 'mindmap', { title: '発想メモ' })
-  const { setNodes, setEdges } = flow
+  const [structure, setStructure] = useState<Structure | null>(null)
+  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [focusId, setFocusId] = useState<string | null>(null)
+  const [rfNodes, setRfNodes, onNodesChange] = useNodesState<Node>([])
+  const [rfEdges, setRfEdges, onEdgesChange] = useEdgesState<Edge>([])
   const [ideaOpen, setIdeaOpen] = useState(false)
   const [ideas, setIdeas] = useState<IdeaNote[]>([])
+  const dirty = useRef(false)
 
-  const onConnect = useCallback(
-    (c: Connection) => setEdges((eds) => addEdge({ ...c, id: genId() }, eds)),
-    [setEdges],
+  // 初期ロード：mindmap を取得（無ければ作成）。空なら中心ノードを1つ用意する。
+  useEffect(() => {
+    let alive = true
+    void (async () => {
+      const list = await repo.listByWork(workId)
+      let mm =
+        list.find((s) => s.kind === 'mindmap') ??
+        (await repo.create(workId, 'mindmap', 'マインドマップ'))
+      if (mm.nodes.length === 0) {
+        mm = await repo.save(addNode(mm, { id: genId(), kind: 'idea', label: '' }))
+      }
+      if (alive) {
+        dirty.current = false
+        setStructure(mm)
+      }
+    })()
+    return () => {
+      alive = false
+    }
+  }, [repo, workId])
+
+  // structure → React Flow（自動レイアウトで座標を毎回算出・ドラッグ不可）。
+  useEffect(() => {
+    if (!structure) return
+    const pos = layoutTree(structure)
+    setRfNodes(
+      structure.nodes.map((n) => ({
+        id: n.id,
+        type: 'mindmap',
+        draggable: false,
+        position: pos[n.id] ?? { x: 0, y: 0 },
+        data: { label: n.label, isRoot: !n.parentId },
+      })),
+    )
+    setRfEdges(
+      structure.edges.map((e) => ({ id: e.id, source: e.from, target: e.to, type: 'smoothstep' })),
+    )
+  }, [structure, setRfNodes, setRfEdges])
+
+  // 変更を静止後に永続化。
+  useEffect(() => {
+    if (!structure || !dirty.current) return
+    const t = setTimeout(() => {
+      void repo.save(structure)
+    }, SAVE_DELAY_MS)
+    return () => clearTimeout(t)
+  }, [structure, repo])
+
+  const mutate = useCallback((fn: (s: Structure) => Structure) => {
+    dirty.current = true
+    setStructure((s) => (s ? fn(s) : s))
+  }, [])
+
+  const onLabelChange = useCallback(
+    (id: string, label: string) => mutate((s) => updateNode(s, id, { label })),
+    [mutate],
   )
 
-  const addNodeAt = useCallback(
-    (label: string) => {
-      setNodes((nds) => [
-        ...nds,
-        {
+  const addChild = useCallback(
+    (parentId: string, label = '') => {
+      const childId = genId()
+      mutate((s) => {
+        const withNode = addNode(s, { id: childId, kind: 'idea', label, parentId })
+        return addStructEdge(withNode, {
           id: genId(),
-          type: 'structure',
-          position: { x: 140 + (nds.length % 6) * 36, y: 100 + (nds.length % 6) * 36 },
-          data: { label },
-        } satisfies Node,
-      ])
+          from: parentId,
+          to: childId,
+          kind: 'association',
+        })
+      })
+      setSelectedId(childId)
+      setFocusId(childId)
+      return childId
     },
-    [setNodes],
+    [mutate],
+  )
+
+  const onAddChild = useCallback((id: string) => addChild(id), [addChild])
+  const onDelete = useCallback((id: string) => mutate((s) => removeSubtree(s, id)), [mutate])
+
+  const ctx = useMemo(
+    () => ({ onLabelChange, onAddChild, onDelete, focusId }),
+    [onLabelChange, onAddChild, onDelete, focusId],
   )
 
   const openIdeaPicker = useCallback(async () => {
@@ -60,52 +157,52 @@ export default function MindmapView({ repo, workId, ideaRepo }: MindmapViewProps
     setIdeaOpen(true)
   }, [ideaRepo])
 
-  // ダイアログを閉じたら一覧をクリア（次回開くとき最新を読み直す）。
   useEffect(() => {
     if (!ideaOpen) setIdeas([])
   }, [ideaOpen])
 
   const importIdea = (idea: IdeaNote) => {
-    addNodeAt(idea.text)
+    // 選択中ノード（無ければ最初の根）の子として取り込む。
+    const parent = selectedId ?? structure?.nodes.find((n) => !n.parentId)?.id
+    if (parent) addChild(parent, idea.text)
     setIdeaOpen(false)
   }
 
   return (
-    <>
-      <StructureCanvas
-        nodes={flow.nodes}
-        edges={flow.edges}
-        onNodesChange={flow.onNodesChange}
-        onEdgesChange={flow.onEdgesChange}
-        onConnect={onConnect}
-        onRenameNode={flow.setNodeLabel}
-        onRecolorNode={flow.setNodeColor}
-        toolbar={
-          <>
+    <MindmapContext.Provider value={ctx}>
+      <div className="relative h-full w-full">
+        {ideaRepo ? (
+          <div className="absolute top-3 left-3 z-10">
             <Button
               type="button"
               size="sm"
-              onClick={() => addNodeAt('新しいノード')}
-              className="gap-1.5"
+              variant="outline"
+              onClick={() => void openIdeaPicker()}
+              className="gap-1.5 bg-surface-container-lowest/90 text-primary backdrop-blur"
             >
-              <Plus className="size-4" />
-              ノードを追加
+              <StickyNote className="size-4" />
+              ネタ帳から
             </Button>
-            {ideaRepo ? (
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                onClick={() => void openIdeaPicker()}
-                className="gap-1.5 bg-surface-container-lowest/90 text-primary backdrop-blur"
-              >
-                <StickyNote className="size-4" />
-                ネタ帳から
-              </Button>
-            ) : null}
-          </>
-        }
-      />
+          </div>
+        ) : null}
+
+        <ReactFlow
+          nodes={rfNodes}
+          edges={rfEdges}
+          nodeTypes={MINDMAP_NODE_TYPES}
+          onNodesChange={onNodesChange}
+          onEdgesChange={onEdgesChange}
+          onNodeClick={(_, n) => setSelectedId(n.id)}
+          onPaneClick={() => setSelectedId(null)}
+          nodesDraggable={false}
+          nodesConnectable={false}
+          fitView
+          proOptions={{ hideAttribution: true }}
+        >
+          <Background />
+          <Controls showInteractive={false} />
+        </ReactFlow>
+      </div>
 
       <Dialog open={ideaOpen} onOpenChange={setIdeaOpen}>
         <DialogContent className="sm:max-w-md">
@@ -137,6 +234,6 @@ export default function MindmapView({ repo, workId, ideaRepo }: MindmapViewProps
           </DialogBody>
         </DialogContent>
       </Dialog>
-    </>
+    </MindmapContext.Provider>
   )
 }
