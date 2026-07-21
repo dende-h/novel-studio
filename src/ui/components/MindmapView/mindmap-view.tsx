@@ -96,8 +96,8 @@ export default function MindmapView({ repo, workId, ideaRepo }: MindmapViewProps
         id: n.id,
         type: 'mindmap',
         draggable: false,
-        position: pos[n.id] ?? { x: 0, y: 0 },
-        data: { label: n.label, isRoot: !n.parentId },
+        position: { x: pos[n.id]?.x ?? 0, y: pos[n.id]?.y ?? 0 },
+        data: { label: n.label, isRoot: !n.parentId, depth: pos[n.id]?.depth ?? 0 },
       })),
     )
     setRfEdges(
@@ -144,7 +144,17 @@ export default function MindmapView({ repo, workId, ideaRepo }: MindmapViewProps
   )
 
   const onAddChild = useCallback((id: string) => addChild(id), [addChild])
-  const onDelete = useCallback((id: string) => mutate((s) => removeSubtree(s, id)), [mutate])
+  const onDelete = useCallback(
+    (id: string) =>
+      mutate((s) => {
+        const next = removeSubtree(s, id)
+        // 空になったら中心ノードを1つ再生成（常に最低1ノード）。
+        return next.nodes.length === 0
+          ? addNode(next, { id: genId(), kind: 'idea', label: '' })
+          : next
+      }),
+    [mutate],
+  )
 
   const ctx = useMemo(
     () => ({ onLabelChange, onAddChild, onDelete, focusId }),

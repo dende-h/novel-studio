@@ -1,18 +1,18 @@
 import { describe, expect, it } from 'vitest'
 import { addEdge, addNode, emptyStructure } from '@/core/structure'
-import { layoutTree, type Pos } from './tree-layout'
+import { layoutTree, type NodeLayout } from './tree-layout'
 
 /** 座標を取り出す（無ければ失敗）。noUncheckedIndexedAccess 対策。 */
-const at = (p: Record<string, Pos>, k: string): Pos => {
+const at = (p: Record<string, NodeLayout>, k: string): NodeLayout => {
   const v = p[k]
   if (!v) throw new Error(`位置なし: ${k}`)
   return v
 }
 
 describe('tree-layout（マインドマップの自動配置）', () => {
-  it('単一の根は原点', () => {
+  it('単一の根は原点・depth 0', () => {
     const s = addNode(emptyStructure('s', 'w', 'mindmap', 0), { id: 'r', kind: 'idea', label: '' })
-    expect(layoutTree(s).r).toEqual({ x: 0, y: 0 })
+    expect(layoutTree(s).r).toEqual({ x: 0, y: 0, depth: 0 })
   })
 
   it('子は右(深さ)へ、根の y は子の中央', () => {
@@ -39,5 +39,9 @@ describe('tree-layout（マインドマップの自動配置）', () => {
     const p = layoutTree(s)
     expect(at(p, 'a1').x).toBeGreaterThan(at(p, 'a').x)
     expect(at(p, 'a').x).toBeGreaterThan(at(p, 'r').x)
+    // depth が階層を表す（フォント段階に使う）
+    expect(at(p, 'r').depth).toBe(0)
+    expect(at(p, 'a').depth).toBe(1)
+    expect(at(p, 'a1').depth).toBe(2)
   })
 })
