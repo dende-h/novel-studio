@@ -23,6 +23,9 @@ interface Env {
   MCP_OAUTH_ISSUER?: string
   /** このリソースの audience（＝MCP の正準 URI）。 */
   MCP_OAUTH_AUDIENCE?: string
+  /** OAuth 経路の会員照会（Clerk Backend Billing）に使う。 */
+  CLERK_SECRET_KEY?: string
+  CLERK_PUBLISHABLE_KEY?: string
 }
 
 const CORS: Record<string, string> = {

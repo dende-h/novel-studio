@@ -1,5 +1,5 @@
 import { beforeAll, describe, expect, it } from 'vitest'
-import { bearerOf, resolveMcpAuth, verifyClerkOAuthToken } from './mcp-auth'
+import { bearerOf, resolveMcpAuth, verifyOAuthUserId } from './mcp-auth'
 import { hashMcpToken } from './mcp-token'
 
 const ISS = 'https://clerk.example.com'
@@ -66,29 +66,19 @@ describe('mcp-auth（二系統トークン解決）', () => {
     expect(bearerOf(req())).toBe('')
   })
 
-  it('OAuth 未設定（結線前）は verifyClerkOAuthToken が null', async () => {
+  it('OAuth 未設定（結線前）は verifyOAuthUserId が null', async () => {
     const token = await makeJwt(base())
-    expect(await verifyClerkOAuthToken(token, {}, { getJwks, now: NOW })).toBeNull()
+    expect(await verifyOAuthUserId(token, {}, { getJwks, now: NOW })).toBeNull()
   })
 
-  it('OAuth 設定済み：scope に cloud があれば会員', async () => {
-    const token = await makeJwt({ ...base(), scope: 'openid cloud' })
-    const p = await verifyClerkOAuthToken(
+  it('OAuth 設定済み：妥当なトークンは sub(userId) を返す', async () => {
+    const token = await makeJwt(base())
+    const uid = await verifyOAuthUserId(
       token,
       { MCP_OAUTH_ISSUER: ISS, MCP_OAUTH_AUDIENCE: AUD },
       { getJwks, now: NOW },
     )
-    expect(p).toMatchObject({ userId: 'user_1', isMember: true, via: 'oauth' })
-  })
-
-  it('OAuth 設定済み：plan クレームが無ければ非会員', async () => {
-    const token = await makeJwt(base())
-    const p = await verifyClerkOAuthToken(
-      token,
-      { MCP_OAUTH_ISSUER: ISS, MCP_OAUTH_AUDIENCE: AUD },
-      { getJwks, now: NOW },
-    )
-    expect(p).toMatchObject({ userId: 'user_1', isMember: false })
+    expect(uid).toBe('user_1')
   })
 
   it('resolveMcpAuth：mcp_ トークンは D1 で解決し via=token', async () => {
@@ -102,15 +92,26 @@ describe('mcp-auth（二系統トークン解決）', () => {
     expect(p).toBeNull()
   })
 
-  it('resolveMcpAuth：OAuth 有効なら JWT を優先し via=oauth', async () => {
-    const token = await makeJwt({ ...base(), scope: 'cloud' })
+  it('resolveMcpAuth：OAuth 有効なら JWT を優先し、会員照会の結果を isMember に載せる', async () => {
+    const token = await makeJwt(base())
     const p = await resolveMcpAuth(
       req(`Bearer ${token}`),
       { MCP_OAUTH_ISSUER: ISS, MCP_OAUTH_AUDIENCE: AUD },
       fakeDb(new Map()),
-      { getJwks, now: NOW },
+      { getJwks, now: NOW, isMember: async () => true },
     )
-    expect(p).toMatchObject({ userId: 'user_1', via: 'oauth' })
+    expect(p).toMatchObject({ userId: 'user_1', via: 'oauth', isMember: true })
+  })
+
+  it('resolveMcpAuth：OAuth トークンでも会員照会が false なら isMember=false', async () => {
+    const token = await makeJwt(base())
+    const p = await resolveMcpAuth(
+      req(`Bearer ${token}`),
+      { MCP_OAUTH_ISSUER: ISS, MCP_OAUTH_AUDIENCE: AUD },
+      fakeDb(new Map()),
+      { getJwks, now: NOW, isMember: async () => false },
+    )
+    expect(p).toMatchObject({ userId: 'user_1', via: 'oauth', isMember: false })
   })
 
   it('resolveMcpAuth：トークン無しは null', async () => {
