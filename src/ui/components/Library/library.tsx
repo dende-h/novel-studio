@@ -7,6 +7,7 @@ import {
   List,
   Plus,
   Search,
+  Sparkles,
   Upload,
 } from 'lucide-react'
 import { useId, useMemo, useState } from 'react'
@@ -41,6 +42,8 @@ interface LibraryProps {
   onEnterEditor: () => void
   /** クラウドバックアップ管理を開く（会員のみ・未指定なら非表示）。 */
   onOpenCloudBackup?: () => void
+  /** AI の変更取り込みを開く（会員のみ・未指定なら非表示）。 */
+  onOpenAiPull?: () => void
   /** AI・MCP 接続の管理を開く（会員のみ・未指定なら非表示）。 */
   onOpenMcp?: () => void
   /** 執筆活動（草・ストリーク）ページを開く。 */
@@ -86,6 +89,7 @@ export function Library({
   store,
   onEnterEditor,
   onOpenCloudBackup,
+  onOpenAiPull,
   onOpenMcp,
   onOpenActivity,
   onOpenIdeas,
@@ -276,6 +280,16 @@ export function Library({
                           onClick={() => {
                             setDataMenuOpen(false)
                             onOpenCloudBackup()
+                          }}
+                        />
+                      ) : null}
+                      {onOpenAiPull ? (
+                        <DataMenuItem
+                          icon={<Sparkles className="size-[15px]" />}
+                          label="AIの変更を取り込む"
+                          onClick={() => {
+                            setDataMenuOpen(false)
+                            onOpenAiPull()
                           }}
                         />
                       ) : null}

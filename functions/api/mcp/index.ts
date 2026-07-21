@@ -77,12 +77,18 @@ async function loadSnapshot(env: Env, userId: string): Promise<CloudBackup | nul
   }
 }
 
-/** ライブスナップショットを上書き保存（暗号化して PUT）。 */
+/**
+ * ライブスナップショットを上書き保存（暗号化して PUT）。
+ * AI 書き込みの目印として customMetadata.aiEditedAt に現在時刻を刻む
+ * （ブラウザの pushLive は目印を付けずに上書き＝取り込み前に上書きされたら目印も消える）。
+ */
 async function saveSnapshot(env: Env, userId: string, backup: CloudBackup): Promise<boolean> {
   try {
     const key = await importKey(env.ENCRYPTION_KEY)
     const blob = await encryptPart(JSON.stringify(backup), key, liveAad(userId))
-    await env.MEDIA.put(`${userId}/live`, blob as unknown as ArrayBuffer)
+    await env.MEDIA.put(`${userId}/live`, blob as unknown as ArrayBuffer, {
+      customMetadata: { aiEditedAt: String(Date.now()) },
+    })
     return true
   } catch {
     return false
@@ -139,7 +145,10 @@ async function restoreBackup(env: Env, userId: string, id: string): Promise<bool
     const blob = new Uint8Array(await obj.arrayBuffer())
     const plaintext = await decryptPart(blob, key, backupAad(userId, id))
     const liveBlob = await encryptPart(plaintext, key, liveAad(userId))
-    await env.MEDIA.put(`${userId}/live`, liveBlob as unknown as ArrayBuffer)
+    // AI 起点でライブを書き換えたので、取り込み対象として目印を刻む。
+    await env.MEDIA.put(`${userId}/live`, liveBlob as unknown as ArrayBuffer, {
+      customMetadata: { aiEditedAt: String(Date.now()) },
+    })
     return true
   } catch {
     return false

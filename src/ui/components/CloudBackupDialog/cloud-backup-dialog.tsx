@@ -1,4 +1,4 @@
-import { CloudUpload, LoaderCircle, RotateCcw, Sparkles, Trash2 } from 'lucide-react'
+import { CloudUpload, LoaderCircle, RotateCcw, Trash2 } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 import type { BackupService, BackupSummary } from '@/ui/backup/backup-service'
 import { Button } from '@/ui/components/ui/button'
@@ -39,8 +39,6 @@ export function CloudBackupDialog({
   const [backups, setBackups] = useState<BackupSummary[] | null>(null)
   const [busy, setBusy] = useState(false)
   const [confirmId, setConfirmId] = useState<string | null>(null)
-  // AI（MCP）の変更を取り込む前の確認。
-  const [pullConfirm, setPullConfirm] = useState(false)
   // 復元時に「置換前の現在の状態」をクラウドへ残すか（任意・既定オフ＝バックアップを無闇に増やさない）。
   const [keepCurrent, setKeepCurrent] = useState(false)
 
@@ -51,7 +49,6 @@ export function CloudBackupDialog({
   useEffect(() => {
     if (open) {
       setConfirmId(null)
-      setPullConfirm(false)
       setBackups(null)
       void reload()
     }
@@ -65,25 +62,6 @@ export function CloudBackupDialog({
       await reload()
     } finally {
       setBusy(false)
-    }
-  }
-
-  const pullFromAi = async () => {
-    setBusy(true)
-    try {
-      const ok = await service.pullLive()
-      if (ok) {
-        await onRestored()
-        onNotify('AIの変更を取り込みました（ローカルを置き換え）')
-        onOpenChange(false)
-      } else {
-        onNotify('取り込める変更がありません')
-      }
-    } catch {
-      onNotify('取り込みデータが壊れているため取り込みませんでした')
-    } finally {
-      setBusy(false)
-      setPullConfirm(false)
     }
   }
 
@@ -140,45 +118,6 @@ export function CloudBackupDialog({
             )}
             今すぐバックアップ
           </Button>
-
-          {/* AI（MCPコネクタ）が書き込んだ変更をローカルへ取り込む（全置換）。 */}
-          <div className="mt-3 space-y-2 rounded-lg border border-primary/25 bg-primary/5 p-3">
-            <p className="flex items-start gap-1.5 text-on-surface-variant text-xs">
-              <Sparkles className="mt-0.5 size-3.5 shrink-0 text-primary" aria-hidden />
-              <span>
-                Claude などの AI コネクタで編集した内容を取り込みます。
-                <strong>ローカル全体が置き換わります</strong>。
-              </span>
-            </p>
-            {pullConfirm ? (
-              <div className="flex items-center gap-2">
-                <span className="flex-1 text-destructive text-xs">全置換で取り込みますか？</span>
-                <Button size="sm" onClick={() => void pullFromAi()} disabled={busy}>
-                  取り込む
-                </Button>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => setPullConfirm(false)}
-                  disabled={busy}
-                  className="text-on-surface-variant"
-                >
-                  取消
-                </Button>
-              </div>
-            ) : (
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => setPullConfirm(true)}
-                disabled={busy}
-                className="gap-1.5 text-primary"
-              >
-                <Sparkles className="size-4" aria-hidden />
-                AIの変更を取り込む
-              </Button>
-            )}
-          </div>
 
           <label className="flex cursor-pointer items-center gap-2 font-sans text-on-surface-variant text-xs">
             <input

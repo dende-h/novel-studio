@@ -4,6 +4,7 @@ import { App } from './App'
 import { useAuth } from './auth/auth-context'
 import { createDefaultBackupService, createLocalBackupService } from './backup/backup-service'
 import { ActivityPage } from './components/ActivityPage/activity-page'
+import { AiPullDialog } from './components/AiPullDialog/ai-pull-dialog'
 import { CloudBackupDialog } from './components/CloudBackupDialog/cloud-backup-dialog'
 import { HelpPage } from './components/HelpPage/help-page'
 import { IdeaboxPage } from './components/IdeaboxPage/idea-box-page'
@@ -55,6 +56,7 @@ export function Root({ store }: RootProps) {
   // 構造レイヤー（アウトライン／相関図／マインドマップ）は cloud 会員のみ利用。
   const structureRepo = useMemo(() => createDefaultStructureRepository(), [])
   const [backupOpen, setBackupOpen] = useState(false)
+  const [aiPullOpen, setAiPullOpen] = useState(false)
   const [mcpOpen, setMcpOpen] = useState(false)
   // AI・MCP 接続済みか（トークン発行済み）。接続時のみ編集をライブスナップショットへ送る。
   const [mcpConnected, setMcpConnected] = useState(false)
@@ -147,6 +149,7 @@ export function Root({ store }: RootProps) {
           store={store}
           onEnterEditor={() => navigate('/write')}
           onOpenCloudBackup={backupService ? () => setBackupOpen(true) : undefined}
+          onOpenAiPull={backupService ? () => setAiPullOpen(true) : undefined}
           onOpenMcp={backupService ? () => setMcpOpen(true) : undefined}
           onOpenActivity={() => navigate('/activity')}
           onOpenIdeas={() => navigate('/ideas')}
@@ -159,6 +162,15 @@ export function Root({ store }: RootProps) {
         <CloudBackupDialog
           open={backupOpen}
           onOpenChange={setBackupOpen}
+          service={backupService}
+          onNotify={show}
+          onRestored={() => store.init()}
+        />
+      )}
+      {backupService && (
+        <AiPullDialog
+          open={aiPullOpen}
+          onOpenChange={setAiPullOpen}
           service={backupService}
           onNotify={show}
           onRestored={() => store.init()}

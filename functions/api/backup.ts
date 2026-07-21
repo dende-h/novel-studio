@@ -102,6 +102,15 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
 
   const params = new URL(context.request.url).searchParams
 
+  // ?live=meta = ライブスナップショットの有無と AI 最終編集時刻だけを軽量に返す（本体は送らない）。
+  // aiEditedAt は MCP 書き込みが刻む目印。ブラウザの pushLive で上書きされると消える（未取り込みなし）。
+  if (params.get('live') === 'meta') {
+    const head = await context.env.MEDIA.head(`${userId}/live`)
+    if (!head) return json({ exists: false, aiEditedAt: null })
+    const ai = head.customMetadata?.aiEditedAt
+    return json({ exists: true, aiEditedAt: ai ? Number(ai) : null })
+  }
+
   // ?live=1 = MCP 用ライブスナップショットを復号ダウンロード（AI の書き込みを取り込むため）。
   if (params.get('live') === '1') {
     const obj = await context.env.MEDIA.get(`${userId}/live`)

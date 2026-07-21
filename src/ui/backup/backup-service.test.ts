@@ -35,6 +35,8 @@ function makeDeps(over: Partial<BackupDeps> = {}) {
       return true
     },
     getLiveRemote: async () => remote.get('live') ?? null,
+    getLiveMeta: async () =>
+      remote.has('live') ? { exists: true, aiEditedAt: 1234 } : { exists: false, aiEditedAt: null },
     listRemote: async () =>
       [...remote.keys()].map((id) => ({ id, createdAt: Number(id), size: 0 })),
     getRemote: async (id) => remote.get(id) ?? null,
@@ -140,6 +142,28 @@ describe('createBackupService', () => {
 
     const { deps: empty } = makeDeps()
     expect(await createBackupService(empty).pullLive()).toBe(false)
+  })
+
+  it('pullLive({backupCurrent:true}) は取り込み前に現在の状態を退避してから全置換する', async () => {
+    const { deps, created, replaced, remote } = makeDeps()
+    remote.set(
+      'live',
+      serializeBackup(
+        { works: [work('L')], trash: [], profile: {}, activity: [], ideas: [], structures: [] },
+        5,
+      ),
+    )
+    await createBackupService(deps).pullLive({ backupCurrent: true })
+    // 置換前に現在（works=[a]）を安全退避している。
+    expect(JSON.parse(created[0] ?? '{}').works[0].id).toBe('a')
+    expect(replaced[0]?.works.map((w) => w.id)).toEqual(['L'])
+  })
+
+  it('liveInfo はライブの有無と AI 最終編集時刻を返す', async () => {
+    const { deps, remote } = makeDeps()
+    expect(await createBackupService(deps).liveInfo()).toEqual({ exists: false, aiEditedAt: null })
+    remote.set('live', '{}')
+    expect(await createBackupService(deps).liveInfo()).toEqual({ exists: true, aiEditedAt: 1234 })
   })
 
   it('backupNow は現在の全状態を直列化して保存する', async () => {

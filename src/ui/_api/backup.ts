@@ -80,6 +80,25 @@ export async function getBackup(getToken: GetToken, id: string): Promise<string 
   }
 }
 
+/** ライブスナップショットの有無と AI 最終編集時刻（epoch ms・未編集/上書き済みは null）。 */
+export interface LiveMeta {
+  exists: boolean
+  aiEditedAt: number | null
+}
+
+/** ライブスナップショットの軽量メタ（本体は落とさない）。未ログイン/失敗は null。 */
+export async function getLiveMeta(getToken: GetToken): Promise<LiveMeta | null> {
+  const headers = await authHeader(getToken)
+  if (!headers) return null
+  try {
+    const res = await fetch('/api/backup?live=meta', { headers })
+    if (!res.ok) return null
+    return (await res.json()) as LiveMeta
+  } catch {
+    return null
+  }
+}
+
 /** MCP 用ライブスナップショット（AI の書き込み反映先）を平文で取得。無ければ/失敗は null。 */
 export async function getLiveBackup(getToken: GetToken): Promise<string | null> {
   const headers = await authHeader(getToken)
