@@ -118,4 +118,12 @@ describe('glossaryToPlainText', () => {
   it('空の図鑑は空文字（コピー対象なし）', () => {
     expect(glossaryToPlainText([])).toBe('')
   })
+
+  it('withIds を立てると見出しに entry_id を添える（MCP の更新/削除対象の指定用）', () => {
+    expect(glossaryToPlainText([entry({ name: 'アリス', summary: 'a' })], { withIds: true })).toBe(
+      ['# 図鑑', '', '## アリス [entry_id: g-アリス]', '', 'a'].join('\n'),
+    )
+    // 既定（無料コピー導線）は ID を出さない。
+    expect(glossaryToPlainText([entry({ name: 'アリス' })])).not.toContain('entry_id')
+  })
 })

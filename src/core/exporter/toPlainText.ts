@@ -52,14 +52,17 @@ export function workToPlainText(work: Work): string {
   return sections.join('\n\n')
 }
 
-/** 図鑑1項目 → 見出し＋メタ（分類/よみ/別名）＋要約＋本文。画像・内部 id/時刻は持ち込まない。 */
-function entryToPlainText(entry: GlossaryEntry): string {
+/**
+ * 図鑑1項目 → 見出し＋メタ（分類/よみ/別名）＋要約＋本文。画像・時刻は持ち込まない。
+ * `withId` のときだけ見出しに entry_id を添える（MCP の更新/削除対象の指定に必要）。
+ */
+function entryToPlainText(entry: GlossaryEntry, withId = false): string {
   const meta: string[] = []
   if (entry.category) meta.push(`分類: ${entry.category}`)
   if (entry.reading) meta.push(`よみ: ${entry.reading}`)
   if (entry.aliases.length > 0) meta.push(`別名: ${entry.aliases.join(', ')}`)
 
-  const head = [`## ${entry.name}`]
+  const head = [withId ? `## ${entry.name} [entry_id: ${entry.id}]` : `## ${entry.name}`]
   if (meta.length > 0) head.push(meta.join(' ・ '))
 
   const blocks = [head.join('\n')]
@@ -72,8 +75,13 @@ function entryToPlainText(entry: GlossaryEntry): string {
  * 図鑑（オブジェクト辞書）→ AI が読める1ドキュメント。
  * read-only リモート MCP の `get_glossary` ペイロード、および「図鑑も一緒にコピー」導線の共通土台。
  * 入力の並び順を保つ（並べ替えは呼び出し側の責務）。空なら空文字。
+ * `withIds`（MCP 用）を立てると各エントリに entry_id を添える＝更新/削除の対象を指定できる。
+ * 無料コピー導線は既定（ID 無し）のまま＝ユーザーに内部 id を見せない。
  */
-export function glossaryToPlainText(glossary: GlossaryEntry[]): string {
+export function glossaryToPlainText(
+  glossary: GlossaryEntry[],
+  opts: { withIds?: boolean } = {},
+): string {
   if (glossary.length === 0) return ''
-  return ['# 図鑑', ...glossary.map(entryToPlainText)].join('\n\n')
+  return ['# 図鑑', ...glossary.map((e) => entryToPlainText(e, opts.withIds))].join('\n\n')
 }

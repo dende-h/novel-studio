@@ -50,7 +50,8 @@ export const MCP_TOOLS = [
   },
   {
     name: 'get_glossary',
-    description: '1 作品の図鑑（設定資料・オブジェクト辞書）をプレーンテキストで返す。',
+    description:
+      '1 作品の図鑑（設定資料・オブジェクト辞書）を各エントリの [entry_id: …] 付きで返す。この entry_id を upsert_glossary_entry の id / delete_glossary_entry の entry_id に渡す。',
     inputSchema: {
       type: 'object',
       properties: workIdProp,
@@ -118,12 +119,15 @@ export const MCP_TOOLS = [
   {
     name: 'upsert_glossary_entry',
     description:
-      '図鑑エントリ（キャラ・用語・場所など）を追加または更新する。id を渡すと更新、無ければ新規作成。',
+      '図鑑エントリ（キャラ・用語・場所など）を追加または更新する。id を渡すと更新、無ければ新規作成。既存を更新するときは先に get_glossary で [entry_id: …] を確認して id に渡す。',
     inputSchema: {
       type: 'object',
       properties: {
         ...workIdProp,
-        id: { type: 'string', description: '更新する既存エントリの id（新規なら省略）' },
+        id: {
+          type: 'string',
+          description: '更新する既存エントリの id（get_glossary の [entry_id: …]。新規なら省略）',
+        },
         name: { type: 'string', description: '名称（必須）' },
         aliases: { type: 'array', items: { type: 'string' }, description: '別名' },
         category: { type: 'string', description: '分類（キャラ/用語/場所 等）' },
@@ -137,10 +141,16 @@ export const MCP_TOOLS = [
   },
   {
     name: 'delete_glossary_entry',
-    description: '図鑑エントリを削除する。',
+    description: '図鑑エントリを削除する。先に get_glossary で対象の [entry_id: …] を確認する。',
     inputSchema: {
       type: 'object',
-      properties: { ...workIdProp, entry_id: { type: 'string', description: '図鑑エントリの id' } },
+      properties: {
+        ...workIdProp,
+        entry_id: {
+          type: 'string',
+          description: '図鑑エントリの id（get_glossary の [entry_id: …]）',
+        },
+      },
       required: ['work_id', 'entry_id'],
       additionalProperties: false,
     },
@@ -376,7 +386,10 @@ async function callTool(
     if (!work) return text(`work_id "${workId}" の作品が見つかりません。`, true)
     if (name === 'get_work') return text(workToPlainText(work))
     if (name === 'get_glossary') {
-      return text(glossaryToPlainText(work.glossary ?? []) || '（この作品の図鑑は空です）')
+      // 各エントリに entry_id を添える＝ upsert（更新）/ delete の対象を AI が指定できる。
+      return text(
+        glossaryToPlainText(work.glossary ?? [], { withIds: true }) || '（この作品の図鑑は空です）',
+      )
     }
     return text(structuresToPlainText(snap?.structures ?? [], work))
   }

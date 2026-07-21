@@ -143,9 +143,12 @@ describe('handleMcpMessage — 読み取り', () => {
   })
 
   it('get_glossary / get_structures', async () => {
-    expect(
-      contentText(await handleMcpMessage(call('get_glossary', { work_id: 'w1' }), deps([work()]))),
-    ).toContain('アカリ')
+    const glossaryText = contentText(
+      await handleMcpMessage(call('get_glossary', { work_id: 'w1' }), deps([work()])),
+    )
+    expect(glossaryText).toContain('アカリ')
+    // upsert/delete の対象指定に使う entry_id が読み取り結果に出ること。
+    expect(glossaryText).toContain('[entry_id: g1]')
     let chart = emptyStructure('c', 'w1', 'chart', 0)
     chart = addNode(chart, { id: 'n1', kind: 'character', label: '', glossaryRef: 'g1' })
     chart = addNode(chart, { id: 'n2', kind: 'character', label: '師匠' })
