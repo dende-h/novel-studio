@@ -141,10 +141,10 @@ export default function MindmapView({ repo, workId, ideaRepo }: MindmapViewProps
   )
 
   const addChild = useCallback(
-    (parentId: string, label = '') => {
+    (parentId: string, side: 'l' | 'r', label = '') => {
       const childId = genId()
       mutate((s) => {
-        const withNode = addNode(s, { id: childId, kind: 'idea', label, parentId })
+        const withNode = addNode(s, { id: childId, kind: 'idea', label, parentId, side })
         return addStructEdge(withNode, {
           id: genId(),
           from: parentId,
@@ -159,7 +159,7 @@ export default function MindmapView({ repo, workId, ideaRepo }: MindmapViewProps
     [mutate],
   )
 
-  const onAddChild = useCallback((id: string) => addChild(id), [addChild])
+  const onAddChild = useCallback((id: string, side: 'l' | 'r') => addChild(id, side), [addChild])
   const onDelete = useCallback(
     (id: string) =>
       mutate((s) => {
@@ -188,9 +188,11 @@ export default function MindmapView({ repo, workId, ideaRepo }: MindmapViewProps
   }, [ideaOpen])
 
   const importIdea = (idea: IdeaNote) => {
-    // 選択中ノード（無ければ最初の根）の子として取り込む。
-    const parent = selectedId ?? structure?.nodes.find((n) => !n.parentId)?.id
-    if (parent) addChild(parent, idea.text)
+    // 選択中ノード（無ければ最初の根）の子として、そのノードの向きへ取り込む。
+    const parent = selectedId
+      ? structure?.nodes.find((n) => n.id === selectedId)
+      : structure?.nodes.find((n) => !n.parentId)
+    if (parent) addChild(parent.id, parent.side ?? 'r', idea.text)
     setIdeaOpen(false)
   }
 

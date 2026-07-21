@@ -5,7 +5,8 @@ import { createContext, useContext, useEffect, useRef, useState } from 'react'
 /** マインドマップの操作をノードへ渡すコンテキスト（＋で子を生やす・入力・削除）。 */
 export interface MindmapActions {
   onLabelChange: (id: string, label: string) => void
-  onAddChild: (id: string) => void
+  /** 指定した向き（'l'|'r'）へ子ノードを生やす。 */
+  onAddChild: (id: string, side: 'l' | 'r') => void
   onDelete: (id: string) => void
   /** 生やした直後に入力へフォーカスするノードID。 */
   focusId: string | null
@@ -54,8 +55,10 @@ function MindmapNode({ id, data }: NodeProps) {
   const d = data as MindmapNodeData
   const depth = typeof d.depth === 'number' ? d.depth : 0
   const tier = TIER[Math.min(depth, 2)] ?? TIER[1]
-  // 左に伸びる枝は＋を左側に置く（中心・右枝は右側）。
-  const growLeft = (typeof d.dir === 'number' ? d.dir : 0) < 0
+  const dir = typeof d.dir === 'number' ? d.dir : 0
+  const isRoot = depth === 0
+  // 中心は左右どちらへも伸ばせる。枝ノードは自分の向きへのみ伸ばす。
+  const mySide: 'l' | 'r' = dir < 0 ? 'l' : 'r'
   // 入力はローカル state で保持し、外部の再レンダーでカーソルが飛ばないようにする。
   const [text, setText] = useState(d.label)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -83,38 +86,46 @@ function MindmapNode({ id, data }: NodeProps) {
             ctx?.onLabelChange(id, e.target.value)
           }}
           onKeyDown={(e) => {
-            // Enter で子を生やす。RF のショートカット（削除/パン）を奪われないよう伝播を止める。
+            // Enter で子を生やす（中心は右へ、枝は自分の向きへ）。RF のショートカットを奪われないよう伝播を止める。
             if (e.key === 'Enter') {
               e.preventDefault()
-              ctx?.onAddChild(id)
+              ctx?.onAddChild(id, mySide)
             }
             e.stopPropagation()
           }}
-          placeholder={depth === 0 ? '中心のテーマ' : '入力…'}
-          className={`nodrag nopan w-full bg-transparent text-center ${tier.font} ${depth === 0 ? 'font-semibold' : ''} text-on-surface outline-none placeholder:text-on-surface-variant/45`}
+          placeholder={isRoot ? '中心のテーマ' : '入力…'}
+          className={`nodrag nopan w-full bg-transparent text-center ${tier.font} ${isRoot ? 'font-semibold' : ''} text-on-surface outline-none placeholder:text-on-surface-variant/45`}
         />
       </div>
 
-      {/* ＋：枝の向きへ子ノードを生やす（hover / フォーカスで出現）。 */}
-      <button
-        type="button"
-        aria-label="子ノードを追加"
-        onClick={() => ctx?.onAddChild(id)}
-        className={`nodrag nopan -translate-y-1/2 absolute top-1/2 grid size-6 place-items-center rounded-full bg-primary text-white opacity-0 shadow-sm transition-opacity hover:bg-primary/90 group-focus-within:opacity-100 group-hover:opacity-100 ${
-          growLeft ? '-left-3' : '-right-3'
-        }`}
-      >
-        <Plus className="size-3.5" />
-      </button>
+      {/* ＋：中心は左右の両方、枝は自分の向きだけ。hover / フォーカスで出現。 */}
+      {isRoot || mySide === 'r' ? (
+        <button
+          type="button"
+          aria-label="右へ子ノードを追加"
+          onClick={() => ctx?.onAddChild(id, 'r')}
+          className="nodrag nopan -right-3 -translate-y-1/2 absolute top-1/2 grid size-6 place-items-center rounded-full bg-primary text-white opacity-0 shadow-sm transition-opacity hover:bg-primary/90 group-focus-within:opacity-100 group-hover:opacity-100"
+        >
+          <Plus className="size-3.5" />
+        </button>
+      ) : null}
+      {isRoot || mySide === 'l' ? (
+        <button
+          type="button"
+          aria-label="左へ子ノードを追加"
+          onClick={() => ctx?.onAddChild(id, 'l')}
+          className="nodrag nopan -left-3 -translate-y-1/2 absolute top-1/2 grid size-6 place-items-center rounded-full bg-primary text-white opacity-0 shadow-sm transition-opacity hover:bg-primary/90 group-focus-within:opacity-100 group-hover:opacity-100"
+        >
+          <Plus className="size-3.5" />
+        </button>
+      ) : null}
 
-      {/* 削除：hover で出現。子孫ごと消える（どのノードでも可）。伸びる向きと反対の角に置く。 */}
+      {/* 削除：hover で出現。子孫ごと消える（どのノードでも可）。 */}
       <button
         type="button"
         aria-label="このノードを削除"
         onClick={() => ctx?.onDelete(id)}
-        className={`nodrag nopan -top-2 absolute grid size-5 place-items-center rounded-full bg-surface-container-high text-on-surface-variant opacity-0 shadow-sm transition-opacity hover:text-on-surface group-hover:opacity-100 ${
-          growLeft ? '-right-2' : '-left-2'
-        }`}
+        className="nodrag nopan -top-2 -right-2 absolute grid size-5 place-items-center rounded-full bg-surface-container-high text-on-surface-variant opacity-0 shadow-sm transition-opacity hover:text-on-surface group-hover:opacity-100"
       >
         <X className="size-3" />
       </button>

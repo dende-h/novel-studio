@@ -24,6 +24,8 @@ export const StructureNodeSchema = z.object({
   /** 配置（相関図・マインドマップ用）。 */
   x: z.number().optional(),
   y: z.number().optional(),
+  /** マインドマップで中心から見た向き（'l'=左, 'r'=右）。枝はこの向きへ伸びる。 */
+  side: z.enum(['l', 'r']).optional(),
 })
 export type StructureNode = z.infer<typeof StructureNodeSchema>
 
