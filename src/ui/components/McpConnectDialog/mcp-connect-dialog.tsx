@@ -28,45 +28,27 @@ import {
 } from '@/ui/components/ui/dialog'
 
 /**
- * 非エンジニアの作者が自分の AI に貼るだけで設定できる「設定おまかせプロンプト」。
- * AI 自身に A（自分で設定できる開発者向けツール）/ B（会話だけのアプリ→手順を案内）を判断させ、
- * 静的 Bearer 非対応の AI では正直に「つなげない」と言わせる（過剰約束を避ける）。
- * {{URL}} と {{TOKEN}} を実値に置換して使う。
+ * CLI 系 AI（Claude Code / Cursor / Gemini CLI など）にそのまま貼れる「設定おまかせプロンプト」。
+ * {{URL}} と {{TOKEN}} を実値に置換して使う。ChatGPT アプリ等の会話専用クライアントは対象外
+ * （このアプリで動作確認できているのは Claude コネクタ・Genspark コネクタ・CLI の3系統）。
  */
-const SETUP_PROMPT_TEMPLATE = `あなたは、パソコンや AI の設定が苦手な小説作者（私）をサポートする、とても親切なアシスタントです。専門用語やターミナル、JSON は私にはわかりません。むずかしい言葉は使わず、私がつまずいている一点だけを、一度に一つずつ、やさしい日本語で案内してください。
+const CLI_SETUP_PROMPT = `これから「リモート MCP」を設定します。私の小説アプリ（Novel Studio / コトノハ）にあなたがつながり、私の作品を読み書きできるようになります。あなたのツール（Claude Code / Cursor / Gemini CLI など）の正式な書式で、下記の url＋header 形式のリモート MCP サーバーを追加してください。
 
-これから私は、自分が書いた小説を「あなた（この AI）に読んでもらえるようにする設定」をしたいです。これは「リモート MCP」というしくみで、私の小説アプリにあなたがつながり、作品を【読むだけ】できるようになるものです。書き換え・削除・投稿は一切できません。うまくいかなくても私のデータが壊れることはないので、安心して進めてください。
+・MCP サーバー URL：{{URL}}
+・認証：HTTP ヘッダーに「Authorization: Bearer {{TOKEN}}」を付与
+・通信方式：Streamable HTTP（JSON-RPC 2.0）
 
-━━━━━━━━━━━━━━━━
-■ 接続に使う情報（この2つを使います）
-・接続先アドレス（MCP サーバー URL）：{{URL}}
-・あいことば（アクセストークン）：{{TOKEN}}
-　（このトークンは私の作品を読める「鍵」です。他人に見せたり、SNS やチャットに貼り直させたりしないでください。画面やログに繰り返し表示しないでください。）
+参考の設定形式（あなたのツールの正式書式に合わせて調整してください）：
+{"mcpServers":{"novel-studio":{"url":"{{URL}}","headers":{"Authorization":"Bearer {{TOKEN}}"}}}}
 
-■ 技術メモ（あなた＝AI 向け）
-・通信方式は「Streamable HTTP（JSON-RPC 2.0）」。認証は HTTP ヘッダーに「Authorization: Bearer {{TOKEN}}」を1行付けるだけです。
-・使える読み取りツールは3つだけ：list_works（作品一覧）／ get_work（作品の本文）／ get_glossary（作品の設定資料・図鑑）。これ以外（書き込み等）はできない仕様です。
-━━━━━━━━━━━━━━━━
+設定を保存し、必要なら再読み込み（再起動）してください。トークンは作品を読み書きできる鍵です。平文でファイルに残さず、可能なら環境変数などで扱ってください。最後に list_works ツールを1回呼び、私の作品一覧（タイトルと話数）が出れば成功です。`
 
-■ まず、あなた自身がどちらのタイプか、あなた自身で判断してください
-
-【A：自分で設定できるタイプ】＝私のパソコンでコマンドを実行したり、設定ファイルを自分で編集できる（例：Claude Code、Cursor、Gemini CLI など）
-　→ あなたのツールの正しい書式で、このリモート MCP を自分で追加してください。参考までに url＋headers 形式なら次が使えます（そのまま使わず、あなたのツールの正式な書式に合わせて調整してください）：
-　{"mcpServers":{"novel-studio":{"url":"{{URL}}","headers":{"Authorization":"Bearer {{TOKEN}}"}}}}
-　設定を保存して、必要なら再読み込み（再起動）してください。可能なら、トークンはファイルに平文で残さず環境変数などで扱ってください。
-
-【B：会話で答えるだけのタイプ】＝私のパソコンのファイルやコマンドは直接いじれない（例：ChatGPT、Gemini アプリ、Claude のアプリ／ブラウザ版、Grok など）
-　→ あなた自身のアプリで「外部のコネクター（MCP）を追加する」設定画面までの行き方を、実際のメニュー名・ボタン名で、1メッセージにつき手順1〜2個までで案内してください。私が「できました」と言ってから次へ進んでください。入力欄が出たら、上の「URL」を URL 欄へ、「Authorization: Bearer {{TOKEN}}」を認証（ヘッダー／API キー）欄へ、どこに何を貼るかまで指定してください。「Bearer」のうしろの半角スペースを消さない、URL の前後に余計な空白を入れない、といったハマりやすい点も先回りで教えてください。
-
-どちらか迷う場合は、勝手に両方やらず、私に「あなたは○○というアプリですか？」と一つだけ質問して確かめてから進めてください。
-
-■ とても大切なお願い（正直に教えてください）
-お使いの AI によっては、この「あいことば（Bearer トークン）」方式での接続に対応しておらず、つなげないことがあります（例：ChatGPT アプリや個人向け Gemini アプリは、この形式のトークンに未対応の場合があります）。もしあなたがこの方式に対応していない、または接続できない場合は、無理に進めず「このアプリではこの方法では直接つなげません」と正直に教えてください。そのうえで、対応している別の AI（Claude Code / Cursor / Claude デスクトップ など）で同じ設定をする場合の貼り方も、上の URL とヘッダーを使う形で用意してください。
-
-■ 最後に、必ず動作確認してください
-設定できたら、いきなり本文を読む前に、まず「list_works」ツールを1回だけ呼んで、私の作品一覧（タイトルと話数）を出してください。ここに私の作品名が並べば接続成功です。「接続できました。あなたの作品◯件が読めます」のように、私がわかる一言でまとめてください（トークン全体を再表示する必要はありません）。並ばない・エラーになるときは、原因（トークンの貼り間違い・URL 違い・そのアプリが未対応、など）を私にわかる言葉で説明し、直し方を教えてください。
-
-それでは、あなたが A と B のどちらとして進めるかを一言で宣言してから、案内を始めてください。`
+type ClientTab = 'claude' | 'genspark' | 'cli'
+const TABS: { id: ClientTab; label: string }[] = [
+  { id: 'claude', label: 'Claude' },
+  { id: 'genspark', label: 'Genspark' },
+  { id: 'cli', label: 'CLI' },
+]
 
 interface McpConnectDialogProps {
   open: boolean
@@ -84,7 +66,7 @@ interface McpConnectDialogProps {
 const fmt = (ms: number) =>
   new Date(ms).toLocaleString('ja-JP', { dateStyle: 'medium', timeStyle: 'short' })
 
-/** 値＋コピーボタンの 1 行（トークン・URL・設定コマンド用）。 */
+/** 値＋コピーボタンの 1 行（トークン・URL・ヘッダー・コマンド用）。 */
 function CopyRow({ label, value }: { label: string; value: string }) {
   const [copied, setCopied] = useState(false)
   const copy = async () => {
@@ -147,10 +129,35 @@ function CopyButton({ label, value }: { label: string; value: string }) {
   )
 }
 
+/** 番号付き手順リスト。 */
+function Steps({ items }: { items: React.ReactNode[] }) {
+  return (
+    <ol className="ml-4 list-decimal space-y-1 font-sans text-on-surface text-sm leading-relaxed">
+      {items.map((it, i) => (
+        // 手順は静的な並びなので index キーで問題ない。
+        // biome-ignore lint/suspicious/noArrayIndexKey: static list
+        <li key={i}>{it}</li>
+      ))}
+    </ol>
+  )
+}
+
+/** トークンが今は見えない（再接続時）ことの案内。 */
+function TokenHint() {
+  return (
+    <p className="rounded-md bg-surface-container-highest p-2 font-sans text-on-surface-variant text-xs leading-relaxed">
+      アクセストークンは<strong>発行時にしか表示されません</strong>
+      。下の「トークンを再発行」で設定情報を出し直せます。
+    </p>
+  )
+}
+
 /**
- * AI・MCP アクセス（read-only リモート MCP）の接続管理（会員のみ）。
- * トークンを発行して AI クライアント（Claude Code/Desktop 等）に貼れば、AI が作品を「読む」だけできる。
- * 書き込みは無い。トークンは作品を読める鍵なので共有しない／漏れたら失効させる。平文表示は発行時の一度きり。
+ * AI・MCP アクセス（リモート MCP）の接続管理（会員のみ）。
+ * 動作確認済みは Claude コネクタ（OAuth）／Genspark コネクタ（Bearer ヘッダー）／CLI（Claude Code・
+ * Cursor・Gemini CLI 等）の3系統。AI は作品の読み取りに加え編集・図鑑・構造・バックアップ操作もできる
+ * （AI の編集は「AIの変更を取り込む」で反映するまでローカルには影響しない）。
+ * トークンは作品を読み書きできる鍵なので共有しない／漏れたら失効。平文表示は発行時の一度きり。
  */
 export function McpConnectDialog({
   open,
@@ -165,15 +172,17 @@ export function McpConnectDialog({
   const [agreed, setAgreed] = useState(false)
   const [plaintext, setPlaintext] = useState<string | null>(null) // 発行直後のみ表示
   const [reissue, setReissue] = useState(false)
-  const [showPrompt, setShowPrompt] = useState(false) // 設定プロンプトの中身プレビュー
-  const [showAdvanced, setShowAdvanced] = useState(false) // 詳しい人向け（URL/JSON 等）
+  const [client, setClient] = useState<ClientTab>('claude') // 設定手順のタブ
+  const [showPrompt, setShowPrompt] = useState(false) // CLI プロンプトの中身プレビュー
+  const [showAdvanced, setShowAdvanced] = useState(false) // CLI: JSON/コマンド
 
   const mcpUrl = `${window.location.origin}/api/mcp`
-  // 各 AI クライアントに合わせて貼れる設定（実トークンを埋め込む。平文が無い＝再表示不可）。
-  const setupPrompt = plaintext
-    ? SETUP_PROMPT_TEMPLATE.replaceAll('{{URL}}', mcpUrl).replaceAll('{{TOKEN}}', plaintext)
+  const gensparkHeader = plaintext
+    ? JSON.stringify({ 'Content-Type': 'application/json', Authorization: `Bearer ${plaintext}` })
     : ''
-  const authHeader = plaintext ? `Bearer ${plaintext}` : ''
+  const cliPrompt = plaintext
+    ? CLI_SETUP_PROMPT.replaceAll('{{URL}}', mcpUrl).replaceAll('{{TOKEN}}', plaintext)
+    : ''
   const jsonConfig = plaintext
     ? JSON.stringify(
         {
@@ -205,6 +214,7 @@ export function McpConnectDialog({
     setPlaintext(null)
     setAgreed(false)
     setReissue(false)
+    setClient('claude')
     setShowPrompt(false)
     setShowAdvanced(false)
     setStatus(null)
@@ -257,153 +267,208 @@ export function McpConnectDialog({
             AI に接続（MCP）
           </DialogTitle>
           <DialogDescription>
-            お使いの AI（Claude Code・Cursor・Gemini CLI など）に、あなたの作品を
-            <strong>読むだけ</strong>させる設定です。発行後の
-            <strong>プロンプトを AI に貼るだけ</strong>
-            。むずかしい言葉やターミナルの知識はいりません。AI
-            は読み取り専用で、書き込み・削除はできません。
+            お使いの AI に、あなたの作品を<strong>読み書き</strong>させる設定です。動作確認済みは{' '}
+            <strong>Claude</strong>・<strong>Genspark</strong>・
+            <strong>CLI（Claude Code / Cursor 等）</strong>の3つ。
           </DialogDescription>
         </DialogHeader>
 
         <DialogBody>
-          {/* 情報の流れと漏えいリスクの明示（オプトイン） */}
+          {/* 情報の流れとリスクの明示（読み書き対応） */}
           <div className="flex gap-2 rounded-lg border border-amber-500/30 bg-amber-500/5 p-3">
             <TriangleAlert className="mt-0.5 size-4 shrink-0 text-amber-600" aria-hidden />
             <p className="font-sans text-on-surface-variant text-xs leading-relaxed">
-              接続すると、編集した内容がクラウドに保存され AI
-              が読めるようになります。トークンは作品を読める
-              <strong>鍵</strong>
-              です。第三者に共有せず、漏れたと思ったら「接続を解除」で失効させてください。
+              接続すると編集内容がクラウドに保存され、AI が作品を<strong>読み取り・編集</strong>
+              できます（バックアップの作成・復元も）。AI
+              の編集は「AIの変更を取り込む」で反映するまで
+              <strong>ローカルには影響しません</strong>
+              。トークンは作品の<strong>鍵</strong>。共有せず、漏れたら「接続を解除」で失効を。
             </p>
           </div>
 
-          {/* 発行直後だけ設定を表示（トークン平文は再表示できない）。主役は「AIに貼るだけ」プロンプト。 */}
+          {/* 発行直後だけの注意（トークン平文は再表示できない） */}
           {plaintext && (
-            <div className="min-w-0 space-y-3 rounded-lg border border-primary/30 bg-primary/5 p-3">
-              <p className="font-sans text-on-surface text-xs">
-                <strong>接続情報を発行しました。</strong>
-                この画面を閉じると<strong>二度と表示できません</strong>。今すぐ設定してください。
-              </p>
-
-              {/* 主役：AI に貼るだけの設定プロンプト */}
-              <div className="space-y-2">
-                <p className="font-sans text-on-surface text-sm leading-relaxed">
-                  下のボタンでコピーして、お使いの AI（ChatGPT・Gemini・Claude・Grok・Cursor
-                  など）に貼って送ってください。あとは AI が設定を手伝ってくれます。
-                </p>
-                <CopyButton label="設定おまかせプロンプトをコピー" value={setupPrompt} />
-                <button
-                  type="button"
-                  onClick={() => setShowPrompt((v) => !v)}
-                  className="font-sans text-on-surface-variant text-xs underline underline-offset-2"
-                >
-                  {showPrompt ? 'プロンプトの中身を隠す' : 'プロンプトの中身を見る'}
-                </button>
-                {showPrompt && (
-                  <pre className="max-h-40 overflow-auto whitespace-pre-wrap break-words rounded-md bg-surface-container-highest p-2 font-sans text-on-surface-variant text-xs leading-relaxed">
-                    {setupPrompt}
-                  </pre>
-                )}
-              </div>
-
-              {/* 補助：詳しい人向け（URL・トークンを自分で設定） */}
-              <div className="border-outline-variant/30 border-t pt-2">
-                <button
-                  type="button"
-                  onClick={() => setShowAdvanced((v) => !v)}
-                  className="flex items-center gap-1 font-sans text-on-surface-variant text-xs"
-                >
-                  <ChevronRight
-                    className={cn('size-3.5 transition-transform', showAdvanced && 'rotate-90')}
-                    aria-hidden
-                  />
-                  詳しい人向け（URL・トークンを自分で設定）
-                </button>
-                {showAdvanced && (
-                  <div className="mt-2 space-y-2">
-                    <CopyRow label="アクセストークン" value={plaintext} />
-                    <CopyRow label="MCP サーバー URL" value={mcpUrl} />
-                    <CopyRow label="Authorization ヘッダー" value={authHeader} />
-                    <CopyRow
-                      label="設定 JSON（Cursor など url＋headers 形式）"
-                      value={jsonConfig}
-                    />
-                    <CopyRow label="Claude Code（CLI）" value={cliCommand} />
-                  </div>
-                )}
-              </div>
-
-              <p className="font-sans text-on-surface-variant text-xs leading-relaxed">
-                ※ 静的トークンで確実につながるのは <strong>Claude Code・Cursor・Gemini CLI</strong>{' '}
-                など。ChatGPT アプリや個人向け Gemini
-                アプリなどは対応しておらず、つながらないことがあります（その場合はプロンプトが正直に案内します）。
-              </p>
-            </div>
+            <p className="rounded-lg border border-primary/30 bg-primary/5 p-3 font-sans text-on-surface text-xs leading-relaxed">
+              <strong>接続情報を発行しました。</strong>この画面を閉じるとトークンは
+              <strong>二度と表示できません</strong>。下の手順で今すぐ設定してください。
+            </p>
           )}
 
           {status === null ? (
             <p className="py-4 text-center text-on-surface-variant text-sm">読み込み中…</p>
-          ) : connected ? (
+          ) : connected || plaintext ? (
             <div className="min-w-0 space-y-3">
-              <p className="font-sans text-on-surface text-sm">
-                接続中
-                {status.createdAt != null && (
+              {connected && status?.createdAt != null && (
+                <p className="font-sans text-on-surface text-sm">
+                  接続中
                   <span className="text-on-surface-variant"> ・ 発行 {fmt(status.createdAt)}</span>
-                )}
-              </p>
-
-              {/* 再接続時（平文が無い）は URL のみ表示。偽トークン入りのコマンドは出さない。 */}
-              {!plaintext && (
-                <>
-                  <CopyRow label="MCP サーバー URL" value={mcpUrl} />
-                  <p className="font-sans text-on-surface-variant text-xs leading-relaxed">
-                    アクセストークンは<strong>発行時にしか表示されません</strong>
-                    。分からなくなった／設定をやり直す場合は「トークンを再発行」してください（設定情報がまとめて再表示されます）。
-                  </p>
-                </>
+                </p>
               )}
 
-              <div className="flex gap-2 pt-1">
-                {reissue ? (
-                  <>
-                    <span className="flex-1 self-center text-destructive text-xs">
-                      再発行すると今のトークンは無効になります。
-                    </span>
-                    <Button size="sm" onClick={generate} disabled={busy}>
-                      再発行する
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => setReissue(false)}
-                      disabled={busy}
-                    >
-                      取消
-                    </Button>
-                  </>
-                ) : (
-                  <>
-                    <Button
-                      variant="outline"
-                      className="flex-1 gap-2"
-                      onClick={() => setReissue(true)}
-                      disabled={busy}
-                    >
-                      <RefreshCw className="size-4" aria-hidden />
-                      トークンを再発行
-                    </Button>
-                    <Button
-                      variant="outline"
-                      className="flex-1 gap-2 text-destructive hover:text-destructive"
-                      onClick={revoke}
-                      disabled={busy}
-                    >
-                      <Unplug className="size-4" aria-hidden />
-                      接続を解除
-                    </Button>
-                  </>
-                )}
+              {/* クライアント別の設定手順タブ */}
+              <div className="flex gap-1 rounded-lg bg-surface-container p-1">
+                {TABS.map((t) => (
+                  <button
+                    key={t.id}
+                    type="button"
+                    onClick={() => setClient(t.id)}
+                    className={cn(
+                      'flex-1 rounded-md px-2 py-1.5 font-sans text-xs transition-colors',
+                      client === t.id
+                        ? 'bg-surface text-on-surface shadow-sm'
+                        : 'text-on-surface-variant hover:text-on-surface',
+                    )}
+                  >
+                    {t.label}
+                  </button>
+                ))}
               </div>
+
+              {client === 'claude' && (
+                <div className="space-y-2">
+                  <p className="font-sans text-on-surface-variant text-xs leading-relaxed">
+                    Claude（デスクトップ / ブラウザ）にカスタムコネクタとして追加します。
+                    <strong>トークンは不要</strong>（ログインで認証）。
+                  </p>
+                  <Steps
+                    items={[
+                      <>
+                        設定 →「コネクタ」→<strong>「カスタムコネクタを追加」</strong>
+                      </>,
+                      <>「リモート MCP サーバーの URL」に下記を貼って追加</>,
+                      <>
+                        「接続」→ 表示されるログイン画面で<strong>許可</strong>
+                        （あなたの Novel Studio アカウント）
+                      </>,
+                    ]}
+                  />
+                  <CopyRow label="MCP サーバー URL" value={mcpUrl} />
+                </div>
+              )}
+
+              {client === 'genspark' && (
+                <div className="space-y-2">
+                  <p className="font-sans text-on-surface-variant text-xs leading-relaxed">
+                    Genspark の<strong>「新しい MCP サーバーを追加」</strong>で設定します。
+                  </p>
+                  <Steps
+                    items={[
+                      <>
+                        サーバータイプ：<strong>StreamableHttp</strong> を選択
+                      </>,
+                      <>サーバー URL：下記を貼る</>,
+                      <>リクエストヘッダー：下記 JSON を貼る</>,
+                      <>「サーバーを追加」</>,
+                    ]}
+                  />
+                  <CopyRow label="サーバー URL" value={mcpUrl} />
+                  {plaintext ? (
+                    <CopyRow label="リクエストヘッダー" value={gensparkHeader} />
+                  ) : (
+                    <TokenHint />
+                  )}
+                </div>
+              )}
+
+              {client === 'cli' && (
+                <div className="space-y-2">
+                  <p className="font-sans text-on-surface-variant text-xs leading-relaxed">
+                    Claude Code・Cursor・Gemini CLI など、自分で設定できる AI 向け。下の
+                    <strong>プロンプトを AI に貼る</strong>と設定してくれます。
+                  </p>
+                  {plaintext ? (
+                    <>
+                      <CopyButton label="CLI 設定プロンプトをコピー" value={cliPrompt} />
+                      <button
+                        type="button"
+                        onClick={() => setShowPrompt((v) => !v)}
+                        className="font-sans text-on-surface-variant text-xs underline underline-offset-2"
+                      >
+                        {showPrompt ? 'プロンプトの中身を隠す' : 'プロンプトの中身を見る'}
+                      </button>
+                      {showPrompt && (
+                        <pre className="max-h-40 overflow-auto whitespace-pre-wrap break-words rounded-md bg-surface-container-highest p-2 font-sans text-on-surface-variant text-xs leading-relaxed">
+                          {cliPrompt}
+                        </pre>
+                      )}
+                      <div className="border-outline-variant/30 border-t pt-2">
+                        <button
+                          type="button"
+                          onClick={() => setShowAdvanced((v) => !v)}
+                          className="flex items-center gap-1 font-sans text-on-surface-variant text-xs"
+                        >
+                          <ChevronRight
+                            className={cn(
+                              'size-3.5 transition-transform',
+                              showAdvanced && 'rotate-90',
+                            )}
+                            aria-hidden
+                          />
+                          手動で設定する（URL・JSON・コマンド）
+                        </button>
+                        {showAdvanced && (
+                          <div className="mt-2 space-y-2">
+                            <CopyRow label="MCP サーバー URL" value={mcpUrl} />
+                            <CopyRow label="アクセストークン" value={plaintext} />
+                            <CopyRow
+                              label="設定 JSON（Cursor など url＋headers 形式）"
+                              value={jsonConfig}
+                            />
+                            <CopyRow label="Claude Code（CLI）コマンド" value={cliCommand} />
+                          </div>
+                        )}
+                      </div>
+                    </>
+                  ) : (
+                    <TokenHint />
+                  )}
+                </div>
+              )}
+
+              {/* 接続中の管理（再発行・解除） */}
+              {connected && (
+                <div className="flex gap-2 border-outline-variant/30 border-t pt-3">
+                  {reissue ? (
+                    <>
+                      <span className="flex-1 self-center text-destructive text-xs">
+                        再発行すると今のトークンは無効になります。
+                      </span>
+                      <Button size="sm" onClick={generate} disabled={busy}>
+                        再発行する
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => setReissue(false)}
+                        disabled={busy}
+                      >
+                        取消
+                      </Button>
+                    </>
+                  ) : (
+                    <>
+                      <Button
+                        variant="outline"
+                        className="flex-1 gap-2"
+                        onClick={() => setReissue(true)}
+                        disabled={busy}
+                      >
+                        <RefreshCw className="size-4" aria-hidden />
+                        トークンを再発行
+                      </Button>
+                      <Button
+                        variant="outline"
+                        className="flex-1 gap-2 text-destructive hover:text-destructive"
+                        onClick={revoke}
+                        disabled={busy}
+                      >
+                        <Unplug className="size-4" aria-hidden />
+                        接続を解除
+                      </Button>
+                    </>
+                  )}
+                </div>
+              )}
             </div>
           ) : (
             <div className="space-y-3">
@@ -414,7 +479,7 @@ export function McpConnectDialog({
                   onChange={(e) => setAgreed(e.target.checked)}
                   className="mt-0.5 size-4 accent-primary"
                 />
-                読み取り専用であることを理解し、作品をクラウド経由で AI に読ませることに同意します。
+                作品をクラウド経由で AI に読み書きさせることを理解し、同意します。
               </label>
               <Button onClick={generate} disabled={busy || !agreed} className="w-full gap-2">
                 {busy ? (
