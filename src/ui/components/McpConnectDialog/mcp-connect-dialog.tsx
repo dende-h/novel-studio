@@ -265,7 +265,7 @@ export function McpConnectDialog({
                       <>「リモート MCP サーバーの URL」に下記を貼って追加</>,
                       <>
                         「接続」→ 表示されるログイン画面で<strong>許可</strong>
-                        （あなたの Novel Studio アカウント）
+                        （あなたの コトノハ-leaf- アカウント）
                       </>,
                     ]}
                   />

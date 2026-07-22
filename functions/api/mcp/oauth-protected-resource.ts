@@ -31,7 +31,7 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
     resource: `${url.origin}/api/mcp`,
     authorizationServers: context.env.MCP_OAUTH_ISSUER ? [context.env.MCP_OAUTH_ISSUER] : [],
     scopesSupported: context.env.MCP_OAUTH_SCOPES?.split(/\s+/).filter(Boolean),
-    resourceName: 'Novel Studio',
+    resourceName: 'コトノハ-leaf-',
   })
   return new Response(JSON.stringify(meta), {
     status: 200,

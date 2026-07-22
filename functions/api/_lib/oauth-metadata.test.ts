@@ -20,10 +20,10 @@ describe('oauth-metadata（RFC 9728）', () => {
       resource: 'https://x/api/mcp',
       authorizationServers: ['https://a'],
       scopesSupported: ['cloud'],
-      resourceName: 'Novel Studio',
+      resourceName: 'コトノハ-leaf-',
     })
     expect(m.scopes_supported).toEqual(['cloud'])
-    expect(m.resource_name).toBe('Novel Studio')
+    expect(m.resource_name).toBe('コトノハ-leaf-')
   })
 
   it('wwwAuthenticateBearer は resource_metadata を含み、error は任意', () => {

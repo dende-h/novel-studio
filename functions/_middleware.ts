@@ -77,7 +77,7 @@ async function oauthDiscovery(context: MiddlewareContext, url: URL): Promise<Res
       resource: `${url.origin}/api/mcp`,
       authorizationServers: context.env.MCP_OAUTH_ISSUER ? [context.env.MCP_OAUTH_ISSUER] : [],
       scopesSupported: context.env.MCP_OAUTH_SCOPES?.split(/\s+/).filter(Boolean),
-      resourceName: 'Novel Studio',
+      resourceName: 'コトノハ-leaf-',
     })
     return jsonDiscovery(JSON.stringify(meta))
   }
@@ -130,7 +130,7 @@ export async function onRequest(context: MiddlewareContext): Promise<Response> {
   return new Response('認証が必要です。', {
     status: 401,
     headers: {
-      'WWW-Authenticate': 'Basic realm="novel-studio (staging)", charset="UTF-8"',
+      'WWW-Authenticate': 'Basic realm="コトノハ-leaf- (staging)", charset="UTF-8"',
     },
   })
 }
