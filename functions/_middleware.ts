@@ -37,19 +37,36 @@ const DISCOVERY_CORS: Record<string, string> = {
   'Access-Control-Max-Age': '86400',
 }
 
+const jsonDiscovery = (body: string): Response =>
+  new Response(body, {
+    status: 200,
+    headers: {
+      'content-type': 'application/json',
+      'cache-control': 'public, max-age=3600',
+      ...DISCOVERY_CORS,
+    },
+  })
+
 /**
  * OAuth ディスカバリ要求ならレスポンスを返す（該当しなければ null）。
  * ベーシック認証より前段で処理し、stg でも無認証で到達できるようにする。
+ *
+ * ChatGPT は PRM の authorization_servers ポインタを辿らず、AS メタデータ／OIDC 設定を
+ * MCP ホスト側の well-known へ直接叩き、しかも 302 リダイレクトを追わないことがある。
+ * そこで AS 系ドキュメントは Clerk から取得して **200 JSON でそのまま中継**する
+ * （取得失敗時のみ Clerk へ 302 フォールバック）。Claude は従来どおりポインタ経由で動く。
  */
-function oauthDiscovery(context: MiddlewareContext, url: URL): Response | null {
+async function oauthDiscovery(context: MiddlewareContext, url: URL): Promise<Response | null> {
   const path = url.pathname
   const isPrm =
     path === '/.well-known/oauth-protected-resource' ||
     // RFC 9728 の path-aware 形式（リソースが /api/mcp のとき）。
     path === '/.well-known/oauth-protected-resource/api/mcp'
-  const isAsRedirect = path === '/.well-known/oauth-authorization-server'
+  const isAsMeta =
+    path === '/.well-known/oauth-authorization-server' ||
+    path === '/.well-known/openid-configuration'
 
-  if (!isPrm && !isAsRedirect) return null
+  if (!isPrm && !isAsMeta) return null
   if (context.request.method === 'OPTIONS') {
     return new Response(null, { status: 204, headers: DISCOVERY_CORS })
   }
@@ -62,23 +79,20 @@ function oauthDiscovery(context: MiddlewareContext, url: URL): Response | null {
       scopesSupported: context.env.MCP_OAUTH_SCOPES?.split(/\s+/).filter(Boolean),
       resourceName: 'Novel Studio',
     })
-    return new Response(JSON.stringify(meta), {
-      status: 200,
-      headers: {
-        'content-type': 'application/json',
-        'cache-control': 'public, max-age=3600',
-        ...DISCOVERY_CORS,
-      },
-    })
+    return jsonDiscovery(JSON.stringify(meta))
   }
 
-  // AS メタデータをリソースドメイン側で探すクライアント向けの保険。
-  // 認可サーバーは Clerk（別ホスト）なので、その issuer の同名ドキュメントへ委譲する。
-  if (context.env.MCP_OAUTH_ISSUER) {
-    const target = `${context.env.MCP_OAUTH_ISSUER.replace(/\/$/, '')}/.well-known/oauth-authorization-server`
-    return new Response(null, { status: 302, headers: { location: target, ...DISCOVERY_CORS } })
+  // isAsMeta：Clerk の同名ドキュメント（同じ well-known パス）を取得して 200 で中継する。
+  const issuer = context.env.MCP_OAUTH_ISSUER?.replace(/\/$/, '')
+  if (!issuer) return null
+  const upstream = `${issuer}${path}`
+  try {
+    const res = await fetch(upstream, { headers: { accept: 'application/json' } })
+    if (res.ok) return jsonDiscovery(await res.text())
+  } catch {
+    // 取得失敗時は下の 302 へフォールバック。
   }
-  return null
+  return new Response(null, { status: 302, headers: { location: upstream, ...DISCOVERY_CORS } })
 }
 
 export async function onRequest(context: MiddlewareContext): Promise<Response> {
@@ -97,7 +111,7 @@ export async function onRequest(context: MiddlewareContext): Promise<Response> {
   }
 
   // 1) OAuth ディスカバリはベーシック認証・ルーティングより前に、無認証で返す。
-  const discovery = oauthDiscovery(context, url)
+  const discovery = await oauthDiscovery(context, url)
   if (discovery) return discovery
 
   // 2) /api/* は各 Function 側で Clerk(Bearer JWT) を検証する。ここでベーシック認証
