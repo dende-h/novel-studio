@@ -1,14 +1,4 @@
-import {
-  Bot,
-  Check,
-  ChevronRight,
-  Copy,
-  LoaderCircle,
-  RefreshCw,
-  Sparkles,
-  TriangleAlert,
-  Unplug,
-} from 'lucide-react'
+import { Bot, Check, Copy, LoaderCircle, RefreshCw, TriangleAlert, Unplug } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { cn } from '@/lib/utils'
 import {
@@ -27,27 +17,10 @@ import {
   DialogTitle,
 } from '@/ui/components/ui/dialog'
 
-/**
- * CLI 系 AI（Claude Code / Cursor / Gemini CLI など）にそのまま貼れる「設定おまかせプロンプト」。
- * {{URL}} と {{TOKEN}} を実値に置換して使う。ChatGPT アプリ等の会話専用クライアントは対象外
- * （このアプリで動作確認できているのは Claude コネクタ・Genspark コネクタ・CLI の3系統）。
- */
-const CLI_SETUP_PROMPT = `これから「リモート MCP」を設定します。私の小説アプリ（Novel Studio / コトノハ）にあなたがつながり、私の作品を読み書きできるようになります。あなたのツール（Claude Code / Cursor / Gemini CLI など）の正式な書式で、下記の url＋header 形式のリモート MCP サーバーを追加してください。
-
-・MCP サーバー URL：{{URL}}
-・認証：HTTP ヘッダーに「Authorization: Bearer {{TOKEN}}」を付与
-・通信方式：Streamable HTTP（JSON-RPC 2.0）
-
-参考の設定形式（あなたのツールの正式書式に合わせて調整してください）：
-{"mcpServers":{"novel-studio":{"url":"{{URL}}","headers":{"Authorization":"Bearer {{TOKEN}}"}}}}
-
-設定を保存し、必要なら再読み込み（再起動）してください。トークンは作品を読み書きできる鍵です。平文でファイルに残さず、可能なら環境変数などで扱ってください。最後に list_works ツールを1回呼び、私の作品一覧（タイトルと話数）が出れば成功です。`
-
-type ClientTab = 'claude' | 'genspark' | 'cli'
+type ClientTab = 'claude' | 'genspark'
 const TABS: { id: ClientTab; label: string }[] = [
   { id: 'claude', label: 'Claude' },
   { id: 'genspark', label: 'Genspark' },
-  { id: 'cli', label: 'CLI' },
 ]
 
 interface McpConnectDialogProps {
@@ -66,7 +39,7 @@ interface McpConnectDialogProps {
 const fmt = (ms: number) =>
   new Date(ms).toLocaleString('ja-JP', { dateStyle: 'medium', timeStyle: 'short' })
 
-/** 値＋コピーボタンの 1 行（トークン・URL・ヘッダー・コマンド用）。 */
+/** 値＋コピーボタンの 1 行（URL・ヘッダー用）。 */
 function CopyRow({ label, value }: { label: string; value: string }) {
   const [copied, setCopied] = useState(false)
   const copy = async () => {
@@ -82,8 +55,8 @@ function CopyRow({ label, value }: { label: string; value: string }) {
     <div className="min-w-0 space-y-1">
       <p className="font-sans text-on-surface-variant text-xs">{label}</p>
       <div className="flex min-w-0 items-stretch gap-2">
-        {/* URL/トークン/コマンドは長い1トークンになりがち。break-all で必ず折り返し、grid 列が
-            max-content まで広がってダイアログをはみ出すのを防ぐ（max-h＋スクロールで縦も抑制）。 */}
+        {/* URL/ヘッダーは長い1トークンになりがち。break-all で必ず折り返し、はみ出しを防ぐ
+            （max-h＋スクロールで縦も抑制）。 */}
         <code className="max-h-24 min-w-0 flex-1 overflow-y-auto whitespace-pre-wrap break-all rounded-md bg-surface-container-highest px-2 py-1.5 font-mono text-on-surface text-xs">
           {value}
         </code>
@@ -102,30 +75,6 @@ function CopyRow({ label, value }: { label: string; value: string }) {
         </Button>
       </div>
     </div>
-  )
-}
-
-/** 目立つ全幅コピー・ボタン（長い設定プロンプト用。中身は行内に出さず「コピー」に集約）。 */
-function CopyButton({ label, value }: { label: string; value: string }) {
-  const [copied, setCopied] = useState(false)
-  const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(value)
-      setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
-    } catch {
-      /* クリップボード不可の環境では下の「中身を見る」から手動選択に任せる */
-    }
-  }
-  return (
-    <Button onClick={copy} className="h-auto w-full gap-2 whitespace-normal py-3 text-center">
-      {copied ? (
-        <Check className="size-4 shrink-0" aria-hidden />
-      ) : (
-        <Sparkles className="size-4 shrink-0" aria-hidden />
-      )}
-      {copied ? 'コピーしました' : label}
-    </Button>
   )
 }
 
@@ -154,8 +103,8 @@ function TokenHint() {
 
 /**
  * AI・MCP アクセス（リモート MCP）の接続管理（会員のみ）。
- * 動作確認済みは Claude コネクタ（OAuth）／Genspark コネクタ（Bearer ヘッダー）／CLI（Claude Code・
- * Cursor・Gemini CLI 等）の3系統。AI は作品の読み取りに加え編集・図鑑・構造・バックアップ操作もできる
+ * 動作確認済みは Claude コネクタ（OAuth・トークン不要）／Genspark コネクタ（Bearer ヘッダー）の2系統。
+ * AI は作品の読み取りに加え編集・図鑑・構造・バックアップ操作もできる
  * （AI の編集は「AIの変更を取り込む」で反映するまでローカルには影響しない）。
  * トークンは作品を読み書きできる鍵なので共有しない／漏れたら失効。平文表示は発行時の一度きり。
  */
@@ -173,29 +122,10 @@ export function McpConnectDialog({
   const [plaintext, setPlaintext] = useState<string | null>(null) // 発行直後のみ表示
   const [reissue, setReissue] = useState(false)
   const [client, setClient] = useState<ClientTab>('claude') // 設定手順のタブ
-  const [showPrompt, setShowPrompt] = useState(false) // CLI プロンプトの中身プレビュー
-  const [showAdvanced, setShowAdvanced] = useState(false) // CLI: JSON/コマンド
 
   const mcpUrl = `${window.location.origin}/api/mcp`
   const gensparkHeader = plaintext
     ? JSON.stringify({ 'Content-Type': 'application/json', Authorization: `Bearer ${plaintext}` })
-    : ''
-  const cliPrompt = plaintext
-    ? CLI_SETUP_PROMPT.replaceAll('{{URL}}', mcpUrl).replaceAll('{{TOKEN}}', plaintext)
-    : ''
-  const jsonConfig = plaintext
-    ? JSON.stringify(
-        {
-          mcpServers: {
-            'novel-studio': { url: mcpUrl, headers: { Authorization: `Bearer ${plaintext}` } },
-          },
-        },
-        null,
-        2,
-      )
-    : ''
-  const cliCommand = plaintext
-    ? `claude mcp add --transport http novel-studio ${mcpUrl} --header "Authorization: Bearer ${plaintext}"`
     : ''
 
   const load = useCallback(async () => {
@@ -215,8 +145,6 @@ export function McpConnectDialog({
     setAgreed(false)
     setReissue(false)
     setClient('claude')
-    setShowPrompt(false)
-    setShowAdvanced(false)
     setStatus(null)
     void load()
   }, [open, load])
@@ -268,8 +196,7 @@ export function McpConnectDialog({
           </DialogTitle>
           <DialogDescription>
             お使いの AI に、あなたの作品を<strong>読み書き</strong>させる設定です。動作確認済みは{' '}
-            <strong>Claude</strong>・<strong>Genspark</strong>・
-            <strong>CLI（Claude Code / Cursor 等）</strong>の3つ。
+            <strong>Claude</strong> と <strong>Genspark</strong> の2つです。
           </DialogDescription>
         </DialogHeader>
 
@@ -364,61 +291,6 @@ export function McpConnectDialog({
                   <CopyRow label="サーバー URL" value={mcpUrl} />
                   {plaintext ? (
                     <CopyRow label="リクエストヘッダー" value={gensparkHeader} />
-                  ) : (
-                    <TokenHint />
-                  )}
-                </div>
-              )}
-
-              {client === 'cli' && (
-                <div className="space-y-2">
-                  <p className="font-sans text-on-surface-variant text-xs leading-relaxed">
-                    Claude Code・Cursor・Gemini CLI など、自分で設定できる AI 向け。下の
-                    <strong>プロンプトを AI に貼る</strong>と設定してくれます。
-                  </p>
-                  {plaintext ? (
-                    <>
-                      <CopyButton label="CLI 設定プロンプトをコピー" value={cliPrompt} />
-                      <button
-                        type="button"
-                        onClick={() => setShowPrompt((v) => !v)}
-                        className="font-sans text-on-surface-variant text-xs underline underline-offset-2"
-                      >
-                        {showPrompt ? 'プロンプトの中身を隠す' : 'プロンプトの中身を見る'}
-                      </button>
-                      {showPrompt && (
-                        <pre className="max-h-40 overflow-auto whitespace-pre-wrap break-words rounded-md bg-surface-container-highest p-2 font-sans text-on-surface-variant text-xs leading-relaxed">
-                          {cliPrompt}
-                        </pre>
-                      )}
-                      <div className="border-outline-variant/30 border-t pt-2">
-                        <button
-                          type="button"
-                          onClick={() => setShowAdvanced((v) => !v)}
-                          className="flex items-center gap-1 font-sans text-on-surface-variant text-xs"
-                        >
-                          <ChevronRight
-                            className={cn(
-                              'size-3.5 transition-transform',
-                              showAdvanced && 'rotate-90',
-                            )}
-                            aria-hidden
-                          />
-                          手動で設定する（URL・JSON・コマンド）
-                        </button>
-                        {showAdvanced && (
-                          <div className="mt-2 space-y-2">
-                            <CopyRow label="MCP サーバー URL" value={mcpUrl} />
-                            <CopyRow label="アクセストークン" value={plaintext} />
-                            <CopyRow
-                              label="設定 JSON（Cursor など url＋headers 形式）"
-                              value={jsonConfig}
-                            />
-                            <CopyRow label="Claude Code（CLI）コマンド" value={cliCommand} />
-                          </div>
-                        )}
-                      </div>
-                    </>
                   ) : (
                     <TokenHint />
                   )}
