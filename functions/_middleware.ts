@@ -84,6 +84,18 @@ function oauthDiscovery(context: MiddlewareContext, url: URL): Response | null {
 export async function onRequest(context: MiddlewareContext): Promise<Response> {
   const url = new URL(context.request.url)
 
+  // [一時デバッグ] MCP/OAuth 系リクエストの到達をログに残す（ChatGPT がどこで詰まるか調査用）。
+  // `wrangler pages deployment tail` は明示ログのみ流すため、これで実リクエストが可視化される。
+  // 原因特定後に削除する。
+  if (url.pathname.startsWith('/api/mcp') || url.pathname.startsWith('/.well-known/')) {
+    const h = context.request.headers
+    console.log(
+      `[mcp-probe] ${context.request.method} ${url.pathname}${url.search} ` +
+        `ua="${h.get('user-agent') ?? '-'}" accept="${h.get('accept') ?? '-'}" ` +
+        `auth=${h.get('authorization') ? 'yes' : 'no'} mcpver=${h.get('mcp-protocol-version') ?? '-'}`,
+    )
+  }
+
   // 1) OAuth ディスカバリはベーシック認証・ルーティングより前に、無認証で返す。
   const discovery = oauthDiscovery(context, url)
   if (discovery) return discovery
