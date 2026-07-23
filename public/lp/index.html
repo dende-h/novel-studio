@@ -137,6 +137,18 @@
   .checks li { padding-left: 30px; position: relative; margin-bottom: 12px; font-size: 14px; }
   .checks li::before { content: "✓"; position: absolute; left: 0; top: 0; color: var(--forest-700); font-weight: 700; }
 
+  /* 組み立てる（構造化ツール） */
+  .build { background: var(--cream-50); }
+  .build-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+  .build-card { position: relative; background: var(--cream-0); border: 1px solid var(--gray-200); border-radius: 14px; padding: 26px 24px; }
+  .build-card .b-svg { width: 88px; height: 64px; margin-bottom: 12px; }
+  .build-card h3 { font-family: var(--serif); font-size: 18px; color: var(--gray-900); margin-bottom: 8px; }
+  .build-card p { font-size: 13px; color: var(--gray-600); }
+  .b-tag { position: absolute; top: 16px; right: 16px; font-size: 10px; letter-spacing: 0.08em; color: var(--wheat-700);
+    background: var(--wheat-100); border-radius: 999px; padding: 3px 10px; }
+  .build-note { text-align: center; margin-top: 30px; font-size: 13px; color: var(--gray-600); }
+  .build-note strong { color: var(--forest-700); }
+
   /* 安心（ローカルファースト） */
   .trust { background: var(--forest-900); color: #e8efe6; }
   .trust h2, .trust h3 { color: #fff; }
@@ -189,7 +201,7 @@
 
   @media (max-width: 860px) {
     .hero-grid, .tate-grid { grid-template-columns: 1fr; }
-    .cards, .trust-grid { grid-template-columns: 1fr; }
+    .cards, .trust-grid, .build-grid { grid-template-columns: 1fr; }
     .plans { grid-template-columns: 1fr; }
     .nav-links a:not(.btn) { display: none; }
   }
@@ -203,6 +215,7 @@
     <nav class="nav-links">
       <a href="#features">できること</a>
       <a href="#tate">縦書き</a>
+      <a href="#build">組み立て</a>
       <a href="#keep">続けやすさ</a>
       <a href="#plans">料金</a>
       <a class="btn" href="/">無料で始める</a>
@@ -325,6 +338,61 @@
     </div>
   </section>
 
+  <!-- ================= 組み立てる（構造化ツール） ================= -->
+  <section id="build" class="build">
+    <div class="wrap">
+      <div class="sec-head">
+        <span class="en">Structure</span>
+        <h2>物語を、組み立てる。</h2>
+        <p>話の流れも、人物の関係も、ふとした思いつきも。ぜんぶ本文とつながる、3つの道具で。</p>
+      </div>
+      <div class="build-grid">
+        <div class="build-card">
+          <span class="b-tag">クラウド</span>
+          <svg class="b-svg" viewBox="0 0 88 64" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+            <line x1="14" y1="14" x2="14" y2="50" stroke="#6b9660" stroke-width="2"/>
+            <circle cx="14" cy="14" r="4" fill="#2c5b27"/>
+            <circle cx="14" cy="32" r="4" fill="#6b9660"/>
+            <circle cx="14" cy="50" r="4" fill="#6b9660"/>
+            <rect x="26" y="9" width="54" height="10" rx="3" fill="#e3ece1"/>
+            <rect x="26" y="27" width="48" height="10" rx="3" fill="#f2f7f1" stroke="#e4e6eb"/>
+            <rect x="26" y="45" width="40" height="10" rx="3" fill="#f2f7f1" stroke="#e4e6eb"/>
+          </svg>
+          <h3>アウトライン</h3>
+          <p>話ごとに構成をメモ。本文と双方向に同期し、ドラッグで並べ替え。全体の流れがひと目でわかります。</p>
+        </div>
+        <div class="build-card">
+          <span class="b-tag">クラウド</span>
+          <svg class="b-svg" viewBox="0 0 88 64" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+            <line x1="22" y1="20" x2="64" y2="15" stroke="#b98f63" stroke-width="2"/>
+            <line x1="22" y1="20" x2="38" y2="50" stroke="#6b9660" stroke-width="2"/>
+            <line x1="64" y1="15" x2="38" y2="50" stroke="#6b9660" stroke-width="2"/>
+            <circle cx="22" cy="20" r="8" fill="#e3ece1" stroke="#2c5b27" stroke-width="2"/>
+            <circle cx="64" cy="15" r="8" fill="#e3ece1" stroke="#2c5b27" stroke-width="2"/>
+            <circle cx="38" cy="50" r="8" fill="#f2e6d4" stroke="#b98f63" stroke-width="2"/>
+          </svg>
+          <h3>相関図</h3>
+          <p>人物や勢力の関係を図に。図鑑のキャラを置いて、線でつなぐだけ。上下左右どこへでも結べます。</p>
+        </div>
+        <div class="build-card">
+          <span class="b-tag">クラウド</span>
+          <svg class="b-svg" viewBox="0 0 88 64" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+            <path d="M34 32 C 48 32, 50 16, 62 16" stroke="#6b9660" stroke-width="2"/>
+            <path d="M34 32 H 62" stroke="#6b9660" stroke-width="2"/>
+            <path d="M34 32 C 48 32, 50 48, 62 48" stroke="#6b9660" stroke-width="2"/>
+            <rect x="8" y="23" width="28" height="18" rx="9" fill="#2c5b27"/>
+            <circle cx="66" cy="16" r="5.5" fill="#e3ece1" stroke="#6b9660" stroke-width="2"/>
+            <circle cx="66" cy="32" r="5.5" fill="#e3ece1" stroke="#6b9660" stroke-width="2"/>
+            <circle cx="66" cy="48" r="5.5" fill="#e3ece1" stroke="#6b9660" stroke-width="2"/>
+          </svg>
+          <h3>マインドマップ</h3>
+          <p>思いつきを中心から枝分かれで。＋を押すだけでどんどん伸び、発想がそのまま形になります。</p>
+        </div>
+      </div>
+      <p class="build-note">思いつきのメモは、無料の<strong>ネタ帳</strong>から。育ってきたら、この3つでじっくり組み立てられます。</p>
+    </div>
+  </section>
+
   <!-- ================= つづく仕組み ================= -->
   <section id="keep" class="trust">
     <div class="wrap">
@@ -364,6 +432,7 @@
           <div class="price">¥0 <small>／ずっと</small></div>
           <ul>
             <li>執筆・縦書きプレビュー・図鑑</li>
+            <li>ネタ帳（思いつきメモ）</li>
             <li>自動保存＋版履歴（端末内）</li>
             <li>縦書きEPUB／なろう・カクヨム書き出し</li>
             <li>執筆の記録・一括置換</li>
@@ -376,9 +445,10 @@
           <div class="price">有料プラン<small>（アプリ内でご案内）</small></div>
           <ul>
             <li>フリーの全機能</li>
-            <li>クラウドバックアップ＆復元（暗号化）</li>
+            <li>アウトライン・相関図・マインドマップ（本文と連動）</li>
+            <li>クラウドバックアップ＆復元（暗号化・全データ）</li>
             <li>自宅のPCでも、出先のタブレットでも続きから</li>
-            <li>AI に原稿を読ませて相談（読み取り専用・MCP）</li>
+            <li>AI に原稿を読み書きさせる（Claude・Genspark／MCP）</li>
           </ul>
           <a class="btn ghost" href="/">アプリで詳しく見る</a>
         </div>
@@ -396,7 +466,7 @@
       <div class="faq">
         <details>
           <summary>本当に無料ですか？</summary>
-          <p>はい。書く・組む・書き出す——執筆に必要な機能はすべて無料で、制限もありません。有料なのは端末をまたぐクラウドバックアップと AI 接続だけです。</p>
+          <p>はい。書く・組む・書き出す——執筆に必要な機能はすべて無料で、制限もありません。有料なのは、端末をまたぐクラウドバックアップ、アウトライン・相関図・マインドマップ、AI 接続です。</p>
         </details>
         <details>
           <summary>原稿が消えてしまうことはありませんか？</summary>
@@ -411,8 +481,12 @@
           <p>はい。「小説家になろう」「カクヨム」の記法にそのまま書き出せます。ルビや傍点も各サイトの記法へ自動変換されます。</p>
         </details>
         <details>
+          <summary>話の流れや人物の関係も整理できますか？</summary>
+          <p>クラウドプランでは、アウトライン（話ごとの構成メモ）・相関図（人物の関係図）・マインドマップ（発想の枝分かれ）が使えます。いずれも本文とつながっていて、書きながら構想を育てられます。思いつきのメモだけなら、無料のネタ帳でも始められます。</p>
+        </details>
+        <details>
           <summary>AI 連携は原稿を学習に使われませんか？</summary>
-          <p>コトノハ-leaf- 自体は AI を内蔵せず、原稿をどこにも送りません。希望する場合のみ、読み取り専用トークンでお使いの AI（Claude など）から原稿を参照させられます。主導権は常にあなたにあります。</p>
+          <p>コトノハ-leaf- 自体は AI を内蔵せず、原稿を勝手に外部へ送ることはありません。希望する場合のみ、お使いの AI（Claude・Genspark）から原稿を読み・編集させられます（MCP）。AI の編集は、あなたが「取り込む」まで手元の原稿に反映されないので、主導権は常にあなたにあります。</p>
         </details>
       </div>
     </div>
