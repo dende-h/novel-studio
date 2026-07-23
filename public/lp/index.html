@@ -118,10 +118,11 @@
 
   .cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
   .card { background: var(--cream-0); border: 1px solid var(--gray-200); border-radius: 12px; padding: 26px 24px; }
-  .card .icon { width: 40px; height: 40px; border-radius: 10px; background: var(--forest-50); color: var(--forest-700);
-    display: flex; align-items: center; justify-content: center; font-size: 19px; margin-bottom: 14px; }
   .card h3 { font-family: var(--serif); font-size: 17px; color: var(--gray-900); margin-bottom: 8px; }
   .card p { font-size: 13px; color: var(--gray-600); }
+  /* 実アプリのスクリーンショット（16:10 で統一）。 */
+  .shot { display: block; width: 100%; height: auto; aspect-ratio: 16 / 10; object-fit: cover; border-radius: 10px;
+    border: 1px solid var(--gray-200); margin-bottom: 14px; background: var(--cream-100); }
 
   /* 縦書きの気持ちよさ */
   .tate { background: var(--paper); position: relative; overflow: hidden; }
@@ -141,7 +142,7 @@
   .build { background: var(--cream-50); }
   .build-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
   .build-card { position: relative; background: var(--cream-0); border: 1px solid var(--gray-200); border-radius: 14px; padding: 26px 24px; }
-  .build-card .b-svg { width: 88px; height: 64px; margin-bottom: 12px; }
+  .build-card .shot { margin-bottom: 12px; }
   .build-card h3 { font-family: var(--serif); font-size: 18px; color: var(--gray-900); margin-bottom: 8px; }
   .build-card p { font-size: 13px; color: var(--gray-600); }
   .b-tag { position: absolute; top: 16px; right: 16px; font-size: 10px; letter-spacing: 0.08em; color: var(--wheat-700);
@@ -288,32 +289,32 @@
       </div>
       <div class="cards">
         <div class="card">
-          <div class="icon">縦</div>
+          <img class="shot" src="shots/editor.webp" width="1200" height="750" loading="lazy" decoding="async" alt="執筆画面：左に本文、右にルビ・傍点つきの縦書きプレビュー">
           <h3>縦書きライブプレビュー</h3>
           <p>書いた文章が、その場で本の見た目に。ルビや傍点もそのまま確認できます。</p>
         </div>
         <div class="card">
-          <div class="icon">鑑</div>
+          <img class="shot" src="shots/glossary.webp" width="1200" height="750" loading="lazy" decoding="async" alt="図鑑画面：人物・場所・道具をカードで整理">
           <h3>図鑑（設定メモ）</h3>
           <p>登場人物や用語をメモしておける辞書機能。名前を <code>[[かぎかっこ]]</code> で囲むだけで、本文とつながります。</p>
         </div>
         <div class="card">
-          <div class="icon">守</div>
+          <img class="shot" src="shots/history.webp" width="1200" height="749" loading="lazy" decoding="async" alt="版履歴パネル：自動保存された版がならび、いつでも戻せる">
           <h3>自動保存＆履歴</h3>
           <p>書いた内容は自動で保存。少し前の状態にも戻せるので、消える心配がありません。</p>
         </div>
         <div class="card">
-          <div class="icon">出</div>
+          <img class="shot" src="shots/export.webp" width="1200" height="750" loading="lazy" decoding="async" alt="書き出しダイアログ：EPUB・Web投稿形式・ZIP・AIに渡すから選べる">
           <h3>ワンクリック書き出し</h3>
           <p>書けたら、EPUB や「なろう」「カクヨム」の形式でそのまま出力。投稿もかんたんです。</p>
         </div>
         <div class="card">
-          <div class="icon">草</div>
+          <img class="shot" src="shots/activity.webp" width="1200" height="750" loading="lazy" decoding="async" alt="執筆の記録：カレンダーヒートマップと連続日数・累計文字数">
           <h3>執筆の記録</h3>
           <p>毎日どれくらい書いたかを記録します。続けた日数が見えるので、自然と習慣になります。</p>
         </div>
         <div class="card">
-          <div class="icon">替</div>
+          <img class="shot" src="shots/replace.webp" width="1200" height="750" loading="lazy" decoding="async" alt="一括置換パネル：この話の本文を対象にまとめて置換">
           <h3>一括置換と検索</h3>
           <p>キャラ名の変更も、作品の検索もかんたん。書き直しも気軽にできます。</p>
         </div>
@@ -361,42 +362,19 @@
       <div class="build-grid">
         <div class="build-card">
           <span class="b-tag">クラウド</span>
-          <svg class="b-svg" viewBox="0 0 88 64" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-            <line x1="14" y1="14" x2="14" y2="50" stroke="#6b9660" stroke-width="2"/>
-            <circle cx="14" cy="14" r="4" fill="#2c5b27"/>
-            <circle cx="14" cy="32" r="4" fill="#6b9660"/>
-            <circle cx="14" cy="50" r="4" fill="#6b9660"/>
-            <rect x="26" y="9" width="54" height="10" rx="3" fill="#e3ece1"/>
-            <rect x="26" y="27" width="48" height="10" rx="3" fill="#f2f7f1" stroke="#e4e6eb"/>
-            <rect x="26" y="45" width="40" height="10" rx="3" fill="#f2f7f1" stroke="#e4e6eb"/>
-          </svg>
+          <img class="shot" src="shots/outline.webp" width="1200" height="750" loading="lazy" decoding="async" alt="アウトライン画面：話ごとの進捗と構成メモが一覧できる">
           <h3>アウトライン</h3>
           <p>話ごとに構成をメモ。本文と双方向に同期し、ドラッグで並べ替え。全体の流れがひと目でわかります。</p>
         </div>
         <div class="build-card">
           <span class="b-tag">クラウド</span>
-          <svg class="b-svg" viewBox="0 0 88 64" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-            <line x1="22" y1="20" x2="64" y2="15" stroke="#b98f63" stroke-width="2"/>
-            <line x1="22" y1="20" x2="38" y2="50" stroke="#6b9660" stroke-width="2"/>
-            <line x1="64" y1="15" x2="38" y2="50" stroke="#6b9660" stroke-width="2"/>
-            <circle cx="22" cy="20" r="8" fill="#e3ece1" stroke="#2c5b27" stroke-width="2"/>
-            <circle cx="64" cy="15" r="8" fill="#e3ece1" stroke="#2c5b27" stroke-width="2"/>
-            <circle cx="38" cy="50" r="8" fill="#f2e6d4" stroke="#b98f63" stroke-width="2"/>
-          </svg>
+          <img class="shot" src="shots/chart.webp" width="1200" height="750" loading="lazy" decoding="async" alt="相関図画面：図鑑のキャラをノードにして関係を線でつなぐ">
           <h3>相関図</h3>
           <p>人物や勢力の関係を図に。図鑑のキャラを置いて、線でつなぐだけ。上下左右どこへでも結べます。</p>
         </div>
         <div class="build-card">
           <span class="b-tag">クラウド</span>
-          <svg class="b-svg" viewBox="0 0 88 64" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-            <path d="M34 32 C 48 32, 50 16, 62 16" stroke="#6b9660" stroke-width="2"/>
-            <path d="M34 32 H 62" stroke="#6b9660" stroke-width="2"/>
-            <path d="M34 32 C 48 32, 50 48, 62 48" stroke="#6b9660" stroke-width="2"/>
-            <rect x="8" y="23" width="28" height="18" rx="9" fill="#2c5b27"/>
-            <circle cx="66" cy="16" r="5.5" fill="#e3ece1" stroke="#6b9660" stroke-width="2"/>
-            <circle cx="66" cy="32" r="5.5" fill="#e3ece1" stroke="#6b9660" stroke-width="2"/>
-            <circle cx="66" cy="48" r="5.5" fill="#e3ece1" stroke="#6b9660" stroke-width="2"/>
-          </svg>
+          <img class="shot" src="shots/mindmap.webp" width="1200" height="750" loading="lazy" decoding="async" alt="マインドマップ画面：中心の作品名から左右へ枝分かれして発想を広げる">
           <h3>マインドマップ</h3>
           <p>思いつきを中心から枝分かれで。＋を押すだけでどんどん伸び、発想がそのまま形になります。</p>
         </div>
