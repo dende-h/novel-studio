@@ -116,39 +116,42 @@
   h2 { font-family: var(--serif); font-weight: 600; font-size: clamp(24px, 3.4vw, 32px); color: var(--gray-900); margin-top: 8px; line-height: 1.6; }
   .sec-head p { color: var(--gray-600); font-size: 14px; margin-top: 12px; }
 
-  .cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
-  .card { background: var(--cream-0); border: 1px solid var(--gray-200); border-radius: 12px; padding: 26px 24px; }
-  .card h3 { font-family: var(--serif); font-size: 17px; color: var(--gray-900); margin-bottom: 8px; }
-  .card p { font-size: 13px; color: var(--gray-600); }
-  /* 実アプリのスクリーンショット（16:10 で統一）。 */
-  .shot { display: block; width: 100%; height: auto; aspect-ratio: 16 / 10; object-fit: cover; border-radius: 10px;
-    border: 1px solid var(--gray-200); margin-bottom: 14px; background: var(--cream-100); }
-
-  /* 縦書きの気持ちよさ */
-  .tate { background: var(--paper); position: relative; overflow: hidden; }
-  .tate::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 180px;
-    background: radial-gradient(ellipse 100% 100% at 50% 0%, rgba(195,215,234,0.22) 0%, transparent 70%);
-    pointer-events: none; z-index: 0; }
-  .tate .wrap { position: relative; z-index: 1; }
-  .tate-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 48px; align-items: center; }
-  .tate-sample { background: var(--cream-0); border: 1px solid var(--gray-200); border-radius: 12px; padding: 34px 28px;
-    display: flex; justify-content: center; box-shadow: 0 16px 40px -20px rgba(31,36,48,0.2); }
-  .tate-sample .vertical { height: 340px; font-size: 16px; }
-  .checks { list-style: none; margin-top: 22px; }
-  .checks li { padding-left: 30px; position: relative; margin-bottom: 12px; font-size: 14px; }
+  /* ---------- 五つの章（機能を物語の章立てで見せる・大判スクショ×縦書き見出し） ---------- */
+  .chapters { background: var(--paper); position: relative; overflow: hidden; padding: 84px 0 64px; }
+  .chapters::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 200px;
+    background: radial-gradient(ellipse 100% 100% at 50% 0%, rgba(195,215,234,0.2) 0%, transparent 70%);
+    pointer-events: none; }
+  .chapters .wrap { position: relative; }
+  .chapter { margin-top: 72px; }
+  .ch-grid { display: grid; grid-template-columns: 7fr 5fr; align-items: center; }
+  .ch-media { position: relative; }
+  .ch-main { display: block; width: 100%; height: auto; border-radius: 8px; border: 1px solid var(--gray-200);
+    box-shadow: 0 30px 70px -34px rgba(31,36,48,0.45); background: var(--cream-100); }
+  .ch-thumbs { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 14px; }
+  .ch-thumbs.one { grid-template-columns: 1fr; }
+  .shot { display: block; width: 100%; height: auto; aspect-ratio: 16 / 10; object-fit: cover; border-radius: 8px;
+    border: 1px solid var(--gray-200); background: var(--cream-100); box-shadow: 0 14px 34px -22px rgba(31,36,48,0.35); }
+  .ch-panel { position: relative; z-index: 1; background: var(--cream-0); border: 1px solid var(--gray-200);
+    border-radius: 4px; padding: 38px 36px; margin-left: -64px;
+    box-shadow: 0 24px 56px -30px rgba(31,36,48,0.28);
+    display: flex; flex-direction: row-reverse; gap: 26px; }
+  .chapter.rev .ch-grid { grid-template-columns: 5fr 7fr; }
+  .chapter.rev .ch-media { order: 2; }
+  .chapter.rev .ch-panel { order: 1; margin-left: 0; margin-right: -64px; }
+  /* 縦書きの章見出し。日本語の縦組は右から読むので、パネル右端に置く（row-reverse） */
+  .ch-head { writing-mode: vertical-rl; font-family: var(--serif); font-weight: 600;
+    font-size: 23px; line-height: 1.7; letter-spacing: 0.24em; color: var(--gray-900); flex-shrink: 0; }
+  .ch-head .dia { display: block; width: 8px; height: 8px; background: var(--wheat-500);
+    transform: rotate(45deg); margin: 2px auto 20px; }
+  .ch-no { font-size: 11px; letter-spacing: 0.24em; color: var(--wheat-700); display: flex; align-items: center; gap: 12px; }
+  .ch-no::after { content: ''; height: 1px; flex: 1; background: var(--wheat-100); }
+  .ch-body { flex: 1; min-width: 0; }
+  .ch-body > p { font-size: 14px; color: var(--gray-600); margin-top: 14px; }
+  .ch-tag { display: inline-block; font-size: 10px; letter-spacing: 0.08em; color: var(--wheat-700);
+    background: var(--wheat-100); border-radius: 999px; padding: 2px 10px; margin-left: 6px; }
+  .checks { list-style: none; margin-top: 16px; }
+  .checks li { padding-left: 26px; position: relative; margin-bottom: 9px; font-size: 13px; }
   .checks li::before { content: "✓"; position: absolute; left: 0; top: 0; color: var(--forest-700); font-weight: 700; }
-
-  /* 組み立てる（構造化ツール） */
-  .build { background: var(--cream-50); }
-  .build-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
-  .build-card { position: relative; background: var(--cream-0); border: 1px solid var(--gray-200); border-radius: 14px; padding: 26px 24px; }
-  .build-card .shot { margin-bottom: 12px; }
-  .build-card h3 { font-family: var(--serif); font-size: 18px; color: var(--gray-900); margin-bottom: 8px; }
-  .build-card p { font-size: 13px; color: var(--gray-600); }
-  .b-tag { position: absolute; top: 16px; right: 16px; font-size: 10px; letter-spacing: 0.08em; color: var(--wheat-700);
-    background: var(--wheat-100); border-radius: 999px; padding: 3px 10px; }
-  .build-note { text-align: center; margin-top: 30px; font-size: 13px; color: var(--gray-600); }
-  .build-note strong { color: var(--forest-700); }
 
   /* 安心（ローカルファースト） */
   .trust { background: var(--forest-900); color: #e8efe6; }
@@ -159,14 +162,6 @@
   .trust-card { border: 1px solid rgba(255,255,255,0.14); border-radius: 12px; padding: 26px 24px; background: rgba(255,255,255,0.04); }
   .trust-card h3 { font-family: var(--serif); font-size: 17px; margin-bottom: 8px; }
   .trust-card p { font-size: 13px; color: #b9c9b4; }
-
-  /* 草（執筆の記録） */
-  .grass-strip { display: flex; gap: 3px; justify-content: center; margin-top: 26px; flex-wrap: wrap; }
-  .grass-strip span { width: 11px; height: 11px; border-radius: 3px; background: var(--forest-100); }
-  .grass-strip span.g1 { background: var(--forest-400); }
-  .grass-strip span.g2 { background: var(--forest-700); }
-  .grass-strip span.g3 { background: var(--forest-900); }
-  .grass-strip span.g0 { background: #eef0f2; }
 
   /* 料金 */
   .plans { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; max-width: 780px; margin: 0 auto; }
@@ -214,10 +209,16 @@
   .foot { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; }
 
   @media (max-width: 860px) {
-    .hero-grid, .tate-grid { grid-template-columns: 1fr; }
-    .cards, .trust-grid, .build-grid { grid-template-columns: 1fr; }
+    .hero-grid { grid-template-columns: 1fr; }
+    .trust-grid { grid-template-columns: 1fr; }
     .plans { grid-template-columns: 1fr; }
     .nav-links a:not(.btn) { display: none; }
+    /* 章立て：縦積みにし、常に「画像→テキスト」の順。パネルは画像へ少し重ねる */
+    .ch-grid, .chapter.rev .ch-grid { grid-template-columns: 1fr; }
+    .ch-media, .chapter.rev .ch-media { order: 0; }
+    .ch-panel, .chapter.rev .ch-panel { order: 1; margin: -42px 14px 0; padding: 26px 24px; flex-direction: column; gap: 10px; }
+    .ch-head { writing-mode: horizontal-tb; font-size: 20px; letter-spacing: 0.1em; line-height: 1.6; }
+    .ch-head .dia { display: inline-block; margin: 0 10px 2px 0; }
   }
 </style>
 </head>
@@ -227,11 +228,10 @@
   <div class="wrap nav">
     <a class="brand" href="#top">コトノハ<span class="brand-leaf">-leaf-</span></a>
     <nav class="nav-links">
-      <a href="#features">できること</a>
-      <a href="#tate">縦書き</a>
-      <a href="#build">組み立て</a>
+      <a href="#chapters">できること</a>
       <a href="#keep">安心</a>
       <a href="#plans">料金</a>
+      <a href="#faq">よくある質問</a>
       <a class="btn" href="/">無料で始める</a>
     </nav>
   </div>
@@ -279,107 +279,150 @@
     </div>
   </div>
 
-  <!-- ================= FEATURES ================= -->
-  <section id="features">
+  <!-- ================= 五つの章（機能紹介） ================= -->
+  <section id="chapters" class="chapters">
     <div class="wrap">
       <div class="sec-head">
-        <span class="en">Features</span>
-        <h2>書くのに、これだけあれば。</h2>
-        <p>はじめてでも迷わない、シンプルな機能だけ。</p>
+        <span class="en">Chapters</span>
+        <h2>はじめての一作が、書き上がるまで。</h2>
+        <p>書く・築く・編む・続ける・届ける。物語づくりのぜんぶを、五つの章で。</p>
       </div>
-      <div class="cards">
-        <div class="card">
-          <img class="shot" src="shots/editor.webp" width="1200" height="750" loading="lazy" decoding="async" alt="執筆画面：左に本文、右にルビ・傍点つきの縦書きプレビュー">
-          <h3>縦書きライブプレビュー</h3>
-          <p>書いた文章が、その場で本の見た目に。ルビや傍点もそのまま確認できます。</p>
-        </div>
-        <div class="card">
-          <img class="shot" src="shots/glossary.webp" width="1200" height="750" loading="lazy" decoding="async" alt="図鑑画面：人物・場所・道具をカードで整理">
-          <h3>図鑑（設定メモ）</h3>
-          <p>登場人物や用語をメモしておける辞書機能。名前を <code>[[かぎかっこ]]</code> で囲むだけで、本文とつながります。</p>
-        </div>
-        <div class="card">
-          <img class="shot" src="shots/history.webp" width="1200" height="749" loading="lazy" decoding="async" alt="版履歴パネル：自動保存された版がならび、いつでも戻せる">
-          <h3>自動保存＆履歴</h3>
-          <p>書いた内容は自動で保存。少し前の状態にも戻せるので、消える心配がありません。</p>
-        </div>
-        <div class="card">
-          <img class="shot" src="shots/export.webp" width="1200" height="750" loading="lazy" decoding="async" alt="書き出しダイアログ：EPUB・Web投稿形式・ZIP・AIに渡すから選べる">
-          <h3>ワンクリック書き出し</h3>
-          <p>書けたら、EPUB や「なろう」「カクヨム」の形式でそのまま出力。投稿もかんたんです。</p>
-        </div>
-        <div class="card">
-          <img class="shot" src="shots/activity.webp" width="1200" height="750" loading="lazy" decoding="async" alt="執筆の記録：カレンダーヒートマップと連続日数・累計文字数">
-          <h3>執筆の記録</h3>
-          <p>毎日どれくらい書いたかを記録します。続けた日数が見えるので、自然と習慣になります。</p>
-        </div>
-        <div class="card">
-          <img class="shot" src="shots/replace.webp" width="1200" height="750" loading="lazy" decoding="async" alt="一括置換パネル：この話の本文を対象にまとめて置換">
-          <h3>一括置換と検索</h3>
-          <p>キャラ名の変更も、作品の検索もかんたん。書き直しも気軽にできます。</p>
+
+      <!-- 第一章　書く -->
+      <div class="chapter">
+        <div class="ch-grid">
+          <div class="ch-media">
+            <img class="ch-main" src="shots/editor.webp" width="1600" height="999" loading="lazy" decoding="async"
+              alt="執筆画面：左にいつもの横書き原稿、右にルビ・傍点まで組まれた縦書きプレビュー">
+          </div>
+          <div class="ch-panel">
+            <div class="ch-head"><span class="dia"></span>書いたそばから、本の姿。</div>
+            <div class="ch-body">
+              <span class="ch-no">第一章　書く</span>
+              <p>
+                原稿はいつもの横書きで。となりには、ルビも傍点も組み上がった縦書きの頁が、
+                入力と同時にひらいていきます。自分の文章が「本」になっていく手応えを、書きながらどうぞ。
+              </p>
+              <ul class="checks">
+                <li>ルビは <code>｜漢字《かんじ》</code>、傍点は <code>《《強調》》</code> と書くだけ</li>
+                <li>縦中横（数字の正立）対応・横書き表示にも切替できる</li>
+                <li>一括置換と検索で、キャラ名の変更もひと息</li>
+              </ul>
+            </div>
+          </div>
         </div>
       </div>
 
-      <div class="grass-strip" aria-hidden="true">
-        <span class="g0"></span><span></span><span class="g1"></span><span class="g2"></span><span class="g1"></span><span></span><span class="g2"></span><span class="g3"></span><span class="g2"></span><span class="g1"></span><span></span><span class="g1"></span><span class="g2"></span><span class="g3"></span><span class="g3"></span><span class="g2"></span><span class="g1"></span><span></span><span class="g0"></span><span class="g1"></span><span class="g2"></span><span class="g1"></span><span class="g2"></span><span class="g3"></span><span class="g2"></span><span class="g2"></span><span class="g1"></span><span></span>
+      <!-- 第二章　築く -->
+      <div class="chapter rev">
+        <div class="ch-grid">
+          <div class="ch-panel">
+            <div class="ch-head"><span class="dia"></span>あなたの世界を、図鑑に。</div>
+            <div class="ch-body">
+              <span class="ch-no">第二章　築く</span>
+              <p>
+                人物、場所、道具。ふくらんでいく設定は、作品ごとの図鑑へ。
+                本文に <code>[[名前]]</code> と書けば物語と設定がつながり、書きながらいつでも引けます。
+              </p>
+              <ul class="checks">
+                <li>人物・場所・道具などをカードで整理</li>
+                <li>別名・よみがな・要約・画像もいっしょに</li>
+                <li>本文の参照から、その場で図鑑をひらける</li>
+              </ul>
+            </div>
+          </div>
+          <div class="ch-media">
+            <img class="ch-main" src="shots/glossary.webp" width="1600" height="1000" loading="lazy" decoding="async"
+              alt="図鑑画面：人物・場所・道具をカテゴリタブとカードで整理">
+          </div>
+        </div>
       </div>
-    </div>
-  </section>
 
-  <!-- ================= 縦書き ================= -->
-  <section id="tate" class="tate">
-    <div class="wrap tate-grid">
-      <div class="tate-sample">
-        <div class="vertical">
-          <ruby>硝子<rt>がらす</rt></ruby>の航海日誌を、ひらく。<br><br>
-          あの夏の<em class="dots">ことば</em>は、まだ濡れたままで——<br><br>
-          頁のあいだに、<ruby>栞<rt>しおり</rt></ruby>のかわりの押し花。
+      <!-- 第三章　編む -->
+      <div class="chapter">
+        <div class="ch-grid">
+          <div class="ch-media">
+            <img class="ch-main" src="shots/chart.webp" width="1600" height="1000" loading="lazy" decoding="async"
+              alt="相関図画面：図鑑のキャラをノードにして、関係に名前をつけて線で結ぶ">
+            <div class="ch-thumbs">
+              <img class="shot" src="shots/outline.webp" width="1600" height="1000" loading="lazy" decoding="async"
+                alt="アウトライン画面：話ごとの進捗と構成メモ">
+              <img class="shot" src="shots/mindmap.webp" width="1600" height="1000" loading="lazy" decoding="async"
+                alt="マインドマップ画面：中心から左右へ枝分かれ">
+            </div>
+          </div>
+          <div class="ch-panel">
+            <div class="ch-head"><span class="dia"></span>物語の骨組みを、編む。</div>
+            <div class="ch-body">
+              <span class="ch-no">第三章　編む<span class="ch-tag">クラウド</span></span>
+              <p>
+                人物の関係は相関図に。話の流れはアウトラインに。ふとした思いつきはマインドマップに。
+                三つの道具はどれも本文とつながっていて、構想がそのまま原稿へ育ちます。
+              </p>
+              <ul class="checks">
+                <li>相関図：図鑑のキャラを置いて、線に関係の名前をつける</li>
+                <li>アウトライン：本文と双方向同期・ドラッグで話を並べ替え</li>
+                <li>マインドマップ：＋を押すだけで枝がのびる</li>
+              </ul>
+              <p style="font-size:12px;">思いつきのメモは、無料の<strong style="color:var(--forest-700);">ネタ帳</strong>からどうぞ。</p>
+            </div>
+          </div>
         </div>
       </div>
-      <div>
-        <span class="en" style="font-size:11px;letter-spacing:0.22em;color:var(--wheat-700);">TATEGAKI</span>
-        <h2>書いたそばから、縦書き。</h2>
-        <p style="margin-top:14px;font-size:14px;">
-          設定も切り替えもいりません。入力すると、その場で縦書きプレビューに。ルビは <code>｜漢字《かんじ》</code>、
-          傍点は <code>《《強調》》</code> と書くだけ。むずかしい操作はありません。
-        </p>
-        <ul class="checks">
-          <li>ルビ・傍点・縦中横（数字の正立）に対応</li>
-          <li>そのまま縦書きEPUBに書き出せる</li>
-        </ul>
-      </div>
-    </div>
-  </section>
 
-  <!-- ================= 組み立てる（構造化ツール） ================= -->
-  <section id="build" class="build">
-    <div class="wrap">
-      <div class="sec-head">
-        <span class="en">Structure</span>
-        <h2>物語を、組み立てる。</h2>
-        <p>話の流れも、人物の関係も、ふとした思いつきも。ぜんぶ本文とつながる、3つの道具で。</p>
+      <!-- 第四章　続ける -->
+      <div class="chapter rev">
+        <div class="ch-grid">
+          <div class="ch-panel">
+            <div class="ch-head"><span class="dia"></span>書いた日々が、緑になる。</div>
+            <div class="ch-body">
+              <span class="ch-no">第四章　続ける</span>
+              <p>
+                書いた日は、カレンダーに緑の粒として積もっていきます。
+                原稿は自動保存で、保存のたびに版履歴が残るから、昨日の自分にいつでも戻れます。
+                続けることが、いちばんの執筆術だから。
+              </p>
+              <ul class="checks">
+                <li>連続日数・累計文字数・年間ヒートマップ</li>
+                <li>自動保存＋版履歴（ローカル・セーフティネット）</li>
+              </ul>
+            </div>
+          </div>
+          <div class="ch-media">
+            <img class="ch-main" src="shots/activity.webp" width="1600" height="1000" loading="lazy" decoding="async"
+              alt="執筆の記録：年間ヒートマップと連続日数・累計文字数">
+            <div class="ch-thumbs one">
+              <img class="shot" src="shots/history.webp" width="1600" height="999" loading="lazy" decoding="async"
+                alt="版履歴パネル：自動保存された版がならび、いつでも本文へ復元できる">
+            </div>
+          </div>
+        </div>
       </div>
-      <div class="build-grid">
-        <div class="build-card">
-          <span class="b-tag">クラウド</span>
-          <img class="shot" src="shots/outline.webp" width="1200" height="750" loading="lazy" decoding="async" alt="アウトライン画面：話ごとの進捗と構成メモが一覧できる">
-          <h3>アウトライン</h3>
-          <p>話ごとに構成をメモ。本文と双方向に同期し、ドラッグで並べ替え。全体の流れがひと目でわかります。</p>
-        </div>
-        <div class="build-card">
-          <span class="b-tag">クラウド</span>
-          <img class="shot" src="shots/chart.webp" width="1200" height="750" loading="lazy" decoding="async" alt="相関図画面：図鑑のキャラをノードにして関係を線でつなぐ">
-          <h3>相関図</h3>
-          <p>人物や勢力の関係を図に。図鑑のキャラを置いて、線でつなぐだけ。上下左右どこへでも結べます。</p>
-        </div>
-        <div class="build-card">
-          <span class="b-tag">クラウド</span>
-          <img class="shot" src="shots/mindmap.webp" width="1200" height="750" loading="lazy" decoding="async" alt="マインドマップ画面：中心の作品名から左右へ枝分かれして発想を広げる">
-          <h3>マインドマップ</h3>
-          <p>思いつきを中心から枝分かれで。＋を押すだけでどんどん伸び、発想がそのまま形になります。</p>
+
+      <!-- 第五章　届ける -->
+      <div class="chapter">
+        <div class="ch-grid">
+          <div class="ch-media">
+            <img class="ch-main" src="shots/export.webp" width="1568" height="980" loading="lazy" decoding="async"
+              alt="書き出しダイアログ：EPUB・Web投稿形式・ZIP・AIに渡すから選べる">
+          </div>
+          <div class="ch-panel">
+            <div class="ch-head"><span class="dia"></span>物語を、世界へ。</div>
+            <div class="ch-body">
+              <span class="ch-no">第五章　届ける</span>
+              <p>
+                書き上がったら、ワンクリックで旅立ちの支度を。縦書き EPUB にも、
+                「小説家になろう」「カクヨム」の記法にも、ルビ・傍点ごと自動変換して書き出せます。
+              </p>
+              <ul class="checks">
+                <li>縦書き EPUB（電子書籍）</li>
+                <li>なろう・カクヨム記法／話ごとのテキスト（ZIP）</li>
+                <li>お使いの AI（Claude・Genspark）に読み書きさせて相談も<span class="ch-tag">クラウド</span></li>
+              </ul>
+            </div>
+          </div>
         </div>
       </div>
-      <p class="build-note">思いつきのメモは、無料の<strong>ネタ帳</strong>から。育ってきたら、この3つでじっくり組み立てられます。</p>
     </div>
   </section>
 
