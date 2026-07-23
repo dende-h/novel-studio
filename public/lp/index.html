@@ -180,6 +180,19 @@
   .plan li.na { color: var(--gray-400); }
   .plan li.na::before { content: "—"; color: var(--gray-400); }
 
+  /* 料金比較表 */
+  .compare-wrap { max-width: 720px; margin: 0 auto; border: 1px solid var(--gray-200); border-radius: 14px; overflow-x: auto; }
+  .compare { width: 100%; border-collapse: collapse; min-width: 460px; font-size: 14px; background: var(--cream-0); }
+  .compare th, .compare td { padding: 13px 18px; border-bottom: 1px solid var(--gray-200); text-align: left; }
+  .compare tbody tr:last-child td { border-bottom: none; }
+  .compare thead th { background: var(--forest-50); font-family: var(--serif); color: var(--gray-900); font-weight: 700; vertical-align: bottom; }
+  .compare .plan-col { text-align: center; width: 122px; }
+  .compare .plan-col .p-price { display: block; margin-top: 3px; font-family: var(--sans); font-weight: 400; font-size: 11px; color: var(--gray-600); }
+  .compare td.mark { text-align: center; font-size: 15px; }
+  .compare td.mark.yes { color: var(--forest-600); font-weight: 700; }
+  .compare td.mark.no { color: var(--gray-400); }
+  .plan-cta { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; margin-top: 26px; }
+
   /* FAQ */
   .faq { max-width: 780px; margin: 0 auto; }
   details { background: var(--cream-0); border: 1px solid var(--gray-200); border-radius: 10px; padding: 18px 22px; margin-bottom: 12px; }
@@ -216,7 +229,7 @@
       <a href="#features">できること</a>
       <a href="#tate">縦書き</a>
       <a href="#build">組み立て</a>
-      <a href="#keep">続けやすさ</a>
+      <a href="#keep">安心</a>
       <a href="#plans">料金</a>
       <a class="btn" href="/">無料で始める</a>
     </nav>
@@ -324,9 +337,9 @@
       </div>
       <div>
         <span class="en" style="font-size:11px;letter-spacing:0.22em;color:var(--wheat-700);">TATEGAKI</span>
-        <h2>最初から、縦書き。</h2>
+        <h2>書いたそばから、縦書き。</h2>
         <p style="margin-top:14px;font-size:14px;">
-          コトノハ-leaf- のプレビューは最初から縦書きです。ルビは <code>｜漢字《かんじ》</code>、
+          設定も切り替えもいりません。入力すると、その場で縦書きプレビューに。ルビは <code>｜漢字《かんじ》</code>、
           傍点は <code>《《強調》》</code> と書くだけ。むずかしい操作はありません。
         </p>
         <ul class="checks">
@@ -393,26 +406,26 @@
     </div>
   </section>
 
-  <!-- ================= つづく仕組み ================= -->
+  <!-- ================= 安心（ローカルファースト） ================= -->
   <section id="keep" class="trust">
     <div class="wrap">
       <div class="sec-head">
-        <span class="en">Keep going</span>
-        <h2>毎日書くのが、習慣になる。</h2>
-        <p>続けるコツは、書いた記録が見えること。それだけです。</p>
+        <span class="en">Yours</span>
+        <h2>書いたものは、あなたのもの。</h2>
+        <p>原稿はあなたの端末に保存。登録もいらず、思い立ったらすぐ書けます。</p>
       </div>
       <div class="trust-grid">
         <div class="trust-card">
-          <h3>書いた日を記録</h3>
-          <p>書いた日と文字数をカレンダーに記録します。続けた日数がひと目でわかります。</p>
+          <h3>端末のなかに保存</h3>
+          <p>原稿はブラウザ内（あなたの手元）に保存され、勝手に外部へ送られません。書き出しやバックアップも、必要なときに自分で選べます。</p>
         </div>
         <div class="trust-card">
-          <h3>設定は図鑑にメモ</h3>
-          <p>思いついたキャラや設定は図鑑にメモ。あとから見返せて、話を広げやすくなります。</p>
+          <h3>登録もインストールも不要</h3>
+          <p>アカウント登録もアプリのインストールもなし。ページを開けば、その瞬間から書き始められます。</p>
         </div>
         <div class="trust-card">
-          <h3>いつでも書き直せる</h3>
-          <p>自動保存と履歴があるので、前の状態に戻すのもかんたん。気軽に書き直せます。</p>
+          <h3>オフラインでも執筆</h3>
+          <p>一度ひらけば、ネットが無くても書き進められます。電車のなかでも、旅先でも。</p>
         </div>
       </div>
     </div>
@@ -426,32 +439,32 @@
         <h2>書くことは、ぜんぶ無料。</h2>
         <p>まずは無料で、気軽に始めてください。</p>
       </div>
-      <div class="plans">
-        <div class="plan free">
-          <div class="name">フリー</div>
-          <div class="price">¥0 <small>／ずっと</small></div>
-          <ul>
-            <li>執筆・縦書きプレビュー・図鑑</li>
-            <li>ネタ帳（思いつきメモ）</li>
-            <li>自動保存＋版履歴（端末内）</li>
-            <li>縦書きEPUB／なろう・カクヨム書き出し</li>
-            <li>執筆の記録・一括置換</li>
-            <li>ファイルへのバックアップ／取り込み</li>
-          </ul>
-          <a class="btn" href="/">無料で始める</a>
-        </div>
-        <div class="plan">
-          <div class="name">クラウド</div>
-          <div class="price">有料プラン<small>（アプリ内でご案内）</small></div>
-          <ul>
-            <li>フリーの全機能</li>
-            <li>アウトライン・相関図・マインドマップ（本文と連動）</li>
-            <li>クラウドバックアップ＆復元（暗号化・全データ）</li>
-            <li>自宅のPCでも、出先のタブレットでも続きから</li>
-            <li>AI に原稿を読み書きさせる（Claude・Genspark／MCP）</li>
-          </ul>
-          <a class="btn ghost" href="/">アプリで詳しく見る</a>
-        </div>
+      <div class="compare-wrap">
+        <table class="compare">
+          <thead>
+            <tr>
+              <th>できること</th>
+              <th class="plan-col">フリー<span class="p-price">¥0・ずっと</span></th>
+              <th class="plan-col">クラウド<span class="p-price">有料（アプリ内で案内）</span></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td>執筆・縦書きプレビュー・図鑑</td><td class="mark yes">○</td><td class="mark yes">○</td></tr>
+            <tr><td>ネタ帳（思いつきメモ）</td><td class="mark yes">○</td><td class="mark yes">○</td></tr>
+            <tr><td>自動保存＋版履歴（端末内）</td><td class="mark yes">○</td><td class="mark yes">○</td></tr>
+            <tr><td>なろう・カクヨム・EPUB 書き出し</td><td class="mark yes">○</td><td class="mark yes">○</td></tr>
+            <tr><td>執筆の記録・一括置換</td><td class="mark yes">○</td><td class="mark yes">○</td></tr>
+            <tr><td>ファイルへのバックアップ／取り込み</td><td class="mark yes">○</td><td class="mark yes">○</td></tr>
+            <tr><td>アウトライン・相関図・マインドマップ</td><td class="mark no">×</td><td class="mark yes">○</td></tr>
+            <tr><td>クラウドバックアップ＆復元（暗号化・全データ）</td><td class="mark no">×</td><td class="mark yes">○</td></tr>
+            <tr><td>複数端末で同期（続きから）</td><td class="mark no">×</td><td class="mark yes">○</td></tr>
+            <tr><td>AI に読み書きさせる（Claude・Genspark／MCP）</td><td class="mark no">×</td><td class="mark yes">○</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="plan-cta">
+        <a class="btn" href="/">無料で始める</a>
+        <a class="btn ghost" href="/">クラウドをアプリで見る</a>
       </div>
     </div>
   </section>
