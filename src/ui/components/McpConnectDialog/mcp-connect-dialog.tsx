@@ -276,12 +276,19 @@ export function McpConnectDialog({
               {client === 'genspark' && (
                 <div className="space-y-2">
                   <p className="font-sans text-on-surface-variant text-xs leading-relaxed">
-                    Genspark の<strong>「新しい MCP サーバーを追加」</strong>で設定します。
+                    Genspark のチャットからコネクタとして追加します。
                   </p>
                   <Steps
                     items={[
                       <>
-                        サーバータイプ：<strong>StreamableHttp</strong> を選択
+                        チャットの <strong>＋</strong> →「コネクタ」→「コネクタを追加」
+                      </>,
+                      <>
+                        <strong>「新しい MCP サーバーを追加」</strong>
+                      </>,
+                      <>
+                        サーバー名（任意）を入力／サーバータイプは <strong>StreamableHttp</strong>
+                        （既定）
                       </>,
                       <>サーバー URL：下記を貼る</>,
                       <>リクエストヘッダー：下記 JSON を貼る</>,
