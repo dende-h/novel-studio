@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { GlossaryEntrySchema, InlineSchema, WorkSchema } from './index'
+import { BlockSchema, GlossaryEntrySchema, InlineSchema, WorkSchema } from './index'
 
 describe('InlineSchema（ref 追加・P1）', () => {
   it('GSC1: ref を受理する', () => {
@@ -33,6 +33,35 @@ describe('WorkSchema（glossary 相乗り・P1）', () => {
       updatedAt: 1,
     }
     expect(WorkSchema.safeParse({ ...base, glossary: [entry] }).success).toBe(true)
+  })
+})
+
+describe('BlockSchema（sceneBreak 廃止・後方互換）', () => {
+  it('paragraph を受理する', () => {
+    expect(
+      BlockSchema.safeParse({ id: 'b1', type: 'paragraph', inlines: [{ type: 'text', text: 'x' }] })
+        .success,
+    ).toBe(true)
+  })
+
+  it('旧 sceneBreak ブロックは空段落へ正規化される（読込互換）', () => {
+    expect(BlockSchema.parse({ id: 'b2', type: 'sceneBreak' })).toEqual({
+      id: 'b2',
+      type: 'paragraph',
+      inlines: [],
+    })
+  })
+
+  it('sceneBreak を含む旧 Work も弾かず読み込める', () => {
+    const res = WorkSchema.safeParse({
+      id: 'w1',
+      title: '作',
+      episodes: [{ id: 'e1', title: '一', blocks: [{ id: 'b1', type: 'sceneBreak' }] }],
+    })
+    expect(res.success).toBe(true)
+    if (res.success) {
+      expect(res.data.episodes[0]?.blocks[0]).toEqual({ id: 'b1', type: 'paragraph', inlines: [] })
+    }
   })
 })
 

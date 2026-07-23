@@ -20,7 +20,7 @@ const work: Work = {
         },
         { id: 'b2', type: 'paragraph', inlines: [] },
         { id: 'b3', type: 'paragraph', inlines: [{ type: 'emphasisDots', text: '重要' }] },
-        { id: 'b4', type: 'sceneBreak' },
+        { id: 'b4', type: 'paragraph', inlines: [{ type: 'text', text: '区切りのあと' }] },
       ],
     },
     {
@@ -44,7 +44,7 @@ describe('folder（話ごとテキスト往復・外部Claude編集の橋）', (
     const ep1 = files.find((f) => f.path !== 'manifest.json' && f.content.includes('漢字'))
     expect(ep1?.content).toContain('私は漢字《かんじ》')
     expect(ep1?.content).toContain('《《重要》》')
-    expect(ep1?.content).toContain('＊')
+    expect(ep1?.content).toContain('区切りのあと')
   })
 
   it('manifest は作品 id/title と話の対応を持つ', () => {
@@ -61,7 +61,7 @@ describe('folder（話ごとテキスト往復・外部Claude編集の橋）', (
 
   it('folderToWork は .txt 本文を再パースして blocks を復元', () => {
     const restored = folderToWork(workToFolder(work))
-    expect(restored.episodes[0]!.blocks.some((b) => b.type === 'sceneBreak')).toBe(true)
+    expect(restored.episodes[0]!.blocks.every((b) => b.type === 'paragraph')).toBe(true)
   })
 
   // ── @参照 / 辞書の往復（P1） ──

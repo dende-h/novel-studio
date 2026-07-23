@@ -13,11 +13,23 @@ export const InlineSchema = z.discriminatedUnion('type', [
 ])
 export type Inline = z.infer<typeof InlineSchema>
 
-export const BlockSchema = z.discriminatedUnion('type', [
-  z.object({ id: z.string(), type: z.literal('paragraph'), inlines: z.array(InlineSchema) }),
-  z.object({ id: z.string(), type: z.literal('sceneBreak') }),
-  // 将来: 'heading' | 'image'
-])
+const ParagraphBlockSchema = z.object({
+  id: z.string(),
+  type: z.literal('paragraph'),
+  inlines: z.array(InlineSchema),
+})
+
+/**
+ * 本文ブロック。現状は paragraph のみ（将来: 'heading' | 'image'）。
+ * かつて存在した sceneBreak（＊行）は廃止。旧データ互換のため、読み込み時に
+ * sceneBreak ブロックは空段落へ正規化する（破損扱いで弾かず、空行として残す）。
+ */
+export const BlockSchema = z.preprocess((raw) => {
+  if (raw && typeof raw === 'object' && (raw as { type?: unknown }).type === 'sceneBreak') {
+    return { id: (raw as { id?: string }).id ?? '', type: 'paragraph', inlines: [] }
+  }
+  return raw
+}, ParagraphBlockSchema)
 export type Block = z.infer<typeof BlockSchema>
 
 export const EpisodeSchema = z.object({

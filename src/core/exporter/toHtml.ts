@@ -2,7 +2,7 @@ import type { Block, Inline } from '../schema'
 
 /**
  * 正本 block 列 → ライブプレビュー用 HTML 文字列。
- * 傍点は em.dots（CSS text-emphasis 用）、シーン区切りは hr で描画する。
+ * 傍点は em.dots（CSS text-emphasis 用）で描画する。
  * テキスト・ルビ内はすべて HTML エスケープする。
  */
 
@@ -38,7 +38,6 @@ export function blocksToHtml(blocks: Block[], resolvedNames?: Set<string>): stri
 }
 
 function blockToHtml(block: Block, resolvedNames?: Set<string>): string {
-  if (block.type === 'sceneBreak') return '<hr class="scene-break" />'
   if (block.inlines.length === 0) return '<p class="blank"></p>'
   return `<p>${block.inlines.map((inl) => inlineToHtml(inl, resolvedNames)).join('')}</p>`
 }

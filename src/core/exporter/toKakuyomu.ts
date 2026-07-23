@@ -12,7 +12,6 @@ export function blocksToKakuyomu(blocks: Block[]): string {
 }
 
 function blockToKakuyomu(block: Block): string {
-  if (block.type === 'sceneBreak') return '＊'
   return block.inlines.map(inlineToKakuyomu).join('')
 }
 

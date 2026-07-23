@@ -278,14 +278,6 @@
 }
 
 /* シーン区切りは論理プロパティで横書き＝水平線／縦書き＝垂直線の双方に対応させる。 */
-.preview .scene-break {
-  border: none;
-  border-block-start: 1px solid var(--outline-variant);
-  margin-block: 1.5em;
-  margin-inline: auto;
-  inline-size: 40%;
-}
-
 /*
  * @参照リンク。解決済みはブランド緑の点線下線（図鑑に居ることを示す）、
  * 未解決（図鑑未登録）は麦色の点線＋やや薄色で「未登録」を示す。クリックで図鑑を引く。

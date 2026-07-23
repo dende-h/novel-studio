@@ -18,7 +18,6 @@ export function blocksToNotation(blocks: Block[]): string {
 }
 
 function blockToNotation(block: Block): string {
-  if (block.type === 'sceneBreak') return '＊'
   return block.inlines.map(inlineToNotation).join('')
 }
 

@@ -148,7 +148,12 @@ describe('editorStore（自前ストア・useSyncExternalStore 用）', () => {
     // 再読込ストアで復元できる（往復）
     const s = store.getSnapshot()
     const ep = s.work?.episodes[0]
-    expect(ep?.blocks.some((b) => b.type === 'sceneBreak')).toBe(true)
+    expect(
+      ep?.blocks.some(
+        (b) =>
+          b.type === 'paragraph' && b.inlines.some((i) => i.type === 'text' && i.text === '＊'),
+      ),
+    ).toBe(true)
     expect(
       ep?.blocks.some((b) => b.type === 'paragraph' && b.inlines.some((i) => i.type === 'ruby')),
     ).toBe(true)

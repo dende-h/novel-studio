@@ -12,7 +12,6 @@ export function blocksToNarou(blocks: Block[]): string {
 }
 
 function blockToNarou(block: Block): string {
-  if (block.type === 'sceneBreak') return '＊'
   return block.inlines.map(inlineToNarou).join('')
 }
 

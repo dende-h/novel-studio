@@ -23,7 +23,6 @@ const work: Work = {
           inlines: [{ type: 'ruby', base: '漢字', reading: 'かんじ' }],
         },
         { id: 'b2', type: 'paragraph', inlines: [{ type: 'emphasisDots', text: '重要' }] },
-        { id: 'b3', type: 'sceneBreak' },
         { id: 'b4', type: 'paragraph', inlines: [{ type: 'text', text: 'a<b>&c' }] },
       ],
     },
@@ -43,7 +42,6 @@ describe('toEpub（EPUB3 縦書き・純生成）', () => {
     expect(x).toContain('<title>第一話 出会い</title>')
     expect(x).toContain('<ruby>漢字<rt>かんじ</rt></ruby>')
     expect(x).toContain('<em class="dots">重要</em>')
-    expect(x).toContain('<hr class="scene-break" />')
     expect(x).toContain('a&lt;b&gt;&amp;c')
   })
 

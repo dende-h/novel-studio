@@ -132,11 +132,11 @@ describe('parseEpisodeBody', () => {
     ])
   })
 
-  it('＊のみの行はsceneBreak', () => {
+  it('＊のみの行も通常の段落になる（sceneBreak は廃止）', () => {
     const blocks = parseEpisodeBody('前\n＊\n後')
     expect(blocks).toEqual([
       { id: 'b1', type: 'paragraph', inlines: [{ type: 'text', text: '前' }] },
-      { id: 'b2', type: 'sceneBreak' },
+      { id: 'b2', type: 'paragraph', inlines: [{ type: 'text', text: '＊' }] },
       { id: 'b3', type: 'paragraph', inlines: [{ type: 'text', text: '後' }] },
     ])
   })

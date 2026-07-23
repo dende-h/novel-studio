@@ -3,7 +3,7 @@ import type { Block, Episode, Inline, Work } from '../schema'
 /**
  * 原稿の文字数集計（純ロジック）。
  * ルビは親文字（base）を本文として数え、読み（reading）は数えない。傍点は本文長。
- * sceneBreak は 0。ライブラリの文字数表示・進捗算出に使う。
+ * 空段落は 0。ライブラリの文字数表示・進捗算出に使う。
  */
 
 const inlineLength = (i: Inline): number => {

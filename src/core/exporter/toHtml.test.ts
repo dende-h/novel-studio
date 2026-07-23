@@ -23,10 +23,8 @@ describe('blocksToHtml（ライブプレビュー描画）', () => {
     )
   })
 
-  it('sceneBreak は区切りに描画', () => {
-    expect(blocksToHtml(parseEpisodeBody('前\n＊\n後'))).toBe(
-      '<p>前</p><hr class="scene-break" /><p>後</p>',
-    )
+  it('＊行は通常の段落として描画（sceneBreak 廃止）', () => {
+    expect(blocksToHtml(parseEpisodeBody('前\n＊\n後'))).toBe('<p>前</p><p>＊</p><p>後</p>')
   })
 
   it('ruby の base/reading 内もエスケープ', () => {

@@ -19,7 +19,7 @@ const work = (): Work => ({
             { type: 'text', text: 'である' }, // 3
           ],
         },
-        { id: 'b2', type: 'sceneBreak' }, // 0
+        { id: 'b2', type: 'paragraph', inlines: [] }, // 0（空段落）
         {
           id: 'b3',
           type: 'paragraph',
@@ -36,7 +36,7 @@ const work = (): Work => ({
 })
 
 describe('文字数集計', () => {
-  it('countEpisodeChars は本文長（ルビは親文字・読みは除外・傍点は本文・sceneBreak は0）', () => {
+  it('countEpisodeChars は本文長（ルビは親文字・読みは除外・傍点は本文・空段落は0）', () => {
     const w = work()
     expect(countEpisodeChars(w.episodes[0] as Work['episodes'][number])).toBe(9)
     expect(countEpisodeChars(w.episodes[1] as Work['episodes'][number])).toBe(4)

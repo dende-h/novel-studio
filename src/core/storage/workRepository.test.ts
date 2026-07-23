@@ -12,7 +12,7 @@ const work = (id: string, title: string): Work => ({
       title: '第一話',
       blocks: [
         { id: 'b1', type: 'paragraph', inlines: [{ type: 'emphasisDots', text: '重要' }] },
-        { id: 'b2', type: 'sceneBreak' },
+        { id: 'b2', type: 'paragraph', inlines: [] },
       ],
     },
   ],

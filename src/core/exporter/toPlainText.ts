@@ -7,9 +7,6 @@ import type { Block, GlossaryEntry, Inline, Work } from '../schema'
  * 読者が読む素のプロダクトに近い文字列にする（AI の読解を妨げないため）。
  */
 
-/** シーン区切りの表現（なろう書き出しと揃える）。 */
-const SCENE_BREAK = '＊'
-
 function inlineToPlainText(inline: Inline): string {
   switch (inline.type) {
     case 'text':
@@ -27,7 +24,6 @@ function inlineToPlainText(inline: Inline): string {
 }
 
 function blockToPlainText(block: Block): string {
-  if (block.type === 'sceneBreak') return SCENE_BREAK
   return block.inlines.map(inlineToPlainText).join('')
 }
 

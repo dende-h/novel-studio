@@ -137,8 +137,7 @@ em.dots {
   text-combine-upright: all;
   -webkit-text-combine: horizontal;
   -epub-text-combine: horizontal;
-}
-hr.scene-break { border: none; margin: 2em 0; }`
+}`
 }
 
 export function buildEpubFiles(work: Work): EpubFile[] {

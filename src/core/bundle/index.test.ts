@@ -15,7 +15,7 @@ const work: Work = {
           type: 'paragraph',
           inlines: [{ type: 'ruby', base: '漢字', reading: 'かんじ' }],
         },
-        { id: 'b2', type: 'sceneBreak' },
+        { id: 'b2', type: 'paragraph', inlines: [{ type: 'text', text: '続き' }] },
       ],
     },
   ],
