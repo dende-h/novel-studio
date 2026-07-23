@@ -12,7 +12,6 @@
  *   5. `delete-account` のときだけ `deleteCloudAccount` を実行。
  *
  * 冪等性：同じ svix-id の再送でも結果が変わらないよう、削除は各段「存在しなくても無害」に保つ。
- * `/api/*` は `_middleware.ts` のベーシック認証の対象外なので Clerk から直接到達できる。
  */
 
 import { createClerkClient } from '@clerk/backend'
