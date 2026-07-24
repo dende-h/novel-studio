@@ -54,7 +54,7 @@ const FORMATS: FormatDef[] = [
     key: 'web',
     icon: Globe,
     title: 'Web投稿形式',
-    desc: '「なろう」「カクヨム」などの投稿用記法',
+    desc: '「小説家になろう」「カクヨム」などの投稿用記法',
   },
   {
     key: 'folder',
@@ -215,7 +215,7 @@ export function ExportDialog({ open, onOpenChange, work, onEditMeta }: ExportDia
                               : 'border-outline-variant/50 text-on-surface-variant hover:bg-surface-container-high',
                           )}
                         >
-                          {p === 'narou' ? 'なろう' : 'カクヨム'}
+                          {p === 'narou' ? '小説家になろう' : 'カクヨム'}
                         </button>
                       ))}
                     </div>
