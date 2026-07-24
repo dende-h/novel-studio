@@ -9,15 +9,27 @@ export const InlineSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('text'), text: z.string() }),
   z.object({ type: z.literal('ruby'), base: z.string(), reading: z.string() }),
   z.object({ type: z.literal('emphasisDots'), text: z.string() }), // 傍点
-  // 将来: { type: 'ref'; name: string }  // @参照（P1）
+  z.object({ type: z.literal('ref'), name: z.string() }), // @参照（P1）。name は辞書 entry の name/alias で解決
 ])
 export type Inline = z.infer<typeof InlineSchema>
 
-export const BlockSchema = z.discriminatedUnion('type', [
-  z.object({ id: z.string(), type: z.literal('paragraph'), inlines: z.array(InlineSchema) }),
-  z.object({ id: z.string(), type: z.literal('sceneBreak') }),
-  // 将来: 'heading' | 'image'
-])
+const ParagraphBlockSchema = z.object({
+  id: z.string(),
+  type: z.literal('paragraph'),
+  inlines: z.array(InlineSchema),
+})
+
+/**
+ * 本文ブロック。現状は paragraph のみ（将来: 'heading' | 'image'）。
+ * かつて存在した sceneBreak（＊行）は廃止。旧データ互換のため、読み込み時に
+ * sceneBreak ブロックは空段落へ正規化する（破損扱いで弾かず、空行として残す）。
+ */
+export const BlockSchema = z.preprocess((raw) => {
+  if (raw && typeof raw === 'object' && (raw as { type?: unknown }).type === 'sceneBreak') {
+    return { id: (raw as { id?: string }).id ?? '', type: 'paragraph', inlines: [] }
+  }
+  return raw
+}, ParagraphBlockSchema)
 export type Block = z.infer<typeof BlockSchema>
 
 export const EpisodeSchema = z.object({
@@ -27,9 +39,43 @@ export const EpisodeSchema = z.object({
 })
 export type Episode = z.infer<typeof EpisodeSchema>
 
+/**
+ * オブジェクト辞書の1項目（@参照の解決先）。P1。作品ごと（Work 相乗り）。
+ * name + aliases が解決キー（trim 後の完全一致）。reading はサジェスト/ソート用で解決対象外。
+ */
+export const GlossaryEntrySchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  aliases: z.array(z.string()),
+  category: z.string().optional(),
+  reading: z.string().optional(),
+  summary: z.string().optional(),
+  body: z.string().optional(),
+  // サムネイル画像（リサイズ済み JPEG の data URL）。P1.1。1枚・任意・旧データ互換。
+  thumbnail: z
+    .string()
+    .refine((s) => s.startsWith('data:image/'), 'data URL が必要')
+    .optional(),
+  createdAt: z.number(),
+  updatedAt: z.number(),
+})
+export type GlossaryEntry = z.infer<typeof GlossaryEntrySchema>
+
 export const WorkSchema = z.object({
   id: z.string(),
   title: z.string(),
   episodes: z.array(EpisodeSchema),
+  // 著者名・あらすじ（EPUB の dc:creator / dc:description に反映）。任意・旧データ互換。
+  author: z.string().optional(),
+  description: z.string().optional(),
+  // 最終更新時刻（ライブラリの「最終編集」表示・EPUB の dcterms:modified 用）。旧データ互換のため任意。
+  updatedAt: z.number().optional(),
+  // オブジェクト辞書（@参照の解決先）。P1。旧データ互換のため任意。
+  glossary: z.array(GlossaryEntrySchema).optional(),
+  // 表紙画像（リサイズ済み JPEG の data URL）。P1.1。EPUB cover 用・1枚・任意・旧データ互換。
+  coverImage: z
+    .string()
+    .refine((s) => s.startsWith('data:image/'), 'data URL が必要')
+    .optional(),
 })
 export type Work = z.infer<typeof WorkSchema>

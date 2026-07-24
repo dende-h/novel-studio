@@ -1,23 +1,306 @@
 @import "tailwindcss";
+@import "tw-animate-css";
 
-/* 組版表現（ライブプレビュー＆LP の縦書きサンプル共通） */
+@custom-variant dark (&:is(.dark *));
+
+/*
+ * novel-studio デザインシステム（claude.ai/design「小説作成アプリUIUXの再デザイン」由来）。
+ * Forest（深緑ブランド）× Wheat（麦のアクセント）× Cream/Paper（暖色紙背景）のパレットを
+ * 既存のセマンティックトークン名（shadcn + Material 拡張名）へマップし、全画面を一括再着色する。
+ */
+:root {
+  color-scheme: light;
+  --radius: 0.5rem;
+
+  /* 本文（エディタ・プレビュー）の基準フォントサイズ。設定の「文字サイズ」で
+     <html> の style に上書きされる（小=13.5px / 中=既定 / 大=17px）。 */
+  --reading-font-size: 15px;
+
+  /* shadcn セマンティック */
+  --background: #fdfcfb; /* cream-50: ページ背景（無機質な白でなく紙の温度） */
+  --foreground: #4b5160; /* gray-700: 本文 */
+  --card: #fefeff;
+  --card-foreground: #1f2430;
+  --popover: #fefeff;
+  --popover-foreground: #1f2430;
+  --primary: #2c5b27; /* forest-700: ブランド緑 */
+  --primary-foreground: #ffffff;
+  --secondary: #f2e6d4; /* wheat-100 */
+  --secondary-foreground: #92703f; /* wheat-700 */
+  --muted: #f3f4f6;
+  --muted-foreground: #7d8494;
+  --accent: #f2f7f1; /* forest-50: hover 等の控えめな緑 */
+  --accent-foreground: #2c5b27;
+  --destructive: #dc2626;
+  --destructive-foreground: #ffffff;
+  --border: #e4e6eb; /* gray-200: subtle border */
+  --input: #d5d8dd; /* gray-300 */
+  --ring: #2c5b27;
+
+  /* Material 拡張（既存ユーティリティ名を維持したまま値だけ差し替え） */
+  --surface: #fdfcfb;
+  --surface-container-lowest: #fefeff; /* カード面 */
+  --surface-container-low: #f9f7f5; /* cream-100: サイドバー等の面 */
+  --surface-container: #f3f1ec;
+  --surface-container-high: #edeae3;
+  --surface-container-highest: #e7e3da;
+  --surface-bright: #fefeff;
+  --surface-variant: #f3ede4; /* paper-100: 読書面（プレビュー） */
+  --on-surface: #1f2430; /* gray-900: 見出し */
+  --on-surface-variant: #6b7381; /* gray-600: 補助テキスト */
+  --outline: #7d8494; /* gray-500 */
+  --outline-variant: #9da3ae; /* gray-400（/30〜/40 の透過利用で design の subtle 境界に一致） */
+  --primary-container: #e3ece1; /* forest-100 */
+  --on-primary-container: #234420; /* forest-800 */
+  --secondary-color: #b98f63; /* wheat-500 */
+  --secondary-container: #f2e6d4; /* wheat-100 */
+  --on-secondary-container: #92703f; /* wheat-700 */
+  --error: #dc2626;
+  --error-container: #fef2f2;
+  --on-error-container: #b91c1c;
+
+  /* デザイン固有の追加パレット（草・表紙トーン・アクセント） */
+  --forest-50: #f2f7f1;
+  --forest-100: #e3ece1;
+  --forest-400: #6b9660;
+  --forest-600: #35692f;
+  --forest-700: #2c5b27;
+  --forest-800: #234420;
+  --forest-900: #1a3014;
+  --wheat-500: #b98f63;
+  --wheat-700: #92703f;
+  --paper-100: #f3ede4;
+}
+
+/*
+ * ダークテーマ。<html class="dark"> のとき :root の各トークンを暖色系の暗色へ差し替え、
+ * セマンティックトークンで組まれた全画面を一括で再着色する（Forest × Wheat のブランドは維持）。
+ * .dark は :root と同一詳細度なので、必ず :root の後ろに置いて上書きを効かせる。
+ * ボタン緑（--primary）は白文字が乗る前提で明度を抑え、text-primary としての可読性と両立させる。
+ */
+.dark {
+  color-scheme: dark;
+
+  /* shadcn セマンティック */
+  --background: #181611; /* 暖かい極暗（無機質な黒でなく紙の温度を残す） */
+  --foreground: #d7d2c8; /* 本文（暖色オフホワイト） */
+  --card: #201d16;
+  --card-foreground: #ece8e1;
+  --popover: #221f18;
+  --popover-foreground: #ece8e1;
+  --primary: #44863a; /* forest を持ち上げた緑（白文字≒AA・text-primary も可読） */
+  --primary-foreground: #ffffff;
+  --secondary: #38301f; /* 暗い wheat チップ */
+  --secondary-foreground: #dcbd8e;
+  --muted: #262319;
+  --muted-foreground: #9c968a;
+  --accent: #202c1c; /* hover 等の控えめな緑面 */
+  --accent-foreground: #a6d29b;
+  --destructive: #e5544e;
+  --destructive-foreground: #ffffff;
+  --border: #322e26;
+  --input: #423d33;
+  --ring: #5aa24d;
+
+  /* Material 拡張 */
+  --surface: #181611;
+  --surface-container-lowest: #1f1c16; /* カード面・トップバー */
+  --surface-container-low: #232019; /* サイドバー等の面 */
+  --surface-container: #29251e;
+  --surface-container-high: #322d25;
+  --surface-container-highest: #3a352b;
+  --surface-bright: #221f18;
+  --surface-variant: #201d16; /* 読書面（プレビュー） */
+  --on-surface: #ece8e1; /* 見出し */
+  --on-surface-variant: #a49e92; /* 補助テキスト */
+  --outline: #8b8578;
+  --outline-variant: #645e53; /* /30〜/40 の透過利用で subtle 境界 */
+  --primary-container: #294424;
+  --on-primary-container: #cae4c3;
+  --secondary-color: #cba576; /* wheat-500 相当 */
+  --secondary-container: #38301f;
+  --on-secondary-container: #e0c398;
+  --error: #e5544e;
+  --error-container: #3a1e1c;
+  --on-error-container: #f4b4b0;
+
+  /* デザイン固有の追加パレット（緑・表紙トーン・アクセント） */
+  --forest-50: #1d291b;
+  --forest-100: #24331f;
+  --forest-400: #5f8a54; /* @参照リンクの下線 */
+  --forest-600: #74ab68;
+  --forest-700: #8bc47e; /* @参照リンクの文字（暗い読書面で可読な明るい緑） */
+  --forest-800: #a9d69d;
+  --forest-900: #c6e8bb; /* @参照リンク hover（最も明るい） */
+  --wheat-500: #c9a274;
+  --wheat-700: #d8bd8e; /* 「-leaf-」等の wheat 文字（暗背景で可読な明るい麦色） */
+  --paper-100: #201d16;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  /* Material 3 拡張 → ユーティリティ（bg-surface-container-low, text-on-surface-variant 等） */
+  --color-surface: var(--surface);
+  --color-surface-container-lowest: var(--surface-container-lowest);
+  --color-surface-container-low: var(--surface-container-low);
+  --color-surface-container: var(--surface-container);
+  --color-surface-container-high: var(--surface-container-high);
+  --color-surface-container-highest: var(--surface-container-highest);
+  --color-surface-bright: var(--surface-bright);
+  --color-surface-variant: var(--surface-variant);
+  --color-on-surface: var(--on-surface);
+  --color-on-surface-variant: var(--on-surface-variant);
+  --color-outline: var(--outline);
+  --color-outline-variant: var(--outline-variant);
+  --color-primary-container: var(--primary-container);
+  --color-on-primary-container: var(--on-primary-container);
+  --color-brand-secondary: var(--secondary-color);
+  --color-secondary-container: var(--secondary-container);
+  --color-on-secondary-container: var(--on-secondary-container);
+  --color-error: var(--error);
+  --color-error-container: var(--error-container);
+  --color-on-error-container: var(--on-error-container);
+
+  /* 追加パレット → ユーティリティ（bg-forest-100, text-wheat-700 等） */
+  --color-forest-50: var(--forest-50);
+  --color-forest-100: var(--forest-100);
+  --color-forest-400: var(--forest-400);
+  --color-forest-600: var(--forest-600);
+  --color-forest-700: var(--forest-700);
+  --color-forest-800: var(--forest-800);
+  --color-forest-900: var(--forest-900);
+  --color-wheat-500: var(--wheat-500);
+  --color-wheat-700: var(--wheat-700);
+  --color-paper: var(--paper-100);
+
+  /* UI はモダンゴシック（Noto Sans JP をバンドル済み）、見出し・タイトルはディスプレイ明朝。 */
+  --font-sans:
+    "Inter Variable", "Noto Sans JP Variable", "Hiragino Sans", "Yu Gothic", system-ui, sans-serif;
+  --font-serif:
+    "Shippori Mincho B1", "Noto Serif JP Variable", "Hiragino Mincho ProN", "Yu Mincho", Georgia,
+    serif;
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+
+  --spacing-sidebar: 248px;
+  --spacing-gutter: 32px;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    /* UI 既定はゴシック（デザインの font-body 相当）。本文プレビュー・見出しは各所で明朝を明示。 */
+    @apply bg-background text-foreground font-sans antialiased;
+  }
+}
+
+/* 組版表現（ライブプレビュー＆縦書きサンプル共通） */
 .dots {
   font-style: normal;
   -webkit-text-emphasis: filled dot;
   text-emphasis: filled dot;
 }
 
+/*
+ * 本文エディタは日本語ゴシックを最優先にする。バンドルした Noto Sans JP を先頭に置き、
+ * どの端末でも同じ字形・字送りで書けるようにする（未ロード時/オフラインはシステムゴシックへ）。
+ */
+.editor {
+  /* 文字サイズは設定（--reading-font-size）に追従。要素側で text-* を当てないこと。 */
+  font-size: var(--reading-font-size, 15px);
+  font-family:
+    "Noto Sans JP Variable", "Hiragino Kaku Gothic ProN", "Yu Gothic", "Yu Gothic UI", Meiryo,
+    "Inter Variable", system-ui, sans-serif;
+}
+
+/*
+ * 本文プレビューは日本語の明朝体を最優先にする。本文 UI フォント（Source Serif 4）は
+ * CJK グリフを持たず、縦書き時にフォールバックの字送りメトリクスが崩れて文字が重なるため。
+ * バンドルした Noto Serif JP を先頭に置き端末差をなくす（未ロード時はシステム明朝へ）。
+ */
+.preview {
+  /* 文字サイズは設定（--reading-font-size）に追従。要素側で text-* を当てないこと。 */
+  font-size: var(--reading-font-size, 15px);
+  font-family:
+    "Noto Serif JP Variable", "Hiragino Mincho ProN", "Yu Mincho", YuMincho, "MS PMincho",
+    "Noto Serif CJK JP", "Noto Serif JP", "IPAmjMincho", "IPAGothic", "Source Serif 4 Variable",
+    serif;
+  /* URL や英数字など分割点のない長い連続文字列も紙面内で折り返す（縦書き＝列／横書き＝行）。
+     これが無いと 1 行に長文を書いた際、プレビューが紙面外へ飛び出す。 */
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+/* 段落自体も折り返し対象に含める（-webkit-box 等で固有幅化するのを防ぐ）。 */
+.preview p {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
 .preview ruby rt {
   font-size: 0.5em;
+  color: var(--on-surface-variant);
 }
 
+/* 縦中横: 1〜2 桁の半角数字を正立させる（横書き時は no-op）。EPUB 出力と挙動を揃える。 */
+.preview .tcy {
+  text-combine-upright: all;
+  -webkit-text-combine: horizontal;
+}
+
+/* 空行は段落の積み上げ方向（block 軸）に 1 行分の余白を作る＝縦書きでは列の隙間になる。 */
 .preview .blank {
-  min-height: 1em;
+  min-block-size: 1em;
 }
 
-.preview .scene-break {
-  border: none;
-  border-top: 1px solid #d6d3d1;
-  margin: 1.5em auto;
-  width: 40%;
+/* シーン区切りは論理プロパティで横書き＝水平線／縦書き＝垂直線の双方に対応させる。 */
+/*
+ * @参照リンク。解決済みはブランド緑の点線下線（図鑑に居ることを示す）、
+ * 未解決（図鑑未登録）は麦色の点線＋やや薄色で「未登録」を示す。クリックで図鑑を引く。
+ * 縦書きでも下線は字の左側に出る（論理プロパティ任せ）ので writing-mode 非依存。
+ */
+.preview .ref {
+  color: var(--forest-700);
+  text-decoration: underline;
+  text-decoration-style: dotted;
+  text-decoration-color: var(--forest-400);
+  text-underline-offset: 0.24em;
+  cursor: pointer;
+  border-radius: 2px;
+}
+.preview .ref:hover {
+  color: var(--forest-900);
+  text-decoration-color: var(--forest-700);
+}
+.preview .ref--unresolved {
+  color: var(--wheat-700);
+  text-decoration-color: var(--wheat-500);
+}
+.preview .ref:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
 }

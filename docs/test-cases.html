@@ -72,6 +72,7 @@
       .badge.done { color: var(--done); border: 1px solid color-mix(in srgb, var(--done) 40%, transparent); }
       .badge.proposed { color: var(--proposed); border: 1px solid color-mix(in srgb, var(--proposed) 40%, transparent); }
       .badge.decision { color: var(--decision); border: 1px solid color-mix(in srgb, var(--decision) 40%, transparent); }
+      .badge.deferred { color: #94a3b8; border: 1px solid #94a3b855; }
       .lbadge { font-size: 10px; padding: 1px 7px; border-radius: 999px; font-family: var(--mono); white-space: nowrap; }
       .lbadge.unit { color: #a78bfa; border: 1px solid #a78bfa55; }
       .lbadge.integration { color: #38bdf8; border: 1px solid #38bdf855; }
@@ -88,6 +89,10 @@
       .decision-card { background: color-mix(in srgb, var(--decision) 8%, var(--panel)); border: 1px solid color-mix(in srgb, var(--decision) 35%, transparent); border-radius: 10px; padding: 14px 16px; margin: 10px 0; }
       .decision-card h3 { margin: 0 0 6px; font-size: 13px; color: var(--decision); }
       .decision-card .opt { font-size: 13px; margin: 4px 0; }
+      .decision-card.decided { background: color-mix(in srgb, var(--done) 8%, var(--panel)); border-color: color-mix(in srgb, var(--done) 35%, transparent); }
+      .decision-card.decided h3 { color: var(--done); }
+      .decision-card.decided .opt { color: var(--muted); opacity: .7; }
+      .decision-card .decided-note { font-size: 13px; margin-top: 8px; padding-top: 8px; border-top: 1px solid color-mix(in srgb, var(--done) 25%, transparent); }
       .hidden { display: none !important; }
       .empty { color: var(--muted); font-size: 13px; padding: 20px; text-align: center; }
     </style>
@@ -227,6 +232,85 @@
         { id: 'SV2', module: 'core/snapshot', group: 'restoreSnapshot', status: 'proposed', title: '版から当時の Work を復元', input: 'restoreSnapshot(snap)', expected: '当時の work と deep equal' },
         { id: 'SV3', module: 'core/snapshot', group: 'trimSnapshots', status: 'proposed', title: '保持上限で古い版を切り詰め', input: 'trim(list(5), max=3)', expected: '新しい3件のみ残る' },
         { id: 'SV4', module: 'core/snapshot', group: 'trimSnapshots', status: 'proposed', title: 'トリム後も新しい順を保持', input: 'trim 後の順序', expected: '降順（新→古）を維持' },
+
+        // 12. core/parser/parseNotation（@参照 [[名前]] 追加・P1）
+        { id: 'GP1', module: 'core/parser/parseNotation', group: 'parseInlines(ref)', status: 'proposed', title: '[[名前]] → ref', input: '[[アリス]]', expected: '[ref(アリス)]' },
+        { id: 'GP2', module: 'core/parser/parseNotation', group: 'parseInlines(ref)', status: 'proposed', title: 'text に挟まれた ref', input: '私は[[アリス]]に会った', expected: '[text, ref(アリス), text]' },
+        { id: 'GP3', module: 'core/parser/parseNotation', group: 'parseInlines(ref)', status: 'proposed', title: '前後空白は trim（半角/全角）', input: '[[ アリス ]]', expected: '[ref(アリス)]（name は trim 済）' },
+        { id: 'GP4', module: 'core/parser/parseNotation', group: 'parseInlines(ref)', status: 'proposed', title: '未終端 [[ は改行/行末を終端に ref 化（§2.1）', input: '行末 [[未完', expected: '[..., ref(未完)]（フォールバックでなく ref）' },
+        { id: 'GP-EMPTY', module: 'core/parser/parseNotation', group: 'parseInlines(ref)', status: 'proposed', title: '空 [[]] / [[　]] も常に ref（name=空）', input: '[[]] と [[　]]', expected: 'ref(name=空文字)（描画時は常に未解決）' },
+        { id: 'GP9', module: 'core/parser/parseNotation', group: 'parseInlines(ref)', status: 'proposed', title: 'name 内の《》は非解釈で ]] まで literal', input: '[[剣《つるぎ》]]', expected: '[ref(name=剣《つるぎ》)]' },
+        { id: 'GP10', module: 'core/parser/parseNotation', group: 'parseInlines(ref)', status: 'proposed', title: '連続 ref は空 text を挟まず分割', input: '[[A]][[B]]', expected: '[ref(A), ref(B)]' },
+        { id: 'GP11', module: 'core/parser/parseNotation', group: 'parseInlines(ref)', status: 'proposed', title: 'ref 前後の text flush 境界', input: 'x[[A]]y[[B]]z', expected: '[text(x),ref(A),text(y),ref(B),text(z)]' },
+        { id: 'GP12', module: 'core/parser/parseNotation', group: 'parseInlines(ref)', status: 'proposed', title: 'ref 直後の句読点は text', input: '[[アリス]]、おはよう', expected: '[ref(アリス), text(、おはよう)]' },
+        { id: 'GP13', module: 'core/parser/parseNotation', group: 'parseInlines(ref)', status: 'proposed', title: 'ref / ruby / text 混在の境界', input: '私は[[アリス]]と｜剣《つるぎ》を', expected: '[text, ref(アリス), text, ruby(剣→つるぎ), text]' },
+
+        // 13. core/exporter/blocksToNotation（ロスレス記法直列化・新設）
+        { id: 'GN1', module: 'core/exporter/blocksToNotation', group: 'blocksToNotation(blocks)', status: 'proposed', title: 'ref → [[名前]] を出力（往復で ref 保持）', input: '[ref(アリス)]', expected: '[[アリス]]' },
+        { id: 'GN2', module: 'core/exporter/blocksToNotation', group: 'blocksToNotation(blocks)', status: 'proposed', title: 'ref 非含有 blocks は現 blocksToKakuyomu と同一出力', input: 'ルビ/傍点/空行/区切り（ref 無し）', expected: 'blocksToNotation(b) と blocksToKakuyomu(b) が一致' },
+        { id: 'GN3', module: 'core/exporter/blocksToNotation', group: 'blocksToNotation(blocks)', status: 'proposed', title: 'parse→notation→parse が blocks 恒等（ref 含む）', input: 'ref を含む記法 s', expected: 'parse(s) と parse(notation(parse(s))) が deep equal' },
+
+        // 14. core/exporter degrade（ref → プレーン・exporter は辞書非依存）
+        { id: 'GE-N1', module: 'core/exporter/toNarou', group: 'ref degrade', status: 'proposed', title: 'なろう: ref → name プレーン', input: '[ref(アリス)]', expected: 'アリス' },
+        { id: 'GE-K1', module: 'core/exporter/toKakuyomu', group: 'ref degrade', status: 'proposed', title: 'カクヨム: ref → name プレーン', input: '[ref(アリス)]', expected: 'アリス' },
+        { id: 'GE-E1', module: 'core/exporter/toEpub', group: 'ref degrade', status: 'proposed', title: 'EPUB: ref → XHTML テキストノード（リンク無し）', input: '[ref(アリス)]', expected: 'name を含むテキスト・ref リンク要素なし（blocksToHtml を plain モード）', note: 'D-GLOS-PREVIEW-API 依存' },
+        { id: 'GE-MIX', module: 'core/exporter/toNarou', group: 'ref degrade', status: 'proposed', title: 'ref+ruby+text 混在行の degrade 連結', input: '[text(私は),ref(アリス),text(と),ruby(剣→つるぎ),text(を)]', expected: '私はアリスと｜剣《つるぎ》を（前後 text 欠落/重複なし）' },
+
+        // 15. core/exporter/toHtml（プレビュー ref 描画・引数化）
+        { id: 'GE-H1', module: 'core/exporter/toHtml', group: 'blocksToHtml(ref)', status: 'proposed', title: '解決済み ref → ref 構造マーカー（name 含む・未解決マーカー無し）', input: 'resolved ref + resolvedNames', expected: 'ref を示す要素に name・未解決クラス無し', note: '具体 class/属性・色は D-GLOS-PREVIEW-API / CSS 責務' },
+        { id: 'GE-H2', module: 'core/exporter/toHtml', group: 'blocksToHtml(ref)', status: 'proposed', title: '未解決 ref → 解決済みと区別できる未解決マーカー', input: '不一致 or name=空 の ref', expected: '未解決マーカーを持つ', note: 'API 形は D-GLOS-PREVIEW-API' },
+        { id: 'GE-H3', module: 'core/exporter/toHtml', group: 'blocksToHtml(ref)', status: 'proposed', title: 'plain モード（EPUB 共有）は全 ref がプレーン', input: 'resolvedNames 無し/plain', expected: 'ref リンクマーカー無し（GE-E1 と整合・回帰）' },
+
+        // 16. core/glossary/resolveRef（name+aliases trim 完全一致）
+        { id: 'GR1', module: 'core/glossary/resolveRef', group: 'resolveRef(name, entries)', status: 'proposed', title: 'name 完全一致で解決', input: 'ref アリス / entry name=アリス', expected: '当該 entry を返す' },
+        { id: 'GR2', module: 'core/glossary/resolveRef', group: 'resolveRef(name, entries)', status: 'proposed', title: 'alias 完全一致で解決', input: 'entry aliases に「アリス」', expected: '当該 entry' },
+        { id: 'GR3', module: 'core/glossary/resolveRef', group: 'resolveRef(name, entries)', status: 'proposed', title: 'trim 後一致（前後空白・半角/全角対称）', input: 'ref name=「 アリス 」', expected: '解決' },
+        { id: 'GR4', module: 'core/glossary/resolveRef', group: 'resolveRef(name, entries)', status: 'proposed', title: '不一致 → undefined', input: '一致なし', expected: 'undefined' },
+        { id: 'GR5', module: 'core/glossary/resolveRef', group: 'resolveRef(name, entries)', status: 'proposed', title: '大小区別あり', input: 'alice vs Alice', expected: 'undefined' },
+        { id: 'GR6', module: 'core/glossary/resolveRef', group: 'resolveRef(name, entries)', status: 'proposed', title: 'name=空 は常に未解決', input: 'ref name=空文字', expected: 'undefined' },
+        { id: 'GR7', module: 'core/glossary/resolveRef', group: 'resolveRef(name, entries)', status: 'proposed', title: 'reading のみ一致は解決対象外', input: 'reading=ありす のみ一致', expected: 'undefined（reading はサジェスト専用）' },
+        { id: 'GR8', module: 'core/glossary/resolveRef', group: 'resolveRef(name, entries)', status: 'proposed', title: 'entry name の前後空白は trim 対称・内部空白は別物', input: 'entry name=「　アリス　」 / 「アリス スミス」と「アリススミス」', expected: '前後 trim は解決・内部空白差は不一致' },
+
+        // 17. core/glossary/findAppearances（登場話・参照数）
+        { id: 'GA1', module: 'core/glossary/findAppearances', group: 'findAppearances(work, entry)', status: 'proposed', title: '登場話 episodeIds は話順・同話内重複なし', input: 'ep1 に ref 2 / ep2 に ref 1', expected: 'episodeIds=[ep1, ep2]' },
+        { id: 'GA2', module: 'core/glossary/findAppearances', group: 'findAppearances(work, entry)', status: 'proposed', title: 'refCount は ref inline 総数（同話内も加算）', input: 'GA1 と同入力', expected: 'refCount=3（episodeIds 長さ=2 と別概念）' },
+        { id: 'GA3', module: 'core/glossary/findAppearances', group: 'findAppearances(work, entry)', status: 'proposed', title: 'alias 経由 ref も登場話/refCount に算入', input: '同話に name と alias の ref', expected: '話一意・refCount 加算' },
+        { id: 'GA4', module: 'core/glossary/findAppearances', group: 'findAppearances(work, entry)', status: 'proposed', title: '未参照 entry', input: '本文に ref 無し', expected: 'episodeIds=[], refCount=0' },
+
+        // 18. core/glossary/renameEntry（①自動エイリアス ＋ ②本文一括書換）
+        { id: 'GRN1', module: 'core/glossary/renameEntry', group: 'renameEntry(...)', status: 'proposed', title: '① name 更新＋旧名を aliases へ', input: 'newName, rewriteBody=false', expected: 'entry.name=新名・aliases に旧名・本文 ref は旧名で解決継続' },
+        { id: 'GRN2', module: 'core/glossary/renameEntry', group: 'renameEntry(...)', status: 'proposed', title: '① 旧名が既に aliases にあれば重複追加しない', input: '旧名が既存 alias', expected: 'aliases に重複しない' },
+        { id: 'GRN3', module: 'core/glossary/renameEntry', group: 'renameEntry(...)', status: 'proposed', title: '② 全話の ref(旧名) を新名へ書換（他話不変）', input: 'ep1 に2 / ep3 に1 / ep2 無し, rewriteBody=true', expected: 'ep1,ep3 のみ書換・ep2 不変・以後 findAppearances=[ep1,ep3]/refCount=3' },
+        { id: 'GRN4', module: 'core/glossary/renameEntry', group: 'renameEntry(...)', status: 'proposed', title: '② プレーン同名 text は不変（ref のみ書換）', input: '本文にプレーン「旧名」text', expected: 'text は不変' },
+        { id: 'GRN5', module: 'core/glossary/renameEntry', group: 'renameEntry(...)', status: 'proposed', title: '② rewriteBody=false なら本文 ref.name は旧名のまま', input: 'rewriteBody=false', expected: 'ref.name=旧名・entry.name=新名・aliases に旧名' },
+        { id: 'GRN6', module: 'core/glossary/renameEntry', group: 'renameEntry(...)', status: 'proposed', title: '② 旧名一致 ref のみ書換・別名 ref は不変', input: '旧名 ref と別 entry ref が混在', expected: '旧名 ref のみ新名へ' },
+        { id: 'GRN7', module: 'core/glossary/renameEntry', group: 'renameEntry(...)', status: 'proposed', title: 'newName===現 name は no-op', input: 'newName=現 name', expected: 'aliases も本文も不変（無駄 alias を増やさない）' },
+        { id: 'GRN8', module: 'core/glossary/renameEntry', group: 'renameEntry(...)', status: 'proposed', title: 'newName が現 aliases にあれば昇格し循環を作らない', input: 'newName が現 alias', expected: '新 name へ昇格・旧 aliases から newName 除去（name と同値 alias を残さない）' },
+        { id: 'GRN9', module: 'core/glossary/renameEntry', group: 'renameEntry(...)', status: 'proposed', title: 'newName が他 entry の name/alias と衝突は拒否', input: '別 entry の name/alias と同名へリネーム', expected: 'throw（D-GLOS-UNIQUE=完全同名拒否・実装/テスト済）' },
+
+        // 19. core/schema（ref / glossary 追加）
+        { id: 'GSC1', module: 'core/schema', group: 'InlineSchema(ref)', status: 'proposed', title: 'Inline に ref を追加（受理）', input: "{type:'ref',name:'アリス'}", expected: 'success=true' },
+        { id: 'GSC2', module: 'core/schema', group: 'InlineSchema(ref)', status: 'proposed', title: 'ref の name 欠落を拒否', input: "{type:'ref'}", expected: 'success=false' },
+        { id: 'GSC3', module: 'core/schema', group: 'WorkSchema(glossary)', status: 'proposed', title: 'Work.glossary 省略（旧 Work）を許容', input: 'glossary 無し Work', expected: 'success=true（後方互換）' },
+        { id: 'GSC4', module: 'core/schema', group: 'GlossaryEntrySchema', status: 'proposed', title: 'GlossaryEntry 必須項目を受理', input: 'id/name/aliases/createdAt/updatedAt', expected: 'success=true' },
+        { id: 'GSC5', module: 'core/schema', group: 'GlossaryEntrySchema', status: 'proposed', title: 'GlossaryEntry の name 欠落を拒否', input: 'name 無し entry', expected: 'success=false' },
+
+        // 20. core/folder（glossary 往復・manifest 相乗り）
+        { id: 'GFD1', module: 'core/folder', group: 'glossary 往復', status: 'proposed', title: 'folder 往復で Work.glossary が完全復元', input: 'folderToWork(workToFolder(work))', expected: 'work.glossary が manifest 経由で deep equal' },
+        { id: 'GFD2', module: 'core/folder', group: 'glossary 往復', status: 'proposed', title: '本文 ref は .txt に [[名前]] のまま（degrade しない）', input: 'ref を含む Work を workToFolder', expected: '.txt 本文に [[名前]]（folder は blocksToNotation）' },
+        { id: 'GFD3', module: 'core/folder', group: 'glossary 往復', status: 'proposed', title: 'folderToWork で ref inline が復元', input: '[[名前]] を含む .txt', expected: 'ref inline へ往復恒等' },
+
+        // 21. core/bundle（glossary import 検証）
+        { id: 'GBN1', module: 'core/bundle', group: 'glossary 検証', status: 'proposed', title: 'glossary 無し旧バンドルを受理（後方互換）', input: 'glossary 無し bundle', expected: 'import 成功・glossary 空' },
+        { id: 'GBN2', module: 'core/bundle', group: 'glossary 検証', status: 'proposed', title: 'glossary entry の name 欠落 bundle を拒否', input: 'name 欠落 entry を含む', expected: 'BundleSchema.parse で拒否' },
+        { id: 'GBN3', module: 'core/bundle', group: 'glossary 検証', status: 'decision', title: 'GlossaryEntry の未知フィールド（将来 spoiler 等）', input: '余剰フィールド付き entry', expected: 'D-SCHEMA-1 の決定どおり' },
+        { id: 'GBN4', module: 'core/bundle', group: 'glossary 検証', status: 'proposed', title: 'glossary 込み Work の export→import 恒等', input: 'glossary を持つ Work', expected: 'deep equal' },
+
+        // 22. core/glossary（@ トリガ純関数）
+        { id: 'GTR1', module: 'core/glossary', group: 'shouldTriggerSuggest(textBeforeCaret)', status: 'proposed', title: '行頭/空白直後の @ はトリガ', input: '「@」「行頭@」「 @」(半角)「　@」(全角)', expected: 'すべて true' },
+        { id: 'GTR2', module: 'core/glossary', group: 'shouldTriggerSuggest(textBeforeCaret)', status: 'proposed', title: '直前が文字/数字なら抑制（メール等の逃げ道）', input: '「foo@」', expected: 'false（@ は literal）' },
+        { id: 'GTR3', module: 'core/glossary', group: 'shouldTriggerSuggest(textBeforeCaret)', status: 'proposed', title: '句読点・記号直後の @ はトリガ（D-GLOS-SUGGEST-TRIGGER 確定）', input: '「。@」「）@」', expected: 'true（直前が文字/数字でなければ発火）' },
+        { id: 'GTR4', module: 'core/glossary', group: 'shouldTriggerSuggest(textBeforeCaret)', status: 'proposed', title: '全角＠(U+FF20) でもトリガ（D-GLOS-SUGGEST-TRIGGER 確定）', input: '行頭の「＠」/「。＠」', expected: 'true（半角 @ と同じ判定）' },
       ]
 
       // ───────────────────────────────────────────────────────────
@@ -301,6 +385,58 @@
         { id: 'F-SAVE-004', feature: '自動保存・版管理', layer: 'integration', status: 'proposed', scenario: '手動スナップショット作成', given: '編集中の作品', when: '「スナップショット作成」', then: '版一覧が1件増える' },
         { id: 'F-SAVE-005', feature: '自動保存・版管理', layer: 'integration', status: 'proposed', scenario: 'スナップショット復元', given: '過去の版がある', when: '版を選び復元', then: '本文が当時の内容に戻る' },
         { id: 'F-SAVE-006', feature: '自動保存・版管理', layer: 'e2e', status: 'proposed', scenario: 'スナップショットの永続化', given: '版を作成', when: '再読込', then: '版一覧が残っている', note: '保持数は D-SAVE-2' },
+
+        // ── 辞書（@参照 / オブジェクト辞書）P1 ───────────────────────────
+        { id: 'F-GLOS-CRUD-001', feature: '辞書 / CRUD・ナビ', layer: 'integration', status: 'proposed', scenario: '辞書ナビが作品ごとに切替わる', given: '作品A（entryあり）の辞書ページ表示中', when: '作品Bへ切替／全作品を閉じる', then: '辞書がBのentryセットに更新されAのentryは出ない／閉じたら辞書ページから離脱', note: 'per-work 辞書・F-WORK-044 と同型' },
+        { id: 'F-GLOS-CRUD-002', feature: '辞書 / CRUD・ナビ', layer: 'integration', status: 'proposed', scenario: 'entry 作成ダイアログを開く', given: '辞書ページ', when: '「用語を追加」押下', then: 'name 入力欄を持つダイアログが開く' },
+        { id: 'F-GLOS-CRUD-003', feature: '辞書 / CRUD・ナビ', layer: 'integration', status: 'proposed', scenario: 'name 空で作成不可', given: '作成ダイアログ', when: 'name 空で保存', then: 'エラー表示・作成されない' },
+        { id: 'F-GLOS-CRUD-004', feature: '辞書 / CRUD・ナビ', layer: 'integration', status: 'proposed', scenario: 'name のみで作成', given: 'name 入力済（category/summary 未入力）', when: '保存', then: 'カードグリッドに1枚追加・未入力欄は空欄/非表示で一意に表示' },
+        { id: 'F-GLOS-CRUD-005', feature: '辞書 / CRUD・ナビ', layer: 'integration', status: 'proposed', scenario: 'カードで詳細ダイアログが開く', given: 'カードグリッド', when: 'カードをクリック', then: '詳細ダイアログが開く（登場話/参照数の表示は F-GLOS-APPEAR へ委譲）' },
+        { id: 'F-GLOS-CRUD-006', feature: '辞書 / CRUD・ナビ', layer: 'integration', status: 'proposed', scenario: 'body 編集の反映', given: '詳細編集で body 変更', when: '保存して同 entry を再度開く', then: '詳細の body 欄に新しい値（body はカード表面には出ない）' },
+        { id: 'F-GLOS-CRUD-007', feature: '辞書 / CRUD・ナビ', layer: 'integration', status: 'proposed', scenario: '削除確定でカードが消える', given: 'entry 削除確認', when: '確定', then: 'カードグリッドから消える' },
+        { id: 'F-GLOS-CRUD-008', feature: '辞書 / CRUD・ナビ', layer: 'integration', status: 'proposed', scenario: '削除キャンセルで残る', given: '削除確認ダイアログ', when: 'キャンセル／Esc', then: 'entry は残り本文 ref も解決のまま' },
+        { id: 'F-GLOS-CRUD-009', feature: '辞書 / CRUD・ナビ', layer: 'integration', status: 'proposed', scenario: '同名 entry の作成は拒否', given: '既存 entry と完全同名（name/alias）で作成', when: '保存', then: 'バリデーションエラーで作成されない（D-GLOS-UNIQUE=完全同名拒否）' },
+        { id: 'F-GLOS-CRUD-010', feature: '辞書 / CRUD・ナビ', layer: 'integration', status: 'proposed', scenario: '参照中 entry の削除で未解決化', given: '本文に [[名前]] がある entry', when: '削除確定', then: 'プレビューの当該 ref が未解決（点線）になる' },
+        { id: 'F-GLOS-CRUD-A11Y', feature: '辞書 / CRUD・ナビ', layer: 'integration', status: 'proposed', scenario: '作成・削除ダイアログの a11y', given: '作成/削除の各ダイアログ表示', when: '開いた直後', then: '初期フォーカス・Esc キャンセル相当・フォーカストラップが働く' },
+
+        { id: 'F-GLOS-FIND-001', feature: '辞書 / 検索・絞り込み', layer: 'integration', status: 'proposed', scenario: '検索で絞り込み（body 含む）', given: '複数 entry', when: '検索ボックスに入力', then: 'name/alias/reading/body 部分一致で絞り込み（@サジェストとの差＝body も対象）' },
+        { id: 'F-GLOS-FIND-002', feature: '辞書 / 検索・絞り込み', layer: 'integration', status: 'proposed', scenario: 'カテゴリ絞り込み', given: 'category 付き entry 群', when: 'カテゴリを選択', then: '当該カテゴリの entry のみ表示' },
+        { id: 'F-GLOS-FIND-003', feature: '辞書 / 検索・絞り込み', layer: 'integration', status: 'proposed', scenario: '五十音ソート', given: 'reading 有無が混在する entry 群', when: '五十音順で表示', then: 'reading 昇順で並ぶ（reading 欠落 entry の位置は D-GLOS-SORT）', note: 'D-GLOS-SORT' },
+
+        { id: 'F-GLOS-APPEAR-001', feature: '辞書 / 登場話・参照数', layer: 'integration', status: 'proposed', scenario: '登場話一覧の表示', given: '本文で参照される entry の詳細', when: '詳細ダイアログを開く', then: '登場話が話順で一覧表示（GA1 の UI 経路）' },
+        { id: 'F-GLOS-APPEAR-002', feature: '辞書 / 登場話・参照数', layer: 'integration', status: 'proposed', scenario: '参照数の表示', given: 'ep1 に ref2 / ep2 に ref1 の entry', when: '詳細を開く', then: '参照数=3（ref inline 総数）と登場話数=2 が表示（GA2）' },
+        { id: 'F-GLOS-APPEAR-003', feature: '辞書 / 登場話・参照数', layer: 'integration', status: 'proposed', scenario: '未参照 entry の表示', given: '本文に ref が無い entry', when: '詳細を開く', then: '登場話なし（空一覧/0件）・参照数=0（GA4）' },
+
+        { id: 'F-GLOS-INS-001', feature: '辞書 / @サジェスト挿入', layer: 'integration', status: 'proposed', scenario: '@ でサジェストが開く', given: 'エディタ・辞書に entry', when: '行頭で @ を入力', then: 'サジェストポップアップが開く（全角＠は D-GLOS-SUGGEST-TRIGGER）' },
+        { id: 'F-GLOS-INS-002', feature: '辞書 / @サジェスト挿入', layer: 'integration', status: 'proposed', scenario: '入力で候補を絞り込み', given: 'ポップアップ表示', when: '@ に続けて文字入力', then: 'name+aliases+reading の部分一致で絞り込み（body は対象外）・並び順は D-GLOS-SUGGEST-ORDER' },
+        { id: 'F-GLOS-INS-003', feature: '辞書 / @サジェスト挿入', layer: 'integration', status: 'proposed', scenario: 'キーボードで候補確定→ref 挿入', given: '候補が複数のポップアップ', when: 'ArrowUp/Down で移動し Enter/Tab で確定', then: '選択候補の entry.name で [[名前]] 置換（@query/alias でなく正規 name）・トリガ文字消える・マウス不要・listbox/option role+aria-activedescendant' },
+        { id: 'F-GLOS-INS-004', feature: '辞書 / @サジェスト挿入', layer: 'integration', status: 'proposed', scenario: '一致なしで新規作成候補', given: '一致 entry 無し', when: '@ に続け未知語を入力', then: '新規作成候補（query を name とする項目）が出る（文言はハードコードしない）・作成挙動は D-GLOS-QUICKCREATE' },
+        { id: 'F-GLOS-INS-005', feature: '辞書 / @サジェスト挿入', layer: 'integration', status: 'proposed', scenario: '直前非空白では発火しない', given: 'エディタ', when: '直前が文字の状態で @（例 foo@）', then: 'ポップアップ出ず @ は literal（shouldTriggerSuggest=false・GTR2）' },
+        { id: 'F-GLOS-INS-006', feature: '辞書 / @サジェスト挿入', layer: 'integration', status: 'proposed', scenario: '@ 直後の空白で閉じる', given: '(a)@ 直後に空白/改行が既存 (b)候補表示中に空白/改行入力', when: 'その状態/入力', then: '(a)候補非表示 (b)即閉じ＋literal の @ が残る' },
+        { id: 'F-GLOS-INS-007', feature: '辞書 / @サジェスト挿入', layer: 'integration', status: 'proposed', scenario: 'Esc で閉じる', given: '候補表示中', when: 'Esc', then: '候補を閉じ @ は literal で残る' },
+        { id: 'F-GLOS-INS-008', feature: '辞書 / @サジェスト挿入', layer: 'integration', status: 'proposed', scenario: 'IME 変換中は誤発火しない', given: '日本語 IME 変換中（isComposing=true）', when: '未確定文字列に @ を含む', then: 'compositionend までポップアップ発火せず・確定後に判定（textarea+overlay の既知事故点）' },
+        { id: 'F-GLOS-INS-009', feature: '辞書 / @サジェスト挿入', layer: 'integration', status: 'proposed', scenario: '候補0件/空 query の確定', given: '候補0件 または @ 単独（query 空）', when: 'Enter/Tab で確定', then: 'D-GLOS-QUICKCREATE どおり／@ 単独は必ず literal @ が残り ref 化しない' },
+
+        { id: 'F-GLOS-LINK-001', feature: '辞書 / プレビュー リンク化', layer: 'integration', status: 'proposed', scenario: '解決 ref がプレビューに描画', given: '解決済み ref を含む本文', when: 'プレビュー表示', then: 'プレビューペインに自然なグレーで描画されクリック可能（マークアップ厳密検証は GE-H1）' },
+        { id: 'F-GLOS-LINK-002', feature: '辞書 / プレビュー リンク化', layer: 'integration', status: 'proposed', scenario: '未解決 ref は点線', given: '未解決 ref を含む本文', when: 'プレビュー表示', then: '点線で描画されクリックで新規作成導線（マークアップは GE-H2）' },
+        { id: 'F-GLOS-LINK-003', feature: '辞書 / プレビュー リンク化', layer: 'integration', status: 'proposed', scenario: '解決 ref クリックでピーク', given: '解決済み ref', when: 'クリック', then: 'aside に用語の要約がピーク表示' },
+        { id: 'F-GLOS-LINK-004', feature: '辞書 / プレビュー リンク化', layer: 'integration', status: 'proposed', scenario: '未解決 ref クリックで新規作成', given: '未解決 ref', when: 'クリック', then: '当該 name で新規作成フローが起動' },
+        { id: 'F-GLOS-LINK-005', feature: '辞書 / プレビュー リンク化', layer: 'integration', status: 'proposed', scenario: 'ref のキーボード操作 a11y', given: 'プレビューに解決/未解決 ref', when: 'Tab でフォーカスし Enter', then: '解決=ピーク・未解決=新規作成（クリック相当）・可視フォーカスリング' },
+        { id: 'F-GLOS-LINK-006', feature: '辞書 / プレビュー リンク化', layer: 'integration', status: 'deferred', scenario: 'エディタ overlay の ref トークン視認', given: 'エディタ textarea+overlay', when: '本文に ref', then: 'P1.1 へ送り（D-GLOS-OVERLAY-SCOPE 確定）。P1 はプレビュー側のみリンク化', note: '§10 ⑧ / P1.1' },
+
+        { id: 'F-GLOS-RENAME-001', feature: '辞書 / リネーム伝播', layer: 'integration', status: 'proposed', scenario: '①自動エイリアスのみ', given: 'entry をリネーム（本文書換なし）', when: '保存', then: '本文 ref は旧名のまま解決継続（プレビューは解決リンクのまま）' },
+        { id: 'F-GLOS-RENAME-002', feature: '辞書 / リネーム伝播', layer: 'integration', status: 'proposed', scenario: '②本文一括書換の確認', given: 'リネームで②を選ぶ', when: '実行', then: '影響話数/参照数を提示する確認ダイアログが出る' },
+        { id: 'F-GLOS-RENAME-003', feature: '辞書 / リネーム伝播', layer: 'integration', status: 'proposed', scenario: '②確定で本文 ref が変わる', given: '②確認ダイアログ', when: '確定', then: '本文 [[旧名]] が [[新名]] になる（プレーン同名 text は不変）' },
+        { id: 'F-GLOS-RENAME-004', feature: '辞書 / リネーム伝播', layer: 'integration', status: 'proposed', scenario: 'リネームのキャンセル', given: 'リネーム確認（①＋②）', when: 'キャンセル／Esc', then: '本文 ref も entry name も変更されない' },
+        { id: 'F-GLOS-RENAME-005', feature: '辞書 / リネーム伝播', layer: 'integration', status: 'proposed', scenario: '②は自動スナップショットを取らない', given: '②一括書換', when: '実行', then: '版一覧は増えない（§7・辞書編集は契機外）', note: 'バルク書換の取消は手動スナップショット運用・純ロジックは GRN3-8' },
+
+        { id: 'F-GLOS-EDIT-001', feature: '辞書 / エディタ往復', layer: 'integration', status: 'proposed', scenario: 'ref を含む話を開いて保存', given: 'ref を含む話を持つ作品', when: '話を開く→無編集で保存', then: 'draft に [[名前]] が再構成され（blocksToNotation）保存後も ref が保たれる（プレーン名に潰れない）', note: 'editorStore を blocksToKakuyomu→blocksToNotation へ差替の回帰' },
+
+        { id: 'F-GLOS-PERSIST-001', feature: '辞書 / 永続化', layer: 'e2e', status: 'proposed', scenario: 'entry が再読込で残る', given: 'entry を作成', when: 'ページ再読込', then: 'glossary が Work 相乗りで復元される' },
+        { id: 'F-GLOS-PERSIST-002', feature: '辞書 / 永続化', layer: 'integration', status: 'proposed', scenario: 'glossary 無し旧バンドル import', given: 'glossary を持たない旧バンドル', when: 'インポート', then: '後方互換で取り込め glossary は空（GBN1 の UI 経路）' },
+        { id: 'F-GLOS-PERSIST-003', feature: '辞書 / 永続化', layer: 'e2e', status: 'proposed', scenario: 'バンドルで glossary 込み復元', given: 'A で glossary 付き作品を export', when: 'B で import', then: 'B が glossary 込みで同一復元・再読込後も残る' },
+        { id: 'F-GLOS-PERSIST-004', feature: '辞書 / 永続化', layer: 'integration', status: 'proposed', scenario: 'スナップショット復元は本文のみ', given: 'snap 時 glossary=[E1]→その後 E2 追加（現[E1,E2]）・本文も編集', when: 'その snap を復元', then: 'エディタ本文は当時に戻る・work.glossary は [E1,E2] のまま（E2 残存）', note: 'restore は draft のみ・glossary 温存' },
+        { id: 'F-GLOS-PERSIST-005', feature: '辞書 / 永続化', layer: 'e2e', status: 'proposed', scenario: 'folder 往復で glossary と ref 保持', given: 'glossary と本文 ref を持つ作品', when: 'folder へ書き出し→取り込み', then: 'manifest 経由で glossary・[[名前]] 本文の両方が保持（GFD1-3 の UI 経路）' },
       ]
 
       const DECISIONS = [
@@ -340,6 +476,16 @@
         { id: 'D-SAVE-1', title: '自動保存の契機', options: ['idle 数秒（入力停止）', '一定間隔', 'blur/ページ離脱時', '複数併用'] },
         { id: 'D-SAVE-2', title: 'スナップショット保持数と契機', options: ['手動のみ・上限N件', '自動でも版を切る・上限N件', '無制限（容量まで）'] },
         { id: 'D-SAVE-3', title: '文字数カウントの範囲', options: ['本文のみ（記法記号除外）', '記法記号も含む', 'ルビ読みを除外/含める の細分'] },
+
+        // ── 辞書（@参照 / オブジェクト辞書）P1 ───────────────────────────
+        { id: 'D-GLOS-UNIQUE', title: '辞書: 作品内 name 一意性（作成＋リネーム①/②）', options: ['作成・リネームとも完全同名を拒否（resolveRef 一意性を担保）', '許可し resolveRef は先勝ち（① 自動エイリアスの alias 衝突も先勝ち）', '許可するが曖昧解決は未解決扱い'], decided: '作成・リネームとも完全同名（他 entry の name/alias）を拒否。resolveRef を 0/1 件で決定的に保つ。renameEntry は throw で実装・テスト済（GRN9）。' },
+        { id: 'D-GLOS-QUICKCREATE', title: '辞書: @ クイック作成の挙動', options: ['name のみで即作成し挿入（詳細は後で編集）', '詳細ダイアログを開いてから作成', '即作成＋トースト「詳細を編集」'], decided: 'name のみで即作成し、その場で [[name]] を挿入する。詳細（別名/読み/概要等）は辞書画面で後から編集。執筆の流れを止めない。' },
+        { id: 'D-GLOS-PREVIEW-API', title: '辞書: blocksToHtml の ref 描画 API（toEpub も共有）', options: ['toHtml(blocks, entries) で解決判定', '常にリンク描画しUI側で未解決をマーク（境界/テストに難）', '解決済み名 Set を渡す toHtml(blocks, resolvedNames)＋EPUB は plain モード（推奨）'], decided: 'blocksToHtml(blocks, resolvedNames?: Set<string>)。プレビューは解決済み名 Set を渡し 解決=span.ref / 未解決=ref--unresolved。EPUB（toEpub）は引数なし＝プレーン化で辞書非依存。実装・テスト済（GE-H1..H3 / GE-E1）。' },
+        { id: 'D-GLOS-SUGGEST-ORDER', title: '辞書: @ サジェストの並び順・最大件数', options: ['最近使用順', '五十音(reading)順', '一致度順 / 上限N件（要確定）'], decided: '一致度順（前方一致を部分一致より上位）＋上限8件。同ランクは sortEntries（reading→name コードポイント）でタイブレーク。空 query は五十音順に先頭8件。suggestEntries で実装・テスト済（GSG1-4）。' },
+        { id: 'D-GLOS-SUGGEST-TRIGGER', title: '辞書: @ トリガ境界（割れる点を確定）', options: ['全角＠(U+FF20) もトリガするか', '句読点・記号直後（。@ 等）でトリガするか', '確定済: 直前が文字/数字なら抑制（メール逃げ道）・IME 変換中は非発火'], decided: '半角 @ と全角 ＠(U+FF20) の双方でトリガ。句読点・記号・空白・行頭の直後でも発火。直前が文字/数字なら抑制（メール逃げ道）。IME 変換中(isComposing)の抑制は UI 層の責務。shouldTriggerSuggest で実装・テスト済（GTR1-4）。' },
+        { id: 'D-GLOS-SORT', title: '辞書: 五十音ソートで reading 欠落 entry の位置', options: ['末尾', '先頭', 'name の文字コードでフォールバック（推奨）'], decided: 'reading 欠落 entry は name を比較キーにフォールバック（末尾/先頭固定はしない）。比較は UTF-16 コードポイント順で決定的。sortEntries で実装・テスト済（GSORT1-3）。' },
+        { id: 'D-GLOS-CATEGORY-MULTI', title: '辞書: category は単一か複数タグか', options: ['単一自由入力（doc 既定）', '複数タグ'], decided: '単一の自由入力（string?）。複数タグは P1 では持たない。絞り込みは categoriesOf で出現カテゴリを列挙。スキーマは category?: string のまま据え置き。' },
+        { id: 'D-GLOS-OVERLAY-SCOPE', title: '辞書: エディタ ref オーバーレイ視認を P1 で実装するか', options: ['P1 内（軽量なら）', 'P1.1 送り（§10 ⑧）'], decided: 'P1.1 送り。P1 は textarea のまま、リンク化・解決/未解決の可視化はプレビュー側のみ。エディタ overlay（F-GLOS-LINK-006）は deferred。' },
       ]
 
       const STORAGE_DESIGN = `// 低レベルの鍵値ストア抽象
@@ -362,7 +508,7 @@ class WorkRepository {
   deleteWork(id: string): Promise<void>
 }`
 
-      const BADGE = { done: '✅ 実装済み', proposed: '📝 提案', decision: '❓ 決定' }
+      const BADGE = { done: '✅ 実装済み', proposed: '📝 提案', decision: '❓ 決定', deferred: '⏭ 保留(P1.1)' }
       let activeFilter = 'all'
       let activeLayer = 'all'
       let query = ''
@@ -438,12 +584,15 @@ class WorkRepository {
 
         // 決定事項
         if (activeFilter === 'all' || activeFilter === 'decision') {
-          const decs = DECISIONS.filter((d) => !q || (d.title + d.options.join('')).toLowerCase().includes(q))
+          const decs = DECISIONS.filter((d) => !q || (d.title + d.options.join('') + (d.decided || '')).toLowerCase().includes(q))
           if (decs.length) {
-            html += '<section><h2>❓ 決定事項（レビューで決める）</h2>'
+            html += '<section><h2>決定事項（❓未決 / ✅決定済み）</h2>'
             for (const d of decs) {
-              html += `<div class="decision-card"><h3>${esc(d.id)}: ${esc(d.title)}</h3>`
+              const done = !!d.decided
+              const badge = done ? '<span class="badge done">✅ 決定済み</span>' : '<span class="badge decision">❓ 未決</span>'
+              html += `<div class="decision-card${done ? ' decided' : ''}"><h3>${esc(d.id)}: ${esc(d.title)} ${badge}</h3>`
               for (const o of d.options) html += `<div class="opt">・${esc(o)}</div>`
+              if (done) html += `<div class="decided-note"><b>決定:</b> ${esc(d.decided)}</div>`
               html += '</div>'
             }
             html += '</section>'
@@ -456,10 +605,13 @@ class WorkRepository {
 
       function renderCounts() {
         const all = [...FEATURE_SCENARIOS, ...TEST_CASES]
-        const c = { done: 0, proposed: 0, decision: DECISIONS.length }
+        const openDecisions = DECISIONS.filter((d) => !d.decided).length
+        const c = { done: 0, proposed: 0, decision: openDecisions, deferred: 0 }
         for (const t of all) c[t.status] = (c[t.status] || 0) + 1
-        document.getElementById('counts').innerHTML =
-          `<span>✅ <b>${c.done}</b></span><span>📝 <b>${c.proposed}</b></span><span>❓ <b>${c.decision}</b></span><span>計 <b>${all.length}</b></span>`
+        let s = `<span>✅ <b>${c.done}</b></span><span>📝 <b>${c.proposed}</b></span>`
+        if (c.deferred) s += `<span>⏭ <b>${c.deferred}</b></span>`
+        s += `<span>❓ <b>${c.decision}</b></span><span>計 <b>${all.length}</b></span>`
+        document.getElementById('counts').innerHTML = s
       }
 
       document.querySelectorAll('.chip[data-filter]').forEach((btn) =>

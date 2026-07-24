@@ -3,6 +3,7 @@ import type { Episode, Work } from '../../core/schema'
 import {
   episodeKakuyomuExport,
   episodeNarouExport,
+  workAiTextExport,
   workEpubExport,
   workFolderZipExport,
   worksBundleExport,
@@ -56,5 +57,23 @@ describe('exporters（書き出しビルダー・純粋）', () => {
     const d = f.data as Uint8Array
     expect(d[0]).toBe(0x50)
     expect(d[1]).toBe(0x4b)
+  })
+
+  it('AI テキスト: .txt、本文を含み、図鑑は既定で付かない/ON で付く', () => {
+    const withGlossary: Work = {
+      ...work,
+      glossary: [
+        { id: 'g1', name: 'アリス', aliases: [], summary: '勇敢', createdAt: 1, updatedAt: 1 },
+      ],
+    }
+    const off = workAiTextExport(withGlossary, false)
+    expect(off.filename).toBe('夜の物語_AI.txt')
+    expect(off.mime).toContain('text/plain')
+    expect(off.data as string).toContain('# 夜の物語')
+    expect(off.data as string).not.toContain('# 図鑑')
+
+    const on = workAiTextExport(withGlossary, true)
+    expect(on.data as string).toContain('# 図鑑')
+    expect(on.data as string).toContain('## アリス')
   })
 })

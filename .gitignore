@@ -18,6 +18,13 @@ mise.*.local.toml
 .dev.vars
 .dev.vars.*
 
+# Cloudflare/wrangler のローカル状態（ローカル D1 sqlite にセッショントークン等が入る・ビルド中間物）
+.wrangler/
+.mf/
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+
 # Playwright
 test-results
 playwright-report

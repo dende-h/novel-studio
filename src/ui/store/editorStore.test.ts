@@ -1,12 +1,35 @@
 import { beforeEach, describe, expect, it } from 'vitest'
+import { ProfileRepository } from '../../core/profile'
+import { SnapshotRepository } from '../../core/snapshot/snapshotRepository'
+import { ActivityRepository } from '../../core/storage/activityRepository'
 import { MemoryStore } from '../../core/storage/memoryStore'
 import { WorkRepository } from '../../core/storage/workRepository'
 import { createEditorStore, type EditorStore } from './editorStore'
 
-const makeStore = (): EditorStore => {
+const makeStore = (opts?: {
+  now?: () => number
+  snapshotMinIntervalMs?: number
+  trashTtlMs?: number
+}): EditorStore => {
   let n = 0
-  const repo = new WorkRepository(new MemoryStore())
-  return createEditorStore({ repo, genId: () => `id${++n}` })
+  let clock = 0
+  const store = new MemoryStore()
+  const repo = new WorkRepository(store)
+  const snapshotRepo = new SnapshotRepository(store)
+  const profileRepo = new ProfileRepository(store)
+  const activityRepo = new ActivityRepository(store)
+  return createEditorStore({
+    repo,
+    snapshotRepo,
+    profileRepo,
+    activityRepo,
+    genId: () => `id${++n}`,
+    now: opts?.now ?? (() => ++clock),
+    // 既定 0：間隔判定で常に新版を積む（既存テストの挙動を維持）
+    snapshotMinIntervalMs: opts?.snapshotMinIntervalMs ?? 0,
+    // 既定は十分大きく＝テスト中に勝手に期限切れ purge しない
+    trashTtlMs: opts?.trashTtlMs ?? Number.MAX_SAFE_INTEGER,
+  })
 }
 
 describe('editorStore（自前ストア・useSyncExternalStore 用）', () => {
@@ -37,7 +60,64 @@ describe('editorStore（自前ストア・useSyncExternalStore 用）', () => {
     await store.createWork('新作')
     const s = store.getSnapshot()
     expect(s.work?.title).toBe('新作')
-    expect(s.workList).toEqual([{ id: 'id1', title: '新作' }])
+    expect(s.workList).toEqual([
+      { id: 'id1', title: '新作', episodeCount: 0, charCount: 0, updatedAt: expect.any(Number) },
+    ])
+  })
+
+  it('workList は updatedAt の新しい順（降順）に並ぶ', async () => {
+    await store.createWork('古い作')
+    await store.createWork('新しい作')
+    const titles = store.getSnapshot().workList.map((w) => w.title)
+    expect(titles).toEqual(['新しい作', '古い作'])
+  })
+
+  describe('プロフィール（ペンネーム・アバター）', () => {
+    it('updateProfile は state へ反映し、空文字は未設定として落とす', async () => {
+      await store.updateProfile({ penName: '  夢野久作  ', avatar: 'data:image/jpeg;base64,AA' })
+      expect(store.getSnapshot().profile).toEqual({
+        penName: '夢野久作',
+        avatar: 'data:image/jpeg;base64,AA',
+        // updatedAt は端末間 LWW（クラウド同期）用に毎回打たれる。
+        updatedAt: expect.any(Number),
+      })
+
+      await store.updateProfile({ penName: '夢野久作', avatar: '' })
+      expect(store.getSnapshot().profile).toEqual({
+        penName: '夢野久作',
+        updatedAt: expect.any(Number),
+      })
+    })
+
+    it('init はプロフィールを読み込む（別ストアで同一 MemoryStore を共有）', async () => {
+      const kv = new MemoryStore()
+      const make = () =>
+        createEditorStore({
+          repo: new WorkRepository(kv),
+          snapshotRepo: new SnapshotRepository(kv),
+          profileRepo: new ProfileRepository(kv),
+          activityRepo: new ActivityRepository(kv),
+          genId: () => 'x',
+          now: () => 1,
+          snapshotMinIntervalMs: 0,
+          trashTtlMs: Number.MAX_SAFE_INTEGER,
+        })
+      await make().updateProfile({ penName: '保存者', avatar: '' })
+      const reloaded = make()
+      await reloaded.init()
+      expect(reloaded.getSnapshot().profile).toEqual({ penName: '保存者', updatedAt: 1 })
+    })
+
+    it('createWork はペンネームを著者の既定に入れる', async () => {
+      await store.updateProfile({ penName: '初期著者', avatar: '' })
+      await store.createWork('新作')
+      expect(store.getSnapshot().work?.author).toBe('初期著者')
+    })
+
+    it('ペンネーム未設定なら著者は付かない', async () => {
+      await store.createWork('新作')
+      expect(store.getSnapshot().work?.author).toBeUndefined()
+    })
   })
 
   it('createEpisode は話を追加して開き、draft を空にする', async () => {
@@ -68,7 +148,12 @@ describe('editorStore（自前ストア・useSyncExternalStore 用）', () => {
     // 再読込ストアで復元できる（往復）
     const s = store.getSnapshot()
     const ep = s.work?.episodes[0]
-    expect(ep?.blocks.some((b) => b.type === 'sceneBreak')).toBe(true)
+    expect(
+      ep?.blocks.some(
+        (b) =>
+          b.type === 'paragraph' && b.inlines.some((i) => i.type === 'text' && i.text === '＊'),
+      ),
+    ).toBe(true)
     expect(
       ep?.blocks.some((b) => b.type === 'paragraph' && b.inlines.some((i) => i.type === 'ruby')),
     ).toBe(true)
@@ -122,8 +207,521 @@ describe('editorStore（自前ストア・useSyncExternalStore 用）', () => {
     ])
     const list = store.getSnapshot().workList.sort((a, b) => a.id.localeCompare(b.id))
     expect(list).toEqual([
-      { id: 'x1', title: '取込A' },
-      { id: 'x2', title: '取込B' },
+      { id: 'x1', title: '取込A', episodeCount: 0, charCount: 0 },
+      { id: 'x2', title: '取込B', episodeCount: 0, charCount: 0 },
     ])
+  })
+
+  it('createWork は updatedAt を設定する', async () => {
+    await store.createWork('作')
+    expect(store.getSnapshot().work?.updatedAt).toEqual(expect.any(Number))
+  })
+
+  it('save は履歴スナップショットを新しい順に積む', async () => {
+    await store.createWork('作')
+    await store.createEpisode('話')
+    store.setDraft('一回目')
+    await store.save()
+    store.setDraft('二回目')
+    await store.save()
+    const snaps = store.getSnapshot().snapshots
+    expect(snaps).toHaveLength(2)
+    expect(snaps[0]?.at).toBeGreaterThan(snaps[1]?.at as number)
+  })
+
+  it('本文が変わらない save は版を増やさず書き込みもしない（status=saved・dirty=false）', async () => {
+    await store.createWork('作')
+    await store.createEpisode('話')
+    store.setDraft('本文')
+    await store.save()
+    const before = store.getSnapshot().snapshots
+    expect(before).toHaveLength(1)
+
+    // 下書きを変えずに再保存 → 版は増えず、スナップショット参照も不変
+    await store.save()
+    const s = store.getSnapshot()
+    expect(s.snapshots).toHaveLength(1)
+    expect(s.snapshots).toBe(before)
+    expect(s.status).toBe('saved')
+    expect(s.dirty).toBe(false)
+  })
+
+  it('間隔内の連続 save は版を集約し、間隔超過で版が増える', async () => {
+    let t = 0
+    const s = makeStore({ now: () => t, snapshotMinIntervalMs: 100 })
+    await s.createWork('作')
+    await s.createEpisode('話')
+
+    t = 1000
+    s.setDraft('一回目')
+    await s.save()
+    expect(s.getSnapshot().snapshots).toHaveLength(1)
+
+    // 間隔内（+50）で別内容を保存 → 版は増えず集約（最新版を内容だけ差し替え）
+    t = 1050
+    s.setDraft('二回目')
+    await s.save()
+    expect(s.getSnapshot().snapshots).toHaveLength(1)
+
+    // 間隔超過（+250）→ 新しい版が増える
+    t = 1300
+    s.setDraft('三回目')
+    await s.save()
+    expect(s.getSnapshot().snapshots).toHaveLength(2)
+  })
+
+  it('restoreSnapshot は当時の本文を現在話の draft へ戻す（dirty=true・非破壊）', async () => {
+    await store.createWork('作')
+    await store.createEpisode('話')
+    store.setDraft('最初の版')
+    await store.save()
+    const firstSnapId = store.getSnapshot().snapshots[0]?.id as string
+    store.setDraft('書き換えた版')
+    await store.save()
+
+    store.restoreSnapshot(firstSnapId)
+    const s = store.getSnapshot()
+    expect(s.draft).toBe('最初の版')
+    expect(s.dirty).toBe(true)
+    // 永続化済みの最新本文は復元しただけでは変わらない（保存はユーザー操作）
+    expect(s.work?.episodes[0]?.blocks).toBeDefined()
+  })
+
+  it('openWork は保存済みスナップショットを読み込む', async () => {
+    await store.createWork('作')
+    await store.createEpisode('話')
+    store.setDraft('本文')
+    await store.save()
+    const id = store.getSnapshot().work?.id as string
+    store.restoreSnapshot('nonexistent') // 何も起きない
+    await store.openWork(id)
+    expect(store.getSnapshot().snapshots.length).toBeGreaterThan(0)
+  })
+
+  it('trashWork は active からゴミ箱へ移し、開いていれば状態をリセットする（履歴は保持）', async () => {
+    await store.createWork('消す作')
+    await store.createEpisode('話')
+    store.setDraft('本文')
+    await store.save()
+    const id = store.getSnapshot().work?.id as string
+    expect(store.getSnapshot().snapshots.length).toBeGreaterThan(0)
+
+    await store.trashWork(id)
+    const s = store.getSnapshot()
+    expect(s.workList.find((w) => w.id === id)).toBeUndefined()
+    expect(s.trashList.map((t) => t.id)).toContain(id)
+    expect(s.work).toBeNull()
+    expect(s.currentEpisodeId).toBeNull()
+    expect(s.draft).toBe('')
+    expect(s.snapshots).toEqual([])
+    // active としては開けない（ゴミ箱に居る）
+    await store.openWork(id)
+    expect(store.getSnapshot().work).toBeNull()
+  })
+
+  it('restoreWork はゴミ箱から active へ戻し、履歴も復元される', async () => {
+    await store.createWork('戻す作')
+    await store.createEpisode('話')
+    store.setDraft('本文')
+    await store.save()
+    const id = store.getSnapshot().work?.id as string
+
+    await store.trashWork(id)
+    await store.restoreWork(id)
+    const s = store.getSnapshot()
+    expect(s.workList.find((w) => w.id === id)?.title).toBe('戻す作')
+    expect(s.trashList).toEqual([])
+    // 履歴は捨てる時に消していないので、開き直すと残っている
+    await store.openWork(id)
+    expect(store.getSnapshot().snapshots.length).toBeGreaterThan(0)
+  })
+
+  it('purgeWork はゴミ箱の1件と履歴を完全削除する', async () => {
+    await store.createWork('完全削除作')
+    await store.createEpisode('話')
+    store.setDraft('本文')
+    await store.save()
+    const id = store.getSnapshot().work?.id as string
+
+    await store.trashWork(id)
+    await store.purgeWork(id)
+    const s = store.getSnapshot()
+    expect(s.trashList).toEqual([])
+    // 復元しようとしても戻らない
+    await store.restoreWork(id)
+    expect(store.getSnapshot().workList.find((w) => w.id === id)).toBeUndefined()
+  })
+
+  it('emptyTrash はゴミ箱を全件空にする', async () => {
+    await store.createWork('A')
+    const a = store.getSnapshot().work?.id as string
+    await store.createWork('B')
+    const b = store.getSnapshot().work?.id as string
+    await store.trashWork(a)
+    await store.trashWork(b)
+    expect(store.getSnapshot().trashList).toHaveLength(2)
+    await store.emptyTrash()
+    expect(store.getSnapshot().trashList).toEqual([])
+  })
+
+  it('init は保持期間を過ぎたゴミ箱項目を自動 purge する', async () => {
+    let t = 0
+    const s = makeStore({ now: () => t, trashTtlMs: 100 })
+    await s.createWork('古い作')
+    const id = s.getSnapshot().work?.id as string
+    t = 10
+    await s.trashWork(id) // trashedAt=10
+    expect(s.getSnapshot().trashList.map((x) => x.id)).toEqual([id])
+    t = 200 // 10+100 <= 200 → 期限切れ
+    await s.init()
+    expect(s.getSnapshot().trashList).toEqual([])
+  })
+
+  it('trashWork は開いていない作品ならゴミ箱へ移すだけで現在の編集を保つ', async () => {
+    await store.createWork('残す作')
+    const keepId = store.getSnapshot().work?.id as string
+    await store.createWork('消す作') // これが開いている
+    await store.trashWork(keepId)
+    const s = store.getSnapshot()
+    expect(s.workList.find((w) => w.id === keepId)).toBeUndefined()
+    expect(s.trashList.map((t) => t.id)).toContain(keepId)
+    expect(s.work?.title).toBe('消す作')
+  })
+
+  it('deleteEpisode は話を削除し、現在話なら別の話へ切り替える', async () => {
+    await store.createWork('作')
+    await store.createEpisode('第一話')
+    const first = store.getSnapshot().work?.episodes[0]?.id as string
+    await store.createEpisode('第二話')
+    const second = store.getSnapshot().currentEpisodeId as string
+    await store.deleteEpisode(second)
+    const s = store.getSnapshot()
+    expect(s.work?.episodes).toHaveLength(1)
+    expect(s.work?.episodes[0]?.id).toBe(first)
+    expect(s.currentEpisodeId).toBe(first)
+  })
+
+  it('deleteEpisode は最後の話を消すと現在話なし・draft 空にする', async () => {
+    await store.createWork('作')
+    await store.createEpisode('唯一の話')
+    const only = store.getSnapshot().currentEpisodeId as string
+    await store.deleteEpisode(only)
+    const s = store.getSnapshot()
+    expect(s.work?.episodes).toHaveLength(0)
+    expect(s.currentEpisodeId).toBeNull()
+    expect(s.draft).toBe('')
+  })
+
+  it('deleteEpisode は現在話でない話を消しても現在の編集を保つ', async () => {
+    await store.createWork('作')
+    await store.createEpisode('第一話')
+    const first = store.getSnapshot().work?.episodes[0]?.id as string
+    await store.createEpisode('第二話')
+    store.setDraft('第二話の下書き')
+    await store.deleteEpisode(first)
+    const s = store.getSnapshot()
+    expect(s.work?.episodes).toHaveLength(1)
+    expect(s.currentEpisodeId).toBe('id3')
+    expect(s.draft).toBe('第二話の下書き')
+  })
+
+  it('renameEpisode は話タイトルを変更して永続化する（本文は不変）', async () => {
+    await store.createWork('作')
+    await store.createEpisode('旧タイトル')
+    const id = store.getSnapshot().currentEpisodeId as string
+    store.setDraft('本文はそのまま')
+    await store.save()
+    await store.renameEpisode(id, '新タイトル')
+    const s = store.getSnapshot()
+    expect(s.work?.episodes[0]?.title).toBe('新タイトル')
+    // 本文・現在話・下書きは保たれる
+    expect(s.currentEpisodeId).toBe(id)
+    expect(s.draft).toBe('本文はそのまま')
+    // 永続化されている（再読込で残る）
+    const workId = s.work?.id as string
+    await store.openWork(workId)
+    expect(store.getSnapshot().work?.episodes[0]?.title).toBe('新タイトル')
+  })
+
+  it('renameEpisode は前後の空白を除去する', async () => {
+    await store.createWork('作')
+    await store.createEpisode('話')
+    const id = store.getSnapshot().currentEpisodeId as string
+    await store.renameEpisode(id, '  整形済み  ')
+    expect(store.getSnapshot().work?.episodes[0]?.title).toBe('整形済み')
+  })
+
+  it('renameEpisode は空文字を無視する（タイトルを保つ）', async () => {
+    await store.createWork('作')
+    await store.createEpisode('元の話')
+    const id = store.getSnapshot().currentEpisodeId as string
+    await store.renameEpisode(id, '   ')
+    expect(store.getSnapshot().work?.episodes[0]?.title).toBe('元の話')
+  })
+
+  it('renameEpisode は現在話でない話の改名でも現在の編集を保つ', async () => {
+    await store.createWork('作')
+    await store.createEpisode('第一話')
+    const first = store.getSnapshot().work?.episodes[0]?.id as string
+    await store.createEpisode('第二話')
+    store.setDraft('第二話の下書き')
+    await store.renameEpisode(first, '第一話・改')
+    const s = store.getSnapshot()
+    expect(s.work?.episodes.find((e) => e.id === first)?.title).toBe('第一話・改')
+    expect(s.draft).toBe('第二話の下書き')
+    expect(s.dirty).toBe(true)
+  })
+
+  it('reorderEpisodes は指定 id 順に並べ替えて永続化する（双方向同期）', async () => {
+    await store.createWork('作')
+    await store.createEpisode('A')
+    const a = store.getSnapshot().work?.episodes[0]?.id as string
+    await store.createEpisode('B')
+    const b = store.getSnapshot().work?.episodes[1]?.id as string
+    await store.createEpisode('C')
+    const c = store.getSnapshot().work?.episodes[2]?.id as string
+
+    await store.reorderEpisodes([c, a, b])
+    expect(store.getSnapshot().work?.episodes.map((e) => e.title)).toEqual(['C', 'A', 'B'])
+    // 永続化されている
+    const workId = store.getSnapshot().work?.id as string
+    await store.openWork(workId)
+    expect(store.getSnapshot().work?.episodes.map((e) => e.title)).toEqual(['C', 'A', 'B'])
+  })
+
+  it('reorderEpisodes は指定漏れの話を元の相対順で末尾に補完する', async () => {
+    await store.createWork('作')
+    await store.createEpisode('A')
+    const a = store.getSnapshot().work?.episodes[0]?.id as string
+    await store.createEpisode('B')
+    await store.createEpisode('C')
+    // b/c を渡さない → 末尾に元順で残る
+    await store.reorderEpisodes([a])
+    expect(store.getSnapshot().work?.episodes.map((e) => e.title)).toEqual(['A', 'B', 'C'])
+  })
+
+  it('updateWorkMeta は著者・あらすじ・タイトルを更新して永続化する', async () => {
+    await store.createWork('旧題')
+    const id = store.getSnapshot().work?.id as string
+    await store.updateWorkMeta(id, { title: '新題', author: '著者名', description: 'あらすじ' })
+    const s = store.getSnapshot()
+    expect(s.work?.title).toBe('新題')
+    expect(s.work?.author).toBe('著者名')
+    expect(s.work?.description).toBe('あらすじ')
+    expect(s.workList.find((w) => w.id === id)?.title).toBe('新題')
+    expect(s.workList.find((w) => w.id === id)?.author).toBe('著者名')
+    // 永続化されている（再読込で残る）
+    await store.openWork(id)
+    expect(store.getSnapshot().work?.author).toBe('著者名')
+  })
+
+  it('updateWorkMeta は開いていない作品も更新できる', async () => {
+    await store.createWork('A')
+    const aId = store.getSnapshot().work?.id as string
+    await store.createWork('B') // 開いているのは B
+    await store.updateWorkMeta(aId, { author: 'Aの著者' })
+    expect(store.getSnapshot().work?.title).toBe('B')
+    expect(store.getSnapshot().workList.find((w) => w.id === aId)?.author).toBe('Aの著者')
+  })
+
+  it('updateWorkMeta は表紙(coverImage)を設定・空文字で削除する', async () => {
+    await store.createWork('作')
+    const id = store.getSnapshot().work?.id as string
+    await store.updateWorkMeta(id, { coverImage: 'data:image/jpeg;base64,SGk=' })
+    expect(store.getSnapshot().work?.coverImage).toBe('data:image/jpeg;base64,SGk=')
+    expect(store.getSnapshot().workList.find((w) => w.id === id)?.coverImage).toBe(
+      'data:image/jpeg;base64,SGk=',
+    )
+    // 空文字で削除（キーが落ちる）。
+    await store.updateWorkMeta(id, { coverImage: '' })
+    expect(store.getSnapshot().work?.coverImage).toBeUndefined()
+    // 永続化（再読込で残る）。
+    await store.openWork(id)
+    expect(store.getSnapshot().work?.coverImage).toBeUndefined()
+  })
+
+  it('updateWorkMeta は coverImage 未指定なら既存の表紙を据え置く', async () => {
+    await store.createWork('作')
+    const id = store.getSnapshot().work?.id as string
+    await store.updateWorkMeta(id, { coverImage: 'data:image/jpeg;base64,SGk=' })
+    await store.updateWorkMeta(id, { title: '改題' })
+    expect(store.getSnapshot().work?.coverImage).toBe('data:image/jpeg;base64,SGk=')
+  })
+
+  describe('辞書 CRUD（glossary を Work へ相乗り）', () => {
+    // 現在話の本文から最初の ref inline の name を取り出す（rewriteBody / 未解決化の検証用）
+    const firstRefName = (s: EditorStore, epIdx = 0): string | undefined => {
+      const ep = s.getSnapshot().work?.episodes[epIdx]
+      for (const b of ep?.blocks ?? []) {
+        if (b.type !== 'paragraph') continue
+        for (const i of b.inlines) if (i.type === 'ref') return i.name
+      }
+      return undefined
+    }
+
+    it('addGlossaryEntry は entry を作成して返し、work.glossary へ積む', async () => {
+      await store.createWork('作')
+      const entry = await store.addGlossaryEntry({ name: 'アリス' })
+      expect(entry.id).toBe('id2') // id1=work
+      expect(entry.createdAt).toEqual(expect.any(Number))
+      expect(entry.updatedAt).toEqual(expect.any(Number))
+      const s = store.getSnapshot()
+      expect(s.work?.glossary).toHaveLength(1)
+      expect(s.work?.glossary?.[0]?.name).toBe('アリス')
+    })
+
+    it('addGlossaryEntry は別名・カテゴリ・読み・概要・本文を保持し、永続化される', async () => {
+      await store.createWork('作')
+      const id = store.getSnapshot().work?.id as string
+      await store.addGlossaryEntry({
+        name: 'アリス',
+        aliases: ['Alice'],
+        category: '人物',
+        reading: 'ありす',
+        summary: '主人公',
+        body: '詳細メモ',
+      })
+      await store.openWork(id) // 再読込で残る
+      const g = store.getSnapshot().work?.glossary?.[0]
+      expect(g?.aliases).toEqual(['Alice'])
+      expect(g?.category).toBe('人物')
+      expect(g?.reading).toBe('ありす')
+      expect(g?.summary).toBe('主人公')
+      expect(g?.body).toBe('詳細メモ')
+    })
+
+    it('addGlossaryEntry は work.updatedAt を更新する', async () => {
+      const s = makeStore({
+        now: (() => {
+          let t = 10
+          return () => ++t
+        })(),
+      })
+      await s.createWork('作')
+      const before = s.getSnapshot().work?.updatedAt as number
+      await s.addGlossaryEntry({ name: 'アリス' })
+      expect(s.getSnapshot().work?.updatedAt).toBeGreaterThan(before)
+    })
+
+    it('addGlossaryEntry は既存 name と完全一致する name を拒否（D-GLOS-UNIQUE）', async () => {
+      await store.createWork('作')
+      await store.addGlossaryEntry({ name: 'アリス' })
+      await expect(store.addGlossaryEntry({ name: 'アリス' })).rejects.toThrow()
+      expect(store.getSnapshot().work?.glossary).toHaveLength(1)
+    })
+
+    it('addGlossaryEntry は既存の別名と完全一致する name を拒否', async () => {
+      await store.createWork('作')
+      await store.addGlossaryEntry({ name: 'アリス', aliases: ['アリサ'] })
+      await expect(store.addGlossaryEntry({ name: 'アリサ' })).rejects.toThrow()
+    })
+
+    it('addGlossaryEntry は作品が開かれていなければ throw', async () => {
+      await expect(store.addGlossaryEntry({ name: 'アリス' })).rejects.toThrow()
+    })
+
+    it('updateGlossaryEntry は name 以外を更新して永続化（name は不変）', async () => {
+      await store.createWork('作')
+      const id = store.getSnapshot().work?.id as string
+      const entry = await store.addGlossaryEntry({ name: 'アリス' })
+      await store.updateGlossaryEntry(entry.id, { summary: '主人公', category: '人物' })
+      await store.openWork(id)
+      const g = store.getSnapshot().work?.glossary?.[0]
+      expect(g?.name).toBe('アリス')
+      expect(g?.summary).toBe('主人公')
+      expect(g?.category).toBe('人物')
+    })
+
+    it('updateGlossaryEntry は別名変更時に他 entry との衝突を拒否', async () => {
+      await store.createWork('作')
+      await store.addGlossaryEntry({ name: 'アリス' })
+      const bob = await store.addGlossaryEntry({ name: 'ボブ' })
+      await expect(store.updateGlossaryEntry(bob.id, { aliases: ['アリス'] })).rejects.toThrow()
+    })
+
+    it('updateGlossaryEntry は存在しない id では何もしない', async () => {
+      await store.createWork('作')
+      await store.addGlossaryEntry({ name: 'アリス' })
+      await store.updateGlossaryEntry('nope', { summary: 'x' })
+      expect(store.getSnapshot().work?.glossary).toHaveLength(1)
+    })
+
+    it('サムネ(thumbnail) を作成時に保持し、更新で差し替え・空文字で削除する', async () => {
+      await store.createWork('作')
+      const entry = await store.addGlossaryEntry({
+        name: 'アリス',
+        thumbnail: 'data:image/jpeg;base64,SGk=',
+      })
+      const read = () => store.getSnapshot().work?.glossary?.find((e) => e.id === entry.id)
+      expect(read()?.thumbnail).toBe('data:image/jpeg;base64,SGk=')
+      await store.updateGlossaryEntry(entry.id, { thumbnail: 'data:image/jpeg;base64,Qm8=' })
+      expect(read()?.thumbnail).toBe('data:image/jpeg;base64,Qm8=')
+      // 空文字で削除（キーが落ちる）。
+      await store.updateGlossaryEntry(entry.id, { thumbnail: '' })
+      expect(read()?.thumbnail).toBeUndefined()
+    })
+
+    it('addGlossaryEntry は空文字サムネを付与しない（クイック作成・未設定経路）', async () => {
+      await store.createWork('作')
+      const entry = await store.addGlossaryEntry({ name: 'アリス', thumbnail: '' })
+      expect(entry.thumbnail).toBeUndefined()
+      expect('thumbnail' in entry).toBe(false)
+    })
+
+    it('renameGlossaryEntry は name を変更し旧名を別名へ退避（自動エイリアス）', async () => {
+      await store.createWork('作')
+      const entry = await store.addGlossaryEntry({ name: 'アリス' })
+      await store.renameGlossaryEntry(entry.id, 'アリサ')
+      const g = store.getSnapshot().work?.glossary?.find((e) => e.id === entry.id)
+      expect(g?.name).toBe('アリサ')
+      expect(g?.aliases).toContain('アリス')
+    })
+
+    it('renameGlossaryEntry(rewriteBody) は本文 ref と現在話 draft を新名へ同期する', async () => {
+      await store.createWork('作')
+      await store.createEpisode('話')
+      store.setDraft('[[アリス]]が笑う')
+      await store.save()
+      const entry = await store.addGlossaryEntry({ name: 'アリス' })
+      await store.renameGlossaryEntry(entry.id, 'アリサ', { rewriteBody: true })
+      // 本文 blocks の ref が新名へ
+      expect(firstRefName(store)).toBe('アリサ')
+      // draft も同期され、次の save で巻き戻らない
+      expect(store.getSnapshot().draft).toBe('[[アリサ]]が笑う')
+    })
+
+    it('renameGlossaryEntry は衝突する新名を拒否する', async () => {
+      await store.createWork('作')
+      await store.addGlossaryEntry({ name: 'ボブ' })
+      const alice = await store.addGlossaryEntry({ name: 'アリス' })
+      await expect(store.renameGlossaryEntry(alice.id, 'ボブ')).rejects.toThrow()
+    })
+
+    it('renameGlossaryEntry は同名（no-op）では別名を増やさない', async () => {
+      await store.createWork('作')
+      const entry = await store.addGlossaryEntry({ name: 'アリス' })
+      await store.renameGlossaryEntry(entry.id, 'アリス')
+      const g = store.getSnapshot().work?.glossary?.find((e) => e.id === entry.id)
+      expect(g?.aliases).toEqual([])
+    })
+
+    it('deleteGlossaryEntry は entry を消すが本文 ref は残す（未解決化）', async () => {
+      await store.createWork('作')
+      await store.createEpisode('話')
+      store.setDraft('[[アリス]]が笑う')
+      await store.save()
+      const entry = await store.addGlossaryEntry({ name: 'アリス' })
+      await store.deleteGlossaryEntry(entry.id)
+      const s = store.getSnapshot()
+      expect(s.work?.glossary ?? []).toHaveLength(0)
+      expect(firstRefName(store)).toBe('アリス') // ref はそのまま残る
+    })
+
+    it('deleteGlossaryEntry は存在しない id では何もしない', async () => {
+      await store.createWork('作')
+      await store.addGlossaryEntry({ name: 'アリス' })
+      await store.deleteGlossaryEntry('nope')
+      expect(store.getSnapshot().work?.glossary).toHaveLength(1)
+    })
   })
 })

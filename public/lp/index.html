@@ -1,0 +1,538 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>コトノハ-leaf- — あなたの物語を、書きはじめよう。｜無料の縦書き小説エディタ</title>
+<meta name="description" content="登録もインストールも不要。ブラウザで開いてすぐ書き始められる、無料の縦書き小説エディタ。縦書きプレビュー、キャラや用語の整理、自動保存、小説家になろう・カクヨム・EPUBへの書き出しまで。はじめての一作にも。">
+<link rel="canonical" href="https://novel-studio-b2m.pages.dev/lp/">
+<meta name="theme-color" content="#0f1e0c">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+
+<!-- OGP -->
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="コトノハ-leaf-">
+<meta property="og:title" content="コトノハ-leaf- — あなたの物語を、書きはじめよう。">
+<meta property="og:description" content="登録もインストールも不要。ブラウザで開いたその場で書き始められる、無料の縦書き小説エディタ。縦書きプレビュー・自動保存・毎日の記録つき。はじめての一作にも。">
+<meta property="og:url" content="https://novel-studio-b2m.pages.dev/lp/">
+<meta property="og:image" content="https://novel-studio-b2m.pages.dev/lp/ogp.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:locale" content="ja_JP">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="コトノハ-leaf- — あなたの物語を、書きはじめよう。">
+<meta name="twitter:description" content="登録もインストールも不要。ブラウザで開いたその場で書き始められる無料の縦書き小説エディタ。縦書きプレビュー・自動保存・毎日の記録つき。">
+<meta name="twitter:image" content="https://novel-studio-b2m.pages.dev/lp/ogp.png">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Shippori+Mincho+B1:wght@500;600;700&family=Zen+Kaku+Gothic+New:wght@400;500;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+<style>
+  /* claude.ai/design「LP全面リデザイン完了」コトノハLP.dc.html を静的HTMLへ移植。
+     トークンはデザインシステム（novel-platform）の colors/typography から必要分のみ採録。 */
+  :root {
+    --forest-900: #1a3014; --forest-800: #234420; --forest-700: #2c5b27;
+    --forest-600: #35692f; --forest-400: #6b9660; --forest-100: #e3ece1; --forest-50: #f2f7f1;
+    --wheat-700: #92703f; --wheat-600: #a67e4f; --wheat-500: #b98f63; --wheat-300: #d8bd97; --wheat-100: #f2e6d4;
+    --cream-0: #fefeff; --cream-50: #fdfcfb; --cream-100: #f9f7f5; --paper-100: #f3ede4;
+    --gray-200: #e4e6eb; --gray-300: #d5d8dd; --gray-400: #9da3ae; --gray-500: #7d8494;
+    --gray-700: #4b5160; --gray-900: #1f2430;
+    --surface-card: var(--cream-0); --surface-sunken: var(--cream-100); --surface-reading: var(--paper-100);
+    --border-subtle: var(--gray-200); --border-default: var(--gray-300);
+    --text-heading: var(--gray-900); --text-body: var(--gray-700); --text-muted: var(--gray-500); --text-faint: var(--gray-400);
+    --font-display: "Shippori Mincho B1", "Hiragino Mincho ProN", "Yu Mincho", serif;
+    --font-body: "Zen Kaku Gothic New", "Hiragino Sans", "Yu Gothic", sans-serif;
+    --font-mono: "JetBrains Mono", "SF Mono", ui-monospace, monospace;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body { margin: 0; background: var(--cream-50); font-family: var(--font-body); color: var(--text-body); -webkit-font-smoothing: antialiased; }
+  a { color: var(--forest-700); }
+  a:hover { color: var(--forest-900); }
+  ::selection { background: var(--forest-100); }
+  img { max-width: 100%; }
+  summary { list-style: none; cursor: pointer; }
+  summary::-webkit-details-marker { display: none; }
+  details[open] [data-plus] { transform: rotate(45deg); }
+  @keyframes ktnhFloat { from { transform: translateY(0); } to { transform: translateY(-30px); } }
+  @keyframes ktnhTwinkle { 0%, 100% { opacity: 0.12; } 50% { opacity: 0.85; } }
+  @keyframes ktnhGlow { 0%, 100% { opacity: 0.55; } 50% { opacity: 0.9; } }
+
+  /* hover 状態（.dc.html の style-hover 属性ぶん） */
+  .nav-a { color: rgba(242,236,220,0.75); text-decoration: none; font-size: 14px; letter-spacing: 0.06em; }
+  .nav-a:hover { color: #ffffff; }
+  .btn-cream { background: #f2ead8; color: var(--forest-900); text-decoration: none; font-weight: 700; border-radius: 999px; letter-spacing: 0.06em; transition: background 0.2s; }
+  .btn-cream:hover { background: #ffffff; color: var(--forest-900); }
+  .btn-ghost-dark { border: 1px solid rgba(242,236,220,0.4); color: rgba(242,236,220,0.9); text-decoration: none; border-radius: 999px; letter-spacing: 0.06em; transition: background 0.2s, color 0.2s; }
+  .btn-ghost-dark:hover { background: rgba(255,255,255,0.08); color: #ffffff; }
+  .btn-solid { background: var(--forest-700); color: #ffffff; text-decoration: none; font-weight: 700; border-radius: 999px; letter-spacing: 0.06em; transition: background 0.2s; }
+  .btn-solid:hover { background: var(--forest-600); color: #ffffff; }
+  .btn-solid:active { background: var(--forest-900); }
+  .btn-card { background: var(--surface-card); border: 1px solid var(--border-default); color: var(--text-heading); text-decoration: none; border-radius: 999px; letter-spacing: 0.06em; transition: background 0.2s; }
+  .btn-card:hover { background: var(--surface-sunken); color: var(--text-heading); }
+  .foot-a { color: rgba(236,229,208,0.5); text-decoration: none; font-size: 13px; }
+  .foot-a:hover { color: rgba(236,229,208,0.9); }
+
+  /* 実アプリのスクショ（スロット内で 16:10 いっぱいに）。クリックで拡大。 */
+  .slot-img { display: block; width: 100%; height: 100%; object-fit: cover; border-radius: 8px; background: var(--surface-sunken); cursor: zoom-in; }
+  .slot-img:focus-visible { outline: 2px solid var(--forest-600); outline-offset: 3px; }
+
+  /* ライトボックス（スクショ拡大） */
+  #lightbox { position: fixed; inset: 0; z-index: 100; display: none; align-items: center; justify-content: center; padding: 32px; background: rgba(12,20,8,0.92); -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px); cursor: zoom-out; }
+  #lightbox.open { display: flex; animation: lbFade 0.2s ease; }
+  @keyframes lbFade { from { opacity: 0; } to { opacity: 1; } }
+  #lightbox-img { max-width: 94vw; max-height: 88vh; width: auto; height: auto; border-radius: 10px; border: 1px solid rgba(242,236,220,0.18); box-shadow: 0 30px 80px rgba(0,0,0,0.5); background: var(--cream-0); cursor: default; }
+  #lightbox-cap { position: absolute; left: 0; right: 0; bottom: 20px; text-align: center; font-size: 13px; letter-spacing: 0.04em; color: rgba(236,229,208,0.78); padding: 0 24px; pointer-events: none; }
+  #lightbox-close { position: absolute; top: 20px; right: 24px; width: 44px; height: 44px; border-radius: 999px; border: 1px solid rgba(242,236,220,0.3); background: rgba(16,32,12,0.6); color: #f2ecdc; font-size: 22px; line-height: 1; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+  #lightbox-close:hover { background: rgba(255,255,255,0.12); }
+
+  /* 章の交互グリッド（400px を下回る画面では自然に1カラム化） */
+  .feature-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(400px, 100%), 1fr)); gap: 64px; align-items: center; }
+  .cards-3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(280px, 100%), 1fr)); gap: 24px; }
+  .price-row { display: grid; grid-template-columns: 1fr 110px 150px; gap: 12px; align-items: center; padding: 16px 28px; border-top: 1px solid var(--border-subtle); }
+  .price-scroll { overflow-x: auto; }
+  .price-inner { min-width: 560px; }
+
+  @media (max-width: 1560px) { [data-hero-decor="inner"] { display: none; } }
+  @media (max-width: 1150px) { [data-hero-decor] { display: none; } }
+  @media (max-width: 640px) { [data-hero-moon] { display: none; } }
+  @media (max-width: 860px) {
+    .nav-a { display: none; }
+    .feature-row { gap: 36px; }
+    /* 縦積み時は常に「画像→テキスト」の順 */
+    .feature-row > [data-media] { order: 0 !important; }
+    .feature-row > [data-text] { order: 1 !important; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    [data-para], [data-hero-decor] > div { animation: none !important; }
+    #lightbox.open { animation: none; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ================= ヒーロー（夜の森・蛍） ================= -->
+<div style="position:relative;background:#0f1e0c;overflow:hidden">
+  <canvas id="fireflies" style="position:absolute;inset:0;width:100%;height:100%;pointer-events:none"></canvas>
+  <div style="position:absolute;top:0;right:0;bottom:0;width:58%;pointer-events:none;background:repeating-linear-gradient(90deg, rgba(233,228,211,0.05) 0px, rgba(233,228,211,0.05) 1px, transparent 1px, transparent 36px)"></div>
+  <div data-para="0.12" data-hero-moon style="position:absolute;top:70px;right:14%;pointer-events:none">
+    <div style="position:relative;width:130px;height:130px">
+      <div style="position:absolute;inset:-140px;border-radius:50%;background:radial-gradient(circle, rgba(240,230,198,0.22), rgba(240,230,198,0.06) 55%, transparent 72%);animation:ktnhGlow 9s ease-in-out infinite"></div>
+      <div style="position:absolute;inset:0;border-radius:50%;background:#ece4cb;opacity:0.92;box-shadow:0 0 70px 24px rgba(240,230,200,0.25)"></div>
+      <div style="position:absolute;top:14px;left:22px;width:26px;height:26px;border-radius:50%;background:rgba(200,190,160,0.35)"></div>
+      <div style="position:absolute;top:58px;left:70px;width:16px;height:16px;border-radius:50%;background:rgba(200,190,160,0.28)"></div>
+    </div>
+  </div>
+  <div data-para="0.05" data-hero-decor="outer" style="position:absolute;top:120px;right:6%;height:78%;pointer-events:none">
+    <div style="writing-mode:vertical-rl;font-family:var(--font-display);font-size:19px;line-height:2.3;letter-spacing:0.32em;color:rgba(236,229,208,0.5);text-shadow:0 0 14px rgba(233,220,180,0.35);animation:ktnhFloat 12s ease-in-out infinite alternate">ユグドラシルの根は、まだ眠っている。</div>
+  </div>
+  <div data-para="0.09" data-hero-decor="outer" style="position:absolute;top:200px;right:16%;height:70%;pointer-events:none">
+    <div style="writing-mode:vertical-rl;font-family:var(--font-display);font-size:15px;line-height:2.4;letter-spacing:0.3em;color:rgba(236,229,208,0.32);text-shadow:0 0 12px rgba(233,220,180,0.25);animation:ktnhFloat 15s ease-in-out infinite alternate-reverse;max-height:520px">世界樹と呼ぶ者もいるけれど、アイリスにとってそれは、ただの大きな影だった。</div>
+  </div>
+  <div data-para="0.07" data-hero-decor="inner" style="position:absolute;top:320px;right:26%;pointer-events:none">
+    <div style="writing-mode:vertical-rl;font-family:var(--font-display);font-size:16px;line-height:2.4;letter-spacing:0.3em;color:rgba(236,229,208,0.4);text-shadow:0 0 12px rgba(233,220,180,0.3);animation:ktnhFloat 10s ease-in-out 1.5s infinite alternate;max-height:420px">「ねえ、ソラ。海の向こうには、なにがあると思う？」</div>
+  </div>
+  <div data-para="0.11" data-hero-decor="inner" style="position:absolute;top:160px;right:34%;pointer-events:none">
+    <div style="writing-mode:vertical-rl;font-family:var(--font-display);font-size:13px;line-height:2.4;letter-spacing:0.28em;color:rgba(236,229,208,0.22);animation:ktnhFloat 17s ease-in-out infinite alternate;max-height:360px">返事のかわりに、遠くで汽笛がひとつ鳴った。</div>
+  </div>
+
+  <header style="position:relative;z-index:3;display:flex;align-items:center;justify-content:space-between;max-width:1240px;margin:0 auto;padding:26px 32px">
+    <div style="display:flex;align-items:center;gap:10px">
+      <!-- アプリ内ヘッダーと同じロゴマーク（/logo-clean.png はアプリと共用） -->
+      <img src="/logo-clean.png" alt="" aria-hidden="true" width="347" height="367" style="height:40px;width:auto;display:block">
+      <div style="font-family:var(--font-display);font-size:21px;letter-spacing:0.14em;color:#f2ecdc">コトノハ<span style="font-size:13px;color:var(--wheat-300);letter-spacing:0.08em">&nbsp;-leaf-</span></div>
+    </div>
+    <nav style="display:flex;align-items:center;gap:28px">
+      <a class="nav-a" href="#features">できること</a>
+      <a class="nav-a" href="#cloud">クラウド</a>
+      <a class="nav-a" href="#yours">安心</a>
+      <a class="nav-a" href="#pricing">料金</a>
+      <a class="nav-a" href="#faq">よくある質問</a>
+      <a class="btn-cream" href="/" style="font-size:14px;font-weight:500;padding:10px 22px;letter-spacing:0.04em">無料で始める</a>
+    </nav>
+  </header>
+
+  <div style="position:relative;z-index:2;max-width:1240px;margin:0 auto;padding:44px 32px 170px">
+    <div style="max-width:640px;display:flex;flex-direction:column;align-items:flex-start;gap:28px">
+      <div data-reveal style="display:inline-flex;align-items:center;gap:10px;border:1px solid rgba(242,236,220,0.3);border-radius:999px;padding:8px 18px;font-size:13px;letter-spacing:0.12em;color:rgba(242,236,220,0.85)"><span style="width:6px;height:6px;border-radius:50%;background:var(--wheat-300)"></span>ブラウザで開くだけ。無料の小説エディタ</div>
+      <h1 data-reveal data-reveal-delay="120" style="margin:0;font-family:var(--font-display);font-weight:600;font-size:clamp(42px, 4.6vw, 64px);line-height:1.4;letter-spacing:0.06em;color:#f6f1e2;text-wrap:pretty">あなたの物語を、<br>書きはじめよう。</h1>
+      <p data-reveal data-reveal-delay="240" style="margin:0;font-size:16px;line-height:2.1;letter-spacing:0.04em;color:rgba(236,229,208,0.82);text-wrap:pretty">登録もインストールも不要。ブラウザで開いたその場で、書き始められます。縦書きプレビューやルビ・傍点、設定の図鑑や執筆の記録まで、小説のための道具をそろえました。</p>
+      <div data-reveal data-reveal-delay="360" style="display:flex;flex-wrap:wrap;gap:16px;margin-top:8px">
+        <a class="btn-cream" href="/" style="font-size:16px;padding:16px 36px;box-shadow:0 0 40px rgba(240,230,200,0.18)">今すぐ書き始める ─ 無料</a>
+        <a class="btn-ghost-dark" href="#features" style="font-size:16px;padding:16px 34px">できることを見る</a>
+      </div>
+      <div data-reveal data-reveal-delay="480" style="font-size:13px;letter-spacing:0.1em;color:rgba(236,229,208,0.5)">アカウント不要 ／ オフラインOK ／ PC・タブレット（横向き）対応</div>
+    </div>
+  </div>
+  <div style="position:absolute;left:0;right:0;bottom:0;height:100px;background:linear-gradient(to bottom, rgba(253,252,251,0), var(--cream-50));pointer-events:none"></div>
+</div>
+
+<!-- ================= できること（四章） ================= -->
+<section id="features" style="padding:110px 0 40px">
+  <div style="max-width:1140px;margin:0 auto;padding:0 32px;display:flex;flex-direction:column;gap:110px">
+    <div data-reveal style="text-align:center;display:flex;flex-direction:column;gap:16px">
+      <div style="font-family:var(--font-mono);font-size:12px;letter-spacing:0.32em;color:var(--wheat-600)">CHAPTERS</div>
+      <h2 style="margin:0;font-family:var(--font-display);font-weight:600;font-size:clamp(30px,3vw,40px);letter-spacing:0.08em;color:var(--text-heading)">書く日々に、寄り添う道具。</h2>
+      <p style="margin:0;font-size:15px;letter-spacing:0.06em;color:var(--text-muted)">書く・築く・続ける・届ける。無料でできることを、四つの章で。</p>
+    </div>
+
+    <!-- 第一章　書く -->
+    <div data-reveal class="feature-row">
+      <div data-text style="display:flex;gap:32px">
+        <div style="display:flex;flex-direction:column;gap:20px">
+          <div style="display:flex;align-items:center;gap:14px;font-size:13px;letter-spacing:0.3em;color:var(--wheat-700)">第一章　書く<span style="width:56px;height:1px;background:var(--wheat-300)"></span></div>
+          <h3 style="margin:0;font-family:var(--font-display);font-weight:600;font-size:28px;letter-spacing:0.06em;color:var(--text-heading)">書きながら、縦書きで確かめられる。</h3>
+          <p style="margin:0;font-size:15px;line-height:2;letter-spacing:0.03em;color:var(--text-body);text-wrap:pretty">原稿はいつもの横書きで。となりのプレビューには、ルビも傍点も反映された縦書きの姿が、入力と同時に映し出されます。本になったときの見え方を、書きながら確かめられます。</p>
+          <div style="display:flex;flex-direction:column;gap:10px">
+            <div style="display:flex;gap:10px;font-size:14px;line-height:1.7;color:var(--text-body)"><span style="color:var(--forest-600);font-weight:700">✓</span><span>ルビは ｜漢字《かんじ》、傍点は 《《強調》》 と書くだけ</span></div>
+            <div style="display:flex;gap:10px;font-size:14px;line-height:1.7;color:var(--text-body)"><span style="color:var(--forest-600);font-weight:700">✓</span><span>縦中横（数字の正立）対応・横書き表示にも切替できる</span></div>
+            <div style="display:flex;gap:10px;font-size:14px;line-height:1.7;color:var(--text-body)"><span style="color:var(--forest-600);font-weight:700">✓</span><span>一括置換と検索で、キャラ名の変更もひと息</span></div>
+          </div>
+        </div>
+        <div style="flex:none;writing-mode:vertical-rl;font-family:var(--font-display);font-size:24px;letter-spacing:0.22em;line-height:1.6;color:var(--forest-800)"><span style="color:var(--wheat-500);font-size:12px">◆</span>　書いたそばから、本の姿。</div>
+      </div>
+      <div data-media style="background:var(--surface-card);border:1px solid var(--border-subtle);border-radius:12px;padding:10px;box-shadow:0 2px 12px rgba(31,36,48,0.05)">
+        <div style="width:100%;aspect-ratio:16/10"><img class="slot-img" src="shots/editor.webp" width="1600" height="999" loading="lazy" decoding="async" alt="執筆画面：左にいつもの横書き原稿、右にルビ・傍点まで組まれた縦書きプレビュー"></div>
+      </div>
+    </div>
+
+    <!-- 第二章　築く -->
+    <div data-reveal class="feature-row">
+      <div data-text style="order:2;display:flex;gap:32px">
+        <div style="flex:none;writing-mode:vertical-rl;font-family:var(--font-display);font-size:24px;letter-spacing:0.22em;line-height:1.6;color:var(--forest-800)"><span style="color:var(--wheat-500);font-size:12px">◆</span>　あなたの世界を、図鑑に。</div>
+        <div style="display:flex;flex-direction:column;gap:20px">
+          <div style="display:flex;align-items:center;gap:14px;font-size:13px;letter-spacing:0.3em;color:var(--wheat-700)">第二章　築く<span style="width:56px;height:1px;background:var(--wheat-300)"></span></div>
+          <h3 style="margin:0;font-family:var(--font-display);font-weight:600;font-size:28px;letter-spacing:0.06em;color:var(--text-heading)">設定が、物語とつながる。</h3>
+          <p style="margin:0;font-size:15px;line-height:2;letter-spacing:0.03em;color:var(--text-body);text-wrap:pretty">人物、場所、道具。ふくらんでいく設定は、作品ごとの図鑑へ。本文で ＠ を打てば図鑑のサジェストがひらき、選ぶだけで物語と設定がつながります。まだ無い名前は、その場で新規登録。</p>
+          <div style="display:flex;flex-direction:column;gap:10px">
+            <div style="display:flex;gap:10px;font-size:14px;line-height:1.7;color:var(--text-body)"><span style="color:var(--forest-600);font-weight:700">✓</span><span>＠ でサジェスト表示・その場で新規登録もできる</span></div>
+            <div style="display:flex;gap:10px;font-size:14px;line-height:1.7;color:var(--text-body)"><span style="color:var(--forest-600);font-weight:700">✓</span><span>人物・場所・道具などをカードで整理（別名・よみがな・要約・画像も）</span></div>
+            <div style="display:flex;gap:10px;font-size:14px;line-height:1.7;color:var(--text-body)"><span style="color:var(--forest-600);font-weight:700">✓</span><span>本文の参照から、その場で図鑑をひらける</span></div>
+          </div>
+        </div>
+      </div>
+      <div data-media style="order:1;background:var(--surface-card);border:1px solid var(--border-subtle);border-radius:12px;padding:10px;box-shadow:0 2px 12px rgba(31,36,48,0.05)">
+        <div style="width:100%;aspect-ratio:16/10"><img class="slot-img" src="shots/glossary.webp" width="1600" height="1000" loading="lazy" decoding="async" alt="図鑑画面：人物・場所・道具をカテゴリタブとカードで整理"></div>
+      </div>
+    </div>
+
+    <!-- 第三章　続ける -->
+    <div data-reveal class="feature-row">
+      <div data-text style="display:flex;gap:32px">
+        <div style="flex:none;writing-mode:vertical-rl;font-family:var(--font-display);font-size:24px;letter-spacing:0.22em;line-height:1.6;color:var(--forest-800)"><span style="color:var(--wheat-500);font-size:12px">◆</span>　書いた日々が、緑になる。</div>
+        <div style="display:flex;flex-direction:column;gap:20px">
+          <div style="display:flex;align-items:center;gap:14px;font-size:13px;letter-spacing:0.3em;color:var(--wheat-700)">第三章　続ける<span style="width:56px;height:1px;background:var(--wheat-300)"></span></div>
+          <h3 style="margin:0;font-family:var(--font-display);font-weight:600;font-size:28px;letter-spacing:0.06em;color:var(--text-heading)">続けることを、道具が支える。</h3>
+          <p style="margin:0;font-size:15px;line-height:2;letter-spacing:0.03em;color:var(--text-body);text-wrap:pretty">書いた日はカレンダーが緑に色づいて、続けるほど草が生えるように一年が茂っていきます。原稿は自動保存で、保存のたびに版履歴が残るから、昨日の自分にいつでも戻れます。続けることが、いちばんの執筆術だから。</p>
+          <div style="display:flex;flex-direction:column;gap:10px">
+            <div style="display:flex;gap:10px;font-size:14px;line-height:1.7;color:var(--text-body)"><span style="color:var(--forest-600);font-weight:700">✓</span><span>連続日数・累計文字数・年間ヒートマップ</span></div>
+            <div style="display:flex;gap:10px;font-size:14px;line-height:1.7;color:var(--text-body)"><span style="color:var(--forest-600);font-weight:700">✓</span><span>自動保存＋版履歴（ローカル・セーフティネット）</span></div>
+          </div>
+        </div>
+      </div>
+      <div data-media style="background:var(--surface-card);border:1px solid var(--border-subtle);border-radius:12px;padding:10px;box-shadow:0 2px 12px rgba(31,36,48,0.05)">
+        <div style="width:100%;aspect-ratio:16/10"><img class="slot-img" src="shots/activity.webp" width="1600" height="1000" loading="lazy" decoding="async" alt="執筆の記録：年間ヒートマップと連続日数・累計文字数"></div>
+      </div>
+    </div>
+
+    <!-- 第四章　届ける -->
+    <div data-reveal class="feature-row">
+      <div data-text style="order:2;display:flex;gap:32px">
+        <div style="display:flex;flex-direction:column;gap:20px">
+          <div style="display:flex;align-items:center;gap:14px;font-size:13px;letter-spacing:0.3em;color:var(--wheat-700)">第四章　届ける<span style="width:56px;height:1px;background:var(--wheat-300)"></span></div>
+          <h3 style="margin:0;font-family:var(--font-display);font-weight:600;font-size:28px;letter-spacing:0.06em;color:var(--text-heading)">投稿サイトにも、電子書籍にも。</h3>
+          <p style="margin:0;font-size:15px;line-height:2;letter-spacing:0.03em;color:var(--text-body);text-wrap:pretty">書き上がったら、そのまま世界へ。縦書き EPUB にも、「小説家になろう」「カクヨム」の記法にも、ルビ・傍点ごと自動変換して書き出せます。貼り付けるだけで、今日の分から投稿できます。</p>
+          <div style="display:flex;flex-direction:column;gap:10px">
+            <div style="display:flex;gap:10px;font-size:14px;line-height:1.7;color:var(--text-body)"><span style="color:var(--forest-600);font-weight:700">✓</span><span>縦書き EPUB（電子書籍）</span></div>
+            <div style="display:flex;gap:10px;font-size:14px;line-height:1.7;color:var(--text-body)"><span style="color:var(--forest-600);font-weight:700">✓</span><span>小説家になろう・カクヨム記法／話ごとのテキスト（ZIP）</span></div>
+            <div style="display:flex;gap:10px;font-size:14px;line-height:1.7;color:var(--text-body)"><span style="color:var(--forest-600);font-weight:700">✓</span><span>ファイルへのバックアップ／取り込みもいつでも</span></div>
+          </div>
+        </div>
+        <div style="flex:none;writing-mode:vertical-rl;font-family:var(--font-display);font-size:24px;letter-spacing:0.22em;line-height:1.6;color:var(--forest-800)"><span style="color:var(--wheat-500);font-size:12px">◆</span>　物語を、世界へ。</div>
+      </div>
+      <div data-media style="order:1;background:var(--surface-card);border:1px solid var(--border-subtle);border-radius:12px;padding:10px;box-shadow:0 2px 12px rgba(31,36,48,0.05)">
+        <div style="width:100%;aspect-ratio:16/10"><img class="slot-img" src="shots/export.webp" width="1568" height="980" loading="lazy" decoding="async" alt="書き出しダイアログ：EPUB・Web投稿形式・ZIP・AIに渡すから選べる"></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= クラウド（有料） ================= -->
+<section id="cloud" style="margin-top:110px;background:var(--surface-reading);padding:110px 0">
+  <div style="max-width:1140px;margin:0 auto;padding:0 32px;display:flex;flex-direction:column;gap:56px">
+    <div data-reveal style="text-align:center;display:flex;flex-direction:column;gap:16px;align-items:center">
+      <div style="display:flex;align-items:center;gap:12px"><span style="font-family:var(--font-mono);font-size:12px;letter-spacing:0.32em;color:var(--wheat-600)">CLOUD</span><span style="display:inline-flex;background:var(--wheat-500);color:#ffffff;border-radius:999px;padding:4px 14px;font-size:11px;font-weight:700;letter-spacing:0.16em">有料</span></div>
+      <h2 style="margin:0;font-family:var(--font-display);font-weight:600;font-size:clamp(30px,3vw,40px);letter-spacing:0.08em;color:var(--text-heading)">もっと深く使うなら、クラウド。</h2>
+      <p style="margin:0;font-size:15px;letter-spacing:0.06em;color:var(--text-muted)">ここから先は、有料のクラウド版の機能です。料金はアプリ内でご案内します。</p>
+    </div>
+    <div data-reveal data-reveal-delay="120" class="feature-row" style="gap:56px">
+      <div data-media style="background:var(--surface-card);border:1px solid var(--border-subtle);border-radius:12px;padding:10px;box-shadow:0 2px 12px rgba(31,36,48,0.05)">
+        <div style="width:100%;aspect-ratio:16/10"><img class="slot-img" src="shots/chart.webp" width="1600" height="1000" loading="lazy" decoding="async" alt="相関図画面：図鑑のキャラをノードにして、関係に名前をつけて線で結ぶ"></div>
+      </div>
+      <div data-text style="display:flex;flex-direction:column;gap:28px">
+        <div style="display:flex;flex-direction:column;gap:10px">
+          <div style="display:flex;align-items:center;gap:10px"><span style="color:var(--wheat-500);font-size:11px">◆</span><h3 style="margin:0;font-family:var(--font-display);font-weight:600;font-size:21px;letter-spacing:0.06em;color:var(--text-heading)">アウトライン・相関図・マインドマップ</h3></div>
+          <p style="margin:0;font-size:14px;line-height:2;letter-spacing:0.03em;color:var(--text-body);text-wrap:pretty">人物の関係、話の流れ、思いつきのメモ。頭の中で混ざりがちなものを、図にして見えるようにする道具です。書きながら整理するための補助として。どれも本文とつながっています。</p>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:10px">
+          <div style="display:flex;align-items:center;gap:10px"><span style="color:var(--wheat-500);font-size:11px">◆</span><h3 style="margin:0;font-family:var(--font-display);font-weight:600;font-size:21px;letter-spacing:0.06em;color:var(--text-heading)">クラウドバックアップ＆復元</h3></div>
+          <p style="margin:0;font-size:14px;line-height:2;letter-spacing:0.03em;color:var(--text-body);text-wrap:pretty">全データを暗号化してクラウドに保存。端末が壊れても、新しい端末でバックアップから復元して、続きから書けます。</p>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:10px">
+          <div style="display:flex;align-items:center;gap:10px"><span style="color:var(--wheat-500);font-size:11px">◆</span><h3 style="margin:0;font-family:var(--font-display);font-weight:600;font-size:21px;letter-spacing:0.06em;color:var(--text-heading)">AI と読み書き（MCP 連携）</h3></div>
+          <p style="margin:0;font-size:14px;line-height:2;letter-spacing:0.03em;color:var(--text-body);text-wrap:pretty">AI チャットに原稿を読ませて、誤字脱字の校正や、最初の一読者としての感想を。AI が直した原稿を、そのまま書き戻すこともできます。動作確認済みの AI は現在 Claude と Genspark のみです。</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= 安心（あなたのもの） ================= -->
+<section id="yours" style="margin-top:110px;background:var(--forest-900);padding:110px 0">
+  <div style="max-width:1140px;margin:0 auto;padding:0 32px;display:flex;flex-direction:column;gap:56px">
+    <div data-reveal style="text-align:center;display:flex;flex-direction:column;gap:16px">
+      <div style="font-family:var(--font-mono);font-size:12px;letter-spacing:0.32em;color:var(--wheat-300)">YOURS</div>
+      <h2 style="margin:0;font-family:var(--font-display);font-weight:600;font-size:clamp(30px,3vw,40px);letter-spacing:0.08em;color:#f6f1e2">原稿は、あなたの手元に。</h2>
+      <p style="margin:0;font-size:15px;letter-spacing:0.06em;color:rgba(236,229,208,0.7)">原稿はあなたの端末に保存。登録もいらず、思い立ったらすぐ書けます。</p>
+    </div>
+    <div data-reveal data-reveal-delay="150" class="cards-3">
+      <div style="border:1px solid rgba(242,236,220,0.16);border-radius:10px;padding:32px 28px;display:flex;flex-direction:column;gap:14px">
+        <div style="font-family:var(--font-display);font-size:19px;letter-spacing:0.08em;color:#f2ecdc">端末のなかに保存</div>
+        <p style="margin:0;font-size:14px;line-height:2;color:rgba(236,229,208,0.72);text-wrap:pretty">原稿はブラウザ内（あなたの手元）に保存され、勝手に外部へ送られません。書き出しやバックアップも、必要なときに自分で選べます。</p>
+      </div>
+      <div style="border:1px solid rgba(242,236,220,0.16);border-radius:10px;padding:32px 28px;display:flex;flex-direction:column;gap:14px">
+        <div style="font-family:var(--font-display);font-size:19px;letter-spacing:0.08em;color:#f2ecdc">登録もインストールも不要</div>
+        <p style="margin:0;font-size:14px;line-height:2;color:rgba(236,229,208,0.72);text-wrap:pretty">アカウント登録もアプリのインストールもなし。ページを開けば、その瞬間から書き始められます。</p>
+      </div>
+      <div style="border:1px solid rgba(242,236,220,0.16);border-radius:10px;padding:32px 28px;display:flex;flex-direction:column;gap:14px">
+        <div style="font-family:var(--font-display);font-size:19px;letter-spacing:0.08em;color:#f2ecdc">オフラインでも執筆</div>
+        <p style="margin:0;font-size:14px;line-height:2;color:rgba(236,229,208,0.72);text-wrap:pretty">一度ひらけば、ネットが無くても書き進められます。電車のなかでも、旅先でも。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= 料金 ================= -->
+<section id="pricing" style="padding:120px 0">
+  <div style="max-width:1140px;margin:0 auto;padding:0 32px;display:flex;flex-direction:column;gap:48px;align-items:center">
+    <div data-reveal style="text-align:center;display:flex;flex-direction:column;gap:16px">
+      <div style="font-family:var(--font-mono);font-size:12px;letter-spacing:0.32em;color:var(--wheat-600)">PRICING</div>
+      <h2 style="margin:0;font-family:var(--font-display);font-weight:600;font-size:clamp(30px,3vw,40px);letter-spacing:0.08em;color:var(--text-heading)">料金プラン</h2>
+      <p style="margin:0;font-size:15px;letter-spacing:0.06em;color:var(--text-muted)">基本の執筆機能はフリーのまま。クラウドは、必要になってからで十分です。</p>
+    </div>
+    <div data-reveal data-reveal-delay="120" class="price-scroll" style="width:100%;max-width:880px;background:var(--surface-card);border:1px solid var(--border-subtle);border-radius:12px;box-shadow:0 2px 12px rgba(31,36,48,0.04)">
+      <div class="price-inner">
+        <div class="price-row" style="align-items:end;padding:20px 28px;background:var(--forest-50);border-top:none">
+          <div style="font-size:14px;font-weight:700;color:var(--text-heading);letter-spacing:0.06em">できること</div>
+          <div style="text-align:center"><div style="font-size:14px;font-weight:700;color:var(--forest-700)">フリー</div><div style="font-size:11px;color:var(--text-muted)">¥0・ずっと</div></div>
+          <div style="text-align:center"><div style="font-size:14px;font-weight:700;color:var(--wheat-700)">クラウド</div><div style="font-size:11px;color:var(--text-muted)">有料（アプリ内で案内）</div></div>
+        </div>
+        <div class="price-row"><div style="font-size:14px;color:var(--text-body)">執筆・縦書きプレビュー・図鑑</div><div style="text-align:center;color:var(--forest-600);font-size:17px">○</div><div style="text-align:center;color:var(--forest-600);font-size:17px">○</div></div>
+        <div class="price-row"><div style="font-size:14px;color:var(--text-body)">ネタ帳（思いつきメモ）</div><div style="text-align:center;color:var(--forest-600);font-size:17px">○</div><div style="text-align:center;color:var(--forest-600);font-size:17px">○</div></div>
+        <div class="price-row"><div style="font-size:14px;color:var(--text-body)">自動保存＋版履歴（端末内）</div><div style="text-align:center;color:var(--forest-600);font-size:17px">○</div><div style="text-align:center;color:var(--forest-600);font-size:17px">○</div></div>
+        <div class="price-row"><div style="font-size:14px;color:var(--text-body)">小説家になろう・カクヨム・EPUB 書き出し</div><div style="text-align:center;color:var(--forest-600);font-size:17px">○</div><div style="text-align:center;color:var(--forest-600);font-size:17px">○</div></div>
+        <div class="price-row"><div style="font-size:14px;color:var(--text-body)">執筆の記録・一括置換</div><div style="text-align:center;color:var(--forest-600);font-size:17px">○</div><div style="text-align:center;color:var(--forest-600);font-size:17px">○</div></div>
+        <div class="price-row"><div style="font-size:14px;color:var(--text-body)">ファイルへのバックアップ／取り込み</div><div style="text-align:center;color:var(--forest-600);font-size:17px">○</div><div style="text-align:center;color:var(--forest-600);font-size:17px">○</div></div>
+        <div class="price-row"><div style="font-size:14px;color:var(--text-body)">アウトライン・相関図・マインドマップ</div><div style="text-align:center;color:var(--text-faint);font-size:15px">×</div><div style="text-align:center;color:var(--forest-600);font-size:17px">○</div></div>
+        <div class="price-row"><div style="font-size:14px;color:var(--text-body)">クラウドバックアップ＆復元（暗号化・全データ）</div><div style="text-align:center;color:var(--text-faint);font-size:15px">×</div><div style="text-align:center;color:var(--forest-600);font-size:17px">○</div></div>
+        <div class="price-row"><div style="font-size:14px;color:var(--text-body)">AI に読み書きさせる（Claude・Genspark／MCP）</div><div style="text-align:center;color:var(--text-faint);font-size:15px">×</div><div style="text-align:center;color:var(--forest-600);font-size:17px">○</div></div>
+      </div>
+    </div>
+    <div data-reveal data-reveal-delay="200" style="display:flex;flex-wrap:wrap;gap:16px;justify-content:center">
+      <a class="btn-solid" href="/" style="font-size:15px;padding:14px 32px">無料で始める</a>
+      <a class="btn-card" href="/" style="font-size:15px;padding:14px 30px">クラウドをアプリで見る</a>
+    </div>
+  </div>
+</section>
+
+<!-- ================= よくある質問 ================= -->
+<section id="faq" style="padding:20px 0 130px">
+  <div style="max-width:800px;margin:0 auto;padding:0 32px;display:flex;flex-direction:column;gap:40px">
+    <div data-reveal style="text-align:center;display:flex;flex-direction:column;gap:16px">
+      <div style="font-family:var(--font-mono);font-size:12px;letter-spacing:0.32em;color:var(--wheat-600)">FAQ</div>
+      <h2 style="margin:0;font-family:var(--font-display);font-weight:600;font-size:clamp(28px,2.6vw,36px);letter-spacing:0.08em;color:var(--text-heading)">よくある質問</h2>
+    </div>
+    <div data-reveal data-reveal-delay="100" style="display:flex;flex-direction:column;gap:14px">
+      <details style="background:var(--surface-card);border:1px solid var(--border-subtle);border-radius:10px;padding:0 24px">
+        <summary style="display:flex;align-items:center;justify-content:space-between;gap:16px;padding:20px 0;font-size:15px;font-weight:700;color:var(--text-heading)">本当に無料ですか？<span data-plus style="color:var(--forest-600);font-size:20px;font-weight:400;transition:transform 0.2s">＋</span></summary>
+        <p style="margin:0;padding:0 0 20px;font-size:14px;line-height:2;color:var(--text-body)">はい。執筆・縦書きプレビュー・図鑑・書き出しなど、一作を書き上げて投稿するまでに必要な機能はすべて無料で、期限もありません。相関図やクラウド同期など一部の機能だけ、有料のクラウド版で提供しています。</p>
+      </details>
+      <details style="background:var(--surface-card);border:1px solid var(--border-subtle);border-radius:10px;padding:0 24px">
+        <summary style="display:flex;align-items:center;justify-content:space-between;gap:16px;padding:20px 0;font-size:15px;font-weight:700;color:var(--text-heading)">原稿が消えてしまうことはありませんか？<span data-plus style="color:var(--forest-600);font-size:20px;font-weight:400;transition:transform 0.2s">＋</span></summary>
+        <p style="margin:0;padding:0 0 20px;font-size:14px;line-height:2;color:var(--text-body)">原稿は書いたそばから端末内に自動保存され、保存のたびに版履歴が残ります。ファイルへのバックアップもいつでも取れます。ブラウザのデータを消すと原稿も消えるため、長編には定期的なバックアップか、クラウド版のバックアップをおすすめします。</p>
+      </details>
+      <details style="background:var(--surface-card);border:1px solid var(--border-subtle);border-radius:10px;padding:0 24px">
+        <summary style="display:flex;align-items:center;justify-content:space-between;gap:16px;padding:20px 0;font-size:15px;font-weight:700;color:var(--text-heading)">スマートフォンで使えますか？<span data-plus style="color:var(--forest-600);font-size:20px;font-weight:400;transition:transform 0.2s">＋</span></summary>
+        <p style="margin:0;padding:0 0 20px;font-size:14px;line-height:2;color:var(--text-body)">現在は PC・タブレット（横向き）に対応しています。スマートフォンには対応していません。縦書きプレビューを並べて書くために、画面の広い端末が必要なためです。今後の対応は検討中です。</p>
+      </details>
+      <details style="background:var(--surface-card);border:1px solid var(--border-subtle);border-radius:10px;padding:0 24px">
+        <summary style="display:flex;align-items:center;justify-content:space-between;gap:16px;padding:20px 0;font-size:15px;font-weight:700;color:var(--text-heading)">書いたものを投稿サイトに載せられますか？<span data-plus style="color:var(--forest-600);font-size:20px;font-weight:400;transition:transform 0.2s">＋</span></summary>
+        <p style="margin:0;padding:0 0 20px;font-size:14px;line-height:2;color:var(--text-body)">はい。「小説家になろう」「カクヨム」の記法へ、ルビ・傍点ごと自動変換して書き出せます。書き出したテキストを貼り付けるだけで投稿できます。</p>
+      </details>
+      <details style="background:var(--surface-card);border:1px solid var(--border-subtle);border-radius:10px;padding:0 24px">
+        <summary style="display:flex;align-items:center;justify-content:space-between;gap:16px;padding:20px 0;font-size:15px;font-weight:700;color:var(--text-heading)">話の流れや人物の関係も整理できますか？<span data-plus style="color:var(--forest-600);font-size:20px;font-weight:400;transition:transform 0.2s">＋</span></summary>
+        <p style="margin:0;padding:0 0 20px;font-size:14px;line-height:2;color:var(--text-body)">アウトライン・相関図・マインドマップの三つの道具があります（クラウド版）。どれも本文や図鑑とつながっていて、構想がそのまま原稿に育ちます。無料版でも、ネタ帳で思いつきをためておけます。</p>
+      </details>
+      <details style="background:var(--surface-card);border:1px solid var(--border-subtle);border-radius:10px;padding:0 24px">
+        <summary style="display:flex;align-items:center;justify-content:space-between;gap:16px;padding:20px 0;font-size:15px;font-weight:700;color:var(--text-heading)">AI 連携は原稿を学習に使われませんか？<span data-plus style="color:var(--forest-600);font-size:20px;font-weight:400;transition:transform 0.2s">＋</span></summary>
+        <p style="margin:0;padding:0 0 20px;font-size:14px;line-height:2;color:var(--text-body)">コトノハ-leaf- 自体は AI を内蔵せず、原稿を勝手に外部へ送ることはありません。無料版の「AI に渡す」はあなたの操作で書き出すだけ。クラウド版の MCP 連携も、あなたが接続を選んだときだけ AI が読み書きできます。渡した先での扱いは各 AI サービスの規約に従うため、気になる場合は学習に使わない設定のあるサービスをお使いください。</p>
+      </details>
+    </div>
+  </div>
+</section>
+
+<!-- ================= 最後のCTA（星） ================= -->
+<div style="position:relative;background:#10200c;overflow:hidden;padding:130px 32px">
+  <div style="position:absolute;top:18%;left:12%;width:3px;height:3px;border-radius:50%;background:#f0e6c6;animation:ktnhTwinkle 4s ease-in-out infinite"></div>
+  <div style="position:absolute;top:30%;left:28%;width:2px;height:2px;border-radius:50%;background:#f0e6c6;animation:ktnhTwinkle 5.5s ease-in-out 1s infinite"></div>
+  <div style="position:absolute;top:16%;right:22%;width:3px;height:3px;border-radius:50%;background:#f0e6c6;animation:ktnhTwinkle 4.6s ease-in-out 0.5s infinite"></div>
+  <div style="position:absolute;top:44%;right:12%;width:2px;height:2px;border-radius:50%;background:#f0e6c6;animation:ktnhTwinkle 6s ease-in-out 2s infinite"></div>
+  <div style="position:absolute;top:60%;left:20%;width:2px;height:2px;border-radius:50%;background:#f0e6c6;animation:ktnhTwinkle 5s ease-in-out 1.4s infinite"></div>
+  <div style="position:absolute;top:70%;right:30%;width:3px;height:3px;border-radius:50%;background:#f0e6c6;animation:ktnhTwinkle 4.2s ease-in-out 0.8s infinite"></div>
+  <div data-reveal style="position:relative;max-width:720px;margin:0 auto;text-align:center;display:flex;flex-direction:column;align-items:center;gap:24px">
+    <h2 style="margin:0;font-family:var(--font-display);font-weight:600;font-size:clamp(32px,3.4vw,44px);letter-spacing:0.1em;color:#f6f1e2">まずは、一文だけでも。</h2>
+    <p style="margin:0;font-size:15px;line-height:2;letter-spacing:0.05em;color:rgba(236,229,208,0.72)">登録なしで、すぐに始められます。書けそうな一行から、気軽にどうぞ。</p>
+    <a class="btn-cream" href="/" style="font-size:16px;padding:16px 40px;box-shadow:0 0 40px rgba(240,230,200,0.16)">コトノハ-leaf- を開く ─ 無料</a>
+  </div>
+</div>
+
+<footer style="background:#0c1809;padding:34px 32px">
+  <div style="max-width:1140px;margin:0 auto;display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:16px">
+    <div style="font-family:var(--font-display);font-size:16px;letter-spacing:0.14em;color:rgba(242,236,220,0.6)">コトノハ<span style="font-size:11px;color:rgba(216,189,151,0.6)">&nbsp;-leaf-</span></div>
+    <nav style="display:flex;flex-wrap:wrap;gap:24px">
+      <a class="foot-a" href="/#/terms">利用規約</a>
+      <a class="foot-a" href="/#/privacy">プライバシーポリシー</a>
+      <a class="foot-a" href="/#/tokushoho">特定商取引法に基づく表記</a>
+      <span style="color:rgba(236,229,208,0.35);font-size:13px;letter-spacing:0.1em">あなたの物語を、書きはじめよう。</span>
+    </nav>
+  </div>
+</footer>
+
+<!-- スクショ拡大用ライトボックス -->
+<div id="lightbox" role="dialog" aria-modal="true" aria-label="拡大画像" aria-hidden="true">
+  <button id="lightbox-close" type="button" aria-label="閉じる">×</button>
+  <img id="lightbox-img" alt="">
+  <div id="lightbox-cap"></div>
+</div>
+
+<script>
+(() => {
+  const motion = !window.matchMedia('(prefers-reduced-motion: reduce)').matches
+
+  // スクロールで現れる（JS 無効時は最初から表示のまま＝安全側）
+  if (motion && 'IntersectionObserver' in window) {
+    const els = Array.from(document.querySelectorAll('[data-reveal]'))
+    for (const el of els) {
+      el.style.opacity = '0'
+      el.style.transform = 'translateY(28px)'
+      el.style.transition = 'opacity 0.9s cubic-bezier(.2,.65,.25,1), transform 0.9s cubic-bezier(.2,.65,.25,1)'
+      el.style.transitionDelay = (el.dataset.revealDelay || 0) + 'ms'
+    }
+    const io = new IntersectionObserver((entries) => {
+      for (const e of entries) {
+        if (e.isIntersecting) {
+          e.target.style.opacity = '1'
+          e.target.style.transform = 'none'
+          io.unobserve(e.target)
+        }
+      }
+    }, { threshold: 0.1 })
+    for (const el of els) io.observe(el)
+  }
+
+  // ヒーローのパララックス
+  if (motion) {
+    const paras = Array.from(document.querySelectorAll('[data-para]'))
+    window.addEventListener('scroll', () => {
+      const y = window.scrollY
+      if (y < 1400) for (const p of paras) p.style.transform = 'translateY(' + y * parseFloat(p.dataset.para) + 'px)'
+    }, { passive: true })
+  }
+
+  // 蛍（Canvas）
+  const canvas = document.getElementById('fireflies')
+  if (canvas && motion) {
+    const ctx = canvas.getContext('2d')
+    let W = 0
+    let H = 0
+    const resize = () => {
+      const r = canvas.parentElement.getBoundingClientRect()
+      W = canvas.width = r.width
+      H = canvas.height = r.height
+    }
+    resize()
+    window.addEventListener('resize', resize)
+    const P = Array.from({ length: 60 }, () => ({
+      x: Math.random(), y: Math.random(), r: 0.7 + Math.random() * 1.9,
+      vx: (Math.random() - 0.5) * 0.00012, vy: -(0.00003 + Math.random() * 0.00013),
+      ph: Math.random() * Math.PI * 2, sp: 0.4 + Math.random() * 1.1,
+    }))
+    let t = 0
+    const tick = () => {
+      t += 0.016
+      ctx.clearRect(0, 0, W, H)
+      for (const p of P) {
+        p.x += p.vx
+        p.y += p.vy
+        if (p.y < -0.02) { p.y = 1.02; p.x = Math.random() }
+        if (p.x < -0.02) p.x = 1.02
+        if (p.x > 1.02) p.x = -0.02
+        const a = 0.12 + 0.5 * Math.abs(Math.sin(p.ph + t * p.sp))
+        const x = p.x * W
+        const y = p.y * H
+        const g = ctx.createRadialGradient(x, y, 0, x, y, p.r * 6)
+        g.addColorStop(0, 'rgba(242,230,196,' + a + ')')
+        g.addColorStop(1, 'rgba(242,230,196,0)')
+        ctx.fillStyle = g
+        ctx.beginPath()
+        ctx.arc(x, y, p.r * 6, 0, Math.PI * 2)
+        ctx.fill()
+        ctx.fillStyle = 'rgba(250,242,214,' + Math.min(1, a + 0.25) + ')'
+        ctx.beginPath()
+        ctx.arc(x, y, p.r * 0.8, 0, Math.PI * 2)
+        ctx.fill()
+      }
+      requestAnimationFrame(tick)
+    }
+    tick()
+  }
+
+  // スクショをクリック（or Enter/Space）で拡大表示。背景クリック・×・Escで閉じる。
+  const lb = document.getElementById('lightbox')
+  const lbImg = document.getElementById('lightbox-img')
+  const lbCap = document.getElementById('lightbox-cap')
+  const lbClose = document.getElementById('lightbox-close')
+  if (lb && lbImg) {
+    const open = (img) => {
+      lbImg.src = img.currentSrc || img.src
+      lbImg.alt = img.alt || ''
+      if (lbCap) lbCap.textContent = img.alt || ''
+      lb.classList.add('open')
+      lb.setAttribute('aria-hidden', 'false')
+      document.body.style.overflow = 'hidden'
+    }
+    const close = () => {
+      lb.classList.remove('open')
+      lb.setAttribute('aria-hidden', 'true')
+      lbImg.removeAttribute('src')
+      document.body.style.overflow = ''
+    }
+    for (const img of document.querySelectorAll('.slot-img')) {
+      img.setAttribute('role', 'button')
+      img.setAttribute('tabindex', '0')
+      img.addEventListener('click', () => open(img))
+      img.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(img) }
+      })
+    }
+    lb.addEventListener('click', close)
+    lbImg.addEventListener('click', (e) => e.stopPropagation())
+    if (lbClose) lbClose.addEventListener('click', (e) => { e.stopPropagation(); close() })
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && lb.classList.contains('open')) close() })
+  }
+})()
+</script>
+</body>
+</html>

@@ -23,7 +23,6 @@ const work: Work = {
           inlines: [{ type: 'ruby', base: '漢字', reading: 'かんじ' }],
         },
         { id: 'b2', type: 'paragraph', inlines: [{ type: 'emphasisDots', text: '重要' }] },
-        { id: 'b3', type: 'sceneBreak' },
         { id: 'b4', type: 'paragraph', inlines: [{ type: 'text', text: 'a<b>&c' }] },
       ],
     },
@@ -43,7 +42,6 @@ describe('toEpub（EPUB3 縦書き・純生成）', () => {
     expect(x).toContain('<title>第一話 出会い</title>')
     expect(x).toContain('<ruby>漢字<rt>かんじ</rt></ruby>')
     expect(x).toContain('<em class="dots">重要</em>')
-    expect(x).toContain('<hr class="scene-break" />')
     expect(x).toContain('a&lt;b&gt;&amp;c')
   })
 
@@ -62,6 +60,34 @@ describe('toEpub（EPUB3 縦書き・純生成）', () => {
     expect(opf).toContain('nav.xhtml')
   })
 
+  it('buildPackageOpf はメタ情報（著者・概要）を dc:creator / dc:description に出力しエスケープする', () => {
+    const opf = buildPackageOpf({
+      ...work,
+      author: '山田 <太郎>',
+      description: 'あらすじ & 概要',
+    })
+    expect(opf).toContain('<dc:creator>山田 &lt;太郎&gt;</dc:creator>')
+    expect(opf).toContain('<dc:description>あらすじ &amp; 概要</dc:description>')
+  })
+
+  it('buildPackageOpf は著者・概要が無ければ dc:creator / dc:description を出さない', () => {
+    const opf = buildPackageOpf(work)
+    expect(opf).not.toContain('<dc:creator>')
+    expect(opf).not.toContain('<dc:description>')
+  })
+
+  it('buildPackageOpf は空白のみの著者・概要を出力しない', () => {
+    const opf = buildPackageOpf({ ...work, author: '   ', description: '\n  \n' })
+    expect(opf).not.toContain('<dc:creator>')
+    expect(opf).not.toContain('<dc:description>')
+  })
+
+  it('buildPackageOpf は EPUB3 必須の dcterms:modified を updatedAt から秒精度UTCで出力', () => {
+    const updatedAt = Date.UTC(2026, 5, 14, 5, 30, 0)
+    const opf = buildPackageOpf({ ...work, updatedAt })
+    expect(opf).toContain('<meta property="dcterms:modified">2026-06-14T05:30:00Z</meta>')
+  })
+
   it('buildNavXhtml は話タイトルを目次リンクに列挙', () => {
     const nav = buildNavXhtml(work)
     expect(nav).toContain('epub:type="toc"')
@@ -72,6 +98,31 @@ describe('toEpub（EPUB3 縦書き・純生成）', () => {
 
   it('buildStyleCss は縦書き指定を含む', () => {
     expect(buildStyleCss()).toContain('writing-mode: vertical-rl')
+  })
+
+  it('buildStyleCss は縦中横（text-combine-upright）を含む', () => {
+    expect(buildStyleCss()).toContain('text-combine-upright: all')
+  })
+
+  it('episodeToXhtml はタイトル h1 内の半角数字を縦中横 span で包む', () => {
+    const x = episodeToXhtml({
+      id: 'e9',
+      title: '第12話',
+      blocks: [{ id: 'b9', type: 'paragraph', inlines: [{ type: 'text', text: '5年後' }] }],
+    })
+    expect(x).toContain('<h1>第<span class="tcy">12</span>話</h1>')
+    expect(x).toContain('<span class="tcy">5</span>年後')
+  })
+
+  it('GE-E1: @参照は EPUB ではプレーン名へ degrade（リンク化しない＝辞書非依存）', () => {
+    const x = episodeToXhtml({
+      id: 'e9',
+      title: '第九話',
+      blocks: [{ id: 'b9', type: 'paragraph', inlines: [{ type: 'ref', name: 'アリス' }] }],
+    })
+    expect(x).toContain('<p>アリス</p>')
+    expect(x).not.toContain('class="ref"')
+    expect(x).not.toContain('data-ref-name')
   })
 
   it('buildEpubFiles は EPUB に必要な全ファイルを束ねる', () => {
@@ -85,5 +136,46 @@ describe('toEpub（EPUB3 縦書き・純生成）', () => {
     expect(paths).toContain('OEBPS/text/ep-e1.xhtml')
     expect(paths).toContain('OEBPS/text/ep-e2.xhtml')
     expect(files.find((f) => f.path === 'mimetype')?.content).toBe('application/epub+zip')
+  })
+
+  // 表紙画像（coverImage）。"Hi" の JPEG ではないがバイト化の検証には十分。
+  const COVER = 'data:image/jpeg;base64,SGk='
+  const withCover: Work = { ...work, coverImage: COVER }
+
+  it('buildPackageOpf は hasCover で cover-image item と <meta name="cover"> を出す', () => {
+    const opf = buildPackageOpf(withCover, true)
+    expect(opf).toContain('<meta name="cover" content="cover-image" />')
+    expect(opf).toContain(
+      '<item id="cover-image" href="images/cover.jpg" media-type="image/jpeg" properties="cover-image" />',
+    )
+  })
+
+  it('buildPackageOpf は hasCover=false で表紙宣言を出さない', () => {
+    const opf = buildPackageOpf(work)
+    expect(opf).not.toContain('cover-image')
+    expect(opf).not.toContain('name="cover"')
+  })
+
+  it('buildEpubFiles は coverImage があれば cover.jpg バイトと OPF 宣言を揃えて出す', () => {
+    const files = buildEpubFiles(withCover)
+    const cover = files.find((f) => f.path === 'OEBPS/images/cover.jpg')
+    expect(cover?.content).toBeInstanceOf(Uint8Array)
+    expect(Array.from(cover?.content as Uint8Array)).toEqual([72, 105])
+    const opf = files.find((f) => f.path === 'OEBPS/content.opf')?.content as string
+    expect(opf).toContain('properties="cover-image"')
+  })
+
+  it('buildEpubFiles は coverImage が無ければ cover.jpg も宣言も出さない', () => {
+    const files = buildEpubFiles(work)
+    expect(files.find((f) => f.path === 'OEBPS/images/cover.jpg')).toBeUndefined()
+    const opf = files.find((f) => f.path === 'OEBPS/content.opf')?.content as string
+    expect(opf).not.toContain('cover-image')
+  })
+
+  it('buildEpubFiles は不正な data URL を表紙なしへフォールバック（宣言とファイルを揃える）', () => {
+    const files = buildEpubFiles({ ...work, coverImage: 'data:image/jpeg;base64,@@notbase64@@' })
+    expect(files.find((f) => f.path === 'OEBPS/images/cover.jpg')).toBeUndefined()
+    const opf = files.find((f) => f.path === 'OEBPS/content.opf')?.content as string
+    expect(opf).not.toContain('cover-image')
   })
 })

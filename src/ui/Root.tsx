@@ -1,26 +1,193 @@
-import { useEffect } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { getMcpTokenStatus } from './_api/mcp'
 import { App } from './App'
-import { LandingPage } from './components/LandingPage/landing-page'
-import { useEditorStore } from './hooks/use-editor-store'
+import { useAuth } from './auth/auth-context'
+import { createDefaultBackupService, createLocalBackupService } from './backup/backup-service'
+import { ActivityPage } from './components/ActivityPage/activity-page'
+import { AiPullDialog } from './components/AiPullDialog/ai-pull-dialog'
+import { CloudBackupDialog } from './components/CloudBackupDialog/cloud-backup-dialog'
+import { HelpPage } from './components/HelpPage/help-page'
+import { IdeaboxPage } from './components/IdeaboxPage/idea-box-page'
+import { PrivacyPage } from './components/LegalPage/privacy-page'
+import { TermsPage } from './components/LegalPage/terms-page'
+import { TokushohoPage } from './components/LegalPage/tokushoho-page'
+import { Library } from './components/Library/library'
+import { McpConnectDialog } from './components/McpConnectDialog/mcp-connect-dialog'
+import { SettingsPage } from './components/SettingsPage/settings-page'
+import { SmallScreenNotice } from './components/SmallScreenNotice/small-screen-notice'
+import { SyncOnboarding } from './components/SyncOnboarding/sync-onboarding'
+import { useToast } from './components/Toast/toast'
 import { useHashRoute } from './hooks/use-hash-route'
+import { useLiveSnapshot } from './hooks/use-live-snapshot'
+import {
+  createDefaultActivityRepository,
+  createDefaultIdeaRepository,
+  createDefaultStructureRepository,
+} from './store/createDefaultStore'
 import type { EditorStore } from './store/editorStore'
 
 interface RootProps {
   store: EditorStore
 }
 
-/** 入り口（LP）とエディタをハッシュで切り替えるトップレベル Container。 */
+/** 入口（ライブラリ）とエディタをハッシュで切り替えるトップレベル Container。 */
 export function Root({ store }: RootProps) {
   const { route, navigate } = useHashRoute()
-  const { workList } = useEditorStore(store)
+  const { status, isSignedIn, signOut, getToken } = useAuth()
+  const { show } = useToast()
+  const getTokenRef = useRef(getToken)
+  getTokenRef.current = getToken
+  // 子（ダイアログ・effect）へ渡す安定した参照。毎レンダーで新関数を渡すと子の useEffect が
+  // 再実行され、発行直後のトークン表示が消える等の不具合を招くため固定する。
+  const getTokenStable = useCallback(() => getTokenRef.current(), [])
 
-  // LP でも保存済み作品の有無を反映できるよう、入り口で一覧を読み込む。
+  // 会員のみクラウド全体バックアップ・復元を提供（IndexedDB＋/api/backup を結線）。
+  // 単一アクティブセッションは撤去したので、複数端末に常時ログインでき、押し出しは起きない。
+  const backupService = useMemo(
+    () => (status === 'member' ? createDefaultBackupService(() => getTokenRef.current()) : null),
+    [status],
+  )
+  // 執筆活動（草・ストリーク）は純ローカル・誰でも使える（同じ IndexedDB を読む）。
+  const activityRepo = useMemo(() => createDefaultActivityRepository(), [])
+  // ローカル（ファイル）バックアップも純ローカル・誰でも使える（全状態の書き出し／全置換復元）。
+  const localBackup = useMemo(() => createLocalBackupService(), [])
+  // ネタ帳（アイデアの受け皿）も純ローカル・誰でも使える。
+  const ideaRepo = useMemo(() => createDefaultIdeaRepository(), [])
+  // 構造レイヤー（アウトライン／相関図／マインドマップ）は cloud 会員のみ利用。
+  const structureRepo = useMemo(() => createDefaultStructureRepository(), [])
+  const [backupOpen, setBackupOpen] = useState(false)
+  const [aiPullOpen, setAiPullOpen] = useState(false)
+  const [mcpOpen, setMcpOpen] = useState(false)
+  // AI・MCP 接続済みか（トークン発行済み）。接続時のみ編集をライブスナップショットへ送る。
+  const [mcpConnected, setMcpConnected] = useState(false)
+
+  // ライブラリで保存済み作品一覧を表示するため、入口で一覧を読み込む。
   useEffect(() => {
     void store.init()
   }, [store])
 
-  if (route === '/write') {
-    return <App store={store} onExit={() => navigate('/')} />
+  // 会員なら現在の MCP 接続状態を取得し、接続済みならライブ push を有効化する。
+  useEffect(() => {
+    if (status !== 'member') {
+      setMcpConnected(false)
+      return
+    }
+    void getMcpTokenStatus(getTokenStable).then((s) => setMcpConnected(s.hasToken))
+  }, [status, getTokenStable])
+
+  // 接続済み会員の編集をデバウンスでライブスナップショットへ反映（AI が最新を読める）。
+  useLiveSnapshot(store, backupService, mcpConnected)
+
+  // 法務ページ（利用規約・プライバシーポリシー・特商法表記）。購読前の確認にも使うため、
+  // サインイン状態・オンボーディングに関わらず常に到達できる位置に置く。
+  if (route === '/terms') return <TermsPage />
+  if (route === '/privacy') return <PrivacyPage />
+  if (route === '/tokushoho') return <TokushohoPage />
+
+  // 設定・ヘルプはサイドバー付き本体とは独立した一枚ものページ。認証・オンボーディングに関わらず
+  // （狭い画面でも）到達できるよう、法務ページと同じくガードの手前に置く。
+  if (route === '/settings') return <SettingsPage />
+  if (route === '/help') return <HelpPage />
+
+  // 未課金でサインイン済み：中途半端な状態を残さず、専用オンボーディングで「購読する or ローカルの
+  // まま使う（＝サインアウトしてゲスト）」の二択に収束させる（§1.1「アカウント＝有料会員だけが持つ」）。
+  if (status === 'guest' && isSignedIn) {
+    return (
+      <>
+        <SyncOnboarding onUseLocal={signOut} />
+        <SmallScreenNotice />
+      </>
+    )
   }
-  return <LandingPage hasWorks={workList.length > 0} onStart={() => navigate('/write')} />
+
+  if (route === '/activity') {
+    return (
+      <>
+        <ActivityPage
+          repo={activityRepo}
+          onNavigateCollection={() => navigate('/')}
+          onNavigateIdeas={() => navigate('/ideas')}
+          onNavigateSettings={() => navigate('/settings')}
+          onNavigateHelp={() => navigate('/help')}
+        />
+        <SmallScreenNotice />
+      </>
+    )
+  }
+
+  if (route === '/ideas') {
+    return (
+      <>
+        <IdeaboxPage
+          repo={ideaRepo}
+          onNavigateCollection={() => navigate('/')}
+          onNavigateActivity={() => navigate('/activity')}
+          onNavigateSettings={() => navigate('/settings')}
+          onNavigateHelp={() => navigate('/help')}
+        />
+        <SmallScreenNotice />
+      </>
+    )
+  }
+
+  return (
+    <>
+      {route === '/write' ? (
+        <App
+          store={store}
+          onExit={() => navigate('/')}
+          onNavigateActivity={() => navigate('/activity')}
+          onNavigateSettings={() => navigate('/settings')}
+          onNavigateHelp={() => navigate('/help')}
+          activityRepo={activityRepo}
+          structureRepo={structureRepo}
+          canUseStructure={status === 'member'}
+          ideaRepo={ideaRepo}
+        />
+      ) : (
+        <Library
+          store={store}
+          onEnterEditor={() => navigate('/write')}
+          onOpenCloudBackup={backupService ? () => setBackupOpen(true) : undefined}
+          onOpenAiPull={backupService ? () => setAiPullOpen(true) : undefined}
+          onOpenMcp={backupService ? () => setMcpOpen(true) : undefined}
+          onOpenActivity={() => navigate('/activity')}
+          onOpenIdeas={() => navigate('/ideas')}
+          onOpenSettings={() => navigate('/settings')}
+          onOpenHelp={() => navigate('/help')}
+          localBackup={localBackup}
+        />
+      )}
+      {backupService && (
+        <CloudBackupDialog
+          open={backupOpen}
+          onOpenChange={setBackupOpen}
+          service={backupService}
+          onNotify={show}
+          onRestored={() => store.init()}
+        />
+      )}
+      {backupService && (
+        <AiPullDialog
+          open={aiPullOpen}
+          onOpenChange={setAiPullOpen}
+          service={backupService}
+          onNotify={show}
+          onRestored={() => store.init()}
+        />
+      )}
+      {backupService && (
+        <McpConnectDialog
+          open={mcpOpen}
+          onOpenChange={setMcpOpen}
+          getToken={getTokenStable}
+          pushLive={backupService.pushLive}
+          onConnectedChange={setMcpConnected}
+          onNotify={show}
+        />
+      )}
+      {/* スマホ等の狭い画面（lg 未満）では本体を覆って非対応を案内する。 */}
+      <SmallScreenNotice />
+    </>
+  )
 }

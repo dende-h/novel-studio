@@ -23,7 +23,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: チェックアウト
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: 環境を判定（main=production / stg=staging）
         run: echo "MISE_ENV=${{ github.ref_name == 'main' && 'production' || 'staging' }}" >> "$GITHUB_ENV"
@@ -35,7 +35,7 @@ jobs:
         run: echo "PNPM_STORE=$(mise exec -- pnpm store path --silent)" >> "$GITHUB_ENV"
 
       - name: pnpm ストアのキャッシュ
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ${{ env.PNPM_STORE }}
           key: pnpm-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}

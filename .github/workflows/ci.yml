@@ -21,7 +21,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: チェックアウト
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: mise セットアップ（node/pnpm）
         uses: jdx/mise-action@v4
@@ -30,7 +30,7 @@ jobs:
         run: echo "PNPM_STORE=$(mise exec -- pnpm store path --silent)" >> "$GITHUB_ENV"
 
       - name: pnpm ストアのキャッシュ
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ${{ env.PNPM_STORE }}
           key: pnpm-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
@@ -57,7 +57,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: チェックアウト
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: mise セットアップ（node/pnpm）
         uses: jdx/mise-action@v4
@@ -66,7 +66,7 @@ jobs:
         run: echo "PNPM_STORE=$(mise exec -- pnpm store path --silent)" >> "$GITHUB_ENV"
 
       - name: pnpm ストアのキャッシュ
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ${{ env.PNPM_STORE }}
           key: pnpm-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
@@ -83,7 +83,7 @@ jobs:
 
       - name: レポートをアップロード（失敗時の調査用）
         if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: playwright-report
           path: playwright-report/

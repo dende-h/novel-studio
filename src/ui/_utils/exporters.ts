@@ -2,6 +2,7 @@ import { exportBundle } from '../../core/bundle'
 import { buildEpubFiles } from '../../core/exporter/toEpub'
 import { blocksToKakuyomu } from '../../core/exporter/toKakuyomu'
 import { blocksToNarou } from '../../core/exporter/toNarou'
+import { glossaryToPlainText, workToPlainText } from '../../core/exporter/toPlainText'
 import { workToFolder } from '../../core/folder'
 import type { Episode, Work } from '../../core/schema'
 import { zipStore } from '../../core/zip'
@@ -46,7 +47,7 @@ export function workEpubExport(work: Work): ExportFile {
 
 export function worksBundleExport(works: Work[]): ExportFile {
   return {
-    filename: 'novel-studio-bundle.json',
+    filename: 'kotonoha-leaf-bundle.json',
     mime: 'application/json;charset=utf-8',
     data: exportBundle(works),
   }
@@ -55,4 +56,21 @@ export function worksBundleExport(works: Work[]): ExportFile {
 export function workFolderZipExport(work: Work): ExportFile {
   const bytes = zipStore(workToFolder(work).map((f) => ({ path: f.path, data: f.content })))
   return { filename: `${safeName(work.title)}_folder.zip`, mime: 'application/zip', data: bytes }
+}
+
+/**
+ * AI に読ませる用のプレーンテキスト .txt。コピペが長さ制限で切れる長編向けに、
+ * ChatGPT / Gemini などへ「ファイル添付」でまるごと渡せるようにする（コピー導線と同じ本文）。
+ */
+export function workAiTextExport(work: Work, includeGlossary: boolean): ExportFile {
+  const glossary = work.glossary ?? []
+  const body =
+    includeGlossary && glossary.length > 0
+      ? `${workToPlainText(work)}\n\n${glossaryToPlainText(glossary)}`
+      : workToPlainText(work)
+  return {
+    filename: `${safeName(work.title)}_AI.txt`,
+    mime: 'text/plain;charset=utf-8',
+    data: body,
+  }
 }
