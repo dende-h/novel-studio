@@ -21,11 +21,13 @@ import { ConfirmDialog } from '@/ui/components/ConfirmDialog/confirm-dialog'
 import { ExportDialog } from '@/ui/components/ExportDialog/export-dialog'
 import { ImportDialog } from '@/ui/components/ImportDialog/import-dialog'
 import { ProfileDialog } from '@/ui/components/ProfileDialog/profile-dialog'
+import { SaveStateIndicator } from '@/ui/components/SaveStateIndicator/save-state-indicator'
 import { SideNav } from '@/ui/components/SideNav/side-nav'
 import { TitlePromptDialog } from '@/ui/components/TitlePromptDialog/title-prompt-dialog'
 import { TrashDialog } from '@/ui/components/TrashDialog/trash-dialog'
 import { Button } from '@/ui/components/ui/button'
 import { WorkMetaDialog } from '@/ui/components/WorkMetaDialog/work-meta-dialog'
+import { markLocalBackup } from '@/ui/hooks/use-backup-marks'
 import { useEditorStore } from '@/ui/hooks/use-editor-store'
 import { TRASH_TTL_MS } from '@/ui/store/createDefaultStore'
 import type { EditorStore } from '@/ui/store/editorStore'
@@ -310,6 +312,20 @@ export function Library({
             </div>
           </header>
 
+          {/* 保存状態インジケータ（タスク1・全データがスコープ）。隅に小さく、主張せず常設。 */}
+          <div className="mb-8 flex justify-end">
+            <SaveStateIndicator
+              lastUpdatedAt={
+                state.workList.reduce(
+                  (m, w) => (w.updatedAt && w.updatedAt > m ? w.updatedAt : m),
+                  0,
+                ) || null
+              }
+              onOpenFileBackup={() => setBackupOpen(true)}
+              onOpenCloudBackup={onOpenCloudBackup}
+            />
+          </div>
+
           {query.trim() !== '' && visibleWorks.length === 0 ? (
             <p className="py-16 text-center text-[13px] text-on-surface-variant">
               「{query.trim()}」に一致する作品がありません。
@@ -374,6 +390,11 @@ export function Library({
             mime: 'application/json;charset=utf-8',
             data: json,
           })
+          // 保存状態インジケータ・執筆量案内が参照する「最後の書き出し日時＋そのときの総文字数」を記録。
+          markLocalBackup(
+            Date.now(),
+            state.workList.reduce((n, w) => n + w.charCount, 0),
+          )
         }}
       />
       <ImportDialog
