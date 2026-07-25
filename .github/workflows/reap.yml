@@ -1,0 +1,24 @@
+name: Reap expired cloud data
+
+# 猶予期限切れ（失効から 30 日）のクラウドデータを削除する日次ジョブ。
+# Cloudflare Pages はネイティブ cron 非対応のため、GitHub Actions から本番の
+# /api/billing/reap を REAP_SECRET 付きで叩く（30 日猶予に対し日次精度で十分）。
+# 事前に GitHub の Secrets と Cloudflare Pages（Production）env の両方に REAP_SECRET を設定すること。
+on:
+  schedule:
+    - cron: '17 15 * * *' # 毎日 1 回（UTC 15:17 ≒ JST 0:17）。混雑する :00 を避ける。
+  workflow_dispatch: {} # 手動実行も可
+
+permissions:
+  contents: read
+
+jobs:
+  reap:
+    name: purge expired grace subscriptions
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call reap endpoint
+        run: |
+          curl -fsS -X POST https://cotonoha-leaf.org/api/billing/reap \
+            -H "Authorization: Bearer ${{ secrets.REAP_SECRET }}" \
+            -w '\nHTTP %{http_code}\n'

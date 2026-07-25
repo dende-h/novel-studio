@@ -1,5 +1,6 @@
+/// <reference types="@cloudflare/workers-types" />
 import { createClerkClient } from '@clerk/backend'
-import { PLAN_KEY } from '../../../src/core/billing/plan'
+import { isActiveMember } from './membership'
 
 export interface ClerkEnv {
   CLERK_SECRET_KEY: string
@@ -35,17 +36,17 @@ export async function verifyUserId(request: Request, env: ClerkEnv): Promise<str
 }
 
 /**
- * Clerk セッションを検証し userId と会員（課金プラン保持）かを返す。未認証・未設定は null。
- * 会員判定は JWT クレーム（`has({ plan: PLAN_KEY })`）のみ＝追加ネットワーク無し・単一の真実
- * （D-SYNC-PRICE）。同期 API の 402 ゲートに使う。
+ * Clerk セッションを検証し userId と会員（有効なサブスク保持）かを返す。未認証・未設定は null。
+ * 会員判定は Clerk のクレームでなく D1 `subscriptions`（Stripe webhook が更新）を単一の真実にする。
+ * 同期 API の 402 ゲートに使う。env に D1 バインディング `DB` が必要。
  */
 export async function verifyMember(
   request: Request,
-  env: ClerkEnv,
+  env: ClerkEnv & { DB: D1Database },
 ): Promise<{ userId: string; isMember: boolean } | null> {
-  const auth = await authenticate(request, env)
-  if (!auth?.userId) return null
-  return { userId: auth.userId, isMember: auth.has({ plan: PLAN_KEY }) }
+  const userId = await verifyUserId(request, env)
+  if (!userId) return null
+  return { userId, isMember: await isActiveMember(env.DB, userId) }
 }
 
 /** JSON レスポンス helper。 */

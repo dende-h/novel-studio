@@ -2,9 +2,8 @@ import { Cloud, LoaderCircle } from 'lucide-react'
 import { lazy, Suspense } from 'react'
 import { Button } from '@/ui/components/ui/button'
 
-// 料金表は @clerk/clerk-react を含むので別チャンク。サインイン済み（Clerk 取得済み）ユーザーだけが
-// このオンボーディングに来るので、ここで lazy import してもゲストの主バンドルには混ざらない。
-const ClerkPricing = lazy(() => import('@/ui/auth/clerk-pricing'))
+// 料金カード（Stripe 直課金・JPY）。サインイン済みユーザーだけがここに来るので lazy import。
+const CloudPricing = lazy(() => import('@/ui/auth/cloud-pricing'))
 
 interface SyncOnboardingProps {
   /** 「ローカルのまま使う」＝サインアウトしてゲスト（同期オフ）に戻す。 */
@@ -46,7 +45,7 @@ export function SyncOnboarding({ onUseLocal }: SyncOnboardingProps) {
               </div>
             }
           >
-            <ClerkPricing />
+            <CloudPricing />
           </Suspense>
         </div>
         <Button

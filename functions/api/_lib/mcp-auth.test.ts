@@ -26,10 +26,20 @@ describe('mcp-auth（二系統トークン解決）', () => {
     expect(bearerOf(req())).toBe('')
   })
 
-  it('mcp_ トークンは D1 で解決し via=token', async () => {
+  it('mcp_ トークンは D1 で解決し via=token・会員なら isMember=true', async () => {
     const rows = new Map([[await hashMcpToken('mcp_secret'), 'user_9']])
-    const p = await resolveMcpAuth(req('Bearer mcp_secret'), env, fakeDb(rows))
+    const p = await resolveMcpAuth(req('Bearer mcp_secret'), env, fakeDb(rows), {
+      isMember: async () => true,
+    })
     expect(p).toMatchObject({ userId: 'user_9', via: 'token', isMember: true })
+  })
+
+  it('mcp_ トークンでも失効（非会員）なら isMember=false（呼び出し側で 403）', async () => {
+    const rows = new Map([[await hashMcpToken('mcp_secret'), 'user_9']])
+    const p = await resolveMcpAuth(req('Bearer mcp_secret'), env, fakeDb(rows), {
+      isMember: async () => false,
+    })
+    expect(p).toMatchObject({ userId: 'user_9', via: 'token', isMember: false })
   })
 
   it('未知の mcp_ トークンは null', async () => {

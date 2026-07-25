@@ -2,6 +2,7 @@ import {
   Check,
   CircleDot,
   CloudOff,
+  CreditCard,
   Download,
   HardDrive,
   History,
@@ -10,6 +11,7 @@ import {
 import type React from 'react'
 import { lazy, Suspense } from 'react'
 import { cn } from '@/lib/utils'
+import { openBillingPortal } from '@/ui/_api/billing'
 import { useAuth } from '@/ui/auth/auth-context'
 import { Button } from '@/ui/components/ui/button'
 import type { SaveStatus } from '@/ui/store/editorStore'
@@ -77,18 +79,30 @@ function AccountControl() {
   const auth = useAuth()
   if (!auth.available) return null
   if (auth.status === 'member') {
-    // Clerk UserButton にアカウント管理（解約／グレース中の再開）とサインアウトを集約。
-    // チャンク読み込み中は表示名だけ出してレイアウトの揺れを防ぐ。
+    // 「プラン」で Stripe Customer Portal（解約・支払い方法・請求履歴）へ、Clerk UserButton で
+    // プロフィール／サインアウトへ。チャンク読み込み中は表示名だけ出してレイアウトの揺れを防ぐ。
     return (
-      <Suspense
-        fallback={
-          <span className="max-w-[10rem] truncate font-sans text-on-surface-variant text-xs">
-            {auth.displayName ?? 'サインイン中'}
-          </span>
-        }
-      >
-        <ClerkUserButton />
-      </Suspense>
+      <div className="flex items-center gap-1.5">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => void openBillingPortal(auth.getToken)}
+          className="gap-1.5 text-on-surface-variant hover:text-primary"
+          title="プランの管理・解約"
+        >
+          <CreditCard className="size-4" aria-hidden />
+          <span className="hidden sm:inline">プラン</span>
+        </Button>
+        <Suspense
+          fallback={
+            <span className="max-w-[10rem] truncate font-sans text-on-surface-variant text-xs">
+              {auth.displayName ?? 'サインイン中'}
+            </span>
+          }
+        >
+          <ClerkUserButton />
+        </Suspense>
+      </div>
     )
   }
   if (auth.status === 'guest') {
