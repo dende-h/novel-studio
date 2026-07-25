@@ -101,9 +101,18 @@ function readPriceId(obj: Record<string, unknown>): string | null {
   return price && typeof price.id === 'string' ? price.id : null
 }
 
-/** current_period_end（Stripe は unix 秒）を epoch ms に変換。無ければ 0。 */
+/**
+ * current_period_end（Stripe は unix 秒）を epoch ms に変換。無ければ 0。
+ * Stripe の新しい API 版では subscription 直下から items.data[0] 配下へ移ったため両方見る。
+ */
 function readPeriodEndMs(obj: Record<string, unknown>): number {
-  const sec = typeof obj.current_period_end === 'number' ? obj.current_period_end : 0
+  let sec = typeof obj.current_period_end === 'number' ? obj.current_period_end : 0
+  if (!sec) {
+    const items = isRecord(obj.items) ? obj.items : null
+    const arr = items && Array.isArray(items.data) ? items.data : null
+    const first = arr && isRecord(arr[0]) ? arr[0] : null
+    if (first && typeof first.current_period_end === 'number') sec = first.current_period_end
+  }
   return sec > 0 ? sec * 1000 : 0
 }
 

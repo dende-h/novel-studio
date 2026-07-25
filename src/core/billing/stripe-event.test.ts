@@ -30,6 +30,19 @@ describe('interpretStripeEvent', () => {
     })
   })
 
+  it('current_period_end が items.data[0] 側（新API版）でも秒→msで読む', () => {
+    const obj = subObject({
+      current_period_end: undefined,
+      items: { data: [{ current_period_end: 1_700_000_000, price: { id: 'price_month' } }] },
+    })
+    const a = interpretStripeEvent(evt('customer.subscription.updated', obj))
+    expect(a.kind).toBe('upsert')
+    if (a.kind === 'upsert') {
+      expect(a.sub.currentPeriodEnd).toBe(1_700_000_000_000)
+      expect(a.sub.priceId).toBe('price_month')
+    }
+  })
+
   it('subscription.updated（past_due）→ upsert で status を反映', () => {
     const a = interpretStripeEvent(
       evt('customer.subscription.updated', subObject({ status: 'past_due' })),
