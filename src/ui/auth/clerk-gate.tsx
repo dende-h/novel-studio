@@ -24,7 +24,11 @@ function ClerkAuthBridge({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!signedIn) {
-      setMembership({ loaded: true, isMember: false })
+      // 未サインイン時は会員判定を「未取得(loaded:false)」に保つ。ここで loaded:true にすると、
+      // リロード直後（Clerk 読込前は signedIn=false → 直後に true）に、会員 API を取り直す前の
+      // stale な isMember:false が残り、一瞬 guest＝オンボーディング（料金画面）がちらつく。
+      // 未サインイン確定時の描画は effectiveLoaded の `!signedIn` 短絡で loading にならない。
+      setMembership({ loaded: false, isMember: false })
       return
     }
     let cancelled = false
