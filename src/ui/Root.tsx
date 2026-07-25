@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { getMcpTokenStatus } from './_api/mcp'
+import { triggerDownload } from './_utils/download'
 import { App } from './App'
 import { useAuth } from './auth/auth-context'
 import { createDefaultBackupService, createLocalBackupService } from './backup/backup-service'
@@ -13,6 +14,7 @@ import { TermsPage } from './components/LegalPage/terms-page'
 import { TokushohoPage } from './components/LegalPage/tokushoho-page'
 import { Library } from './components/Library/library'
 import { McpConnectDialog } from './components/McpConnectDialog/mcp-connect-dialog'
+import { RestoreGrace } from './components/RestoreGrace/restore-grace'
 import { SettingsPage } from './components/SettingsPage/settings-page'
 import { SmallScreenNotice } from './components/SmallScreenNotice/small-screen-notice'
 import { SyncOnboarding } from './components/SyncOnboarding/sync-onboarding'
@@ -33,7 +35,7 @@ interface RootProps {
 /** 入口（ライブラリ）とエディタをハッシュで切り替えるトップレベル Container。 */
 export function Root({ store }: RootProps) {
   const { route, navigate } = useHashRoute()
-  const { status, isSignedIn, signOut, getToken } = useAuth()
+  const { status, isSignedIn, canRestore, graceUntil, signOut, getToken } = useAuth()
   const { show } = useToast()
   const getTokenRef = useRef(getToken)
   getTokenRef.current = getToken
@@ -43,9 +45,13 @@ export function Root({ store }: RootProps) {
 
   // 会員のみクラウド全体バックアップ・復元を提供（IndexedDB＋/api/backup を結線）。
   // 単一アクティブセッションは撤去したので、複数端末に常時ログインでき、押し出しは起きない。
+  // 会員に加え、解約後の復元猶予期間（canRestore）でも生成する（復元のみ許可・作成はサーバが 402）。
   const backupService = useMemo(
-    () => (status === 'member' ? createDefaultBackupService(() => getTokenRef.current()) : null),
-    [status],
+    () =>
+      status === 'member' || canRestore
+        ? createDefaultBackupService(() => getTokenRef.current())
+        : null,
+    [status, canRestore],
   )
   // 執筆活動（草・ストリーク）は純ローカル・誰でも使える（同じ IndexedDB を読む）。
   const activityRepo = useMemo(() => createDefaultActivityRepository(), [])
@@ -88,6 +94,43 @@ export function Root({ store }: RootProps) {
   // （狭い画面でも）到達できるよう、法務ページと同じくガードの手前に置く。
   if (route === '/settings') return <SettingsPage />
   if (route === '/help') return <HelpPage />
+
+  // 解約後の復元猶予期間：クラウドから復元 → ローカル → 無料のファイル書き出し でデータを持ち出せる
+  // 安全網。onboarding より先に判定する（猶予中も status は guest のため）。期限後はクラウド削除。
+  if (canRestore && graceUntil != null) {
+    return (
+      <>
+        <RestoreGrace
+          graceUntil={graceUntil}
+          onRestore={() => setBackupOpen(true)}
+          onExport={async () => {
+            const json = await localBackup.exportPlaintext()
+            triggerDownload({
+              filename: `kotonoha-backup-${new Date().toISOString().slice(0, 10)}.json`,
+              mime: 'application/json;charset=utf-8',
+              data: json,
+            })
+            show('ファイルに書き出しました')
+          }}
+          onSignOut={signOut}
+        />
+        {backupService ? (
+          <CloudBackupDialog
+            open={backupOpen}
+            onOpenChange={setBackupOpen}
+            service={backupService}
+            restoreOnly
+            onNotify={show}
+            onRestored={() => {
+              void store.init()
+              show('手元に戻りました。「ファイルに書き出す」で保存できます')
+            }}
+          />
+        ) : null}
+        <SmallScreenNotice />
+      </>
+    )
+  }
 
   // 未課金でサインイン済み：中途半端な状態を残さず、専用オンボーディングで「購読する or ローカルの
   // まま使う（＝サインアウトしてゲスト）」の二択に収束させる（§1.1「アカウント＝有料会員だけが持つ」）。

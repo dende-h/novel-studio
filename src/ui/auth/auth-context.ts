@@ -13,6 +13,13 @@ export interface AuthState {
    */
   isSignedIn: boolean
   userId: string | null
+  /**
+   * 解約後の復元猶予（epoch ms・未設定は null）。この時刻までは「復元のみ」可能で、以降クラウドの
+   * データは削除される。status は member でなく guest のままだが、canRestore で復元導線を出す。
+   */
+  graceUntil: number | null
+  /** 解約後の猶予期間内で「クラウドからの復元だけ」許可される状態か（member とは別軸）。 */
+  canRestore: boolean
   /** 表示用の名前（Clerk のフルネーム／メール）。 */
   displayName: string | null
   openSignIn: () => void
@@ -28,6 +35,8 @@ export const GUEST_AUTH_STATE: AuthState = {
   status: 'guest',
   isSignedIn: false,
   userId: null,
+  graceUntil: null,
+  canRestore: false,
   displayName: null,
   openSignIn: () => {},
   openSignUp: () => {},

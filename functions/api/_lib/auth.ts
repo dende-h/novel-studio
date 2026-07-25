@@ -1,6 +1,6 @@
 /// <reference types="@cloudflare/workers-types" />
 import { createClerkClient } from '@clerk/backend'
-import { isActiveMember } from './membership'
+import { isActiveMember, readSubscription } from './membership'
 
 export interface ClerkEnv {
   CLERK_SECRET_KEY: string
@@ -47,6 +47,26 @@ export async function verifyMember(
   const userId = await verifyUserId(request, env)
   if (!userId) return null
   return { userId, isMember: await isActiveMember(env.DB, userId) }
+}
+
+/**
+ * バックアップ系のアクセス判定。会員に加え、**解約後の猶予期間内（status=canceled かつ
+ * grace_until が未来）は「復元のみ」を許可**する（データ持ち出しの安全網）。呼び出し側が
+ * canRestore と isMember で操作を出し分ける（復元＝canRestore、作成/ライブ＝isMember）。
+ * verifyMember とは別関数にし、会員判定側は無改修に保つ（既存有料ユーザーへの影響ゼロ）。
+ */
+export async function verifyBackupAccess(
+  request: Request,
+  env: ClerkEnv & { DB: D1Database },
+): Promise<{ userId: string; isMember: boolean; canRestore: boolean } | null> {
+  const userId = await verifyUserId(request, env)
+  if (!userId) return null
+  if (await isActiveMember(env.DB, userId)) {
+    return { userId, isMember: true, canRestore: true }
+  }
+  const sub = await readSubscription(env.DB, userId)
+  const canRestore = sub?.status === 'canceled' && (sub?.grace_until ?? 0) > Date.now()
+  return { userId, isMember: false, canRestore }
 }
 
 /** JSON レスポンス helper。 */
