@@ -10,13 +10,17 @@ import {
   Sparkles,
   Upload,
 } from 'lucide-react'
-import { useId, useMemo, useState } from 'react'
+import { useEffect, useId, useMemo, useRef, useState } from 'react'
+import { localDateKey, summarize } from '@/core/activity'
+import { decideBackupNudge, type NudgeDecision } from '@/core/nudge/backup-nudge'
+import type { ActivityRepository } from '@/core/storage/activityRepository'
 import type { WorkSummary } from '@/core/storage/workRepository'
 import { cn } from '@/lib/utils'
 import { triggerDownload } from '@/ui/_utils/download'
 import type { LocalBackupService } from '@/ui/backup/backup-service'
 import { AppShell } from '@/ui/components/AppShell/app-shell'
 import { BackupDialog } from '@/ui/components/BackupDialog/backup-dialog'
+import { BackupNudgeDialog } from '@/ui/components/BackupNudgeDialog/backup-nudge-dialog'
 import { ConfirmDialog } from '@/ui/components/ConfirmDialog/confirm-dialog'
 import { ExportDialog } from '@/ui/components/ExportDialog/export-dialog'
 import { ImportDialog } from '@/ui/components/ImportDialog/import-dialog'
@@ -27,7 +31,8 @@ import { TitlePromptDialog } from '@/ui/components/TitlePromptDialog/title-promp
 import { TrashDialog } from '@/ui/components/TrashDialog/trash-dialog'
 import { Button } from '@/ui/components/ui/button'
 import { WorkMetaDialog } from '@/ui/components/WorkMetaDialog/work-meta-dialog'
-import { markLocalBackup } from '@/ui/hooks/use-backup-marks'
+import { markLocalBackup, readBackupMarks } from '@/ui/hooks/use-backup-marks'
+import { acknowledgeNudge, readNudgeAck } from '@/ui/hooks/use-backup-nudge'
 import { useEditorStore } from '@/ui/hooks/use-editor-store'
 import { TRASH_TTL_MS } from '@/ui/store/createDefaultStore'
 import type { EditorStore } from '@/ui/store/editorStore'
@@ -58,6 +63,14 @@ interface LibraryProps {
   onOpenHelp?: () => void
   /** ローカル（ファイル）バックアップ：全状態の書き出し／全置換復元（課金非依存）。 */
   localBackup: LocalBackupService
+  /** クラウド会員か（案内モーダルは無料の人だけに出す）。 */
+  isMember: boolean
+  /** 初回説明（タスク2）を見終えたか。終える前は案内モーダルを出さない（順番を守る）。 */
+  onboarded: boolean
+  /** 執筆日数の集計に使う（案内モーダルの節目判定）。 */
+  activityRepo: ActivityRepository
+  /** 案内モーダルの「クラウドバックアップを利用する場合はこちら」導線（無料の人向け・未指定なら非表示）。 */
+  onOpenCloudPlan?: () => void
 }
 
 /** データ管理メニューの 1 項目。 */
@@ -98,6 +111,10 @@ export function Library({
   onOpenSettings,
   onOpenHelp,
   localBackup,
+  isMember,
+  onboarded,
+  activityRepo,
+  onOpenCloudPlan,
 }: LibraryProps) {
   const state = useEditorStore(store)
   const [newOpen, setNewOpen] = useState(false)
@@ -126,6 +143,45 @@ export function Library({
     if (q === '') return state.workList
     return state.workList.filter((w) => w.title.toLowerCase().includes(q))
   }, [state.workList, query])
+
+  const totalChars = useMemo(
+    () => state.workList.reduce((n, w) => n + w.charCount, 0),
+    [state.workList],
+  )
+
+  // バックアップ案内（タスク4）：マイライブラリを開き、データが揃った“そのとき”に一度だけ判定する。
+  // 会員には出さない。初回説明（タスク2）を終える前も出さない（順番を守る）。
+  const [nudge, setNudge] = useState<Extract<NudgeDecision, { show: true }> | null>(null)
+  const nudgeShownRef = useRef(false)
+  useEffect(() => {
+    if (nudgeShownRef.current || !onboarded || isMember) return
+    let cancelled = false
+    void (async () => {
+      const days = await activityRepo.list()
+      if (cancelled || nudgeShownRef.current) return
+      const activeDays = summarize(days, localDateKey(Date.now())).activeDays
+      const decision = decideBackupNudge({
+        totalChars,
+        activeDays,
+        marks: readBackupMarks(),
+        ack: readNudgeAck(),
+        now: Date.now(),
+      })
+      if (!cancelled && decision.show) {
+        nudgeShownRef.current = true // 1 マウントにつき一度だけ開く
+        setNudge(decision)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [onboarded, isMember, activityRepo, totalChars])
+
+  // 解散（実行・×・背景クリック）：現在レベルを承認済みに繰り上げ、30 日のクールダウンを開始する。
+  const dismissNudge = () => {
+    if (nudge) acknowledgeNudge(nudge.charLevel, nudge.dayLevel, Date.now())
+    setNudge(null)
+  }
 
   const changeView = (next: LibraryView) => {
     setView(next)
@@ -452,6 +508,17 @@ export function Library({
         onPurge={(id) => void store.purgeWork(id)}
         onEmpty={() => void store.emptyTrash()}
       />
+      {/* バックアップ案内（タスク4）。無料の人にだけ、節目のときだけ。執筆画面には出さない。 */}
+      {nudge && (
+        <BackupNudgeDialog
+          open
+          headline={nudge.headline}
+          body={nudge.body}
+          onClose={dismissNudge}
+          onFileBackup={() => setBackupOpen(true)}
+          onCloud={onOpenCloudPlan}
+        />
+      )}
     </AppShell>
   )
 }

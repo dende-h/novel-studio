@@ -37,7 +37,8 @@ interface RootProps {
 /** 入口（ライブラリ）とエディタをハッシュで切り替えるトップレベル Container。 */
 export function Root({ store }: RootProps) {
   const { route, navigate } = useHashRoute()
-  const { status, isSignedIn, canRestore, graceUntil, signOut, getToken } = useAuth()
+  const { status, isSignedIn, canRestore, graceUntil, signOut, getToken, openSignUp, available } =
+    useAuth()
   const { show } = useToast()
   // 初回のみ保存の仕組みを一度だけ説明する（思想の共有）。立てたら再表示しない。
   const [onboarded, markOnboarded] = useLocalFlag('ns-onboarded')
@@ -203,6 +204,11 @@ export function Root({ store }: RootProps) {
           onOpenSettings={() => navigate('/settings')}
           onOpenHelp={() => navigate('/help')}
           localBackup={localBackup}
+          isMember={status === 'member'}
+          onboarded={onboarded}
+          activityRepo={activityRepo}
+          // 無料の人向けクラウド導線＝サインアップ（→購読）。Clerk 未構成時はリンクを出さない。
+          onOpenCloudPlan={available ? openSignUp : undefined}
         />
       )}
       {/* 初回のみの保存説明。執筆画面（/write）には出さない＝執筆中の割り込みを避ける。 */}

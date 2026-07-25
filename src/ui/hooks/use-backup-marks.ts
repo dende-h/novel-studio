@@ -75,6 +75,11 @@ function getSnapshot(): BackupMarks {
   return state
 }
 
+/** 現在のバックアップ実行状況を一度だけ読む（フック外・案内判定で使う）。 */
+export function readBackupMarks(): BackupMarks {
+  return state
+}
+
 export function useBackupMarks(): BackupMarks {
   return useSyncExternalStore(subscribe, getSnapshot, getSnapshot)
 }
