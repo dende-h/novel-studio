@@ -92,5 +92,17 @@ async function oauthDiscovery(context: MiddlewareContext, url: URL): Promise<Res
 export async function onRequest(context: MiddlewareContext): Promise<Response> {
   const url = new URL(context.request.url)
   const discovery = await oauthDiscovery(context, url)
-  return discovery ?? context.next()
+  const response = discovery ?? (await context.next())
+
+  // SEO：本番の正規ドメインは cotonoha-leaf.org に一本化する。本番デプロイは
+  // novel-studio-b2m.pages.dev でも同じ内容が配信され、stg は *.pages.dev のプレビュー。
+  // これらが検索インデックスに載ると重複コンテンツになるため、**ホスト名が .pages.dev で
+  // 終わるときだけ** X-Robots-Tag: noindex を付ける。cotonoha-leaf.org は該当しないので
+  // 絶対に noindex にならない（許可リスト型＝本番を検索から消す方向には決して倒れない）。
+  if (url.hostname.endsWith('.pages.dev')) {
+    const res = new Response(response.body, response)
+    res.headers.set('X-Robots-Tag', 'noindex, nofollow')
+    return res
+  }
+  return response
 }
