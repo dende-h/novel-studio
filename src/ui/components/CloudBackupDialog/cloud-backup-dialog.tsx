@@ -19,6 +19,11 @@ interface CloudBackupDialogProps {
   onNotify: (message: string) => void
   /** 復元後にライブラリ一覧を再読込する。 */
   onRestored: () => Promise<void> | void
+  /**
+   * 復元専用モード（解約後の猶予期間）。作成・退避・削除を隠し「復元」だけ許可する。
+   * サーバも猶予中は GET(復元)のみ許可し作成/削除は 402 になるため、UI をそれに合わせる。
+   */
+  restoreOnly?: boolean
 }
 
 const fmt = (ms: number) =>
@@ -35,6 +40,7 @@ export function CloudBackupDialog({
   service,
   onNotify,
   onRestored,
+  restoreOnly = false,
 }: CloudBackupDialogProps) {
   const [backups, setBackups] = useState<BackupSummary[] | null>(null)
   const [busy, setBusy] = useState(false)
@@ -102,32 +108,49 @@ export function CloudBackupDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle className="font-serif text-primary">クラウドバックアップ</DialogTitle>
+          <DialogTitle className="font-serif text-primary">
+            {restoreOnly ? 'クラウドから復元' : 'クラウドバックアップ'}
+          </DialogTitle>
           <DialogDescription>
-            全作品・ゴミ箱・プロフィール・執筆記録（草）をまとめてクラウドに保存します。復元は選んだ時点で
-            <strong>ローカル全体を置き換え</strong>ます（置換前に現在の状態を自動で退避）。
+            {restoreOnly ? (
+              <>
+                解約後の復元猶予期間中です。クラウドに残っているバックアップから復元すると原稿が端末に戻り、
+                無料の「ファイルへのバックアップ」で書き出して保存できます。復元は選んだ時点で
+                <strong>ローカル全体を置き換え</strong>ます。
+              </>
+            ) : (
+              <>
+                全作品・ゴミ箱・プロフィール・執筆記録（草）をまとめてクラウドに保存します。復元は選んだ時点で
+                <strong>ローカル全体を置き換え</strong>ます（置換前に現在の状態を自動で退避）。
+              </>
+            )}
           </DialogDescription>
         </DialogHeader>
 
         <DialogBody>
-          <Button onClick={backupNow} disabled={busy} className="w-full gap-2">
-            {busy ? (
-              <LoaderCircle className="size-4 animate-spin" aria-hidden />
-            ) : (
-              <CloudUpload className="size-4" aria-hidden />
-            )}
-            今すぐバックアップ
-          </Button>
+          {/* 復元専用モード（解約後の猶予）では作成・退避を隠す。サーバも作成は 402 で弾く。 */}
+          {!restoreOnly && (
+            <>
+              <Button onClick={backupNow} disabled={busy} className="w-full gap-2">
+                {busy ? (
+                  <LoaderCircle className="size-4 animate-spin" aria-hidden />
+                ) : (
+                  <CloudUpload className="size-4" aria-hidden />
+                )}
+                今すぐバックアップ
+              </Button>
 
-          <label className="flex cursor-pointer items-center gap-2 font-sans text-on-surface-variant text-xs">
-            <input
-              type="checkbox"
-              checked={keepCurrent}
-              onChange={(e) => setKeepCurrent(e.target.checked)}
-              className="size-4 accent-primary"
-            />
-            復元するとき、置換前の現在の状態もバックアップに残す
-          </label>
+              <label className="flex cursor-pointer items-center gap-2 font-sans text-on-surface-variant text-xs">
+                <input
+                  type="checkbox"
+                  checked={keepCurrent}
+                  onChange={(e) => setKeepCurrent(e.target.checked)}
+                  className="size-4 accent-primary"
+                />
+                復元するとき、置換前の現在の状態もバックアップに残す
+              </label>
+            </>
+          )}
 
           {/* 件数が増えても内部スクロールで高さを抑える（モーダルが伸び続けない）。 */}
           <div className="max-h-[45vh] space-y-2 overflow-y-auto">
@@ -171,16 +194,18 @@ export function CloudBackupDialog({
                         <RotateCcw className="size-3.5" aria-hidden />
                         復元
                       </Button>
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        aria-label="このバックアップを削除"
-                        onClick={() => remove(b.id)}
-                        disabled={busy}
-                        className="text-on-surface-variant hover:text-destructive"
-                      >
-                        <Trash2 className="size-4" aria-hidden />
-                      </Button>
+                      {!restoreOnly && (
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          aria-label="このバックアップを削除"
+                          onClick={() => remove(b.id)}
+                          disabled={busy}
+                          className="text-on-surface-variant hover:text-destructive"
+                        >
+                          <Trash2 className="size-4" aria-hidden />
+                        </Button>
+                      )}
                     </span>
                   )}
                 </div>

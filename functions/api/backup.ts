@@ -10,7 +10,7 @@
  * R2 キーは `${userId}/backups/${createdAt}-${rand}`。id 先頭に createdAt を埋め、一覧の並びに使う。
  */
 
-import { type ClerkEnv, json, verifyMember } from './_lib/auth'
+import { type ClerkEnv, json, verifyBackupAccess, verifyMember } from './_lib/auth'
 import { decryptPart, encryptPart, importKey } from './_lib/crypto'
 
 interface Env extends ClerkEnv {
@@ -36,6 +36,19 @@ async function requireMember(context: Ctx): Promise<{ userId: string } | { error
   if (!m) return { error: json({ error: 'unauthorized' }, 401) }
   if (!m.isMember) return { error: json({ error: 'subscription_required' }, 402) }
   return { userId: m.userId }
+}
+
+/**
+ * 復元系（GET の一覧・?id 取得）のアクセス判定。会員に加え **解約後の猶予期間内も許可**。
+ * isMember も返し、呼び出し側で ?live（MCP ライブ）だけ会員限定に絞れるようにする。
+ */
+async function requireRestore(
+  context: Ctx,
+): Promise<{ userId: string; isMember: boolean } | { error: Response }> {
+  const a = await verifyBackupAccess(context.request, context.env)
+  if (!a) return { error: json({ error: 'unauthorized' }, 401) }
+  if (!a.canRestore) return { error: json({ error: 'subscription_required' }, 402) }
+  return { userId: a.userId, isMember: a.isMember }
 }
 
 async function listKeys(
@@ -96,11 +109,17 @@ export const onRequestPut: PagesFunction<Env> = async (context) => {
 }
 
 export const onRequestGet: PagesFunction<Env> = async (context) => {
-  const m = await requireMember(context)
+  // 復元（一覧・?id）は会員に加え解約後の猶予期間内も許可。?live（MCP）だけ会員限定に絞る。
+  const m = await requireRestore(context)
   if ('error' in m) return m.error
-  const { userId } = m
+  const { userId, isMember } = m
 
   const params = new URL(context.request.url).searchParams
+
+  // ライブスナップショット（MCP 用）は会員のみ。猶予中は復元だけ許可し、ここは 402 で弾く。
+  if (params.get('live') && !isMember) {
+    return json({ error: 'subscription_required' }, 402)
+  }
 
   // ?live=meta = ライブスナップショットの有無と AI 最終編集時刻だけを軽量に返す（本体は送らない）。
   // aiEditedAt は MCP 書き込みが刻む目印。ブラウザの pushLive で上書きされると消える（未取り込みなし）。

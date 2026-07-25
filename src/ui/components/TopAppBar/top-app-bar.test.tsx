@@ -36,6 +36,8 @@ function authState(overrides: Partial<AuthState>): AuthState {
     status: 'guest',
     isSignedIn: false,
     userId: null,
+    graceUntil: null,
+    canRestore: false,
     displayName: null,
     openSignIn: vi.fn(),
     openSignUp: vi.fn(),
