@@ -12,7 +12,6 @@ import Stripe from 'stripe'
 import { GRACE_PERIOD_MS, interpretStripeEvent } from '../../../src/core/billing/stripe-event'
 import { json } from '../_lib/auth'
 import {
-  readSubscription,
   readSubscriptionByCustomer,
   type SubscriptionRow,
   upsertSubscription,
@@ -60,16 +59,16 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
   }
   if (!userId) return json({ ok: true, ignored: 'no_user_mapping' })
 
+  // 既存とのマージは upsertSubscription がアトミックに行う（null/0 は既存値を保持）。
+  // ここでイベントの値をそのまま渡せば、並行イベントでも price/period を消さない。
   const now = Date.now()
-  const existing = await readSubscription(env.DB, userId)
-  // 既存値とマージ（checkout.session.completed は price/period が null/0 なので上書きしない）。
   const row: SubscriptionRow = {
     user_id: userId,
-    stripe_customer_id: sub.customerId || existing?.stripe_customer_id || '',
-    stripe_subscription_id: sub.subscriptionId ?? existing?.stripe_subscription_id ?? null,
+    stripe_customer_id: sub.customerId,
+    stripe_subscription_id: sub.subscriptionId,
     status: action.kind === 'cancel' ? 'canceled' : sub.status,
-    price_id: sub.priceId ?? existing?.price_id ?? null,
-    current_period_end: sub.currentPeriodEnd || existing?.current_period_end || 0,
+    price_id: sub.priceId,
+    current_period_end: sub.currentPeriodEnd,
     grace_until: action.kind === 'cancel' ? now + GRACE_PERIOD_MS : 0,
     updated_at: now,
   }

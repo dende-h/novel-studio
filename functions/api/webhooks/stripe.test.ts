@@ -94,6 +94,24 @@ describe('stripe webhook', () => {
     expect(rows.get('u2')?.status).toBe('active')
   })
 
+  it('price を持たない checkout.session.completed は既存の price/period を消さない（競合対策）', async () => {
+    const { db, rows } = makeSubsDb([
+      seedRow({ price_id: 'price_kept', current_period_end: 1_777_000_000_000 }),
+    ])
+    await call(
+      subEvent('checkout.session.completed', {
+        mode: 'subscription',
+        customer: 'cus_1',
+        subscription: 'sub_1',
+        client_reference_id: 'u1',
+      }),
+      env(db),
+    )
+    expect(rows.get('u1')?.status).toBe('active')
+    expect(rows.get('u1')?.price_id).toBe('price_kept')
+    expect(rows.get('u1')?.current_period_end).toBe(1_777_000_000_000)
+  })
+
   it('secret 未設定は 500・対象外イベントは 200 ignored', async () => {
     const { db } = makeSubsDb()
     const noSecret = await call(subEvent('x', {}), env(db, { STRIPE_WEBHOOK_SECRET: undefined }))

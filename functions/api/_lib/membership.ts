@@ -56,7 +56,13 @@ export async function isActiveMember(db: D1Database, userId: string): Promise<bo
   return !!row && MEMBER_STATUSES.has(row.status)
 }
 
-/** サブスク行を upsert（webhook / checkout から。user_id 主キーで置き換え）。 */
+/**
+ * サブスク行を upsert（webhook / checkout から。user_id 主キー）。
+ * 並行して届く webhook（例：checkout.session.completed と customer.subscription.created）の
+ * 「読んで→書く」競合を避けるため、**アトミックな単文**で反映する。price_id / subscription_id /
+ * current_period_end は、届いた値が null / 0 のときは既存値を保持（COALESCE / CASE）＝情報を持たない
+ * イベントが持つイベントの値を消さない。status / grace_until / updated_at は届いた値で更新。
+ */
 export async function upsertSubscription(db: D1Database, row: SubscriptionRow): Promise<void> {
   await db
     .prepare(
@@ -66,10 +72,12 @@ export async function upsertSubscription(db: D1Database, row: SubscriptionRow): 
        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(user_id) DO UPDATE SET
          stripe_customer_id     = excluded.stripe_customer_id,
-         stripe_subscription_id = excluded.stripe_subscription_id,
+         stripe_subscription_id = COALESCE(excluded.stripe_subscription_id, subscriptions.stripe_subscription_id),
          status                 = excluded.status,
-         price_id               = excluded.price_id,
-         current_period_end     = excluded.current_period_end,
+         price_id               = COALESCE(excluded.price_id, subscriptions.price_id),
+         current_period_end     = CASE WHEN excluded.current_period_end > 0
+                                       THEN excluded.current_period_end
+                                       ELSE subscriptions.current_period_end END,
          grace_until            = excluded.grace_until,
          updated_at             = excluded.updated_at`,
     )

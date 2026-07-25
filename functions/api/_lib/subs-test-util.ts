@@ -46,13 +46,17 @@ export function makeSubsDb(seed: SubscriptionRow[] = []) {
               number,
               number,
             ]
+            // 本番 SQL の COALESCE / CASE と同じ保持セマンティクス（null/0 は既存値を残す）。
+            const prev = rows.get(user_id)
             rows.set(user_id, {
               user_id,
               stripe_customer_id,
-              stripe_subscription_id,
+              stripe_subscription_id:
+                stripe_subscription_id ?? prev?.stripe_subscription_id ?? null,
               status,
-              price_id,
-              current_period_end,
+              price_id: price_id ?? prev?.price_id ?? null,
+              current_period_end:
+                current_period_end > 0 ? current_period_end : (prev?.current_period_end ?? 0),
               grace_until,
               updated_at,
             })
