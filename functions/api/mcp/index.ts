@@ -165,8 +165,8 @@ export const onRequestGet: PagesFunction<Env> = async () =>
 export const onRequestPost: PagesFunction<Env> = async (context) => {
   const principal = await resolveMcpAuth(context.request, context.env, context.env.DB)
   if (!principal) return unauthorized(context.request)
-  // OAuth 経路は cloud 会員のみ許可（fail-closed）。従来 mcp_ トークンは会員発行のため許可。
-  if (principal.via === 'oauth' && !principal.isMember) {
+  // 会員（有効なサブスク）のみ許可（fail-closed）。OAuth・mcp_ トークン両経路とも D1 で都度判定。
+  if (!principal.isMember) {
     return jsonResponse({ error: 'forbidden', reason: 'cloud plan required' }, 403)
   }
   const userId = principal.userId

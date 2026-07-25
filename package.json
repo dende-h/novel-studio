@@ -37,6 +37,7 @@
     "radix-ui": "1.5.0",
     "react": "19.2.7",
     "react-dom": "19.2.7",
+    "stripe": "22.3.2",
     "tailwind-merge": "3.6.0",
     "zod": "4.4.3"
   },
