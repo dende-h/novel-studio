@@ -232,155 +232,154 @@ export function Library({
     >
       <div className="min-h-0 flex-1 overflow-y-auto px-8 py-9 md:px-10">
         <div className="mx-auto max-w-[1120px] pb-16">
-          <header className="mb-6 flex flex-wrap items-end justify-between gap-4">
+          <header className="mb-8 flex flex-wrap items-start justify-between gap-4">
             <div>
               <h1 className="font-semibold font-serif text-[26px] text-on-surface">
                 マイライブラリ
               </h1>
               <p className="mt-1 text-[13px] text-on-surface-variant">執筆中の原稿と下書き</p>
             </div>
-            <div className="flex flex-wrap items-center gap-2">
-              {/* 作品名で検索（タイトル部分一致） */}
-              <div className="relative">
-                <Search className="-translate-y-1/2 absolute top-1/2 left-2.5 size-3.5 text-on-surface-variant/60" />
-                <input
-                  type="search"
-                  aria-label="作品名で検索"
-                  placeholder="作品名で検索"
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  className="h-[34px] w-[200px] rounded-md border border-outline-variant/40 bg-surface-container-lowest pr-3 pl-8 font-sans text-[13px] text-on-surface outline-none transition-colors placeholder:text-on-surface-variant/50 focus:border-primary"
-                />
-              </div>
-              {state.workList.length > 0 && (
-                <div className="flex items-center gap-1">
-                  <button
-                    type="button"
-                    aria-label="カード表示"
-                    aria-pressed={view === 'card'}
-                    onClick={() => changeView('card')}
-                    className={cn(
-                      'flex h-[26px] items-center gap-1 rounded-md px-2.5 font-sans text-xs transition-colors',
-                      view === 'card'
-                        ? 'bg-primary text-white'
-                        : 'text-on-surface-variant hover:bg-surface-container-high',
-                    )}
-                  >
-                    <LayoutGrid className="size-3.5" />
-                    カード
-                  </button>
-                  <button
-                    type="button"
-                    aria-label="リスト表示"
-                    aria-pressed={view === 'list'}
-                    onClick={() => changeView('list')}
-                    className={cn(
-                      'flex h-[26px] items-center gap-1 rounded-md px-2.5 font-sans text-xs transition-colors',
-                      view === 'list'
-                        ? 'bg-primary text-white'
-                        : 'text-on-surface-variant hover:bg-surface-container-high',
-                    )}
-                  >
-                    <List className="size-3.5" />
-                    リスト
-                  </button>
+            <div className="flex flex-col items-end gap-3">
+              {/* 保存状態インジケータ（全データがスコープ）。ツールバーの上・右寄せで小さく常設。 */}
+              <SaveStateIndicator
+                lastUpdatedAt={
+                  state.workList.reduce(
+                    (m, w) => (w.updatedAt && w.updatedAt > m ? w.updatedAt : m),
+                    0,
+                  ) || null
+                }
+                onOpenFileBackup={() => setBackupOpen(true)}
+                onOpenCloudBackup={onOpenCloudBackup}
+              />
+              <div className="flex flex-wrap items-center justify-end gap-2">
+                {/* 作品名で検索（タイトル部分一致） */}
+                <div className="relative">
+                  <Search className="-translate-y-1/2 absolute top-1/2 left-2.5 size-3.5 text-on-surface-variant/60" />
+                  <input
+                    type="search"
+                    aria-label="作品名で検索"
+                    placeholder="作品名で検索"
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                    className="h-[34px] w-[200px] rounded-md border border-outline-variant/40 bg-surface-container-lowest pr-3 pl-8 font-sans text-[13px] text-on-surface outline-none transition-colors placeholder:text-on-surface-variant/50 focus:border-primary"
+                  />
                 </div>
-              )}
-              {/* データ管理（バックアップ・取り込み・クラウド・AI 接続をまとめる） */}
-              <div className="relative">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  aria-haspopup="menu"
-                  aria-expanded={dataMenuOpen}
-                  aria-controls={dataMenuOpen ? dataMenuId : undefined}
-                  onClick={() => setDataMenuOpen((v) => !v)}
-                  className="gap-2"
-                >
-                  <Database className="size-4" />
-                  データ管理
-                </Button>
-                {dataMenuOpen ? (
-                  <>
+                {state.workList.length > 0 && (
+                  <div className="flex items-center gap-1">
                     <button
                       type="button"
-                      aria-label="メニューを閉じる"
-                      tabIndex={-1}
-                      onClick={() => setDataMenuOpen(false)}
-                      className="fixed inset-0 z-40 cursor-default"
-                    />
-                    <div
-                      role="menu"
-                      id={dataMenuId}
-                      className="absolute right-0 top-10 z-50 flex w-[230px] flex-col rounded-lg border border-outline-variant/30 bg-surface-container-lowest p-1.5 font-sans shadow-lg"
+                      aria-label="カード表示"
+                      aria-pressed={view === 'card'}
+                      onClick={() => changeView('card')}
+                      className={cn(
+                        'flex h-[26px] items-center gap-1 rounded-md px-2.5 font-sans text-xs transition-colors',
+                        view === 'card'
+                          ? 'bg-primary text-white'
+                          : 'text-on-surface-variant hover:bg-surface-container-high',
+                      )}
                     >
-                      <DataMenuItem
-                        icon={<Download className="size-[15px]" />}
-                        label="バックアップを書き出し"
-                        disabled={state.workList.length === 0}
-                        onClick={() => {
-                          setDataMenuOpen(false)
-                          setBackupOpen(true)
-                        }}
+                      <LayoutGrid className="size-3.5" />
+                      カード
+                    </button>
+                    <button
+                      type="button"
+                      aria-label="リスト表示"
+                      aria-pressed={view === 'list'}
+                      onClick={() => changeView('list')}
+                      className={cn(
+                        'flex h-[26px] items-center gap-1 rounded-md px-2.5 font-sans text-xs transition-colors',
+                        view === 'list'
+                          ? 'bg-primary text-white'
+                          : 'text-on-surface-variant hover:bg-surface-container-high',
+                      )}
+                    >
+                      <List className="size-3.5" />
+                      リスト
+                    </button>
+                  </div>
+                )}
+                {/* データ管理（バックアップ・取り込み・クラウド・AI 接続をまとめる） */}
+                <div className="relative">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    aria-haspopup="menu"
+                    aria-expanded={dataMenuOpen}
+                    aria-controls={dataMenuOpen ? dataMenuId : undefined}
+                    onClick={() => setDataMenuOpen((v) => !v)}
+                    className="gap-2"
+                  >
+                    <Database className="size-4" />
+                    データ管理
+                  </Button>
+                  {dataMenuOpen ? (
+                    <>
+                      <button
+                        type="button"
+                        aria-label="メニューを閉じる"
+                        tabIndex={-1}
+                        onClick={() => setDataMenuOpen(false)}
+                        className="fixed inset-0 z-40 cursor-default"
                       />
-                      <DataMenuItem
-                        icon={<Upload className="size-[15px]" />}
-                        label="バックアップを取り込み"
-                        onClick={() => {
-                          setDataMenuOpen(false)
-                          setImportOpen(true)
-                        }}
-                      />
-                      {onOpenCloudBackup ? (
+                      <div
+                        role="menu"
+                        id={dataMenuId}
+                        className="absolute right-0 top-10 z-50 flex w-[230px] flex-col rounded-lg border border-outline-variant/30 bg-surface-container-lowest p-1.5 font-sans shadow-lg"
+                      >
                         <DataMenuItem
-                          icon={<CloudUpload className="size-[15px]" />}
-                          label="クラウドバックアップ"
+                          icon={<Download className="size-[15px]" />}
+                          label="バックアップを書き出し"
+                          disabled={state.workList.length === 0}
                           onClick={() => {
                             setDataMenuOpen(false)
-                            onOpenCloudBackup()
+                            setBackupOpen(true)
                           }}
                         />
-                      ) : null}
-                      {onOpenAiPull ? (
                         <DataMenuItem
-                          icon={<Sparkles className="size-[15px]" />}
-                          label="AIの変更を取り込む"
+                          icon={<Upload className="size-[15px]" />}
+                          label="バックアップを取り込み"
                           onClick={() => {
                             setDataMenuOpen(false)
-                            onOpenAiPull()
+                            setImportOpen(true)
                           }}
                         />
-                      ) : null}
-                      {onOpenMcp ? (
-                        <DataMenuItem
-                          icon={<Bot className="size-[15px]" />}
-                          label="AI に接続（MCP）"
-                          onClick={() => {
-                            setDataMenuOpen(false)
-                            onOpenMcp()
-                          }}
-                        />
-                      ) : null}
-                    </div>
-                  </>
-                ) : null}
+                        {onOpenCloudBackup ? (
+                          <DataMenuItem
+                            icon={<CloudUpload className="size-[15px]" />}
+                            label="クラウドバックアップ"
+                            onClick={() => {
+                              setDataMenuOpen(false)
+                              onOpenCloudBackup()
+                            }}
+                          />
+                        ) : null}
+                        {onOpenAiPull ? (
+                          <DataMenuItem
+                            icon={<Sparkles className="size-[15px]" />}
+                            label="AIの変更を取り込む"
+                            onClick={() => {
+                              setDataMenuOpen(false)
+                              onOpenAiPull()
+                            }}
+                          />
+                        ) : null}
+                        {onOpenMcp ? (
+                          <DataMenuItem
+                            icon={<Bot className="size-[15px]" />}
+                            label="AI に接続（MCP）"
+                            onClick={() => {
+                              setDataMenuOpen(false)
+                              onOpenMcp()
+                            }}
+                          />
+                        ) : null}
+                      </div>
+                    </>
+                  ) : null}
+                </div>
               </div>
             </div>
           </header>
-
-          {/* 保存状態インジケータ（タスク1・全データがスコープ）。隅に小さく、主張せず常設。 */}
-          <div className="mb-8 flex justify-end">
-            <SaveStateIndicator
-              lastUpdatedAt={
-                state.workList.reduce(
-                  (m, w) => (w.updatedAt && w.updatedAt > m ? w.updatedAt : m),
-                  0,
-                ) || null
-              }
-              onOpenFileBackup={() => setBackupOpen(true)}
-              onOpenCloudBackup={onOpenCloudBackup}
-            />
-          </div>
 
           {query.trim() !== '' && visibleWorks.length === 0 ? (
             <p className="py-16 text-center text-[13px] text-on-surface-variant">
