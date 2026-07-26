@@ -1,0 +1,231 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- テーマ先読み（描画前に localStorage のテーマを反映してちらつきを防ぐ。キーは src/ui/hooks/use-preferences.ts と一致）。 -->
+<script>
+  (function () {
+    try {
+      var t = localStorage.getItem('ns-theme') || 'system'
+      var dark = t === 'dark' || (t === 'system' && matchMedia('(prefers-color-scheme: dark)').matches)
+      if (dark) document.documentElement.classList.add('dark')
+    } catch (e) {}
+  })()
+</script>
+<title>プライバシーポリシー — コトノハ-leaf-</title>
+<meta name="description" content="コトノハ-leaf-（無料の縦書き小説エディタ）のプライバシーポリシー。作品データは原則として端末内に保存し、サーバーには預かりません。">
+<meta name="robots" content="index,follow">
+<meta name="theme-color" content="#2c5b27">
+<link rel="canonical" href="https://cotonoha-leaf.org/privacy">
+<link rel="icon" href="/favicon-clean.png" type="image/png" sizes="any">
+
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="コトノハ-leaf-">
+<meta property="og:title" content="プライバシーポリシー — コトノハ-leaf-">
+<meta property="og:description" content="コトノハ-leaf-（無料の縦書き小説エディタ）のプライバシーポリシー。作品データは原則として端末内に保存し、サーバーには預かりません。">
+<meta property="og:url" content="https://cotonoha-leaf.org/privacy">
+<meta property="og:image" content="https://cotonoha-leaf.org/lp/ogp.png">
+<meta property="og:locale" content="ja_JP">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Shippori+Mincho+B1:wght@500;600;700&family=Zen+Kaku+Gothic+New:wght@400;500;700&display=swap" rel="stylesheet">
+
+<style>
+  /* アプリ（src/ui/index.css）のトークンから必要分のみ採録。legal-layout.tsx の体裁を静的HTMLへ移植。 */
+  :root {
+    color-scheme: light;
+    --background: #fdfcfb; --foreground: #4b5160;
+    --on-surface: #1f2430; --on-surface-variant: #6b7381;
+    --surface-lowest: #fefeff; --outline: rgba(157,163,174,0.3);
+    --link: #2c5b27; --link-hover: #1a3014; --wheat: #92703f;
+  }
+  .dark {
+    color-scheme: dark;
+    --background: #181611; --foreground: #d7d2c8;
+    --on-surface: #ece8e1; --on-surface-variant: #a49e92;
+    --surface-lowest: #1f1c16; --outline: rgba(100,94,83,0.5);
+    --link: #8bc47e; --link-hover: #c6e8bb; --wheat: #d8bd8e;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    background: var(--background); color: var(--foreground);
+    font-family: "Zen Kaku Gothic New", "Hiragino Sans", "Yu Gothic", sans-serif;
+    line-height: 1.85; -webkit-font-smoothing: antialiased;
+  }
+  a { color: var(--link); text-underline-offset: 2px; }
+  a:hover { color: var(--link-hover); }
+  .site-header {
+    display: flex; align-items: center; height: 56px;
+    border-bottom: 1px solid var(--outline);
+    background: var(--surface-lowest); padding: 0 20px;
+  }
+  .brand {
+    font-family: "Shippori Mincho B1", "Hiragino Mincho ProN", "Yu Mincho", serif;
+    font-weight: 700; font-size: 19px; color: var(--on-surface);
+    text-decoration: none; letter-spacing: 0.01em;
+  }
+  .brand .leaf { margin-left: 2px; font-weight: 500; font-size: 13px; color: var(--wheat); letter-spacing: 0.06em; }
+  main { max-width: 720px; margin: 0 auto; padding: 48px 24px 80px; }
+  .back {
+    display: inline-flex; align-items: center; gap: 6px; margin-bottom: 32px;
+    font-size: 13px; color: var(--on-surface-variant); text-decoration: none;
+  }
+  .back:hover { color: var(--link); }
+  h1 { margin: 0; font-family: "Shippori Mincho B1", serif; font-weight: 600; font-size: 28px; line-height: 1.4; color: var(--on-surface); }
+  .date { margin-top: 8px; font-size: 12px; color: var(--on-surface-variant); }
+  .doc { margin-top: 32px; }
+  .doc h2 { margin: 36px 0 10px; font-family: "Shippori Mincho B1", serif; font-weight: 600; font-size: 17px; color: var(--on-surface); }
+  .doc p { margin: 10px 0 0; font-size: 14px; color: var(--foreground); }
+  .doc ul { margin: 10px 0 0; padding-left: 24px; list-style: disc; }
+  .doc ol { margin: 10px 0 0; padding-left: 24px; list-style: decimal; }
+  .doc li { margin-top: 6px; font-size: 14px; }
+  .doc strong { font-weight: 700; color: var(--on-surface); }
+  footer { margin-top: 56px; padding-top: 24px; border-top: 1px solid var(--outline); font-size: 12px; color: var(--on-surface-variant); }
+  footer .row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 16px; }
+  footer a { color: var(--on-surface-variant); text-decoration: none; }
+  footer a:hover { color: var(--link); }
+  footer .brand-mini { margin-left: auto; font-family: "Shippori Mincho B1", serif; }
+  footer .brand-mini .leaf { margin-left: 2px; font-size: 0.72em; color: var(--wheat); letter-spacing: 0.06em; }
+</style>
+</head>
+<body>
+  <header class="site-header">
+    <a class="brand" href="/">コトノハ<span class="leaf">-leaf-</span></a>
+  </header>
+
+  <main>
+    <a class="back" href="/">← アプリへ戻る</a>
+
+    <h1>プライバシーポリシー</h1>
+    <p class="date">2026年7月14日 制定</p>
+
+    <div class="doc">
+      <p>
+        コトノハ-leaf-（以下「本サービス」）の運営者（以下「運営者」）は、
+        利用者（以下「ユーザー」）の情報を次のとおり取り扱います。
+        本サービスは「作品データを原則として預からない」設計を基本方針としています。
+      </p>
+
+      <h2>1. 作品データの取り扱い</h2>
+      <ul>
+        <li>
+          原稿・図鑑・執筆記録などの作品データは、ユーザーの端末内（ブラウザ内のデータ保存領域）に保存されます。
+          無料の範囲で利用する限り、作品データが運営者のサーバーへ送信されることはありません。
+        </li>
+        <li>
+          有料プランのクラウドバックアップを利用した場合、作品データは暗号化されたうえで、
+          運営者が利用するクラウド基盤（Cloudflare）に保存されます。保存されたデータはバックアップの保存・復元のためにのみ用います。
+        </li>
+        <li>
+          AI
+          接続（MCP）を有効にした場合、接続中は最新の作品データが自動的に暗号化のうえクラウド基盤へ送信・保存され
+          （ライブスナップショット）、ユーザーが発行した読み取り専用トークンを通じて、
+          ユーザー自身の AI クライアントからの読み取りにのみ用いられます。 運営者が作品データを AI
+          事業者へ提供したり、AI の学習に利用させたりすることはありません。
+        </li>
+      </ul>
+
+      <h2>2. 収集する情報</h2>
+      <p>本サービスの提供にあたり、次の情報を取得・利用することがあります。</p>
+      <ul>
+        <li>
+          <strong>アカウント情報（アカウント登録時）</strong>：メールアドレス等の登録情報。認証基盤（Clerk）を通じて管理されます（アカウント登録は有料機能の利用に必要です）。
+        </li>
+        <li>
+          <strong>決済情報（有料プラン利用時）</strong>：決済は決済事業者（Stripe）が処理し、運営者はクレジットカード番号等を保持しません。運営者が把握するのは契約状態（プランの有効・失効等）です。
+        </li>
+        <li>
+          <strong>アクセスログ</strong>：ホスティング基盤（Cloudflare）により、IPアドレス等の技術的情報がサービス運用・不正防止の目的で一時的に記録されることがあります。
+        </li>
+        <li>
+          <strong>端末内設定</strong>：表示切替等の設定をブラウザの localStorage に保存します。これらは端末外へ送信されません。
+        </li>
+      </ul>
+      <p>本サービスは、広告配信や行動追跡を目的としたアクセス解析ツールを使用していません。</p>
+
+      <h2>3. 利用目的</h2>
+      <ul>
+        <li>本サービスの提供・維持・改善（バックアップの保存・復元、認証、課金管理を含む）</li>
+        <li>不正利用の防止、障害・セキュリティ対応</li>
+        <li>お問い合わせへの対応、重要なお知らせの通知</li>
+      </ul>
+
+      <h2>4. 第三者提供・外部サービス</h2>
+      <p>
+        運営者は、法令に基づく場合を除き、ユーザーの情報を第三者に提供しません。
+        本サービスは、提供のために次の外部サービスを利用しており、各サービスにおける情報の取り扱いは各社のプライバシーポリシーに従います。
+      </p>
+      <ul>
+        <li>Cloudflare（ホスティング・バックアップデータの保存）</li>
+        <li>Clerk（アカウント認証・課金管理）</li>
+        <li>Stripe（決済処理）</li>
+        <li>
+          Google
+          Fonts（紹介ページのフォント配信。アプリ本体はフォントを同梱しており外部配信を利用しません）
+        </li>
+      </ul>
+      <p>
+        これらの外部サービスは米国の事業者であり、データは米国を含む国外のサーバーで取り扱われることがあります。
+        各社は、各国の法令および自社のプライバシーポリシーに基づく安全管理を行っています。
+      </p>
+
+      <h2>5. 安全管理措置</h2>
+      <ul>
+        <li>通信はすべて TLS により暗号化されます。</li>
+        <li>クラウドバックアップの作品データは、保存時に暗号化されます。</li>
+        <li>AI 接続のトークンは読み取り専用で、ユーザーがいつでも無効化できます。</li>
+      </ul>
+
+      <h2>6. 保存期間と削除</h2>
+      <ul>
+        <li>
+          端末内の作品データは、ユーザーがアプリ内で削除するか、ブラウザのデータを消去するまで端末に残ります。
+        </li>
+        <li>
+          クラウド上のデータ（バックアップ・ライブスナップショット）は、ユーザーが削除操作を行った場合に削除されます。
+          AI
+          接続を解除した後も、ライブスナップショットはアカウントが削除されるまでクラウド上に残ります。
+        </li>
+        <li>
+          有料プランの契約期間が終了（失効）した場合、アカウントおよびクラウド上の全データは削除されます。
+          端末内の作品データはそのまま残ります。
+        </li>
+        <li>
+          契約期間中のアカウント削除を希望する場合は、お問い合わせ窓口からご連絡ください
+          （アプリ内のアカウント管理画面から手続きできる場合もあります）。
+        </li>
+      </ul>
+
+      <h2>7. 開示・訂正・利用停止の請求</h2>
+      <p>
+        ユーザーは、運営者が保有する自己の情報について、開示・訂正・利用停止等を求めることができます。
+        お問い合わせ窓口までご連絡ください。ご本人であることを確認のうえ、法令に従い対応します。
+      </p>
+
+      <h2>8. ポリシーの変更</h2>
+      <p>
+        本ポリシーの内容は、法令の改正やサービスの変更に応じて改定されることがあります。
+        重要な変更については、アプリ内での告知等の適切な方法で周知するよう努めます。
+      </p>
+
+      <h2>お問い合わせ</h2>
+      <p>
+        運営者の名称・連絡先は<a href="/tokushoho">特定商取引法に基づく表記</a>をご覧ください。
+        本ポリシーに関するお問い合わせ、および開示等の請求は、そちらに記載の連絡先までお願いします。
+      </p>
+    </div>
+
+    <footer>
+      <div class="row">
+        <a href="/terms">利用規約</a>
+        <a href="/privacy">プライバシーポリシー</a>
+        <a href="/tokushoho">特定商取引法に基づく表記</a>
+        <span class="brand-mini">コトノハ<span class="leaf">-leaf-</span></span>
+      </div>
+    </footer>
+  </main>
+</body>
+</html>

@@ -3,6 +3,15 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- 旧ハッシュURL（/#/terms 等）を静的HTMLの実URLへ寄せる。# 以降はサーバへ届かず _redirects では
+         処理できないため、ここ（最速の同期スクリプト）でクライアント側リダイレクトする。 -->
+    <script>
+      (function () {
+        var map = { '#/terms': '/terms', '#/privacy': '/privacy', '#/tokushoho': '/tokushoho' }
+        var to = map[location.hash]
+        if (to) location.replace(to)
+      })()
+    </script>
     <title>コトノハ-leaf- — 小説、書いてみよう。</title>
     <meta
       name="description"

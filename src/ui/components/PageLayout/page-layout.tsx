@@ -53,10 +53,10 @@ export function PageLayout({ title, description, children }: PageLayoutProps) {
             <a href="#/settings" className="text-on-surface-variant hover:text-primary">
               設定
             </a>
-            <a href="#/terms" className="text-on-surface-variant hover:text-primary">
+            <a href="/terms" className="text-on-surface-variant hover:text-primary">
               利用規約
             </a>
-            <a href="#/privacy" className="text-on-surface-variant hover:text-primary">
+            <a href="/privacy" className="text-on-surface-variant hover:text-primary">
               プライバシーポリシー
             </a>
             <span className="ml-auto font-serif">

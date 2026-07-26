@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- テーマ先読み（描画前に localStorage のテーマを反映してちらつきを防ぐ。キーは src/ui/hooks/use-preferences.ts と一致）。 -->
+<script>
+  (function () {
+    try {
+      var t = localStorage.getItem('ns-theme') || 'system'
+      var dark = t === 'dark' || (t === 'system' && matchMedia('(prefers-color-scheme: dark)').matches)
+      if (dark) document.documentElement.classList.add('dark')
+    } catch (e) {}
+  })()
+</script>
+<title>特定商取引法に基づく表記 — コトノハ-leaf-</title>
+<meta name="description" content="コトノハ-leaf-（無料の縦書き小説エディタ）の特定商取引法に基づく表記。">
+<meta name="robots" content="index,follow">
+<meta name="theme-color" content="#2c5b27">
+<link rel="canonical" href="https://cotonoha-leaf.org/tokushoho">
+<link rel="icon" href="/favicon-clean.png" type="image/png" sizes="any">
+
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="コトノハ-leaf-">
+<meta property="og:title" content="特定商取引法に基づく表記 — コトノハ-leaf-">
+<meta property="og:description" content="コトノハ-leaf-（無料の縦書き小説エディタ）の特定商取引法に基づく表記。">
+<meta property="og:url" content="https://cotonoha-leaf.org/tokushoho">
+<meta property="og:image" content="https://cotonoha-leaf.org/lp/ogp.png">
+<meta property="og:locale" content="ja_JP">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Shippori+Mincho+B1:wght@500;600;700&family=Zen+Kaku+Gothic+New:wght@400;500;700&display=swap" rel="stylesheet">
+
+<style>
+  /* アプリ（src/ui/index.css）のトークンから必要分のみ採録。legal-layout.tsx の体裁を静的HTMLへ移植。 */
+  :root {
+    color-scheme: light;
+    --background: #fdfcfb; --foreground: #4b5160;
+    --on-surface: #1f2430; --on-surface-variant: #6b7381;
+    --surface-lowest: #fefeff; --outline: rgba(157,163,174,0.3);
+    --link: #2c5b27; --link-hover: #1a3014; --wheat: #92703f;
+  }
+  .dark {
+    color-scheme: dark;
+    --background: #181611; --foreground: #d7d2c8;
+    --on-surface: #ece8e1; --on-surface-variant: #a49e92;
+    --surface-lowest: #1f1c16; --outline: rgba(100,94,83,0.5);
+    --link: #8bc47e; --link-hover: #c6e8bb; --wheat: #d8bd8e;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    background: var(--background); color: var(--foreground);
+    font-family: "Zen Kaku Gothic New", "Hiragino Sans", "Yu Gothic", sans-serif;
+    line-height: 1.85; -webkit-font-smoothing: antialiased;
+  }
+  a { color: var(--link); text-underline-offset: 2px; }
+  a:hover { color: var(--link-hover); }
+  .site-header {
+    display: flex; align-items: center; height: 56px;
+    border-bottom: 1px solid var(--outline);
+    background: var(--surface-lowest); padding: 0 20px;
+  }
+  .brand {
+    font-family: "Shippori Mincho B1", "Hiragino Mincho ProN", "Yu Mincho", serif;
+    font-weight: 700; font-size: 19px; color: var(--on-surface);
+    text-decoration: none; letter-spacing: 0.01em;
+  }
+  .brand .leaf { margin-left: 2px; font-weight: 500; font-size: 13px; color: var(--wheat); letter-spacing: 0.06em; }
+  main { max-width: 720px; margin: 0 auto; padding: 48px 24px 80px; }
+  .back {
+    display: inline-flex; align-items: center; gap: 6px; margin-bottom: 32px;
+    font-size: 13px; color: var(--on-surface-variant); text-decoration: none;
+  }
+  .back:hover { color: var(--link); }
+  h1 { margin: 0; font-family: "Shippori Mincho B1", serif; font-weight: 600; font-size: 28px; line-height: 1.4; color: var(--on-surface); }
+  .date { margin-top: 8px; font-size: 12px; color: var(--on-surface-variant); }
+  .doc { margin-top: 32px; }
+  .doc h2 { margin: 36px 0 10px; font-family: "Shippori Mincho B1", serif; font-weight: 600; font-size: 17px; color: var(--on-surface); }
+  .doc p { margin: 10px 0 0; font-size: 14px; color: var(--foreground); }
+  .doc ul { margin: 10px 0 0; padding-left: 24px; list-style: disc; }
+  .doc ol { margin: 10px 0 0; padding-left: 24px; list-style: decimal; }
+  .doc li { margin-top: 6px; font-size: 14px; }
+  .doc strong { font-weight: 700; color: var(--on-surface); }
+  footer { margin-top: 56px; padding-top: 24px; border-top: 1px solid var(--outline); font-size: 12px; color: var(--on-surface-variant); }
+  footer .row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 16px; }
+  footer a { color: var(--on-surface-variant); text-decoration: none; }
+  footer a:hover { color: var(--link); }
+  footer .brand-mini { margin-left: auto; font-family: "Shippori Mincho B1", serif; }
+  footer .brand-mini .leaf { margin-left: 2px; font-size: 0.72em; color: var(--wheat); letter-spacing: 0.06em; }
+</style>
+</head>
+<body>
+  <header class="site-header">
+    <a class="brand" href="/">コトノハ<span class="leaf">-leaf-</span></a>
+  </header>
+
+  <main>
+    <a class="back" href="/">← アプリへ戻る</a>
+
+    <h1>特定商取引法に基づく表記</h1>
+    <p class="date">2026年7月14日 掲載</p>
+
+    <div class="doc">
+      <h2>販売事業者</h2>
+      <p>粢田博也</p>
+
+      <h2>運営責任者</h2>
+      <p>粢田博也</p>
+
+      <h2>所在地・電話番号</h2>
+      <p>
+        個人事業のため省略します。所在地・電話番号は、お取引やお問い合わせに必要な場合、
+        ご請求いただければ遅滞なく開示します。下記の連絡先からご請求ください。
+      </p>
+
+      <h2>連絡先</h2>
+      <p><a href="mailto:dende0206@gmail.com">dende0206@gmail.com</a></p>
+
+      <h2>販売価格</h2>
+      <p>
+        有料プラン（クラウド）は、月額プラン 500円、年額プラン 4,800円（いずれも消費税込み）です。
+        価格はアプリ内の購入画面にも表示します。表示価格のほかに、インターネット接続にかかる通信料は
+        お客様の負担となります。
+      </p>
+
+      <h2>支払方法・支払時期</h2>
+      <p>
+        クレジットカード決済（決済代行：Stripe）。サブスクリプションの初回は契約時に、
+        以降は各更新日に課金されます。
+      </p>
+
+      <h2>サービスの提供時期</h2>
+      <p>決済完了後、直ちにご利用いただけます。</p>
+
+      <h2>解約について</h2>
+      <p>
+        いつでもアプリ内のアカウントメニューから解約できます。解約後も契約期間の終了までは有料機能を利用できます。
+        契約期間の終了後は、アカウントおよびクラウド上のデータが削除されます（端末内の作品データは残ります）。
+      </p>
+
+      <h2>返品・返金について</h2>
+      <p>
+        サービスの性質上、すでに支払われた料金の返金には応じられません（法令に定めがある場合を除きます）。
+      </p>
+
+      <h2>動作環境</h2>
+      <p>
+        最新の主要ブラウザ（Chrome・Edge・Safari・Firefox）が動作する PC
+        またはタブレット（横向き・画面幅 1024px 以上）。
+      </p>
+    </div>
+
+    <footer>
+      <div class="row">
+        <a href="/terms">利用規約</a>
+        <a href="/privacy">プライバシーポリシー</a>
+        <a href="/tokushoho">特定商取引法に基づく表記</a>
+        <span class="brand-mini">コトノハ<span class="leaf">-leaf-</span></span>
+      </div>
+    </footer>
+  </main>
+</body>
+</html>
