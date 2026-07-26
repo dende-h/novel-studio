@@ -307,6 +307,33 @@
   </div>
 </section>
 
+<!-- ================= 机とポケット（PCで書き、スマホで触れる） ================= -->
+<!-- スマホ非対応を「制限の告知」でなく「設計上の選択」として本文で提示する。訴求は執筆でなく
+     “接触”（読み返し・図鑑への追記）に置き、クラウド＋MCP を弱点への答えとして反転させる。
+     MCP 経由は原稿が AI 事業者へ渡るため、その但し書き（渡るのは操作時のみ）を必ず添える。
+     「スマホでも書けます」とは言わない。 -->
+<section id="desk-and-pocket" style="margin-top:110px;padding:24px 0">
+  <div style="max-width:820px;margin:0 auto;padding:0 32px;display:flex;flex-direction:column;gap:34px;align-items:center">
+    <div data-reveal style="text-align:center;display:flex;flex-direction:column;gap:16px;align-items:center">
+      <div style="font-family:var(--font-mono);font-size:12px;letter-spacing:0.32em;color:var(--wheat-600)">DESK &amp; POCKET</div>
+      <h2 style="margin:0;font-family:var(--font-display);font-weight:600;font-size:clamp(28px,2.8vw,38px);letter-spacing:0.08em;color:var(--text-heading)">書くのは机で。触れるのは、どこでも。</h2>
+    </div>
+    <div data-reveal data-reveal-delay="120" style="max-width:640px;display:flex;flex-direction:column;gap:22px">
+      <p style="margin:0;font-size:15px;line-height:2.1;letter-spacing:0.03em;color:var(--text-body);text-wrap:pretty">縦書きのプレビューを横に並べ、原稿を見渡しながら書く。そのために執筆画面は、横に広い画面——PC やタブレット（横向き）——に合わせて作っています。小さな画面へ無理に詰め込むより、書くときは広く使う。腰を据えて言葉を置くための、机の道具です。</p>
+      <p style="margin:0;font-size:15px;line-height:2.1;letter-spacing:0.03em;color:var(--text-body);text-wrap:pretty">とはいえ、物語は机の前でだけ思いつくものでもありません。クラウド版では、AI 連携（MCP）を通じて、手元のスマートフォンからでも原稿に<em style="font-style:normal;color:var(--text-heading);font-weight:600">触れられます</em>。</p>
+    </div>
+    <div data-reveal data-reveal-delay="200" style="max-width:640px;width:100%;display:flex;flex-direction:column">
+      <div style="display:flex;gap:14px;align-items:baseline;padding:16px 2px;border-top:1px solid var(--border-subtle)"><span style="color:var(--wheat-500);font-size:10px;position:relative;top:-1px">◆</span><span style="font-size:15px;line-height:1.9;letter-spacing:0.03em;color:var(--text-body)">移動中に、昨日書いた分を読み返す。</span></div>
+      <div style="display:flex;gap:14px;align-items:baseline;padding:16px 2px;border-top:1px solid var(--border-subtle)"><span style="color:var(--wheat-500);font-size:10px;position:relative;top:-1px">◆</span><span style="font-size:15px;line-height:1.9;letter-spacing:0.03em;color:var(--text-body)">思いついた設定を、その場で図鑑に足す。</span></div>
+      <div style="display:flex;gap:14px;align-items:baseline;padding:16px 2px;border-top:1px solid var(--border-subtle)"><span style="color:var(--wheat-500);font-size:10px;position:relative;top:-1px">◆</span><span style="font-size:15px;line-height:1.9;letter-spacing:0.03em;color:var(--text-body)">気になった一節を、AI に相談してみる。</span></div>
+    </div>
+    <div data-reveal data-reveal-delay="260" style="max-width:640px;display:flex;flex-direction:column;gap:10px;border-left:2px solid var(--border-subtle);padding:2px 0 2px 18px">
+      <p style="margin:0;font-size:13px;line-height:1.95;letter-spacing:0.02em;color:var(--text-muted);text-wrap:pretty">ここでの「触れる」は、読み返しや短いメモのこと。腰を据えた執筆は、やはり机の前が向いています。</p>
+      <p style="margin:0;font-size:13px;line-height:1.95;letter-spacing:0.02em;color:var(--text-muted);text-wrap:pretty">MCP を使うあいだ、原稿はあなたが選んだ AI サービスに送られます。原稿が AI に渡るのは、あなたがそう操作したときだけ。ふだんの執筆で、文章が端末の外に出ることはありません。</p>
+    </div>
+  </div>
+</section>
+
 <!-- ================= 安心（あなたのもの） ================= -->
 <section id="yours" style="margin-top:110px;background:var(--forest-900);padding:110px 0">
   <div style="max-width:1140px;margin:0 auto;padding:0 32px;display:flex;flex-direction:column;gap:56px">
@@ -380,10 +407,6 @@
       <details style="background:var(--surface-card);border:1px solid var(--border-subtle);border-radius:10px;padding:0 24px">
         <summary style="display:flex;align-items:center;justify-content:space-between;gap:16px;padding:20px 0;font-size:15px;font-weight:700;color:var(--text-heading)">原稿が消えてしまうことはありませんか？<span data-plus style="color:var(--forest-600);font-size:20px;font-weight:400;transition:transform 0.2s">＋</span></summary>
         <p style="margin:0;padding:0 0 20px;font-size:14px;line-height:2;color:var(--text-body)">原稿は書いたそばから端末内に自動保存され、保存のたびに版履歴が残ります。ファイルへのバックアップもいつでも取れます。ブラウザのデータを消すと原稿も消えるため、長編には定期的なバックアップか、クラウド版のバックアップをおすすめします。</p>
-      </details>
-      <details style="background:var(--surface-card);border:1px solid var(--border-subtle);border-radius:10px;padding:0 24px">
-        <summary style="display:flex;align-items:center;justify-content:space-between;gap:16px;padding:20px 0;font-size:15px;font-weight:700;color:var(--text-heading)">スマートフォンで使えますか？<span data-plus style="color:var(--forest-600);font-size:20px;font-weight:400;transition:transform 0.2s">＋</span></summary>
-        <p style="margin:0;padding:0 0 20px;font-size:14px;line-height:2;color:var(--text-body)">現在は PC・タブレット（横向き）に対応しています。スマートフォンには対応していません。縦書きプレビューを並べて書くために、画面の広い端末が必要なためです。今後の対応は検討中です。</p>
       </details>
       <details style="background:var(--surface-card);border:1px solid var(--border-subtle);border-radius:10px;padding:0 24px">
         <summary style="display:flex;align-items:center;justify-content:space-between;gap:16px;padding:20px 0;font-size:15px;font-weight:700;color:var(--text-heading)">書いたものを投稿サイトに載せられますか？<span data-plus style="color:var(--forest-600);font-size:20px;font-weight:400;transition:transform 0.2s">＋</span></summary>
