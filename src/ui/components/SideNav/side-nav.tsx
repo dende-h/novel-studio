@@ -388,12 +388,12 @@ export function SideNav({
           disabled={!onNavigateHelp}
         />
       </div>
-      {/* 法務リンク（ハッシュ遷移なので props 不要の素の anchor で飛ぶ） */}
+      {/* 法務リンク（public/ 配下の静的HTMLへ実URLの anchor で飛ぶ＝フルナビゲーション） */}
       <div className="flex flex-wrap gap-x-3 gap-y-0.5 px-3 pt-1 text-[11px] text-on-surface-variant/60">
-        <a href="#/terms" className="no-underline hover:text-primary">
+        <a href="/terms" className="no-underline hover:text-primary">
           利用規約
         </a>
-        <a href="#/privacy" className="no-underline hover:text-primary">
+        <a href="/privacy" className="no-underline hover:text-primary">
           プライバシー
         </a>
       </div>

@@ -10,9 +10,6 @@ import { CloudBackupDialog } from './components/CloudBackupDialog/cloud-backup-d
 import { FirstRunDialog } from './components/FirstRunDialog/first-run-dialog'
 import { HelpPage } from './components/HelpPage/help-page'
 import { IdeaboxPage } from './components/IdeaboxPage/idea-box-page'
-import { PrivacyPage } from './components/LegalPage/privacy-page'
-import { TermsPage } from './components/LegalPage/terms-page'
-import { TokushohoPage } from './components/LegalPage/tokushoho-page'
 import { Library } from './components/Library/library'
 import { McpConnectDialog } from './components/McpConnectDialog/mcp-connect-dialog'
 import { RestoreGrace } from './components/RestoreGrace/restore-grace'
@@ -89,11 +86,9 @@ export function Root({ store }: RootProps) {
   // 接続済み会員の編集をデバウンスでライブスナップショットへ反映（AI が最新を読める）。
   useLiveSnapshot(store, backupService, mcpConnected)
 
-  // 法務ページ（利用規約・プライバシーポリシー・特商法表記）。購読前の確認にも使うため、
-  // サインイン状態・オンボーディングに関わらず常に到達できる位置に置く。
-  if (route === '/terms') return <TermsPage />
-  if (route === '/privacy') return <PrivacyPage />
-  if (route === '/tokushoho') return <TokushohoPage />
+  // 法務ページ（利用規約・プライバシーポリシー・特商法表記）は SPA から切り出し、public/ 配下の
+  // 静的HTML（/terms・/privacy・/tokushoho）として配信する。JS 無効でもクローラ・決済審査から
+  // 参照でき、ハッシュ以降が無視される問題も解消する。アプリ内・LP からは実URLの anchor で飛ぶ。
 
   // 設定・ヘルプはサイドバー付き本体とは独立した一枚ものページ。認証・オンボーディングに関わらず
   // （狭い画面でも）到達できるよう、法務ページと同じくガードの手前に置く。

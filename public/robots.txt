@@ -1,0 +1,8 @@
+# cotonoha-leaf.org
+# プレビュー配信（*.pages.dev）は functions/_middleware.ts が X-Robots-Tag: noindex を付けるため
+# 検索インデックスには載らない。本番ドメインはここで全面クロール許可。
+User-agent: *
+Allow: /
+Disallow: /api/
+
+Sitemap: https://cotonoha-leaf.org/sitemap.xml
