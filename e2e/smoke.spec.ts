@@ -1,5 +1,16 @@
 import { expect, type Page, test } from '@playwright/test'
 
+// 初回のみ出る保存の仕組みの説明（FirstRunDialog）は、新規コンテキストの各テストで毎回
+// 前面に出て見出しを覆い・クリックを奪う。アプリ起動前に「表示済み」フラグ（use-local-flag の
+// 'ns-onboarded'='1'）を立てて出さないようにする。ダイアログ自体の検証は unit 側で担保。
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => {
+    try {
+      localStorage.setItem('ns-onboarded', '1')
+    } catch {}
+  })
+})
+
 /** サイドバーの「新しい作品」から作品を作る（作成後もライブラリに留まる）。 */
 const createWork = async (page: Page, title: string) => {
   await page.getByRole('button', { name: '新しい作品' }).click()
