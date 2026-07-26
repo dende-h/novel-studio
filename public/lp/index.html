@@ -3,6 +3,19 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- スマホ→PC 引き渡しの判定（描画前に実行してクラスを付ける。ちらつき防止）。
+     PC を誤って対象にしないよう、主ポインタが coarse（＝指）かつ画面短辺 ≤540px のときだけ。
+     タブレット（iPad mini の短辺 744px 等）や PC は対象外。未対応・例外時は通常表示のまま＝PC 安全側に倒す。
+     誤判定した人の逃げ道は本文の「このまま開く」で用意している。 -->
+<script>
+  (function () {
+    try {
+      var coarse = window.matchMedia && matchMedia('(pointer: coarse)').matches
+      var shortEdge = Math.min(screen.width, screen.height)
+      if (coarse && shortEdge <= 540) document.documentElement.classList.add('ns-phone')
+    } catch (e) {}
+  })()
+</script>
 <title>コトノハ-leaf- — あなたの物語を、書きはじめよう。｜無料の縦書き小説エディタ</title>
 <meta name="description" content="登録もインストールも不要。ブラウザで開いてすぐ書き始められる、無料の縦書き小説エディタ。縦書きプレビュー、キャラや用語の整理、自動保存、小説家になろう・カクヨム・EPUBへの書き出しまで。はじめての一作にも。">
 <link rel="canonical" href="https://cotonoha-leaf.org/lp/">
@@ -110,6 +123,34 @@
     [data-para], [data-hero-decor] > div { animation: none !important; }
     #lightbox.open { animation: none; }
   }
+
+  /* ================= スマホ→PC 引き渡し =================
+     既定はすべて非表示。<head> の判定で html.ns-phone が付いたときだけ、
+     通常CTAを引っ込めて引き渡しパネルを出す。PC の描画には一切触れない。 */
+  .ns-handoff, .ns-final-handoff { display: none; }
+  .ns-phone .ns-nav-cta,
+  .ns-phone .ns-hero-cta,
+  .ns-phone .ns-hero-note,
+  .ns-phone .ns-final-cta { display: none !important; }
+  .ns-phone .ns-handoff { display: flex; }
+  .ns-phone .ns-final-handoff { display: flex; }
+
+  .ns-send { border: none; cursor: pointer; font-family: var(--font-body); font-size: 16px; padding: 15px 28px; width: 100%; box-shadow: 0 0 40px rgba(240,230,200,0.16); }
+  .ns-escape { align-self: center; font-size: 13px; letter-spacing: 0.08em; color: rgba(236,229,208,0.6); text-decoration: none; text-underline-offset: 3px; }
+  .ns-escape:hover { color: rgba(236,229,208,0.9); text-decoration: underline; }
+  .ns-qr { display: flex; align-items: center; gap: 14px; padding: 12px; border: 1px solid rgba(242,236,220,0.18); border-radius: 12px; }
+  .ns-qr img { width: 82px; height: 82px; border-radius: 6px; background: var(--cream-50); flex: none; }
+  .ns-qr span { font-size: 12px; line-height: 1.8; letter-spacing: 0.03em; color: rgba(236,229,208,0.6); }
+
+  /* デモ動画スロット（16:9）。動画が無い/読めない間はプレースホルダのまま＝崩れない。
+     差し替えは /lp/demo.mp4 を置くだけ（下の JS が読めたら自動で差し替える）。 */
+  .ns-demo { position: relative; width: 100%; margin: 0; aspect-ratio: 16 / 9; border-radius: 14px; overflow: hidden; border: 1px solid rgba(242,236,220,0.16); background: rgba(10,20,8,0.6); }
+  .ns-demo-video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: none; }
+  .ns-demo.ready .ns-demo-video { display: block; }
+  .ns-demo.ready .ns-demo-ph { display: none; }
+  .ns-demo-ph { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; text-align: center; padding: 20px; }
+  .ns-demo-ph .lbl { font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.24em; color: var(--wheat-300); }
+  .ns-demo-ph .txt { font-size: 13px; line-height: 1.9; letter-spacing: 0.03em; color: rgba(236,229,208,0.55); }
 </style>
 </head>
 <body>
@@ -151,7 +192,7 @@
       <a class="nav-a" href="#yours">安心</a>
       <a class="nav-a" href="#pricing">料金</a>
       <a class="nav-a" href="#faq">よくある質問</a>
-      <a class="btn-cream" href="/" style="font-size:14px;font-weight:500;padding:10px 22px;letter-spacing:0.04em">無料で始める</a>
+      <a class="btn-cream ns-nav-cta" href="/" style="font-size:14px;font-weight:500;padding:10px 22px;letter-spacing:0.04em">無料で始める</a>
     </nav>
   </header>
 
@@ -160,11 +201,41 @@
       <div data-reveal style="display:inline-flex;align-items:center;gap:10px;border:1px solid rgba(242,236,220,0.3);border-radius:999px;padding:8px 18px;font-size:13px;letter-spacing:0.12em;color:rgba(242,236,220,0.85)"><span style="width:6px;height:6px;border-radius:50%;background:var(--wheat-300)"></span>ブラウザで開くだけ。無料の小説エディタ</div>
       <h1 data-reveal data-reveal-delay="120" style="margin:0;font-family:var(--font-display);font-weight:600;font-size:clamp(42px, 4.6vw, 64px);line-height:1.4;letter-spacing:0.06em;color:#f6f1e2;text-wrap:pretty">あなたの物語を、<br>書きはじめよう。</h1>
       <p data-reveal data-reveal-delay="240" style="margin:0;font-size:16px;line-height:2.1;letter-spacing:0.04em;color:rgba(236,229,208,0.82);text-wrap:pretty">登録もインストールも不要。ブラウザで開いたその場で、書き始められます。縦書きプレビューやルビ・傍点、設定の図鑑や執筆の記録まで、小説のための道具をそろえました。</p>
-      <div data-reveal data-reveal-delay="360" style="display:flex;flex-wrap:wrap;gap:16px;margin-top:8px">
+      <div data-reveal data-reveal-delay="360" class="ns-hero-cta" style="display:flex;flex-wrap:wrap;gap:16px;margin-top:8px">
         <a class="btn-cream" href="/" style="font-size:16px;padding:16px 36px;box-shadow:0 0 40px rgba(240,230,200,0.18)">今すぐ書き始める ─ 無料</a>
         <a class="btn-ghost-dark" href="#features" style="font-size:16px;padding:16px 34px">できることを見る</a>
       </div>
-      <div data-reveal data-reveal-delay="480" style="font-size:13px;letter-spacing:0.1em;color:rgba(236,229,208,0.5)">アカウント不要 ／ オフラインOK ／ PC・タブレット（横向き）対応</div>
+      <div data-reveal data-reveal-delay="480" class="ns-hero-note" style="font-size:13px;letter-spacing:0.1em;color:rgba(236,229,208,0.5)">アカウント不要 ／ オフラインOK ／ PC・タブレット（横向き）対応</div>
+
+      <!-- ================= スマホからの訪問者を PC へ渡すパネル =================
+           html.ns-phone のときだけ表示（既定 display:none）。通常CTAはこのとき隠れる。
+           送信手段：Web Share API（あれば）→ 無ければ mailto で自分宛。補助に QR。
+           逃げ道：「このまま開く」で ns-phone を外し通常表示へ（誤判定した人向け）。 -->
+      <div data-reveal class="ns-handoff" style="flex-direction:column;align-items:stretch;gap:20px;width:100%;margin-top:4px">
+        <div>
+          <div style="font-family:var(--font-mono);font-size:11px;letter-spacing:0.24em;color:var(--wheat-300);margin-bottom:14px">OPEN ON YOUR PC</div>
+          <p style="margin:0;font-size:16px;line-height:2;letter-spacing:0.03em;color:rgba(236,229,208,0.9)">コトノハは、PC で書くための道具です。<br>腰を据えて言葉を置ける場所を、机の上に用意しました。</p>
+          <p style="margin:12px 0 0;font-size:14px;line-height:1.95;letter-spacing:0.03em;color:rgba(236,229,208,0.62)">続きは、PC で開いてみてください。リンクを、自分に送っておけます。</p>
+        </div>
+
+        <!-- デモ動画スロット（無音・字幕・ループ・15秒想定）。動画は後から /lp/demo.mp4 を置くだけ。 -->
+        <figure class="ns-demo">
+          <video class="ns-demo-video" data-src="/lp/demo.mp4" muted loop playsinline preload="none" aria-label="コトノハ-leaf- のデモ映像"></video>
+          <div class="ns-demo-ph">
+            <span class="lbl">DEMO</span>
+            <span class="txt">画面の様子は、追ってこの枠でご覧いただけるようにします。</span>
+          </div>
+        </figure>
+
+        <div style="display:flex;flex-direction:column;gap:14px">
+          <button type="button" class="btn-cream ns-send">PC で開くリンクを自分に送る</button>
+          <div class="ns-qr">
+            <img src="/lp/pc-qr.png" width="82" height="82" alt="コトノハ-leaf- を PC で開く QR コード">
+            <span>PC が目の前にあるなら、<br>この QR から開けます。</span>
+          </div>
+          <a class="ns-escape" href="/">このまま開く</a>
+        </div>
+      </div>
     </div>
   </div>
   <div style="position:absolute;left:0;right:0;bottom:0;height:100px;background:linear-gradient(to bottom, rgba(253,252,251,0), var(--cream-50));pointer-events:none"></div>
@@ -434,8 +505,14 @@
   <div style="position:absolute;top:70%;right:30%;width:3px;height:3px;border-radius:50%;background:#f0e6c6;animation:ktnhTwinkle 4.2s ease-in-out 0.8s infinite"></div>
   <div data-reveal style="position:relative;max-width:720px;margin:0 auto;text-align:center;display:flex;flex-direction:column;align-items:center;gap:24px">
     <h2 style="margin:0;font-family:var(--font-display);font-weight:600;font-size:clamp(32px,3.4vw,44px);letter-spacing:0.1em;color:#f6f1e2">まずは、一文だけでも。</h2>
-    <p style="margin:0;font-size:15px;line-height:2;letter-spacing:0.05em;color:rgba(236,229,208,0.72)">登録なしで、すぐに始められます。書けそうな一行から、気軽にどうぞ。</p>
-    <a class="btn-cream" href="/" style="font-size:16px;padding:16px 40px;box-shadow:0 0 40px rgba(240,230,200,0.16)">コトノハ-leaf- を開く ─ 無料</a>
+    <p class="ns-final-cta" style="margin:0;font-size:15px;line-height:2;letter-spacing:0.05em;color:rgba(236,229,208,0.72)">登録なしで、すぐに始められます。書けそうな一行から、気軽にどうぞ。</p>
+    <a class="btn-cream ns-final-cta" href="/" style="font-size:16px;padding:16px 40px;box-shadow:0 0 40px rgba(240,230,200,0.16)">コトノハ-leaf- を開く ─ 無料</a>
+    <!-- スマホ時のみ：最後の一押しも PC への引き渡しに差し替える -->
+    <div class="ns-final-handoff" style="flex-direction:column;align-items:center;gap:16px;width:100%;max-width:420px">
+      <p style="margin:0;font-size:14px;line-height:1.95;letter-spacing:0.04em;color:rgba(236,229,208,0.72)">続きは、机の上で。<br>リンクを自分に送って、PC で開いてください。</p>
+      <button type="button" class="btn-cream ns-send">PC で開くリンクを自分に送る</button>
+      <a class="ns-escape" href="/">このまま開く</a>
+    </div>
   </div>
 </div>
 
@@ -572,6 +649,49 @@
     lbImg.addEventListener('click', (e) => e.stopPropagation())
     if (lbClose) lbClose.addEventListener('click', (e) => { e.stopPropagation(); close() })
     document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && lb.classList.contains('open')) close() })
+  }
+
+  // ===== スマホ→PC 引き渡し =====
+  // 送信：Web Share API があればそれ（共有シートからメール/LINE/メモ等へ）。
+  //       無ければ mailto で自分宛に URL を送る。宛先は現在のオリジン（本番＝cotonoha-leaf.org）の「/」＝アプリ。
+  const appUrl = location.origin + '/'
+  for (const btn of document.querySelectorAll('.ns-send')) {
+    btn.addEventListener('click', async () => {
+      if (navigator.share) {
+        try {
+          await navigator.share({ title: 'コトノハ-leaf-', text: 'PC で開いて、続きを書く', url: appUrl })
+        } catch (e) { /* 共有キャンセル時は何もしない */ }
+      } else {
+        const subject = encodeURIComponent('コトノハ-leaf- を PC で開く')
+        const body = encodeURIComponent('PC で開いて、続きを書く：\n' + appUrl)
+        location.href = 'mailto:?subject=' + subject + '&body=' + body
+      }
+    })
+  }
+  // 逃げ道：誤判定した人向け。ns-phone を外して通常表示へ戻す（JS 無効時は href="/" が効く）。
+  for (const a of document.querySelectorAll('.ns-escape')) {
+    a.addEventListener('click', (e) => {
+      e.preventDefault()
+      document.documentElement.classList.remove('ns-phone')
+      window.scrollTo(0, 0)
+    })
+  }
+  // デモ動画：スマホ時だけ /lp/demo.mp4 を試し読み。再生できたら差し替え、無ければプレースホルダのまま。
+  // まだ動画を置いていなければ 404→error でプレースホルダのまま（レイアウトは崩れない）。
+  if (document.documentElement.classList.contains('ns-phone')) {
+    for (const fig of document.querySelectorAll('.ns-demo')) {
+      const v = fig.querySelector('.ns-demo-video')
+      const src = v && v.dataset.src
+      if (!v || !src) continue
+      const reveal = () => { fig.classList.add('ready'); v.play().catch(() => {}) }
+      v.addEventListener('loadeddata', reveal, { once: true })
+      v.addEventListener('canplay', reveal, { once: true })
+      v.addEventListener('error', () => { fig.classList.remove('ready') }, { once: true })
+      v.muted = true // iOS の自動再生条件
+      v.preload = 'auto' // 実際に試すときだけ取得（markup 側は none のまま＝PC/JS無効では取りにいかない）
+      v.src = src
+      v.load()
+    }
   }
 })()
 </script>
