@@ -7,14 +7,18 @@ describe('blocksToHtml（ライブプレビュー描画）', () => {
     expect(blocksToHtml(parseEpisodeBody('a<b>&c'))).toBe('<p>a&lt;b&gt;&amp;c</p>')
   })
 
-  it('ruby は ruby/rt 要素に描画', () => {
+  it('ruby は ruby/rt 要素に描画（rp フォールバック括弧つき）', () => {
     expect(blocksToHtml(parseEpisodeBody('漢字《かんじ》'))).toBe(
-      '<p><ruby>漢字<rt>かんじ</rt></ruby></p>',
+      '<p><ruby>漢字<rp>（</rp><rt>かんじ</rt><rp>）</rp></ruby></p>',
     )
   })
 
   it('傍点は em.dots（既定 = CSS text-emphasis 用）に描画', () => {
     expect(blocksToHtml(parseEpisodeBody('《《重要》》'))).toBe('<p><em class="dots">重要</em></p>')
+  })
+
+  it('行頭の全角スペース（著者の字下げ）はプレビューでもそのまま残す（EPUB と一致・字下げは本文が唯一の真実）', () => {
+    expect(blocksToHtml(parseEpisodeBody('　それはまるで'))).toBe('<p>　それはまるで</p>')
   })
 
   it('空 paragraph は間（blank 段落）として描画', () => {
@@ -29,7 +33,7 @@ describe('blocksToHtml（ライブプレビュー描画）', () => {
 
   it('ruby の base/reading 内もエスケープ', () => {
     expect(blocksToHtml(parseEpisodeBody('｜a<b《よ&み》'))).toBe(
-      '<p><ruby>a&lt;b<rt>よ&amp;み</rt></ruby></p>',
+      '<p><ruby>a&lt;b<rp>（</rp><rt>よ&amp;み</rt><rp>）</rp></ruby></p>',
     )
   })
 

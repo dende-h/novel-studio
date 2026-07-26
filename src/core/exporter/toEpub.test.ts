@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import type { Work } from '../schema'
+import { zipStore } from '../zip'
 import {
   buildContainerXml,
   buildEpubFiles,
   buildNavXhtml,
   buildPackageOpf,
   buildStyleCss,
+  buildTocNcx,
   episodeToXhtml,
 } from './toEpub'
 
@@ -40,7 +42,7 @@ describe('toEpub（EPUB3 縦書き・純生成）', () => {
     expect(x).toContain('<?xml')
     expect(x).toContain('xmlns="http://www.w3.org/1999/xhtml"')
     expect(x).toContain('<title>第一話 出会い</title>')
-    expect(x).toContain('<ruby>漢字<rt>かんじ</rt></ruby>')
+    expect(x).toContain('<ruby>漢字<rp>（</rp><rt>かんじ</rt><rp>）</rp></ruby>')
     expect(x).toContain('<em class="dots">重要</em>')
     expect(x).toContain('a&lt;b&gt;&amp;c')
   })
@@ -128,7 +130,9 @@ describe('toEpub（EPUB3 縦書き・純生成）', () => {
   it('buildEpubFiles は EPUB に必要な全ファイルを束ねる', () => {
     const files = buildEpubFiles(work)
     const paths = files.map((f) => f.path)
+    expect(paths[0]).toBe('mimetype') // OCF: mimetype はアーカイブ先頭
     expect(paths).toContain('mimetype')
+    expect(paths).toContain('OEBPS/toc.ncx')
     expect(paths).toContain('META-INF/container.xml')
     expect(paths).toContain('OEBPS/content.opf')
     expect(paths).toContain('OEBPS/nav.xhtml')
@@ -177,5 +181,92 @@ describe('toEpub（EPUB3 縦書き・純生成）', () => {
     expect(files.find((f) => f.path === 'OEBPS/images/cover.jpg')).toBeUndefined()
     const opf = files.find((f) => f.path === 'OEBPS/content.opf')?.content as string
     expect(opf).not.toContain('cover-image')
+  })
+})
+
+/**
+ * Kindle 縦書き・KDP 互換の回帰テスト（後の変更で壊れやすい要点を固定する）。
+ * 参照: primary-writing-mode / page-progression-direction / nav+ncx 併載 / ruby / mimetype 先頭・無圧縮。
+ */
+describe('Kindle縦書き・KDP互換の回帰（P0+P1）', () => {
+  const opf = () => buildPackageOpf(work)
+
+  it('OPF spine に page-progression-direction="rtl" がある', () => {
+    expect(opf()).toContain('page-progression-direction="rtl"')
+  })
+
+  it('OPF に Amazon 用 primary-writing-mode（EPUB2形式 name/content）がある', () => {
+    expect(opf()).toContain('<meta name="primary-writing-mode" content="vertical-rl" />')
+  })
+
+  it('OPF に dc:language ja がある', () => {
+    expect(opf()).toContain('<dc:language>ja</dc:language>')
+  })
+
+  it('OPF spine が NCX を参照し、manifest に NCX 項目がある', () => {
+    expect(opf()).toContain('toc="ncx"')
+    expect(opf()).toContain(
+      '<item id="ncx" href="toc.ncx" media-type="application/x-dtbncx+xml" />',
+    )
+  })
+
+  it('nav.xhtml と toc.ncx の両方を生成する', () => {
+    const paths = buildEpubFiles(work).map((f) => f.path)
+    expect(paths).toContain('OEBPS/nav.xhtml')
+    expect(paths).toContain('OEBPS/toc.ncx')
+  })
+
+  it('toc.ncx は dtb:uid を OPF の識別子と一致させ、全話を navPoint に持つ', () => {
+    const ncx = buildTocNcx(work)
+    expect(ncx).toContain(`<meta name="dtb:uid" content="urn:uuid:${work.id}" />`)
+    const navPoints = ncx.match(/<navPoint /g) ?? []
+    expect(navPoints.length).toBe(work.episodes.length)
+    expect(ncx).toContain('playOrder="1"')
+    for (const ep of work.episodes) expect(ncx).toContain(ep.title)
+  })
+
+  it('CSS に縦書き（vendor prefix 併記）と禁則 line-break: strict がある', () => {
+    const css = buildStyleCss()
+    expect(css).toContain('writing-mode: vertical-rl;')
+    expect(css).toContain('-epub-writing-mode: vertical-rl;')
+    expect(css).toContain('-webkit-writing-mode: vertical-rl;')
+    expect(css).toContain('line-break: strict;')
+  })
+
+  it('CSS に日本語フォントを埋め込まない（@font-face を持たない）', () => {
+    expect(buildStyleCss()).not.toContain('@font-face')
+  })
+
+  it('本文段落に自動字下げ（text-indent）を付けない（WYSIWYG＝全角スペースが唯一の字下げ）', () => {
+    // CSS の text-indent と本文の全角スペースが二重にかかる「2字下げ」を防ぐ。プレビュー(.preview p)と一致。
+    expect(buildStyleCss()).not.toContain('text-indent')
+  })
+
+  it('行頭の全角スペース（著者の字下げ）を本文へそのまま残す', () => {
+    const x = episodeToXhtml({
+      id: 'e0',
+      title: 'T',
+      blocks: [{ id: 'b', type: 'paragraph', inlines: [{ type: 'text', text: '　それはまるで' }] }],
+    })
+    expect(x).toContain('<p>　それはまるで</p>')
+  })
+
+  it('本文の ruby は rp フォールバック括弧つきで出力される', () => {
+    const xhtml = episodeToXhtml(work.episodes[0]!)
+    expect(xhtml).toMatch(/<ruby>[^<]*<rp>（<\/rp><rt>[^<]*<\/rt><rp>）<\/rp><\/ruby>/)
+  })
+
+  it('zipStore は mimetype を先頭・無圧縮(STORED)・extra無しで格納する', () => {
+    const bytes = zipStore(buildEpubFiles(work).map((f) => ({ path: f.path, data: f.content })))
+    const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
+    expect(dv.getUint32(0, true)).toBe(0x04034b50) // local file header signature
+    expect(dv.getUint16(8, true)).toBe(0) // compression method = STORED
+    const nameLen = dv.getUint16(26, true)
+    const extraLen = dv.getUint16(28, true)
+    expect(extraLen).toBe(0)
+    const name = new TextDecoder().decode(bytes.slice(30, 30 + nameLen))
+    expect(name).toBe('mimetype')
+    const body = new TextDecoder().decode(bytes.slice(30 + nameLen, 30 + nameLen + 20))
+    expect(body).toBe('application/epub+zip')
   })
 })

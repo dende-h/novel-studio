@@ -80,6 +80,7 @@ export function buildPackageOpf(work: Work, hasCover = false): string {
 <dc:identifier id="bookid">urn:uuid:${work.id}</dc:identifier>
 <dc:title>${escapeXml(work.title)}</dc:title>${creatorLine}${descriptionLine}
 <dc:language>ja</dc:language>${coverMeta}
+<meta name="primary-writing-mode" content="vertical-rl" />
 <meta property="dcterms:modified">${modified}</meta>
 <meta property="rendition:layout">reflowable</meta>
 <meta property="rendition:spread">auto</meta>
@@ -87,10 +88,11 @@ export function buildPackageOpf(work: Work, hasCover = false): string {
 </metadata>
 <manifest>
 <item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav" />
+<item id="ncx" href="toc.ncx" media-type="application/x-dtbncx+xml" />
 <item id="style" href="style.css" media-type="text/css" />${coverItem}
 ${manifestItems}
 </manifest>
-<spine page-progression-direction="rtl">
+<spine toc="ncx" page-progression-direction="rtl">
 ${spineItems}
 </spine>
 </package>`
@@ -118,16 +120,47 @@ ${items}
 </html>`
 }
 
+/**
+ * EPUB2 後方互換の toc.ncx。EPUB3 では nav.xhtml が正だが、Kindle は歴史的に NCX を参照するため両方入れる。
+ * dtb:uid は OPF の unique-identifier（urn:uuid:${work.id}）と一致させる（epubcheck 整合の要）。
+ */
+export function buildTocNcx(work: Work): string {
+  const navPoints = work.episodes
+    .map(
+      (ep, i) => `<navPoint id="np-${i + 1}" playOrder="${i + 1}">
+<navLabel><text>${escapeXml(ep.title)}</text></navLabel>
+<content src="${epubHref(ep)}" />
+</navPoint>`,
+    )
+    .join('\n')
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<ncx xmlns="http://www.daisy.org/z3986/2005/ncx/" version="2005-1" xml:lang="ja">
+<head>
+<meta name="dtb:uid" content="urn:uuid:${work.id}" />
+<meta name="dtb:depth" content="1" />
+<meta name="dtb:totalPageCount" content="0" />
+<meta name="dtb:maxPageNumber" content="0" />
+</head>
+<docTitle><text>${escapeXml(work.title)}</text></docTitle>
+<navMap>
+${navPoints}
+</navMap>
+</ncx>`
+}
+
 export function buildStyleCss(): string {
   return `html {
   writing-mode: vertical-rl;
   -epub-writing-mode: vertical-rl;
   -webkit-writing-mode: vertical-rl;
+  line-break: strict;
   font-family: serif;
   line-height: 1.8;
 }
-p { margin: 0; text-indent: 1em; }
-p.blank { text-indent: 0; }
+/* 字下げは自動付与しない：本文に打たれた全角スペースをそのまま字下げにする
+   （ライブプレビュー＝.preview p も同様に自動字下げを持たない）。CSS 側で 1em 分を足すと
+   本文の全角スペースと二重にかかり「2字下げ」になるため、あえて何も指定しない。 */
+p { margin: 0; }
 em.dots {
   font-style: normal;
   text-emphasis: filled dot;
@@ -156,6 +189,7 @@ export function buildEpubFiles(work: Work): EpubFile[] {
     { path: 'META-INF/container.xml', content: buildContainerXml() },
     { path: 'OEBPS/content.opf', content: buildPackageOpf(work, Boolean(coverBytes)) },
     { path: 'OEBPS/nav.xhtml', content: buildNavXhtml(work) },
+    { path: 'OEBPS/toc.ncx', content: buildTocNcx(work) },
     { path: 'OEBPS/style.css', content: buildStyleCss() },
     ...(coverBytes ? [{ path: COVER_PATH, content: coverBytes }] : []),
     ...work.episodes.map((ep) => ({
