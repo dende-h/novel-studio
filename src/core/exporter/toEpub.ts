@@ -157,8 +157,10 @@ export function buildStyleCss(): string {
   font-family: serif;
   line-height: 1.8;
 }
-p { margin: 0; text-indent: 1em; }
-p.blank { text-indent: 0; }
+/* 字下げは自動付与しない：本文に打たれた全角スペースをそのまま字下げにする
+   （ライブプレビュー＝.preview p も同様に自動字下げを持たない）。CSS 側で 1em 分を足すと
+   本文の全角スペースと二重にかかり「2字下げ」になるため、あえて何も指定しない。 */
+p { margin: 0; }
 em.dots {
   font-style: normal;
   text-emphasis: filled dot;

@@ -237,6 +237,20 @@ describe('Kindle縦書き・KDP互換の回帰（P0+P1）', () => {
     expect(buildStyleCss()).not.toContain('@font-face')
   })
 
+  it('本文段落に自動字下げ（text-indent）を付けない（WYSIWYG＝全角スペースが唯一の字下げ）', () => {
+    // CSS の text-indent と本文の全角スペースが二重にかかる「2字下げ」を防ぐ。プレビュー(.preview p)と一致。
+    expect(buildStyleCss()).not.toContain('text-indent')
+  })
+
+  it('行頭の全角スペース（著者の字下げ）を本文へそのまま残す', () => {
+    const x = episodeToXhtml({
+      id: 'e0',
+      title: 'T',
+      blocks: [{ id: 'b', type: 'paragraph', inlines: [{ type: 'text', text: '　それはまるで' }] }],
+    })
+    expect(x).toContain('<p>　それはまるで</p>')
+  })
+
   it('本文の ruby は rp フォールバック括弧つきで出力される', () => {
     const xhtml = episodeToXhtml(work.episodes[0]!)
     expect(xhtml).toMatch(/<ruby>[^<]*<rp>（<\/rp><rt>[^<]*<\/rt><rp>）<\/rp><\/ruby>/)

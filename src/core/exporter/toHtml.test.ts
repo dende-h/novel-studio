@@ -17,6 +17,10 @@ describe('blocksToHtml（ライブプレビュー描画）', () => {
     expect(blocksToHtml(parseEpisodeBody('《《重要》》'))).toBe('<p><em class="dots">重要</em></p>')
   })
 
+  it('行頭の全角スペース（著者の字下げ）はプレビューでもそのまま残す（EPUB と一致・字下げは本文が唯一の真実）', () => {
+    expect(blocksToHtml(parseEpisodeBody('　それはまるで'))).toBe('<p>　それはまるで</p>')
+  })
+
   it('空 paragraph は間（blank 段落）として描画', () => {
     expect(blocksToHtml(parseEpisodeBody('上\n\n下'))).toBe(
       '<p>上</p><p class="blank"></p><p>下</p>',
