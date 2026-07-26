@@ -148,6 +148,16 @@
   .ns-demo-ph { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; text-align: center; padding: 20px; }
   .ns-demo-ph .lbl { font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.24em; color: var(--wheat-300); }
   .ns-demo-ph .txt { font-size: 13px; line-height: 1.9; letter-spacing: 0.03em; color: rgba(236,229,208,0.55); }
+
+  /* PC 版の見せ場デモ（できること の章立ての前に、動きで全体像を先に見せる）。
+     ビューポートに入ったら自動再生（無音ループ）、外れたら停止。読める間はポスター画像のまま。
+     スマホ（.ns-phone）では手元のハンドオフに専用デモがあるため非表示にする。 */
+  .ns-demo-pc { margin: 0; display: flex; flex-direction: column; align-items: center; gap: 18px; }
+  .ns-demo-pc-frame { position: relative; width: 100%; max-width: 940px; aspect-ratio: 16 / 9; border-radius: 16px; overflow: hidden; border: 1px solid var(--border-subtle); background: var(--surface-card); box-shadow: 0 18px 48px rgba(31,36,48,0.10); }
+  .ns-demo-pc-video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; background: var(--surface-card); }
+  .ns-demo-pc figcaption { display: flex; align-items: center; gap: 12px; font-family: var(--font-display); font-size: 15px; letter-spacing: 0.1em; color: var(--text-muted); }
+  .ns-demo-pc figcaption::before { content: ""; width: 28px; height: 1px; background: var(--wheat-300); }
+  .ns-phone .ns-demo-pc { display: none; }
 </style>
 </head>
 <body>
@@ -242,6 +252,16 @@
       <h2 style="margin:0;font-family:var(--font-display);font-weight:600;font-size:clamp(30px,3vw,40px);letter-spacing:0.08em;color:var(--text-heading)">書く日々に、寄り添う道具。</h2>
       <p style="margin:0;font-size:15px;letter-spacing:0.06em;color:var(--text-muted)">書く・築く・続ける・届ける。無料でできることを、四つの章で。</p>
     </div>
+
+    <!-- 動きで見る（章立ての前に、実際の手つきを先に）。src は近づいたら JS で読み込む -->
+    <figure data-reveal class="ns-demo-pc">
+      <div class="ns-demo-pc-frame">
+        <video class="ns-demo-pc-video" muted loop playsinline preload="none" width="1280" height="720"
+          poster="/lp/demo-poster.webp" data-src="/lp/demo.mp4"
+          aria-label="コトノハ-leaf- の操作デモ。縦書きプレビューにルビと傍点を反映し、人物や設定を図鑑へ登録、本文の ＠ から呼び出して挿入、プレビューの語から図鑑をひらくまでの流れ"></video>
+      </div>
+      <figcaption>ルビも傍点も、図鑑も。書く手つきのままに。</figcaption>
+    </figure>
 
     <!-- 第一章　書く -->
     <div data-reveal class="feature-row">
@@ -684,6 +704,34 @@
       v.preload = 'auto' // 実際に試すときだけ取得（markup 側は none のまま＝PC/JS無効では取りにいかない）
       v.src = src
       v.load()
+    }
+  }
+  // PC 版デモ：ビューポートに入ったら無音ループ自動再生、外れたら停止。src は近づいて初めて取得。
+  // reduce-motion または IntersectionObserver 非対応時はポスター画像のまま（自動再生しない）。
+  if (!document.documentElement.classList.contains('ns-phone') && 'IntersectionObserver' in window) {
+    const reduce = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches
+    if (!reduce) {
+      for (const v of document.querySelectorAll('.ns-demo-pc-video')) {
+        const src = v.dataset.src
+        if (!src) continue
+        let loaded = false
+        let inView = false
+        // データが揃った瞬間に、まだ画面内なら再生（load 直後の play() は取りこぼすため）
+        const tryPlay = () => { if (inView) v.play().catch(() => {}) }
+        v.addEventListener('canplay', tryPlay)
+        const io = new IntersectionObserver((entries) => {
+          for (const e of entries) {
+            inView = e.isIntersecting
+            if (inView) {
+              if (!loaded) { loaded = true; v.muted = true; v.src = src; v.load() }
+              tryPlay()
+            } else if (loaded) {
+              v.pause()
+            }
+          }
+        }, { threshold: 0.4 })
+        io.observe(v)
+      }
     }
   }
 })()
