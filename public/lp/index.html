@@ -138,9 +138,6 @@
   .ns-send { border: none; cursor: pointer; font-family: var(--font-body); font-size: 16px; padding: 15px 28px; width: 100%; box-shadow: 0 0 40px rgba(240,230,200,0.16); }
   .ns-escape { align-self: center; font-size: 13px; letter-spacing: 0.08em; color: rgba(236,229,208,0.6); text-decoration: none; text-underline-offset: 3px; }
   .ns-escape:hover { color: rgba(236,229,208,0.9); text-decoration: underline; }
-  .ns-qr { display: flex; align-items: center; gap: 14px; padding: 12px; border: 1px solid rgba(242,236,220,0.18); border-radius: 12px; }
-  .ns-qr img { width: 82px; height: 82px; border-radius: 6px; background: var(--cream-50); flex: none; }
-  .ns-qr span { font-size: 12px; line-height: 1.8; letter-spacing: 0.03em; color: rgba(236,229,208,0.6); }
 
   /* デモ動画スロット（16:9）。動画が無い/読めない間はプレースホルダのまま＝崩れない。
      差し替えは /lp/demo.mp4 を置くだけ（下の JS が読めたら自動で差し替える）。 */
@@ -229,10 +226,6 @@
 
         <div style="display:flex;flex-direction:column;gap:14px">
           <button type="button" class="btn-cream ns-send">PC で開くリンクを自分に送る</button>
-          <div class="ns-qr">
-            <img src="/lp/pc-qr.png" width="82" height="82" alt="コトノハ-leaf- を PC で開く QR コード">
-            <span>PC が目の前にあるなら、<br>この QR から開けます。</span>
-          </div>
           <a class="ns-escape" href="/">このまま開く</a>
         </div>
       </div>
