@@ -7,9 +7,9 @@ describe('blocksToHtml（ライブプレビュー描画）', () => {
     expect(blocksToHtml(parseEpisodeBody('a<b>&c'))).toBe('<p>a&lt;b&gt;&amp;c</p>')
   })
 
-  it('ruby は ruby/rt 要素に描画', () => {
+  it('ruby は ruby/rt 要素に描画（rp フォールバック括弧つき）', () => {
     expect(blocksToHtml(parseEpisodeBody('漢字《かんじ》'))).toBe(
-      '<p><ruby>漢字<rt>かんじ</rt></ruby></p>',
+      '<p><ruby>漢字<rp>（</rp><rt>かんじ</rt><rp>）</rp></ruby></p>',
     )
   })
 
@@ -29,7 +29,7 @@ describe('blocksToHtml（ライブプレビュー描画）', () => {
 
   it('ruby の base/reading 内もエスケープ', () => {
     expect(blocksToHtml(parseEpisodeBody('｜a<b《よ&み》'))).toBe(
-      '<p><ruby>a&lt;b<rt>よ&amp;み</rt></ruby></p>',
+      '<p><ruby>a&lt;b<rp>（</rp><rt>よ&amp;み</rt><rp>）</rp></ruby></p>',
     )
   })
 

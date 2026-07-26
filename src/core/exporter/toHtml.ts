@@ -47,7 +47,8 @@ function inlineToHtml(inline: Inline, resolvedNames?: Set<string>): string {
     case 'text':
       return wrapTcy(escapeHtml(inline.text))
     case 'ruby':
-      return `<ruby>${escapeHtml(inline.base)}<rt>${escapeHtml(inline.reading)}</rt></ruby>`
+      // <rp> は ruby 対応環境では非表示になり、非対応環境では「漢字（かんじ）」と読める保険。
+      return `<ruby>${escapeHtml(inline.base)}<rp>（</rp><rt>${escapeHtml(inline.reading)}</rt><rp>）</rp></ruby>`
     case 'emphasisDots':
       return `<em class="dots">${wrapTcy(escapeHtml(inline.text))}</em>`
     case 'ref': {
