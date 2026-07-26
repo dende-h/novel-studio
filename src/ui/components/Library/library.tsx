@@ -10,22 +10,29 @@ import {
   Sparkles,
   Upload,
 } from 'lucide-react'
-import { useId, useMemo, useState } from 'react'
+import { useEffect, useId, useMemo, useRef, useState } from 'react'
+import { localDateKey, summarize } from '@/core/activity'
+import { decideBackupNudge, type NudgeDecision } from '@/core/nudge/backup-nudge'
+import type { ActivityRepository } from '@/core/storage/activityRepository'
 import type { WorkSummary } from '@/core/storage/workRepository'
 import { cn } from '@/lib/utils'
 import { triggerDownload } from '@/ui/_utils/download'
 import type { LocalBackupService } from '@/ui/backup/backup-service'
 import { AppShell } from '@/ui/components/AppShell/app-shell'
 import { BackupDialog } from '@/ui/components/BackupDialog/backup-dialog'
+import { BackupNudgeDialog } from '@/ui/components/BackupNudgeDialog/backup-nudge-dialog'
 import { ConfirmDialog } from '@/ui/components/ConfirmDialog/confirm-dialog'
 import { ExportDialog } from '@/ui/components/ExportDialog/export-dialog'
 import { ImportDialog } from '@/ui/components/ImportDialog/import-dialog'
 import { ProfileDialog } from '@/ui/components/ProfileDialog/profile-dialog'
+import { SaveStateIndicator } from '@/ui/components/SaveStateIndicator/save-state-indicator'
 import { SideNav } from '@/ui/components/SideNav/side-nav'
 import { TitlePromptDialog } from '@/ui/components/TitlePromptDialog/title-prompt-dialog'
 import { TrashDialog } from '@/ui/components/TrashDialog/trash-dialog'
 import { Button } from '@/ui/components/ui/button'
 import { WorkMetaDialog } from '@/ui/components/WorkMetaDialog/work-meta-dialog'
+import { markLocalBackup, readBackupMarks } from '@/ui/hooks/use-backup-marks'
+import { acknowledgeNudge, readNudgeAck } from '@/ui/hooks/use-backup-nudge'
 import { useEditorStore } from '@/ui/hooks/use-editor-store'
 import { TRASH_TTL_MS } from '@/ui/store/createDefaultStore'
 import type { EditorStore } from '@/ui/store/editorStore'
@@ -56,6 +63,14 @@ interface LibraryProps {
   onOpenHelp?: () => void
   /** ローカル（ファイル）バックアップ：全状態の書き出し／全置換復元（課金非依存）。 */
   localBackup: LocalBackupService
+  /** クラウド会員か（案内モーダルは無料の人だけに出す）。 */
+  isMember: boolean
+  /** 初回説明（タスク2）を見終えたか。終える前は案内モーダルを出さない（順番を守る）。 */
+  onboarded: boolean
+  /** 執筆日数の集計に使う（案内モーダルの節目判定）。 */
+  activityRepo: ActivityRepository
+  /** 案内モーダルの「クラウドバックアップを利用する場合はこちら」導線（無料の人向け・未指定なら非表示）。 */
+  onOpenCloudPlan?: () => void
 }
 
 /** データ管理メニューの 1 項目。 */
@@ -96,6 +111,10 @@ export function Library({
   onOpenSettings,
   onOpenHelp,
   localBackup,
+  isMember,
+  onboarded,
+  activityRepo,
+  onOpenCloudPlan,
 }: LibraryProps) {
   const state = useEditorStore(store)
   const [newOpen, setNewOpen] = useState(false)
@@ -124,6 +143,45 @@ export function Library({
     if (q === '') return state.workList
     return state.workList.filter((w) => w.title.toLowerCase().includes(q))
   }, [state.workList, query])
+
+  const totalChars = useMemo(
+    () => state.workList.reduce((n, w) => n + w.charCount, 0),
+    [state.workList],
+  )
+
+  // バックアップ案内（タスク4）：マイライブラリを開き、データが揃った“そのとき”に一度だけ判定する。
+  // 会員には出さない。初回説明（タスク2）を終える前も出さない（順番を守る）。
+  const [nudge, setNudge] = useState<Extract<NudgeDecision, { show: true }> | null>(null)
+  const nudgeShownRef = useRef(false)
+  useEffect(() => {
+    if (nudgeShownRef.current || !onboarded || isMember) return
+    let cancelled = false
+    void (async () => {
+      const days = await activityRepo.list()
+      if (cancelled || nudgeShownRef.current) return
+      const activeDays = summarize(days, localDateKey(Date.now())).activeDays
+      const decision = decideBackupNudge({
+        totalChars,
+        activeDays,
+        marks: readBackupMarks(),
+        ack: readNudgeAck(),
+        now: Date.now(),
+      })
+      if (!cancelled && decision.show) {
+        nudgeShownRef.current = true // 1 マウントにつき一度だけ開く
+        setNudge(decision)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [onboarded, isMember, activityRepo, totalChars])
+
+  // 解散（実行・×・背景クリック）：現在レベルを承認済みに繰り上げ、30 日のクールダウンを開始する。
+  const dismissNudge = () => {
+    if (nudge) acknowledgeNudge(nudge.charLevel, nudge.dayLevel, Date.now())
+    setNudge(null)
+  }
 
   const changeView = (next: LibraryView) => {
     setView(next)
@@ -174,138 +232,151 @@ export function Library({
     >
       <div className="min-h-0 flex-1 overflow-y-auto px-8 py-9 md:px-10">
         <div className="mx-auto max-w-[1120px] pb-16">
-          <header className="mb-6 flex flex-wrap items-end justify-between gap-4">
+          <header className="mb-8 flex flex-wrap items-start justify-between gap-4">
             <div>
               <h1 className="font-semibold font-serif text-[26px] text-on-surface">
                 マイライブラリ
               </h1>
               <p className="mt-1 text-[13px] text-on-surface-variant">執筆中の原稿と下書き</p>
             </div>
-            <div className="flex flex-wrap items-center gap-2">
-              {/* 作品名で検索（タイトル部分一致） */}
-              <div className="relative">
-                <Search className="-translate-y-1/2 absolute top-1/2 left-2.5 size-3.5 text-on-surface-variant/60" />
-                <input
-                  type="search"
-                  aria-label="作品名で検索"
-                  placeholder="作品名で検索"
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  className="h-[34px] w-[200px] rounded-md border border-outline-variant/40 bg-surface-container-lowest pr-3 pl-8 font-sans text-[13px] text-on-surface outline-none transition-colors placeholder:text-on-surface-variant/50 focus:border-primary"
-                />
-              </div>
-              {state.workList.length > 0 && (
-                <div className="flex items-center gap-1">
-                  <button
-                    type="button"
-                    aria-label="カード表示"
-                    aria-pressed={view === 'card'}
-                    onClick={() => changeView('card')}
-                    className={cn(
-                      'flex h-[26px] items-center gap-1 rounded-md px-2.5 font-sans text-xs transition-colors',
-                      view === 'card'
-                        ? 'bg-primary text-white'
-                        : 'text-on-surface-variant hover:bg-surface-container-high',
-                    )}
-                  >
-                    <LayoutGrid className="size-3.5" />
-                    カード
-                  </button>
-                  <button
-                    type="button"
-                    aria-label="リスト表示"
-                    aria-pressed={view === 'list'}
-                    onClick={() => changeView('list')}
-                    className={cn(
-                      'flex h-[26px] items-center gap-1 rounded-md px-2.5 font-sans text-xs transition-colors',
-                      view === 'list'
-                        ? 'bg-primary text-white'
-                        : 'text-on-surface-variant hover:bg-surface-container-high',
-                    )}
-                  >
-                    <List className="size-3.5" />
-                    リスト
-                  </button>
+            <div className="flex flex-col items-end gap-3">
+              {/* 保存状態インジケータ（全データがスコープ）。ツールバーの上・右寄せで小さく常設。 */}
+              <SaveStateIndicator
+                lastUpdatedAt={
+                  state.workList.reduce(
+                    (m, w) => (w.updatedAt && w.updatedAt > m ? w.updatedAt : m),
+                    0,
+                  ) || null
+                }
+                onOpenFileBackup={() => setBackupOpen(true)}
+                onOpenCloudBackup={onOpenCloudBackup}
+              />
+              <div className="flex flex-wrap items-center justify-end gap-2">
+                {/* 作品名で検索（タイトル部分一致） */}
+                <div className="relative">
+                  <Search className="-translate-y-1/2 absolute top-1/2 left-2.5 size-3.5 text-on-surface-variant/60" />
+                  <input
+                    type="search"
+                    aria-label="作品名で検索"
+                    placeholder="作品名で検索"
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                    className="h-[34px] w-[200px] rounded-md border border-outline-variant/40 bg-surface-container-lowest pr-3 pl-8 font-sans text-[13px] text-on-surface outline-none transition-colors placeholder:text-on-surface-variant/50 focus:border-primary"
+                  />
                 </div>
-              )}
-              {/* データ管理（バックアップ・取り込み・クラウド・AI 接続をまとめる） */}
-              <div className="relative">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  aria-haspopup="menu"
-                  aria-expanded={dataMenuOpen}
-                  aria-controls={dataMenuOpen ? dataMenuId : undefined}
-                  onClick={() => setDataMenuOpen((v) => !v)}
-                  className="gap-2"
-                >
-                  <Database className="size-4" />
-                  データ管理
-                </Button>
-                {dataMenuOpen ? (
-                  <>
+                {state.workList.length > 0 && (
+                  <div className="flex items-center gap-1">
                     <button
                       type="button"
-                      aria-label="メニューを閉じる"
-                      tabIndex={-1}
-                      onClick={() => setDataMenuOpen(false)}
-                      className="fixed inset-0 z-40 cursor-default"
-                    />
-                    <div
-                      role="menu"
-                      id={dataMenuId}
-                      className="absolute right-0 top-10 z-50 flex w-[230px] flex-col rounded-lg border border-outline-variant/30 bg-surface-container-lowest p-1.5 font-sans shadow-lg"
+                      aria-label="カード表示"
+                      aria-pressed={view === 'card'}
+                      onClick={() => changeView('card')}
+                      className={cn(
+                        'flex h-[26px] items-center gap-1 rounded-md px-2.5 font-sans text-xs transition-colors',
+                        view === 'card'
+                          ? 'bg-primary text-white'
+                          : 'text-on-surface-variant hover:bg-surface-container-high',
+                      )}
                     >
-                      <DataMenuItem
-                        icon={<Download className="size-[15px]" />}
-                        label="バックアップを書き出し"
-                        disabled={state.workList.length === 0}
-                        onClick={() => {
-                          setDataMenuOpen(false)
-                          setBackupOpen(true)
-                        }}
+                      <LayoutGrid className="size-3.5" />
+                      カード
+                    </button>
+                    <button
+                      type="button"
+                      aria-label="リスト表示"
+                      aria-pressed={view === 'list'}
+                      onClick={() => changeView('list')}
+                      className={cn(
+                        'flex h-[26px] items-center gap-1 rounded-md px-2.5 font-sans text-xs transition-colors',
+                        view === 'list'
+                          ? 'bg-primary text-white'
+                          : 'text-on-surface-variant hover:bg-surface-container-high',
+                      )}
+                    >
+                      <List className="size-3.5" />
+                      リスト
+                    </button>
+                  </div>
+                )}
+                {/* データ管理（バックアップ・取り込み・クラウド・AI 接続をまとめる） */}
+                <div className="relative">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    aria-haspopup="menu"
+                    aria-expanded={dataMenuOpen}
+                    aria-controls={dataMenuOpen ? dataMenuId : undefined}
+                    onClick={() => setDataMenuOpen((v) => !v)}
+                    className="gap-2"
+                  >
+                    <Database className="size-4" />
+                    データ管理
+                  </Button>
+                  {dataMenuOpen ? (
+                    <>
+                      <button
+                        type="button"
+                        aria-label="メニューを閉じる"
+                        tabIndex={-1}
+                        onClick={() => setDataMenuOpen(false)}
+                        className="fixed inset-0 z-40 cursor-default"
                       />
-                      <DataMenuItem
-                        icon={<Upload className="size-[15px]" />}
-                        label="バックアップを取り込み"
-                        onClick={() => {
-                          setDataMenuOpen(false)
-                          setImportOpen(true)
-                        }}
-                      />
-                      {onOpenCloudBackup ? (
+                      <div
+                        role="menu"
+                        id={dataMenuId}
+                        className="absolute right-0 top-10 z-50 flex w-[230px] flex-col rounded-lg border border-outline-variant/30 bg-surface-container-lowest p-1.5 font-sans shadow-lg"
+                      >
                         <DataMenuItem
-                          icon={<CloudUpload className="size-[15px]" />}
-                          label="クラウドバックアップ"
+                          icon={<Download className="size-[15px]" />}
+                          label="バックアップを書き出し"
+                          disabled={state.workList.length === 0}
                           onClick={() => {
                             setDataMenuOpen(false)
-                            onOpenCloudBackup()
+                            setBackupOpen(true)
                           }}
                         />
-                      ) : null}
-                      {onOpenAiPull ? (
                         <DataMenuItem
-                          icon={<Sparkles className="size-[15px]" />}
-                          label="AIの変更を取り込む"
+                          icon={<Upload className="size-[15px]" />}
+                          label="バックアップを取り込み"
                           onClick={() => {
                             setDataMenuOpen(false)
-                            onOpenAiPull()
+                            setImportOpen(true)
                           }}
                         />
-                      ) : null}
-                      {onOpenMcp ? (
-                        <DataMenuItem
-                          icon={<Bot className="size-[15px]" />}
-                          label="AI に接続（MCP）"
-                          onClick={() => {
-                            setDataMenuOpen(false)
-                            onOpenMcp()
-                          }}
-                        />
-                      ) : null}
-                    </div>
-                  </>
-                ) : null}
+                        {onOpenCloudBackup ? (
+                          <DataMenuItem
+                            icon={<CloudUpload className="size-[15px]" />}
+                            label="クラウドバックアップ"
+                            onClick={() => {
+                              setDataMenuOpen(false)
+                              onOpenCloudBackup()
+                            }}
+                          />
+                        ) : null}
+                        {onOpenAiPull ? (
+                          <DataMenuItem
+                            icon={<Sparkles className="size-[15px]" />}
+                            label="AIの変更を取り込む"
+                            onClick={() => {
+                              setDataMenuOpen(false)
+                              onOpenAiPull()
+                            }}
+                          />
+                        ) : null}
+                        {onOpenMcp ? (
+                          <DataMenuItem
+                            icon={<Bot className="size-[15px]" />}
+                            label="AI に接続（MCP）"
+                            onClick={() => {
+                              setDataMenuOpen(false)
+                              onOpenMcp()
+                            }}
+                          />
+                        ) : null}
+                      </div>
+                    </>
+                  ) : null}
+                </div>
               </div>
             </div>
           </header>
@@ -374,6 +445,11 @@ export function Library({
             mime: 'application/json;charset=utf-8',
             data: json,
           })
+          // 保存状態インジケータ・執筆量案内が参照する「最後の書き出し日時＋そのときの総文字数」を記録。
+          markLocalBackup(
+            Date.now(),
+            state.workList.reduce((n, w) => n + w.charCount, 0),
+          )
         }}
       />
       <ImportDialog
@@ -431,6 +507,17 @@ export function Library({
         onPurge={(id) => void store.purgeWork(id)}
         onEmpty={() => void store.emptyTrash()}
       />
+      {/* バックアップ案内（タスク4）。無料の人にだけ、節目のときだけ。執筆画面には出さない。 */}
+      {nudge && (
+        <BackupNudgeDialog
+          open
+          headline={nudge.headline}
+          body={nudge.body}
+          onClose={dismissNudge}
+          onFileBackup={() => setBackupOpen(true)}
+          onCloud={onOpenCloudPlan}
+        />
+      )}
     </AppShell>
   )
 }

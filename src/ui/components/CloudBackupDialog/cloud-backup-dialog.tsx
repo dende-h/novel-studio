@@ -10,6 +10,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/ui/components/ui/dialog'
+import { markCloudBackup } from '@/ui/hooks/use-backup-marks'
 
 interface CloudBackupDialogProps {
   open: boolean
@@ -64,6 +65,7 @@ export function CloudBackupDialog({
     setBusy(true)
     try {
       const res = await service.backupNow()
+      if (res) markCloudBackup(Date.now()) // 保存状態インジケータ用に最終クラウドバックアップ日時を記録
       onNotify(res ? 'クラウドにバックアップしました' : 'バックアップに失敗しました')
       await reload()
     } finally {

@@ -7,6 +7,7 @@ import { createDefaultBackupService, createLocalBackupService } from './backup/b
 import { ActivityPage } from './components/ActivityPage/activity-page'
 import { AiPullDialog } from './components/AiPullDialog/ai-pull-dialog'
 import { CloudBackupDialog } from './components/CloudBackupDialog/cloud-backup-dialog'
+import { FirstRunDialog } from './components/FirstRunDialog/first-run-dialog'
 import { HelpPage } from './components/HelpPage/help-page'
 import { IdeaboxPage } from './components/IdeaboxPage/idea-box-page'
 import { PrivacyPage } from './components/LegalPage/privacy-page'
@@ -21,6 +22,7 @@ import { SyncOnboarding } from './components/SyncOnboarding/sync-onboarding'
 import { useToast } from './components/Toast/toast'
 import { useHashRoute } from './hooks/use-hash-route'
 import { useLiveSnapshot } from './hooks/use-live-snapshot'
+import { useLocalFlag } from './hooks/use-local-flag'
 import {
   createDefaultActivityRepository,
   createDefaultIdeaRepository,
@@ -35,8 +37,11 @@ interface RootProps {
 /** 入口（ライブラリ）とエディタをハッシュで切り替えるトップレベル Container。 */
 export function Root({ store }: RootProps) {
   const { route, navigate } = useHashRoute()
-  const { status, isSignedIn, canRestore, graceUntil, signOut, getToken } = useAuth()
+  const { status, isSignedIn, canRestore, graceUntil, signOut, getToken, openSignUp, available } =
+    useAuth()
   const { show } = useToast()
+  // 初回のみ保存の仕組みを一度だけ説明する（思想の共有）。立てたら再表示しない。
+  const [onboarded, markOnboarded] = useLocalFlag('ns-onboarded')
   const getTokenRef = useRef(getToken)
   getTokenRef.current = getToken
   // 子（ダイアログ・effect）へ渡す安定した参照。毎レンダーで新関数を渡すと子の useEffect が
@@ -199,8 +204,15 @@ export function Root({ store }: RootProps) {
           onOpenSettings={() => navigate('/settings')}
           onOpenHelp={() => navigate('/help')}
           localBackup={localBackup}
+          isMember={status === 'member'}
+          onboarded={onboarded}
+          activityRepo={activityRepo}
+          // 無料の人向けクラウド導線＝サインアップ（→購読）。Clerk 未構成時はリンクを出さない。
+          onOpenCloudPlan={available ? openSignUp : undefined}
         />
       )}
+      {/* 初回のみの保存説明。執筆画面（/write）には出さない＝執筆中の割り込みを避ける。 */}
+      {route !== '/write' && <FirstRunDialog open={!onboarded} onClose={markOnboarded} />}
       {backupService && (
         <CloudBackupDialog
           open={backupOpen}
