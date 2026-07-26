@@ -41,6 +41,18 @@ interface MindmapViewProps {
 const genId = () => crypto.randomUUID()
 const SAVE_DELAY_MS = 600
 
+/**
+ * レイアウトに効くトポロジ（ノードの id/親/向き・エッジ）の署名。ラベルは含めない。
+ * layoutTree は座標をトポロジのみから決めるため、ラベル編集のたびに React Flow のノードを
+ * 作り直す必要はない。作り直すと未計測ノードが一瞬 visibility:hidden になり、入力中の
+ * フォーカスが飛ぶ（1〜2文字で入力が外れる不具合）。この署名が変わったときだけ再構築する。
+ */
+function topoSignature(s: Structure): string {
+  const nodes = s.nodes.map((n) => `${n.id}/${n.parentId ?? ''}/${n.side ?? ''}`).join('|')
+  const edges = s.edges.map((e) => `${e.id}/${e.from}/${e.to}`).join('|')
+  return `${nodes}#${edges}`
+}
+
 /** ノードとその子孫をまとめて削除する（関連エッジも除去）。 */
 function removeSubtree(s: Structure, rootId: string): Structure {
   const ids: string[] = []
@@ -65,6 +77,8 @@ export default function MindmapView({ repo, workId, ideaRepo }: MindmapViewProps
   const [ideaOpen, setIdeaOpen] = useState(false)
   const [ideas, setIdeas] = useState<IdeaNote[]>([])
   const dirty = useRef(false)
+  // 直近に React Flow へ反映したトポロジ署名。ラベルだけの変更で作り直さないための番人。
+  const lastTopoSig = useRef('')
 
   // 初期ロード：mindmap を取得（無ければ作成）。空なら中心ノードを1つ用意する。
   useEffect(() => {
@@ -87,9 +101,14 @@ export default function MindmapView({ repo, workId, ideaRepo }: MindmapViewProps
     }
   }, [repo, workId])
 
-  // structure → React Flow（自動レイアウトで座標を毎回算出・ドラッグ不可）。
+  // structure → React Flow（トポロジ変化時だけ座標を再算出・ドラッグ不可）。
+  // ラベル編集ではノードを作り直さない：作り直すと未計測ノードが一瞬隠れ、入力中の
+  // フォーカスが飛ぶ。ラベルはノード側のローカル state が正本なので反映は不要。
   useEffect(() => {
     if (!structure) return
+    const sig = topoSignature(structure)
+    if (sig === lastTopoSig.current) return
+    lastTopoSig.current = sig
     const pos = layoutTree(structure)
     setRfNodes(
       structure.nodes.map((n) => ({
