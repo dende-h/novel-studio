@@ -419,7 +419,7 @@ export function App({
                   aria-pressed={orientation === 'horizontal'}
                   onClick={() => setOrientation('horizontal')}
                   className={cn(
-                    'flex h-[26px] items-center rounded-md px-2.5 font-sans text-xs transition-colors',
+                    'flex h-11 items-center rounded-md px-2.5 font-sans text-xs transition-colors md:h-[26px]',
                     orientation === 'horizontal'
                       ? 'bg-primary text-white'
                       : 'text-on-surface-variant hover:bg-surface-container-high',
@@ -432,7 +432,7 @@ export function App({
                   aria-pressed={orientation === 'vertical'}
                   onClick={() => setOrientation('vertical')}
                   className={cn(
-                    'flex h-[26px] items-center rounded-md px-2.5 font-sans text-xs transition-colors',
+                    'flex h-11 items-center rounded-md px-2.5 font-sans text-xs transition-colors md:h-[26px]',
                     orientation === 'vertical'
                       ? 'bg-primary text-white'
                       : 'text-on-surface-variant hover:bg-surface-container-high',

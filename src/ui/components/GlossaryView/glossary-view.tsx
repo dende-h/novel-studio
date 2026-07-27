@@ -201,7 +201,8 @@ function FilterChip({
       aria-pressed={active}
       onClick={onClick}
       className={cn(
-        'rounded-full border px-3 py-1 font-sans text-xs transition-colors',
+        // タッチでは 44px 目安のタップ領域を確保し、ポインタ環境では従来の密度に戻す。
+        'rounded-full border px-3 py-2.5 font-sans text-xs transition-colors md:py-1',
         active
           ? 'border-primary bg-primary text-white'
           : 'border-outline-variant/40 text-on-surface-variant hover:bg-surface-container-high',
@@ -237,12 +238,12 @@ function EntryCard({
           <img
             src={entry.thumbnail}
             alt=""
-            className="size-20 shrink-0 self-start rounded-lg border border-outline-variant/30 object-cover"
+            className="size-14 shrink-0 self-start rounded-lg border border-outline-variant/30 object-cover sm:size-20"
           />
         ) : (
           <div
             aria-hidden="true"
-            className="flex size-20 shrink-0 items-center justify-center self-start rounded-lg border border-outline-variant/30 bg-accent font-serif text-[26px] text-primary"
+            className="flex size-14 shrink-0 items-center justify-center self-start rounded-lg border border-outline-variant/30 bg-accent font-serif text-[20px] text-primary sm:size-20 sm:text-[26px]"
           >
             {initial}
           </div>

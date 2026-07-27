@@ -168,7 +168,8 @@ export function GlossaryEntryForm({
                 名前を変えても大丈夫です。旧名は自動で別名に残り、本文中の参照はそのまま解決されます。
               </p>
             ) : null}
-            <div className="grid grid-cols-2 gap-3">
+            {/* 狭幅で 2 列固定にすると読み・カテゴリとも入力欄が潰れるので 1 列へ落とす。 */}
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor={`${uid}-reading`}>読み（任意）</Label>
                 <Input

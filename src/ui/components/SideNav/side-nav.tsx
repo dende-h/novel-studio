@@ -144,7 +144,11 @@ export function SideNav({
   const workOpen = workTitle !== undefined
   const workInitial = (workTitle ?? '').trim().charAt(0) || '無'
   return (
-    <nav className="flex w-sidebar shrink-0 flex-col gap-2.5 overflow-y-auto border-outline-variant/30 border-r bg-surface-container-low px-3 pt-4 pb-3.5 font-sans">
+    // 1 ページに nav が複数あるとき（執筆の記録の年タブ等）、支援技術が区別できるよう名前を付ける。
+    <nav
+      aria-label="メインメニュー"
+      className="flex w-sidebar shrink-0 flex-col gap-2.5 overflow-y-auto border-outline-variant/30 border-r bg-surface-container-low px-3 pt-4 pb-3.5 font-sans"
+    >
       {workOpen ? (
         <>
           {/* ライブラリへ戻る */}

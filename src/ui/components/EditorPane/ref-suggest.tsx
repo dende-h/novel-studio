@@ -56,6 +56,9 @@ export function RefSuggest({
           role="option"
           tabIndex={-1}
           aria-selected={i === activeIndex}
+          // pointerdown は mousedown より先に走る。両方抑止して textarea から
+          // フォーカスが外れないようにする（タッチ環境でも確実に効かせるため併記）。
+          onPointerDown={(e) => e.preventDefault()}
           onMouseDown={(e) => e.preventDefault()}
           onMouseMove={() => onHover(i)}
           onClick={() => onCommit(i)}
@@ -90,6 +93,9 @@ export function RefSuggest({
           role="option"
           tabIndex={-1}
           aria-selected={createIndex === activeIndex}
+          // pointerdown は mousedown より先に走る。両方抑止して textarea から
+          // フォーカスが外れないようにする（タッチ環境でも確実に効かせるため併記）。
+          onPointerDown={(e) => e.preventDefault()}
           onMouseDown={(e) => e.preventDefault()}
           onMouseMove={() => onHover(createIndex)}
           onClick={() => onCommit(createIndex)}

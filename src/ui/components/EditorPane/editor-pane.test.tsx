@@ -1,6 +1,6 @@
-import { fireEvent, render, screen, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import { useState } from 'react'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { GlossaryEntry } from '@/core/schema'
 import { EditorPane } from './editor-pane'
 
@@ -186,5 +186,66 @@ describe('EditorPane（[[ 補助トリガ）', () => {
     const ta = screen.getByRole('textbox', { name: '本文' })
     type(ta, '[[アリス]]')
     expect(screen.queryByRole('listbox')).toBeNull()
+  })
+})
+
+/**
+ * 狭幅では @ サジェストの形態が変わる（D-EDIT-5）。
+ * キャレット追従ポップアップは画面端クランプ・上下反転・visualViewport 追従を
+ * すべて正しく実装しないとキーボードの裏に隠れるため、座標計算を捨てて
+ * 画面下端に固定したバーへ差し替えている。表示だけでなく Enter の意味も変わる。
+ */
+describe('EditorPane（@ サジェスト・狭幅＝キーボード直上のバー）', () => {
+  const setWidth = (width: number) => {
+    const { happyDOM } = window as unknown as {
+      happyDOM: { setViewport: (v: { width: number }) => void }
+    }
+    act(() => {
+      happyDOM.setViewport({ width })
+    })
+  }
+
+  afterEach(() => setWidth(1280))
+
+  it('狭幅でも候補を listbox に出し、タップで挿入できる', () => {
+    setWidth(390)
+    render(<Harness glossary={[g('アリス', 'ありす')]} />)
+    const ta = screen.getByRole('textbox', { name: '本文' })
+    type(ta, '@アリ')
+
+    expect(screen.getByRole('listbox', { name: '参照候補' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('option', { name: /アリス/ }))
+    expect(ta).toHaveValue('[[アリス]]')
+  })
+
+  it('狭幅では Enter を横取りしない（改行として使えることを保証）', () => {
+    setWidth(390)
+    render(<Harness glossary={[g('アリス', 'ありす')]} />)
+    const ta = screen.getByRole('textbox', { name: '本文' })
+    type(ta, '@アリ')
+    expect(screen.getByRole('listbox')).toBeInTheDocument()
+
+    // preventDefault されなければ既定動作（改行）が生きる＝ソフトキーボードで改行できる。
+    const notPrevented = fireEvent.keyDown(ta, { key: 'Enter' })
+    expect(notPrevented).toBe(true)
+    // 確定もされない（本文は @ のまま）
+    expect(ta).toHaveValue('@アリ')
+  })
+
+  it('狭幅ではハイライトを持たないので aria-activedescendant を付けない', () => {
+    setWidth(390)
+    render(<Harness glossary={[g('アリス', 'ありす')]} />)
+    const ta = screen.getByRole('textbox', { name: '本文' })
+    type(ta, '@アリ')
+    expect(ta).not.toHaveAttribute('aria-activedescendant')
+  })
+
+  it('広い画面では従来どおり Enter で確定する（非回帰）', () => {
+    setWidth(1280)
+    render(<Harness glossary={[g('アリス', 'ありす')]} />)
+    const ta = screen.getByRole('textbox', { name: '本文' })
+    type(ta, '@アリ')
+    fireEvent.keyDown(ta, { key: 'Enter' })
+    expect(ta).toHaveValue('[[アリス]]')
   })
 })

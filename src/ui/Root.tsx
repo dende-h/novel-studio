@@ -14,7 +14,6 @@ import { Library } from './components/Library/library'
 import { McpConnectDialog } from './components/McpConnectDialog/mcp-connect-dialog'
 import { RestoreGrace } from './components/RestoreGrace/restore-grace'
 import { SettingsPage } from './components/SettingsPage/settings-page'
-import { SmallScreenNotice } from './components/SmallScreenNotice/small-screen-notice'
 import { SyncOnboarding } from './components/SyncOnboarding/sync-onboarding'
 import { useToast } from './components/Toast/toast'
 import { useHashRoute } from './hooks/use-hash-route'
@@ -127,7 +126,6 @@ export function Root({ store }: RootProps) {
             }}
           />
         ) : null}
-        <SmallScreenNotice />
       </>
     )
   }
@@ -135,41 +133,30 @@ export function Root({ store }: RootProps) {
   // 未課金でサインイン済み：中途半端な状態を残さず、専用オンボーディングで「購読する or ローカルの
   // まま使う（＝サインアウトしてゲスト）」の二択に収束させる（§1.1「アカウント＝有料会員だけが持つ」）。
   if (status === 'guest' && isSignedIn) {
-    return (
-      <>
-        <SyncOnboarding onUseLocal={signOut} />
-        <SmallScreenNotice />
-      </>
-    )
+    return <SyncOnboarding onUseLocal={signOut} />
   }
 
   if (route === '/activity') {
     return (
-      <>
-        <ActivityPage
-          repo={activityRepo}
-          onNavigateCollection={() => navigate('/')}
-          onNavigateIdeas={() => navigate('/ideas')}
-          onNavigateSettings={() => navigate('/settings')}
-          onNavigateHelp={() => navigate('/help')}
-        />
-        <SmallScreenNotice />
-      </>
+      <ActivityPage
+        repo={activityRepo}
+        onNavigateCollection={() => navigate('/')}
+        onNavigateIdeas={() => navigate('/ideas')}
+        onNavigateSettings={() => navigate('/settings')}
+        onNavigateHelp={() => navigate('/help')}
+      />
     )
   }
 
   if (route === '/ideas') {
     return (
-      <>
-        <IdeaboxPage
-          repo={ideaRepo}
-          onNavigateCollection={() => navigate('/')}
-          onNavigateActivity={() => navigate('/activity')}
-          onNavigateSettings={() => navigate('/settings')}
-          onNavigateHelp={() => navigate('/help')}
-        />
-        <SmallScreenNotice />
-      </>
+      <IdeaboxPage
+        repo={ideaRepo}
+        onNavigateCollection={() => navigate('/')}
+        onNavigateActivity={() => navigate('/activity')}
+        onNavigateSettings={() => navigate('/settings')}
+        onNavigateHelp={() => navigate('/help')}
+      />
     )
   }
 

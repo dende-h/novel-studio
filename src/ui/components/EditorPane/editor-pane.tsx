@@ -2,7 +2,10 @@ import { useCallback, useId, useLayoutEffect, useMemo, useRef, useState } from '
 import { resolveRef, shouldTriggerSuggest, suggestRefs } from '@/core/glossary'
 import type { GlossaryEntry } from '@/core/schema'
 import { getCaretCoordinates } from '@/ui/_utils/caretCoordinates'
+import { useKeyboardInset } from '@/ui/hooks/use-keyboard-inset'
+import { useIsNarrow } from '@/ui/hooks/use-narrow'
 import { RefSuggest } from './ref-suggest'
+import { RefSuggestBar } from './ref-suggest-bar'
 
 interface EditorPaneProps {
   value: string
@@ -36,6 +39,11 @@ export function EditorPane({ value, onChange, glossary = [], onCreateEntry }: Ed
   const pendingCaretRef = useRef<number | null>(null)
   const [suggest, setSuggest] = useState<SuggestState | null>(null)
   const [activeIndex, setActiveIndex] = useState(0)
+  // 狭幅ではキャレット追従ポップアップではなくキーボード直上のバーを使う（D-EDIT-5）。
+  // 表示位置だけでなく Enter の意味も変わる（改行に返す）ため、CSS ではなく JS で分岐する。
+  const narrow = useIsNarrow()
+  // バーを画面下端に固定するため、iOS のキーボード高を CSS 変数へ実測して流す。
+  useKeyboardInset()
 
   const uid = useId()
   const listId = `${uid}-ref-list`
@@ -94,17 +102,20 @@ export function EditorPane({ value, onChange, glossary = [], onCreateEntry }: Ed
       // relative な親（ツールバー＋本文を含む root div）基準で absolute 配置されるため、
       // textarea のコンテナ内オフセット（ツールバー高さぶん下／左端ぶん）を足して座標系を合わせる。
       // これを省くとポップアップがツールバー高さぶん上にずれ、入力中の行に被ってしまう。
-      const c = getCaretCoordinates(el, at)
+      // 狭幅ではキャレット追従をやめて画面下端のバーに出すため、座標は要らない。
+      // getCaretCoordinates はミラー div の生成/破棄と getComputedStyle を毎打鍵で行うので、
+      // 使わないなら呼ばないこと自体がローエンド端末の体感改善になる。
+      const c = narrow ? null : getCaretCoordinates(el, at)
       setSuggest({
         at,
         triggerLen,
         query: text.slice(at + triggerLen, caret),
-        top: el.offsetTop + c.top + c.height,
-        left: el.offsetLeft + c.left,
+        top: c ? el.offsetTop + c.top + c.height : 0,
+        left: c ? el.offsetLeft + c.left : 0,
       })
       setActiveIndex(0)
     },
-    [glossary.length, onCreateEntry],
+    [glossary.length, onCreateEntry, narrow],
   )
 
   // value 内 [at, caret) の @クエリ を [[名前]] に置換して挿入する。
@@ -145,6 +156,15 @@ export function EditorPane({ value, onChange, glossary = [], onCreateEntry }: Ed
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (!open || composingRef.current || e.nativeEvent.isComposing) return
+    if (narrow) {
+      // スマホ：確定はバーのタップのみ。ソフトキーボードに Tab は無く、Enter は
+      // 改行として使いたいので横取りしない（サジェスト表示中に改行できないのは致命的）。
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        setSuggest(null)
+      }
+      return
+    }
     switch (e.key) {
       case 'ArrowDown':
         e.preventDefault()
@@ -173,7 +193,8 @@ export function EditorPane({ value, onChange, glossary = [], onCreateEntry }: Ed
         ref={taRef}
         aria-label="本文"
         aria-controls={open ? listId : undefined}
-        aria-activedescendant={open ? optionId(activeIndex) : undefined}
+        // 狭幅のバーはハイライトの概念を持たない（確定はタップのみ）ので付けない。
+        aria-activedescendant={open && !narrow ? optionId(activeIndex) : undefined}
         className="editor min-h-0 flex-1 resize-none border-none bg-transparent px-9 py-7 text-on-surface leading-[2.1] outline-none placeholder:text-on-surface-variant/40"
         value={value}
         onChange={(e) => {
@@ -196,18 +217,29 @@ export function EditorPane({ value, onChange, glossary = [], onCreateEntry }: Ed
       />
 
       {open && suggest ? (
-        <RefSuggest
-          candidates={candidates}
-          query={suggest.query}
-          showCreate={showCreate}
-          activeIndex={activeIndex}
-          top={suggest.top}
-          left={suggest.left}
-          listId={listId}
-          optionId={optionId}
-          onCommit={commit}
-          onHover={setActiveIndex}
-        />
+        narrow ? (
+          <RefSuggestBar
+            candidates={candidates}
+            query={suggest.query}
+            showCreate={showCreate}
+            listId={listId}
+            optionId={optionId}
+            onCommit={commit}
+          />
+        ) : (
+          <RefSuggest
+            candidates={candidates}
+            query={suggest.query}
+            showCreate={showCreate}
+            activeIndex={activeIndex}
+            top={suggest.top}
+            left={suggest.left}
+            listId={listId}
+            optionId={optionId}
+            onCommit={commit}
+            onHover={setActiveIndex}
+          />
+        )
       ) : null}
     </div>
   )

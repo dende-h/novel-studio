@@ -69,7 +69,9 @@ export function GlossaryPeek({
   const used = (appearances?.refCount ?? 0) > 0
 
   return (
-    <aside className="flex w-[300px] shrink-0 flex-col border-outline-variant/30 border-l bg-surface-container-lowest font-sans">
+    // 狭幅では 300px 固定だと画面の 8 割を覆うので、ビューポートに応じて詰める
+    // （min() なのでブレークポイント無しで全幅域に効く）。
+    <aside className="flex w-[min(300px,85vw)] shrink-0 flex-col border-outline-variant/30 border-l bg-surface-container-lowest font-sans">
       <div className="flex items-center justify-between border-outline-variant/30 border-b px-4 py-3">
         <span className="font-medium text-[12px] text-on-surface tracking-widest">図鑑パネル</span>
         <Button
@@ -77,7 +79,7 @@ export function GlossaryPeek({
           size="icon"
           onClick={onClose}
           aria-label="図鑑パネルを閉じる"
-          className="-mr-1.5 size-7 text-on-surface-variant hover:text-on-surface"
+          className="-mr-1.5 size-11 text-on-surface-variant hover:text-on-surface md:size-7"
         >
           <X className="size-4" aria-hidden />
         </Button>
@@ -102,7 +104,8 @@ export function GlossaryPeek({
                   aria-pressed={resolved !== undefined && resolved.id === entry?.id}
                   onClick={() => (resolved ? onSelect(resolved.id) : onQuickCreate(raw))}
                   className={cn(
-                    'rounded-full border px-2.5 py-1 text-[12px] transition-colors',
+                    // タッチでは 44px 目安のタップ領域を確保し、ポインタ環境では従来の密度に戻す。
+                    'rounded-full border px-3 py-2.5 text-[12px] transition-colors md:px-2.5 md:py-1',
                     resolved && resolved.id === entry?.id
                       ? 'border-primary bg-primary text-white'
                       : resolved

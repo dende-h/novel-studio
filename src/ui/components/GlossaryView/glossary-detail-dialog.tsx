@@ -53,13 +53,13 @@ export function GlossaryDetailDialog({
                   <ZoomableImage
                     src={entry.thumbnail}
                     alt={entry.name}
-                    className="size-28 rounded-xl border border-outline-variant/30 object-cover"
+                    className="size-20 rounded-xl border border-outline-variant/30 object-cover sm:size-28"
                     wrapperClassName="self-start"
                   />
                 ) : (
                   <div
                     aria-hidden="true"
-                    className="flex size-28 shrink-0 items-center justify-center self-start rounded-xl border border-outline-variant/30 bg-accent font-serif text-[40px] text-primary"
+                    className="flex size-20 shrink-0 items-center justify-center self-start rounded-xl border border-outline-variant/30 bg-accent font-serif text-[30px] text-primary sm:size-28 sm:text-[40px]"
                   >
                     {initial}
                   </div>

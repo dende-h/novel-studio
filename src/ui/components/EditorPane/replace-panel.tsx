@@ -43,7 +43,7 @@ export function ReplacePanel({ value, onApply, onClose }: ReplacePanelProps) {
         placeholder="検索する語"
         value={findQ}
         onChange={(e) => setFindQ(e.target.value)}
-        className="h-[34px] rounded-md border border-outline-variant/40 bg-surface-container-lowest px-3 text-base text-on-surface outline-none transition-colors placeholder:text-on-surface-variant/50 focus:border-primary md:text-[13px]"
+        className="h-11 rounded-md border border-outline-variant/40 bg-surface-container-lowest px-3 text-base text-on-surface outline-none transition-colors placeholder:text-on-surface-variant/50 focus:border-primary md:h-[34px] md:text-[13px]"
       />
       <input
         type="text"
@@ -51,7 +51,7 @@ export function ReplacePanel({ value, onApply, onClose }: ReplacePanelProps) {
         placeholder="置換後の語"
         value={replQ}
         onChange={(e) => setReplQ(e.target.value)}
-        className="h-[34px] rounded-md border border-outline-variant/40 bg-surface-container-lowest px-3 text-base text-on-surface outline-none transition-colors placeholder:text-on-surface-variant/50 focus:border-primary md:text-[13px]"
+        className="h-11 rounded-md border border-outline-variant/40 bg-surface-container-lowest px-3 text-base text-on-surface outline-none transition-colors placeholder:text-on-surface-variant/50 focus:border-primary md:h-[34px] md:text-[13px]"
       />
       <p className="text-[11px] text-on-surface-variant">
         {findQ !== '' ? `${count}件 見つかりました` : 'この話の本文だけを対象に置換します'}

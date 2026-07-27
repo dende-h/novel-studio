@@ -64,7 +64,7 @@ export function IdeaboxPage({
         />
       }
     >
-      <div className="min-h-0 flex-1 overflow-y-auto px-8 py-9 md:px-10">
+      <div className="min-h-0 flex-1 overflow-y-auto px-5 py-6 sm:px-8 sm:py-9 md:px-10">
         <div className="mx-auto max-w-3xl pb-16">
           <header className="mb-6">
             <h1 className="font-semibold font-serif text-[26px] text-on-surface">ネタ帳</h1>
@@ -87,10 +87,13 @@ export function IdeaboxPage({
               rows={3}
               aria-label="新しいネタ"
               placeholder="思いついた設定・タイトル・台詞の断片を書き留める…"
-              className="w-full resize-y bg-transparent font-sans text-[14px] text-on-surface outline-none placeholder:text-on-surface-variant/50"
+              className="w-full resize-y bg-transparent font-sans text-base text-on-surface outline-none placeholder:text-on-surface-variant/50 md:text-[14px]"
             />
             <div className="mt-2 flex items-center justify-between">
-              <span className="text-[11px] text-on-surface-variant/70">⌘/Ctrl + Enter で追加</span>
+              {/* 物理キーボードのない狭幅では案内する意味がないので畳む。 */}
+              <span className="text-[11px] text-on-surface-variant/70 max-md:hidden">
+                ⌘/Ctrl + Enter で追加
+              </span>
               <button
                 type="button"
                 onClick={() => void handleAdd()}
@@ -128,7 +131,9 @@ export function IdeaboxPage({
                       type="button"
                       aria-label="このネタを削除"
                       onClick={() => void handleRemove(n.id)}
-                      className="rounded-md p-1 text-on-surface-variant/50 opacity-0 transition-all hover:bg-surface-container-high hover:text-on-surface group-hover:opacity-100"
+                      // hover 専用にすると、ホバーの無いタッチ環境では永久に出せない。
+                      // 狭幅では常時表示し、キーボード操作にも group-focus-within で追従する。
+                      className="rounded-md p-2.5 text-on-surface-variant/50 opacity-100 transition-all hover:bg-surface-container-high hover:text-on-surface group-focus-within:opacity-100 group-hover:opacity-100 md:p-1 md:opacity-0"
                     >
                       <Trash2 className="size-4" />
                     </button>

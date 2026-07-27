@@ -18,11 +18,14 @@ test.beforeEach(async ({ page }) => {
   })
 })
 
+/** サイドバーのドロワー本体（執筆の記録の年タブなど他の nav と区別するため名前で引く）。 */
+const navDrawer = (page: Page) => page.getByRole('navigation', { name: 'メインメニュー' })
+
 /** 狭幅ではサイドバーがドロワー。ナビ内の操作はまず開いてから行う。 */
 const openNav = async (page: Page) => {
   // 作品カードの「『◯◯』のメニュー」と衝突するので厳密一致で絞る。
   await page.getByRole('button', { name: 'メニュー', exact: true }).click()
-  await expect(page.getByRole('navigation')).toBeVisible()
+  await expect(navDrawer(page)).toBeVisible()
 }
 
 /** 「新しい作品」はドロワー内にあるため、開いてから押す（押下でドロワーは自動的に閉じる）。 */
@@ -53,7 +56,7 @@ test('スマホ幅でもライブラリに到達できる（非対応オーバ�
 
 test('ドロワー：ハンバーガーで開き、スクリムのタップで閉じる', async ({ page }) => {
   await page.goto('/')
-  const nav = page.getByRole('navigation')
+  const nav = navDrawer(page)
   // 閉状態は display:none（hidden）なので不可視。
   await expect(nav).toBeHidden()
 
@@ -114,7 +117,7 @@ test('ドロワーは行き先を選ぶと自動で閉じる', async ({ page }) 
   await createWork(page, '自動クローズ')
   await openWriter(page, '自動クローズ')
 
-  const nav = page.getByRole('navigation')
+  const nav = navDrawer(page)
   await openNav(page)
   await expect(nav).toBeVisible()
 
@@ -128,9 +131,66 @@ test('構造化3機能（PC専用）の入口がスマホでは出ない', async
   await openWriter(page, '構造ゲート')
 
   await openNav(page)
-  const nav = page.getByRole('navigation')
+  const nav = navDrawer(page)
   await expect(nav).toBeVisible()
   for (const name of ['アウトライン', '相関図', 'マインドマップ']) {
     await expect(nav.getByRole('button', { name, exact: true })).toHaveCount(0)
   }
+})
+
+test('執筆の記録・ネタ帳へドロワーから到達でき、非対応案内が出ない', async ({ page }) => {
+  await page.goto('/')
+
+  await openNav(page)
+  await page.getByRole('button', { name: '執筆の記録', exact: true }).click()
+  await expect(page.getByRole('heading', { name: '執筆の記録' })).toBeVisible()
+
+  await openNav(page)
+  await page.getByRole('button', { name: 'ネタ帳', exact: true }).click()
+  await expect(page.getByRole('heading', { name: 'ネタ帳' })).toBeVisible()
+})
+
+test('ネタ帳：入力欄が 16px 以上で、追加したネタの削除ボタンがタッチでも見える', async ({
+  page,
+}) => {
+  await page.goto('/#/ideas')
+  const input = page.getByRole('textbox').first()
+  await expect(input).toBeVisible()
+
+  const size = await input.evaluate((el) => Number.parseFloat(getComputedStyle(el).fontSize))
+  expect(size).toBeGreaterThanOrEqual(16)
+
+  await input.fill('スマホから思いついたネタ')
+  await page.getByRole('button', { name: /追加/ }).first().click()
+
+  // hover のないタッチ環境でも削除ボタンに到達できること（opacity-0 のままだと押せない）
+  const del = page.getByRole('button', { name: 'このネタを削除' }).first()
+  await expect(del).toBeVisible()
+})
+
+test('@サジェストは狭幅ではキーボード直上のバーで出る', async ({ page }) => {
+  await page.goto('/')
+  await createWork(page, 'サジェスト検証')
+  await openWriter(page, 'サジェスト検証')
+  await addEpisode(page, '第一話')
+
+  // 図鑑に用語を1件用意する
+  await openNav(page)
+  await page.getByRole('button', { name: '図鑑', exact: true }).click()
+  await page.getByRole('button', { name: '新しく登録' }).click()
+  await page.getByLabel('名前').fill('アリス')
+  await page.getByRole('button', { name: '作成', exact: true }).click()
+  await expect(page.getByRole('heading', { name: 'アリス' })).toBeVisible()
+
+  await openNav(page)
+  await page.getByRole('button', { name: '本文を書く', exact: true }).click()
+
+  const ta = page.getByRole('textbox', { name: '本文' })
+  await ta.click()
+  await ta.pressSequentially('@アリ')
+
+  const bar = page.getByRole('listbox', { name: '参照候補' })
+  await expect(bar).toBeVisible()
+  await bar.getByRole('option', { name: /アリス/ }).click()
+  await expect(ta).toHaveValue('[[アリス]]')
 })
