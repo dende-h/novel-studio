@@ -375,7 +375,7 @@
         { id: 'F-EDIT-003', feature: 'エディタ（記法入力＋プレビュー）', layer: 'integration', status: 'proposed', scenario: 'シーン区切り入力がプレビューに描画', given: 'エディタ', when: '＊ のみの行を入力', then: 'プレビューに区切りが描画' },
         { id: 'F-EDIT-004', feature: 'エディタ（記法入力＋プレビュー）', layer: 'integration', status: 'proposed', scenario: '入力が正本blockへ変換され dirty 化', given: 'エディタ', when: '本文を編集', then: '正本(block列)へ反映され未保存(dirty)になる', note: 'デバウンスは D-EDIT-1' },
         { id: 'F-EDIT-005', feature: 'エディタ（記法入力＋プレビュー）', layer: 'integration', status: 'proposed', scenario: '不正記法でもプレビューが壊れない', given: 'エディタ', when: '｜未完《よみ など閉じ括弧欠落を入力', then: 'プレビューはクラッシュせずプレーン表示（P7と整合）' },
-        { id: 'F-EDIT-006', feature: 'エディタ（記法入力＋プレビュー）', layer: 'e2e', status: 'proposed', scenario: '分割ペイン表示', given: 'エディタ画面', when: '表示', then: '入力ペインとプレビューペインが並ぶ', note: '向き/モバイルは D-EDIT-2' },
+        { id: 'F-EDIT-006', feature: 'エディタ（記法入力＋プレビュー）', layer: 'e2e', status: 'proposed', scenario: '分割ペイン表示', given: 'エディタ画面', when: '表示', then: '入力ペインとプレビューペインが並ぶ', note: '向き/モバイルは D-EDIT-2（決定済：lg以上は横並び、lg未満はタブ切替）' },
         { id: 'F-EDIT-007', feature: 'エディタ（記法入力＋プレビュー）', layer: 'e2e', status: 'proposed', scenario: 'IME変換が壊れない', given: '日本語IME', when: '変換中の未確定文字を入力', then: '変換が分断されず確定後にプレビュー更新（textareaなのでcompositionが安全）' },
 
         // ── 自動保存・dirty・最小版管理
@@ -471,7 +471,9 @@
         { id: 'D-FOLDER-2', title: '取り込み時のファイル↔話 対応付けキー', options: ['ファイル名の話番号', '先頭メタコメント行(id)', '別 manifest ファイル'] },
         { id: 'D-FOLDER-3', title: 'FS Access 非対応ブラウザの fallback', options: ['zip 一括 DL／アップロード', '話ごと個別 DL', 'クリップボード往復'] },
         { id: 'D-EDIT-1', title: 'プレビュー更新のデバウンス', options: ['即時（入力ごと）', '150ms', '300ms'] },
-        { id: 'D-EDIT-2', title: '分割ペインの向き/モバイル', options: ['横並び固定', '縦並び', 'タブ切替', '画面幅で自動'] },
+        { id: 'D-EDIT-2', title: '分割ペインの向き/モバイル', options: ['横並び固定', '縦並び', 'タブ切替', '画面幅で自動'], decided: 'lg(1024px)以上は横並び固定、lg未満は本文/プレビューのタブ切替。縦書きは画面高＝行長のため縦積み・同時表示は不可（1行10数文字になる）。切替は max-lg: の条件クラスのみで行い JS のビューポート判定は使わない（lg以上では不活性＝デスクトップの描画は不変）' },
+        { id: 'D-EDIT-4', title: '構造化3機能のモバイル対応', options: ['タッチ対応する', 'PC専用に据え置く'], decided: 'PC専用に据え置く。lg未満では入口（SideNavのNavRow）を隠し、activeScreen も本文へリセットする。dnd-kit / React Flow のノード・辺の削除が opacity-0 group-hover のみでタッチから到達できず、中途半端に動くものを晒す方が体験として悪いため。CSSだけで隠すと「開いたまま縮めた」時に操作不能画面へ閉じ込められるので JS 判定（useIsNarrow）を使う' },
+        { id: 'D-EDIT-5', title: '@参照サジェストのモバイル形態', options: ['キャレット追従を修正', 'キーボード直上のバー', 'モバイルでは出さない'], decided: 'キーボード直上の横1列バー（第2弾で実装）。キャレット追従は画面端クランプ・上下反転・visualViewport 追従が必要で不安定要因が残るため、座標計算を捨てて堅牢性を取る。Enter は改行に返し確定はタップのみ' },
         { id: 'D-EDIT-3', title: 'プレビューを縦書きにするか', options: ['横書き（読みやすさ優先）', '縦書き（EPUB一致）', 'トグル切替'] },
         { id: 'D-SAVE-1', title: '自動保存の契機', options: ['idle 数秒（入力停止）', '一定間隔', 'blur/ページ離脱時', '複数併用'] },
         { id: 'D-SAVE-2', title: 'スナップショット保持数と契機', options: ['手動のみ・上限N件', '自動でも版を切る・上限N件', '無制限（容量まで）'] },

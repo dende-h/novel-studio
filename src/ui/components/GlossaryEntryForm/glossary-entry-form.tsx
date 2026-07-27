@@ -184,7 +184,7 @@ export function GlossaryEntryForm({
                   id={`${uid}-category`}
                   value={category}
                   onChange={(e) => setCategory(e.target.value)}
-                  className="h-9 w-full rounded-md border border-input bg-surface-container-lowest px-3 font-sans text-on-surface text-sm outline-none transition-colors focus:border-primary"
+                  className="h-9 w-full rounded-md border border-input bg-surface-container-lowest px-3 font-sans text-base text-on-surface outline-none transition-colors focus:border-primary md:text-sm"
                 >
                   <option value="">未分類</option>
                   {GLOSSARY_CATEGORIES.map((c) => (

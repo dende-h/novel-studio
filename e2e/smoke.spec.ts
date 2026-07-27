@@ -245,30 +245,8 @@ test('サイドバーのマイライブラリでエディタから戻れる', as
   await expect(page.getByRole('heading', { name: 'マイライブラリ' })).toBeVisible()
 })
 
-test('スマホ幅（iPad mini 横未満）では非対応案内が全面表示、iPad mini 横では通常表示', async ({
-  page,
-}) => {
-  const notice = page.getByText('スマートフォンには対応していません')
-
-  // スマホ縦相当（< 1024px）：非対応案内が見え、本体を覆って操作を遮る
-  await page.setViewportSize({ width: 390, height: 844 })
-  await page.goto('/')
-  await expect(notice).toBeVisible()
-  // 画面中央の最前面要素が案内の内側＝本体が覆われている（占有では toBeHidden が効かないため elementFromPoint で確認）
-  const blocked = await page.evaluate(() => {
-    const top = document.elementFromPoint(window.innerWidth / 2, window.innerHeight / 2)
-    const root = [...document.querySelectorAll('div')].find((d) =>
-      d.textContent?.includes('スマートフォンには対応していません'),
-    )
-    return !!(top && root && (root === top || root.contains(top)))
-  })
-  expect(blocked).toBe(true)
-
-  // iPad mini 横相当（1024px）：案内は消え（lg:hidden）、本体が使える
-  await page.setViewportSize({ width: 1024, height: 768 })
-  await expect(notice).toBeHidden()
-  await expect(page.getByRole('heading', { name: 'マイライブラリ' })).toBeVisible()
-})
+// 「スマホ幅では非対応案内を全面表示」のテストは、ライブラリ／エディタをスマホ対応した
+// 時点で仕様ごと廃止した。狭幅の回帰は e2e/mobile.spec.ts（mobile プロジェクト）が担う。
 
 test('作品の削除 → ライブラリから消える', async ({ page }) => {
   await page.goto('/')

@@ -236,8 +236,6 @@ export function Root({ store }: RootProps) {
           onNotify={show}
         />
       )}
-      {/* スマホ等の狭い画面（lg 未満）では本体を覆って非対応を案内する。 */}
-      <SmallScreenNotice />
     </>
   )
 }

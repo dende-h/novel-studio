@@ -31,7 +31,8 @@ export function ReplacePanel({ value, onApply, onClose }: ReplacePanelProps) {
   return (
     <section
       aria-labelledby={titleId}
-      className="absolute top-2.5 right-3.5 z-20 flex w-[280px] flex-col gap-2.5 rounded-lg border border-outline-variant/30 bg-surface-container-lowest p-3.5 font-sans shadow-lg"
+      // 狭幅は 280px の浮きカードだと本文をほぼ覆うため、上端の全幅シートにする。
+      className="absolute top-2.5 right-3.5 z-20 flex w-[280px] flex-col gap-2.5 rounded-lg border border-outline-variant/30 bg-surface-container-lowest p-3.5 font-sans shadow-lg max-lg:inset-x-2 max-lg:w-auto"
     >
       <h3 id={titleId} className="font-medium text-[13px] text-on-surface">
         一括置換
@@ -42,7 +43,7 @@ export function ReplacePanel({ value, onApply, onClose }: ReplacePanelProps) {
         placeholder="検索する語"
         value={findQ}
         onChange={(e) => setFindQ(e.target.value)}
-        className="h-[34px] rounded-md border border-outline-variant/40 bg-surface-container-lowest px-3 text-[13px] text-on-surface outline-none transition-colors placeholder:text-on-surface-variant/50 focus:border-primary"
+        className="h-[34px] rounded-md border border-outline-variant/40 bg-surface-container-lowest px-3 text-base text-on-surface outline-none transition-colors placeholder:text-on-surface-variant/50 focus:border-primary md:text-[13px]"
       />
       <input
         type="text"
@@ -50,7 +51,7 @@ export function ReplacePanel({ value, onApply, onClose }: ReplacePanelProps) {
         placeholder="置換後の語"
         value={replQ}
         onChange={(e) => setReplQ(e.target.value)}
-        className="h-[34px] rounded-md border border-outline-variant/40 bg-surface-container-lowest px-3 text-[13px] text-on-surface outline-none transition-colors placeholder:text-on-surface-variant/50 focus:border-primary"
+        className="h-[34px] rounded-md border border-outline-variant/40 bg-surface-container-lowest px-3 text-base text-on-surface outline-none transition-colors placeholder:text-on-surface-variant/50 focus:border-primary md:text-[13px]"
       />
       <p className="text-[11px] text-on-surface-variant">
         {findQ !== '' ? `${count}件 見つかりました` : 'この話の本文だけを対象に置換します'}

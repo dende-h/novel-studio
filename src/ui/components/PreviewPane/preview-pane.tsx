@@ -54,7 +54,9 @@ export function PreviewPane({ html, onRefClick, orientation = 'vertical' }: Prev
   return (
     <div
       className={cn(
-        'h-full min-h-0 bg-surface-variant px-8 py-9',
+        // 縦書きは py が行長（1列に入る文字数）を直接削るので、狭い画面では余白を詰める。
+        // 左右の余白はスマホのエッジスワイプ（ブラウザの「戻る」）のデッドゾーンも兼ねる。
+        'h-full min-h-0 overscroll-contain bg-surface-variant px-4 py-5 sm:px-8 sm:py-9',
         vertical ? 'overflow-hidden' : 'overflow-y-auto',
       )}
     >

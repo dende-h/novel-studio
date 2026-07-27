@@ -7,6 +7,7 @@ import {
   HardDrive,
   History,
   LoaderCircle,
+  Menu,
 } from 'lucide-react'
 import type React from 'react'
 import { lazy, Suspense } from 'react'
@@ -39,6 +40,9 @@ interface TopAppBarProps {
   /** 履歴ドロワーの開閉トグル。未指定なら非表示 */
   onToggleHistory?: () => void
   historyOpen?: boolean
+  /** サイドバー（ドロワー）の開閉トグル。狭幅でのみ表示。未指定なら非表示 */
+  onToggleNav?: () => void
+  navOpen?: boolean
 }
 
 function SaveIndicator({ dirty, status }: SaveState) {
@@ -46,7 +50,8 @@ function SaveIndicator({ dirty, status }: SaveState) {
     return (
       <span className="flex items-center gap-1.5 font-sans text-on-surface-variant text-xs">
         <LoaderCircle className="size-4 animate-spin" aria-hidden />
-        保存中…
+        {/* 狭幅は横幅を稼ぐためラベルを視覚的に畳む。sr-only なので読み上げには残る。 */}
+        <span className="max-sm:sr-only">保存中…</span>
       </span>
     )
   }
@@ -54,7 +59,7 @@ function SaveIndicator({ dirty, status }: SaveState) {
     return (
       <span className="flex items-center gap-1.5 font-sans text-on-surface-variant text-xs">
         <Check className="size-4 text-primary" aria-hidden />
-        保存済み
+        <span className="max-sm:sr-only">保存済み</span>
       </span>
     )
   }
@@ -62,14 +67,14 @@ function SaveIndicator({ dirty, status }: SaveState) {
     return (
       <span className="flex items-center gap-1.5 font-sans text-on-surface-variant text-xs">
         <CircleDot className="size-4" aria-hidden />
-        未保存
+        <span className="max-sm:sr-only">未保存</span>
       </span>
     )
   }
   return (
     <span className="flex items-center gap-1.5 font-sans text-on-surface-variant/60 text-xs">
       <HardDrive className="size-4" aria-hidden />
-      ローカル保存
+      <span className="max-sm:sr-only">ローカル保存</span>
     </span>
   )
 }
@@ -134,10 +139,24 @@ export function TopAppBar({
   exportDisabled,
   onToggleHistory,
   historyOpen,
+  onToggleNav,
+  navOpen,
 }: TopAppBarProps) {
   return (
-    <header className="flex h-14 shrink-0 items-center justify-between border-outline-variant/30 border-b bg-surface-container-lowest px-5">
-      <div className="flex min-w-0 items-center gap-3.5 pl-3">
+    <header className="flex h-14 shrink-0 items-center justify-between border-outline-variant/30 border-b bg-surface-container-lowest px-3 max-lg:h-12 sm:px-5">
+      <div className="flex min-w-0 items-center gap-3.5 pl-0 sm:pl-3">
+        {/* 狭幅ではサイドバーがドロワーになるので、その開閉口をここに置く。 */}
+        {onToggleNav ? (
+          <button
+            type="button"
+            onClick={onToggleNav}
+            aria-label="メニュー"
+            aria-expanded={navOpen}
+            className="-ml-1 flex size-9 shrink-0 items-center justify-center rounded-full text-on-surface-variant transition-colors hover:bg-surface-container-low hover:text-on-surface lg:hidden"
+          >
+            <Menu className="size-5" aria-hidden />
+          </button>
+        ) : null}
         <button
           type="button"
           onClick={onBrandClick}
@@ -150,19 +169,20 @@ export function TopAppBar({
                 src="/logo-clean.png"
                 alt=""
                 aria-hidden
-                className="h-10 w-auto object-contain"
+                className="h-8 w-auto object-contain sm:h-10"
               />
               {/* タイトルロゴは濃紺の文字画像。暗背景では消えるのでダーク時のみ反転して明色にする。 */}
               <img
                 src="/app_title_text-clean.png"
                 alt="コトノハ-leaf-"
-                className="h-10 w-auto object-contain dark:opacity-90 dark:brightness-0 dark:invert"
+                className="h-8 w-auto object-contain sm:h-10 dark:opacity-90 dark:brightness-0 dark:invert"
               />
             </>
           )}
         </button>
         {workTitle ? (
-          <span className="flex min-w-0 items-center gap-2 text-on-surface-variant text-xs">
+          // 狭幅では作品名を出さない（ドロワー内の作品カードで分かるため、横幅を本文に譲る）。
+          <span className="flex min-w-0 items-center gap-2 text-on-surface-variant text-xs max-sm:hidden">
             <span aria-hidden="true" className="text-outline-variant">
               ／
             </span>
@@ -196,7 +216,7 @@ export function TopAppBar({
             className="gap-2"
           >
             <Download className="size-4" aria-hidden />
-            書き出し
+            <span className="max-sm:hidden">書き出し</span>
           </Button>
         ) : null}
         <AccountControl />

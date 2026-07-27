@@ -21,6 +21,17 @@ export default defineConfig({
     {
       name: 'chromium',
       use: { ...devices['Desktop Chrome'] },
+      // モバイル用の spec を除外する。既存の spec は広い画面を前提に本文幅などを
+      // assert しており、スマホ幅で走らせると落ちるため、両者はプロジェクトで分ける。
+      testIgnore: /mobile\.spec\.ts/,
+    },
+    {
+      // スマホ回帰。CI は chromium しか入れない（ci.yml の playwright install --with-deps chromium）ため
+      // WebKit の iPhone ではなく Chromium ベースの Pixel 5（isMobile + hasTouch）でエミュレートする。
+      // iOS 固有のキーボード・visualViewport・エッジスワイプは原理的にここでは検証できず、実機確認に委ねる。
+      name: 'mobile',
+      use: { ...devices['Pixel 5'] },
+      testMatch: /mobile\.spec\.ts/,
     },
   ],
 })

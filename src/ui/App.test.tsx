@@ -1,9 +1,10 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { describe, expect, it } from 'vitest'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { afterEach, describe, expect, it } from 'vitest'
 import { ProfileRepository } from '../core/profile'
 import { SnapshotRepository } from '../core/snapshot/snapshotRepository'
 import { ActivityRepository } from '../core/storage/activityRepository'
 import { MemoryStore } from '../core/storage/memoryStore'
+import { StructureRepository } from '../core/storage/structureRepository'
 import type { KeyValueStore } from '../core/storage/types'
 import { WorkRepository } from '../core/storage/workRepository'
 import { App } from './App'
@@ -273,5 +274,60 @@ describe('App（エディタ結合：本文/プレビュー・自動保存・履
     // 閉じるボタンで閉じる
     fireEvent.click(screen.getByRole('button', { name: '履歴を閉じる' }))
     expect(screen.queryByText('ローカル・セーフティネット')).toBeNull()
+  })
+})
+
+/**
+ * 構造化3機能（アウトライン／相関図／マインドマップ）は PC 専用。
+ * dnd-kit / React Flow のノード・辺の削除が opacity-0 group-hover のみでタッチから到達できず、
+ * 中途半端に動くものを出すより閉じる、という判断（D-EDIT-4）。
+ */
+describe('App（構造ツールの画面幅ゲート）', () => {
+  const setWidth = (width: number) => {
+    const { happyDOM } = window as unknown as {
+      happyDOM: { setViewport: (v: { width: number }) => void }
+    }
+    act(() => {
+      happyDOM.setViewport({ width })
+    })
+  }
+
+  const renderWithStructure = async (kv: KeyValueStore = new MemoryStore()) => {
+    const store = makeStore(kv)
+    await seedWorkEpisode(store)
+    return render(<App store={store} structureRepo={new StructureRepository(kv)} canUseStructure />)
+  }
+
+  afterEach(() => setWidth(1280))
+
+  it('広い画面では構造ツールの入口が出る', async () => {
+    setWidth(1280)
+    await renderWithStructure()
+    expect(await screen.findByRole('button', { name: 'アウトライン' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '相関図' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'マインドマップ' })).toBeInTheDocument()
+  })
+
+  it('狭い画面では構造ツールの入口を出さない', async () => {
+    setWidth(390)
+    await renderWithStructure()
+    await screen.findByRole('textbox', { name: '本文' })
+    expect(screen.queryByRole('button', { name: 'アウトライン' })).toBeNull()
+    expect(screen.queryByRole('button', { name: '相関図' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'マインドマップ' })).toBeNull()
+  })
+
+  // 回転・分割ビュー・ウィンドウ縮小で「操作できない画面に閉じ込められる」ことを防ぐ。
+  // 入口を CSS で隠すだけでは activeScreen が残ってしまうため、JS で本文へ戻している。
+  it('構造ツールを開いたまま狭くすると本文へ戻る（閉じ込め防止）', async () => {
+    setWidth(1280)
+    await renderWithStructure()
+
+    fireEvent.click(await screen.findByRole('button', { name: 'アウトライン' }))
+    await waitFor(() => expect(screen.queryByRole('textbox', { name: '本文' })).toBeNull())
+
+    setWidth(390)
+    // 本文エディタが戻ってくる＝activeScreen が 'episodes' にリセットされた
+    expect(await screen.findByRole('textbox', { name: '本文' })).toBeInTheDocument()
   })
 })

@@ -31,6 +31,7 @@ import { Button } from '@/ui/components/ui/button'
 import { WorkMetaDialog } from '@/ui/components/WorkMetaDialog/work-meta-dialog'
 import { useAutosave } from '@/ui/hooks/use-autosave'
 import { useEditorStore } from '@/ui/hooks/use-editor-store'
+import { useIsNarrow } from '@/ui/hooks/use-narrow'
 import type { EditorStore } from '@/ui/store/editorStore'
 
 /** フォーム値の空文字は未設定(undefined)へ畳んでスキーマの任意項目を綺麗に保つ。 */
@@ -100,6 +101,9 @@ export function App({
   >('episodes')
   // プレビューの組み方向（日本語小説の標準＝縦書きが既定。ツールバーで切替）。
   const [orientation, setOrientation] = useState<'vertical' | 'horizontal'>('vertical')
+  // 狭幅（lg 未満）で本文とプレビューのどちらを見せるか。縦書きは画面高＝行長のため
+  // 上下に分割すると読めなくなる。lg 以上は max-lg: が不活性で従来どおり横並びのまま（D-EDIT-2）。
+  const [pane, setPane] = useState<'editor' | 'preview'>('editor')
   // 一括置換パネル（この話の本文だけを対象）。
   const [replaceOpen, setReplaceOpen] = useState(false)
   // 図鑑パネル（この話に登場＋選択 entry のチラ見）。@参照クリックでも開く。
@@ -122,6 +126,22 @@ export function App({
   }, [store])
 
   const work = state.work
+
+  // 構造化3機能（アウトライン/相関図/マインドマップ）は PC 専用。dnd-kit / React Flow の
+  // ノード・辺の削除が opacity-0 group-hover のみでタッチから到達できないため、狭幅では入口を消す。
+  const narrow = useIsNarrow()
+  const structureAvailable = Boolean(work && canUseStructure && structureRepo && !narrow)
+  // 広い画面で構造ツールを開いたまま縮める／回転すると、入口が消えても activeScreen が
+  // 残って操作不能な画面に閉じ込められる。CSS では state を戻せないので JS で戻す。
+  useEffect(() => {
+    if (
+      narrow &&
+      (activeScreen === 'outline' || activeScreen === 'mindmap' || activeScreen === 'chart')
+    ) {
+      setActiveScreen('episodes')
+    }
+  }, [narrow, activeScreen])
+
   // 辞書 entry の name+aliases から解決済み名の集合を作り、プレビューの ref を
   // 解決（グレーリンク）／未解決（点線）で描き分ける（D-GLOS-PREVIEW-API）。
   const resolvedNames = useMemo(() => resolvedNameSet(work?.glossary ?? []), [work?.glossary])
@@ -219,15 +239,9 @@ export function App({
           onNavigateHelp={onNavigateHelp}
           onNavigateEpisodes={work ? () => setActiveScreen('episodes') : undefined}
           onNavigateGlossary={work ? () => setActiveScreen('glossary') : undefined}
-          onNavigateMindmap={
-            work && canUseStructure && structureRepo ? () => setActiveScreen('mindmap') : undefined
-          }
-          onNavigateChart={
-            work && canUseStructure && structureRepo ? () => setActiveScreen('chart') : undefined
-          }
-          onNavigateOutline={
-            work && canUseStructure && structureRepo ? () => setActiveScreen('outline') : undefined
-          }
+          onNavigateMindmap={structureAvailable ? () => setActiveScreen('mindmap') : undefined}
+          onNavigateChart={structureAvailable ? () => setActiveScreen('chart') : undefined}
+          onNavigateOutline={structureAvailable ? () => setActiveScreen('outline') : undefined}
           cta={{
             label: '新しいエピソード',
             onClick: () => setNewEpisodeOpen(true),
@@ -341,9 +355,42 @@ export function App({
           {/* エディタツールバー */}
           <div className="flex h-[46px] shrink-0 items-center justify-between gap-3 border-outline-variant/30 border-b bg-surface-container-lowest px-4">
             <div className="flex min-w-0 items-center gap-2.5">
-              <span className="truncate font-medium font-sans text-[13px] text-on-surface">
+              {/* 狭幅では話タイトルを畳む（ドロワーの話一覧で分かる）。代わりに面の切替を置く。 */}
+              <span className="truncate font-medium font-sans text-[13px] text-on-surface max-lg:hidden">
                 {episode.title}
               </span>
+              {/* 本文／プレビューの切替（狭幅のみ）。組み方向トグルと同じ視覚言語で揃える。 */}
+              <fieldset
+                aria-label="表示する面"
+                className="m-0 flex items-center gap-1 border-0 p-0 lg:hidden"
+              >
+                <button
+                  type="button"
+                  aria-pressed={pane === 'editor'}
+                  onClick={() => setPane('editor')}
+                  className={cn(
+                    'flex h-9 items-center rounded-md px-3 font-sans text-xs transition-colors',
+                    pane === 'editor'
+                      ? 'bg-primary text-white'
+                      : 'text-on-surface-variant hover:bg-surface-container-high',
+                  )}
+                >
+                  本文
+                </button>
+                <button
+                  type="button"
+                  aria-pressed={pane === 'preview'}
+                  onClick={() => setPane('preview')}
+                  className={cn(
+                    'flex h-9 items-center rounded-md px-3 font-sans text-xs transition-colors',
+                    pane === 'preview'
+                      ? 'bg-primary text-white'
+                      : 'text-on-surface-variant hover:bg-surface-container-high',
+                  )}
+                >
+                  プレビュー
+                </button>
+              </fieldset>
             </div>
             <div className="flex shrink-0 items-center gap-2">
               <Button
@@ -357,12 +404,15 @@ export function App({
                 )}
               >
                 <Replace className="size-4" aria-hidden />
-                置換
+                <span className="max-lg:hidden">置換</span>
               </Button>
-              {/* 組み方向の切替（プレビュー） */}
+              {/* 組み方向の切替（プレビュー）。狭幅では本文タブの時に意味を持たないので畳む。 */}
               <fieldset
                 aria-label="本文の組み方向"
-                className="m-0 flex items-center gap-1 border-0 p-0"
+                className={cn(
+                  'm-0 flex items-center gap-1 border-0 p-0',
+                  pane === 'editor' && 'max-lg:hidden',
+                )}
               >
                 <button
                   type="button"
@@ -406,14 +456,19 @@ export function App({
                 )}
               >
                 <BookMarked className="size-4" aria-hidden />
-                図鑑
+                <span className="max-lg:hidden">図鑑</span>
               </Button>
             </div>
           </div>
 
-          {/* 本文＋プレビュー */}
+          {/* 本文＋プレビュー。lg 以上は従来どおり横並び、lg 未満は pane で切り替える（D-EDIT-2）。 */}
           <div className="flex min-h-0 flex-1">
-            <div className="relative flex min-w-0 flex-[1.3_1_0%] flex-col border-outline-variant/30 border-r">
+            <div
+              className={cn(
+                'relative flex min-w-0 flex-[1.3_1_0%] flex-col border-outline-variant/30 lg:border-r',
+                pane !== 'editor' && 'max-lg:hidden',
+              )}
+            >
               <EditorPane
                 value={state.draft}
                 onChange={(v) => store.setDraft(v)}
@@ -432,14 +487,17 @@ export function App({
                 />
               ) : null}
             </div>
-            <div className="min-w-0 flex-[1_1_0%]">
+            <div className={cn('min-w-0 flex-[1_1_0%]', pane !== 'preview' && 'max-lg:hidden')}>
               <PreviewPane html={previewHtml} onRefClick={onRefClick} orientation={orientation} />
             </div>
           </div>
 
           {/* ステータスバー */}
-          <div className="flex h-[38px] shrink-0 items-center justify-between border-outline-variant/30 border-t bg-surface-container-lowest px-4">
-            <span className="font-sans text-[11px] text-on-surface-variant/60">自動保存 ON</span>
+          <div className="flex h-[38px] shrink-0 items-center justify-between border-outline-variant/30 border-t bg-surface-container-lowest px-4 max-lg:h-7">
+            {/* 狭幅は縦を本文に譲る（TopAppBar+ツールバー+ここで既に 120px 超を消費している）。 */}
+            <span className="font-sans text-[11px] text-on-surface-variant/60 max-lg:hidden">
+              自動保存 ON
+            </span>
             <span className="font-sans text-[12px] text-on-surface-variant tabular-nums">
               {lineCount}行 ・ {charCount}文字
               {todayNet !== null
