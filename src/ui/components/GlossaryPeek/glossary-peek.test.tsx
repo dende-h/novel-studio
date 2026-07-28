@@ -97,7 +97,7 @@ describe('GlossaryPeek（図鑑パネル）', () => {
     )
     fireEvent.click(screen.getByRole('button', { name: '図鑑パネルを閉じる' }))
     expect(onClose).toHaveBeenCalledTimes(1)
-    fireEvent.click(screen.getByRole('button', { name: '図鑑で編集' }))
+    fireEvent.click(screen.getByRole('button', { name: '編集' }))
     expect(onEdit).toHaveBeenCalledTimes(1)
     fireEvent.click(screen.getByRole('button', { name: '新しく登録' }))
     expect(onNewEntry).toHaveBeenCalledTimes(1)

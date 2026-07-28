@@ -1,5 +1,5 @@
 import { BookMarked, Plus, Replace } from 'lucide-react'
-import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { localDateKey } from '@/core/activity'
 import { blocksToHtml } from '@/core/exporter/toHtml'
 import { findAppearances, resolvedNameSet, resolveRef } from '@/core/glossary'
@@ -12,7 +12,11 @@ import type { StructureRepository } from '@/core/storage/structureRepository'
 import { cn } from '@/lib/utils'
 import { AppShell } from '@/ui/components/AppShell/app-shell'
 import { ConfirmDialog } from '@/ui/components/ConfirmDialog/confirm-dialog'
-import { EditorPane } from '@/ui/components/EditorPane/editor-pane'
+import {
+  EditorPane,
+  type EditorPaneHandle,
+  type NotationKind,
+} from '@/ui/components/EditorPane/editor-pane'
 import { ReplacePanel } from '@/ui/components/EditorPane/replace-panel'
 import { ExportDialog } from '@/ui/components/ExportDialog/export-dialog'
 import {
@@ -74,6 +78,15 @@ const CorrelationChartView = lazy(
 )
 const OutlineView = lazy(() => import('@/ui/components/OutlineView/outline-view'))
 
+/** エディタツールバーの記法ボタン（ショートカットは EditorPane の SHORTCUTS と対応）。 */
+const NOTATION_BUTTONS: { kind: NotationKind; label: string; title: string }[] = [
+  { kind: 'ruby', label: 'ルビ', title: 'ルビ ｜漢字《かんじ》（Ctrl/Cmd + I）' },
+  { kind: 'dots', label: '傍点', title: '傍点 《《強調》》（Ctrl/Cmd + B）' },
+  // 「図鑑」はナビ（図鑑ページ）とツールバー（図鑑パネル）で既に使っているため、
+  // 記法ボタンは挿入されるもの＝参照で呼び分ける。
+  { kind: 'ref', label: '参照', title: '図鑑参照 [[用語]]（Ctrl/Cmd + K）' },
+]
+
 /** 自動保存：本文の入力が止まってから保存するまでの待ち時間(ms)。 */
 const AUTOSAVE_DELAY_MS = 1500
 
@@ -112,6 +125,10 @@ export function App({
   const [peekId, setPeekId] = useState<string | null>(null)
   // 未解決 @参照クリックで起動するクイック作成（プリフィルする名前。'' は空フォーム）。
   const [quickCreateName, setQuickCreateName] = useState<string | null>(null)
+  // 図鑑パネルからの編集対象。作成と同じくその場のモーダルで完結させる（本文から離れさせない）。
+  const [editEntryId, setEditEntryId] = useState<string | null>(null)
+  // ツールバーの記法ボタンから本文へ挿入するためのハンドル（選択範囲は EditorPane が持つ）。
+  const editorRef = useRef<EditorPaneHandle>(null)
   const [deleteEpisodeTarget, setDeleteEpisodeTarget] = useState<{
     id: string
     title: string
@@ -169,6 +186,25 @@ export function App({
   const peekEntry = useMemo(
     () => (peekId ? ((work?.glossary ?? []).find((e) => e.id === peekId) ?? null) : null),
     [peekId, work?.glossary],
+  )
+  // 編集対象も id 参照で引く（改名・削除に追従し、古い値でフォームを開かない）。
+  const editEntry = useMemo(
+    () => (editEntryId ? ((work?.glossary ?? []).find((e) => e.id === editEntryId) ?? null) : null),
+    [editEntryId, work?.glossary],
+  )
+
+  /**
+   * 図鑑 entry の編集確定。改名を先に確定（衝突は reject させてダイアログに出す）、
+   * その後フィールドを更新する。図鑑ページ（GlossaryView）内の編集と同じ順序。
+   */
+  const submitEntryEdit = useCallback(
+    async (entry: GlossaryEntry, values: GlossaryFormValues) => {
+      if (values.name !== entry.name) {
+        await store.renameGlossaryEntry(entry.id, values.name, { rewriteBody: false })
+      }
+      await store.updateGlossaryEntry(entry.id, toFieldPatch(values))
+    },
+    [store],
   )
 
   // プレビューの @参照クリック：解決済み→図鑑パネルで表示、未解決→当該名でクイック作成。
@@ -249,6 +285,8 @@ export function App({
           }}
           profile={state.profile}
           onEditProfile={() => setProfileOpen(true)}
+          // 執筆中に作品情報（あらすじ・表紙）を直せるようにする。ダイアログは既存のものをそのまま開く。
+          onEditWorkMeta={work ? () => setMetaOpen(true) : undefined}
           episodes={work?.episodes.map((e) => ({ id: e.id, title: e.title })) ?? []}
           currentEpisodeId={state.currentEpisodeId}
           onSelectEpisode={(id) => {
@@ -275,9 +313,10 @@ export function App({
             onSelect={(id) => setPeekId(id)}
             onQuickCreate={(name) => setQuickCreateName(name)}
             onClose={() => setGlossaryPanelOpen(false)}
+            // 作成と同じくその場のモーダルで編集する（図鑑ページへ飛ばさない）。
+            // パネルは開いたままにして、編集後にチップ一覧へ自然に戻れるようにする。
             onEdit={() => {
-              setGlossaryPanelOpen(false)
-              setActiveScreen('glossary')
+              if (peekEntry) setEditEntryId(peekEntry.id)
             }}
             onNewEntry={() => setQuickCreateName('')}
           />
@@ -391,6 +430,23 @@ export function App({
                   プレビュー
                 </button>
               </fieldset>
+              {/* 記法の挿入（PC のみ。狭幅はキーボード直上の記法バーが担当する）。
+                  選択があれば囲み、無ければ空の型を置く。ショートカットは EditorPane 側。 */}
+              <div className="flex items-center gap-1 max-lg:hidden">
+                {NOTATION_BUTTONS.map(({ kind, label, title }) => (
+                  <button
+                    key={kind}
+                    type="button"
+                    title={title}
+                    // クリックで textarea のフォーカス・選択範囲を失うと挿入先が分からなくなる。
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => editorRef.current?.applyNotation(kind)}
+                    className="flex h-[26px] items-center rounded-md px-2.5 font-sans text-on-surface-variant text-xs transition-colors hover:bg-surface-container-high hover:text-on-surface"
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
             </div>
             <div className="flex shrink-0 items-center gap-2">
               <Button
@@ -470,6 +526,7 @@ export function App({
               )}
             >
               <EditorPane
+                ref={editorRef}
                 value={state.draft}
                 onChange={(v) => store.setDraft(v)}
                 glossary={work?.glossary ?? []}
@@ -552,6 +609,18 @@ export function App({
         submitLabel="変更"
         onSubmit={(title) => {
           if (renameEpisodeTarget) void store.renameEpisode(renameEpisodeTarget.id, title)
+        }}
+      />
+      {/* 図鑑パネルからの編集（名前の変更も同じダイアログ。旧名は自動で別名に残る）。 */}
+      <GlossaryEntryForm
+        open={editEntry !== null}
+        onOpenChange={(o) => {
+          if (!o) setEditEntryId(null)
+        }}
+        mode="edit"
+        initial={editEntry ?? undefined}
+        onSubmit={async (values) => {
+          if (editEntry) await submitEntryEdit(editEntry, values)
         }}
       />
       {/* 未解決 @参照クリックからのクイック作成（名前プリフィル）。 */}

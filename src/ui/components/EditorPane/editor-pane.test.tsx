@@ -1,8 +1,8 @@
 import { act, fireEvent, render, screen, within } from '@testing-library/react'
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { GlossaryEntry } from '@/core/schema'
-import { EditorPane } from './editor-pane'
+import { EditorPane, type EditorPaneHandle } from './editor-pane'
 
 describe('EditorPane（Presentational）', () => {
   it('value を textarea に表示', () => {
@@ -247,5 +247,150 @@ describe('EditorPane（@ サジェスト・狭幅＝キーボード直上のバ�
     type(ta, '@アリ')
     fireEvent.keyDown(ta, { key: 'Enter' })
     expect(ta).toHaveValue('[[アリス]]')
+  })
+})
+
+// --- 記法の挿入（ツールバー／ショートカット） ---------------------------------
+
+/** ref ハンドルを露出し、記法挿入をテストから呼べるようにしたハーネス。 */
+function NotationHarness({ initial = '' }: { initial?: string }) {
+  const [value, setValue] = useState(initial)
+  const ref = useRef<EditorPaneHandle>(null)
+  return (
+    <>
+      <button type="button" onClick={() => ref.current?.applyNotation('ruby')}>
+        ルビ
+      </button>
+      <button type="button" onClick={() => ref.current?.applyNotation('dots')}>
+        傍点
+      </button>
+      <button type="button" onClick={() => ref.current?.applyNotation('ref')}>
+        図鑑
+      </button>
+      <EditorPane ref={ref} value={value} onChange={setValue} />
+    </>
+  )
+}
+
+/** textarea に選択範囲を設定する（fireEvent.select で onSelect も走らせる）。 */
+const select = (ta: HTMLTextAreaElement, start: number, end: number) => {
+  ta.setSelectionRange(start, end)
+  fireEvent.select(ta)
+}
+
+describe('EditorPane（記法の挿入）', () => {
+  it('選択した漢字にルビ枠を付ける（漢字だけなのでパイプ無し）', () => {
+    render(<NotationHarness initial="黄昏の街" />)
+    const ta = screen.getByRole('textbox', { name: '本文' }) as HTMLTextAreaElement
+    select(ta, 0, 2)
+    fireEvent.click(screen.getByRole('button', { name: 'ルビ' }))
+    expect(ta).toHaveValue('黄昏《》の街')
+    // 読みを打てるよう 《》 の中にキャレットが来る
+    expect(ta.selectionStart).toBe('黄昏《'.length)
+  })
+
+  it('かな混じりの親文字にはパイプを付ける', () => {
+    render(<NotationHarness initial="お嬢さんが来た" />)
+    const ta = screen.getByRole('textbox', { name: '本文' }) as HTMLTextAreaElement
+    select(ta, 0, 4)
+    fireEvent.click(screen.getByRole('button', { name: 'ルビ' }))
+    expect(ta).toHaveValue('｜お嬢さん《》が来た')
+  })
+
+  it('選択なしのルビは空の型を置き、親文字の位置にキャレットを移す', () => {
+    render(<NotationHarness />)
+    const ta = screen.getByRole('textbox', { name: '本文' }) as HTMLTextAreaElement
+    fireEvent.click(screen.getByRole('button', { name: 'ルビ' }))
+    expect(ta).toHaveValue('｜《》')
+    expect(ta.selectionStart).toBe(1)
+  })
+
+  it('選択を傍点で囲む', () => {
+    render(<NotationHarness initial="これは重要な場面" />)
+    const ta = screen.getByRole('textbox', { name: '本文' }) as HTMLTextAreaElement
+    select(ta, 3, 5)
+    fireEvent.click(screen.getByRole('button', { name: '傍点' }))
+    expect(ta).toHaveValue('これは《《重要》》な場面')
+  })
+
+  it('選択なしの傍点は括弧の中にキャレットを置く', () => {
+    render(<NotationHarness />)
+    const ta = screen.getByRole('textbox', { name: '本文' }) as HTMLTextAreaElement
+    fireEvent.click(screen.getByRole('button', { name: '傍点' }))
+    expect(ta).toHaveValue('《《》》')
+    expect(ta.selectionStart).toBe(2)
+  })
+
+  it('選択を図鑑参照で囲む', () => {
+    render(<NotationHarness initial="アリスが笑った" />)
+    const ta = screen.getByRole('textbox', { name: '本文' }) as HTMLTextAreaElement
+    select(ta, 0, 3)
+    fireEvent.click(screen.getByRole('button', { name: '図鑑' }))
+    expect(ta).toHaveValue('[[アリス]]が笑った')
+  })
+
+  it('選択なしの図鑑参照は [[ の直後にキャレットを置く（次の打鍵でサジェストが開く）', () => {
+    render(<NotationHarness />)
+    const ta = screen.getByRole('textbox', { name: '本文' }) as HTMLTextAreaElement
+    fireEvent.click(screen.getByRole('button', { name: '図鑑' }))
+    expect(ta).toHaveValue('[[]]')
+    expect(ta.selectionStart).toBe(2)
+  })
+})
+
+describe('EditorPane（記法のショートカット）', () => {
+  const shortcut = (ta: HTMLElement, key: string) => fireEvent.keyDown(ta, { key, metaKey: true })
+
+  it('Cmd+B で傍点、Cmd+I でルビ、Cmd+K で図鑑参照', () => {
+    render(<NotationHarness initial="重要" />)
+    const ta = screen.getByRole('textbox', { name: '本文' }) as HTMLTextAreaElement
+
+    select(ta, 0, 2)
+    shortcut(ta, 'b')
+    expect(ta).toHaveValue('《《重要》》')
+
+    select(ta, 0, 0)
+    shortcut(ta, 'i')
+    expect(ta.value.startsWith('｜《》')).toBe(true)
+
+    select(ta, 0, 0)
+    shortcut(ta, 'k')
+    expect(ta.value.startsWith('[[]]')).toBe(true)
+  })
+
+  it('Ctrl でも効く（Windows/Linux）', () => {
+    render(<NotationHarness initial="重要" />)
+    const ta = screen.getByRole('textbox', { name: '本文' }) as HTMLTextAreaElement
+    select(ta, 0, 2)
+    fireEvent.keyDown(ta, { key: 'b', ctrlKey: true })
+    expect(ta).toHaveValue('《《重要》》')
+  })
+
+  // 変換確定の Enter や候補選択を奪わないための最重要ガード。
+  it('IME 変換中は挿入しない', () => {
+    render(<NotationHarness initial="重要" />)
+    const ta = screen.getByRole('textbox', { name: '本文' }) as HTMLTextAreaElement
+    select(ta, 0, 2)
+    fireEvent.compositionStart(ta)
+    fireEvent.keyDown(ta, { key: 'b', metaKey: true, isComposing: true })
+    expect(ta).toHaveValue('重要')
+  })
+
+  it('修飾キー無しの b は普通の入力として素通しする', () => {
+    render(<NotationHarness initial="重要" />)
+    const ta = screen.getByRole('textbox', { name: '本文' }) as HTMLTextAreaElement
+    select(ta, 0, 2)
+    const notPrevented = fireEvent.keyDown(ta, { key: 'b' })
+    expect(notPrevented).toBe(true)
+    expect(ta).toHaveValue('重要')
+  })
+
+  it('サジェストが開いていてもショートカットは効く', () => {
+    render(<Harness glossary={[g('アリス', 'ありす')]} />)
+    const ta = screen.getByRole('textbox', { name: '本文' }) as HTMLTextAreaElement
+    type(ta, '@アリ')
+    expect(screen.getByRole('listbox')).toBeInTheDocument()
+    fireEvent.keyDown(ta, { key: 'b', metaKey: true })
+    expect(ta.value).toContain('《《》》')
   })
 })

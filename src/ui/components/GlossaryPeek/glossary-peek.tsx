@@ -22,7 +22,7 @@ interface GlossaryPeekProps {
   onQuickCreate: (name: string) => void
   /** パネルを閉じる。 */
   onClose: () => void
-  /** 図鑑画面で編集する（詳細編集はパネルでは行わず図鑑へ誘導）。 */
+  /** 選択中 entry の編集をその場のモーダルで開く。 */
   onEdit: () => void
   /** 新しい entry の登録フォームを開く。 */
   onNewEntry: () => void
@@ -171,7 +171,7 @@ export function GlossaryPeek({
             )}
             <Button variant="outline" size="sm" onClick={onEdit} className="w-full gap-2">
               <Pencil className="size-3.5" aria-hidden />
-              図鑑で編集
+              編集
             </Button>
           </div>
         ) : null}

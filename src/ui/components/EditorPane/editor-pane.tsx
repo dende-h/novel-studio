@@ -1,11 +1,39 @@
-import { useCallback, useId, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import {
+  useCallback,
+  useId,
+  useImperativeHandle,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 import { resolveRef, shouldTriggerSuggest, suggestRefs } from '@/core/glossary'
+import { needsRubyPipe } from '@/core/parser/parseNotation'
 import type { GlossaryEntry } from '@/core/schema'
 import { getCaretCoordinates } from '@/ui/_utils/caretCoordinates'
 import { useKeyboardInset } from '@/ui/hooks/use-keyboard-inset'
 import { useIsNarrow } from '@/ui/hooks/use-narrow'
+import { NotationBar } from './notation-bar'
 import { RefSuggest } from './ref-suggest'
 import { RefSuggestBar } from './ref-suggest-bar'
+
+/** 挿入できる記法。ルビ ｜親文字《よみ》／傍点 《《text》》／図鑑参照 [[名前]]。 */
+export type NotationKind = 'ruby' | 'dots' | 'ref'
+
+/**
+ * Cmd/Ctrl + キー → 記法。太字・斜体・リンクの標準スロットを意味で割り当てる
+ * （縦書きの強調＝傍点、図鑑参照＝リンク）。いずれもブラウザの既定動作と衝突しない。
+ */
+const SHORTCUTS: Record<string, NotationKind | undefined> = {
+  b: 'dots',
+  i: 'ruby',
+  k: 'ref',
+}
+
+/** 外（ツールバー）から記法挿入を呼ぶためのハンドル。 */
+export interface EditorPaneHandle {
+  applyNotation: (kind: NotationKind) => void
+}
 
 interface EditorPaneProps {
   value: string
@@ -31,7 +59,13 @@ interface SuggestState {
 const isTrigger = (ch: string) => ch === '@' || ch === '＠'
 
 /** 本文エディタ（素の textarea＋自前パーサ方式 A1）。WYSIWYG は IME 問題ゆえ不採用。 */
-export function EditorPane({ value, onChange, glossary = [], onCreateEntry }: EditorPaneProps) {
+export function EditorPane({
+  ref,
+  value,
+  onChange,
+  glossary = [],
+  onCreateEntry,
+}: EditorPaneProps & { ref?: React.Ref<EditorPaneHandle> }) {
   const taRef = useRef<HTMLTextAreaElement>(null)
   // IME 変換中はサジェストを抑止する（純関数は判定できないので UI 層で握る）。
   const composingRef = useRef(false)
@@ -39,6 +73,9 @@ export function EditorPane({ value, onChange, glossary = [], onCreateEntry }: Ed
   const pendingCaretRef = useRef<number | null>(null)
   const [suggest, setSuggest] = useState<SuggestState | null>(null)
   const [activeIndex, setActiveIndex] = useState(0)
+  // 記法バー（狭幅）は書いている間だけ出す。閉じている時に画面下端へ残ると
+  // 本文の末尾やプレビューを隠すため、フォーカスを持っているかで出し分ける。
+  const [focused, setFocused] = useState(false)
   // 狭幅ではキャレット追従ポップアップではなくキーボード直上のバーを使う（D-EDIT-5）。
   // 表示位置だけでなく Enter の意味も変わる（改行に返す）ため、CSS ではなく JS で分岐する。
   const narrow = useIsNarrow()
@@ -126,6 +163,43 @@ export function EditorPane({ value, onChange, glossary = [], onCreateEntry }: Ed
     setSuggest(null)
   }
 
+  /**
+   * 記法（ルビ・傍点・図鑑参照）をキャレット位置に挿入する。
+   * 選択があればそれを囲み、無ければ空の型だけ置いて中にキャレットを移す。
+   * 置換とキャレット復元は insertRef と同じ仕組み（pendingCaretRef ＋ useLayoutEffect）。
+   */
+  const applyNotation = useCallback(
+    (kind: NotationKind) => {
+      const el = taRef.current
+      if (!el) return
+      const start = el.selectionStart ?? 0
+      const end = el.selectionEnd ?? start
+      const selected = value.slice(start, end)
+
+      let inserted: string
+      let caret: number
+      if (kind === 'ruby') {
+        // 親文字が漢字だけなら自動ルビが効くのでパイプは付けない（判定は core と共有）。
+        const head = needsRubyPipe(selected) ? '｜' : ''
+        inserted = `${head}${selected}《》`
+        // 選択があれば読みを打ちたいので 《》 の中へ、無ければ親文字の位置へ。
+        caret = selected === '' ? start + head.length : start + inserted.length - 1
+      } else if (kind === 'dots') {
+        inserted = `《《${selected}》》`
+        caret = selected === '' ? start + 2 : start + inserted.length
+      } else {
+        inserted = `[[${selected}]]`
+        // 空で入れた場合はキャレットが [[ の直後に来るため、次の打鍵で @ サジェストが開く。
+        caret = selected === '' ? start + 2 : start + inserted.length
+      }
+
+      pendingCaretRef.current = caret
+      onChange(value.slice(0, start) + inserted + value.slice(end))
+      setSuggest(null)
+    },
+    [value, onChange],
+  )
+
   const commit = (index: number) => {
     if (!suggest) return
     const caret = suggest.at + suggest.triggerLen + suggest.query.length
@@ -142,6 +216,10 @@ export function EditorPane({ value, onChange, glossary = [], onCreateEntry }: Ed
     if (item) insertRef(suggest.at, caret, item.name)
   }
 
+  // ツールバー（PC）から記法挿入を呼べるようにする。textarea の ref と選択範囲は
+  // このコンポーネントが持つので、値の書き換えではなく操作そのものを公開する。
+  useImperativeHandle(ref, () => ({ applyNotation }), [applyNotation])
+
   // 挿入後にキャレットを [[名前]] の直後へ戻す。
   useLayoutEffect(() => {
     const pos = pendingCaretRef.current
@@ -155,6 +233,16 @@ export function EditorPane({ value, onChange, glossary = [], onCreateEntry }: Ed
   })
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    // 記法のショートカットはサジェストの開閉に関係なく効かせたいので、下の早期 return より前で見る。
+    // IME 変換中は変換操作を奪わないよう素通しする。
+    if (!composingRef.current && !e.nativeEvent.isComposing && (e.metaKey || e.ctrlKey)) {
+      const kind = SHORTCUTS[e.key.toLowerCase()]
+      if (kind) {
+        e.preventDefault()
+        applyNotation(kind)
+        return
+      }
+    }
     if (!open || composingRef.current || e.nativeEvent.isComposing) return
     if (narrow) {
       // スマホ：確定はバーのタップのみ。ソフトキーボードに Tab は無く、Enter は
@@ -205,6 +293,8 @@ export function EditorPane({ value, onChange, glossary = [], onCreateEntry }: Ed
           if (!composingRef.current) refresh(e.currentTarget)
         }}
         onKeyDown={handleKeyDown}
+        onFocus={() => setFocused(true)}
+        onBlur={() => setFocused(false)}
         onCompositionStart={() => {
           composingRef.current = true
         }}
@@ -240,6 +330,9 @@ export function EditorPane({ value, onChange, glossary = [], onCreateEntry }: Ed
             onHover={setActiveIndex}
           />
         )
+      ) : narrow && focused ? (
+        // サジェストと同じ位置に出るので、候補が出ていない間だけ記法バーを見せる。
+        <NotationBar onApply={applyNotation} />
       ) : null}
     </div>
   )

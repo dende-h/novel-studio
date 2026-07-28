@@ -194,3 +194,47 @@ test('@サジェストは狭幅ではキーボード直上のバーで出る', a
   await bar.getByRole('option', { name: /アリス/ }).click()
   await expect(ta).toHaveValue('[[アリス]]')
 })
+
+test('記法バー：フォーカス中だけ出て、選択を囲む。@サジェスト中は候補バーが優先される', async ({
+  page,
+}) => {
+  await page.goto('/')
+  await createWork(page, '記法バー検証')
+  await openWriter(page, '記法バー検証')
+  await addEpisode(page, '第一話')
+
+  const bar = page.getByRole('toolbar', { name: '記法の挿入' })
+  // 本文に触れていない間は画面下端を占有しない
+  await expect(bar).toBeHidden()
+
+  const ta = page.getByRole('textbox', { name: '本文' })
+  await ta.click()
+  await expect(bar).toBeVisible()
+
+  await ta.fill('黄昏の街を歩いた。')
+  await ta.evaluate((el: HTMLTextAreaElement) => {
+    el.setSelectionRange(0, 2)
+    el.dispatchEvent(new Event('select', { bubbles: true }))
+  })
+  await page.getByRole('button', { name: 'ルビ', exact: true }).click()
+  // 親文字が漢字だけなのでパイプ無しで自動ルビになる
+  await expect(ta).toHaveValue('黄昏《》の街を歩いた。')
+
+  // 候補が出る状態を作る（候補 0 件ならサジェスト自体が開かないため用語を1件登録する）
+  await openNav(page)
+  await page.getByRole('button', { name: '図鑑', exact: true }).click()
+  await page.getByRole('button', { name: '新しく登録' }).click()
+  await page.getByLabel('名前').fill('アリス')
+  await page.getByRole('button', { name: '作成', exact: true }).click()
+  await expect(page.getByRole('heading', { name: 'アリス' })).toBeVisible()
+  await openNav(page)
+  await page.getByRole('button', { name: '本文を書く', exact: true }).click()
+
+  // @ で候補バーに切り替わり、記法バーは引っ込む（同じ位置なので排他）
+  const ta2 = page.getByRole('textbox', { name: '本文' })
+  await ta2.click()
+  await expect(bar).toBeVisible()
+  await ta2.pressSequentially('@アリ')
+  await expect(page.getByRole('listbox', { name: '参照候補' })).toBeVisible()
+  await expect(bar).toBeHidden()
+})

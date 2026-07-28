@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Inline } from '../schema'
-import { parseEpisodeBody, parseInlines } from './parseNotation'
+import { needsRubyPipe, parseEpisodeBody, parseInlines } from './parseNotation'
 
 describe('parseInlines', () => {
   it('プレーン行は1つのtext', () => {
@@ -138,6 +138,38 @@ describe('parseEpisodeBody', () => {
       { id: 'b1', type: 'paragraph', inlines: [{ type: 'text', text: '前' }] },
       { id: 'b2', type: 'paragraph', inlines: [{ type: 'text', text: '＊' }] },
       { id: 'b3', type: 'paragraph', inlines: [{ type: 'text', text: '後' }] },
+    ])
+  })
+})
+
+describe('needsRubyPipe（挿入 UI とパーサで判定を共有する）', () => {
+  it('親文字が漢字だけならパイプ不要（自動ルビが効く）', () => {
+    expect(needsRubyPipe('黄昏')).toBe(false)
+    expect(needsRubyPipe('々')).toBe(false)
+  })
+
+  it('かな・英数字・記号が混じるならパイプが要る', () => {
+    expect(needsRubyPipe('お嬢さん')).toBe(true)
+    expect(needsRubyPipe('ひらがな')).toBe(true)
+    expect(needsRubyPipe('Alice')).toBe(true)
+    expect(needsRubyPipe('第1話')).toBe(true)
+  })
+
+  it('空文字はパイプありで組み立てる（親文字を後から打つため）', () => {
+    expect(needsRubyPipe('')).toBe(true)
+  })
+
+  // 判定どおりに組み立てた記法が、実際にパーサでルビとして解釈されることまで見る
+  // （ここがズレると「ボタンで入れたのにルビにならない」が起きる）。
+  it('判定に従って組み立てた記法はパーサでルビになる', () => {
+    const build = (base: string, reading: string) =>
+      `${needsRubyPipe(base) ? '｜' : ''}${base}《${reading}》`
+
+    expect(parseEpisodeBody(build('黄昏', 'たそがれ'))[0]?.inlines).toEqual([
+      { type: 'ruby', base: '黄昏', reading: 'たそがれ' },
+    ])
+    expect(parseEpisodeBody(build('お嬢さん', 'おじょうさん'))[0]?.inlines).toEqual([
+      { type: 'ruby', base: 'お嬢さん', reading: 'おじょうさん' },
     ])
   })
 })

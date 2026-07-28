@@ -63,6 +63,8 @@ interface SideNavProps {
    * 省略時（ライブラリ・執筆の記録）は「ライブラリモード」（プロフィール＋CTA＋メインナビ）。
    */
   workTitle?: string
+  /** 作品情報（タイトル・あらすじ・表紙）の編集を開く。指定時のみ作品カードを押せるようにする。 */
+  onEditWorkMeta?: () => void
   /** 作品カードに出すメタ情報（例: 「3話 ・ 12,480字」）。 */
   workMeta?: string
   /** エディタ画面へ切替（作品オープン時のみ） */
@@ -132,6 +134,7 @@ export function SideNav({
   cta,
   profile,
   onEditProfile,
+  onEditWorkMeta,
   workTitle,
   workMeta,
   episodes,
@@ -161,26 +164,46 @@ export function SideNav({
             マイライブラリ
           </button>
 
-          {/* 現在の作品カード */}
-          <div className="flex gap-2.5 rounded-lg border border-outline-variant/30 bg-surface-container-lowest p-3">
-            <div
-              aria-hidden="true"
-              className="flex h-11 w-8 shrink-0 items-center justify-center rounded border border-outline-variant/30 font-serif text-[14px] text-on-surface"
-              style={{ background: coverTone(workTitle ?? '') }}
-            >
-              {workInitial}
-            </div>
-            <div className="min-w-0">
-              <div className="line-clamp-2 font-semibold font-serif text-[13px] text-on-surface leading-normal">
-                {workTitle}
-              </div>
-              {workMeta ? (
-                <div className="mt-0.5 truncate text-[11px] text-on-surface-variant">
-                  {workMeta}
-                </div>
-              ) : null}
-            </div>
-          </div>
+          {/* 現在の作品カード。onEditWorkMeta があれば作品情報の編集口も兼ねる
+              （プロフィールカードと同じ流儀＝カード全体がボタン＋鉛筆）。 */}
+          {(() => {
+            const body = (
+              <>
+                <span
+                  aria-hidden="true"
+                  className="flex h-11 w-8 shrink-0 items-center justify-center rounded border border-outline-variant/30 font-serif text-[14px] text-on-surface"
+                  style={{ background: coverTone(workTitle ?? '') }}
+                >
+                  {workInitial}
+                </span>
+                <span className="min-w-0 flex-1 text-left">
+                  <span className="line-clamp-2 block font-semibold font-serif text-[13px] text-on-surface leading-normal">
+                    {workTitle}
+                  </span>
+                  {workMeta ? (
+                    <span className="mt-0.5 block truncate text-[11px] text-on-surface-variant">
+                      {workMeta}
+                    </span>
+                  ) : null}
+                </span>
+              </>
+            )
+            const cardClass =
+              'flex w-full gap-2.5 rounded-lg border border-outline-variant/30 bg-surface-container-lowest p-3'
+            return onEditWorkMeta ? (
+              <button
+                type="button"
+                onClick={onEditWorkMeta}
+                aria-label="作品情報を編集"
+                className={cn(cardClass, 'group items-start text-left hover:border-primary/40')}
+              >
+                {body}
+                <Pencil className="size-3.5 shrink-0 text-on-surface-variant/50 transition-colors group-hover:text-primary" />
+              </button>
+            ) : (
+              <div className={cardClass}>{body}</div>
+            )
+          })()}
 
           {/* 作品スコープのナビ */}
           <div className="space-y-0.5">

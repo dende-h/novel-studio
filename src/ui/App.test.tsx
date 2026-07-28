@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest'
 import { ProfileRepository } from '../core/profile'
 import { SnapshotRepository } from '../core/snapshot/snapshotRepository'
@@ -329,5 +329,77 @@ describe('App（構造ツールの画面幅ゲート）', () => {
     setWidth(390)
     // 本文エディタが戻ってくる＝activeScreen が 'episodes' にリセットされた
     expect(await screen.findByRole('textbox', { name: '本文' })).toBeInTheDocument()
+  })
+})
+
+/**
+ * 執筆の流れを切らないための導線（図鑑をその場で編集・作品情報をエディタから編集）。
+ * どちらも「画面遷移させない」ことが要件なので、モーダルが開くところまでを見る。
+ */
+describe('App（執筆中に開く編集モーダル）', () => {
+  it('図鑑パネルの「編集」は画面遷移せずモーダルを開く', async () => {
+    const store = makeStore()
+    await seedWorkEpisode(store)
+    await store.addGlossaryEntry({ name: 'アリス', summary: '物語の主人公。' })
+    render(<App store={store} />)
+
+    // 本文の @参照クリックでパネルに用語を出す
+    fireEvent.change(await screen.findByRole('textbox', { name: '本文' }), {
+      target: { value: '[[アリス]]が来た' },
+    })
+    const ref = await waitFor(() => {
+      const el = document.querySelector('.preview .ref[data-ref-name="アリス"]')
+      if (!el) throw new Error('ref 未描画')
+      return el
+    })
+    fireEvent.click(ref)
+
+    fireEvent.click(await screen.findByRole('button', { name: '編集' }))
+
+    const dialog = await screen.findByRole('dialog')
+    expect(within(dialog).getByLabelText('名前')).toHaveValue('アリス')
+
+    // 閉じると本文エディタに戻る＝図鑑ページへ遷移していない（その場のモーダル）。
+    // モーダル表示中は Radix が背景を a11y ツリーから外すため、閉じてから確かめる。
+    fireEvent.keyDown(dialog, { key: 'Escape' })
+    expect(await screen.findByRole('textbox', { name: '本文' })).toBeInTheDocument()
+  })
+
+  it('図鑑パネルの編集で改名すると、旧名を別名に残したまま更新される', async () => {
+    const store = makeStore()
+    await seedWorkEpisode(store)
+    await store.addGlossaryEntry({ name: 'アリス' })
+    render(<App store={store} />)
+
+    fireEvent.change(await screen.findByRole('textbox', { name: '本文' }), {
+      target: { value: '[[アリス]]が来た' },
+    })
+    const ref = await waitFor(() => {
+      const el = document.querySelector('.preview .ref[data-ref-name="アリス"]')
+      if (!el) throw new Error('ref 未描画')
+      return el
+    })
+    fireEvent.click(ref)
+    fireEvent.click(await screen.findByRole('button', { name: '編集' }))
+
+    fireEvent.change(screen.getByLabelText('名前'), { target: { value: 'アリシア' } })
+    fireEvent.click(screen.getByRole('button', { name: '保存する' }))
+
+    await waitFor(() => {
+      const entry = store.getSnapshot().work?.glossary?.[0]
+      expect(entry?.name).toBe('アリシア')
+      // 改名前の名前は別名に残るので、本文の [[アリス]] は解決したまま
+      expect(entry?.aliases).toContain('アリス')
+    })
+  })
+
+  it('サイドバーの作品カードから作品情報を編集できる', async () => {
+    const store = makeStore()
+    await seedWorkEpisode(store)
+    render(<App store={store} />)
+
+    fireEvent.click(await screen.findByRole('button', { name: '作品情報を編集' }))
+    const dialog = await screen.findByRole('dialog')
+    expect(within(dialog).getByLabelText('タイトル')).toHaveValue('作品ワン')
   })
 })

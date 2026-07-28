@@ -11,6 +11,19 @@ import type { Block, Inline } from '../schema'
 // 自動ルビ（パイプ省略）の親文字に許す漢字レンジ
 const KANJI = '\\u4E00-\\u9FFF\\u3005\\u3006\\u30F5\\u30F6'
 const AUTO_RUBY_RE = new RegExp(`^([${KANJI}]+)《([^》]+)》`)
+const ALL_KANJI_RE = new RegExp(`^[${KANJI}]+$`)
+
+/**
+ * ルビを書くときに親文字の前へ `｜` が必要か。
+ * 親文字が漢字だけなら自動ルビ（`漢字《よみ》`）が効くのでパイプは不要、
+ * かな・英数字・記号が混じるなら `｜親文字《よみ》` と明示する必要がある。
+ *
+ * 記法を組み立てる UI（挿入ボタン）が判定を複製するとパーサとズレて壊れるため、
+ * 上の KANJI 定数を共有するかたちでここに置く。
+ */
+export function needsRubyPipe(base: string): boolean {
+  return base === '' || !ALL_KANJI_RE.test(base)
+}
 
 export function parseEpisodeBody(text: string): Block[] {
   return text.split('\n').map(
