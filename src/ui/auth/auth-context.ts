@@ -1,6 +1,6 @@
 import { createContext, useContext } from 'react'
 
-export type AuthStatus = 'loading' | 'guest' | 'member'
+export type AuthStatus = 'loading' | 'guest' | 'free' | 'member'
 
 export interface AuthState {
   /** Clerk が構成されているか（publishable key あり）。false の間は認証 UI を出さない。 */

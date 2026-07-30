@@ -110,9 +110,37 @@ function AccountControl() {
       </div>
     )
   }
+  if (auth.status === 'free') {
+    // サインイン済み・未課金。書く・公開するはこのまま使える正当な状態なので、
+    // 追い出さずに控えめなアップグレード導線とアカウントメニューだけ出す。
+    return (
+      <div className="flex items-center gap-1.5">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => {
+            window.location.hash = '/plan'
+          }}
+          className="gap-1.5 text-on-surface-variant hover:text-primary"
+          title="クラウド同期・版の履歴（有料）"
+        >
+          <CloudOff className="size-4" aria-hidden />
+          <span className="hidden sm:inline">同期は未設定</span>
+        </Button>
+        <Suspense
+          fallback={
+            <span className="max-w-[10rem] truncate font-sans text-on-surface-variant text-xs">
+              {auth.displayName ?? 'サインイン中'}
+            </span>
+          }
+        >
+          <ClerkUserButton />
+        </Suspense>
+      </div>
+    )
+  }
   if (auth.status === 'guest') {
-    // クラウド未接続のゲスト。「サインイン済みだが未課金」は Root の全画面オンボーディングが担うため、
-    // ここに来る guest は実質「未サインイン」だけ。クリックでサインイン → クラウドバックアップが使える。
+    // 未サインイン。クリックでサインイン → 公開先への投稿とクラウドバックアップが使えるようになる。
     return (
       <Button
         variant="ghost"

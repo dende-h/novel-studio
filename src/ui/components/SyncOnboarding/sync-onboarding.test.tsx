@@ -7,17 +7,22 @@ vi.mock('@/ui/auth/cloud-pricing', () => ({
   default: () => <div data-testid="cloud-pricing">料金カード</div>,
 }))
 
-describe('SyncOnboarding（未課金オンボーディング）', () => {
+describe('SyncOnboarding（クラウド同期の案内）', () => {
   it('見出しと（lazy な）料金表を描画する', async () => {
-    render(<SyncOnboarding onUseLocal={() => {}} />)
+    render(<SyncOnboarding onDismiss={() => {}} />)
     expect(screen.getByRole('heading', { name: 'クラウド同期を始める' })).toBeInTheDocument()
     expect(await screen.findByTestId('cloud-pricing')).toBeInTheDocument()
   })
 
-  it('「ローカルのまま使う」で onUseLocal（＝サインアウト）を呼ぶ', () => {
-    const onUseLocal = vi.fn()
-    render(<SyncOnboarding onUseLocal={onUseLocal} />)
-    fireEvent.click(screen.getByRole('button', { name: 'ローカルのまま使う（今はしない）' }))
-    expect(onUseLocal).toHaveBeenCalledTimes(1)
+  it('「いまはしない」で onDismiss を呼ぶ（サインアウトはしない）', () => {
+    const onDismiss = vi.fn()
+    render(<SyncOnboarding onDismiss={onDismiss} />)
+    fireEvent.click(screen.getByRole('button', { name: 'いまはしない' }))
+    expect(onDismiss).toHaveBeenCalledTimes(1)
+  })
+
+  it('無料でできることを明示する（閉じ込められないと伝える）', () => {
+    render(<SyncOnboarding onDismiss={() => {}} />)
+    expect(screen.getByText(/公開する・ローカル保存はこれまでどおり無料/)).toBeInTheDocument()
   })
 })

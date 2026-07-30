@@ -6,22 +6,24 @@ import { Button } from '@/ui/components/ui/button'
 const CloudPricing = lazy(() => import('@/ui/auth/cloud-pricing'))
 
 interface SyncOnboardingProps {
-  /** 「ローカルのまま使う」＝サインアウトしてゲスト（同期オフ）に戻す。 */
-  onUseLocal: () => void
+  /** 案内を閉じて元の画面へ戻る。 */
+  onDismiss: () => void
 }
 
 /**
- * 未課金でサインイン済みのユーザーに出す全画面オンボーディング（Phase 4）。
+ * クラウド同期（有料）の案内。
  *
- * 仕様（§1.1「アカウント＝有料会員だけが持つ」）に沿い、「ログインしたが未課金」という中途半端な
- * ヘッダー状態を残さない。サインイン後に課金外だと分かったら、この画面で **購読する** か
- * **ローカルのまま使う（＝サインアウトしてゲストに戻る）** の二択に収束させる。購読の窓をここで
- * 残すことで「未課金は即サインアウト」の要望を、課金導線を壊さずに実現する。
+ * かつては「未課金でサインイン済み」に対してこれを全画面で強制表示し、
+ * 「購読する or サインアウトしてゲストに戻る」の二択に収束させていた（旧 §1.1
+ * 「アカウント＝有料会員だけが持つ」）。
+ * novel platform とアカウントを共有する以上、platform に無料登録しただけの人が
+ * ここへ閉じ込められてしまうため、強制表示をやめて **任意の案内** に変えた。
+ * 未課金でも書けるし公開もできる。ここで売るのは「制作中の資産を守る」ことだけ。
  *
  * 意図的に fixed オーバーレイにせず通常フローの全画面にしている：Clerk の Checkout ドロワー
  * （fixed ポータル）が自前オーバーレイと z 争いを起こさず、素直に上へ重なるようにするため。
  */
-export function SyncOnboarding({ onUseLocal }: SyncOnboardingProps) {
+export function SyncOnboarding({ onDismiss }: SyncOnboardingProps) {
   return (
     <div className="min-h-dvh w-full overflow-y-auto bg-background font-sans">
       <div className="mx-auto flex max-w-3xl flex-col items-center gap-8 px-6 py-16 text-center">
@@ -31,9 +33,9 @@ export function SyncOnboarding({ onUseLocal }: SyncOnboardingProps) {
         <div className="space-y-3">
           <h1 className="font-serif text-3xl text-on-surface">クラウド同期を始める</h1>
           <p className="mx-auto max-w-xl text-on-surface-variant leading-relaxed">
-            複数端末での同期・自動バックアップ・AI/MCP
-            アクセスをまとめて。書く・出す・ローカル保存は
-            これまでどおり無料です。同期を使うにはプランの購読が必要です。
+            複数端末での同期・自動バックアップ・版の履歴・AI/MCP アクセスをまとめて。
+            書く・出す・公開する・ローカル保存はこれまでどおり無料です。
+            守りたい原稿があるときにご検討ください。
           </p>
         </div>
         <div className="w-full">
@@ -50,10 +52,10 @@ export function SyncOnboarding({ onUseLocal }: SyncOnboardingProps) {
         </div>
         <Button
           variant="ghost"
-          onClick={onUseLocal}
+          onClick={onDismiss}
           className="text-on-surface-variant hover:text-primary"
         >
-          ローカルのまま使う（今はしない）
+          いまはしない
         </Button>
       </div>
     </div>

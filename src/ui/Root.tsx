@@ -33,7 +33,7 @@ interface RootProps {
 /** 入口（ライブラリ）とエディタをハッシュで切り替えるトップレベル Container。 */
 export function Root({ store }: RootProps) {
   const { route, navigate } = useHashRoute()
-  const { status, isSignedIn, canRestore, graceUntil, signOut, getToken, openSignUp, available } =
+  const { status, canRestore, graceUntil, signOut, getToken, openSignUp, available } =
     useAuth()
   const { show } = useToast()
   // 初回のみ保存の仕組みを一度だけ説明する（思想の共有）。立てたら再表示しない。
@@ -94,6 +94,11 @@ export function Root({ store }: RootProps) {
   if (route === '/settings') return <SettingsPage />
   if (route === '/help') return <HelpPage />
 
+  // クラウド同期（有料）の案内。かつては未課金のサインイン済みに強制表示していたが、
+  // novel platform とアカウントを共有する以上そこへ閉じ込められないため、
+  // ヘッダーの導線から任意で開く一枚ものページにした。
+  if (route === '/plan') return <SyncOnboarding onDismiss={() => navigate('/')} />
+
   // 解約後の復元猶予期間：クラウドから復元 → ローカル → 無料のファイル書き出し でデータを持ち出せる
   // 安全網。onboarding より先に判定する（猶予中も status は guest のため）。期限後はクラウド削除。
   if (canRestore && graceUntil != null) {
@@ -128,12 +133,6 @@ export function Root({ store }: RootProps) {
         ) : null}
       </>
     )
-  }
-
-  // 未課金でサインイン済み：中途半端な状態を残さず、専用オンボーディングで「購読する or ローカルの
-  // まま使う（＝サインアウトしてゲスト）」の二択に収束させる（§1.1「アカウント＝有料会員だけが持つ」）。
-  if (status === 'guest' && isSignedIn) {
-    return <SyncOnboarding onUseLocal={signOut} />
   }
 
   if (route === '/activity') {
