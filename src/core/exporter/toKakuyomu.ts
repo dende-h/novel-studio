@@ -28,7 +28,8 @@ function inlineToKakuyomu(inline: Inline): string {
       // カクヨムは傍点記法ネイティブ → そのまま往復
       return `《《${inline.text}》》`
     case 'ref':
-      // @参照記法はカクヨムに無い → 名前のプレーンテキストへ degrade（exporter は辞書非依存）
-      return inline.name
+      // @参照記法はカクヨムに無い → リンクを落とす。ただし重ねたルビ・傍点は記法として残す
+      //（[[《《言葉》》]] → 《《言葉》》）。
+      return inline.children ? inline.children.map(inlineToKakuyomu).join('') : inline.name
   }
 }

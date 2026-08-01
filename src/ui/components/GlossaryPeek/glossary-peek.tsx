@@ -1,6 +1,7 @@
 import { Pencil, Plus, Tag, X } from 'lucide-react'
 import { useMemo } from 'react'
 import { type Appearances, resolveRef } from '@/core/glossary'
+import { parseEpisodeBody } from '@/core/parser/parseNotation'
 import type { GlossaryEntry } from '@/core/schema'
 import { cn } from '@/lib/utils'
 import { Badge } from '@/ui/components/ui/badge'
@@ -22,25 +23,29 @@ interface GlossaryPeekProps {
   onQuickCreate: (name: string) => void
   /** パネルを閉じる。 */
   onClose: () => void
-  /** 図鑑画面で編集する（詳細編集はパネルでは行わず図鑑へ誘導）。 */
+  /** 選択中 entry の編集をその場のモーダルで開く。 */
   onEdit: () => void
   /** 新しい entry の登録フォームを開く。 */
   onNewEntry: () => void
 }
 
-/** 本文中の [[用語]] を出現順・重複なしで抜き出す。 */
+/**
+ * 本文中の [[用語]] を出現順・重複なしで抜き出す。
+ * 抽出は正本パーサに任せる（自前の正規表現だと `[[｜言葉《ことば》]]` のような
+ * ルビ・傍点を重ねた参照で名前が記法ごと取れてしまい、プレビューのリンクと食い違う）。
+ */
 function termsInDraft(draft: string): string[] {
   const out: string[] = []
   const seen = new Set<string>()
-  const re = /\[\[([^\]]+)\]\]/g
-  let m = re.exec(draft)
-  while (m !== null) {
-    const name = (m[1] ?? '').trim()
-    if (name !== '' && !seen.has(name)) {
-      seen.add(name)
-      out.push(name)
+  for (const block of parseEpisodeBody(draft)) {
+    for (const inline of block.inlines) {
+      if (inline.type !== 'ref') continue
+      const name = inline.name.trim()
+      if (name !== '' && !seen.has(name)) {
+        seen.add(name)
+        out.push(name)
+      }
     }
-    m = re.exec(draft)
   }
   return out
 }
@@ -69,7 +74,9 @@ export function GlossaryPeek({
   const used = (appearances?.refCount ?? 0) > 0
 
   return (
-    <aside className="flex w-[300px] shrink-0 flex-col border-outline-variant/30 border-l bg-surface-container-lowest font-sans">
+    // 狭幅では 300px 固定だと画面の 8 割を覆うので、ビューポートに応じて詰める
+    // （min() なのでブレークポイント無しで全幅域に効く）。
+    <aside className="flex w-[min(300px,85vw)] shrink-0 flex-col border-outline-variant/30 border-l bg-surface-container-lowest font-sans">
       <div className="flex items-center justify-between border-outline-variant/30 border-b px-4 py-3">
         <span className="font-medium text-[12px] text-on-surface tracking-widest">図鑑パネル</span>
         <Button
@@ -77,7 +84,7 @@ export function GlossaryPeek({
           size="icon"
           onClick={onClose}
           aria-label="図鑑パネルを閉じる"
-          className="-mr-1.5 size-7 text-on-surface-variant hover:text-on-surface"
+          className="-mr-1.5 size-11 text-on-surface-variant hover:text-on-surface md:size-7"
         >
           <X className="size-4" aria-hidden />
         </Button>
@@ -102,7 +109,8 @@ export function GlossaryPeek({
                   aria-pressed={resolved !== undefined && resolved.id === entry?.id}
                   onClick={() => (resolved ? onSelect(resolved.id) : onQuickCreate(raw))}
                   className={cn(
-                    'rounded-full border px-2.5 py-1 text-[12px] transition-colors',
+                    // タッチでは 44px 目安のタップ領域を確保し、ポインタ環境では従来の密度に戻す。
+                    'rounded-full border px-3 py-2.5 text-[12px] transition-colors md:px-2.5 md:py-1',
                     resolved && resolved.id === entry?.id
                       ? 'border-primary bg-primary text-white'
                       : resolved
@@ -168,7 +176,7 @@ export function GlossaryPeek({
             )}
             <Button variant="outline" size="sm" onClick={onEdit} className="w-full gap-2">
               <Pencil className="size-3.5" aria-hidden />
-              図鑑で編集
+              編集
             </Button>
           </div>
         ) : null}

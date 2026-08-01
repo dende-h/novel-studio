@@ -1,5 +1,5 @@
 import { BookMarked, Plus, Replace } from 'lucide-react'
-import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { localDateKey } from '@/core/activity'
 import { blocksToHtml } from '@/core/exporter/toHtml'
 import { findAppearances, resolvedNameSet, resolveRef } from '@/core/glossary'
@@ -12,7 +12,11 @@ import type { StructureRepository } from '@/core/storage/structureRepository'
 import { cn } from '@/lib/utils'
 import { AppShell } from '@/ui/components/AppShell/app-shell'
 import { ConfirmDialog } from '@/ui/components/ConfirmDialog/confirm-dialog'
-import { EditorPane } from '@/ui/components/EditorPane/editor-pane'
+import {
+  EditorPane,
+  type EditorPaneHandle,
+  type NotationKind,
+} from '@/ui/components/EditorPane/editor-pane'
 import { ReplacePanel } from '@/ui/components/EditorPane/replace-panel'
 import { ExportDialog } from '@/ui/components/ExportDialog/export-dialog'
 import {
@@ -31,6 +35,7 @@ import { Button } from '@/ui/components/ui/button'
 import { WorkMetaDialog } from '@/ui/components/WorkMetaDialog/work-meta-dialog'
 import { useAutosave } from '@/ui/hooks/use-autosave'
 import { useEditorStore } from '@/ui/hooks/use-editor-store'
+import { useIsNarrow } from '@/ui/hooks/use-narrow'
 import type { EditorStore } from '@/ui/store/editorStore'
 
 /** フォーム値の空文字は未設定(undefined)へ畳んでスキーマの任意項目を綺麗に保つ。 */
@@ -73,6 +78,15 @@ const CorrelationChartView = lazy(
 )
 const OutlineView = lazy(() => import('@/ui/components/OutlineView/outline-view'))
 
+/** エディタツールバーの記法ボタン（ショートカットは EditorPane の SHORTCUTS と対応）。 */
+const NOTATION_BUTTONS: { kind: NotationKind; label: string; title: string }[] = [
+  { kind: 'ruby', label: 'ルビ', title: 'ルビ ｜漢字《かんじ》（Ctrl/Cmd + I）' },
+  { kind: 'dots', label: '傍点', title: '傍点 《《強調》》（Ctrl/Cmd + B）' },
+  // 「図鑑」はナビ（図鑑ページ）とツールバー（図鑑パネル）で既に使っているため、
+  // 記法ボタンは挿入されるもの＝参照で呼び分ける。
+  { kind: 'ref', label: '参照', title: '図鑑参照 [[用語]]（Ctrl/Cmd + K）' },
+]
+
 /** 自動保存：本文の入力が止まってから保存するまでの待ち時間(ms)。 */
 const AUTOSAVE_DELAY_MS = 1500
 
@@ -100,6 +114,9 @@ export function App({
   >('episodes')
   // プレビューの組み方向（日本語小説の標準＝縦書きが既定。ツールバーで切替）。
   const [orientation, setOrientation] = useState<'vertical' | 'horizontal'>('vertical')
+  // 狭幅（lg 未満）で本文とプレビューのどちらを見せるか。縦書きは画面高＝行長のため
+  // 上下に分割すると読めなくなる。lg 以上は max-lg: が不活性で従来どおり横並びのまま（D-EDIT-2）。
+  const [pane, setPane] = useState<'editor' | 'preview'>('editor')
   // 一括置換パネル（この話の本文だけを対象）。
   const [replaceOpen, setReplaceOpen] = useState(false)
   // 図鑑パネル（この話に登場＋選択 entry のチラ見）。@参照クリックでも開く。
@@ -108,6 +125,10 @@ export function App({
   const [peekId, setPeekId] = useState<string | null>(null)
   // 未解決 @参照クリックで起動するクイック作成（プリフィルする名前。'' は空フォーム）。
   const [quickCreateName, setQuickCreateName] = useState<string | null>(null)
+  // 図鑑パネルからの編集対象。作成と同じくその場のモーダルで完結させる（本文から離れさせない）。
+  const [editEntryId, setEditEntryId] = useState<string | null>(null)
+  // ツールバーの記法ボタンから本文へ挿入するためのハンドル（選択範囲は EditorPane が持つ）。
+  const editorRef = useRef<EditorPaneHandle>(null)
   const [deleteEpisodeTarget, setDeleteEpisodeTarget] = useState<{
     id: string
     title: string
@@ -122,6 +143,22 @@ export function App({
   }, [store])
 
   const work = state.work
+
+  // 構造化3機能（アウトライン/相関図/マインドマップ）は PC 専用。dnd-kit / React Flow の
+  // ノード・辺の削除が opacity-0 group-hover のみでタッチから到達できないため、狭幅では入口を消す。
+  const narrow = useIsNarrow()
+  const structureAvailable = Boolean(work && canUseStructure && structureRepo && !narrow)
+  // 広い画面で構造ツールを開いたまま縮める／回転すると、入口が消えても activeScreen が
+  // 残って操作不能な画面に閉じ込められる。CSS では state を戻せないので JS で戻す。
+  useEffect(() => {
+    if (
+      narrow &&
+      (activeScreen === 'outline' || activeScreen === 'mindmap' || activeScreen === 'chart')
+    ) {
+      setActiveScreen('episodes')
+    }
+  }, [narrow, activeScreen])
+
   // 辞書 entry の name+aliases から解決済み名の集合を作り、プレビューの ref を
   // 解決（グレーリンク）／未解決（点線）で描き分ける（D-GLOS-PREVIEW-API）。
   const resolvedNames = useMemo(() => resolvedNameSet(work?.glossary ?? []), [work?.glossary])
@@ -149,6 +186,25 @@ export function App({
   const peekEntry = useMemo(
     () => (peekId ? ((work?.glossary ?? []).find((e) => e.id === peekId) ?? null) : null),
     [peekId, work?.glossary],
+  )
+  // 編集対象も id 参照で引く（改名・削除に追従し、古い値でフォームを開かない）。
+  const editEntry = useMemo(
+    () => (editEntryId ? ((work?.glossary ?? []).find((e) => e.id === editEntryId) ?? null) : null),
+    [editEntryId, work?.glossary],
+  )
+
+  /**
+   * 図鑑 entry の編集確定。改名を先に確定（衝突は reject させてダイアログに出す）、
+   * その後フィールドを更新する。図鑑ページ（GlossaryView）内の編集と同じ順序。
+   */
+  const submitEntryEdit = useCallback(
+    async (entry: GlossaryEntry, values: GlossaryFormValues) => {
+      if (values.name !== entry.name) {
+        await store.renameGlossaryEntry(entry.id, values.name, { rewriteBody: false })
+      }
+      await store.updateGlossaryEntry(entry.id, toFieldPatch(values))
+    },
+    [store],
   )
 
   // プレビューの @参照クリック：解決済み→図鑑パネルで表示、未解決→当該名でクイック作成。
@@ -219,15 +275,9 @@ export function App({
           onNavigateHelp={onNavigateHelp}
           onNavigateEpisodes={work ? () => setActiveScreen('episodes') : undefined}
           onNavigateGlossary={work ? () => setActiveScreen('glossary') : undefined}
-          onNavigateMindmap={
-            work && canUseStructure && structureRepo ? () => setActiveScreen('mindmap') : undefined
-          }
-          onNavigateChart={
-            work && canUseStructure && structureRepo ? () => setActiveScreen('chart') : undefined
-          }
-          onNavigateOutline={
-            work && canUseStructure && structureRepo ? () => setActiveScreen('outline') : undefined
-          }
+          onNavigateMindmap={structureAvailable ? () => setActiveScreen('mindmap') : undefined}
+          onNavigateChart={structureAvailable ? () => setActiveScreen('chart') : undefined}
+          onNavigateOutline={structureAvailable ? () => setActiveScreen('outline') : undefined}
           cta={{
             label: '新しいエピソード',
             onClick: () => setNewEpisodeOpen(true),
@@ -235,6 +285,8 @@ export function App({
           }}
           profile={state.profile}
           onEditProfile={() => setProfileOpen(true)}
+          // 執筆中に作品情報（あらすじ・表紙）を直せるようにする。ダイアログは既存のものをそのまま開く。
+          onEditWorkMeta={work ? () => setMetaOpen(true) : undefined}
           episodes={work?.episodes.map((e) => ({ id: e.id, title: e.title })) ?? []}
           currentEpisodeId={state.currentEpisodeId}
           onSelectEpisode={(id) => {
@@ -261,9 +313,10 @@ export function App({
             onSelect={(id) => setPeekId(id)}
             onQuickCreate={(name) => setQuickCreateName(name)}
             onClose={() => setGlossaryPanelOpen(false)}
+            // 作成と同じくその場のモーダルで編集する（図鑑ページへ飛ばさない）。
+            // パネルは開いたままにして、編集後にチップ一覧へ自然に戻れるようにする。
             onEdit={() => {
-              setGlossaryPanelOpen(false)
-              setActiveScreen('glossary')
+              if (peekEntry) setEditEntryId(peekEntry.id)
             }}
             onNewEntry={() => setQuickCreateName('')}
           />
@@ -341,9 +394,59 @@ export function App({
           {/* エディタツールバー */}
           <div className="flex h-[46px] shrink-0 items-center justify-between gap-3 border-outline-variant/30 border-b bg-surface-container-lowest px-4">
             <div className="flex min-w-0 items-center gap-2.5">
-              <span className="truncate font-medium font-sans text-[13px] text-on-surface">
+              {/* 狭幅では話タイトルを畳む（ドロワーの話一覧で分かる）。代わりに面の切替を置く。 */}
+              <span className="truncate font-medium font-sans text-[13px] text-on-surface max-lg:hidden">
                 {episode.title}
               </span>
+              {/* 本文／プレビューの切替（狭幅のみ）。組み方向トグルと同じ視覚言語で揃える。 */}
+              <fieldset
+                aria-label="表示する面"
+                className="m-0 flex items-center gap-1 border-0 p-0 lg:hidden"
+              >
+                <button
+                  type="button"
+                  aria-pressed={pane === 'editor'}
+                  onClick={() => setPane('editor')}
+                  className={cn(
+                    'flex h-9 items-center rounded-md px-3 font-sans text-xs transition-colors',
+                    pane === 'editor'
+                      ? 'bg-primary text-white'
+                      : 'text-on-surface-variant hover:bg-surface-container-high',
+                  )}
+                >
+                  本文
+                </button>
+                <button
+                  type="button"
+                  aria-pressed={pane === 'preview'}
+                  onClick={() => setPane('preview')}
+                  className={cn(
+                    'flex h-9 items-center rounded-md px-3 font-sans text-xs transition-colors',
+                    pane === 'preview'
+                      ? 'bg-primary text-white'
+                      : 'text-on-surface-variant hover:bg-surface-container-high',
+                  )}
+                >
+                  プレビュー
+                </button>
+              </fieldset>
+              {/* 記法の挿入（PC のみ。狭幅はキーボード直上の記法バーが担当する）。
+                  選択があれば囲み、無ければ空の型を置く。ショートカットは EditorPane 側。 */}
+              <div className="flex items-center gap-1 max-lg:hidden">
+                {NOTATION_BUTTONS.map(({ kind, label, title }) => (
+                  <button
+                    key={kind}
+                    type="button"
+                    title={title}
+                    // クリックで textarea のフォーカス・選択範囲を失うと挿入先が分からなくなる。
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => editorRef.current?.applyNotation(kind)}
+                    className="flex h-[26px] items-center rounded-md px-2.5 font-sans text-on-surface-variant text-xs transition-colors hover:bg-surface-container-high hover:text-on-surface"
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
             </div>
             <div className="flex shrink-0 items-center gap-2">
               <Button
@@ -357,19 +460,22 @@ export function App({
                 )}
               >
                 <Replace className="size-4" aria-hidden />
-                置換
+                <span className="max-lg:hidden">置換</span>
               </Button>
-              {/* 組み方向の切替（プレビュー） */}
+              {/* 組み方向の切替（プレビュー）。狭幅では本文タブの時に意味を持たないので畳む。 */}
               <fieldset
                 aria-label="本文の組み方向"
-                className="m-0 flex items-center gap-1 border-0 p-0"
+                className={cn(
+                  'm-0 flex items-center gap-1 border-0 p-0',
+                  pane === 'editor' && 'max-lg:hidden',
+                )}
               >
                 <button
                   type="button"
                   aria-pressed={orientation === 'horizontal'}
                   onClick={() => setOrientation('horizontal')}
                   className={cn(
-                    'flex h-[26px] items-center rounded-md px-2.5 font-sans text-xs transition-colors',
+                    'flex h-11 items-center rounded-md px-2.5 font-sans text-xs transition-colors md:h-[26px]',
                     orientation === 'horizontal'
                       ? 'bg-primary text-white'
                       : 'text-on-surface-variant hover:bg-surface-container-high',
@@ -382,7 +488,7 @@ export function App({
                   aria-pressed={orientation === 'vertical'}
                   onClick={() => setOrientation('vertical')}
                   className={cn(
-                    'flex h-[26px] items-center rounded-md px-2.5 font-sans text-xs transition-colors',
+                    'flex h-11 items-center rounded-md px-2.5 font-sans text-xs transition-colors md:h-[26px]',
                     orientation === 'vertical'
                       ? 'bg-primary text-white'
                       : 'text-on-surface-variant hover:bg-surface-container-high',
@@ -406,15 +512,21 @@ export function App({
                 )}
               >
                 <BookMarked className="size-4" aria-hidden />
-                図鑑
+                <span className="max-lg:hidden">図鑑</span>
               </Button>
             </div>
           </div>
 
-          {/* 本文＋プレビュー */}
+          {/* 本文＋プレビュー。lg 以上は従来どおり横並び、lg 未満は pane で切り替える（D-EDIT-2）。 */}
           <div className="flex min-h-0 flex-1">
-            <div className="relative flex min-w-0 flex-[1.3_1_0%] flex-col border-outline-variant/30 border-r">
+            <div
+              className={cn(
+                'relative flex min-w-0 flex-[1.3_1_0%] flex-col border-outline-variant/30 lg:border-r',
+                pane !== 'editor' && 'max-lg:hidden',
+              )}
+            >
               <EditorPane
+                ref={editorRef}
                 value={state.draft}
                 onChange={(v) => store.setDraft(v)}
                 glossary={work?.glossary ?? []}
@@ -432,14 +544,17 @@ export function App({
                 />
               ) : null}
             </div>
-            <div className="min-w-0 flex-[1_1_0%]">
+            <div className={cn('min-w-0 flex-[1_1_0%]', pane !== 'preview' && 'max-lg:hidden')}>
               <PreviewPane html={previewHtml} onRefClick={onRefClick} orientation={orientation} />
             </div>
           </div>
 
           {/* ステータスバー */}
-          <div className="flex h-[38px] shrink-0 items-center justify-between border-outline-variant/30 border-t bg-surface-container-lowest px-4">
-            <span className="font-sans text-[11px] text-on-surface-variant/60">自動保存 ON</span>
+          <div className="flex h-[38px] shrink-0 items-center justify-between border-outline-variant/30 border-t bg-surface-container-lowest px-4 max-lg:h-7">
+            {/* 狭幅は縦を本文に譲る（TopAppBar+ツールバー+ここで既に 120px 超を消費している）。 */}
+            <span className="font-sans text-[11px] text-on-surface-variant/60 max-lg:hidden">
+              自動保存 ON
+            </span>
             <span className="font-sans text-[12px] text-on-surface-variant tabular-nums">
               {lineCount}行 ・ {charCount}文字
               {todayNet !== null
@@ -494,6 +609,18 @@ export function App({
         submitLabel="変更"
         onSubmit={(title) => {
           if (renameEpisodeTarget) void store.renameEpisode(renameEpisodeTarget.id, title)
+        }}
+      />
+      {/* 図鑑パネルからの編集（名前の変更も同じダイアログ。旧名は自動で別名に残る）。 */}
+      <GlossaryEntryForm
+        open={editEntry !== null}
+        onOpenChange={(o) => {
+          if (!o) setEditEntryId(null)
+        }}
+        mode="edit"
+        initial={editEntry ?? undefined}
+        onSubmit={async (values) => {
+          if (editEntry) await submitEntryEdit(editEntry, values)
         }}
       />
       {/* 未解決 @参照クリックからのクイック作成（名前プリフィル）。 */}

@@ -20,6 +20,11 @@ describe('blocksToPlainText', () => {
     expect(blocksToPlainText(parseEpisodeBody('[[アリス]]'))).toBe('アリス')
   })
 
+  it('ルビを重ねた @参照は読みも残す（AI に発音情報を渡す）', () => {
+    expect(blocksToPlainText(parseEpisodeBody('[[剣《つるぎ》]]'))).toBe('剣（つるぎ）')
+    expect(blocksToPlainText(parseEpisodeBody('[[《《言葉》》]]'))).toBe('言葉')
+  })
+
   it('空行・シーン区切り・混在行が保たれる', () => {
     const blocks = parseEpisodeBody(
       ['私は[[アリス]]と剣《つるぎ》を', '', '＊', '終わり'].join('\n'),

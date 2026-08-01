@@ -32,7 +32,9 @@ function inlineToNotation(inline: Inline): string {
     case 'emphasisDots':
       return `《《${inline.text}》》`
     case 'ref':
-      return `[[${inline.name}]]`
+      // 装飾を重ねた ref（[[｜言葉《ことば》]]）は children を中身として書き戻す。
+      // ref を外側に置く正規形で出す（`《《[[言葉]]》》` と書かれていてもこちらへ寄る）。
+      return `[[${inline.children ? inline.children.map(inlineToNotation).join('') : inline.name}]]`
   }
 }
 

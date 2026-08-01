@@ -94,7 +94,7 @@ export function ActivityPage({
         />
       }
     >
-      <div className="min-h-0 flex-1 overflow-y-auto px-8 py-9 md:px-10">
+      <div className="min-h-0 flex-1 overflow-y-auto px-5 py-6 sm:px-8 sm:py-9 md:px-10">
         <div className="mx-auto max-w-6xl pb-16">
           <header className="mb-6">
             <h1 className="font-semibold font-serif text-[26px] text-on-surface">執筆の記録</h1>
@@ -147,7 +147,7 @@ export function ActivityPage({
                 </span>
               </p>
               {/* 年タブ（横並び・右寄せ）。選択中は白文字でコントラストを確保。 */}
-              <nav className="flex flex-wrap gap-1.5">
+              <nav aria-label="表示する年" className="flex flex-wrap gap-1.5">
                 {years.map((y) => (
                   <button
                     key={y}

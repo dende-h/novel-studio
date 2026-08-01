@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Inline } from '../schema'
-import { parseEpisodeBody, parseInlines } from './parseNotation'
+import { needsRubyPipe, parseEpisodeBody, parseInlines } from './parseNotation'
 
 describe('parseInlines', () => {
   it('プレーン行は1つのtext', () => {
@@ -73,9 +73,9 @@ describe('parseInlines', () => {
     expect(parseInlines('[[　]]')).toEqual<Inline[]>([{ type: 'ref', name: '' }])
   })
 
-  it('GP9: name 内の《》は非解釈で ]] まで literal', () => {
+  it('GP9: ref の中のルビは解釈する（name は親文字＝解決に使うプレーン名）', () => {
     expect(parseInlines('[[剣《つるぎ》]]')).toEqual<Inline[]>([
-      { type: 'ref', name: '剣《つるぎ》' },
+      { type: 'ref', name: '剣', children: [{ type: 'ruby', base: '剣', reading: 'つるぎ' }] },
     ])
   })
 
@@ -101,6 +101,56 @@ describe('parseInlines', () => {
       { type: 'ref', name: 'アリス' },
       { type: 'text', text: '、おはよう' },
     ])
+  })
+
+  // ── 記法の重ね（ref × ルビ／傍点）─────────────────────────────────
+  // ボタンで [[]] と ｜《》 を別々に入れると自然に重なる。どちらの順で囲んでも
+  // 「ref が外・装飾が中」の同じ形へ正規化する（プレビューの見た目とリンクを両立させる）。
+  it('GP-N1: [[｜親文字《よみ》]] は ruby を children に持つ ref', () => {
+    expect(parseInlines('[[｜言葉《ことば》]]')).toEqual<Inline[]>([
+      { type: 'ref', name: '言葉', children: [{ type: 'ruby', base: '言葉', reading: 'ことば' }] },
+    ])
+    expect(parseInlines('[[|お嬢さん《おじょうさん》]]')).toEqual<Inline[]>([
+      {
+        type: 'ref',
+        name: 'お嬢さん',
+        children: [{ type: 'ruby', base: 'お嬢さん', reading: 'おじょうさん' }],
+      },
+    ])
+  })
+
+  it('GP-N2: [[《《傍点》》]] は emphasisDots を children に持つ ref', () => {
+    expect(parseInlines('[[《《言葉》》]]')).toEqual<Inline[]>([
+      { type: 'ref', name: '言葉', children: [{ type: 'emphasisDots', text: '言葉' }] },
+    ])
+  })
+
+  it('GP-N3: 装飾で ref を囲んだ形も ref を外側へ持ち上げて同じ形にする', () => {
+    expect(parseInlines('《《[[言葉]]》》')).toEqual(parseInlines('[[《《言葉》》]]'))
+    expect(parseInlines('｜[[言葉]]《ことば》')).toEqual(parseInlines('[[｜言葉《ことば》]]'))
+  })
+
+  it('GP-N4: ref の中に text が混じる重ねも name はプレーン文字列になる', () => {
+    expect(parseInlines('[[黒の剣《つるぎ》]]')).toEqual<Inline[]>([
+      {
+        type: 'ref',
+        name: '黒の剣',
+        children: [
+          { type: 'text', text: '黒の' },
+          { type: 'ruby', base: '剣', reading: 'つるぎ' },
+        ],
+      },
+    ])
+  })
+
+  it('GP-N5: 部分的に囲っただけの傍点は持ち上げない（非解釈のまま）', () => {
+    expect(parseInlines('《《前[[名前]]後》》')).toEqual<Inline[]>([
+      { type: 'emphasisDots', text: '前[[名前]]後' },
+    ])
+  })
+
+  it('GP-N6: ref の中に ref は作らない（重ねは 1 段）', () => {
+    expect(parseInlines('[[外[[内]]')).toEqual<Inline[]>([{ type: 'ref', name: '外[[内' }])
   })
 
   it('GP13: ref / ruby / text 混在の境界', () => {
@@ -138,6 +188,38 @@ describe('parseEpisodeBody', () => {
       { id: 'b1', type: 'paragraph', inlines: [{ type: 'text', text: '前' }] },
       { id: 'b2', type: 'paragraph', inlines: [{ type: 'text', text: '＊' }] },
       { id: 'b3', type: 'paragraph', inlines: [{ type: 'text', text: '後' }] },
+    ])
+  })
+})
+
+describe('needsRubyPipe（挿入 UI とパーサで判定を共有する）', () => {
+  it('親文字が漢字だけならパイプ不要（自動ルビが効く）', () => {
+    expect(needsRubyPipe('黄昏')).toBe(false)
+    expect(needsRubyPipe('々')).toBe(false)
+  })
+
+  it('かな・英数字・記号が混じるならパイプが要る', () => {
+    expect(needsRubyPipe('お嬢さん')).toBe(true)
+    expect(needsRubyPipe('ひらがな')).toBe(true)
+    expect(needsRubyPipe('Alice')).toBe(true)
+    expect(needsRubyPipe('第1話')).toBe(true)
+  })
+
+  it('空文字はパイプありで組み立てる（親文字を後から打つため）', () => {
+    expect(needsRubyPipe('')).toBe(true)
+  })
+
+  // 判定どおりに組み立てた記法が、実際にパーサでルビとして解釈されることまで見る
+  // （ここがズレると「ボタンで入れたのにルビにならない」が起きる）。
+  it('判定に従って組み立てた記法はパーサでルビになる', () => {
+    const build = (base: string, reading: string) =>
+      `${needsRubyPipe(base) ? '｜' : ''}${base}《${reading}》`
+
+    expect(parseEpisodeBody(build('黄昏', 'たそがれ'))[0]?.inlines).toEqual([
+      { type: 'ruby', base: '黄昏', reading: 'たそがれ' },
+    ])
+    expect(parseEpisodeBody(build('お嬢さん', 'おじょうさん'))[0]?.inlines).toEqual([
+      { type: 'ruby', base: 'お嬢さん', reading: 'おじょうさん' },
     ])
   })
 })

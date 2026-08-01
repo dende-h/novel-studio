@@ -14,7 +14,6 @@ import { Library } from './components/Library/library'
 import { McpConnectDialog } from './components/McpConnectDialog/mcp-connect-dialog'
 import { RestoreGrace } from './components/RestoreGrace/restore-grace'
 import { SettingsPage } from './components/SettingsPage/settings-page'
-import { SmallScreenNotice } from './components/SmallScreenNotice/small-screen-notice'
 import { SyncOnboarding } from './components/SyncOnboarding/sync-onboarding'
 import { useToast } from './components/Toast/toast'
 import { useHashRoute } from './hooks/use-hash-route'
@@ -34,8 +33,7 @@ interface RootProps {
 /** 入口（ライブラリ）とエディタをハッシュで切り替えるトップレベル Container。 */
 export function Root({ store }: RootProps) {
   const { route, navigate } = useHashRoute()
-  const { status, isSignedIn, canRestore, graceUntil, signOut, getToken, openSignUp, available } =
-    useAuth()
+  const { status, canRestore, graceUntil, signOut, getToken, openSignUp, available } = useAuth()
   const { show } = useToast()
   // 初回のみ保存の仕組みを一度だけ説明する（思想の共有）。立てたら再表示しない。
   const [onboarded, markOnboarded] = useLocalFlag('ns-onboarded')
@@ -95,6 +93,11 @@ export function Root({ store }: RootProps) {
   if (route === '/settings') return <SettingsPage />
   if (route === '/help') return <HelpPage />
 
+  // クラウド同期（有料）の案内。かつては未課金のサインイン済みに強制表示していたが、
+  // novel platform とアカウントを共有する以上そこへ閉じ込められないため、
+  // ヘッダーの導線から任意で開く一枚ものページにした。
+  if (route === '/plan') return <SyncOnboarding onDismiss={() => navigate('/')} />
+
   // 解約後の復元猶予期間：クラウドから復元 → ローカル → 無料のファイル書き出し でデータを持ち出せる
   // 安全網。onboarding より先に判定する（猶予中も status は guest のため）。期限後はクラウド削除。
   if (canRestore && graceUntil != null) {
@@ -127,49 +130,31 @@ export function Root({ store }: RootProps) {
             }}
           />
         ) : null}
-        <SmallScreenNotice />
-      </>
-    )
-  }
-
-  // 未課金でサインイン済み：中途半端な状態を残さず、専用オンボーディングで「購読する or ローカルの
-  // まま使う（＝サインアウトしてゲスト）」の二択に収束させる（§1.1「アカウント＝有料会員だけが持つ」）。
-  if (status === 'guest' && isSignedIn) {
-    return (
-      <>
-        <SyncOnboarding onUseLocal={signOut} />
-        <SmallScreenNotice />
       </>
     )
   }
 
   if (route === '/activity') {
     return (
-      <>
-        <ActivityPage
-          repo={activityRepo}
-          onNavigateCollection={() => navigate('/')}
-          onNavigateIdeas={() => navigate('/ideas')}
-          onNavigateSettings={() => navigate('/settings')}
-          onNavigateHelp={() => navigate('/help')}
-        />
-        <SmallScreenNotice />
-      </>
+      <ActivityPage
+        repo={activityRepo}
+        onNavigateCollection={() => navigate('/')}
+        onNavigateIdeas={() => navigate('/ideas')}
+        onNavigateSettings={() => navigate('/settings')}
+        onNavigateHelp={() => navigate('/help')}
+      />
     )
   }
 
   if (route === '/ideas') {
     return (
-      <>
-        <IdeaboxPage
-          repo={ideaRepo}
-          onNavigateCollection={() => navigate('/')}
-          onNavigateActivity={() => navigate('/activity')}
-          onNavigateSettings={() => navigate('/settings')}
-          onNavigateHelp={() => navigate('/help')}
-        />
-        <SmallScreenNotice />
-      </>
+      <IdeaboxPage
+        repo={ideaRepo}
+        onNavigateCollection={() => navigate('/')}
+        onNavigateActivity={() => navigate('/activity')}
+        onNavigateSettings={() => navigate('/settings')}
+        onNavigateHelp={() => navigate('/help')}
+      />
     )
   }
 
@@ -236,8 +221,6 @@ export function Root({ store }: RootProps) {
           onNotify={show}
         />
       )}
-      {/* スマホ等の狭い画面（lg 未満）では本体を覆って非対応を案内する。 */}
-      <SmallScreenNotice />
     </>
   )
 }

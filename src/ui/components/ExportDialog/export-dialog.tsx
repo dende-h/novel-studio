@@ -231,7 +231,7 @@ export function ExportDialog({ open, onOpenChange, work, onEditMeta }: ExportDia
                       id="export-episode"
                       value={selectedEpisode?.id ?? ''}
                       onChange={(e) => setEpisodeId(e.target.value)}
-                      className="w-full rounded-md border border-outline-variant bg-surface-container-lowest px-3 py-2 text-on-surface text-sm outline-none focus:border-primary"
+                      className="w-full rounded-md border border-outline-variant bg-surface-container-lowest px-3 py-2 text-base text-on-surface outline-none focus:border-primary md:text-sm"
                     >
                       {episodes.length === 0 ? (
                         <option value="">（話がありません）</option>

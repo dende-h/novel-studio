@@ -36,6 +36,30 @@ test('入口にマイライブラリ見出しが出る', async ({ page }) => {
   await expect(page.getByRole('heading', { name: 'マイライブラリ' })).toBeVisible()
 })
 
+/**
+ * 参照 [[ ]] にルビ・傍点を重ねた書き方（記法ボタンを続けて押すと自然にこの形になる）。
+ * プレビューでリンクと装飾の両方が効き、保存→再読込（blocks 往復）でも記法が失われないこと。
+ */
+test('参照とルビ・傍点を重ねてもプレビューに反映され、再読込でも保たれる', async ({ page }) => {
+  await page.goto('/')
+  await createWork(page, '重ね記法E2E')
+  await openWriter(page, '重ね記法E2E')
+  await addEpisode(page, '第一話')
+
+  const textarea = page.getByRole('textbox', { name: '本文' })
+  // 親文字がかな混じりなので ｜ が正本形（漢字だけだと自動ルビへ正規化される）。
+  const body = '[[｜お嬢さん《おじょうさん》]]\n[[《《強調》》]]'
+  await textarea.fill(body)
+
+  await expect(page.locator('.preview .ref ruby rt')).toHaveText('おじょうさん')
+  await expect(page.locator('.preview .ref em.dots')).toHaveText('強調')
+
+  await expect(page.getByText('保存済み')).toBeVisible()
+  await page.goto('/')
+  await openWriter(page, '重ね記法E2E')
+  await expect(page.getByRole('textbox', { name: '本文' })).toHaveValue(body)
+})
+
 test('作品作成→執筆→ライブプレビュー→再読込で本文が永続（IndexedDB）', async ({ page }) => {
   await page.goto('/')
 
@@ -245,30 +269,8 @@ test('サイドバーのマイライブラリでエディタから戻れる', as
   await expect(page.getByRole('heading', { name: 'マイライブラリ' })).toBeVisible()
 })
 
-test('スマホ幅（iPad mini 横未満）では非対応案内が全面表示、iPad mini 横では通常表示', async ({
-  page,
-}) => {
-  const notice = page.getByText('スマートフォンには対応していません')
-
-  // スマホ縦相当（< 1024px）：非対応案内が見え、本体を覆って操作を遮る
-  await page.setViewportSize({ width: 390, height: 844 })
-  await page.goto('/')
-  await expect(notice).toBeVisible()
-  // 画面中央の最前面要素が案内の内側＝本体が覆われている（占有では toBeHidden が効かないため elementFromPoint で確認）
-  const blocked = await page.evaluate(() => {
-    const top = document.elementFromPoint(window.innerWidth / 2, window.innerHeight / 2)
-    const root = [...document.querySelectorAll('div')].find((d) =>
-      d.textContent?.includes('スマートフォンには対応していません'),
-    )
-    return !!(top && root && (root === top || root.contains(top)))
-  })
-  expect(blocked).toBe(true)
-
-  // iPad mini 横相当（1024px）：案内は消え（lg:hidden）、本体が使える
-  await page.setViewportSize({ width: 1024, height: 768 })
-  await expect(notice).toBeHidden()
-  await expect(page.getByRole('heading', { name: 'マイライブラリ' })).toBeVisible()
-})
+// 「スマホ幅では非対応案内を全面表示」のテストは、ライブラリ／エディタをスマホ対応した
+// 時点で仕様ごと廃止した。狭幅の回帰は e2e/mobile.spec.ts（mobile プロジェクト）が担う。
 
 test('作品の削除 → ライブラリから消える', async ({ page }) => {
   await page.goto('/')

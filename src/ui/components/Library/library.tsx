@@ -261,7 +261,7 @@ export function Library({
                     placeholder="作品名で検索"
                     value={query}
                     onChange={(e) => setQuery(e.target.value)}
-                    className="h-[34px] w-[200px] rounded-md border border-outline-variant/40 bg-surface-container-lowest pr-3 pl-8 font-sans text-[13px] text-on-surface outline-none transition-colors placeholder:text-on-surface-variant/50 focus:border-primary"
+                    className="h-[34px] w-[200px] rounded-md border border-outline-variant/40 bg-surface-container-lowest pr-3 pl-8 font-sans text-base text-on-surface outline-none transition-colors placeholder:text-on-surface-variant/50 focus:border-primary md:text-[13px]"
                   />
                 </div>
                 {state.workList.length > 0 && (

@@ -168,7 +168,8 @@ export function GlossaryEntryForm({
                 名前を変えても大丈夫です。旧名は自動で別名に残り、本文中の参照はそのまま解決されます。
               </p>
             ) : null}
-            <div className="grid grid-cols-2 gap-3">
+            {/* 狭幅で 2 列固定にすると読み・カテゴリとも入力欄が潰れるので 1 列へ落とす。 */}
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor={`${uid}-reading`}>読み（任意）</Label>
                 <Input
@@ -184,7 +185,7 @@ export function GlossaryEntryForm({
                   id={`${uid}-category`}
                   value={category}
                   onChange={(e) => setCategory(e.target.value)}
-                  className="h-9 w-full rounded-md border border-input bg-surface-container-lowest px-3 font-sans text-on-surface text-sm outline-none transition-colors focus:border-primary"
+                  className="h-9 w-full rounded-md border border-input bg-surface-container-lowest px-3 font-sans text-base text-on-surface outline-none transition-colors focus:border-primary md:text-sm"
                 >
                   <option value="">未分類</option>
                   {GLOSSARY_CATEGORIES.map((c) => (

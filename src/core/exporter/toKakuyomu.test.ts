@@ -46,4 +46,9 @@ describe('blocksToKakuyomu', () => {
   it('GE-K1: @参照は名前のプレーンへ degrade する（カクヨムに記法が無い）', () => {
     expect(blocksToKakuyomu(parseEpisodeBody('私は[[アリス]]'))).toBe('私はアリス')
   })
+
+  it('GE-K2: ref に重ねたルビ・傍点はカクヨム記法として残る', () => {
+    expect(blocksToKakuyomu(parseEpisodeBody('[[《《言葉》》]]'))).toBe('《《言葉》》')
+    expect(blocksToKakuyomu(parseEpisodeBody('[[剣《つるぎ》]]'))).toBe('剣《つるぎ》')
+  })
 })

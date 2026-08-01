@@ -1,9 +1,10 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { describe, expect, it } from 'vitest'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { afterEach, describe, expect, it } from 'vitest'
 import { ProfileRepository } from '../core/profile'
 import { SnapshotRepository } from '../core/snapshot/snapshotRepository'
 import { ActivityRepository } from '../core/storage/activityRepository'
 import { MemoryStore } from '../core/storage/memoryStore'
+import { StructureRepository } from '../core/storage/structureRepository'
 import type { KeyValueStore } from '../core/storage/types'
 import { WorkRepository } from '../core/storage/workRepository'
 import { App } from './App'
@@ -273,5 +274,132 @@ describe('App（エディタ結合：本文/プレビュー・自動保存・履
     // 閉じるボタンで閉じる
     fireEvent.click(screen.getByRole('button', { name: '履歴を閉じる' }))
     expect(screen.queryByText('ローカル・セーフティネット')).toBeNull()
+  })
+})
+
+/**
+ * 構造化3機能（アウトライン／相関図／マインドマップ）は PC 専用。
+ * dnd-kit / React Flow のノード・辺の削除が opacity-0 group-hover のみでタッチから到達できず、
+ * 中途半端に動くものを出すより閉じる、という判断（D-EDIT-4）。
+ */
+describe('App（構造ツールの画面幅ゲート）', () => {
+  const setWidth = (width: number) => {
+    const { happyDOM } = window as unknown as {
+      happyDOM: { setViewport: (v: { width: number }) => void }
+    }
+    act(() => {
+      happyDOM.setViewport({ width })
+    })
+  }
+
+  const renderWithStructure = async (kv: KeyValueStore = new MemoryStore()) => {
+    const store = makeStore(kv)
+    await seedWorkEpisode(store)
+    return render(<App store={store} structureRepo={new StructureRepository(kv)} canUseStructure />)
+  }
+
+  afterEach(() => setWidth(1280))
+
+  it('広い画面では構造ツールの入口が出る', async () => {
+    setWidth(1280)
+    await renderWithStructure()
+    expect(await screen.findByRole('button', { name: 'アウトライン' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '相関図' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'マインドマップ' })).toBeInTheDocument()
+  })
+
+  it('狭い画面では構造ツールの入口を出さない', async () => {
+    setWidth(390)
+    await renderWithStructure()
+    await screen.findByRole('textbox', { name: '本文' })
+    expect(screen.queryByRole('button', { name: 'アウトライン' })).toBeNull()
+    expect(screen.queryByRole('button', { name: '相関図' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'マインドマップ' })).toBeNull()
+  })
+
+  // 回転・分割ビュー・ウィンドウ縮小で「操作できない画面に閉じ込められる」ことを防ぐ。
+  // 入口を CSS で隠すだけでは activeScreen が残ってしまうため、JS で本文へ戻している。
+  it('構造ツールを開いたまま狭くすると本文へ戻る（閉じ込め防止）', async () => {
+    setWidth(1280)
+    await renderWithStructure()
+
+    fireEvent.click(await screen.findByRole('button', { name: 'アウトライン' }))
+    await waitFor(() => expect(screen.queryByRole('textbox', { name: '本文' })).toBeNull())
+
+    setWidth(390)
+    // 本文エディタが戻ってくる＝activeScreen が 'episodes' にリセットされた
+    expect(await screen.findByRole('textbox', { name: '本文' })).toBeInTheDocument()
+  })
+})
+
+/**
+ * 執筆の流れを切らないための導線（図鑑をその場で編集・作品情報をエディタから編集）。
+ * どちらも「画面遷移させない」ことが要件なので、モーダルが開くところまでを見る。
+ */
+describe('App（執筆中に開く編集モーダル）', () => {
+  it('図鑑パネルの「編集」は画面遷移せずモーダルを開く', async () => {
+    const store = makeStore()
+    await seedWorkEpisode(store)
+    await store.addGlossaryEntry({ name: 'アリス', summary: '物語の主人公。' })
+    render(<App store={store} />)
+
+    // 本文の @参照クリックでパネルに用語を出す
+    fireEvent.change(await screen.findByRole('textbox', { name: '本文' }), {
+      target: { value: '[[アリス]]が来た' },
+    })
+    const ref = await waitFor(() => {
+      const el = document.querySelector('.preview .ref[data-ref-name="アリス"]')
+      if (!el) throw new Error('ref 未描画')
+      return el
+    })
+    fireEvent.click(ref)
+
+    fireEvent.click(await screen.findByRole('button', { name: '編集' }))
+
+    const dialog = await screen.findByRole('dialog')
+    expect(within(dialog).getByLabelText('名前')).toHaveValue('アリス')
+
+    // 閉じると本文エディタに戻る＝図鑑ページへ遷移していない（その場のモーダル）。
+    // モーダル表示中は Radix が背景を a11y ツリーから外すため、閉じてから確かめる。
+    fireEvent.keyDown(dialog, { key: 'Escape' })
+    expect(await screen.findByRole('textbox', { name: '本文' })).toBeInTheDocument()
+  })
+
+  it('図鑑パネルの編集で改名すると、旧名を別名に残したまま更新される', async () => {
+    const store = makeStore()
+    await seedWorkEpisode(store)
+    await store.addGlossaryEntry({ name: 'アリス' })
+    render(<App store={store} />)
+
+    fireEvent.change(await screen.findByRole('textbox', { name: '本文' }), {
+      target: { value: '[[アリス]]が来た' },
+    })
+    const ref = await waitFor(() => {
+      const el = document.querySelector('.preview .ref[data-ref-name="アリス"]')
+      if (!el) throw new Error('ref 未描画')
+      return el
+    })
+    fireEvent.click(ref)
+    fireEvent.click(await screen.findByRole('button', { name: '編集' }))
+
+    fireEvent.change(screen.getByLabelText('名前'), { target: { value: 'アリシア' } })
+    fireEvent.click(screen.getByRole('button', { name: '保存する' }))
+
+    await waitFor(() => {
+      const entry = store.getSnapshot().work?.glossary?.[0]
+      expect(entry?.name).toBe('アリシア')
+      // 改名前の名前は別名に残るので、本文の [[アリス]] は解決したまま
+      expect(entry?.aliases).toContain('アリス')
+    })
+  })
+
+  it('サイドバーの作品カードから作品情報を編集できる', async () => {
+    const store = makeStore()
+    await seedWorkEpisode(store)
+    render(<App store={store} />)
+
+    fireEvent.click(await screen.findByRole('button', { name: '作品情報を編集' }))
+    const dialog = await screen.findByRole('dialog')
+    expect(within(dialog).getByLabelText('タイトル')).toHaveValue('作品ワン')
   })
 })

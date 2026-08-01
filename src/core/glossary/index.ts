@@ -1,4 +1,4 @@
-import type { GlossaryEntry, Work } from '../schema'
+import type { GlossaryEntry, Inline, Work } from '../schema'
 
 /**
  * @参照 / オブジェクト辞書のコアロジック（純TS・React 非依存）。
@@ -63,6 +63,27 @@ export function findAppearances(work: Work, entry: GlossaryEntry): Appearances {
   return { episodeIds, refCount }
 }
 
+/**
+ * 本文の ref(旧名) を新名へ差し替える（一致しない inline はそのまま返す）。
+ * 装飾を重ねた ref（[[｜言葉《ことば》]]）は表示側（children）の親文字／本文も同時に差し替える。
+ * name だけ変えると記法テキストへ書き戻した瞬間に children 側の旧名で再解釈され、
+ * リネームが消えてしまうため。
+ * 装飾が複数に割れている ref はどれが名前なのか決められないので手を触れない
+ *（旧名は alias へ退避済みなので、参照自体は解決され続ける）。
+ */
+function renameRefInline(inline: Inline, trimmedOld: string, newName: string): Inline {
+  if (inline.type !== 'ref' || inline.name.trim() !== trimmedOld) return inline
+  const children = inline.children
+  if (!children) return { ...inline, name: newName }
+  const only = children.length === 1 ? children[0] : undefined
+  if (!only) return inline
+  return {
+    ...inline,
+    name: newName,
+    children: [only.type === 'ruby' ? { ...only, base: newName } : { ...only, text: newName }],
+  }
+}
+
 export interface RenameOptions {
   /** true なら本文中の ref(旧名) を新名へ一括書換（プレーン同名 text は不変）。 */
   rewriteBody?: boolean
@@ -119,11 +140,7 @@ export function renameEntry(
         if (block.type !== 'paragraph') return block
         return {
           ...block,
-          inlines: block.inlines.map((inline) =>
-            inline.type === 'ref' && inline.name.trim() === trimmedOld
-              ? { ...inline, name: newName }
-              : inline,
-          ),
+          inlines: block.inlines.map((inline) => renameRefInline(inline, trimmedOld, newName)),
         }
       }),
     }))
