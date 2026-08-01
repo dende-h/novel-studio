@@ -12,10 +12,17 @@ export default defineConfig({
     VitePWA({
       registerType: 'autoUpdate',
       workbox: {
-        // Clerk チャンクは pk 設定時のみ動的 import される。ゲスト（大多数）に
-        // precache させない（lazy 資産は precache 対象外にする方針。JP フォントと同じ規律）。
         // LP（マーケティング静的ページ）はアプリの SW 資産に含めない。
-        globIgnores: ['**/clerk-gate-*.js', 'lp/**'],
+        //
+        // clerk-gate は precache から外さない。pk 設定時（＝本番）はこのチャンクを読み終える
+        // まで一画面も描かないので、初回描画に必須の資産であり、index.html と同じ世代の
+        // precache に入っている必要がある。外すと 2 通りで白画面になる：
+        //   ① 電波が切れると取得に失敗する（SW が返す shell は動くのに中身が来ない）
+        //   ② 新しくデプロイした直後、SW が古い index/entry を返している間は、そこが指す
+        //      旧ハッシュの clerk-gate がサーバに無く 404 になる
+        // なお節約になるのは 1.6KB のこのチャンクだけで、実体の Clerk SDK（約88KB）は
+        // もともと precache されている。外す利得はほぼ無く、失うものが大きい。
+        globIgnores: ['lp/**'],
         // 同期 API（/api/*）は絶対にキャッシュしない。SW をネットワーク直行（NetworkOnly）にし、
         // SPA のナビゲーションフォールバック（index.html 差し替え）の対象からも除外する。
         // これを怠ると古い manifest/work レスポンスが返り、同期が壊れる（Phase 2 の必須対策）。

@@ -61,5 +61,42 @@
   <body>
     <div id="root"></div>
     <script type="module" src="/src/ui/main.tsx"></script>
+    <!--
+      アプリの JS 自体が届かなかった場合の受け。React が起動していないので、
+      アプリ内のエラー境界では拾えず、放っておくと白い画面のまま何も起きない
+      （LP から来た初回＝cold load で電波が切れると踏む）。
+      取得失敗だけを拾い、セッション中 1 回だけ自動で取り直す。二度目は案内を出す。
+    -->
+    <script>
+      (function () {
+        var KEY = 'ns-boot-retry'
+        addEventListener(
+          'error',
+          function (e) {
+            var el = e.target
+            if (!el || el.tagName !== 'SCRIPT' || el.type !== 'module') return
+            try {
+              if (!sessionStorage.getItem(KEY)) {
+                sessionStorage.setItem(KEY, '1')
+                location.reload()
+                return
+              }
+            } catch (_) {}
+            var root = document.getElementById('root')
+            if (root && !root.firstChild) {
+              root.innerHTML =
+                '<div style="min-height:100dvh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;padding:24px;text-align:center;font-family:system-ui,sans-serif;color:#1f2430">' +
+                '<p style="margin:0">画面を読み込めませんでした。</p>' +
+                '<p style="margin:0;font-size:14px;color:#6b7381">通信が途切れた可能性があります。書いた原稿はこの端末に保存されています。</p>' +
+                '<button type="button" style="border:0;border-radius:999px;background:#2c5b27;color:#fff;padding:10px 20px;font-size:14px" onclick="location.reload()">再読み込み</button>' +
+                '</div>'
+            }
+          },
+          true,
+        )
+        // 記録を落とすのは「起動できた時」だけ（main.tsx が消す）。ページの load で
+        // 消すと、失敗したまま load が走って自動再読み込みが繰り返しになる。
+      })()
+    </script>
   </body>
 </html>
