@@ -146,10 +146,17 @@ function AccountControl() {
         variant="ghost"
         size="sm"
         onClick={auth.openSignIn}
-        className="gap-2 text-on-surface-variant hover:text-primary"
+        // 表示は狭幅で短くするが、読み上げ名は文言を切らずに固定する。
+        aria-label="ログインでクラウドバックアップ"
+        className="min-w-0 gap-2 text-on-surface-variant hover:text-primary"
       >
-        <CloudOff className="size-4" aria-hidden />
-        ログインでクラウドバックアップ
+        <CloudOff className="size-4 shrink-0" aria-hidden />
+        {/* スマホでは全文がロゴに被る幅しかない。効能（バックアップ）はサインイン後の
+            導線と設定画面が説明するので、ここは行為だけを出す。 */}
+        <span className="max-sm:hidden">ログインでクラウドバックアップ</span>
+        <span aria-hidden className="sm:hidden">
+          ログイン
+        </span>
       </Button>
     )
   }
@@ -189,7 +196,9 @@ export function TopAppBar({
           type="button"
           onClick={onBrandClick}
           disabled={!onBrandClick}
-          className="flex items-center gap-2 transition-opacity hover:opacity-80 disabled:cursor-default disabled:hover:opacity-100"
+          // min-w-0 が無いと、幅が足りないときロゴ画像が親の外へはみ出して右のボタンに重なる
+          // （object-contain なので、縮む場合は切れずに小さくなる）。
+          className="flex min-w-0 items-center gap-2 transition-opacity hover:opacity-80 disabled:cursor-default disabled:hover:opacity-100"
         >
           {brand ?? (
             <>
@@ -197,13 +206,13 @@ export function TopAppBar({
                 src="/logo-clean.png"
                 alt=""
                 aria-hidden
-                className="h-8 w-auto object-contain sm:h-10"
+                className="h-8 w-auto min-w-0 object-contain sm:h-10"
               />
               {/* タイトルロゴは濃紺の文字画像。暗背景では消えるのでダーク時のみ反転して明色にする。 */}
               <img
                 src="/app_title_text-clean.png"
                 alt="コトノハ-leaf-"
-                className="h-8 w-auto object-contain sm:h-10 dark:opacity-90 dark:brightness-0 dark:invert"
+                className="h-8 w-auto min-w-0 object-contain sm:h-10 dark:opacity-90 dark:brightness-0 dark:invert"
               />
             </>
           )}
@@ -218,7 +227,8 @@ export function TopAppBar({
           </span>
         ) : null}
       </div>
-      <div className="flex items-center gap-3">
+      {/* 右側（状態表示とアカウント）は縮めない。左のロゴ側に幅を譲らせる。 */}
+      <div className="flex shrink-0 items-center gap-3">
         {saveStatus ? <SaveIndicator {...saveStatus} /> : null}
         {onToggleHistory ? (
           <button
