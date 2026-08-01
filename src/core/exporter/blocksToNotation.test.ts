@@ -27,6 +27,19 @@ describe('blocksToNotation（ロスレス正本記法シリアライザ）', () 
     expect(round).toEqual(once)
   })
 
+  it('GN4: 重ねた ref（ルビ・傍点）も [[ ]] の中身ごと保存され往復で恒等', () => {
+    const src = ['[[｜お嬢さん《おじょうさん》]]と[[《《言葉》》]]', '[[剣《つるぎ》]]を抜く'].join(
+      '\n',
+    )
+    expect(blocksToNotation(parseEpisodeBody(src))).toBe(src)
+    expect(parseEpisodeBody(blocksToNotation(parseEpisodeBody(src)))).toEqual(parseEpisodeBody(src))
+  })
+
+  it('GN5: 装飾で ref を囲んだ書き方は ref が外側の正本形へ寄せて保存される', () => {
+    expect(blocksToNotation(parseEpisodeBody('《《[[言葉]]》》'))).toBe('[[《《言葉》》]]')
+    expect(blocksToNotation(parseEpisodeBody('｜[[言葉]]《ことば》'))).toBe('[[言葉《ことば》]]')
+  })
+
   it('GN3: notation 自体も往復で恒等（正本形テキスト不動点）', () => {
     // カオス は非漢字親文字なので明示｜が保たれる（剣 のような漢字は ｜省略が正本形）
     const src = ['私は[[アリス]]と｜カオス《混沌》を', '＊', '《《重要》》な[[場所]]'].join('\n')

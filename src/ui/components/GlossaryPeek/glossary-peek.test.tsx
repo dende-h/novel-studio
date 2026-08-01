@@ -74,6 +74,25 @@ describe('GlossaryPeek（図鑑パネル）', () => {
     expect(onQuickCreate).toHaveBeenCalledWith('謎の人物')
   })
 
+  // 記法ボタンでルビ・傍点を重ねた参照。チップの名前が記法ごと取れると
+  // プレビューではリンクなのにチップは「未登録」という食い違いが起きる。
+  it('ルビ・傍点を重ねた [[用語]] も装飾を剥いだ名前でチップになる', () => {
+    const onSelect = vi.fn()
+    render(
+      <GlossaryPeek
+        entries={[entry]}
+        draft="[[｜アリス《ありす》]]と[[《《アリス》》]]"
+        entry={null}
+        appearances={null}
+        {...noop}
+        onSelect={onSelect}
+      />,
+    )
+    expect(screen.getAllByRole('button', { name: 'アリス' })).toHaveLength(1)
+    fireEvent.click(screen.getByRole('button', { name: 'アリス' }))
+    expect(onSelect).toHaveBeenCalledWith('a')
+  })
+
   it('用語が無ければ案内文を出す', () => {
     render(<GlossaryPeek entries={[]} draft="" entry={null} appearances={null} {...noop} />)
     expect(screen.getByText(/本文に \[\[用語\]\] を書くと/)).toBeInTheDocument()

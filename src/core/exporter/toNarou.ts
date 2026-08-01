@@ -28,7 +28,8 @@ function inlineToNarou(inline: Inline): string {
       // なろうに傍点記法は無い → 各文字にルビ「・」で degrade
       return [...inline.text].map((ch) => `｜${ch}《・》`).join('')
     case 'ref':
-      // @参照記法はなろうに無い → 名前のプレーンテキストへ degrade（exporter は辞書非依存）
-      return inline.name
+      // @参照記法はなろうに無い → リンクを落とす。ただし重ねたルビ・傍点は記法として残す
+      //（[[｜言葉《ことば》]] → ｜言葉《ことば》）。
+      return inline.children ? inline.children.map(inlineToNarou).join('') : inline.name
   }
 }

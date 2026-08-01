@@ -106,6 +106,11 @@ describe('findAppearances（登場話・参照数）', () => {
     expect(findAppearances(w, al)).toEqual({ episodeIds: ['ep1'], refCount: 2 })
   })
 
+  it('GA5: ルビ・傍点を重ねた ref も（name＝親文字で）算入される', () => {
+    const w = work([{ id: 'ep1', body: '[[｜アリス《ありす》]]と[[《《アリス》》]]' }])
+    expect(findAppearances(w, al)).toEqual({ episodeIds: ['ep1'], refCount: 2 })
+  })
+
   it('GA4: 未参照 entry は空', () => {
     const w = work([{ id: 'ep1', body: '誰も居ない' }])
     expect(findAppearances(w, al)).toEqual({ episodeIds: [], refCount: 0 })
@@ -153,6 +158,24 @@ describe('renameEntry（①自動エイリアス ＋ ②本文一括書換）', 
     expect(inlinesOf(next, 0, 0)).toEqual([
       { type: 'text', text: '旧は' },
       { type: 'ref', name: '新' },
+    ])
+  })
+
+  // 装飾つき ref は name だけ書き換えると、記法テキストへ戻した瞬間に children 側の
+  // 旧名で読み直されてリネームが消える。表示（children）も一緒に追従させる。
+  it('GRN4b: ② ルビを重ねた ref は親文字も新名へ（読みは保つ）', () => {
+    const w = work([{ id: 'ep1', body: '[[｜旧《きゅう》]]' }], [entry({ id: 'g1', name: '旧' })])
+    const next = renameEntry(w, 'g1', '新', { rewriteBody: true })
+    expect(inlinesOf(next, 0, 0)).toEqual([
+      { type: 'ref', name: '新', children: [{ type: 'ruby', base: '新', reading: 'きゅう' }] },
+    ])
+  })
+
+  it('GRN4c: ② 傍点を重ねた ref も本文が新名へ', () => {
+    const w = work([{ id: 'ep1', body: '[[《《旧》》]]' }], [entry({ id: 'g1', name: '旧' })])
+    const next = renameEntry(w, 'g1', '新', { rewriteBody: true })
+    expect(inlinesOf(next, 0, 0)).toEqual([
+      { type: 'ref', name: '新', children: [{ type: 'emphasisDots', text: '新' }] },
     ])
   })
 

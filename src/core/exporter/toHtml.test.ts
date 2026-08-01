@@ -77,6 +77,27 @@ describe('blocksToHtml（ライブプレビュー描画）', () => {
     expect(blocksToHtml(parseEpisodeBody('私は[[アリス]]'))).toBe('<p>私はアリス</p>')
   })
 
+  // ── ref × ルビ／傍点の重ね（プレビューで両方効かせる） ──
+  it('GE-H4: ルビを重ねた ref はリンクの中に <ruby> を描く（data-ref-name は親文字）', () => {
+    const html = blocksToHtml(parseEpisodeBody('[[｜言葉《ことば》]]'), new Set(['言葉']))
+    expect(html).toBe(
+      '<p><span class="ref" data-ref-name="言葉"><ruby>言葉<rp>（</rp><rt>ことば</rt><rp>）</rp></ruby></span></p>',
+    )
+  })
+
+  it('GE-H5: 傍点を重ねた ref はリンクの中に em.dots を描く', () => {
+    const html = blocksToHtml(parseEpisodeBody('[[《《言葉》》]]'), new Set(['言葉']))
+    expect(html).toBe(
+      '<p><span class="ref" data-ref-name="言葉"><em class="dots">言葉</em></span></p>',
+    )
+  })
+
+  it('GE-H6: plain モード（EPUB 等）でもルビは残る（リンクだけ落ちる）', () => {
+    expect(blocksToHtml(parseEpisodeBody('[[｜言葉《ことば》]]'))).toBe(
+      '<p><ruby>言葉<rp>（</rp><rt>ことば</rt><rp>）</rp></ruby></p>',
+    )
+  })
+
   it('ref 名もエスケープ／数字は縦中横', () => {
     const html = blocksToHtml(parseEpisodeBody('[[A<2]]'), new Set(['A<2']))
     expect(html).toBe(

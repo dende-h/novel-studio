@@ -195,6 +195,48 @@ test('@サジェストは狭幅ではキーボード直上のバーで出る', a
   await expect(ta).toHaveValue('[[アリス]]')
 })
 
+/**
+ * 記法バーの「参照」で空枠 [[]] を置いてから書く導線。確定時に閉じ `]]` を
+ * 一緒に置換しないと [[アリス]]]] になり、ref が壊れてプレビューでリンクにならない。
+ * 実機で最初に踏むのがこの順序（ボタン→入力→候補）なので e2e でも通しで踏む。
+ */
+test('記法バーの参照で空枠を置いてから候補確定しても括弧が二重にならない', async ({ page }) => {
+  await page.goto('/')
+  await createWork(page, '空枠検証')
+  await openWriter(page, '空枠検証')
+  await addEpisode(page, '第一話')
+
+  await openNav(page)
+  await page.getByRole('button', { name: '図鑑', exact: true }).click()
+  await page.getByRole('button', { name: '新しく登録' }).click()
+  await page.getByLabel('名前').fill('ユグドラシル')
+  await page.getByRole('button', { name: '作成', exact: true }).click()
+  await expect(page.getByRole('heading', { name: 'ユグドラシル' })).toBeVisible()
+  await openNav(page)
+  await page.getByRole('button', { name: '本文を書く', exact: true }).click()
+
+  const ta = page.getByRole('textbox', { name: '本文' })
+  await ta.click()
+  await page.getByRole('button', { name: '参照', exact: true }).click()
+  await expect(ta).toHaveValue('[[]]')
+
+  // 空枠の中（キャレットは [[ の直後）に打つ
+  await ta.pressSequentially('ユグ')
+  const suggest = page.getByRole('listbox', { name: '参照候補' })
+  await expect(suggest).toBeVisible()
+  await suggest.getByRole('option', { name: /ユグドラシル/ }).click()
+  await expect(ta).toHaveValue('[[ユグドラシル]]')
+
+  // 参照にルビを重ねても両方効く（記法ボタンを続けて使うと自然にこの形になる）
+  await ta.fill('[[｜ユグドラシル《せかいじゅ》]]')
+
+  await page.getByRole('button', { name: 'プレビュー', exact: true }).click()
+  // 解決済みの参照として出る（未解決スタイルではない）＋ルビも乗る
+  await expect(page.locator('.preview .ref')).toHaveCount(1)
+  await expect(page.locator('.preview .ref--unresolved')).toHaveCount(0)
+  await expect(page.locator('.preview .ref ruby rt')).toHaveText('せかいじゅ')
+})
+
 test('記法バー：フォーカス中だけ出て、選択を囲む。@サジェスト中は候補バーが優先される', async ({
   page,
 }) => {

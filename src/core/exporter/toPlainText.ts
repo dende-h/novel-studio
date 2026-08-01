@@ -18,8 +18,9 @@ function inlineToPlainText(inline: Inline): string {
       // 傍点は視覚的強調であって本文内容ではない → 素のテキストへ
       return inline.text
     case 'ref':
-      // @参照はプレーン名へ degrade（exporter は辞書非依存）
-      return inline.name
+      // @参照はプレーン名へ degrade（exporter は辞書非依存）。
+      // ルビを重ねた ref は読みも残す（[[｜言葉《ことば》]] → 言葉（ことば））。
+      return inline.children ? inline.children.map(inlineToPlainText).join('') : inline.name
   }
 }
 

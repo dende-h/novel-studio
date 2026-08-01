@@ -181,6 +181,94 @@ describe('EditorPane（[[ 補助トリガ）', () => {
     expect(ta).toHaveValue('[[新キャラ]]')
   })
 
+  /**
+   * 記法ボタン（PC ツールバー／スマホ記法バー）で空枠 [[]] を置いてから書く導線。
+   * 確定時に閉じ `]]` を置換範囲へ含めないと [[名前]]]] になり、ref が壊れて
+   * プレビューでリンクにならない。ボタン→入力→確定を通しで踏む。
+   */
+  describe('空枠 [[]] から書き始めた確定（閉じ括弧を二重にしない）', () => {
+    function FrameHarness({
+      glossary = [],
+      onCreateEntry,
+    }: {
+      glossary?: GlossaryEntry[]
+      onCreateEntry?: (name: string) => GlossaryEntry
+    }) {
+      const [value, setValue] = useState('')
+      const ref = useRef<EditorPaneHandle>(null)
+      return (
+        <>
+          <button type="button" onClick={() => ref.current?.applyNotation('ref')}>
+            図鑑
+          </button>
+          <EditorPane
+            ref={ref}
+            value={value}
+            onChange={setValue}
+            glossary={glossary}
+            onCreateEntry={onCreateEntry}
+          />
+        </>
+      )
+    }
+
+    /** 空枠の中に文字を打った状態を作る（キャレットは閉じ ]] の手前）。 */
+    const typeInFrame = (ta: HTMLElement, query: string) =>
+      fireEvent.change(ta, {
+        target: {
+          value: `[[${query}]]`,
+          selectionStart: 2 + query.length,
+          selectionEnd: 2 + query.length,
+        },
+      })
+
+    it('候補を選んでも [[名前]]]] にならない', () => {
+      render(<FrameHarness glossary={[g('ユグドラシル', 'ゆぐどらしる')]} />)
+      const ta = screen.getByRole('textbox', { name: '本文' }) as HTMLTextAreaElement
+      fireEvent.click(screen.getByRole('button', { name: '図鑑' }))
+      expect(ta).toHaveValue('[[]]')
+
+      typeInFrame(ta, 'ユグ')
+      fireEvent.click(screen.getByRole('option', { name: /ユグドラシル/ }))
+      expect(ta).toHaveValue('[[ユグドラシル]]')
+      // キャレットは ref の外＝続きをそのまま書ける
+      expect(ta.selectionStart).toBe('[[ユグドラシル]]'.length)
+    })
+
+    it('新規作成で確定しても [[名前]]]] にならない', () => {
+      const onCreateEntry = vi.fn((name: string) => g(name))
+      render(<FrameHarness onCreateEntry={onCreateEntry} />)
+      const ta = screen.getByRole('textbox', { name: '本文' })
+      fireEvent.click(screen.getByRole('button', { name: '図鑑' }))
+
+      typeInFrame(ta, '新キャラ')
+      fireEvent.click(screen.getByRole('option', { name: /新規作成/ }))
+      expect(onCreateEntry).toHaveBeenCalledWith('新キャラ')
+      expect(ta).toHaveValue('[[新キャラ]]')
+    })
+
+    it('空枠の中で @ から呼び出しても括弧が二重にならない', () => {
+      render(<FrameHarness glossary={[g('ユグドラシル', 'ゆぐどらしる')]} />)
+      const ta = screen.getByRole('textbox', { name: '本文' })
+      fireEvent.click(screen.getByRole('button', { name: '図鑑' }))
+
+      typeInFrame(ta, '@ユグ')
+      fireEvent.click(screen.getByRole('option', { name: /ユグドラシル/ }))
+      expect(ta).toHaveValue('[[ユグドラシル]]')
+    })
+
+    it('枠の外に既にある ]] は巻き込まない', () => {
+      render(<FrameHarness glossary={[g('アリス', 'ありす')]} />)
+      const ta = screen.getByRole('textbox', { name: '本文' })
+      // 空枠ではなく素の @ 入力（直後に閉じ括弧が無い）
+      fireEvent.change(ta, {
+        target: { value: '@アリ、', selectionStart: 3, selectionEnd: 3 },
+      })
+      fireEvent.click(screen.getByRole('option', { name: /アリス/ }))
+      expect(ta).toHaveValue('[[アリス]]、')
+    })
+  })
+
   it('閉じた [[名前]] を打ち切った直後は再発火しない', () => {
     render(<Harness glossary={[g('アリス', 'ありす')]} />)
     const ta = screen.getByRole('textbox', { name: '本文' })

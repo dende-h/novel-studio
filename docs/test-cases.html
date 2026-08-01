@@ -239,16 +239,26 @@
         { id: 'GP3', module: 'core/parser/parseNotation', group: 'parseInlines(ref)', status: 'proposed', title: '前後空白は trim（半角/全角）', input: '[[ アリス ]]', expected: '[ref(アリス)]（name は trim 済）' },
         { id: 'GP4', module: 'core/parser/parseNotation', group: 'parseInlines(ref)', status: 'proposed', title: '未終端 [[ は改行/行末を終端に ref 化（§2.1）', input: '行末 [[未完', expected: '[..., ref(未完)]（フォールバックでなく ref）' },
         { id: 'GP-EMPTY', module: 'core/parser/parseNotation', group: 'parseInlines(ref)', status: 'proposed', title: '空 [[]] / [[　]] も常に ref（name=空）', input: '[[]] と [[　]]', expected: 'ref(name=空文字)（描画時は常に未解決）' },
-        { id: 'GP9', module: 'core/parser/parseNotation', group: 'parseInlines(ref)', status: 'proposed', title: 'name 内の《》は非解釈で ]] まで literal', input: '[[剣《つるぎ》]]', expected: '[ref(name=剣《つるぎ》)]' },
+        { id: 'GP9', module: 'core/parser/parseNotation', group: 'parseInlines(ref)', status: 'proposed', title: 'ref の中のルビは解釈する（name は親文字）', input: '[[剣《つるぎ》]]', expected: '[ref(name=剣, children=[ruby(剣→つるぎ)])]' },
         { id: 'GP10', module: 'core/parser/parseNotation', group: 'parseInlines(ref)', status: 'proposed', title: '連続 ref は空 text を挟まず分割', input: '[[A]][[B]]', expected: '[ref(A), ref(B)]' },
         { id: 'GP11', module: 'core/parser/parseNotation', group: 'parseInlines(ref)', status: 'proposed', title: 'ref 前後の text flush 境界', input: 'x[[A]]y[[B]]z', expected: '[text(x),ref(A),text(y),ref(B),text(z)]' },
         { id: 'GP12', module: 'core/parser/parseNotation', group: 'parseInlines(ref)', status: 'proposed', title: 'ref 直後の句読点は text', input: '[[アリス]]、おはよう', expected: '[ref(アリス), text(、おはよう)]' },
         { id: 'GP13', module: 'core/parser/parseNotation', group: 'parseInlines(ref)', status: 'proposed', title: 'ref / ruby / text 混在の境界', input: '私は[[アリス]]と｜剣《つるぎ》を', expected: '[text, ref(アリス), text, ruby(剣→つるぎ), text]' },
 
+        // 12.1 記法の重ね（ref × ルビ／傍点）。ref を外側に持つ形へ正規化し、name は装飾を剥いだプレーン文字列。
+        { id: 'GP-N1', module: 'core/parser/parseNotation', group: 'parseInlines(重ね)', status: 'proposed', title: 'ref にルビを重ねる', input: '[[｜言葉《ことば》]]', expected: '[ref(name=言葉, children=[ruby(言葉→ことば)])]' },
+        { id: 'GP-N2', module: 'core/parser/parseNotation', group: 'parseInlines(重ね)', status: 'proposed', title: 'ref に傍点を重ねる', input: '[[《《言葉》》]]', expected: '[ref(name=言葉, children=[dots(言葉)])]' },
+        { id: 'GP-N3', module: 'core/parser/parseNotation', group: 'parseInlines(重ね)', status: 'proposed', title: '装飾で ref を囲んだ書き方も同じ形へ正規化', input: '《《[[言葉]]》》 / ｜[[言葉]]《ことば》', expected: 'それぞれ [[《《言葉》》]] / [[｜言葉《ことば》]] と同一の inlines' },
+        { id: 'GP-N4', module: 'core/parser/parseNotation', group: 'parseInlines(重ね)', status: 'proposed', title: 'text 混じりの重ねでも name はプレーン文字列', input: '[[黒の剣《つるぎ》]]', expected: '[ref(name=黒の剣, children=[text(黒の), ruby(剣→つるぎ)])]' },
+        { id: 'GP-N5', module: 'core/parser/parseNotation', group: 'parseInlines(重ね)', status: 'proposed', title: '部分的に囲っただけの装飾は持ち上げない', input: '《《前[[名前]]後》》', expected: '[dots(前[[名前]]後)]（非解釈のまま）' },
+        { id: 'GP-N6', module: 'core/parser/parseNotation', group: 'parseInlines(重ね)', status: 'proposed', title: 'ref の中に ref は作らない（重ねは1段）', input: '[[外[[内]]', expected: '[ref(name=外[[内)]' },
+
         // 13. core/exporter/blocksToNotation（ロスレス記法直列化・新設）
         { id: 'GN1', module: 'core/exporter/blocksToNotation', group: 'blocksToNotation(blocks)', status: 'proposed', title: 'ref → [[名前]] を出力（往復で ref 保持）', input: '[ref(アリス)]', expected: '[[アリス]]' },
         { id: 'GN2', module: 'core/exporter/blocksToNotation', group: 'blocksToNotation(blocks)', status: 'proposed', title: 'ref 非含有 blocks は現 blocksToKakuyomu と同一出力', input: 'ルビ/傍点/空行/区切り（ref 無し）', expected: 'blocksToNotation(b) と blocksToKakuyomu(b) が一致' },
         { id: 'GN3', module: 'core/exporter/blocksToNotation', group: 'blocksToNotation(blocks)', status: 'proposed', title: 'parse→notation→parse が blocks 恒等（ref 含む）', input: 'ref を含む記法 s', expected: 'parse(s) と parse(notation(parse(s))) が deep equal' },
+        { id: 'GN4', module: 'core/exporter/blocksToNotation', group: 'blocksToNotation(blocks)', status: 'proposed', title: '重ねた ref も中身ごと保存され往復で恒等', input: '[[｜お嬢さん《おじょうさん》]]と[[《《言葉》》]]', expected: '同一テキストを出力し parse も deep equal' },
+        { id: 'GN5', module: 'core/exporter/blocksToNotation', group: 'blocksToNotation(blocks)', status: 'proposed', title: '装飾で囲んだ ref は ref 外側の正本形へ寄る', input: '《《[[言葉]]》》', expected: '[[《《言葉》》]]' },
 
         // 14. core/exporter degrade（ref → プレーン・exporter は辞書非依存）
         { id: 'GE-N1', module: 'core/exporter/toNarou', group: 'ref degrade', status: 'proposed', title: 'なろう: ref → name プレーン', input: '[ref(アリス)]', expected: 'アリス' },
@@ -260,6 +270,9 @@
         { id: 'GE-H1', module: 'core/exporter/toHtml', group: 'blocksToHtml(ref)', status: 'proposed', title: '解決済み ref → ref 構造マーカー（name 含む・未解決マーカー無し）', input: 'resolved ref + resolvedNames', expected: 'ref を示す要素に name・未解決クラス無し', note: '具体 class/属性・色は D-GLOS-PREVIEW-API / CSS 責務' },
         { id: 'GE-H2', module: 'core/exporter/toHtml', group: 'blocksToHtml(ref)', status: 'proposed', title: '未解決 ref → 解決済みと区別できる未解決マーカー', input: '不一致 or name=空 の ref', expected: '未解決マーカーを持つ', note: 'API 形は D-GLOS-PREVIEW-API' },
         { id: 'GE-H3', module: 'core/exporter/toHtml', group: 'blocksToHtml(ref)', status: 'proposed', title: 'plain モード（EPUB 共有）は全 ref がプレーン', input: 'resolvedNames 無し/plain', expected: 'ref リンクマーカー無し（GE-E1 と整合・回帰）' },
+        { id: 'GE-H4', module: 'core/exporter/toHtml', group: 'blocksToHtml(重ね)', status: 'proposed', title: 'ルビを重ねた ref はリンクの中にルビを描く', input: '[[｜言葉《ことば》]] + resolvedNames', expected: 'ref マーカー（data-ref-name=言葉）の中に ruby(言葉/ことば)' },
+        { id: 'GE-H5', module: 'core/exporter/toHtml', group: 'blocksToHtml(重ね)', status: 'proposed', title: '傍点を重ねた ref はリンクの中に傍点を描く', input: '[[《《言葉》》]] + resolvedNames', expected: 'ref マーカーの中に傍点要素' },
+        { id: 'GE-H6', module: 'core/exporter/toHtml', group: 'blocksToHtml(重ね)', status: 'proposed', title: 'plain モードでも重ねた装飾は残る', input: '[[｜言葉《ことば》]]（resolvedNames 無し）', expected: 'リンクだけ落ち ruby は残る' },
 
         // 16. core/glossary/resolveRef（name+aliases trim 完全一致）
         { id: 'GR1', module: 'core/glossary/resolveRef', group: 'resolveRef(name, entries)', status: 'proposed', title: 'name 完全一致で解決', input: 'ref アリス / entry name=アリス', expected: '当該 entry を返す' },
@@ -377,6 +390,8 @@
         { id: 'F-EDIT-005', feature: 'エディタ（記法入力＋プレビュー）', layer: 'integration', status: 'proposed', scenario: '不正記法でもプレビューが壊れない', given: 'エディタ', when: '｜未完《よみ など閉じ括弧欠落を入力', then: 'プレビューはクラッシュせずプレーン表示（P7と整合）' },
         { id: 'F-EDIT-006', feature: 'エディタ（記法入力＋プレビュー）', layer: 'e2e', status: 'proposed', scenario: '分割ペイン表示', given: 'エディタ画面', when: '表示', then: '入力ペインとプレビューペインが並ぶ', note: '向き/モバイルは D-EDIT-2（決定済：lg以上は横並び、lg未満はタブ切替）' },
         { id: 'F-EDIT-007', feature: 'エディタ（記法入力＋プレビュー）', layer: 'e2e', status: 'proposed', scenario: 'IME変換が壊れない', given: '日本語IME', when: '変換中の未確定文字を入力', then: '変換が分断されず確定後にプレビュー更新（textareaなのでcompositionが安全）' },
+        { id: 'F-EDIT-008', feature: 'エディタ（記法入力＋プレビュー）', layer: 'integration', status: 'proposed', scenario: '空枠 [[]] から書き始めても閉じ括弧が二重にならない', given: '記法ボタン（PC ツールバー／スマホ記法バー）で [[]] を挿入', when: '枠の中に用語を打ちサジェストから確定（既存候補・新規作成・枠内 @ 呼び出しのいずれも）', then: '[[用語]] になり [[用語]]]] にならない（参照が効く）' },
+        { id: 'F-EDIT-009', feature: 'エディタ（記法入力＋プレビュー）', layer: 'integration', status: 'proposed', scenario: '参照とルビ／傍点を重ねてもプレビューが正しい', given: 'エディタ', when: '[[｜言葉《ことば》]] や [[《《言葉》》]] を入力', then: 'プレビューで図鑑リンクとして表示されつつルビ／傍点も効く' },
 
         // ── 自動保存・dirty・最小版管理
         { id: 'F-SAVE-001', feature: '自動保存・版管理', layer: 'integration', status: 'proposed', scenario: 'idleで自動保存しdirty解消', given: '未保存の編集', when: '一定時間入力が止まる', then: '自動保存されdirty表示が消える', note: '契機は D-SAVE-1' },

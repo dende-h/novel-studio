@@ -319,6 +319,12 @@
   cursor: pointer;
   border-radius: 2px;
 }
+/* ルビ・傍点を重ねた参照（[[｜言葉《ことば》]]）。読みだけ灰色に取り残されると
+   リンクが分断されて見えるので、参照の中では読みも本文色を継ぐ。 */
+.preview .ref rt {
+  color: inherit;
+  opacity: 0.75;
+}
 .preview .ref:hover {
   color: var(--forest-900);
   text-decoration-color: var(--forest-700);

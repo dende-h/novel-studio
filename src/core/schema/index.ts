@@ -5,11 +5,37 @@ import { z } from 'zod'
  * これが保存・バックアップ・端末移行・各公開先変換の単一正本になる。
  */
 
+const TextInlineSchema = z.object({ type: z.literal('text'), text: z.string() })
+const RubyInlineSchema = z.object({
+  type: z.literal('ruby'),
+  base: z.string(),
+  reading: z.string(),
+})
+const EmphasisDotsInlineSchema = z.object({ type: z.literal('emphasisDots'), text: z.string() }) // 傍点
+
+/**
+ * @参照の中に重ねられる装飾（`[[｜言葉《ことば》]]` / `[[《《言葉》》]]`）。
+ * ref の入れ子は作らない＝重ねは 1 段だけ（再帰スキーマを持ち込まないための境界）。
+ */
+export const RefChildSchema = z.discriminatedUnion('type', [
+  TextInlineSchema,
+  RubyInlineSchema,
+  EmphasisDotsInlineSchema,
+])
+export type RefChild = z.infer<typeof RefChildSchema>
+
 export const InlineSchema = z.discriminatedUnion('type', [
-  z.object({ type: z.literal('text'), text: z.string() }),
-  z.object({ type: z.literal('ruby'), base: z.string(), reading: z.string() }),
-  z.object({ type: z.literal('emphasisDots'), text: z.string() }), // 傍点
-  z.object({ type: z.literal('ref'), name: z.string() }), // @参照（P1）。name は辞書 entry の name/alias で解決
+  TextInlineSchema,
+  RubyInlineSchema,
+  EmphasisDotsInlineSchema,
+  // @参照（P1）。name は辞書 entry の name/alias で解決する**プレーン文字列**。
+  // children はルビ・傍点を重ねたときの表示内容（省略時は name をそのまま表示）。
+  // name は常に children のプレーン文字列と一致させる（解決・文字数集計が name を見るため）。
+  z.object({
+    type: z.literal('ref'),
+    name: z.string(),
+    children: z.array(RefChildSchema).optional(),
+  }),
 ])
 export type Inline = z.infer<typeof InlineSchema>
 

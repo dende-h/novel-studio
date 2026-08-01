@@ -36,6 +36,30 @@ test('入口にマイライブラリ見出しが出る', async ({ page }) => {
   await expect(page.getByRole('heading', { name: 'マイライブラリ' })).toBeVisible()
 })
 
+/**
+ * 参照 [[ ]] にルビ・傍点を重ねた書き方（記法ボタンを続けて押すと自然にこの形になる）。
+ * プレビューでリンクと装飾の両方が効き、保存→再読込（blocks 往復）でも記法が失われないこと。
+ */
+test('参照とルビ・傍点を重ねてもプレビューに反映され、再読込でも保たれる', async ({ page }) => {
+  await page.goto('/')
+  await createWork(page, '重ね記法E2E')
+  await openWriter(page, '重ね記法E2E')
+  await addEpisode(page, '第一話')
+
+  const textarea = page.getByRole('textbox', { name: '本文' })
+  // 親文字がかな混じりなので ｜ が正本形（漢字だけだと自動ルビへ正規化される）。
+  const body = '[[｜お嬢さん《おじょうさん》]]\n[[《《強調》》]]'
+  await textarea.fill(body)
+
+  await expect(page.locator('.preview .ref ruby rt')).toHaveText('おじょうさん')
+  await expect(page.locator('.preview .ref em.dots')).toHaveText('強調')
+
+  await expect(page.getByText('保存済み')).toBeVisible()
+  await page.goto('/')
+  await openWriter(page, '重ね記法E2E')
+  await expect(page.getByRole('textbox', { name: '本文' })).toHaveValue(body)
+})
+
 test('作品作成→執筆→ライブプレビュー→再読込で本文が永続（IndexedDB）', async ({ page }) => {
   await page.goto('/')
 

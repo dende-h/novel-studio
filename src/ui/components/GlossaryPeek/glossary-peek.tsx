@@ -1,6 +1,7 @@
 import { Pencil, Plus, Tag, X } from 'lucide-react'
 import { useMemo } from 'react'
 import { type Appearances, resolveRef } from '@/core/glossary'
+import { parseEpisodeBody } from '@/core/parser/parseNotation'
 import type { GlossaryEntry } from '@/core/schema'
 import { cn } from '@/lib/utils'
 import { Badge } from '@/ui/components/ui/badge'
@@ -28,19 +29,23 @@ interface GlossaryPeekProps {
   onNewEntry: () => void
 }
 
-/** 本文中の [[用語]] を出現順・重複なしで抜き出す。 */
+/**
+ * 本文中の [[用語]] を出現順・重複なしで抜き出す。
+ * 抽出は正本パーサに任せる（自前の正規表現だと `[[｜言葉《ことば》]]` のような
+ * ルビ・傍点を重ねた参照で名前が記法ごと取れてしまい、プレビューのリンクと食い違う）。
+ */
 function termsInDraft(draft: string): string[] {
   const out: string[] = []
   const seen = new Set<string>()
-  const re = /\[\[([^\]]+)\]\]/g
-  let m = re.exec(draft)
-  while (m !== null) {
-    const name = (m[1] ?? '').trim()
-    if (name !== '' && !seen.has(name)) {
-      seen.add(name)
-      out.push(name)
+  for (const block of parseEpisodeBody(draft)) {
+    for (const inline of block.inlines) {
+      if (inline.type !== 'ref') continue
+      const name = inline.name.trim()
+      if (name !== '' && !seen.has(name)) {
+        seen.add(name)
+        out.push(name)
+      }
     }
-    m = re.exec(draft)
   }
   return out
 }

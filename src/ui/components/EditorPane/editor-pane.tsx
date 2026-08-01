@@ -155,11 +155,22 @@ export function EditorPane({
     [glossary.length, onCreateEntry, narrow],
   )
 
-  // value 内 [at, caret) の @クエリ を [[名前]] に置換して挿入する。
-  const insertRef = (at: number, caret: number, name: string) => {
+  /**
+   * value 内 [at, caret) の @クエリ／打ちかけ [[クエリ を [[名前]] に置換して挿入する。
+   *
+   * 記法ボタン（[[]] を空枠で置く）から書き始めた場合、キャレットの直後に閉じ `]]` が
+   * 残っている。これを置換範囲に含めないと `[[名前]]]]` になり ref が壊れるため、
+   * 枠の括弧は必ず一緒に飲み込む（PC のツールバー・スマホの記法バーで共通の経路）。
+   */
+  const insertRef = (at: number, triggerLen: number, caret: number, name: string) => {
+    const hasCloser = value.startsWith(']]', caret)
+    const end = hasCloser ? caret + 2 : caret
+    // 空枠の中で @ を打った形（[[@クエリ]]）は開き括弧側も置換範囲に含める。
+    const start =
+      triggerLen === 1 && hasCloser && at >= 2 && value.startsWith('[[', at - 2) ? at - 2 : at
     const inserted = `[[${name}]]`
-    pendingCaretRef.current = at + inserted.length
-    onChange(value.slice(0, at) + inserted + value.slice(caret))
+    pendingCaretRef.current = start + inserted.length
+    onChange(value.slice(0, start) + inserted + value.slice(end))
     setSuggest(null)
   }
 
@@ -209,11 +220,11 @@ export function EditorPane({
       // 作成は非同期でも構わない（name は確定済みなので即挿入できる）。
       // 失敗時は ref が未解決リンクになるだけなので握りつぶす。
       void Promise.resolve(onCreateEntry?.(name)).catch(() => {})
-      insertRef(suggest.at, caret, name)
+      insertRef(suggest.at, suggest.triggerLen, caret, name)
       return
     }
     const item = candidates[index]
-    if (item) insertRef(suggest.at, caret, item.name)
+    if (item) insertRef(suggest.at, suggest.triggerLen, caret, item.name)
   }
 
   // ツールバー（PC）から記法挿入を呼べるようにする。textarea の ref と選択範囲は
