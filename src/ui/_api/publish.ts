@@ -43,7 +43,10 @@ export type PublishFailure = {
 export type PublishResult = PublishSuccess | PublishFailure
 
 /** 作品を platform へ送る */
-export async function publishWorkToPlatform(getToken: GetToken, work: Work): Promise<PublishResult> {
+export async function publishWorkToPlatform(
+  getToken: GetToken,
+  work: Work,
+): Promise<PublishResult> {
   if (!PLATFORM_ORIGIN) {
     return { ok: false, message: '公開先が設定されていません' }
   }

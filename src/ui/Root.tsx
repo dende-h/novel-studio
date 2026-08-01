@@ -33,8 +33,7 @@ interface RootProps {
 /** 入口（ライブラリ）とエディタをハッシュで切り替えるトップレベル Container。 */
 export function Root({ store }: RootProps) {
   const { route, navigate } = useHashRoute()
-  const { status, canRestore, graceUntil, signOut, getToken, openSignUp, available } =
-    useAuth()
+  const { status, canRestore, graceUntil, signOut, getToken, openSignUp, available } = useAuth()
   const { show } = useToast()
   // 初回のみ保存の仕組みを一度だけ説明する（思想の共有）。立てたら再表示しない。
   const [onboarded, markOnboarded] = useLocalFlag('ns-onboarded')

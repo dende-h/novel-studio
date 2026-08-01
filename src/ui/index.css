@@ -70,6 +70,14 @@
   --wheat-500: #b98f63;
   --wheat-700: #92703f;
   --paper-100: #f3ede4;
+
+  /*
+   * プレビューの @参照リンク色。下線は引かない（縦書きではルビと同じ側に出て重なり、
+   * 読みが潰れる）ため、色だけで「図鑑に居る語」と分かる必要がある。地の文（--on-surface）
+   * が暗い青灰なので、暗さではなく緑の鮮やかさで見分けさせる＝forest-700 より一段明るい 600。
+   */
+  --ref-link: var(--forest-600);
+  --ref-link-hover: var(--forest-900);
 }
 
 /*
@@ -134,6 +142,10 @@
   --forest-900: #c6e8bb; /* @参照リンク hover（最も明るい） */
   --wheat-500: #c9a274;
   --wheat-700: #d8bd8e; /* 「-leaf-」等の wheat 文字（暗背景で可読な明るい麦色） */
+
+  /* 暗い読書面では「濃く」＝より明るく。明度の向きが逆なので light と別トークンにする。 */
+  --ref-link: var(--forest-800);
+  --ref-link-hover: var(--forest-900);
   --paper-100: #201d16;
 }
 
@@ -300,9 +312,8 @@
 
 /* シーン区切りは論理プロパティで横書き＝水平線／縦書き＝垂直線の双方に対応させる。 */
 /*
- * @参照リンク。解決済みはブランド緑の点線下線（図鑑に居ることを示す）、
- * 未解決（図鑑未登録）は麦色の点線＋やや薄色で「未登録」を示す。クリックで図鑑を引く。
- * 縦書きでも下線は字の左側に出る（論理プロパティ任せ）ので writing-mode 非依存。
+ * @参照リンク。解決済みはブランド緑（図鑑に居ることを示す）、未解決（図鑑未登録）は
+ * 麦色で「未登録」を示す。クリックで図鑑を引く。
  */
 /*
  * 文中の @参照リンク。インラインのテキストなので 44px のタップ領域は確保しない
@@ -310,12 +321,13 @@
  * 縦書きの行間メトリクスが崩れる）。タッチでの代替経路として、同じ用語へは
  * 図鑑パネル（GlossaryPeek）の 44px チップ列から到達できるようにしてある。
  */
+/*
+ * 下線は引かない。縦書きでは点線がルビと同じ側（字の右）に重なって読みが潰れるため
+ * （text-underline-position: left で逃がす手もあるが、組版に線を足さない方を採る）。
+ * 代わりに色を一段強くし、参照の中ではルビも同じ色で染めて「語のかたまり」で見せる。
+ */
 .preview .ref {
-  color: var(--forest-700);
-  text-decoration: underline;
-  text-decoration-style: dotted;
-  text-decoration-color: var(--forest-400);
-  text-underline-offset: 0.24em;
+  color: var(--ref-link);
   cursor: pointer;
   border-radius: 2px;
 }
@@ -323,15 +335,13 @@
    リンクが分断されて見えるので、参照の中では読みも本文色を継ぐ。 */
 .preview .ref rt {
   color: inherit;
-  opacity: 0.75;
+  opacity: 0.8;
 }
 .preview .ref:hover {
-  color: var(--forest-900);
-  text-decoration-color: var(--forest-700);
+  color: var(--ref-link-hover);
 }
 .preview .ref--unresolved {
   color: var(--wheat-700);
-  text-decoration-color: var(--wheat-500);
 }
 .preview .ref:focus-visible {
   outline: 2px solid var(--primary);

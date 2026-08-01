@@ -28,9 +28,12 @@ describe('publishWorkToPlatform', () => {
   it('Clerk の JWT を Bearer で載せ、schemaVersion 付きで送る', async () => {
     const { publishWorkToPlatform } = await loadModule()
     const fetchMock = vi.fn().mockResolvedValue(
-      new Response(JSON.stringify({ ok: true, created: true, manageUrl: '/dashboard/works/x/episodes' }), {
-        status: 201,
-      }),
+      new Response(
+        JSON.stringify({ ok: true, created: true, manageUrl: '/dashboard/works/x/episodes' }),
+        {
+          status: 201,
+        },
+      ),
     )
     vi.stubGlobal('fetch', fetchMock)
 
@@ -65,9 +68,16 @@ describe('publishWorkToPlatform', () => {
     vi.stubGlobal(
       'fetch',
       vi.fn().mockResolvedValue(
-        new Response(JSON.stringify({ error: 'not-author', message: '作者登録が必要です', registerUrl: '/dashboard' }), {
-          status: 403,
-        }),
+        new Response(
+          JSON.stringify({
+            error: 'not-author',
+            message: '作者登録が必要です',
+            registerUrl: '/dashboard',
+          }),
+          {
+            status: 403,
+          },
+        ),
       ),
     )
 
@@ -86,7 +96,10 @@ describe('publishWorkToPlatform', () => {
 
     const result = await publishWorkToPlatform(async () => 'jwt', work)
 
-    expect(result).toEqual({ ok: false, message: '公開先に接続できませんでした。通信環境を確認してください' })
+    expect(result).toEqual({
+      ok: false,
+      message: '公開先に接続できませんでした。通信環境を確認してください',
+    })
   })
 
   it('本文が読めないエラー応答でもステータスから文言を決める', async () => {
