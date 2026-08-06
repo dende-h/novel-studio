@@ -2,7 +2,7 @@ import { blocksToNotation } from '../../core/exporter/blocksToNotation'
 import { renameEntry, resolveRef } from '../../core/glossary'
 import { parseEpisodeBody } from '../../core/parser/parseNotation'
 import type { Profile, ProfileRepository } from '../../core/profile'
-import type { Episode, GlossaryEntry, Work } from '../../core/schema'
+import type { Episode, GlossaryEntry, Work, WorkPlatform } from '../../core/schema'
 import type { Snapshot } from '../../core/snapshot'
 import type { SnapshotRepository } from '../../core/snapshot/snapshotRepository'
 import { countWorkChars } from '../../core/stats'
@@ -110,6 +110,11 @@ export interface WorkMeta {
   title?: string
   author?: string
   description?: string
+  /**
+   * 公開サイトへの投稿設定。部分更新はせず丸ごと差し替える（投稿ダイアログが全項目を持つため）。
+   * undefined は据え置き。
+   */
+  platform?: WorkPlatform
   /** 表紙画像の data URL。空文字 '' は削除（キーを落とす）、undefined は据え置き。 */
   coverImage?: string
 }

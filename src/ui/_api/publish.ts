@@ -1,4 +1,4 @@
-import type { Work } from '@/core/schema'
+import type { Work, WorkPlatform } from '@/core/schema'
 
 /**
  * novel platform への直接投稿クライアント。
@@ -11,17 +11,27 @@ import type { Work } from '@/core/schema'
  *
  * 送信先は作品まるごと。再送すると platform 側で同じ作品へ完全上書きされるが、
  * 話は安定IDで突き合わせられるため、読者のいいね・投げ銭・コメントは保持される。
+ * つまり「公開／下書きの切り替え」も、visibility だけ変えた再送で安全に行える。
  */
 
 type GetToken = () => Promise<string | null>
 
-/** 送信するバンドルの形式。platform 側と揃える */
-const SCHEMA_VERSION = 1
+/** 送信するバンドルの形式。platform 側と揃える（v2 で work.platform を追加） */
+const SCHEMA_VERSION = 2
 
 /** platform のベースURL。未設定なら投稿UIを出さない */
 export const PLATFORM_ORIGIN: string | undefined = import.meta.env.VITE_PLATFORM_ORIGIN
 
 export const isPublishAvailable = Boolean(PLATFORM_ORIGIN)
+
+/** 取り込みは成功したが公開はされなかった理由（契約 v2）。 */
+export type PublishBlockedReason = 'declarations-missing' | 'moderated'
+
+/** 契約 v2 の `work.platform` に載せてよいキー。ここに無いものはローカル専用。 */
+export type PlatformPayload = Pick<
+  WorkPlatform,
+  'genre' | 'tags' | 'declaredAllAges' | 'declaredOriginal' | 'visibility' | 'isCompleted' | 'kind'
+>
 
 export type PublishSuccess = {
   ok: true
@@ -30,6 +40,12 @@ export type PublishSuccess = {
   episodesRemoved: number
   /** 取り込み後の確認先（platform の絶対URL） */
   manageUrl: string
+  /** いま公開状態か（v2）。誓約が欠けていれば取り込みは成功しても false になる。 */
+  published: boolean
+  /** 公開が阻まれた理由（v2）。阻まれていなければ null。 */
+  publishBlocked: PublishBlockedReason | null
+  /** 公開後に読者として開く先（v2・platform の絶対URL）。返らなければ undefined */
+  workUrl?: string
 }
 
 export type PublishFailure = {
@@ -42,7 +58,52 @@ export type PublishFailure = {
 
 export type PublishResult = PublishSuccess | PublishFailure
 
-/** 作品を platform へ送る */
+/**
+ * 契約に定義されたキーだけを取り出す。ローカル専用（lastPublishedAt / workUrl / manageUrl）を
+ * 送っても先方に無視されるだけだが、契約外のものは出さないほうが取り決めの境界がはっきりする。
+ * 中身が空なら undefined＝platform ごと省略し、v1 と同じ「公開状態を変えない」挙動に倒す。
+ */
+export function toPlatformPayload(platform: WorkPlatform | undefined): PlatformPayload | undefined {
+  if (!platform) return undefined
+  const { genre, tags, declaredAllAges, declaredOriginal, visibility, isCompleted, kind } = platform
+  const payload: PlatformPayload = {
+    ...(genre !== undefined ? { genre } : {}),
+    ...(tags !== undefined ? { tags } : {}),
+    ...(declaredAllAges !== undefined ? { declaredAllAges } : {}),
+    ...(declaredOriginal !== undefined ? { declaredOriginal } : {}),
+    ...(visibility !== undefined ? { visibility } : {}),
+    ...(isCompleted !== undefined ? { isCompleted } : {}),
+    ...(kind !== undefined ? { kind } : {}),
+  }
+  return Object.keys(payload).length > 0 ? payload : undefined
+}
+
+/** 送信するバンドルの work を組み立てる（契約に無いローカル専用キーを落とす）。 */
+export function toBundleWork(work: Work): Work {
+  const { platform: _local, ...rest } = work
+  const payload = toPlatformPayload(work.platform)
+  return payload ? { ...rest, platform: payload } : rest
+}
+
+/**
+ * 「公開して投稿」を選べるか。誓約 2 つが揃っていることが条件で、これは platform 側の
+ * DB 制約と同じ。揃わないまま public を送っても、取り込みは通るが公開はされない。
+ */
+export function canPublishPublicly(
+  platform: Pick<WorkPlatform, 'declaredAllAges' | 'declaredOriginal'> | undefined,
+): boolean {
+  return platform?.declaredAllAges === true && platform?.declaredOriginal === true
+}
+
+/** 公開が阻まれた理由を、作者に「何が足りないか」が伝わる日本語にする。 */
+export function describePublishBlocked(reason: PublishBlockedReason): string {
+  if (reason === 'declarations-missing') {
+    return '投稿は保存できましたが、まだ公開されていません。「全年齢向け」と「一次創作」の2つの誓約にチェックを入れて、もう一度「公開して投稿」してください。'
+  }
+  return '投稿は保存できましたが、この作品は公開サイトの運営が非表示にしているため公開できません。公開サイトの管理画面をご確認ください。'
+}
+
+/** 作品を platform へ送る（work.platform に投稿設定を載せて渡す） */
 export async function publishWorkToPlatform(
   getToken: GetToken,
   work: Work,
@@ -61,7 +122,7 @@ export async function publishWorkToPlatform(
     res = await fetch(`${PLATFORM_ORIGIN}/api/import/kotonoha`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${jwt}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ schemaVersion: SCHEMA_VERSION, work }),
+      body: JSON.stringify({ schemaVersion: SCHEMA_VERSION, work: toBundleWork(work) }),
     })
   } catch {
     return { ok: false, message: '公開先に接続できませんでした。通信環境を確認してください' }
@@ -81,6 +142,12 @@ export async function publishWorkToPlatform(
       episodesUpserted: typeof payload.episodesUpserted === 'number' ? payload.episodesUpserted : 0,
       episodesRemoved: typeof payload.episodesRemoved === 'number' ? payload.episodesRemoved : 0,
       manageUrl: `${PLATFORM_ORIGIN}${typeof payload.manageUrl === 'string' ? payload.manageUrl : '/dashboard'}`,
+      published: payload.published === true,
+      publishBlocked: toBlockedReason(payload.publishBlocked),
+      // v1 の platform は workUrl を返さない。無ければキーごと持たない（公開ページ導線を出さない）。
+      ...(typeof payload.workUrl === 'string'
+        ? { workUrl: `${PLATFORM_ORIGIN}${payload.workUrl}` }
+        : {}),
     }
   }
 
@@ -88,6 +155,11 @@ export async function publishWorkToPlatform(
   const registerUrl =
     typeof payload.registerUrl === 'string' ? `${PLATFORM_ORIGIN}${payload.registerUrl}` : undefined
   return { ok: false, message, registerUrl }
+}
+
+/** 知らない理由コードが増えても壊れないよう、契約で決まった 2 つ以外は「阻まれていない」に倒す。 */
+function toBlockedReason(raw: unknown): PublishBlockedReason | null {
+  return raw === 'declarations-missing' || raw === 'moderated' ? raw : null
 }
 
 function defaultMessage(status: number): string {

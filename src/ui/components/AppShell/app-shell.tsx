@@ -9,6 +9,8 @@ interface AppShellProps {
   saveStatus?: SaveState
   onExport?: () => void
   exportDisabled?: boolean
+  /** 公開サイトへの投稿ダイアログを開く（任意） */
+  onPublish?: () => void
   /** 履歴ドロワーの開閉トグル（任意） */
   onToggleHistory?: () => void
   historyOpen?: boolean
@@ -29,6 +31,7 @@ export function AppShell({
   saveStatus,
   onExport,
   exportDisabled,
+  onPublish,
   onToggleHistory,
   historyOpen,
   sidebar,
@@ -47,6 +50,7 @@ export function AppShell({
         saveStatus={saveStatus}
         onExport={onExport}
         exportDisabled={exportDisabled}
+        onPublish={onPublish}
         onToggleHistory={onToggleHistory}
         historyOpen={historyOpen}
         onToggleNav={() => setNavOpen((v) => !v)}

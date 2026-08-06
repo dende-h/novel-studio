@@ -87,6 +87,53 @@ export const GlossaryEntrySchema = z.object({
 })
 export type GlossaryEntry = z.infer<typeof GlossaryEntrySchema>
 
+/**
+ * 公開サイト（novel platform）のジャンル。先方が固定 6 種しか採らないので、こちらでも同じ 6 種だけ出す。
+ * 6 種に収まらない言葉は自由タグ（tags）へ回す、という住み分け。
+ */
+export const PLATFORM_GENRES = [
+  'ファンタジー',
+  '恋愛',
+  'ミステリー',
+  'SF',
+  '現代',
+  'あやかし',
+] as const
+
+/** 公開サイトへ投稿するときの自由タグの上限（先方の受け入れ条件と同じ）。 */
+export const PLATFORM_MAX_TAGS = 5
+export const PLATFORM_MAX_TAG_LENGTH = 30
+/** 公開サイトへ送れるあらすじの長さ（EPUB 用の 250 字とは別枠で、先方の上限に合わせる）。 */
+export const PLATFORM_MAX_DESCRIPTION_LENGTH = 2000
+
+/**
+ * 公開サイト（novel platform）へ投稿するときだけ意味を持つ設定。
+ * コトノハの本質は執筆なので、公開先固有の項目は Work 直下に散らさずここへまとめる。
+ * すべて任意＝未投稿の作品・旧データはキーごと持たない。
+ */
+export const WorkPlatformSchema = z.object({
+  // ジャンルは PLATFORM_GENRES のいずれかを入れる。型を enum に狭めないのは、先方が種類を
+  // 増やしたときに保存済みデータが検証で落ちるのを避けるため（外れ値は先方が無視するだけ）。
+  genre: z.string().optional(),
+  tags: z.array(z.string()).optional(),
+  /** 全年齢向けである、の誓約。規約同意なので既定値は持たせない（＝未誓約）。 */
+  declaredAllAges: z.boolean().optional(),
+  /** 一次創作である（無断転載でない）、の誓約。 */
+  declaredOriginal: z.boolean().optional(),
+  visibility: z.enum(['draft', 'public']).optional(),
+  isCompleted: z.boolean().optional(),
+  kind: z.enum(['serial', 'oneshot']).optional(),
+
+  // ---- ここから下は公開サイトとの取り決めに無い＝コトノハのローカル専用。
+  //      送信時に落とす（src/ui/_api/publish.ts の toBundleWork）。 ----
+  /** 最後に投稿できた時刻。ライブラリで「投稿済みか」を判定して公開切替を出すのに使う。 */
+  lastPublishedAt: z.number().optional(),
+  /** 前回の投稿で返ってきた読者ページ／管理画面（公開サイトの絶対URL）。 */
+  workUrl: z.string().optional(),
+  manageUrl: z.string().optional(),
+})
+export type WorkPlatform = z.infer<typeof WorkPlatformSchema>
+
 export const WorkSchema = z.object({
   id: z.string(),
   title: z.string(),
@@ -103,5 +150,7 @@ export const WorkSchema = z.object({
     .string()
     .refine((s) => s.startsWith('data:image/'), 'data URL が必要')
     .optional(),
+  // 公開サイト（novel platform）への投稿設定。投稿しない作品は持たない・旧データ互換のため任意。
+  platform: WorkPlatformSchema.optional(),
 })
 export type Work = z.infer<typeof WorkSchema>

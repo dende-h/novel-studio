@@ -21,9 +21,13 @@ export function ProjectRow({
   onExport,
   onEditMeta,
   onDelete,
+  onPublish,
+  onTogglePublish,
+  publishBusy,
 }: ProjectRowProps) {
-  const { id, title, episodeCount, charCount, author, updatedAt, coverImage } = summary
+  const { id, title, episodeCount, charCount, author, updatedAt, coverImage, platform } = summary
   const initial = title.trim().charAt(0) || '無'
+  const published = platform?.visibility === 'public'
   return (
     <div className="flex items-center gap-3.5 border-outline-variant/30 border-b px-4 py-3 transition-colors last:border-b-0 hover:bg-surface-container-low">
       {/* 表紙サムネ。画像はクリックで拡大、無ければトーン地に頭文字。 */}
@@ -51,6 +55,12 @@ export function ProjectRow({
           >
             {episodeCount}話
           </Badge>
+          {/* 公開中はメニューを開かなくても分かるようにする（切替の可否判断に必要な情報）。 */}
+          {published ? (
+            <Badge variant="secondary" className="shrink-0 bg-accent font-sans text-primary">
+              公開中
+            </Badge>
+          ) : null}
         </div>
         <div className="mt-0.5 truncate text-[12px] text-on-surface-variant">
           {author ? <span className="mr-2">著者: {author}</span> : null}
@@ -67,7 +77,16 @@ export function ProjectRow({
         <PenLine className="size-4" />
         執筆
       </Button>
-      <ProjectMenu title={title} onExport={onExport} onEditMeta={onEditMeta} onDelete={onDelete} />
+      <ProjectMenu
+        title={title}
+        onExport={onExport}
+        onEditMeta={onEditMeta}
+        onDelete={onDelete}
+        onPublish={onPublish}
+        onTogglePublish={onTogglePublish}
+        publishBusy={publishBusy}
+        published={published}
+      />
     </div>
   )
 }

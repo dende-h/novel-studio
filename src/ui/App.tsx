@@ -10,6 +10,8 @@ import type { ActivityRepository } from '@/core/storage/activityRepository'
 import type { IdeaRepository } from '@/core/storage/ideaRepository'
 import type { StructureRepository } from '@/core/storage/structureRepository'
 import { cn } from '@/lib/utils'
+import { isPublishAvailable } from '@/ui/_api/publish'
+import { useAuth } from '@/ui/auth/auth-context'
 import { AppShell } from '@/ui/components/AppShell/app-shell'
 import { ConfirmDialog } from '@/ui/components/ConfirmDialog/confirm-dialog'
 import {
@@ -28,6 +30,7 @@ import { GlossaryView } from '@/ui/components/GlossaryView/glossary-view'
 import { HistoryPanel } from '@/ui/components/HistoryPanel/history-panel'
 import { PreviewPane } from '@/ui/components/PreviewPane/preview-pane'
 import { ProfileDialog } from '@/ui/components/ProfileDialog/profile-dialog'
+import { PublishDialog } from '@/ui/components/PublishDialog/publish-dialog'
 import { SideNav } from '@/ui/components/SideNav/side-nav'
 import { TitlePromptDialog } from '@/ui/components/TitlePromptDialog/title-prompt-dialog'
 import { useToast } from '@/ui/components/Toast/toast'
@@ -104,8 +107,11 @@ export function App({
 }: AppProps) {
   const state = useEditorStore(store)
   const { show } = useToast()
+  // 公開サイトへの投稿は Clerk JWT で認証する（執筆アカウント＝公開アカウント）。
+  const { getToken } = useAuth()
   const [newEpisodeOpen, setNewEpisodeOpen] = useState(false)
   const [exportOpen, setExportOpen] = useState(false)
+  const [publishOpen, setPublishOpen] = useState(false)
   const [metaOpen, setMetaOpen] = useState(false)
   const [profileOpen, setProfileOpen] = useState(false)
   const [historyOpen, setHistoryOpen] = useState(false)
@@ -174,6 +180,12 @@ export function App({
   const openExport = async () => {
     if (episode) await store.save()
     setExportOpen(true)
+  }
+
+  // 投稿は作品まるごとを送るので、書き出しと同じく編集中の本文を先に保存してから開く。
+  const openPublish = async () => {
+    if (episode) await store.save()
+    setPublishOpen(true)
   }
 
   const getAppearances = useCallback(
@@ -247,6 +259,7 @@ export function App({
       workTitle={work?.title}
       saveStatus={{ dirty: state.dirty, status: state.status }}
       onExport={() => void openExport()}
+      onPublish={isPublishAvailable && work ? () => void openPublish() : undefined}
       onToggleHistory={
         episode && onEpisodes
           ? () => {
@@ -634,6 +647,18 @@ export function App({
         onSubmit={async (values) => {
           await store.addGlossaryEntry({ name: values.name, ...toFieldPatch(values) })
         }}
+      />
+      <PublishDialog
+        open={publishOpen}
+        onOpenChange={setPublishOpen}
+        work={state.work}
+        getToken={getToken}
+        onPersist={(workId, values) =>
+          void store.updateWorkMeta(workId, {
+            description: values.description,
+            platform: values.platform,
+          })
+        }
       />
       <ExportDialog
         open={exportOpen}

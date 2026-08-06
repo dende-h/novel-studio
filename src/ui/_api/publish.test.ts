@@ -43,7 +43,7 @@ describe('publishWorkToPlatform', () => {
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit]
     expect(url).toBe(`${ORIGIN}/api/import/kotonoha`)
     expect((init.headers as Record<string, string>).Authorization).toBe('Bearer jwt-token')
-    expect(JSON.parse(init.body as string)).toEqual({ schemaVersion: 1, work })
+    expect(JSON.parse(init.body as string)).toEqual({ schemaVersion: 2, work })
     expect(result.ok).toBe(true)
     if (result.ok) {
       expect(result.created).toBe(true)
@@ -125,5 +125,199 @@ describe('publishWorkToPlatform', () => {
     const result = await publishWorkToPlatform(async () => 'jwt', work)
     expect(fetchMock).not.toHaveBeenCalled()
     expect(result).toEqual({ ok: false, message: '公開先が設定されていません' })
+  })
+})
+
+describe('toPlatformPayload（送信する投稿設定の組み立て）', () => {
+  it('契約にあるキーだけを残し、ローカル専用の記録は落とす', async () => {
+    const { toPlatformPayload } = await loadModule()
+
+    expect(
+      toPlatformPayload({
+        genre: 'SF',
+        tags: ['宇宙'],
+        declaredAllAges: true,
+        declaredOriginal: true,
+        visibility: 'public',
+        isCompleted: false,
+        kind: 'serial',
+        lastPublishedAt: 123,
+        workUrl: 'https://platform.example/works/x',
+        manageUrl: 'https://platform.example/dashboard',
+      }),
+    ).toEqual({
+      genre: 'SF',
+      tags: ['宇宙'],
+      declaredAllAges: true,
+      declaredOriginal: true,
+      visibility: 'public',
+      isCompleted: false,
+      kind: 'serial',
+    })
+  })
+
+  it('契約のキーが1つも無ければ undefined（＝platform ごと省略して v1 相当にする）', async () => {
+    const { toPlatformPayload } = await loadModule()
+    expect(toPlatformPayload(undefined)).toBeUndefined()
+    expect(toPlatformPayload({})).toBeUndefined()
+    expect(toPlatformPayload({ lastPublishedAt: 1 })).toBeUndefined()
+  })
+
+  it('false や空配列は「指定なし」ではないので残す', async () => {
+    const { toPlatformPayload } = await loadModule()
+    expect(toPlatformPayload({ declaredAllAges: false, tags: [] })).toEqual({
+      declaredAllAges: false,
+      tags: [],
+    })
+  })
+})
+
+describe('toBundleWork（送信するバンドルの work）', () => {
+  it('ローカル専用キーを落とした platform に差し替える', async () => {
+    const { toBundleWork } = await loadModule()
+    const bundle = toBundleWork({
+      ...work,
+      platform: { visibility: 'draft', lastPublishedAt: 999, manageUrl: 'https://x/dashboard' },
+    })
+    expect(bundle.platform).toEqual({ visibility: 'draft' })
+  })
+
+  it('投稿設定を持たない作品は platform キーごと落とす（v1 と同じ扱い）', async () => {
+    const { toBundleWork } = await loadModule()
+    const bundle = toBundleWork({ ...work, platform: { lastPublishedAt: 999 } })
+    expect('platform' in bundle).toBe(false)
+  })
+
+  it('送信本体にもローカル専用キーは載らない', async () => {
+    const { publishWorkToPlatform } = await loadModule()
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(new Response(JSON.stringify({ ok: true }), { status: 200 }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await publishWorkToPlatform(async () => 'jwt', {
+      ...work,
+      platform: { visibility: 'public', lastPublishedAt: 42 },
+    })
+
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+    expect(JSON.parse(init.body as string)).toEqual({
+      schemaVersion: 2,
+      work: { ...work, platform: { visibility: 'public' } },
+    })
+  })
+})
+
+describe('publishWorkToPlatform（v2 の公開結果）', () => {
+  it('公開されたら published と読者ページの絶対URLを返す', async () => {
+    const { publishWorkToPlatform } = await loadModule()
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            ok: true,
+            created: false,
+            episodesUpserted: 3,
+            published: true,
+            publishBlocked: null,
+            manageUrl: '/dashboard/works/x/episodes',
+            workUrl: '/works/x',
+          }),
+          { status: 200 },
+        ),
+      ),
+    )
+
+    const result = await publishWorkToPlatform(async () => 'jwt', work)
+
+    expect(result.ok).toBe(true)
+    if (result.ok) {
+      expect(result.published).toBe(true)
+      expect(result.publishBlocked).toBeNull()
+      expect(result.workUrl).toBe(`${ORIGIN}/works/x`)
+      expect(result.episodesUpserted).toBe(3)
+    }
+  })
+
+  it('誓約が欠けていると、取り込み成功でも published=false と理由を返す', async () => {
+    const { publishWorkToPlatform } = await loadModule()
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            ok: true,
+            published: false,
+            publishBlocked: 'declarations-missing',
+            manageUrl: '/dashboard/works/x/episodes',
+          }),
+          { status: 200 },
+        ),
+      ),
+    )
+
+    const result = await publishWorkToPlatform(async () => 'jwt', work)
+
+    expect(result.ok).toBe(true)
+    if (result.ok) {
+      expect(result.published).toBe(false)
+      expect(result.publishBlocked).toBe('declarations-missing')
+      // 公開されていないので読者ページの導線は出さない
+      expect(result.workUrl).toBeUndefined()
+    }
+  })
+
+  it('知らない理由コードは「阻まれていない」に倒す（先方の追加で壊れない）', async () => {
+    const { publishWorkToPlatform } = await loadModule()
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ ok: true, publishBlocked: 'unknown-reason' }), {
+          status: 200,
+        }),
+      ),
+    )
+
+    const result = await publishWorkToPlatform(async () => 'jwt', work)
+    expect(result.ok).toBe(true)
+    if (result.ok) expect(result.publishBlocked).toBeNull()
+  })
+
+  it('v1 応答（published / workUrl 無し）でも壊れず未公開として扱う', async () => {
+    const { publishWorkToPlatform } = await loadModule()
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ ok: true, created: true, manageUrl: '/dashboard' }), {
+          status: 201,
+        }),
+      ),
+    )
+
+    const result = await publishWorkToPlatform(async () => 'jwt', work)
+    expect(result.ok).toBe(true)
+    if (result.ok) {
+      expect(result.published).toBe(false)
+      expect(result.publishBlocked).toBeNull()
+      expect(result.workUrl).toBeUndefined()
+    }
+  })
+})
+
+describe('canPublishPublicly / describePublishBlocked（公開可否の判定）', () => {
+  it('誓約が2つとも揃ったときだけ公開して投稿できる', async () => {
+    const { canPublishPublicly } = await loadModule()
+    expect(canPublishPublicly({ declaredAllAges: true, declaredOriginal: true })).toBe(true)
+    expect(canPublishPublicly({ declaredAllAges: true, declaredOriginal: false })).toBe(false)
+    expect(canPublishPublicly({ declaredOriginal: true })).toBe(false)
+    expect(canPublishPublicly({})).toBe(false)
+    expect(canPublishPublicly(undefined)).toBe(false)
+  })
+
+  it('阻まれた理由を、何をすればよいか分かる日本語にする', async () => {
+    const { describePublishBlocked } = await loadModule()
+    expect(describePublishBlocked('declarations-missing')).toContain('誓約')
+    expect(describePublishBlocked('moderated')).toContain('運営')
   })
 })
