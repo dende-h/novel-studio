@@ -9,8 +9,8 @@ import {
 } from 'lucide-react'
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import {
+  MAX_DESCRIPTION_LENGTH,
   PLATFORM_GENRES,
-  PLATFORM_MAX_DESCRIPTION_LENGTH,
   PLATFORM_MAX_TAG_LENGTH,
   PLATFORM_MAX_TAGS,
   type Work,
@@ -415,12 +415,12 @@ export function PublishPage({
               <span
                 className={cn(
                   'text-xs tabular-nums',
-                  description.length >= PLATFORM_MAX_DESCRIPTION_LENGTH
+                  description.length >= MAX_DESCRIPTION_LENGTH
                     ? 'text-destructive'
                     : 'text-on-surface-variant/50',
                 )}
               >
-                {description.length}/{PLATFORM_MAX_DESCRIPTION_LENGTH}
+                {description.length}/{MAX_DESCRIPTION_LENGTH}
               </span>
             </div>
             <Textarea
@@ -429,7 +429,7 @@ export function PublishPage({
               onChange={(e) => setDescription(e.target.value)}
               placeholder="読者が最初に読む紹介文（任意）"
               rows={4}
-              maxLength={PLATFORM_MAX_DESCRIPTION_LENGTH}
+              maxLength={MAX_DESCRIPTION_LENGTH}
               className="max-h-40"
             />
           </div>

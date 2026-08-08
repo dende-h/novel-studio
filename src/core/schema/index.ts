@@ -103,8 +103,16 @@ export const PLATFORM_GENRES = [
 /** 公開サイトへ投稿するときの自由タグの上限（先方の受け入れ条件と同じ）。 */
 export const PLATFORM_MAX_TAGS = 5
 export const PLATFORM_MAX_TAG_LENGTH = 30
-/** 公開サイトへ送れるあらすじの長さ（EPUB 用の 250 字とは別枠で、先方の上限に合わせる）。 */
-export const PLATFORM_MAX_DESCRIPTION_LENGTH = 2000
+
+/**
+ * あらすじ（`Work.description`）の長さ。
+ *
+ * 作品情報の編集と公開の管理は**同じ1つの項目**を書いているので、上限も1つにする
+ * （かつて 250 と 2000 で食い違っていて、片方で書いた文がもう片方で足せなくなっていた）。
+ * 公開サイトは 2000 字まで受けるが、あらすじは読者が最初に読む数行という位置づけなので、
+ * 短いほう（EPUB の dc:description と同じ 250 字）に合わせる。
+ */
+export const MAX_DESCRIPTION_LENGTH = 250
 
 /**
  * 公開サイト（novel platform）へ投稿するときだけ意味を持つ設定。
