@@ -46,6 +46,7 @@ describe('Library 作成・表示', () => {
     render(
       <Library
         store={store}
+        onEnterPublish={() => {}}
         onEnterEditor={onEnter}
         localBackup={fakeLocalBackup}
         isMember={false}
@@ -70,6 +71,7 @@ describe('Library 作成・表示', () => {
     render(
       <Library
         store={store}
+        onEnterPublish={() => {}}
         onEnterEditor={onEnter}
         localBackup={fakeLocalBackup}
         isMember={false}
@@ -93,6 +95,7 @@ describe('Library 作品名検索', () => {
     render(
       <Library
         store={store}
+        onEnterPublish={() => {}}
         onEnterEditor={() => {}}
         localBackup={fakeLocalBackup}
         isMember={false}
@@ -124,6 +127,7 @@ describe('Library ゴミ箱導線', () => {
     render(
       <Library
         store={store}
+        onEnterPublish={() => {}}
         onEnterEditor={() => {}}
         localBackup={fakeLocalBackup}
         isMember={false}
@@ -165,6 +169,7 @@ describe('Library ゴミ箱導線', () => {
     render(
       <Library
         store={store}
+        onEnterPublish={() => {}}
         onEnterEditor={() => {}}
         localBackup={fakeLocalBackup}
         isMember={false}
@@ -233,6 +238,7 @@ describe('Library 公開サイトへの投稿導線', () => {
     render(
       <Library
         store={store}
+        onEnterPublish={() => {}}
         onEnterEditor={() => {}}
         localBackup={fakeLocalBackup}
         isMember={false}
@@ -253,6 +259,7 @@ describe('Library 公開サイトへの投稿導線', () => {
     render(
       <LibraryWithPlatform
         store={store}
+        onEnterPublish={() => {}}
         onEnterEditor={() => {}}
         localBackup={fakeLocalBackup}
         isMember={false}
@@ -286,6 +293,7 @@ describe('Library 公開サイトへの投稿導線', () => {
     render(
       <LibraryWithPlatform
         store={store}
+        onEnterPublish={() => {}}
         onEnterEditor={() => {}}
         localBackup={fakeLocalBackup}
         isMember={false}
@@ -330,6 +338,7 @@ describe('Library 公開サイトへの投稿導線', () => {
     render(
       <LibraryWithPlatform
         store={store}
+        onEnterPublish={() => {}}
         onEnterEditor={() => {}}
         localBackup={fakeLocalBackup}
         isMember={false}

@@ -12,6 +12,7 @@ import { HelpPage } from './components/HelpPage/help-page'
 import { IdeaboxPage } from './components/IdeaboxPage/idea-box-page'
 import { Library } from './components/Library/library'
 import { McpConnectDialog } from './components/McpConnectDialog/mcp-connect-dialog'
+import { PublishRoute } from './components/PublishPage/publish-route'
 import { RestoreGrace } from './components/RestoreGrace/restore-grace'
 import { SettingsPage } from './components/SettingsPage/settings-page'
 import { SyncOnboarding } from './components/SyncOnboarding/sync-onboarding'
@@ -33,7 +34,17 @@ interface RootProps {
 /** 入口（ライブラリ）とエディタをハッシュで切り替えるトップレベル Container。 */
 export function Root({ store }: RootProps) {
   const { route, navigate } = useHashRoute()
-  const { status, canRestore, graceUntil, signOut, getToken, openSignUp, available } = useAuth()
+  const {
+    status,
+    canRestore,
+    graceUntil,
+    signOut,
+    getToken,
+    openSignIn,
+    openSignUp,
+    available,
+    isSignedIn,
+  } = useAuth()
   const { show } = useToast()
   // 初回のみ保存の仕組みを一度だけ説明する（思想の共有）。立てたら再表示しない。
   const [onboarded, markOnboarded] = useLocalFlag('ns-onboarded')
@@ -146,6 +157,19 @@ export function Root({ store }: RootProps) {
     )
   }
 
+  // 公開の管理（作品ひとつぶん）。いま開いている作品を対象にする＝ライブラリ・執筆画面の
+  // どちらから来ても、先に openWork を通ってからここへ遷移する。
+  if (route === '/publish') {
+    return (
+      <PublishRoute
+        store={store}
+        getToken={getTokenStable}
+        isSignedIn={isSignedIn}
+        onSignIn={available ? openSignIn : undefined}
+      />
+    )
+  }
+
   if (route === '/ideas') {
     return (
       <IdeaboxPage
@@ -164,6 +188,7 @@ export function Root({ store }: RootProps) {
         <App
           store={store}
           onExit={() => navigate('/')}
+          onNavigatePublish={() => navigate('/publish')}
           onNavigateActivity={() => navigate('/activity')}
           onNavigateSettings={() => navigate('/settings')}
           onNavigateHelp={() => navigate('/help')}
@@ -176,6 +201,7 @@ export function Root({ store }: RootProps) {
         <Library
           store={store}
           onEnterEditor={() => navigate('/write')}
+          onEnterPublish={() => navigate('/publish')}
           onOpenCloudBackup={backupService ? () => setBackupOpen(true) : undefined}
           onOpenAiPull={backupService ? () => setAiPullOpen(true) : undefined}
           onOpenMcp={backupService ? () => setMcpOpen(true) : undefined}

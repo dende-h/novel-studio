@@ -124,6 +124,14 @@ export const WorkPlatformSchema = z.object({
   isCompleted: z.boolean().optional(),
   kind: z.enum(['serial', 'oneshot']).optional(),
 
+  /**
+   * 話ごとの公開状態（話ID → 公開状態）。記録の無い話は作品の公開状態に従う。
+   *
+   * 公開サイトへは `platform` の中ではなく **episodes[].visibility として送る**（契約 v3）。
+   * こちらでまとめて持つのは、公開先固有の設定を Work 直下・Episode 直下へ散らさないため。
+   */
+  episodeVisibility: z.record(z.string(), z.enum(['draft', 'public'])).optional(),
+
   // ---- ここから下は公開サイトとの取り決めに無い＝コトノハのローカル専用。
   //      送信時に落とす（src/ui/_api/publish.ts の toBundleWork）。 ----
   /** 最後に投稿できた時刻。ライブラリで「投稿済みか」を判定して公開切替を出すのに使う。 */

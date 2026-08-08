@@ -87,6 +87,8 @@ describe('publishWorkToPlatform', () => {
     if (!result.ok) {
       expect(result.message).toBe('作者登録が必要です')
       expect(result.registerUrl).toBe(`${ORIGIN}/dashboard`)
+      // 公開ページはこの印で、先方へ飛ばさずその場に登録フォームを出す
+      expect(result.needsAuthor).toBe(true)
     }
   })
 
@@ -205,6 +207,72 @@ describe('toBundleWork（送信するバンドルの work）', () => {
       schemaVersion: 2,
       work: { ...work, platform: { visibility: 'public' } },
     })
+  })
+})
+
+describe('toBundleEpisodes（話ごとの公開状態・契約 v3）', () => {
+  const withEpisodes: Work = {
+    ...work,
+    episodes: [
+      { id: 'e1', title: '第一話', blocks: [] },
+      { id: 'e2', title: '第二話', blocks: [] },
+    ],
+  }
+
+  it('作品が公開なら全話ぶんを明示する（記録の無い話は公開）', async () => {
+    const { toBundleEpisodes } = await loadModule()
+    const { episodes, declared } = toBundleEpisodes({
+      ...withEpisodes,
+      platform: { visibility: 'public', episodeVisibility: { e2: 'draft' } },
+    })
+
+    expect(declared).toBe(true)
+    expect(episodes.map((e) => e.visibility)).toEqual(['public', 'draft'])
+  })
+
+  it('作品が下書きなら話ごとの状態は載せない', async () => {
+    // 作品より先に話が表へ出ることはない。言う意味の無い宣言は送らない
+    const { toBundleEpisodes } = await loadModule()
+    const { episodes, declared } = toBundleEpisodes({
+      ...withEpisodes,
+      platform: { visibility: 'draft', episodeVisibility: { e1: 'public' } },
+    })
+
+    expect(declared).toBe(false)
+    expect(episodes.every((e) => !('visibility' in e))).toBe(true)
+  })
+
+  it('宣言を載せたときだけ schemaVersion 3 で送る', async () => {
+    const { publishWorkToPlatform } = await loadModule()
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(new Response(JSON.stringify({ ok: true }), { status: 200 }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await publishWorkToPlatform(async () => 'jwt', {
+      ...withEpisodes,
+      platform: { visibility: 'public', episodeVisibility: { e1: 'draft' } },
+    })
+    const [, published] = fetchMock.mock.calls[0] as [string, RequestInit]
+    expect(JSON.parse(published.body as string).schemaVersion).toBe(3)
+
+    // 下書きのまま送る作品は v2 のまま。先方が v3 を知らない版でも本文の更新は通る
+    await publishWorkToPlatform(async () => 'jwt', {
+      ...withEpisodes,
+      platform: { visibility: 'draft' },
+    })
+    const [, draft] = fetchMock.mock.calls[1] as [string, RequestInit]
+    expect(JSON.parse(draft.body as string).schemaVersion).toBe(2)
+  })
+
+  it('話ごとの記録そのものは platform キーには載せない（送り先は episodes 側）', async () => {
+    const { toBundleWork } = await loadModule()
+    const bundle = toBundleWork({
+      ...withEpisodes,
+      platform: { visibility: 'public', episodeVisibility: { e1: 'draft' } },
+    })
+
+    expect(bundle.platform).toEqual({ visibility: 'public' })
   })
 })
 

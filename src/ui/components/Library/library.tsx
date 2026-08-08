@@ -32,7 +32,6 @@ import { ConfirmDialog } from '@/ui/components/ConfirmDialog/confirm-dialog'
 import { ExportDialog } from '@/ui/components/ExportDialog/export-dialog'
 import { ImportDialog } from '@/ui/components/ImportDialog/import-dialog'
 import { ProfileDialog } from '@/ui/components/ProfileDialog/profile-dialog'
-import { PublishDialog } from '@/ui/components/PublishDialog/publish-dialog'
 import { SaveStateIndicator } from '@/ui/components/SaveStateIndicator/save-state-indicator'
 import { SideNav } from '@/ui/components/SideNav/side-nav'
 import { TitlePromptDialog } from '@/ui/components/TitlePromptDialog/title-prompt-dialog'
@@ -56,6 +55,8 @@ interface LibraryProps {
   store: EditorStore
   /** エディタ（/write）へ遷移 */
   onEnterEditor: () => void
+  /** 公開ページ（/publish）へ遷移。投稿はダイアログでなく一枚のページで扱う。 */
+  onEnterPublish: () => void
   /** クラウドバックアップ管理を開く（会員のみ・未指定なら非表示）。 */
   onOpenCloudBackup?: () => void
   /** AI の変更取り込みを開く（会員のみ・未指定なら非表示）。 */
@@ -112,6 +113,7 @@ function DataMenuItem({
 export function Library({
   store,
   onEnterEditor,
+  onEnterPublish,
   onOpenCloudBackup,
   onOpenAiPull,
   onOpenMcp,
@@ -131,7 +133,6 @@ export function Library({
   const { show } = useToast()
   const [newOpen, setNewOpen] = useState(false)
   const [exportOpen, setExportOpen] = useState(false)
-  const [publishOpen, setPublishOpen] = useState(false)
   /** 公開切り替えの通信中の作品 id（多重送信を防ぐ）。 */
   const [publishBusyId, setPublishBusyId] = useState<string | null>(null)
   const [importOpen, setImportOpen] = useState(false)
@@ -217,7 +218,7 @@ export function Library({
   }
   const handlePublish = async (id: string) => {
     await store.openWork(id)
-    setPublishOpen(true)
+    onEnterPublish()
   }
   // 作成しても自動では遷移しない（一覧の先頭に出る）。執筆は「執筆」ボタンから。
   const handleCreate = (title: string) => void store.createWork(title)
@@ -506,18 +507,6 @@ export function Library({
         onSubmit={(title) => handleCreate(title)}
       />
       <ExportDialog open={exportOpen} onOpenChange={setExportOpen} work={state.work} />
-      <PublishDialog
-        open={publishOpen}
-        onOpenChange={setPublishOpen}
-        work={state.work}
-        getToken={getToken}
-        onPersist={(workId, values) =>
-          void store.updateWorkMeta(workId, {
-            description: values.description,
-            platform: values.platform,
-          })
-        }
-      />
       <BackupDialog
         open={backupOpen}
         onOpenChange={setBackupOpen}

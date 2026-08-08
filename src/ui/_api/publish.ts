@@ -1,4 +1,4 @@
-import type { Work, WorkPlatform } from '@/core/schema'
+import type { Episode, Work, WorkPlatform } from '@/core/schema'
 
 /**
  * novel platform への直接投稿クライアント。
@@ -16,8 +16,15 @@ import type { Work, WorkPlatform } from '@/core/schema'
 
 type GetToken = () => Promise<string | null>
 
-/** 送信するバンドルの形式。platform 側と揃える（v2 で work.platform を追加） */
-const SCHEMA_VERSION = 2
+/**
+ * 送信するバンドルの形式。platform 側と揃える。
+ * v2 で work.platform、v3 で episodes[].visibility（話ごとの公開状態）を追加。
+ *
+ * 話ごとの状態を載せないバンドルは **v2 のまま送る**。先方が v3 を知らない版のあいだも
+ * 「本文の更新だけは通る」ようにしておく（新しすぎるバンドルは 409 で弾かれる契約）。
+ */
+const SCHEMA_VERSION_WITH_EPISODES = 3
+const SCHEMA_VERSION_BASE = 2
 
 /** platform のベースURL。未設定なら投稿UIを出さない */
 export const PLATFORM_ORIGIN: string | undefined = import.meta.env.VITE_PLATFORM_ORIGIN
@@ -54,6 +61,8 @@ export type PublishFailure = {
   message: string
   /** 作者登録が必要なとき、その導線（platform の絶対URL） */
   registerUrl?: string
+  /** 作者登録がまだ。公開ページはこの場に登録フォームを出す（先方へ飛ばさない） */
+  needsAuthor?: boolean
 }
 
 export type PublishResult = PublishSuccess | PublishFailure
@@ -78,11 +87,41 @@ export function toPlatformPayload(platform: WorkPlatform | undefined): PlatformP
   return Object.keys(payload).length > 0 ? payload : undefined
 }
 
+/** 送信する話。契約 v3 で `visibility`（話ごとの公開状態）を載せられるようになった。 */
+export type BundleEpisode = Episode & { visibility?: 'draft' | 'public' }
+
+/** 送信する作品。ローカル専用キーを落とし、話に公開状態を載せた形。 */
+export type BundleWork = Omit<Work, 'episodes' | 'platform'> & {
+  episodes: BundleEpisode[]
+  platform?: PlatformPayload
+}
+
+/**
+ * 話ごとの公開状態を、送信する話の形（契約 v3 の `episodes[].visibility`）へ移す。
+ *
+ * 載せるのは**作品を公開するときだけ**。下書きのまま送る作品で話ごとの状態を宣言しても
+ * 先方は効かせないし、こちらから「公開」と言い続ける理由も無い。
+ * 記録の無い話は作品の公開状態（＝公開）に従うので、明示して全話ぶんの宣言にする
+ * （契約は「1つでも載っていれば全話ぶんの宣言」＝部分更新はしない）。
+ */
+export function toBundleEpisodes(work: Work): { episodes: BundleEpisode[]; declared: boolean } {
+  if (work.platform?.visibility !== 'public') {
+    return { episodes: work.episodes, declared: false }
+  }
+  const byId = work.platform.episodeVisibility ?? {}
+  return {
+    episodes: work.episodes.map((ep) => ({ ...ep, visibility: byId[ep.id] ?? 'public' })),
+    // 話が1つも無ければ何も宣言していないのと同じ（v2 のまま送る）
+    declared: work.episodes.length > 0,
+  }
+}
+
 /** 送信するバンドルの work を組み立てる（契約に無いローカル専用キーを落とす）。 */
-export function toBundleWork(work: Work): Work {
-  const { platform: _local, ...rest } = work
+export function toBundleWork(work: Work): BundleWork {
+  const { platform: _local, episodes: _episodes, ...rest } = work
   const payload = toPlatformPayload(work.platform)
-  return payload ? { ...rest, platform: payload } : rest
+  const base: BundleWork = { ...rest, episodes: toBundleEpisodes(work).episodes }
+  return payload ? { ...base, platform: payload } : base
 }
 
 /**
@@ -122,7 +161,12 @@ export async function publishWorkToPlatform(
     res = await fetch(`${PLATFORM_ORIGIN}/api/import/kotonoha`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${jwt}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ schemaVersion: SCHEMA_VERSION, work: toBundleWork(work) }),
+      body: JSON.stringify({
+        schemaVersion: toBundleEpisodes(work).declared
+          ? SCHEMA_VERSION_WITH_EPISODES
+          : SCHEMA_VERSION_BASE,
+        work: toBundleWork(work),
+      }),
     })
   } catch {
     return { ok: false, message: '公開先に接続できませんでした。通信環境を確認してください' }
@@ -154,7 +198,12 @@ export async function publishWorkToPlatform(
   const message = typeof payload.message === 'string' ? payload.message : defaultMessage(res.status)
   const registerUrl =
     typeof payload.registerUrl === 'string' ? `${PLATFORM_ORIGIN}${payload.registerUrl}` : undefined
-  return { ok: false, message, registerUrl }
+  return {
+    ok: false,
+    message,
+    registerUrl,
+    ...(payload.error === 'not-author' ? { needsAuthor: true } : {}),
+  }
 }
 
 /** 知らない理由コードが増えても壊れないよう、契約で決まった 2 つ以外は「阻まれていない」に倒す。 */
