@@ -296,7 +296,11 @@ export function PublishDialog({
                 onChange={(e) => setAllAges(e.target.checked)}
                 className="mt-0.5 size-4 accent-primary"
               />
-              この作品は<strong>全年齢向け</strong>です。
+              {/* 文は1つの要素にまとめる。flex の直下にテキストを置くと語ごとに
+                  別々の項目として並び、gap が文中に入って折り返しも崩れる */}
+              <span>
+                この作品は<strong>全年齢向け</strong>です。
+              </span>
             </label>
             <label className="flex cursor-pointer items-start gap-2 font-sans text-on-surface text-sm">
               <input
@@ -305,7 +309,9 @@ export function PublishDialog({
                 onChange={(e) => setOriginal(e.target.checked)}
                 className="mt-0.5 size-4 accent-primary"
               />
-              この作品は<strong>自分が書いた一次創作</strong>で、無断転載ではありません。
+              <span>
+                この作品は<strong>自分が書いた一次創作</strong>で、無断転載ではありません。
+              </span>
             </label>
           </fieldset>
 
