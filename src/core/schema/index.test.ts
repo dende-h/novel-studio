@@ -144,14 +144,19 @@ describe('WorkPlatformSchema（公開サイトへの投稿設定）', () => {
     if (res.success) expect(res.data.platform?.lastPublishedAt).toBe(1_700_000_000_000)
   })
 
-  it('固定ジャンルは契約の6種と一致する', () => {
+  it('固定ジャンルは公開サイト（grove）の GENRES と同一・同順', () => {
     expect(PLATFORM_GENRES).toEqual([
       'ファンタジー',
-      '恋愛',
       'ミステリー',
       'SF',
-      '現代',
-      'あやかし',
+      '歴史',
+      '恋愛',
+      'ホラー',
+      '社会',
+      '児童',
+      'サスペンス',
+      '冒険',
+      'その他',
     ])
   })
 })
