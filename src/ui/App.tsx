@@ -337,6 +337,7 @@ export function App({
           <HistoryPanel
             snapshots={state.snapshots}
             currentEpisodeId={state.currentEpisodeId}
+            currentText={state.draft}
             onRestore={(id) => store.restoreSnapshot(id)}
             onClose={() => setHistoryOpen(false)}
           />
