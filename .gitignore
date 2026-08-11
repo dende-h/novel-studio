@@ -29,3 +29,6 @@ mise.*.local.toml
 test-results
 playwright-report
 .playwright
+
+# WSL が付ける Windows 由来のメタデータ
+*Zone.Identifier
