@@ -6,6 +6,6 @@ VITE_APP_ENV = "production"
 # 未設定だとゲスト＝完全ローカル動作（認証 UI は出ない）。手順は docs/requirement/05-sync-setup.md。
 VITE_CLERK_PUBLISHABLE_KEY = "pk_live_Y2xlcmsuY290b25vaGEtbGVhZi5vcmck"
 
-# 直接投稿の送信先（novel platform）。本番URLが決まったら設定する。
-# 空のあいだは投稿UIを出さない。
-VITE_PLATFORM_ORIGIN = ""
+# 直接投稿の送信先（コトノハ-grove-）。同じルートドメインのサブドメインなので
+# Clerk の本番インスタンスを共有でき、投稿時のトークン検証もそのまま通る。
+VITE_PLATFORM_ORIGIN = "https://grove.cotonoha-leaf.org"
