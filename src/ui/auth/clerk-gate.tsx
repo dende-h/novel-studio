@@ -42,19 +42,26 @@ function ClerkAuthBridge({ children }: { children: ReactNode }) {
     // Checkout から戻った直後は webhook 反映が数秒遅れるので、member になるまで数回リトライ。
     const returning = params.get('billing') === 'return'
     ;(async () => {
-      const tries = returning ? 6 : 1
-      for (let i = 0; i < tries; i++) {
-        const s = await getBillingStatus(() => getTokenRef.current())
-        if (cancelled) return
-        if (s?.isMember || i === tries - 1) {
-          setMembership({
-            loaded: true,
-            isMember: !!s?.isMember,
-            graceUntil: s?.graceUntil ?? null,
-          })
-          break
+      try {
+        const tries = returning ? 6 : 1
+        for (let i = 0; i < tries; i++) {
+          const s = await getBillingStatus(() => getTokenRef.current())
+          if (cancelled) return
+          if (s?.isMember || i === tries - 1) {
+            setMembership({
+              loaded: true,
+              isMember: !!s?.isMember,
+              graceUntil: s?.graceUntil ?? null,
+            })
+            break
+          }
+          await new Promise((r) => setTimeout(r, 1500))
         }
-        await new Promise((r) => setTimeout(r, 1500))
+      } catch {
+        // ここで例外を逃すと setMembership が呼ばれず status が 'loading' のまま固まる
+        // （ヘッダーのアカウント欄が空白・リロードまで復帰しない）。想定外の失敗でも
+        // 「非会員として確定」に倒す。会員なら次のリロード/再取得で member に戻る。
+        if (!cancelled) setMembership({ loaded: true, isMember: false, graceUntil: null })
       }
       if (!cancelled && params.get('billing')) {
         const u = new URL(window.location.href)
