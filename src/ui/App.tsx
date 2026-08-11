@@ -10,6 +10,7 @@ import type { ActivityRepository } from '@/core/storage/activityRepository'
 import type { IdeaRepository } from '@/core/storage/ideaRepository'
 import type { StructureRepository } from '@/core/storage/structureRepository'
 import { cn } from '@/lib/utils'
+import { isPublishAvailable } from '@/ui/_api/publish'
 import { AppShell } from '@/ui/components/AppShell/app-shell'
 import { ConfirmDialog } from '@/ui/components/ConfirmDialog/confirm-dialog'
 import {
@@ -55,6 +56,8 @@ interface AppProps {
   store: EditorStore
   /** 入口（ライブラリ）へ戻る */
   onExit?: () => void
+  /** 公開ページへ。投稿はダイアログで完結させず、全体を見渡せる一枚に集約する。 */
+  onNavigatePublish?: () => void
   /** 執筆の記録（草・ストリーク）へ */
   onNavigateActivity?: () => void
   /** 設定ページへ */
@@ -94,6 +97,7 @@ const AUTOSAVE_DELAY_MS = 1500
 export function App({
   store,
   onExit,
+  onNavigatePublish,
   onNavigateActivity,
   onNavigateSettings,
   onNavigateHelp,
@@ -176,6 +180,12 @@ export function App({
     setExportOpen(true)
   }
 
+  // 投稿は作品まるごとを送るので、書き出しと同じく編集中の本文を先に保存してから公開ページへ移る。
+  const openPublish = async () => {
+    if (episode) await store.save()
+    onNavigatePublish?.()
+  }
+
   const getAppearances = useCallback(
     (entry: GlossaryEntry) =>
       work ? findAppearances(work, entry) : { episodeIds: [], refCount: 0 },
@@ -247,6 +257,9 @@ export function App({
       workTitle={work?.title}
       saveStatus={{ dirty: state.dirty, status: state.status }}
       onExport={() => void openExport()}
+      onPublish={
+        isPublishAvailable && work && onNavigatePublish ? () => void openPublish() : undefined
+      }
       onToggleHistory={
         episode && onEpisodes
           ? () => {
@@ -324,6 +337,7 @@ export function App({
           <HistoryPanel
             snapshots={state.snapshots}
             currentEpisodeId={state.currentEpisodeId}
+            currentText={state.draft}
             onRestore={(id) => store.restoreSnapshot(id)}
             onClose={() => setHistoryOpen(false)}
           />

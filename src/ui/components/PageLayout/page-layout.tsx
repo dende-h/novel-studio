@@ -1,10 +1,16 @@
 import { ArrowLeft } from 'lucide-react'
 import type { ReactNode } from 'react'
+import { cn } from '@/lib/utils'
 
 interface PageLayoutProps {
   title: string
   /** タイトル下の一言説明（任意）。 */
   description?: string
+  /** 戻り先（既定はアプリのトップ）。公開ページのように、来た画面へ返したいときに使う。 */
+  backHref?: string
+  backLabel?: string
+  /** 一覧＋操作が横に並ぶページ用に本文を広げる（既定は読み物向けの 720px）。 */
+  wide?: boolean
   children: ReactNode
 }
 
@@ -13,7 +19,14 @@ interface PageLayoutProps {
  * アプリ本体（サイドバー付き）とは独立した読み物／設定画面として、法務ページと同じ骨格で描く。
  * ブランドヘッダー＝ホームへ戻る、本文は 720px 中央寄せ。
  */
-export function PageLayout({ title, description, children }: PageLayoutProps) {
+export function PageLayout({
+  title,
+  description,
+  backHref = '#/',
+  backLabel = 'アプリへ戻る',
+  wide = false,
+  children,
+}: PageLayoutProps) {
   return (
     <div className="min-h-dvh bg-background text-foreground">
       {/* ヘッダー（ブランド＝ホームへ戻る） */}
@@ -29,13 +42,13 @@ export function PageLayout({ title, description, children }: PageLayoutProps) {
         </a>
       </header>
 
-      <main className="mx-auto max-w-[720px] px-6 py-12 pb-20">
+      <main className={cn('mx-auto px-6 py-12 pb-20', wide ? 'max-w-[900px]' : 'max-w-[720px]')}>
         <a
-          href="#/"
+          href={backHref}
           className="mb-8 inline-flex items-center gap-1.5 text-[13px] text-on-surface-variant no-underline transition-colors hover:text-primary"
         >
           <ArrowLeft className="size-4" aria-hidden />
-          アプリへ戻る
+          {backLabel}
         </a>
 
         <h1 className="font-semibold font-serif text-[28px] text-on-surface">{title}</h1>

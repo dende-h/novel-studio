@@ -1,5 +1,6 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import type { ComponentProps } from 'react'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ProfileRepository } from '@/core/profile'
 import { SnapshotRepository } from '@/core/snapshot/snapshotRepository'
 import { ActivityRepository } from '@/core/storage/activityRepository'
@@ -45,6 +46,7 @@ describe('Library 作成・表示', () => {
     render(
       <Library
         store={store}
+        onEnterPublish={() => {}}
         onEnterEditor={onEnter}
         localBackup={fakeLocalBackup}
         isMember={false}
@@ -69,6 +71,7 @@ describe('Library 作成・表示', () => {
     render(
       <Library
         store={store}
+        onEnterPublish={() => {}}
         onEnterEditor={onEnter}
         localBackup={fakeLocalBackup}
         isMember={false}
@@ -92,6 +95,7 @@ describe('Library 作品名検索', () => {
     render(
       <Library
         store={store}
+        onEnterPublish={() => {}}
         onEnterEditor={() => {}}
         localBackup={fakeLocalBackup}
         isMember={false}
@@ -123,6 +127,7 @@ describe('Library ゴミ箱導線', () => {
     render(
       <Library
         store={store}
+        onEnterPublish={() => {}}
         onEnterEditor={() => {}}
         localBackup={fakeLocalBackup}
         isMember={false}
@@ -164,6 +169,7 @@ describe('Library ゴミ箱導線', () => {
     render(
       <Library
         store={store}
+        onEnterPublish={() => {}}
         onEnterEditor={() => {}}
         localBackup={fakeLocalBackup}
         isMember={false}
@@ -184,5 +190,170 @@ describe('Library ゴミ箱導線', () => {
     fireEvent.click(within(dialog).getByRole('button', { name: '削除' }))
 
     await waitFor(() => expect(within(dialog).getByText('ゴミ箱は空です。')).toBeInTheDocument())
+  })
+})
+
+/**
+ * 公開サイトへの投稿導線。投稿先（VITE_PLATFORM_ORIGIN）は取り込み時に読まれるので、
+ * stub してからモジュールを読み直す。
+ */
+const PLATFORM_ORIGIN = 'https://platform.example'
+
+async function loadLibraryWithPlatform() {
+  vi.stubEnv('VITE_PLATFORM_ORIGIN', PLATFORM_ORIGIN)
+  vi.resetModules()
+  const { Library: PublishableLibrary } = await import('./library')
+  // resetModules 後は auth-context も別インスタンスになるため、Provider もここで読み直す。
+  // 投稿は Clerk JWT を要求するので、サインイン済みの文脈を被せて描画する。
+  const { AuthContext, GUEST_AUTH_STATE } = await import('@/ui/auth/auth-context')
+  const signedIn = { ...GUEST_AUTH_STATE, getToken: async () => 'jwt' }
+  return (props: ComponentProps<typeof PublishableLibrary>) => (
+    <AuthContext.Provider value={signedIn}>
+      <PublishableLibrary {...props} />
+    </AuthContext.Provider>
+  )
+}
+
+/** 投稿済み（＝ライブラリから公開切替できる）状態の作品を 1 件だけ作る。 */
+async function seedPublishedWork(store: EditorStore, visibility: 'draft' | 'public') {
+  await store.createWork('投稿済み作')
+  // createWork は id を返さないので、一覧の先頭（＝いま作ったもの）から拾う。
+  const created = store.getSnapshot().workList[0]
+  if (!created) throw new Error('作品の作成に失敗した')
+  await store.updateWorkMeta(created.id, {
+    platform: { visibility, declaredAllAges: true, declaredOriginal: true, lastPublishedAt: 1 },
+  })
+  return created.id
+}
+
+describe('Library 公開サイトへの投稿導線', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs()
+    vi.unstubAllGlobals()
+  })
+
+  it('投稿先が未設定なら投稿・公開切替の項目を出さない', async () => {
+    const store = makeStore()
+    await seedPublishedWork(store, 'draft')
+    render(
+      <Library
+        store={store}
+        onEnterPublish={() => {}}
+        onEnterEditor={() => {}}
+        localBackup={fakeLocalBackup}
+        isMember={false}
+        onboarded={false}
+        activityRepo={fakeActivityRepo}
+      />,
+    )
+
+    fireEvent.click(await screen.findByRole('button', { name: '「投稿済み作」のメニュー' }))
+    expect(screen.queryByRole('menuitem', { name: '公開サイトへ投稿' })).toBeNull()
+    expect(screen.queryByRole('menuitem', { name: '公開する' })).toBeNull()
+  })
+
+  it('未投稿の作品には公開切替を出さない（まず投稿ダイアログを通す）', async () => {
+    const LibraryWithPlatform = await loadLibraryWithPlatform()
+    const store = makeStore()
+    await store.createWork('未投稿作')
+    render(
+      <LibraryWithPlatform
+        store={store}
+        onEnterPublish={() => {}}
+        onEnterEditor={() => {}}
+        localBackup={fakeLocalBackup}
+        isMember={false}
+        onboarded={false}
+        activityRepo={fakeActivityRepo}
+      />,
+    )
+
+    fireEvent.click(await screen.findByRole('button', { name: '「未投稿作」のメニュー' }))
+    expect(screen.getByRole('menuitem', { name: '公開サイトへ投稿' })).toBeInTheDocument()
+    expect(screen.queryByRole('menuitem', { name: '公開する' })).toBeNull()
+  })
+
+  it('「公開する」で visibility だけ差し替えて再送し、結果を作品へ記録する', async () => {
+    const LibraryWithPlatform = await loadLibraryWithPlatform()
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          ok: true,
+          published: true,
+          manageUrl: '/dashboard/works/x/episodes',
+          workUrl: '/works/x',
+        }),
+        { status: 200 },
+      ),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    const store = makeStore()
+    const id = await seedPublishedWork(store, 'draft')
+    render(
+      <LibraryWithPlatform
+        store={store}
+        onEnterPublish={() => {}}
+        onEnterEditor={() => {}}
+        localBackup={fakeLocalBackup}
+        isMember={false}
+        onboarded={false}
+        activityRepo={fakeActivityRepo}
+      />,
+    )
+
+    fireEvent.click(await screen.findByRole('button', { name: '「投稿済み作」のメニュー' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: '公開する' }))
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledOnce())
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+    const sent = JSON.parse(init.body as string) as { work: { platform?: Record<string, unknown> } }
+    // 誓約は前回の記録を引き継ぎ、visibility だけ変えて送る
+    expect(sent.work.platform).toEqual({
+      visibility: 'public',
+      declaredAllAges: true,
+      declaredOriginal: true,
+    })
+
+    // 公開できたら作品側にも反映し、カードに公開中を出す
+    expect(await screen.findByText('公開中')).toBeInTheDocument()
+    const saved = store.getSnapshot().workList.find((w) => w.id === id)
+    expect(saved?.platform).toMatchObject({
+      visibility: 'public',
+      workUrl: `${PLATFORM_ORIGIN}/works/x`,
+    })
+  })
+
+  it('公開中の作品は「非公開（下書き）に戻す」を出し、draft で送り直す', async () => {
+    const LibraryWithPlatform = await loadLibraryWithPlatform()
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ ok: true, published: false, manageUrl: '/dashboard' }), {
+        status: 200,
+      }),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    const store = makeStore()
+    await seedPublishedWork(store, 'public')
+    render(
+      <LibraryWithPlatform
+        store={store}
+        onEnterPublish={() => {}}
+        onEnterEditor={() => {}}
+        localBackup={fakeLocalBackup}
+        isMember={false}
+        onboarded={false}
+        activityRepo={fakeActivityRepo}
+      />,
+    )
+
+    fireEvent.click(await screen.findByRole('button', { name: '「投稿済み作」のメニュー' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: '非公開（下書き）に戻す' }))
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledOnce())
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+    const sent = JSON.parse(init.body as string) as { work: { platform?: Record<string, unknown> } }
+    expect(sent.work.platform).toMatchObject({ visibility: 'draft' })
+    await waitFor(() => expect(screen.queryByText('公開中')).toBeNull())
   })
 })

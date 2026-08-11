@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { BlockSchema, GlossaryEntrySchema, InlineSchema, WorkSchema } from './index'
+import {
+  BlockSchema,
+  GlossaryEntrySchema,
+  InlineSchema,
+  PLATFORM_GENRES,
+  WorkPlatformSchema,
+  WorkSchema,
+} from './index'
 
 describe('InlineSchema（ref 追加・P1）', () => {
   it('GSC1: ref を受理する', () => {
@@ -87,5 +94,64 @@ describe('GlossaryEntrySchema（P1）', () => {
   it('GSC5: name 欠落を拒否', () => {
     const { name, ...noName } = valid
     expect(GlossaryEntrySchema.safeParse(noName).success).toBe(false)
+  })
+})
+
+describe('WorkPlatformSchema（公開サイトへの投稿設定）', () => {
+  const base = { id: 'w1', title: '作', episodes: [] }
+
+  it('platform 省略の旧 Work を許容（後方互換）', () => {
+    expect(WorkSchema.safeParse(base).success).toBe(true)
+  })
+
+  it('すべて任意なので空オブジェクトも受理する', () => {
+    expect(WorkPlatformSchema.safeParse({}).success).toBe(true)
+  })
+
+  it('契約どおりの設定一式を受理する', () => {
+    const res = WorkPlatformSchema.safeParse({
+      genre: 'ファンタジー',
+      tags: ['異世界', '長編'],
+      declaredAllAges: true,
+      declaredOriginal: true,
+      visibility: 'public',
+      isCompleted: false,
+      kind: 'serial',
+    })
+    expect(res.success).toBe(true)
+  })
+
+  it('visibility / kind は決められた値以外を拒否する', () => {
+    expect(WorkPlatformSchema.safeParse({ visibility: 'private' }).success).toBe(false)
+    expect(WorkPlatformSchema.safeParse({ kind: 'novel' }).success).toBe(false)
+  })
+
+  it('ジャンルは固定6種の外でも保存はできる（採否は公開サイト側の判断）', () => {
+    expect(WorkPlatformSchema.safeParse({ genre: 'ホラー' }).success).toBe(true)
+  })
+
+  it('ローカル専用の投稿記録（lastPublishedAt / URL）も保持できる', () => {
+    const res = WorkSchema.safeParse({
+      ...base,
+      platform: {
+        visibility: 'public',
+        lastPublishedAt: 1_700_000_000_000,
+        workUrl: 'https://platform.example/works/x',
+        manageUrl: 'https://platform.example/dashboard/works/x/episodes',
+      },
+    })
+    expect(res.success).toBe(true)
+    if (res.success) expect(res.data.platform?.lastPublishedAt).toBe(1_700_000_000_000)
+  })
+
+  it('固定ジャンルは契約の6種と一致する', () => {
+    expect(PLATFORM_GENRES).toEqual([
+      'ファンタジー',
+      '恋愛',
+      'ミステリー',
+      'SF',
+      '現代',
+      'あやかし',
+    ])
   })
 })

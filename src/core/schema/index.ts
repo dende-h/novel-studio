@@ -87,6 +87,69 @@ export const GlossaryEntrySchema = z.object({
 })
 export type GlossaryEntry = z.infer<typeof GlossaryEntrySchema>
 
+/**
+ * 公開サイト（novel platform）のジャンル。先方が固定 6 種しか採らないので、こちらでも同じ 6 種だけ出す。
+ * 6 種に収まらない言葉は自由タグ（tags）へ回す、という住み分け。
+ */
+export const PLATFORM_GENRES = [
+  'ファンタジー',
+  '恋愛',
+  'ミステリー',
+  'SF',
+  '現代',
+  'あやかし',
+] as const
+
+/** 公開サイトへ投稿するときの自由タグの上限（先方の受け入れ条件と同じ）。 */
+export const PLATFORM_MAX_TAGS = 5
+export const PLATFORM_MAX_TAG_LENGTH = 30
+
+/**
+ * あらすじ（`Work.description`）の長さ。
+ *
+ * 作品情報の編集と公開の管理は**同じ1つの項目**を書いているので、上限も1つにする
+ * （かつて 250 と 2000 で食い違っていて、片方で書いた文がもう片方で足せなくなっていた）。
+ * 公開サイトは 2000 字まで受けるが、あらすじは読者が最初に読む数行という位置づけなので、
+ * 短いほう（EPUB の dc:description と同じ 250 字）に合わせる。
+ */
+export const MAX_DESCRIPTION_LENGTH = 250
+
+/**
+ * 公開サイト（novel platform）へ投稿するときだけ意味を持つ設定。
+ * コトノハの本質は執筆なので、公開先固有の項目は Work 直下に散らさずここへまとめる。
+ * すべて任意＝未投稿の作品・旧データはキーごと持たない。
+ */
+export const WorkPlatformSchema = z.object({
+  // ジャンルは PLATFORM_GENRES のいずれかを入れる。型を enum に狭めないのは、先方が種類を
+  // 増やしたときに保存済みデータが検証で落ちるのを避けるため（外れ値は先方が無視するだけ）。
+  genre: z.string().optional(),
+  tags: z.array(z.string()).optional(),
+  /** 全年齢向けである、の誓約。規約同意なので既定値は持たせない（＝未誓約）。 */
+  declaredAllAges: z.boolean().optional(),
+  /** 一次創作である（無断転載でない）、の誓約。 */
+  declaredOriginal: z.boolean().optional(),
+  visibility: z.enum(['draft', 'public']).optional(),
+  isCompleted: z.boolean().optional(),
+  kind: z.enum(['serial', 'oneshot']).optional(),
+
+  /**
+   * 話ごとの公開状態（話ID → 公開状態）。記録の無い話は作品の公開状態に従う。
+   *
+   * 公開サイトへは `platform` の中ではなく **episodes[].visibility として送る**（契約 v3）。
+   * こちらでまとめて持つのは、公開先固有の設定を Work 直下・Episode 直下へ散らさないため。
+   */
+  episodeVisibility: z.record(z.string(), z.enum(['draft', 'public'])).optional(),
+
+  // ---- ここから下は公開サイトとの取り決めに無い＝コトノハのローカル専用。
+  //      送信時に落とす（src/ui/_api/publish.ts の toBundleWork）。 ----
+  /** 最後に投稿できた時刻。ライブラリで「投稿済みか」を判定して公開切替を出すのに使う。 */
+  lastPublishedAt: z.number().optional(),
+  /** 前回の投稿で返ってきた読者ページ／管理画面（公開サイトの絶対URL）。 */
+  workUrl: z.string().optional(),
+  manageUrl: z.string().optional(),
+})
+export type WorkPlatform = z.infer<typeof WorkPlatformSchema>
+
 export const WorkSchema = z.object({
   id: z.string(),
   title: z.string(),
@@ -103,5 +166,7 @@ export const WorkSchema = z.object({
     .string()
     .refine((s) => s.startsWith('data:image/'), 'data URL が必要')
     .optional(),
+  // 公開サイト（novel platform）への投稿設定。投稿しない作品は持たない・旧データ互換のため任意。
+  platform: WorkPlatformSchema.optional(),
 })
 export type Work = z.infer<typeof WorkSchema>

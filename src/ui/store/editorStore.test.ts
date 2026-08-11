@@ -287,6 +287,32 @@ describe('editorStore（自前ストア・useSyncExternalStore 用）', () => {
     expect(s.work?.episodes[0]?.blocks).toBeDefined()
   })
 
+  it('復元直後の保存は間隔内でも集約せず、復元前の版を履歴に残す', async () => {
+    let t = 0
+    const s = makeStore({ now: () => t, snapshotMinIntervalMs: 100 })
+    await s.createWork('作')
+    await s.createEpisode('話')
+
+    t = 1000
+    s.setDraft('最初の版')
+    await s.save()
+    const firstSnapId = s.getSnapshot().snapshots[0]?.id as string
+
+    t = 2000
+    s.setDraft('書き換えた版')
+    await s.save()
+    expect(s.getSnapshot().snapshots).toHaveLength(2)
+
+    // 間隔内（+50）に復元→自動保存。集約なら「書き換えた版」が潰れるが、
+    // 復元後の保存は必ず新しい版として積むので 3 版とも残る。
+    t = 2050
+    s.restoreSnapshot(firstSnapId)
+    await s.save()
+    const snaps = s.getSnapshot().snapshots
+    expect(snaps).toHaveLength(3)
+    expect(snaps.some((sn) => JSON.stringify(sn.work).includes('書き換えた版'))).toBe(true)
+  })
+
   it('openWork は保存済みスナップショットを読み込む', async () => {
     await store.createWork('作')
     await store.createEpisode('話')

@@ -2,6 +2,7 @@ import {
   Check,
   CircleDot,
   CloudOff,
+  CloudUpload,
   CreditCard,
   Download,
   HardDrive,
@@ -37,6 +38,8 @@ interface TopAppBarProps {
   /** 書き出しダイアログを開く。未指定なら非表示 */
   onExport?: () => void
   exportDisabled?: boolean
+  /** 公開サイトへの投稿ダイアログを開く。未指定なら非表示（投稿先が未設定のビルドなど） */
+  onPublish?: () => void
   /** 履歴ドロワーの開閉トグル。未指定なら非表示 */
   onToggleHistory?: () => void
   historyOpen?: boolean
@@ -164,7 +167,7 @@ function AccountControl() {
   return null
 }
 
-/** 全画面共通のトップバー（ブランド・作品パンくず・保存状態・履歴・書き出し）。 */
+/** 全画面共通のトップバー（ブランド・作品パンくず・保存状態・履歴・書き出し・投稿）。 */
 export function TopAppBar({
   brand,
   onBrandClick,
@@ -172,6 +175,7 @@ export function TopAppBar({
   saveStatus,
   onExport,
   exportDisabled,
+  onPublish,
   onToggleHistory,
   historyOpen,
   onToggleNav,
@@ -255,6 +259,18 @@ export function TopAppBar({
           >
             <Download className="size-4" aria-hidden />
             <span className="max-sm:hidden">書き出し</span>
+          </Button>
+        ) : null}
+        {onPublish ? (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={onPublish}
+            title="公開サイトへ投稿"
+            className="gap-2"
+          >
+            <CloudUpload className="size-4" aria-hidden />
+            <span className="max-sm:hidden">投稿</span>
           </Button>
         ) : null}
         <AccountControl />

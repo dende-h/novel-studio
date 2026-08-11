@@ -13,10 +13,17 @@ import {
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { localDateKey, summarize } from '@/core/activity'
 import { decideBackupNudge, type NudgeDecision } from '@/core/nudge/backup-nudge'
+import type { WorkPlatform } from '@/core/schema'
 import type { ActivityRepository } from '@/core/storage/activityRepository'
 import type { WorkSummary } from '@/core/storage/workRepository'
 import { cn } from '@/lib/utils'
+import {
+  describePublishBlocked,
+  isPublishAvailable,
+  publishWorkToPlatform,
+} from '@/ui/_api/publish'
 import { triggerDownload } from '@/ui/_utils/download'
+import { useAuth } from '@/ui/auth/auth-context'
 import type { LocalBackupService } from '@/ui/backup/backup-service'
 import { AppShell } from '@/ui/components/AppShell/app-shell'
 import { BackupDialog } from '@/ui/components/BackupDialog/backup-dialog'
@@ -28,6 +35,7 @@ import { ProfileDialog } from '@/ui/components/ProfileDialog/profile-dialog'
 import { SaveStateIndicator } from '@/ui/components/SaveStateIndicator/save-state-indicator'
 import { SideNav } from '@/ui/components/SideNav/side-nav'
 import { TitlePromptDialog } from '@/ui/components/TitlePromptDialog/title-prompt-dialog'
+import { useToast } from '@/ui/components/Toast/toast'
 import { TrashDialog } from '@/ui/components/TrashDialog/trash-dialog'
 import { Button } from '@/ui/components/ui/button'
 import { WorkMetaDialog } from '@/ui/components/WorkMetaDialog/work-meta-dialog'
@@ -47,6 +55,8 @@ interface LibraryProps {
   store: EditorStore
   /** エディタ（/write）へ遷移 */
   onEnterEditor: () => void
+  /** 公開ページ（/publish）へ遷移。投稿はダイアログでなく一枚のページで扱う。 */
+  onEnterPublish: () => void
   /** クラウドバックアップ管理を開く（会員のみ・未指定なら非表示）。 */
   onOpenCloudBackup?: () => void
   /** AI の変更取り込みを開く（会員のみ・未指定なら非表示）。 */
@@ -103,6 +113,7 @@ function DataMenuItem({
 export function Library({
   store,
   onEnterEditor,
+  onEnterPublish,
   onOpenCloudBackup,
   onOpenAiPull,
   onOpenMcp,
@@ -117,8 +128,13 @@ export function Library({
   onOpenCloudPlan,
 }: LibraryProps) {
   const state = useEditorStore(store)
+  // 公開サイトへの投稿は Clerk JWT で認証する（執筆アカウント＝公開アカウント）。
+  const { getToken } = useAuth()
+  const { show } = useToast()
   const [newOpen, setNewOpen] = useState(false)
   const [exportOpen, setExportOpen] = useState(false)
+  /** 公開切り替えの通信中の作品 id（多重送信を防ぐ）。 */
+  const [publishBusyId, setPublishBusyId] = useState<string | null>(null)
   const [importOpen, setImportOpen] = useState(false)
   const [backupOpen, setBackupOpen] = useState(false)
   const [profileOpen, setProfileOpen] = useState(false)
@@ -200,8 +216,57 @@ export function Library({
     await store.openWork(id)
     setExportOpen(true)
   }
+  const handlePublish = async (id: string) => {
+    await store.openWork(id)
+    onEnterPublish()
+  }
   // 作成しても自動では遷移しない（一覧の先頭に出る）。執筆は「執筆」ボタンから。
   const handleCreate = (title: string) => void store.createWork(title)
+
+  /**
+   * 投稿済み作品の公開／下書きを、ライブラリから切り替える。
+   * 公開サイトは「作品まるごとの再送」で更新する仕様で、再送しても読者の反応は保持されるため、
+   * 現在の内容のまま visibility だけ差し替えて送り直す（別の API を用意しない）。
+   */
+  const handleTogglePublish = async (summary: WorkSummary) => {
+    if (publishBusyId !== null) return
+    setPublishBusyId(summary.id)
+    try {
+      await store.openWork(summary.id)
+      // openWork の直後は描画前なので、閉じ込めた state ではなく最新スナップショットから取る。
+      const work = store.getSnapshot().work
+      if (!work) return
+
+      const platform: WorkPlatform = {
+        ...work.platform,
+        visibility: summary.platform?.visibility === 'public' ? 'draft' : 'public',
+      }
+      const res = await publishWorkToPlatform(getToken, { ...work, platform })
+      if (!res.ok) {
+        show(res.message)
+        return
+      }
+      await store.updateWorkMeta(work.id, {
+        platform: {
+          ...platform,
+          // 誓約欠け・運営の非表示で公開されないことがあるので、記録は実際の結果に合わせる。
+          visibility: res.published ? 'public' : 'draft',
+          lastPublishedAt: Date.now(),
+          manageUrl: res.manageUrl,
+          ...(res.workUrl ? { workUrl: res.workUrl } : {}),
+        },
+      })
+      show(
+        res.publishBlocked
+          ? describePublishBlocked(res.publishBlocked)
+          : res.published
+            ? '公開しました'
+            : '下書きに戻しました',
+      )
+    } finally {
+      setPublishBusyId(null)
+    }
+  }
 
   // カード／リストで共有する作品ごとのハンドラ束。
   const itemProps = (w: WorkSummary) => ({
@@ -211,6 +276,14 @@ export function Library({
     onExport: () => void handleExport(w.id),
     onEditMeta: () => setMetaTarget(w),
     onDelete: () => setDeleteTarget(w),
+    // 投稿先が未設定（VITE_PLATFORM_ORIGIN なし）のビルドでは投稿の導線ごと出さない。
+    onPublish: isPublishAvailable ? () => void handlePublish(w.id) : undefined,
+    // 公開／下書きの切り替えは、一度でも投稿できた作品にだけ出す（未投稿は投稿ダイアログから）。
+    onTogglePublish:
+      isPublishAvailable && w.platform?.lastPublishedAt !== undefined
+        ? () => void handleTogglePublish(w)
+        : undefined,
+    publishBusy: publishBusyId === w.id,
   })
 
   return (

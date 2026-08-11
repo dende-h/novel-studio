@@ -23,8 +23,12 @@ export function ProjectCard({
   onExport,
   onEditMeta,
   onDelete,
+  onPublish,
+  onTogglePublish,
+  publishBusy,
 }: ProjectCardProps) {
-  const { id, title, episodeCount, charCount, updatedAt, coverImage } = summary
+  const { id, title, episodeCount, charCount, updatedAt, coverImage, platform } = summary
+  const published = platform?.visibility === 'public'
   return (
     <article className="group relative flex flex-col rounded-lg border border-outline-variant/30 bg-surface-container-lowest transition-all hover:border-outline-variant/50 hover:shadow-md">
       {/* カード全体クリック＝執筆（透明オーバーレイ。ケバブだけ上層で操作可能にする） */}
@@ -81,6 +85,10 @@ export function ProjectCard({
               onExport={onExport}
               onEditMeta={onEditMeta}
               onDelete={onDelete}
+              onPublish={onPublish}
+              onTogglePublish={onTogglePublish}
+              publishBusy={publishBusy}
+              published={published}
             />
           </span>
         </div>
@@ -91,6 +99,12 @@ export function ProjectCard({
           >
             {episodeCount}話
           </Badge>
+          {/* 公開中はメニューを開かなくても分かるようにする（切替の可否判断に必要な情報）。 */}
+          {published ? (
+            <Badge variant="secondary" className="bg-accent font-sans text-primary">
+              公開中
+            </Badge>
+          ) : null}
           <span className="text-[11px] text-on-surface-variant">{formatCount(charCount)}字</span>
         </div>
         <div className="text-[11px] text-on-surface-variant/70">

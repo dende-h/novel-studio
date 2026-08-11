@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { MAX_DESCRIPTION_LENGTH } from '@/core/schema'
 import { coverToDataUrl } from '@/ui/_utils/imageResizer'
 import { Button } from '@/ui/components/ui/button'
 import {
@@ -119,9 +120,9 @@ export function WorkMetaDialog({ open, onOpenChange, initial, onSubmit }: WorkMe
               <div className="flex items-center justify-between">
                 <Label htmlFor="work-meta-description">あらすじ</Label>
                 <span
-                  className={`text-xs tabular-nums ${description.length >= 250 ? 'text-destructive' : 'text-on-surface-variant/50'}`}
+                  className={`text-xs tabular-nums ${description.length >= MAX_DESCRIPTION_LENGTH ? 'text-destructive' : 'text-on-surface-variant/50'}`}
                 >
-                  {description.length}/250
+                  {description.length}/{MAX_DESCRIPTION_LENGTH}
                 </span>
               </div>
               <Textarea
@@ -130,7 +131,7 @@ export function WorkMetaDialog({ open, onOpenChange, initial, onSubmit }: WorkMe
                 onChange={(e) => setDescription(e.target.value)}
                 placeholder="作品の概要・あらすじ（任意）"
                 rows={4}
-                maxLength={250}
+                maxLength={MAX_DESCRIPTION_LENGTH}
               />
             </div>
             <div className="space-y-2">

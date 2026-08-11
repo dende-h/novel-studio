@@ -2,7 +2,7 @@ import { blocksToNotation } from '../../core/exporter/blocksToNotation'
 import { renameEntry, resolveRef } from '../../core/glossary'
 import { parseEpisodeBody } from '../../core/parser/parseNotation'
 import type { Profile, ProfileRepository } from '../../core/profile'
-import type { Episode, GlossaryEntry, Work } from '../../core/schema'
+import type { Episode, GlossaryEntry, Work, WorkPlatform } from '../../core/schema'
 import type { Snapshot } from '../../core/snapshot'
 import type { SnapshotRepository } from '../../core/snapshot/snapshotRepository'
 import { countWorkChars } from '../../core/stats'
@@ -110,6 +110,11 @@ export interface WorkMeta {
   title?: string
   author?: string
   description?: string
+  /**
+   * 公開サイトへの投稿設定。部分更新はせず丸ごと差し替える（投稿ダイアログが全項目を持つため）。
+   * undefined は据え置き。
+   */
+  platform?: WorkPlatform
   /** 表紙画像の data URL。空文字 '' は削除（キーを落とす）、undefined は据え置き。 */
   coverImage?: string
 }
@@ -155,6 +160,10 @@ export function createEditorStore({
 }: EditorStoreDeps): EditorStore {
   let state: EditorState = INITIAL
   const listeners = new Set<() => void>()
+  // 復元直後の最初の保存は集約（record）せず必ず新しい版として積む（append）。
+  // 集約すると「復元前＝現在の版」の最新スナップショットが復元内容で上書きされ、
+  // 復元の取り消しができなくなるため。
+  let appendNextSnapshot = false
 
   const emit = () => {
     for (const l of listeners) l()
@@ -280,7 +289,10 @@ export function createEditorStore({
       // 本文の純増減を日別の執筆活動へ記録（草・ストリーク用）。state.work は保存前の旧状態。
       await activityRepo.record(countWorkChars(work) - countWorkChars(state.work), now())
       // 連続編集中は最新版へ合体し、間隔を空けた保存だけ新しい版として積む
-      const snapshots = await snapshotRepo.record(work, now(), genId(), snapshotMinIntervalMs)
+      const snapshots = appendNextSnapshot
+        ? await snapshotRepo.append(work, now(), genId())
+        : await snapshotRepo.record(work, now(), genId(), snapshotMinIntervalMs)
+      appendNextSnapshot = false
       set({ work, dirty: false, status: 'saved', snapshots })
       await refreshList()
     },
@@ -292,6 +304,7 @@ export function createEditorStore({
       const ep =
         snap.work.episodes.find((e) => e.id === state.currentEpisodeId) ?? snap.work.episodes[0]
       if (!ep) return
+      appendNextSnapshot = true
       set({
         currentEpisodeId: ep.id,
         draft: blocksToNotation(ep.blocks),
