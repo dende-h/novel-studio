@@ -24,9 +24,12 @@ async function authHeader(getToken: GetToken): Promise<Record<string, string> | 
 
 /** サインイン中ユーザーの会員状態。未ログイン/失敗は null。 */
 export async function getBillingStatus(getToken: GetToken): Promise<BillingStatus | null> {
-  const headers = await authHeader(getToken)
-  if (!headers) return null
+  // getToken() はサインイン直後のセッション遷移中などに reject しうる。ここで例外を通すと
+  // 呼び出し側（clerk-gate の会員判定 effect）が途中で死んで auth が loading のまま固まるため、
+  // トークン取得も含めて「失敗は null」に丸める。
   try {
+    const headers = await authHeader(getToken)
+    if (!headers) return null
     const res = await fetch('/api/billing/status', { headers })
     if (!res.ok) return null
     return (await res.json()) as BillingStatus
@@ -37,9 +40,9 @@ export async function getBillingStatus(getToken: GetToken): Promise<BillingStatu
 
 /** Checkout セッションを作り、その Stripe ホスト画面へ遷移する。開始できなければ false。 */
 export async function startCheckout(getToken: GetToken, plan: PlanInterval): Promise<boolean> {
-  const headers = await authHeader(getToken)
-  if (!headers) return false
   try {
+    const headers = await authHeader(getToken)
+    if (!headers) return false
     const res = await fetch('/api/billing/checkout', {
       method: 'POST',
       headers: { ...headers, 'content-type': 'application/json' },
@@ -57,9 +60,9 @@ export async function startCheckout(getToken: GetToken, plan: PlanInterval): Pro
 
 /** Customer Portal（解約・支払い方法・請求履歴）を開く。開始できなければ false。 */
 export async function openBillingPortal(getToken: GetToken): Promise<boolean> {
-  const headers = await authHeader(getToken)
-  if (!headers) return false
   try {
+    const headers = await authHeader(getToken)
+    if (!headers) return false
     const res = await fetch('/api/billing/portal', { method: 'POST', headers })
     if (!res.ok) return false
     const { url } = (await res.json()) as { url?: string }

@@ -88,16 +88,23 @@ export const GlossaryEntrySchema = z.object({
 export type GlossaryEntry = z.infer<typeof GlossaryEntrySchema>
 
 /**
- * 公開サイト（novel platform）のジャンル。先方が固定 6 種しか採らないので、こちらでも同じ 6 種だけ出す。
- * 6 種に収まらない言葉は自由タグ（tags）へ回す、という住み分け。
+ * 公開サイト（コトノハ-grove-）の運営固定ジャンル。先方の GENRES
+ * （novel-platform: apps/novel/src/server/import/kotonoha-bundle.ts）と同一・同順に保つ。
+ * ここに無い言葉を genre で送っても先方で自由タグへ格下げされるため、選択肢も先方と揃える。
+ * 一覧に収まらない言葉は自由タグ（tags）へ回す、という住み分け。
  */
 export const PLATFORM_GENRES = [
   'ファンタジー',
-  '恋愛',
   'ミステリー',
   'SF',
-  '現代',
-  'あやかし',
+  '歴史',
+  '恋愛',
+  'ホラー',
+  '社会',
+  '児童',
+  'サスペンス',
+  '冒険',
+  'その他',
 ] as const
 
 /** 公開サイトへ投稿するときの自由タグの上限（先方の受け入れ条件と同じ）。 */
