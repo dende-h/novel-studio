@@ -170,4 +170,16 @@ describe('SideNav（サイドバー）', () => {
     expect(screen.getByRole('button', { name: '設定' })).toBeDisabled()
     expect(screen.getByRole('button', { name: 'ヘルプ' })).toBeDisabled()
   })
+
+  it('platformHref 指定時は grove への外部リンクを新しいタブで出す（両モード共通のフッター）', () => {
+    render(<SideNav {...baseProps} platformHref="https://grove.example" />)
+    const link = screen.getByRole('link', { name: 'コトノハ-grove-' })
+    expect(link).toHaveAttribute('href', 'https://grove.example')
+    expect(link).toHaveAttribute('target', '_blank')
+  })
+
+  it('投稿先未設定のビルド（platformHref なし）では grove リンクを出さない', () => {
+    render(<SideNav active="collection" onNavigateCollection={() => {}} />)
+    expect(screen.queryByRole('link', { name: 'コトノハ-grove-' })).toBeNull()
+  })
 })

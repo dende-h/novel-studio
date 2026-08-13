@@ -2,6 +2,7 @@ import {
   ArrowLeft,
   BookMarked,
   CircleHelp,
+  ExternalLink,
   FileText,
   Library,
   ListTree,
@@ -13,11 +14,13 @@ import {
   Sprout,
   StickyNote,
   Trash2,
+  Trees,
   UserRound,
   Waypoints,
 } from 'lucide-react'
 import type { ComponentType } from 'react'
 import { cn } from '@/lib/utils'
+import { PLATFORM_ORIGIN } from '@/ui/_api/publish'
 import { coverTone } from '@/ui/_utils/cover-tone'
 import { Button } from '@/ui/components/ui/button'
 import { ScrollArea } from '@/ui/components/ui/scroll-area'
@@ -52,6 +55,11 @@ interface SideNavProps {
   onNavigateSettings?: () => void
   /** ヘルプページへ。指定時のみフッターの「ヘルプ」を有効化。 */
   onNavigateHelp?: () => void
+  /**
+   * 公開サイト（コトノハ-grove-）のURL。省略時はビルド設定（VITE_PLATFORM_ORIGIN）。
+   * 空のビルド（投稿先未設定）ではリンク自体を出さない。
+   */
+  platformHref?: string
   /** 主要 CTA（新しい作品 / 新しいエピソード）。作成導線が無い画面（執筆の記録）では省略。 */
   cta?: { label: string; onClick: () => void; disabled?: boolean }
   /** 作者プロフィール（ペンネーム・アバター）。onEditProfile と併せて指定時のみ表示。 */
@@ -142,7 +150,9 @@ export function SideNav({
   onSelectEpisode,
   onRenameEpisode,
   onDeleteEpisode,
+  platformHref,
 }: SideNavProps) {
+  const groveHref = platformHref ?? PLATFORM_ORIGIN
   // 作品が開いていれば作品モード（戻る＋作品カード＋本文/図鑑）、未オープンはライブラリモード。
   const workOpen = workTitle !== undefined
   const workInitial = (workTitle ?? '').trim().charAt(0) || '無'
@@ -402,6 +412,19 @@ export function SideNav({
 
       {/* フッター */}
       <div className="space-y-0.5">
+        {/* 公開サイト（コトノハ-grove-）へ。読みに行く導線なので新しいタブで開き、執筆を離れない。 */}
+        {groveHref ? (
+          <a
+            href={groveHref}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex w-full items-center gap-2.5 rounded-md px-3 py-2 font-medium font-sans text-[13px] text-on-surface-variant transition-colors hover:bg-surface-container-high hover:text-on-surface"
+          >
+            <Trees className="size-[15px] shrink-0" />
+            <span className="flex-1 truncate">コトノハ-grove-</span>
+            <ExternalLink aria-hidden className="size-3 shrink-0 text-on-surface-variant/50" />
+          </a>
+        ) : null}
         <NavRow
           icon={Settings}
           label="設定"
