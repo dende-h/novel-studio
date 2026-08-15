@@ -17,6 +17,8 @@ import { RestoreGrace } from './components/RestoreGrace/restore-grace'
 import { SettingsPage } from './components/SettingsPage/settings-page'
 import { SyncOnboarding } from './components/SyncOnboarding/sync-onboarding'
 import { useToast } from './components/Toast/toast'
+import { useAutoBackup } from './hooks/use-auto-backup'
+import { useAutoSync } from './hooks/use-auto-sync'
 import { useHashRoute } from './hooks/use-hash-route'
 import { useLiveSnapshot } from './hooks/use-live-snapshot'
 import { useLocalFlag } from './hooks/use-local-flag'
@@ -26,6 +28,7 @@ import {
   createDefaultStructureRepository,
 } from './store/createDefaultStore'
 import type { EditorStore } from './store/editorStore'
+import { createDefaultSyncService } from './sync/sync-service'
 
 interface RootProps {
   store: EditorStore
@@ -94,6 +97,34 @@ export function Root({ store }: RootProps) {
 
   // 接続済み会員の編集をデバウンスでライブスナップショットへ反映（AI が最新を読める）。
   useLiveSnapshot(store, backupService, mcpConnected)
+
+  // 会員の Work 単位自動同期（CAS＋三方向差分・2026-08 改訂）。スマホ⇔PC の使い分けを
+  // バックアップ→復元なしで成立させる。pull 等でローカルが変わったら一覧を読み直し、
+  // 競合（LWW で解決・敗者は履歴へ退避済み）はトーストで知らせる。
+  // 執筆画面で開いている作品への pull はエディタ表示と食い違うため見送る（画面を離れたら反映）。
+  const routeRef = useRef(route)
+  routeRef.current = route
+  const syncService = useMemo(
+    () =>
+      status === 'member'
+        ? createDefaultSyncService(
+            () => getTokenRef.current(),
+            () => (routeRef.current === '/write' ? (store.getSnapshot().work?.id ?? null) : null),
+          )
+        : null,
+    [status, store],
+  )
+  useAutoSync(store, syncService, status === 'member', {
+    onLocalChanged: () => void store.init(),
+    onConflicts: (conflicts) =>
+      show(
+        `別端末の変更と競合したため新しい方を採用しました（${conflicts.length}件・旧版は履歴に退避）`,
+      ),
+  })
+
+  // 会員の自動クラウドバックアップ（編集静止 5 分・最小間隔 60 分・世代 20）。
+  // 同期が運ばない structures/ideas/profile/activity を含む全体スナップショットの安全網。
+  useAutoBackup(store, backupService, status === 'member')
 
   // 法務ページ（利用規約・プライバシーポリシー・特商法表記）は SPA から切り出し、public/ 配下の
   // 静的HTML（/terms・/privacy・/tokushoho）として配信する。JS 無効でもクローラ・決済審査から
