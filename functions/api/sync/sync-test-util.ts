@@ -64,6 +64,22 @@ export function makeSyncDb(opts: { members?: string[] } = {}) {
           if (sql.includes('FROM rate_limits')) {
             return (rates.get(args[0] as string) ?? null) as T | null
           }
+          if (sql.includes('MAX(synced_at)')) {
+            // version: works の最終同期時刻の最大値。
+            const userId = args[0] as string
+            let v = 0
+            for (const r of works.values()) if (r.user_id === userId) v = Math.max(v, r.synced_at)
+            return { v } as T
+          }
+          if (sql.includes('MAX(updated_at)') && sql.includes('FROM activity')) {
+            // version: activity の最終更新の最大値。
+            const userId = args[0] as string
+            let v = 0
+            for (const r of activity.values()) {
+              if (r.user_id === userId) v = Math.max(v, r.updated_at)
+            }
+            return { v } as T
+          }
           if (sql.includes('SUM(doc_size)')) {
             // クォータ: live 行の合計から当該 work を除外。
             const [userId, workId] = args as [string, string]

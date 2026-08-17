@@ -59,6 +59,7 @@
 >
 > | エンドポイント | 役割 | 主な応答 |
 > |---|---|---|
+> | `GET /api/sync/version` | 同期世代の軽量チェック（works の MAX(synced_at)・activity の MAX(updated_at)）。前回値から動いていなければクライアントは本同期を省略＝~15 秒ポーリングを安くする | 200 |
 > | `GET /api/sync/manifest` | 全 work のメタ一覧（`RemoteWorkMeta[]`＝updatedAt / trashedAt / deleted / docHash / docSize / syncedAt） | 200 |
 > | `GET /api/sync/work?id=` | 平文 Work JSON を復号して返す（`x-doc-hash` / `x-updated-at` / `x-trashed-at` ヘッダ付き） | 200／404 |
 > | `PUT /api/sync/work?id=` | **CAS push**。受理条件＝①行なし：`x-base-hash === ''` のみ ②行 live：`x-base-hash === row.doc_hash` のみ ③トゥームストーン：`x-updated-at > row.updated_at` のみ（編集勝ち＝復活）。不一致は 409 `{error:'conflict', meta}` | 200／409 |
@@ -71,8 +72,10 @@
 >
 > ### トリガ
 >
-> 会員のみ・手動操作不要：①mount/ログイン時の全体 reconcile ②store 変更の 30 秒 coalesce
-> ③foreground 復帰 ④pagehide flush。409（CAS 敗北）は 1 回だけ再 reconcile・多重実行ガードあり。
+> 会員のみ・手動操作不要：①mount/ログイン時の全体 reconcile ②store 変更の 5 秒 coalesce
+> ③foreground 復帰・window focus（最小 15 秒間隔）④表示中 15 秒ごとの軽量 poll（`/api/sync/version`
+> の世代が動いたときだけ本同期）＋ 5 分ごとの完全同期 ⑤pagehide flush。
+> 409（CAS 敗北）は 1 回だけ再 reconcile・多重実行ガードあり。
 > **執筆画面で開いている作品への pull／trash／purge は見送り**、画面を離れた後の reconcile に
 > 委ねる（エディタ表示との食い違い防止＝旧「編集中に他端末の変更を引っ張らない」の継承）。
 > pull は実行直前にローカル内容ハッシュを再検証し、往復中に編集が入っていたら上書きせず再計画へ。

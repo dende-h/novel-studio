@@ -16,6 +16,7 @@ import type { ConflictInfo, RemoteWorkMeta } from '@/core/sync/types'
 import {
   deleteSyncWork as apiDelete,
   getSyncWork as apiGet,
+  getSyncVersion as apiGetVersion,
   getSyncManifest as apiManifest,
   patchSyncWork as apiPatch,
   postSyncActivity as apiPostActivity,
@@ -51,6 +52,12 @@ export interface ReconcileSummary {
 export interface SyncService {
   /** 1 回の同期。オフライン・未ログイン・非会員（manifest 不可）は null。多重呼び出しは合流する。 */
   reconcile(): Promise<ReconcileSummary | null>
+  /**
+   * 軽量ポーリング用：サーバの同期世代（/api/sync/version）を確かめ、前回から動いていた
+   * ときだけ本同期を走らせる。変化なしなら往復 1 回の超軽量 GET で終わる＝~15 秒間隔で
+   * 呼んでも安く、受け側のラグを縮められる。判定不能（オフライン等）は null。
+   */
+  poll(): Promise<ReconcileSummary | null>
   /**
    * 完了した実行すべての結果を受け取る（内部の追走・再試行を含む）。reconcile() の戻り値だけを
    * 見ると、実行中に合流した呼び出しの後に走る追走の pull・競合が取りこぼされるため、
@@ -104,6 +111,8 @@ export interface SyncDeps {
     body: { trashedAt: number; updatedAt: number },
   ): Promise<{ ok: true } | { ok: false; conflict: RemoteWorkMeta } | null>
   deleteWork(workId: string, at: number): Promise<boolean>
+  /** サーバの同期世代（poll 用の軽量チェック）。失敗は null。 */
+  getVersion(): Promise<{ works: number; activity: number } | null>
   now(): number
   genId(): string
   /**
@@ -476,7 +485,25 @@ export function createSyncService(deps: SyncDeps): SyncService {
 
   const listeners = new Set<(summary: ReconcileSummary) => void>()
 
+  // poll が最後に見たサーバ世代。同じなら本同期を省略する（reconcile 後は自分の push で
+  // 世代が進むため、取り直して記録し、無限に自分の変更へ反応するのを防ぐ）。
+  let lastSeenVersion: { works: number; activity: number } | null = null
+
   const service: SyncService = {
+    async poll() {
+      const v = await deps.getVersion()
+      if (v === null) return null
+      if (
+        lastSeenVersion &&
+        v.works === lastSeenVersion.works &&
+        v.activity === lastSeenVersion.activity
+      ) {
+        return { pushed: 0, pulled: 0, conflicts: [], changedLocal: false }
+      }
+      const summary = await service.reconcile()
+      lastSeenVersion = (await deps.getVersion()) ?? v
+      return summary
+    },
     reconcile() {
       // 実行中の呼び出しに合流させ、終了後に 1 回だけ追走する（編集中の連打を潰す）。
       if (inFlight) {
@@ -533,6 +560,7 @@ export function createDefaultSyncService(
     putWork: (id, body, opts) => apiPut(getToken, id, body, opts),
     patchWork: (id, body) => apiPatch(getToken, id, body),
     deleteWork: (id, at) => apiDelete(getToken, id, at),
+    getVersion: () => apiGetVersion(getToken),
     now: () => Date.now(),
     genId: () => crypto.randomUUID(),
     getOpenWorkId,

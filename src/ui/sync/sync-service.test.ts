@@ -56,6 +56,8 @@ interface RemoteRow {
 /** 仕様 §A の CAS/LWW を備えた in-memory サーバ。onManifest で「同期中の他端末の書き込み」を差し込める。 */
 function makeFakeRemote(hooks: { onManifest?: () => void | Promise<void> } = {}) {
   const rows = new Map<string, RemoteRow>()
+  // /api/sync/version 相当：サーバへの書き込みごとに進む世代。
+  let version = 0
   const metaOf = (r: RemoteRow): RemoteWorkMeta => ({
     workId: r.workId,
     updatedAt: r.updatedAt,
@@ -66,6 +68,7 @@ function makeFakeRemote(hooks: { onManifest?: () => void | Promise<void> } = {})
     syncedAt: 0,
   })
   const seed = async (work: Work, over: Partial<RemoteRow> = {}) => {
+    version++
     const json = canonicalWorkJson(work)
     rows.set(work.id, {
       workId: work.id,
@@ -79,6 +82,7 @@ function makeFakeRemote(hooks: { onManifest?: () => void | Promise<void> } = {})
   }
   // 構造・ネタ帳（プレフィックス付き id）用の汎用シード。json はテスト側で直列化して渡す。
   const seedItem = async (syncId: string, json: string, updatedAt: number) => {
+    version++
     rows.set(syncId, {
       workId: syncId,
       updatedAt,
@@ -119,6 +123,7 @@ function makeFakeRemote(hooks: { onManifest?: () => void | Promise<void> } = {})
       } else if (opts.baseHash !== row.docHash) {
         return { ok: false, conflict: metaOf(row) }
       }
+      version++
       const docHash = await sha256Hex(plaintext)
       rows.set(workId, {
         workId,
@@ -134,6 +139,7 @@ function makeFakeRemote(hooks: { onManifest?: () => void | Promise<void> } = {})
       const row = rows.get(workId)
       if (!row || row.deleted === 1) return null
       if (body.updatedAt < row.updatedAt) return { ok: false, conflict: metaOf(row) }
+      version++
       rows.set(workId, { ...row, trashedAt: body.trashedAt, updatedAt: body.updatedAt })
       return { ok: true }
     },
@@ -141,11 +147,12 @@ function makeFakeRemote(hooks: { onManifest?: () => void | Promise<void> } = {})
       const row = rows.get(workId)
       if (!row || row.deleted === 1) return true
       if (at < row.updatedAt) return false // 古い purge は 409（編集勝ち）＝クライアントには false
+      version++
       rows.set(workId, { ...row, deleted: 1, json: '', updatedAt: at })
       return true
     },
   }
-  return { rows, seed, seedItem, api }
+  return { rows, seed, seedItem, api, getVersion: () => version }
 }
 
 function makeEnv(
@@ -183,6 +190,7 @@ function makeEnv(
     putWork: (id, body, o) => remote.api.putWork(id, body, o),
     patchWork: (id, body) => remote.api.patchWork(id, body),
     deleteWork: (id, at) => remote.api.deleteWork(id, at),
+    getVersion: async () => ({ works: remote.getVersion(), activity: 0 }),
     now: () => 1_000_000,
     genId: () => `snap-${++id}`,
     getOpenWorkId: opts.getOpenWorkId,
@@ -550,5 +558,24 @@ describe('壊れたローカルレコードの隔離（masked）', () => {
     expect(remote.rows.get('w1')).toBeDefined()
     expect(remote.rows.get('idea:broken')?.deleted).toBe(0) // 誤ってトゥームストーン化されない
     expect(await bases.get('idea:broken')).toBeDefined() // base も温存
+  })
+})
+
+describe('poll（世代チェック付きの軽量同期）', () => {
+  it('世代が動いていなければ本同期を省略し、動いたときだけ reconcile する', async () => {
+    const remote = makeFakeRemote()
+    const { repo, service } = makeEnv(remote)
+    await repo.saveWork(mkWork('w1', 'v1', 100))
+    await service.reconcile() // 初回同期（push で世代が進む）
+
+    // 自分の push 分は poll 内で世代を取り直して記録するため、直後の poll は no-op
+    const idle = await service.poll()
+    expect(idle).toEqual({ pushed: 0, pulled: 0, conflicts: [], changedLocal: false })
+
+    // 別端末の書き込みで世代が進む → poll が本同期を走らせ pull される
+    await remote.seed(mkWork('w2', '別端末の新作', 200))
+    const active = await service.poll()
+    expect(active?.pulled).toBe(1)
+    expect((await repo.getWork('w2'))?.title).toBe('別端末の新作')
   })
 })

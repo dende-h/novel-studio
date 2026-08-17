@@ -15,6 +15,28 @@ async function authHeader(getToken: GetToken): Promise<Record<string, string> | 
   return jwt ? { Authorization: `Bearer ${jwt}` } : null
 }
 
+/** サーバの同期世代（works の MAX(synced_at)・activity の MAX(updated_at)）。 */
+export interface SyncVersion {
+  works: number
+  activity: number
+}
+
+/**
+ * 同期世代の軽量チェック。前回値から動いていなければ本同期を省略できる（~15 秒間隔の
+ * ポーリングを安くするためのもの）。未ログイン/失敗は null。
+ */
+export async function getSyncVersion(getToken: GetToken): Promise<SyncVersion | null> {
+  const headers = await authHeader(getToken)
+  if (!headers) return null
+  try {
+    const res = await fetch('/api/sync/version', { headers })
+    if (!res.ok) return null
+    return (await res.json()) as SyncVersion
+  } catch {
+    return null
+  }
+}
+
 /** 同期メタの一覧（サーバ側の真実）。未ログイン/失敗は null（＝今回の同期を見送る）。 */
 export async function getSyncManifest(getToken: GetToken): Promise<RemoteWorkMeta[] | null> {
   const headers = await authHeader(getToken)
