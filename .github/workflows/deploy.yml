@@ -47,6 +47,15 @@ jobs:
       - name: 本番ビルド（VITE_* は MISE_ENV に応じた値が反映される）
         run: mise exec -- pnpm build
 
+      # コードより先にスキーマを揃える（新テーブルは旧コードに影響しないため順序はこれが安全）。
+      # 未適用の migration だけが適用される（d1_migrations テーブルで管理・適用済みなら no-op）。
+      - name: D1 マイグレーションを適用（main=本番 / stg=プレビュー）
+        uses: cloudflare/wrangler-action@v4
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: d1 migrations apply DB --remote ${{ github.ref_name != 'main' && '--env preview' || '' }}
+
       - name: Cloudflare Pages へデプロイ
         uses: cloudflare/wrangler-action@v4
         with:
