@@ -118,7 +118,7 @@ export function Root({ store }: RootProps) {
     onLocalChanged: () => void store.init(),
     onConflicts: (conflicts) =>
       show(
-        `別端末の変更と競合したため新しい方を採用しました（${conflicts.length}件・旧版は履歴に退避）`,
+        `別端末の変更と競合したため新しい方を採用しました（${conflicts.length}件・負けた版は端末内に退避済み）`,
       ),
   })
 

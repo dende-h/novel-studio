@@ -5,6 +5,7 @@
  * push の CAS 409 だけは「競合」として区別して返す（黙った上書きの構造的排除）。
  */
 
+import type { ActivityDay } from '@/core/sync/activityMerge'
 import type { RemoteWorkMeta } from '@/core/sync/types'
 
 type GetToken = () => Promise<string | null>
@@ -108,6 +109,29 @@ export async function patchSyncWork(
       return { ok: false, conflict: data.meta }
     }
     return res.ok ? { ok: true } : null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * 執筆の記録（日別活動）の同期。ローカル全日分を送り、サーバが日付ごと max マージした
+ * 全量を受け取る（加算的データ＝衝突なし・CAS 不要）。未ログイン/失敗は null。
+ */
+export async function postSyncActivity(
+  getToken: GetToken,
+  days: ActivityDay[],
+): Promise<ActivityDay[] | null> {
+  const headers = await authHeader(getToken)
+  if (!headers) return null
+  try {
+    const res = await fetch('/api/sync/activity', {
+      method: 'POST',
+      headers: { ...headers, 'content-type': 'application/json' },
+      body: JSON.stringify({ days }),
+    })
+    if (!res.ok) return null
+    return ((await res.json()) as { days: ActivityDay[] }).days
   } catch {
     return null
   }

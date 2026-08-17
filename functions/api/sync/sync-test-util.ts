@@ -1,6 +1,6 @@
 /// <reference types="@cloudflare/workers-types" />
 /**
- * 同期 API テスト用の in-memory フェイク（works / rate_limits / subscriptions と R2）。
+ * 同期 API テスト用の in-memory フェイク（works / activity / rate_limits / subscriptions と R2）。
  * `_lib/subs-test-util.ts` の流儀＝SQL 文字列の部分一致でクエリを分岐する簡易実装。
  * 会員判定は members セット（membership.ts の SELECT status に active を返すだけ）。
  */
@@ -27,12 +27,25 @@ export interface FakeRateRow {
   count: number
 }
 
+/** D1 `activity` の 1 行（activity.ts が読む列と同形）。 */
+export interface FakeActivityRow {
+  user_id: string
+  date: string
+  added: number
+  removed: number
+  saves: number
+  updated_at: number
+}
+
 const workKey = (userId: string, workId: string) => `${userId}:${workId}`
 
-/** works / rate_limits / subscriptions を Map で持つ D1 フェイク。 */
+const activityKey = (userId: string, date: string) => `${userId}:${date}`
+
+/** works / activity / rate_limits / subscriptions を Map で持つ D1 フェイク。 */
 export function makeSyncDb(opts: { members?: string[] } = {}) {
   const works = new Map<string, FakeWorkRow>()
   const rates = new Map<string, FakeRateRow>()
+  const activity = new Map<string, FakeActivityRow>()
   const members = new Set(opts.members ?? [])
 
   const db = {
@@ -69,6 +82,14 @@ export function makeSyncDb(opts: { members?: string[] } = {}) {
           throw new Error(`makeSyncDb: first 未対応 SQL: ${sql}`)
         },
         async all<T>(): Promise<{ results: T[] }> {
+          if (sql.includes('FROM activity')) {
+            // activity: ユーザー分全行を date 昇順で。
+            const userId = args[0] as string
+            const results = [...activity.values()]
+              .filter((r) => r.user_id === userId)
+              .sort((a, b) => (a.date < b.date ? -1 : 1))
+            return { results: results as unknown as T[] }
+          }
           if (sql.includes('ORDER BY work_id')) {
             // manifest: ユーザー分全行を work_id 昇順で。
             const userId = args[0] as string
@@ -85,6 +106,26 @@ export function makeSyncDb(opts: { members?: string[] } = {}) {
           if (sql.startsWith('INSERT INTO rate_limits')) {
             const [user_id, window_start, count] = args as [string, number, number]
             rates.set(user_id, { user_id, window_start, count })
+            changes = 1
+          } else if (sql.startsWith('INSERT INTO activity')) {
+            // 日付ごとの max マージ upsert（ON CONFLICT ... max(...) を再現）。
+            const [user_id, date, added, removed, saves, updated_at] = args as [
+              string,
+              string,
+              number,
+              number,
+              number,
+              number,
+            ]
+            const prev = activity.get(activityKey(user_id, date))
+            activity.set(activityKey(user_id, date), {
+              user_id,
+              date,
+              added: Math.max(prev?.added ?? 0, added),
+              removed: Math.max(prev?.removed ?? 0, removed),
+              saves: Math.max(prev?.saves ?? 0, saves),
+              updated_at: Math.max(prev?.updated_at ?? 0, updated_at),
+            })
             changes = 1
           } else if (sql.startsWith('INSERT INTO works')) {
             // 条件付き新規（ON CONFLICT DO NOTHING）: 既存行があれば書かず changes 0。
@@ -180,9 +221,15 @@ export function makeSyncDb(opts: { members?: string[] } = {}) {
       }
       return stmt
     },
+    // 実 D1 の batch と同様、各 statement を順に実行して結果の配列を返す。
+    async batch(stmts: Array<{ run(): Promise<unknown> }>) {
+      const results = []
+      for (const s of stmts) results.push(await s.run())
+      return results
+    },
   } as unknown as D1Database
 
-  return { db, works, rates, members }
+  return { db, works, rates, activity, members }
 }
 
 /** Map ベースの R2 フェイク（get/put/delete/head/list の最小実装）。 */
@@ -229,6 +276,19 @@ export function makeFakeR2() {
 export function makeTestKeyB64(): string {
   const raw = crypto.getRandomValues(new Uint8Array(32))
   return btoa(String.fromCharCode(...raw))
+}
+
+/** activity 行のフェイクを既定値付きで作る（テストのシード用）。 */
+export function fakeActivityRow(over: Partial<FakeActivityRow> = {}): FakeActivityRow {
+  return {
+    user_id: 'user_1',
+    date: '2026-01-01',
+    added: 100,
+    removed: 10,
+    saves: 3,
+    updated_at: 100,
+    ...over,
+  }
 }
 
 /** works 行のフェイクを既定値付きで作る（テストのシード用）。 */

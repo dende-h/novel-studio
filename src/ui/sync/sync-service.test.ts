@@ -1,9 +1,15 @@
 // @vitest-environment node
 import { describe, expect, it } from 'vitest'
+import type { IdeaNote } from '@/core/idea'
 import type { Work } from '@/core/schema'
 import { SnapshotRepository } from '@/core/snapshot/snapshotRepository'
+import { ActivityRepository } from '@/core/storage/activityRepository'
+import { IdeaRepository } from '@/core/storage/ideaRepository'
 import { MemoryStore } from '@/core/storage/memoryStore'
+import { StructureRepository } from '@/core/storage/structureRepository'
 import { WorkRepository } from '@/core/storage/workRepository'
+import type { Structure } from '@/core/structure'
+import type { ActivityDay } from '@/core/sync/activityMerge'
 import { canonicalWorkJson, sha256Hex } from '@/core/sync/hash'
 import { SyncBaseRepository } from '@/core/sync/syncBaseRepository'
 import type { RemoteWorkMeta } from '@/core/sync/types'
@@ -18,6 +24,23 @@ const mkWork = (id: string, title: string, updatedAt: number): Work => ({
   id,
   title,
   episodes: [],
+  updatedAt,
+})
+
+const mkStructure = (id: string, workId: string, updatedAt: number, title = ''): Structure => ({
+  id,
+  workId,
+  kind: 'outline',
+  title,
+  nodes: [],
+  edges: [],
+  updatedAt,
+})
+
+const mkIdea = (id: string, text: string, updatedAt: number): IdeaNote => ({
+  id,
+  text,
+  createdAt: 1,
   updatedAt,
 })
 
@@ -52,6 +75,17 @@ function makeFakeRemote(hooks: { onManifest?: () => void | Promise<void> } = {})
       docHash: await sha256Hex(json),
       json,
       ...over,
+    })
+  }
+  // 構造・ネタ帳（プレフィックス付き id）用の汎用シード。json はテスト側で直列化して渡す。
+  const seedItem = async (syncId: string, json: string, updatedAt: number) => {
+    rows.set(syncId, {
+      workId: syncId,
+      updatedAt,
+      trashedAt: 0,
+      deleted: 0,
+      docHash: await sha256Hex(json),
+      json,
     })
   }
   const api: Pick<SyncDeps, 'manifest' | 'getWork' | 'putWork' | 'patchWork' | 'deleteWork'> = {
@@ -111,20 +145,39 @@ function makeFakeRemote(hooks: { onManifest?: () => void | Promise<void> } = {})
       return true
     },
   }
-  return { rows, seed, api }
+  return { rows, seed, seedItem, api }
 }
 
-function makeEnv(remote = makeFakeRemote(), opts: { getOpenWorkId?: () => string | null } = {}) {
+function makeEnv(
+  remote = makeFakeRemote(),
+  opts: {
+    getOpenWorkId?: () => string | null
+    /** 既定 null（オフライン相当）＝activity 同期はスキップされ、既存テストに影響しない。 */
+    postActivity?: (days: ActivityDay[]) => Promise<ActivityDay[] | null>
+  } = {},
+) {
   const store = new MemoryStore()
   const repo = new WorkRepository(store)
   const snapshotRepo = new SnapshotRepository(store)
+  const structures = new StructureRepository(store)
+  const ideas = new IdeaRepository(store)
+  const activityRepo = new ActivityRepository(store)
   const bases = new SyncBaseRepository(store)
+  const lost = new Map<string, string>()
   let id = 0
   // remote.api は委譲で包む（テストが後から remote.api.* を差し替えられるように）。
   const service = createSyncService({
     repo,
     snapshotRepo,
+    structures,
+    ideas,
     bases,
+    saveLost: async (syncId, json) => {
+      lost.set(syncId, json)
+    },
+    postActivity: opts.postActivity ?? (async () => null),
+    listActivity: () => activityRepo.list(),
+    replaceActivity: (days) => activityRepo.replaceAll(days),
     manifest: () => remote.api.manifest(),
     getWork: (id) => remote.api.getWork(id),
     putWork: (id, body, o) => remote.api.putWork(id, body, o),
@@ -134,7 +187,18 @@ function makeEnv(remote = makeFakeRemote(), opts: { getOpenWorkId?: () => string
     genId: () => `snap-${++id}`,
     getOpenWorkId: opts.getOpenWorkId,
   })
-  return { store, repo, snapshotRepo, bases, remote, service }
+  return {
+    store,
+    repo,
+    snapshotRepo,
+    structures,
+    ideas,
+    activityRepo,
+    bases,
+    lost,
+    remote,
+    service,
+  }
 }
 
 describe('sync-service reconcile', () => {
@@ -337,5 +401,136 @@ describe('sync-service reconcile', () => {
     // 409 → 再 reconcile → 三方向差分で競合として解決（リモートの方が新しいので remote 勝ち）
     expect(summary?.conflicts.map((c) => c.winner)).toContain('remote')
     expect((await repo.getWork('w1'))?.title).toBe('他端末が先に編集')
+  })
+})
+
+describe('構造・ネタ帳の同期（D-SYNC2-ITEMS・プレフィックス付き id）', () => {
+  it('ローカルの構造・ネタ帳を push し、プレフィックス付き id でリモートに載る', async () => {
+    const { structures, ideas, bases, remote, service } = makeEnv()
+    await structures.put(mkStructure('s1', 'w1', 100, 'プロット'))
+    await ideas.put(mkIdea('n1', '雨の日の出会い', 100))
+    const summary = await service.reconcile()
+    expect(summary?.pushed).toBe(2)
+    expect(remote.rows.get('structure:s1')?.json).toContain('プロット')
+    expect(remote.rows.get('idea:n1')?.json).toContain('雨の日の出会い')
+    expect(await bases.get('structure:s1')).toBeDefined()
+    expect(await bases.get('idea:n1')).toBeDefined()
+  })
+
+  it('他端末の構造を pull し、updatedAt を刻印せずそのまま保存する', async () => {
+    const remote = makeFakeRemote()
+    const incoming = mkStructure('s2', 'w9', 777, '相関図メモ')
+    await remote.seedItem('structure:s2', JSON.stringify(incoming), 777)
+    const { structures, service } = makeEnv(remote)
+    const summary = await service.reconcile()
+    expect(summary?.pulled).toBe(1)
+    const got = await structures.get('s2')
+    expect(got?.title).toBe('相関図メモ')
+    expect(got?.updatedAt).toBe(777) // put（素通し）＝時計が進まない
+  })
+
+  it('構造の競合はリモートが新しければ synclost へ退避してから採用する', async () => {
+    const { structures, lost, remote, service } = makeEnv()
+    await structures.put(mkStructure('s1', 'w1', 100, 'v1'))
+    await service.reconcile()
+    await structures.put(mkStructure('s1', 'w1', 150, 'ローカル編集'))
+    await remote.seedItem(
+      'structure:s1',
+      JSON.stringify(mkStructure('s1', 'w1', 300, 'リモート編集')),
+      300,
+    )
+    const summary = await service.reconcile()
+    expect(summary?.conflicts).toEqual([{ workId: 'structure:s1', winner: 'remote' }])
+    expect((await structures.get('s1'))?.title).toBe('リモート編集')
+    expect(lost.get('structure:s1')).toContain('ローカル編集')
+  })
+
+  it('リモートのトゥームストーンで構造・ネタ帳を削除する（synclost へ退避してから）', async () => {
+    const { structures, ideas, lost, remote, service } = makeEnv()
+    await structures.put(mkStructure('s1', 'w1', 100, '消える構造'))
+    await ideas.put(mkIdea('n1', '消えるネタ', 100))
+    await service.reconcile()
+    for (const id of ['structure:s1', 'idea:n1']) {
+      const row = remote.rows.get(id)
+      if (!row) throw new Error('seed 失敗')
+      remote.rows.set(id, { ...row, deleted: 1, json: '', updatedAt: 900 })
+    }
+    await service.reconcile()
+    expect(await structures.get('s1')).toBeUndefined()
+    expect(await ideas.get('n1')).toBeUndefined()
+    expect(lost.get('structure:s1')).toContain('消える構造')
+    expect(lost.get('idea:n1')).toContain('消えるネタ')
+  })
+
+  it('執筆画面で開いている作品に紐づく構造への pull は見送る', async () => {
+    const remote = makeFakeRemote()
+    const { structures, service } = makeEnv(remote, { getOpenWorkId: () => 'w1' })
+    await structures.put(mkStructure('s1', 'w1', 100, 'v1'))
+    await service.reconcile()
+    await remote.seedItem(
+      'structure:s1',
+      JSON.stringify(mkStructure('s1', 'w1', 300, 'リモート編集')),
+      300,
+    )
+    const summary = await service.reconcile()
+    expect(summary?.pulled).toBe(0)
+    expect((await structures.get('s1'))?.title).toBe('v1') // 開いている間は上書きされない
+  })
+
+  it('ローカルで削除した構造は purge がリモートへ伝播する', async () => {
+    const { structures, remote, service } = makeEnv()
+    await structures.put(mkStructure('s1', 'w1', 100))
+    await service.reconcile()
+    await structures.remove('s1')
+    await service.reconcile()
+    expect(remote.rows.get('structure:s1')?.deleted).toBe(1)
+  })
+})
+
+describe('執筆の記録の同期（D-SYNC2-ACTIVITY-DB・max マージ）', () => {
+  const day = (date: string, added: number, saves = 1): ActivityDay => ({
+    date,
+    added,
+    removed: 0,
+    saves,
+    updatedAt: 100,
+  })
+
+  it('サーバ応答を日付ごと max マージしてローカルへ反映する（net は再計算）', async () => {
+    const sent: ActivityDay[][] = []
+    const { activityRepo, service } = makeEnv(makeFakeRemote(), {
+      postActivity: async (days) => {
+        sent.push(days)
+        // サーバには別端末の分（8/01 が大きい・8/02 は新規）が入っている体
+        return [day('2026-08-01', 500, 5), day('2026-08-02', 300, 2)]
+      },
+    })
+    await activityRepo.record(200, Date.parse('2026-08-01T12:00:00Z'))
+    await service.reconcile()
+    const merged = await activityRepo.list()
+    expect(sent[0]?.length).toBe(1) // ローカル全日分を送っている
+    const d1 = merged.find((d) => d.date === '2026-08-01')
+    const d2 = merged.find((d) => d.date === '2026-08-02')
+    expect(d1?.added).toBe(500) // max 側が残る
+    expect(d1?.net).toBe(500) // net は added - removed から導出
+    expect(d2?.added).toBe(300) // 別端末の日が取り込まれる
+  })
+
+  it('サーバ応答が小さくてもローカルの値は巻き戻らない（往復中の増分も守る）', async () => {
+    const { activityRepo, service } = makeEnv(makeFakeRemote(), {
+      postActivity: async () => [day('2026-08-01', 10)],
+    })
+    await activityRepo.record(999, Date.parse('2026-08-01T12:00:00Z'))
+    await service.reconcile()
+    const d = (await activityRepo.list()).find((x) => x.date === '2026-08-01')
+    expect(d?.added).toBe(999)
+  })
+
+  it('postActivity が失敗（オフライン）してもローカルは無傷で reconcile は成功する', async () => {
+    const { activityRepo, service } = makeEnv() // 既定 postActivity = null
+    await activityRepo.record(100, Date.parse('2026-08-01T12:00:00Z'))
+    const summary = await service.reconcile()
+    expect(summary).not.toBeNull()
+    expect((await activityRepo.list()).length).toBe(1)
   })
 })

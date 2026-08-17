@@ -40,7 +40,7 @@ function isNotFound(err: unknown): boolean {
   )
 }
 
-/** クラウドデータ（R2 の `${userId}/` と D1 works/sessions/rate_limits/mcp_tokens）を冪等削除。
+/** クラウドデータ（R2 の `${userId}/` と D1 works/sessions/rate_limits/mcp_tokens/activity）を冪等削除。
  *  subscriptions 行には触れない（呼び出し側 reaper が完全削除時にまとめて消す）。 */
 export async function purgeCloudData(env: PurgeEnv, userId: string): Promise<void> {
   // 1. R2: ユーザー配下を一覧しながら一括削除（truncated を辿る）。
@@ -53,12 +53,14 @@ export async function purgeCloudData(env: PurgeEnv, userId: string): Promise<voi
     cursor = listed.truncated ? listed.cursor : undefined
   } while (cursor)
 
-  // 2. D1: 同期メタ・セッション（＝強制サインアウト）・レート制限・MCP トークンを 1 往復で削除。
-  //    MCP トークンも消す＝失効後に AI からの読み取りを止める。subscriptions は残す。
+  // 2. D1: 同期メタ・セッション（＝強制サインアウト）・レート制限・MCP トークン・
+  //    執筆の記録を 1 往復で削除。MCP トークンも消す＝失効後に AI からの読み取りを
+  //    止める。subscriptions は残す。
   await env.DB.batch([
     env.DB.prepare('DELETE FROM works WHERE user_id = ?').bind(userId),
     env.DB.prepare('DELETE FROM sessions WHERE user_id = ?').bind(userId),
     env.DB.prepare('DELETE FROM rate_limits WHERE user_id = ?').bind(userId),
     env.DB.prepare('DELETE FROM mcp_tokens WHERE user_id = ?').bind(userId),
+    env.DB.prepare('DELETE FROM activity WHERE user_id = ?').bind(userId),
   ])
 }

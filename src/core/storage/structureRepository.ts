@@ -35,6 +35,14 @@ export class StructureRepository {
     return next
   }
 
+  /**
+   * 同期 pull 用の素通し保存。updatedAt を**刻印しない**（他端末の時刻をそのまま保つ）。
+   * save() を使うと pull のたびに時計が進み、LWW で常にこちらが勝ってしまうため分ける。
+   */
+  async put(structure: Structure): Promise<void> {
+    await this.store.set(keyOf(structure.id), structure)
+  }
+
   /** 指定作品の構造を updatedAt の新しい順で返す。 */
   async listByWork(workId: string): Promise<Structure[]> {
     const all = await this.list()
