@@ -80,10 +80,13 @@
 > ### トリガ
 >
 > 会員のみ・手動操作不要：①mount/ログイン時の全体 reconcile ②store 変更・構造/ネタ帳編集
-> （sync-touch シグナル）の **2.5 秒 coalesce**（素早くタブを閉じても取り残しにくい長さ。
-> 変更系 fetch には keepalive を付け、閉じる直前の送信も本文 60KB 未満なら生き残る）
-> ③foreground 復帰・window focus（最小 15 秒間隔）④表示中 15 秒ごとの軽量 poll（`/api/sync/version`
-> の世代が動いたときだけ本同期）＋ 5 分ごとの完全同期 ⑤pagehide flush。
+> （sync-touch シグナル）の **1.5 秒 coalesce**（素早くタブを閉じても取り残しにくい長さ。
+> 変更系 fetch には keepalive を付け、閉じる直前の送信も本文 60KB 未満なら生き残る。
+> 本文はさらに自動保存デバウンス 1 秒が直列に先行＝編集停止から約 2.5 秒でサーバ着）
+> ③foreground 復帰・window focus・画面遷移で即 poll（最小 5 秒間隔）④表示中の軽量 poll
+> （`/api/sync/version` の世代が動いたときだけ本同期）は**アダプティブ 2 段変速**＝
+> マウント・画面遷移・復帰の直後 30 秒は 5 秒間隔（端末切替直後がいちばん急ぐ）、
+> それ以外は 10 秒間隔＋ 5 分ごとの完全同期 ⑤pagehide flush。
 > 409（CAS 敗北）は 1 回だけ再 reconcile・多重実行ガードあり。
 > 執筆の記録の POST は「ローカルが前回送信から不変・かつ poll の activity 世代も不動」なら
 > スキップし、coalesce 短縮ぶんの変更系リクエスト増を相殺する（60 req/min の余裕を保つ）。

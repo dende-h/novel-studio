@@ -90,8 +90,9 @@ const NOTATION_BUTTONS: { kind: NotationKind; label: string; title: string }[] =
   { kind: 'ref', label: '参照', title: '図鑑参照 [[用語]]（Ctrl/Cmd + K）' },
 ]
 
-/** 自動保存：本文の入力が止まってから保存するまでの待ち時間(ms)。 */
-const AUTOSAVE_DELAY_MS = 1500
+/** 自動保存：本文の入力が止まってから保存するまでの待ち時間(ms)。純ローカル処理なので
+ * 短くても安い。同期の push 猶予（保存後 1.5 秒）と直列に効くため、ここも短く保つ。 */
+const AUTOSAVE_DELAY_MS = 1000
 
 /** 原稿エディタ（サイドバー＋ツールバー＋本文／プレビュー＋図鑑パネル／履歴）。 */
 export function App({

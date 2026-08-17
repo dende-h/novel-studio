@@ -74,7 +74,7 @@ export function Root({ store }: RootProps) {
   const localBackup = useMemo(() => createLocalBackupService(), [])
   // ネタ帳（アイデアの受け皿）も純ローカル・誰でも使える。
   // 構造・ネタ帳の編集は editorStore を通らないため、変更系メソッドに同期通知（sync-touch）を
-  // 差し込む＝編集の ~5 秒後に push される（これが無いと構造・ネタ帳の編集が push されない）。
+  // 差し込む＝編集の ~1.5 秒後に push される（これが無いと構造・ネタ帳の編集が push されない）。
   const ideaRepo = useMemo(
     () => withSyncTouch(createDefaultIdeaRepository(), ['add', 'update', 'remove']),
     [],
@@ -134,20 +134,27 @@ export function Root({ store }: RootProps) {
         : null,
     [status, store],
   )
-  useAutoSync(store, syncService, status === 'member', {
-    onLocalChanged: () => {
-      void store.init()
-      // 開いている作品（本文・図鑑）のメモリ状態を pull へ追随させる。
-      // 追随しないと次の save() が古い状態で上書きし、pull を黙って巻き戻してしまう。
-      void store.refreshOpenWork()
-      // 開いている構造ビュー・ネタ帳にも pull を反映させる（マウント時読み切りのため）。
-      announceSyncApplied()
+  useAutoSync(
+    store,
+    syncService,
+    status === 'member',
+    {
+      onLocalChanged: () => {
+        void store.init()
+        // 開いている作品（本文・図鑑）のメモリ状態を pull へ追随させる。
+        // 追随しないと次の save() が古い状態で上書きし、pull を黙って巻き戻してしまう。
+        void store.refreshOpenWork()
+        // 開いている構造ビュー・ネタ帳にも pull を反映させる（マウント時読み切りのため）。
+        announceSyncApplied()
+      },
+      onConflicts: (conflicts) =>
+        show(
+          `別端末の変更と競合したため新しい方を採用しました（${conflicts.length}件・負けた版は端末内に退避済み）`,
+        ),
+      // 画面遷移＝端末を持ち替えた/戻ってきた合図としてポーリングをバーストさせる（5 秒間隔・30 秒）。
     },
-    onConflicts: (conflicts) =>
-      show(
-        `別端末の変更と競合したため新しい方を採用しました（${conflicts.length}件・負けた版は端末内に退避済み）`,
-      ),
-  })
+    route,
+  )
 
   // 会員の自動クラウドバックアップ（編集静止 5 分・最小間隔 60 分・世代 20）。
   // 同期が運ばない structures/ideas/profile/activity を含む全体スナップショットの安全網。
