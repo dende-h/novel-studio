@@ -10,6 +10,14 @@ import type { RemoteWorkMeta } from '@/core/sync/types'
 
 type GetToken = () => Promise<string | null>
 
+/**
+ * タブを閉じる直前の送信を生き残らせる keepalive。ブラウザ仕様で本文 64KiB までの
+ * 制限があるため、小さい本文のときだけ付ける（大きい作品は通常の送信＝次回起動時に再送）。
+ */
+function keepaliveIf(bodyBytes: number): { keepalive?: boolean } {
+  return bodyBytes < 60_000 ? { keepalive: true } : {}
+}
+
 async function authHeader(getToken: GetToken): Promise<Record<string, string> | null> {
   const jwt = await getToken()
   return jwt ? { Authorization: `Bearer ${jwt}` } : null
@@ -99,6 +107,7 @@ export async function putSyncWork(
         'x-trashed-at': String(opts.trashedAt),
       },
       body: plaintext,
+      ...keepaliveIf(plaintext.length),
     })
     if (res.status === 409) {
       const body = (await res.json()) as { meta: RemoteWorkMeta }
@@ -121,10 +130,12 @@ export async function patchSyncWork(
   const headers = await authHeader(getToken)
   if (!headers) return null
   try {
+    const payload = JSON.stringify(body)
     const res = await fetch(`/api/sync/work?id=${encodeURIComponent(workId)}`, {
       method: 'PATCH',
       headers: { ...headers, 'content-type': 'application/json' },
-      body: JSON.stringify(body),
+      body: payload,
+      ...keepaliveIf(payload.length),
     })
     if (res.status === 409) {
       const data = (await res.json()) as { meta: RemoteWorkMeta }
@@ -147,10 +158,12 @@ export async function postSyncActivity(
   const headers = await authHeader(getToken)
   if (!headers) return null
   try {
+    const payload = JSON.stringify({ days })
     const res = await fetch('/api/sync/activity', {
       method: 'POST',
       headers: { ...headers, 'content-type': 'application/json' },
-      body: JSON.stringify({ days }),
+      body: payload,
+      ...keepaliveIf(payload.length),
     })
     if (!res.ok) return null
     return ((await res.json()) as { days: ActivityDay[] }).days
@@ -170,7 +183,7 @@ export async function deleteSyncWork(
   try {
     const res = await fetch(
       `/api/sync/work?id=${encodeURIComponent(workId)}&at=${encodeURIComponent(String(at))}`,
-      { method: 'DELETE', headers },
+      { method: 'DELETE', headers, keepalive: true },
     )
     return res.ok
   } catch {

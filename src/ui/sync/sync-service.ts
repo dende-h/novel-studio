@@ -1,5 +1,6 @@
 import type { DailyActivity } from '@/core/activity'
 import { IdeaNoteSchema } from '@/core/idea'
+import { ProfileRepository, ProfileSchema } from '@/core/profile'
 import { type Work, WorkSchema } from '@/core/schema'
 import { SnapshotRepository } from '@/core/snapshot/snapshotRepository'
 import { ActivityRepository } from '@/core/storage/activityRepository'
@@ -67,16 +68,25 @@ export interface SyncService {
 }
 
 /**
- * 同期 id の種別。Work は素の id、構造・ネタ帳は種別プレフィックス付き id
- * （`structure:<id>` / `idea:<id>`）で同じ D1 `works` テーブル・API に相乗りする
- * （D-SYNC2-ITEMS・サーバ無改修）。
+ * 同期 id の種別。Work は素の id、構造・ネタ帳・プロフィールは種別プレフィックス付き id
+ * （`structure:<id>` / `idea:<id>` / `profile:me`）で同じ D1 `works` テーブル・API に
+ * 相乗りする（D-SYNC2-ITEMS・サーバ無改修）。
  */
-type ItemKind = 'work' | 'structure' | 'idea'
+type ItemKind = 'work' | 'structure' | 'idea' | 'profile'
+
+/** プロフィールは端末に 1 件だけの singleton（決定的 id）。 */
+const PROFILE_SYNC_ID = 'profile:me'
 
 const kindOf = (syncId: string): ItemKind =>
-  syncId.startsWith('structure:') ? 'structure' : syncId.startsWith('idea:') ? 'idea' : 'work'
+  syncId.startsWith('structure:')
+    ? 'structure'
+    : syncId.startsWith('idea:')
+      ? 'idea'
+      : syncId.startsWith('profile:')
+        ? 'profile'
+        : 'work'
 
-const rawIdOf = (syncId: string): string => syncId.replace(/^(?:structure|idea):/, '')
+const rawIdOf = (syncId: string): string => syncId.replace(/^(?:structure|idea|profile):/, '')
 
 /** テストで差し替える I/O。既定実装は createDefaultSyncService が結線する。 */
 export interface SyncDeps {
@@ -84,6 +94,7 @@ export interface SyncDeps {
   snapshotRepo: SnapshotRepository
   structures: StructureRepository
   ideas: IdeaRepository
+  profile: ProfileRepository
   bases: SyncBaseRepository
   /**
    * 競合の敗者・purge 直前の内容の退避先（構造・ネタ帳用。Work は snapshot 機構を使う）。
@@ -129,6 +140,9 @@ export interface SyncDeps {
 export function createSyncService(deps: SyncDeps): SyncService {
   let inFlight: Promise<ReconcileSummary | null> | null = null
   let rerunRequested = false
+  // 執筆の記録の送信スキップ判定：最後に送信した内容の署名と「リモート側が動いた」印。
+  let lastActivitySig = ''
+  let activityRemoteDirty = true
 
   async function runOnce(depth: number): Promise<ReconcileSummary | null> {
     const remote = await deps.manifest()
@@ -199,6 +213,24 @@ export function createSyncService(deps: SyncDeps): SyncService {
         localItems.push({ workId: syncId, updatedAt: n.updatedAt, hash: await sha256Hex(str) })
       } catch {
         maskedIds.add(syncId)
+      }
+    }
+    // プロフィール（ペンネーム・アバター）も 1 レコードとして相乗りする。
+    // updatedAt が無い＝一度も設定していない端末は push しない（新端末では remote から
+    // 普通に pull される。ローカル欠落と誤認した purgeRemote も起きない：プロフィールは
+    // 一度設定すると空には戻らないため、base があるのに local が無い状況が生じない）。
+    const profileRecord = await deps.profile.get()
+    if (profileRecord.updatedAt != null) {
+      try {
+        const str = canonicalJson(ProfileSchema, profileRecord)
+        canon.set(PROFILE_SYNC_ID, str)
+        localItems.push({
+          workId: PROFILE_SYNC_ID,
+          updatedAt: profileRecord.updatedAt,
+          hash: await sha256Hex(str),
+        })
+      } catch {
+        maskedIds.add(PROFILE_SYNC_ID)
       }
     }
 
@@ -320,7 +352,7 @@ export function createSyncService(deps: SyncDeps): SyncService {
                   if (conflictIds.has(op.workId)) await deps.saveLost(op.workId, currentJson)
                 }
                 await deps.structures.put(pulled)
-              } else {
+              } else if (kind === 'idea') {
                 const pulled = IdeaNoteSchema.parse(JSON.parse(got.json))
                 const cur = await deps.ideas.get(rawId)
                 currentJson = cur ? canonicalJson(IdeaNoteSchema, cur) : undefined
@@ -333,6 +365,20 @@ export function createSyncService(deps: SyncDeps): SyncService {
                   if (conflictIds.has(op.workId)) await deps.saveLost(op.workId, currentJson)
                 }
                 await deps.ideas.put(pulled)
+              } else {
+                // プロフィール：競合の敗者は synclost へ退避してから LWW 勝者を採用する。
+                const pulled = ProfileSchema.parse(JSON.parse(got.json))
+                const cur = await deps.profile.get()
+                if (cur.updatedAt != null) {
+                  currentJson = canonicalJson(ProfileSchema, cur)
+                  const currentHash = await sha256Hex(currentJson)
+                  if (currentHash !== planHash.get(op.workId)) {
+                    replanNeeded = true
+                    break
+                  }
+                  if (conflictIds.has(op.workId)) await deps.saveLost(op.workId, currentJson)
+                }
+                await deps.profile.save(pulled)
               }
             } catch {
               break // 壊れた/未知形式はローカルを触らない
@@ -417,10 +463,12 @@ export function createSyncService(deps: SyncDeps): SyncService {
             // snapshot 機構が無いので synclost へ退避してから消す（黙って消えない）。
             if (cur) await deps.saveLost(op.workId, canonicalJson(StructureSchema, cur))
             await deps.structures.remove(rawIdOf(op.workId))
-          } else {
+          } else if (kind === 'idea') {
             const cur = await deps.ideas.get(rawIdOf(op.workId))
             if (cur) await deps.saveLost(op.workId, canonicalJson(IdeaNoteSchema, cur))
             await deps.ideas.remove(rawIdOf(op.workId))
+          } else {
+            break // プロフィールはローカルから消さない（tombstone が来ても保持＝防御）
           }
           summary.changedLocal = true
           break
@@ -455,15 +503,22 @@ export function createSyncService(deps: SyncDeps): SyncService {
     // 執筆の記録（activity）は加算的データなので、CAS ではなく D1 max マージで同期する
     // （D-SYNC2-ACTIVITY-DB）。往復中のローカル増分を守るため、応答は**現在の**ローカルと
     // もう一度 max マージしてから書き戻す（max は単調なので二重適用しても安全）。
-    // 再計画（depth>0）では走らせない＝1 回の reconcile で 1 POST。
+    // ローカルが前回送信から不変で、リモート世代（poll の activity 版）も動いていなければ
+    // 送らない：coalesce 2.5 秒化で reconcile 頻度が上がるぶん、変更系リクエストを削って
+    // レート制限（60 req/min）の余裕を保つ。再計画（depth>0）では走らせない。
     if (depth === 0) {
       const localDays = await deps.listActivity()
-      const res = await deps.postActivity(localDays.map(toActivityDay))
-      if (res) {
-        const fresh = await deps.listActivity()
-        const { merged, changed } = mergeActivity(fresh, res)
-        // 表示は各画面がマウント時に読み直すため、changedLocal（store.init）は立てない。
-        if (changed) await deps.replaceActivity(merged)
+      const sig = JSON.stringify(localDays.map(toActivityDay))
+      if (sig !== lastActivitySig || activityRemoteDirty) {
+        const res = await deps.postActivity(localDays.map(toActivityDay))
+        if (res) {
+          const fresh = await deps.listActivity()
+          const { merged, changed } = mergeActivity(fresh, res)
+          // 表示は各画面がマウント時に読み直すため、changedLocal（store.init）は立てない。
+          if (changed) await deps.replaceActivity(merged)
+          lastActivitySig = JSON.stringify(merged.map(toActivityDay))
+          activityRemoteDirty = false
+        }
       }
     }
 
@@ -503,6 +558,8 @@ export function createSyncService(deps: SyncDeps): SyncService {
       ) {
         return { pushed: 0, pulled: 0, conflicts: [], changedLocal: false }
       }
+      // 別端末が執筆の記録を進めた＝次の reconcile ではローカル不変でも送受信して取り込む。
+      if (lastSeenVersion && v.activity !== lastSeenVersion.activity) activityRemoteDirty = true
       const summary = await service.reconcile()
       // 失敗（null）時に世代を記録すると、この世代ぶんの変更を以後永遠にスキップしてしまう。
       if (summary !== null) lastSeenVersion = (await deps.getVersion()) ?? v
@@ -553,6 +610,7 @@ export function createDefaultSyncService(
     snapshotRepo: new SnapshotRepository(store),
     structures: new StructureRepository(store),
     ideas: new IdeaRepository(store),
+    profile: new ProfileRepository(store),
     bases: new SyncBaseRepository(store),
     // 競合の敗者・purge 直前の内容の 1 世代退避（synclost:<syncId>）。
     saveLost: (syncId, json) => store.set(`synclost:${syncId}`, { at: Date.now(), json }),

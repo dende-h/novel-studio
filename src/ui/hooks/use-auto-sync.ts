@@ -4,8 +4,9 @@ import type { EditorStore } from '@/ui/store/editorStore'
 import type { SyncService } from '@/ui/sync/sync-service'
 import { subscribeSyncTouch } from '@/ui/sync/sync-touch'
 
-/** 編集が止まってから push（reconcile）するまでの猶予。リアルタイム寄りに短く取る。 */
-const COALESCE_MS = 5_000
+/** 編集が止まってから push（reconcile）するまでの猶予。素早くタブを閉じても取り残さない
+ * よう短く取る（閉じる直前の flush＋keepalive 送信も別途ある）。 */
+const COALESCE_MS = 2_500
 /** フォアグラウンド復帰・focus 時に pull し直す最小間隔（切替のたびに叩かない）。 */
 const FOREGROUND_MIN_INTERVAL_MS = 15_000
 /**
@@ -23,7 +24,7 @@ const FULL_SYNC_MS = 5 * 60_000
 /**
  * 会員の自動同期トリガ。ユーザーは同期を意識しない：
  * - マウント（＝ログイン確定）時に全体 reconcile（他端末の変更を取り込む）
- * - 編集・ゴミ箱操作など store の変化を 5 秒 coalesce して reconcile（push が主目的）
+ * - 編集・ゴミ箱操作など store の変化を 2.5 秒 coalesce して reconcile（push が主目的）
  * - タブがフォアグラウンドへ戻った/ウィンドウが focus されたとき（最小 15 秒間隔）に poll
  *   （デスクトップの 2 窓並びは visibilitychange が発火しないので focus も拾う）
  * - 表示中は 15 秒ごとの軽量 poll（世代が動いたときだけ本同期）＋ 5 分ごとの完全同期

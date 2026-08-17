@@ -46,7 +46,7 @@ describe('useAutoSync のトリガ', () => {
     expect(reconcile).toHaveBeenCalledTimes(1)
   })
 
-  it('store の変化は 5 秒 coalesce で 1 回の完全 reconcile にまとめる（push 目的）', () => {
+  it('store の変化は 2.5 秒 coalesce で 1 回の完全 reconcile にまとめる（push 目的）', () => {
     const { store, emit } = makeStore()
     const { service, reconcile } = makeService()
     renderHook(() => useAutoSync(store, service, true))
@@ -54,9 +54,9 @@ describe('useAutoSync のトリガ', () => {
 
     act(() => emit())
     act(() => emit())
-    act(() => vi.advanceTimersByTime(4_000))
+    act(() => vi.advanceTimersByTime(2_000))
     expect(reconcile).not.toHaveBeenCalled()
-    act(() => vi.advanceTimersByTime(1_000))
+    act(() => vi.advanceTimersByTime(500))
     expect(reconcile).toHaveBeenCalledTimes(1)
   })
 

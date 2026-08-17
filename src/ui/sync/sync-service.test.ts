@@ -1,6 +1,7 @@
 // @vitest-environment node
 import { describe, expect, it } from 'vitest'
 import type { IdeaNote } from '@/core/idea'
+import { ProfileRepository } from '@/core/profile'
 import type { Work } from '@/core/schema'
 import { SnapshotRepository } from '@/core/snapshot/snapshotRepository'
 import { ActivityRepository } from '@/core/storage/activityRepository'
@@ -161,6 +162,8 @@ function makeEnv(
     getOpenWork?: () => { id: string; dirty: boolean } | null
     /** 既定 null（オフライン相当）＝activity 同期はスキップされ、既存テストに影響しない。 */
     postActivity?: (days: ActivityDay[]) => Promise<ActivityDay[] | null>
+    /** /api/sync/version の activity 世代（既定 0 固定）。送信スキップ解除の検証用。 */
+    getActivityVersion?: () => number
   } = {},
 ) {
   const store = new MemoryStore()
@@ -168,6 +171,7 @@ function makeEnv(
   const snapshotRepo = new SnapshotRepository(store)
   const structures = new StructureRepository(store)
   const ideas = new IdeaRepository(store)
+  const profile = new ProfileRepository(store)
   const activityRepo = new ActivityRepository(store)
   const bases = new SyncBaseRepository(store)
   const lost = new Map<string, string>()
@@ -178,6 +182,7 @@ function makeEnv(
     snapshotRepo,
     structures,
     ideas,
+    profile,
     bases,
     saveLost: async (syncId, json) => {
       lost.set(syncId, json)
@@ -190,7 +195,10 @@ function makeEnv(
     putWork: (id, body, o) => remote.api.putWork(id, body, o),
     patchWork: (id, body) => remote.api.patchWork(id, body),
     deleteWork: (id, at) => remote.api.deleteWork(id, at),
-    getVersion: async () => ({ works: remote.getVersion(), activity: 0 }),
+    getVersion: async () => ({
+      works: remote.getVersion(),
+      activity: opts.getActivityVersion?.() ?? 0,
+    }),
     now: () => 1_000_000,
     genId: () => `snap-${++id}`,
     getOpenWork: opts.getOpenWork,
@@ -201,6 +209,7 @@ function makeEnv(
     snapshotRepo,
     structures,
     ideas,
+    profile,
     activityRepo,
     bases,
     lost,
@@ -497,6 +506,67 @@ describe('構造・ネタ帳の同期（D-SYNC2-ITEMS・プレフィックス付
   })
 })
 
+describe('プロフィールの同期（profile:me・LWW）', () => {
+  it('設定済みプロフィール（updatedAt あり）を push し base を記録する', async () => {
+    const { profile, bases, remote, service } = makeEnv()
+    await profile.save({ penName: '筆名A', updatedAt: 100 })
+    const summary = await service.reconcile()
+    expect(summary?.pushed).toBe(1)
+    expect(remote.rows.get('profile:me')?.json).toContain('筆名A')
+    expect(await bases.get('profile:me')).toBeDefined()
+  })
+
+  it('未設定（updatedAt なし）のプロフィールは push しない', async () => {
+    const { profile, remote, service } = makeEnv()
+    // 旧バージョンで保存された updatedAt 無しレコードも「未設定」と同じ扱い（次の編集で載る）
+    await profile.save({ penName: '旧形式' })
+    await service.reconcile()
+    expect(remote.rows.has('profile:me')).toBe(false)
+  })
+
+  it('新しい端末はリモートのプロフィールを pull して取り込む', async () => {
+    const remote = makeFakeRemote()
+    await remote.seedItem(
+      'profile:me',
+      JSON.stringify({ penName: '別端末の筆名', updatedAt: 777 }),
+      777,
+    )
+    const { profile, service } = makeEnv(remote)
+    const summary = await service.reconcile()
+    expect(summary?.pulled).toBe(1)
+    const got = await profile.get()
+    expect(got.penName).toBe('別端末の筆名')
+    expect(got.updatedAt).toBe(777) // 素通し保存＝時計が進まない
+  })
+
+  it('競合はリモートが新しければ synclost へ退避してから採用する（LWW）', async () => {
+    const { profile, lost, remote, service } = makeEnv()
+    await profile.save({ penName: 'v1', updatedAt: 100 })
+    await service.reconcile()
+    await profile.save({ penName: 'ローカル編集', updatedAt: 150 })
+    await remote.seedItem(
+      'profile:me',
+      JSON.stringify({ penName: 'リモート編集', updatedAt: 300 }),
+      300,
+    )
+    const summary = await service.reconcile()
+    expect(summary?.conflicts).toEqual([{ workId: 'profile:me', winner: 'remote' }])
+    expect((await profile.get()).penName).toBe('リモート編集')
+    expect(lost.get('profile:me')).toContain('ローカル編集')
+  })
+
+  it('リモートのトゥームストーンでもローカルのプロフィールは消さない（防御）', async () => {
+    const { profile, remote, service } = makeEnv()
+    await profile.save({ penName: '守られる', updatedAt: 100 })
+    await service.reconcile()
+    const row = remote.rows.get('profile:me')
+    if (!row) throw new Error('push 失敗')
+    remote.rows.set('profile:me', { ...row, deleted: 1, json: '', updatedAt: 900 })
+    await service.reconcile()
+    expect((await profile.get()).penName).toBe('守られる')
+  })
+})
+
 describe('執筆の記録の同期（D-SYNC2-ACTIVITY-DB・max マージ）', () => {
   const day = (date: string, added: number, saves = 1): ActivityDay => ({
     date,
@@ -542,6 +612,61 @@ describe('執筆の記録の同期（D-SYNC2-ACTIVITY-DB・max マージ）', ()
     const summary = await service.reconcile()
     expect(summary).not.toBeNull()
     expect((await activityRepo.list()).length).toBe(1)
+  })
+
+  it('ローカル不変かつリモート世代も不動なら送信をスキップする（レート制限の節約）', async () => {
+    let posts = 0
+    const { activityRepo, service } = makeEnv(makeFakeRemote(), {
+      postActivity: async (days) => {
+        posts++
+        return days // サーバに新情報なし（エコー）
+      },
+    })
+    await activityRepo.record(100, Date.parse('2026-08-01T12:00:00Z'))
+    await service.reconcile()
+    expect(posts).toBe(1)
+    await service.reconcile() // 何も変わっていない 2 回目
+    expect(posts).toBe(1) // スキップされる
+    await activityRepo.record(50, Date.parse('2026-08-01T13:00:00Z')) // ローカルが進んだ
+    await service.reconcile()
+    expect(posts).toBe(2)
+  })
+
+  it('送信失敗（オフライン）の回はスキップ印を残さず、次の reconcile で再送する', async () => {
+    let posts = 0
+    let online = false
+    const { activityRepo, service } = makeEnv(makeFakeRemote(), {
+      postActivity: async (days) => {
+        posts++
+        return online ? days : null
+      },
+    })
+    await activityRepo.record(100, Date.parse('2026-08-01T12:00:00Z'))
+    await service.reconcile() // 失敗（null）
+    expect(posts).toBe(1)
+    online = true
+    await service.reconcile() // ローカル不変でも成功していないので再送される
+    expect(posts).toBe(2)
+  })
+
+  it('poll がリモートの activity 世代の前進を見たら、ローカル不変でも次の同期で送受信する', async () => {
+    let posts = 0
+    let activityVersion = 1
+    const { activityRepo, service } = makeEnv(makeFakeRemote(), {
+      postActivity: async (days) => {
+        posts++
+        return days
+      },
+      getActivityVersion: () => activityVersion,
+    })
+    await activityRepo.record(100, Date.parse('2026-08-01T12:00:00Z'))
+    await service.poll() // 初回＝本同期（送信 1 回目）・世代を記録
+    expect(posts).toBe(1)
+    await service.poll() // 世代不動 → no-op
+    expect(posts).toBe(1)
+    activityVersion = 2 // 別端末が執筆の記録を進めた
+    await service.poll()
+    expect(posts).toBe(2) // ローカル不変でも取り込みのため送受信する
   })
 })
 
