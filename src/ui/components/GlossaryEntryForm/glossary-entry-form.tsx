@@ -1,4 +1,4 @@
-import { useEffect, useId, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import type { GlossaryEntry } from '@/core/schema'
 import { thumbnailToDataUrl } from '@/ui/_utils/imageResizer'
 import { Button } from '@/ui/components/ui/button'
@@ -74,19 +74,24 @@ export function GlossaryEntryForm({
   const [busy, setBusy] = useState(false)
   const [imageBusy, setImageBusy] = useState(false)
 
-  // 開くたびに初期値へ同期する。
+  // 開いた瞬間（閉→開の遷移）だけ初期値へ同期する。表示中は initial の変化に追従しない：
+  // 自動同期（pull 後の store.init()）等で親が再レンダーされたときに、入力途中の
+  // フィールドが初期値へ巻き戻って「入力中のデータが消える」事故を防ぐ。
+  const initialRef = useRef(initial)
+  initialRef.current = initial
   useEffect(() => {
     if (!open) return
-    setName(initial?.name ?? '')
-    setReading(initial?.reading ?? '')
-    setAliases((initial?.aliases ?? []).join('、'))
-    setCategory(initial?.category ?? '')
-    setSummary(initial?.summary ?? '')
-    setThumbnail(initial?.thumbnail ?? '')
+    const init = initialRef.current
+    setName(init?.name ?? '')
+    setReading(init?.reading ?? '')
+    setAliases((init?.aliases ?? []).join('、'))
+    setCategory(init?.category ?? '')
+    setSummary(init?.summary ?? '')
+    setThumbnail(init?.thumbnail ?? '')
     setError(null)
     setBusy(false)
     setImageBusy(false)
-  }, [open, initial])
+  }, [open])
 
   // 選択画像を 256 正方形クロップの JPEG data URL にして state へ。失敗は error 表示。
   const onPickImage = async (file: File | undefined) => {

@@ -22,6 +22,34 @@ import './index.css'
 const root = document.getElementById('root')
 if (!root) throw new Error('#root not found')
 
+/**
+ * PWA の更新を「開きっぱなしのタブ」にも届ける。
+ * 既定（自動注入の登録のみ）だと、①更新チェックはページ読込時しか走らず、
+ * ②新 SW が有効化されても動作中のページは旧バンドルのまま＝**デプロイ後も一世代前の
+ * コードで動き続け、リロード 2 回でようやく最新になる**（stg 検証で毎回踏んだ罠）。
+ * ここでは 10 分ごと＋フォーカス時に更新を確認し、新 SW がコントロールを握ったら
+ * 一度だけ自動で再読み込みする（原稿は自動保存済み＝IndexedDB にあるので安全）。
+ * controllerchange は初回インストール時にも発火するため、既にコントローラが居た
+ * とき（＝真の更新）だけ再読み込みする。
+ */
+const SW_UPDATE_INTERVAL_MS = 10 * 60_000
+if ('serviceWorker' in navigator) {
+  const hadController = navigator.serviceWorker.controller !== null
+  let reloaded = false
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (!hadController || reloaded) return
+    reloaded = true
+    window.location.reload()
+  })
+  // SW の登録自体はプラグインの自動注入スクリプトが行う。ready で拾って更新ループだけ足す
+  //（virtual:pwa-register は workbox-window 依存を増やすため使わない）。
+  void navigator.serviceWorker.ready.then((registration) => {
+    const check = () => void registration.update().catch(() => {})
+    setInterval(check, SW_UPDATE_INTERVAL_MS)
+    window.addEventListener('focus', check)
+  })
+}
+
 // クラウドは自動同期ではなく明示バックアップ/復元モデル（Root の CloudBackupDialog）。
 // ストアはローカル正本のみで、保存通知（同期トリガ）は持たない。
 const store = createDefaultStore()

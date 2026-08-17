@@ -1,5 +1,5 @@
 import { UserRound } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { thumbnailToDataUrl } from '@/ui/_utils/imageResizer'
 import { Button } from '@/ui/components/ui/button'
 import {
@@ -36,15 +36,19 @@ export function ProfileDialog({ open, onOpenChange, initial, onSubmit }: Profile
   const [imageBusy, setImageBusy] = useState(false)
   const [imageError, setImageError] = useState<string | null>(null)
 
-  // 開くたびに最新の初期値へ同期する。
+  // 開いた瞬間（閉→開の遷移）だけ最新の初期値へ同期する。表示中は initial の変化に追従しない
+  // （自動同期の pull 後に store.init() がプロフィールを読み直しても、入力途中の値を巻き戻さない）。
+  const initialRef = useRef(initial)
+  initialRef.current = initial
   useEffect(() => {
     if (open) {
-      setPenName(initial.penName)
-      setAvatar(initial.avatar)
+      const init = initialRef.current
+      setPenName(init.penName)
+      setAvatar(init.avatar)
       setImageBusy(false)
       setImageError(null)
     }
-  }, [open, initial.penName, initial.avatar])
+  }, [open])
 
   // 選択画像を 256 正方形クロップの JPEG data URL にして state へ。失敗は表示。
   const onPickAvatar = async (file: File | undefined) => {

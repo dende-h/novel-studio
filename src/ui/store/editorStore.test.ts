@@ -751,3 +751,76 @@ describe('editorStore（自前ストア・useSyncExternalStore 用）', () => {
     })
   })
 })
+
+describe('refreshOpenWork（同期の pull をエディタへ追随させる）', () => {
+  const makeShared = () => {
+    const kv = new MemoryStore()
+    let n = 0
+    const store = createEditorStore({
+      repo: new WorkRepository(kv),
+      snapshotRepo: new SnapshotRepository(kv),
+      profileRepo: new ProfileRepository(kv),
+      activityRepo: new ActivityRepository(kv),
+      genId: () => `id${++n}`,
+      now: () => 1000,
+      snapshotMinIntervalMs: 0,
+      trashTtlMs: Number.MAX_SAFE_INTEGER,
+    })
+    // 同期サービスは別インスタンスの Repository で同じ KV を書く（pull の再現）。
+    return { store, external: new WorkRepository(kv) }
+  }
+
+  it('IndexedDB 側の変化（pull 相当）を開いている作品と下書きへ反映する', async () => {
+    const { store, external } = makeShared()
+    await store.createWork('W')
+    const id = store.getSnapshot().work?.id
+    if (!id) throw new Error('createWork 失敗')
+
+    await external.saveWork({
+      id,
+      title: 'W',
+      episodes: [
+        {
+          id: 'e1',
+          title: '一話',
+          blocks: [
+            { id: 'b1', type: 'paragraph', inlines: [{ type: 'text', text: '別端末の本文' }] },
+          ],
+        },
+      ],
+      glossary: [{ id: 'g1', name: 'アリス', aliases: [], createdAt: 1, updatedAt: 1 }],
+      updatedAt: 9_999,
+    })
+    await store.refreshOpenWork()
+
+    const s = store.getSnapshot()
+    expect(s.work?.glossary?.[0]?.name).toBe('アリス') // 図鑑の変更が届く
+    expect(s.currentEpisodeId).toBe('e1')
+    expect(s.draft).toContain('別端末の本文') // 本文の下書きも組み直される
+    expect(s.dirty).toBe(false)
+  })
+
+  it('下書きに未保存の編集がある間は触らない（入力を巻き戻さない）', async () => {
+    const { store, external } = makeShared()
+    await store.createWork('W')
+    const id = store.getSnapshot().work?.id
+    if (!id) throw new Error('createWork 失敗')
+    await store.createEpisode('一話')
+    store.setDraft('書きかけの本文')
+
+    await external.saveWork({ id, title: '別端末の改題', episodes: [], updatedAt: 9_999 })
+    await store.refreshOpenWork()
+
+    const s = store.getSnapshot()
+    expect(s.draft).toBe('書きかけの本文') // 入力は無事
+    expect(s.work?.title).toBe('W') // dirty 中は追随しない（自動保存後の次回 pull に任せる）
+  })
+
+  it('内容が変わっていなければ何もしない', async () => {
+    const { store } = makeShared()
+    await store.createWork('W')
+    const before = store.getSnapshot().work
+    await store.refreshOpenWork()
+    expect(store.getSnapshot().work).toBe(before) // 参照も変わらない＝無駄な再描画なし
+  })
+})

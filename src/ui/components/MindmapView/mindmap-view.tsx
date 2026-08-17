@@ -29,7 +29,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/ui/components/ui/dialog'
+import { ensurePrimaryStructure } from '@/ui/structure/ensure-structure'
 import { layoutTree } from '@/ui/structure/tree-layout'
+import { subscribeSyncApplied } from '@/ui/sync/sync-touch'
 
 interface MindmapViewProps {
   repo: StructureRepository
@@ -84,10 +86,8 @@ export default function MindmapView({ repo, workId, ideaRepo }: MindmapViewProps
   useEffect(() => {
     let alive = true
     void (async () => {
-      const list = await repo.listByWork(workId)
-      let mm =
-        list.find((s) => s.kind === 'mindmap') ??
-        (await repo.create(workId, 'mindmap', 'マインドマップ'))
+      // 内容優先で 1 つに決める（同期レースの空重複は掃除・無ければ決定的 id で生成）。
+      let mm = await ensurePrimaryStructure(repo, workId, 'mindmap', 'マインドマップ')
       if (mm.nodes.length === 0) {
         mm = await repo.save(addNode(mm, { id: genId(), kind: 'idea', label: '' }))
       }
@@ -140,14 +140,33 @@ export default function MindmapView({ repo, workId, ideaRepo }: MindmapViewProps
     )
   }, [structure, setRfNodes, setRfEdges])
 
-  // 変更を静止後に永続化。
+  // 変更を静止後に永続化。保存した時点で dirty を下ろす（保存中に再編集されれば mutate が
+  // また立てる）。下ろさないと同期の pull を永遠に受け付けなくなる。
   useEffect(() => {
     if (!structure || !dirty.current) return
     const t = setTimeout(() => {
+      dirty.current = false
       void repo.save(structure)
     }, SAVE_DELAY_MS)
     return () => clearTimeout(t)
   }, [structure, repo])
+
+  // 同期の pull がローカルを書き換えたら、未保存の編集が無いときだけ開いたまま反映する。
+  useEffect(() => {
+    return subscribeSyncApplied(() => {
+      void (async () => {
+        if (dirty.current) return // 未保存の編集を上書きしない（保存されれば push/LWW に乗る）
+        const mm = await ensurePrimaryStructure(repo, workId, 'mindmap', 'マインドマップ')
+        setStructure((cur) => {
+          if (cur && mm.id === cur.id && mm.updatedAt === cur.updatedAt) return cur
+          // ラベルだけの変更はトポロジ署名では検知されないため、pull 反映時は再構築を強制する
+          // （dirty=false のここでは入力中フォーカスを壊す心配がない）。
+          lastTopoSig.current = ''
+          return mm
+        })
+      })()
+    })
+  }, [repo, workId])
 
   const mutate = useCallback((fn: (s: Structure) => Structure) => {
     dirty.current = true

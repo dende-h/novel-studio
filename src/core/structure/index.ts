@@ -60,6 +60,50 @@ export const StructureSchema = z.object({
 })
 export type Structure = z.infer<typeof StructureSchema>
 
+/**
+ * ビューが自動生成する singleton 構造（作品×種別で 1 つ）の決定的 id。
+ * ランダム id で自動生成すると、同期の pull が届く前に複数端末が別々の空構造を作って
+ * 増殖し、「いちばん新しい空の方」が表示されて内容が消えたように見える（stg 実機で判明）。
+ * id を workId:kind に固定すれば、どの端末が作っても同じレコードに収束する。
+ */
+export function singletonStructureId(workId: string, kind: StructureKind): string {
+  return `${workId}:${kind}`
+}
+
+/**
+ * 中身が無い（＝同期レースで自動生成されただけの）構造か。
+ * マインドマップは初期化で空ラベルの中心ノードを 1 つ足すので、それも「中身なし」に含める。
+ */
+export function isTrivialStructure(s: Structure): boolean {
+  if (s.edges.length > 0) return false
+  const only = s.nodes.length === 1 ? s.nodes[0] : undefined
+  if (s.nodes.length === 0) return true
+  return only !== undefined && only.label.trim() === '' && !only.note?.trim()
+}
+
+/**
+ * 同種の構造が複数あるとき、表示すべき 1 つを選ぶ（純関数）。
+ * 中身あり優先 → 内容量（ノード＋エッジ数） → updatedAt の新しい方 → id 昇順で決定的に。
+ * updatedAt だけで選ぶと、同期レースで生まれた「新しくて空」が勝って内容が消えたように見えるため、
+ * 内容を持つ方を常に優先する。
+ */
+export function pickPrimaryStructure(
+  list: Structure[],
+  kind: StructureKind,
+): Structure | undefined {
+  const candidates = list.filter((s) => s.kind === kind)
+  if (candidates.length === 0) return undefined
+  return [...candidates].sort((a, b) => {
+    const aTrivial = isTrivialStructure(a) ? 1 : 0
+    const bTrivial = isTrivialStructure(b) ? 1 : 0
+    if (aTrivial !== bTrivial) return aTrivial - bTrivial // 中身ありが先
+    const weight = (s: Structure) => s.nodes.length + s.edges.length
+    if (weight(a) !== weight(b)) return weight(b) - weight(a)
+    if (a.updatedAt !== b.updatedAt) return b.updatedAt - a.updatedAt
+    return a.id < b.id ? -1 : 1
+  })[0]
+}
+
 /** 空の構造を組み立てる（純関数）。永続化は Repository 側で行う。 */
 export function emptyStructure(
   id: string,

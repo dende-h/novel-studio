@@ -3,7 +3,7 @@ import type { KeyValueStore } from './types'
 
 /**
  * ネタ帳（アイデアの受け皿）の永続化。KeyValueStore に `idea:<id>` で 1 メモ 1 レコードを持つ。
- * 純ローカル（同期・課金と無関係）。replaceAll はクラウド復元へ組み込む次段に備えて用意する。
+ * ローカルは誰でも無料。会員は自動同期（`idea:<id>` を同期 id にした CAS 同期）で端末間を行き来する。
  */
 const PREFIX = 'idea:'
 const keyOf = (id: string) => `${PREFIX}${id}`
@@ -39,6 +39,19 @@ export class IdeaRepository {
   /** メモを削除する。 */
   async remove(id: string): Promise<void> {
     await this.store.delete(keyOf(id))
+  }
+
+  /** ID で 1 件取得（同期の pull 直前再検証用）。 */
+  async get(id: string): Promise<IdeaNote | undefined> {
+    return this.store.get<IdeaNote>(keyOf(id))
+  }
+
+  /**
+   * 同期 pull 用の素通し保存。updatedAt を**刻印しない**（他端末の時刻をそのまま保つ）。
+   * update() を使うと pull のたびに時計が進み、LWW で常にこちらが勝ってしまうため分ける。
+   */
+  async put(note: IdeaNote): Promise<void> {
+    await this.store.set(keyOf(note.id), note)
   }
 
   /** 全メモ（新しい順）。 */

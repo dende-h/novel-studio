@@ -5,6 +5,7 @@ import { IdbStore } from '@/core/storage/idbStore'
 import { IdeaRepository } from '@/core/storage/ideaRepository'
 import { StructureRepository } from '@/core/storage/structureRepository'
 import { WorkRepository } from '@/core/storage/workRepository'
+import { SyncBaseRepository } from '@/core/sync/syncBaseRepository'
 import {
   createBackup as apiCreate,
   deleteBackup as apiDelete,
@@ -125,6 +126,7 @@ export function createLocalBackupIO(): Pick<BackupDeps, 'gather' | 'replaceAll'>
   const activityRepo = new ActivityRepository(store)
   const ideaRepo = new IdeaRepository(store)
   const structureRepo = new StructureRepository(store)
+  const syncBases = new SyncBaseRepository(store)
   return {
     gather: async () => ({
       works: await repo.listWorksFull(),
@@ -140,6 +142,10 @@ export function createLocalBackupIO(): Pick<BackupDeps, 'gather' | 'replaceAll'>
       await activityRepo.replaceAll(state.activity)
       await ideaRepo.replaceAll(state.ideas)
       await structureRepo.replaceAll(state.structures)
+      // 同期 base（最後に同期した点の記録）は復元後の実態と食い違うため全消しする。
+      // 消すとこの端末は「新品」として三方向差分に入り、復元で消えた作品を誤って
+      // リモート purge する事故（base 残留→ケース6誤爆）を防げる。
+      await syncBases.clearAll()
     },
   }
 }

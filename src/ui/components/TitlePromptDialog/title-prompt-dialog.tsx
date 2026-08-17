@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Button } from '@/ui/components/ui/button'
 import {
   Dialog,
@@ -38,10 +38,13 @@ export function TitlePromptDialog({
 }: TitlePromptDialogProps) {
   const [value, setValue] = useState(defaultValue)
 
-  // 開くたびに defaultValue へ初期化
+  // 開いた瞬間（閉→開の遷移）だけ defaultValue へ初期化する。表示中は追従しない
+  // （自動同期等で親が再レンダーされても入力途中の値を巻き戻さない）。
+  const defaultValueRef = useRef(defaultValue)
+  defaultValueRef.current = defaultValue
   useEffect(() => {
-    if (open) setValue(defaultValue)
-  }, [open, defaultValue])
+    if (open) setValue(defaultValueRef.current)
+  }, [open])
 
   const submit = () => {
     onSubmit(value.trim() || defaultValue)

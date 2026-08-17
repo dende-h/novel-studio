@@ -21,9 +21,18 @@ export class StructureRepository {
     return this.store.get<Structure>(keyOf(id))
   }
 
-  /** 空の構造を作成して保存し、作成した構造を返す。 */
-  async create(workId: string, kind: StructureKind, title?: string): Promise<Structure> {
-    const s = emptyStructure(this.genId(), workId, kind, this.now(), title)
+  /**
+   * 空の構造を作成して保存し、作成した構造を返す。
+   * ビューの自動生成は id に singletonStructureId(workId, kind) を渡す＝複数端末が同時に
+   * 作っても同じレコードに収束し、同期レースで空構造が増殖しない。省略時はランダム id。
+   */
+  async create(
+    workId: string,
+    kind: StructureKind,
+    title?: string,
+    id?: string,
+  ): Promise<Structure> {
+    const s = emptyStructure(id ?? this.genId(), workId, kind, this.now(), title)
     await this.store.set(keyOf(s.id), s)
     return s
   }
@@ -33,6 +42,14 @@ export class StructureRepository {
     const next: Structure = { ...structure, updatedAt: this.now() }
     await this.store.set(keyOf(next.id), next)
     return next
+  }
+
+  /**
+   * 同期 pull 用の素通し保存。updatedAt を**刻印しない**（他端末の時刻をそのまま保つ）。
+   * save() を使うと pull のたびに時計が進み、LWW で常にこちらが勝ってしまうため分ける。
+   */
+  async put(structure: Structure): Promise<void> {
+    await this.store.set(keyOf(structure.id), structure)
   }
 
   /** 指定作品の構造を updatedAt の新しい順で返す。 */
