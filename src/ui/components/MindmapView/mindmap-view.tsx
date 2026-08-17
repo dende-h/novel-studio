@@ -29,6 +29,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/ui/components/ui/dialog'
+import { ensurePrimaryStructure } from '@/ui/structure/ensure-structure'
 import { layoutTree } from '@/ui/structure/tree-layout'
 
 interface MindmapViewProps {
@@ -84,10 +85,8 @@ export default function MindmapView({ repo, workId, ideaRepo }: MindmapViewProps
   useEffect(() => {
     let alive = true
     void (async () => {
-      const list = await repo.listByWork(workId)
-      let mm =
-        list.find((s) => s.kind === 'mindmap') ??
-        (await repo.create(workId, 'mindmap', 'マインドマップ'))
+      // 内容優先で 1 つに決める（同期レースの空重複は掃除・無ければ決定的 id で生成）。
+      let mm = await ensurePrimaryStructure(repo, workId, 'mindmap', 'マインドマップ')
       if (mm.nodes.length === 0) {
         mm = await repo.save(addNode(mm, { id: genId(), kind: 'idea', label: '' }))
       }

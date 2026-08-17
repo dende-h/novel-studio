@@ -21,9 +21,18 @@ export class StructureRepository {
     return this.store.get<Structure>(keyOf(id))
   }
 
-  /** 空の構造を作成して保存し、作成した構造を返す。 */
-  async create(workId: string, kind: StructureKind, title?: string): Promise<Structure> {
-    const s = emptyStructure(this.genId(), workId, kind, this.now(), title)
+  /**
+   * 空の構造を作成して保存し、作成した構造を返す。
+   * ビューの自動生成は id に singletonStructureId(workId, kind) を渡す＝複数端末が同時に
+   * 作っても同じレコードに収束し、同期レースで空構造が増殖しない。省略時はランダム id。
+   */
+  async create(
+    workId: string,
+    kind: StructureKind,
+    title?: string,
+    id?: string,
+  ): Promise<Structure> {
+    const s = emptyStructure(id ?? this.genId(), workId, kind, this.now(), title)
     await this.store.set(keyOf(s.id), s)
     return s
   }

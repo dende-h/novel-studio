@@ -21,6 +21,7 @@ import { buildOutlineRows, type OutlineRow, totalChars, writtenCount } from '@/c
 import type { Episode } from '@/core/schema'
 import type { StructureRepository } from '@/core/storage/structureRepository'
 import { addNode, removeNode, type Structure } from '@/core/structure'
+import { ensurePrimaryStructure } from '@/ui/structure/ensure-structure'
 
 interface OutlineViewProps {
   repo: StructureRepository
@@ -57,10 +58,8 @@ export default function OutlineView({
   useEffect(() => {
     let alive = true
     void (async () => {
-      const list = await repo.listByWork(workId)
-      const found =
-        list.find((s) => s.kind === 'outline') ??
-        (await repo.create(workId, 'outline', 'アウトライン'))
+      // 内容優先で 1 つに決める（同期レースの空重複は掃除・無ければ決定的 id で生成）。
+      const found = await ensurePrimaryStructure(repo, workId, 'outline', 'アウトライン')
       if (alive) setOutline(found)
     })()
     return () => {

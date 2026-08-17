@@ -2,6 +2,7 @@ import { type Edge, type Node, useEdgesState, useNodesState } from '@xyflow/reac
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { StructureRepository } from '@/core/storage/structureRepository'
 import type { Structure, StructureKind } from '@/core/structure'
+import { ensurePrimaryStructure } from './ensure-structure'
 import { fromFlow, type ResolveGlossary, toFlowEdges, toFlowNodes } from './flow-adapter'
 
 /** 変更を永続化するまでの静止時間(ms)。 */
@@ -24,13 +25,12 @@ export function useStructureFlow(
   const [ready, setReady] = useState(false)
   const resolve = opts?.resolveGlossary
 
-  // 初期ロード：この作品の該当 kind を取得（無ければ作成）。
+  // 初期ロード：この作品の該当 kind を内容優先で 1 つ取得（無ければ決定的 id で作成）。
   useEffect(() => {
     let alive = true
     void (async () => {
-      const list = await repo.listByWork(workId)
-      const found =
-        list.find((s) => s.kind === kind) ?? (await repo.create(workId, kind, opts?.title))
+      // 内容優先で 1 つに決める（同期レースの空重複は掃除・無ければ決定的 id で生成）。
+      const found = await ensurePrimaryStructure(repo, workId, kind, opts?.title)
       if (!alive) return
       baseRef.current = found
       setNodes(toFlowNodes(found, resolve))
