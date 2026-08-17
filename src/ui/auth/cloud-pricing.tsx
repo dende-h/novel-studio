@@ -40,6 +40,10 @@ export default function CloudPricing() {
 
   return (
     <div className="w-full">
+      <p className="mx-auto mb-4 max-w-xl rounded-lg bg-primary/10 px-4 py-2.5 font-sans text-[13px] text-primary">
+        初回のご契約には <strong className="font-semibold">30 日間の無料トライアル</strong>
+        が付きます。期間中に解約すれば料金はかかりません（お支払い方法の登録が必要です）。
+      </p>
       <div className="mx-auto grid max-w-xl gap-4 sm:grid-cols-2">
         {PLANS.map((p) => (
           <div

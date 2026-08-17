@@ -33,8 +33,8 @@ export function SyncOnboarding({ onDismiss }: SyncOnboardingProps) {
         <div className="space-y-3">
           <h1 className="font-serif text-3xl text-on-surface">クラウド同期を始める</h1>
           <p className="mx-auto max-w-xl text-on-surface-variant leading-relaxed">
-            複数端末での同期・自動バックアップ・版の履歴・AI/MCP アクセスをまとめて。
-            書く・出す・公開する・ローカル保存はこれまでどおり無料です。
+            複数端末での同期・自動バックアップ・版の履歴・AI/MCP アクセスをまとめて。 初回は 30
+            日間無料でお試しできます。 書く・出す・公開する・ローカル保存はこれまでどおり無料です。
             守りたい原稿があるときにご検討ください。
           </p>
         </div>

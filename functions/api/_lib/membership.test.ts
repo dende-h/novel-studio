@@ -2,6 +2,7 @@
 /// <reference types="@cloudflare/workers-types" />
 import { describe, expect, it } from 'vitest'
 import {
+  hasBillingHistory,
   isActiveMember,
   readSubscription,
   readSubscriptionByCustomer,
@@ -35,6 +36,24 @@ describe('membership', () => {
     expect(await isActiveMember(db, 'u_canceled')).toBe(false)
     expect(await isActiveMember(db, 'u_pastdue')).toBe(false)
     expect(await isActiveMember(db, 'u_none')).toBe(false)
+  })
+
+  it('hasBillingHistory: 行なし・customer 作成直後のプレースホルダは履歴なし', () => {
+    expect(hasBillingHistory(null)).toBe(false)
+    // checkout 前に customer id だけ確保した行（status=incomplete・subscription 未紐付け）
+    expect(hasBillingHistory(row({ stripe_subscription_id: null, status: 'incomplete' }))).toBe(
+      false,
+    )
+  })
+
+  it('hasBillingHistory: 契約中・トライアル中・解約済みはすべて履歴あり（トライアルは初回のみ）', () => {
+    expect(hasBillingHistory(row({ status: 'active' }))).toBe(true)
+    expect(hasBillingHistory(row({ status: 'trialing' }))).toBe(true)
+    expect(hasBillingHistory(row({ status: 'canceled' }))).toBe(true)
+    // status が incomplete でも subscription id が付いていれば契約は始まっている
+    expect(hasBillingHistory(row({ stripe_subscription_id: 'sub_x', status: 'incomplete' }))).toBe(
+      true,
+    )
   })
 
   it('upsert → read / readByCustomer で往復できる', async () => {
