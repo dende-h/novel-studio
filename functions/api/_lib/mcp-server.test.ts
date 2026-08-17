@@ -94,7 +94,7 @@ describe('handleMcpMessage — プロトコル', () => {
     ).toBeNull()
   })
 
-  it('tools/list は 13 ツール（読み4・書き6・バックアップ3）', async () => {
+  it('tools/list は 15 ツール（読み4・書き8・バックアップ3）', async () => {
     const res = (await handleMcpMessage(
       { jsonrpc: '2.0', id: 1, method: 'tools/list' },
       deps(),
@@ -102,8 +102,10 @@ describe('handleMcpMessage — プロトコル', () => {
       result: { tools: { name: string }[] }
     }
     const names = res.result.tools.map((t) => t.name)
-    expect(MCP_TOOLS).toHaveLength(13)
+    expect(MCP_TOOLS).toHaveLength(15)
     expect(names).toContain('set_episode')
+    expect(names).toContain('create_work')
+    expect(names).toContain('set_outline')
     expect(names).toContain('upsert_glossary_entry')
     expect(names).toContain('set_structure')
     expect(names).toContain('create_backup')
@@ -185,6 +187,56 @@ describe('handleMcpMessage — 書き込み', () => {
     const res = await handleMcpMessage(call('add_episode', { work_id: 'w1', title: '第二話' }), d)
     expect(contentText(res)).toContain('episode_id:')
     expect(contentText(await handleMcpMessage(call('list_works'), d))).toContain('2話')
+  })
+
+  it('create_work は work_id を返し、list_works・set_episode 経路で使える', async () => {
+    const { deps: d } = makeDeps(snapshot([]))
+    const res = contentText(
+      await handleMcpMessage(call('create_work', { title: '新作', author: '星野' }), d),
+    )
+    expect(res).toContain('work_id: gen-0')
+    const list = contentText(await handleMcpMessage(call('list_works'), d))
+    expect(list).toContain('新作')
+    expect(list).toContain('（著者: 星野）')
+    // 追加した作品に話を足せる（作成 → 執筆開始の一連の流れ）
+    const added = contentText(
+      await handleMcpMessage(call('add_episode', { work_id: 'gen-0', title: '第一話' }), d),
+    )
+    expect(added).toContain('episode_id:')
+  })
+
+  it('create_work はタイトル空を isError で弾く', async () => {
+    const res = await handleMcpMessage(call('create_work', { title: '  ' }), deps([]))
+    expect(isError(res)).toBe(true)
+  })
+
+  it('set_outline は階層付きメモを書き込み、get_structures に反映される', async () => {
+    const { deps: d } = makeDeps(snapshot([work()]))
+    const notes = '起：夜明けの描写\n  - 主人公の紹介\n    伏線：時計\n転：事件発生'
+    const res = await handleMcpMessage(
+      call('set_outline', { work_id: 'w1', episode_id: 'e1', notes }),
+      d,
+    )
+    expect(isError(res)).toBe(false)
+    const t = contentText(await handleMcpMessage(call('get_structures', { work_id: 'w1' }), d))
+    expect(t).toContain('- 起：夜明けの描写')
+    expect(t).toContain('      - 主人公の紹介') // 1 段（インデント 2 半角スペース）
+    expect(t).toContain('         - 伏線：時計') // 2 段
+    expect(t).toContain('- 転：事件発生')
+    // 空文字で全消去できる
+    await handleMcpMessage(call('set_outline', { work_id: 'w1', episode_id: 'e1', notes: '' }), d)
+    const cleared = contentText(
+      await handleMcpMessage(call('get_structures', { work_id: 'w1' }), d),
+    )
+    expect(cleared).not.toContain('夜明けの描写')
+  })
+
+  it('set_outline は未知の話を isError で弾く', async () => {
+    const res = await handleMcpMessage(
+      call('set_outline', { work_id: 'w1', episode_id: 'zzz', notes: 'a' }),
+      deps([work()]),
+    )
+    expect(isError(res)).toBe(true)
   })
 
   it('upsert / delete glossary が反映', async () => {

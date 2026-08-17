@@ -1,3 +1,4 @@
+import { flattenNotes } from '../outline'
 import type { GlossaryEntry, Work } from '../schema'
 import { countEpisodeChars } from '../stats'
 import type { Structure, StructureNode } from '../structure'
@@ -19,21 +20,17 @@ function nodeLabel(n: StructureNode, glossary: GlossaryEntry[]): string {
   return n.label || '（無題）'
 }
 
-/** アウトライン：本文の話順に「話（字数）＋構成メモ」を並べる。 */
+/** アウトライン：本文の話順に「話（字数）＋構成メモ（階層はインデント）」を並べる。 */
 function outlineText(s: Structure, work: Work): string {
-  const memosByEpisode = new Map<string, string[]>()
-  for (const n of s.nodes) {
-    // 話直下の構成メモ（episodeRef 付き・親なし）のみ拾う。
-    if (n.episodeRef && !n.parentId) {
-      const arr = memosByEpisode.get(n.episodeRef) ?? []
-      if (n.label) arr.push(n.label)
-      memosByEpisode.set(n.episodeRef, arr)
-    }
-  }
   const lines = work.episodes.map((ep, i) => {
-    const head = `${i + 1}. ${ep.title || '無題の話'}（${countEpisodeChars(ep)}字）`
-    const memos = memosByEpisode.get(ep.id) ?? []
-    const sub = memos.map((m) => `   - ${m}`).join('\n')
+    const head = `${i + 1}. ${ep.title || '無題の話'}（${countEpisodeChars(ep)}字） [episode_id: ${ep.id}]`
+    // メモ内の改行は続き行として同じ深さに字下げする（1 行 1 メモの見た目を保つ）。
+    const sub = flattenNotes(s, ep.id)
+      .map((n) => {
+        const pad = '   '.repeat(n.depth + 1)
+        return `${pad}- ${n.label.split('\n').join(`\n${pad}  `)}`
+      })
+      .join('\n')
     return sub ? `${head}\n${sub}` : head
   })
   return `【アウトライン】\n${lines.join('\n')}`
