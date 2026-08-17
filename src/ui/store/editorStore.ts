@@ -40,6 +40,11 @@ export interface EditorStore {
   init(): Promise<void>
   createWork(title: string): Promise<void>
   openWork(id: string): Promise<void>
+  /**
+   * 開いている作品を IndexedDB から読み直してメモリ状態を追随させる（同期の pull 反映用）。
+   * 下書きに未保存の編集があるとき・内容が変わっていないときは何もしない。
+   */
+  refreshOpenWork(): Promise<void>
   createEpisode(title: string): Promise<void>
   openEpisode(id: string): void
   setDraft(text: string): void
@@ -240,6 +245,29 @@ export function createEditorStore({
         dirty: false,
         status: 'idle',
         snapshots: await snapshotRepo.list(work.id),
+      })
+    },
+
+    async refreshOpenWork() {
+      // 同期の pull が IndexedDB を書き換えた後、開いている作品のメモリ状態を追随させる
+      // （追随しないと次の save() が古い状態で上書きし、pull を黙って巻き戻してしまう）。
+      const cur = state.work
+      if (!cur) return
+      // 下書きに未保存の編集がある間は触らない（同期側も dirty 中は pull を見送る）。
+      if (state.dirty) return
+      const fresh = await repo.getWork(cur.id)
+      if (!fresh || fresh.updatedAt === cur.updatedAt) return
+      // 開いていた話が残っていればそのまま、消えていれば先頭へ。下書きは新内容から組み直す。
+      const keep = fresh.episodes.some((e) => e.id === state.currentEpisodeId)
+      const epId = keep ? state.currentEpisodeId : (fresh.episodes[0]?.id ?? null)
+      const ep = fresh.episodes.find((e) => e.id === epId)
+      set({
+        work: fresh,
+        currentEpisodeId: epId,
+        draft: ep ? blocksToNotation(ep.blocks) : '',
+        dirty: false,
+        status: 'idle',
+        snapshots: await snapshotRepo.list(fresh.id),
       })
     },
 

@@ -116,11 +116,14 @@ export interface SyncDeps {
   now(): number
   genId(): string
   /**
-   * いま執筆画面で開いている作品の id（無ければ null）。開いている作品への pull・ゴミ箱移動・
-   * purge はエディタ表示と食い違うため実行を見送り、画面を離れた後の reconcile に委ねる
-   * （旧 D-SYNC-TRIGGER「編集中に他端末の変更を引っ張らない」の継承）。
+   * いま執筆画面で開いている作品の状態（無ければ null）。
+   * - pull：dirty（下書きに未保存の編集がある）の間だけ見送る。それ以外は開いたまま反映し、
+   *   呼び出し側（Root）が store.refreshOpenWork() でエディタ状態を追随させる
+   *   （＝図鑑・本文の変更もページ遷移なしで届く）。
+   * - trashLocal / purgeLocal：開いている間は常に見送る（作品が editor の下から消えるのは
+   *   破壊的すぎるため。画面を離れた後の reconcile に委ねる）。
    */
-  getOpenWorkId?: () => string | null
+  getOpenWork?: () => { id: string; dirty: boolean } | null
 }
 
 export function createSyncService(deps: SyncDeps): SyncService {
@@ -227,7 +230,12 @@ export function createSyncService(deps: SyncDeps): SyncService {
     let replanNeeded = false
     // op 実行のたびに問い直す：reconcile 開始後（ネットワーク往復中）にユーザーが
     // 執筆画面でその作品を開いた場合も、破壊的 op を確実に見送るため。
-    const isOpenWork = (workId: string) => (deps.getOpenWorkId?.() ?? null) === workId
+    const openWork = () => deps.getOpenWork?.() ?? null
+    const isOpenWork = (workId: string) => openWork()?.id === workId
+    const isOpenWorkDirty = (workId: string) => {
+      const o = openWork()
+      return o !== null && o.id === workId && o.dirty
+    }
 
     for (const op of ops) {
       switch (op.op) {
@@ -255,9 +263,10 @@ export function createSyncService(deps: SyncDeps): SyncService {
         }
         case 'pullContent': {
           const kind = kindOf(op.workId)
-          // 執筆画面で開いている作品は上書きしない（エディタの編集状態と食い違うため）。
-          // 画面を離れた後の reconcile が改めて計画する。
-          if (kind === 'work' && isOpenWork(op.workId)) {
+          // 開いている作品でも、下書きに未保存の編集が無ければ pull を適用する
+          // （適用後は Root が store.refreshOpenWork() でエディタ状態を追随させる）。
+          // 未保存編集の最中だけ見送り、自動保存で確定した後の reconcile に委ねる。
+          if (kind === 'work' && isOpenWorkDirty(op.workId)) {
             deferredIds.add(op.workId)
             break
           }
@@ -535,7 +544,7 @@ export function createSyncService(deps: SyncDeps): SyncService {
 /** 本番用：IndexedDB 上の各リポジトリと `/api/sync` を結線する（会員のときだけ生成すること）。 */
 export function createDefaultSyncService(
   getToken: () => Promise<string | null>,
-  getOpenWorkId?: () => string | null,
+  getOpenWork?: () => { id: string; dirty: boolean } | null,
 ): SyncService {
   const store = new IdbStore('novel-studio')
   const activityRepo = new ActivityRepository(store)
@@ -558,6 +567,6 @@ export function createDefaultSyncService(
     getVersion: () => apiGetVersion(getToken),
     now: () => Date.now(),
     genId: () => crypto.randomUUID(),
-    getOpenWorkId,
+    getOpenWork,
   })
 }

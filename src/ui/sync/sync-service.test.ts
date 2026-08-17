@@ -158,7 +158,7 @@ function makeFakeRemote(hooks: { onManifest?: () => void | Promise<void> } = {})
 function makeEnv(
   remote = makeFakeRemote(),
   opts: {
-    getOpenWorkId?: () => string | null
+    getOpenWork?: () => { id: string; dirty: boolean } | null
     /** 既定 null（オフライン相当）＝activity 同期はスキップされ、既存テストに影響しない。 */
     postActivity?: (days: ActivityDay[]) => Promise<ActivityDay[] | null>
   } = {},
@@ -193,7 +193,7 @@ function makeEnv(
     getVersion: async () => ({ works: remote.getVersion(), activity: 0 }),
     now: () => 1_000_000,
     genId: () => `snap-${++id}`,
-    getOpenWorkId: opts.getOpenWorkId,
+    getOpenWork: opts.getOpenWork,
   })
   return {
     store,
@@ -334,22 +334,22 @@ describe('sync-service reconcile', () => {
     expect(remote.rows.get('w1')?.deleted).toBe(0)
   })
 
-  it('執筆画面で開いている作品への pull は見送る（画面を離れた後の reconcile で反映）', async () => {
+  it('開いている作品への pull は「下書きが未保存（dirty）」の間だけ見送る', async () => {
     const remote = makeFakeRemote()
-    let openId: string | null = 'w1'
-    const { repo, service } = makeEnv(remote, { getOpenWorkId: () => openId })
+    let dirty = true
+    const { repo, service } = makeEnv(remote, { getOpenWork: () => ({ id: 'w1', dirty }) })
     await repo.saveWork(mkWork('w1', 'v1', 100))
     await service.reconcile()
     await remote.seed(mkWork('w1', 'リモート編集', 300))
 
-    const during = await service.reconcile() // 開いている間は上書きしない
+    const during = await service.reconcile() // 入力中（未保存）は上書きしない
     expect(during?.pulled).toBe(0)
     expect((await repo.getWork('w1'))?.title).toBe('v1')
 
-    openId = null // エディタを離れた
+    dirty = false // 自動保存が確定した（開いたままで良い）
     const after = await service.reconcile()
     expect(after?.pulled).toBe(1)
-    expect((await repo.getWork('w1'))?.title).toBe('リモート編集')
+    expect((await repo.getWork('w1'))?.title).toBe('リモート編集') // 図鑑・本文が開いたまま届く
   })
 
   it('pull のネットワーク往復中にローカルが編集されたら上書きせず、再計画で競合として扱う', async () => {
@@ -472,7 +472,9 @@ describe('構造・ネタ帳の同期（D-SYNC2-ITEMS・プレフィックス付
 
   it('開いている作品に紐づく構造でも pull は適用する（構造ビューは自前 state 表示で衝突しない）', async () => {
     const remote = makeFakeRemote()
-    const { structures, service } = makeEnv(remote, { getOpenWorkId: () => 'w1' })
+    const { structures, service } = makeEnv(remote, {
+      getOpenWork: () => ({ id: 'w1', dirty: true }),
+    })
     await structures.put(mkStructure('s1', 'w1', 100, 'v1'))
     await service.reconcile()
     await remote.seedItem(

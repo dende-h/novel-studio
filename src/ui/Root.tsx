@@ -116,7 +116,8 @@ export function Root({ store }: RootProps) {
   // 会員の Work 単位自動同期（CAS＋三方向差分・2026-08 改訂）。スマホ⇔PC の使い分けを
   // バックアップ→復元なしで成立させる。pull 等でローカルが変わったら一覧を読み直し、
   // 競合（LWW で解決・敗者は履歴へ退避済み）はトーストで知らせる。
-  // 執筆画面で開いている作品への pull はエディタ表示と食い違うため見送る（画面を離れたら反映）。
+  // 執筆画面で開いている作品も、下書きが未保存（dirty）の間以外は pull を受け付け、
+  // refreshOpenWork でエディタ状態を追随させる（図鑑・本文もページ遷移なしで届く）。
   const routeRef = useRef(route)
   routeRef.current = route
   const syncService = useMemo(
@@ -124,7 +125,11 @@ export function Root({ store }: RootProps) {
       status === 'member'
         ? createDefaultSyncService(
             () => getTokenRef.current(),
-            () => (routeRef.current === '/write' ? (store.getSnapshot().work?.id ?? null) : null),
+            () => {
+              if (routeRef.current !== '/write') return null
+              const snap = store.getSnapshot()
+              return snap.work ? { id: snap.work.id, dirty: snap.dirty } : null
+            },
           )
         : null,
     [status, store],
@@ -132,6 +137,9 @@ export function Root({ store }: RootProps) {
   useAutoSync(store, syncService, status === 'member', {
     onLocalChanged: () => {
       void store.init()
+      // 開いている作品（本文・図鑑）のメモリ状態を pull へ追随させる。
+      // 追随しないと次の save() が古い状態で上書きし、pull を黙って巻き戻してしまう。
+      void store.refreshOpenWork()
       // 開いている構造ビュー・ネタ帳にも pull を反映させる（マウント時読み切りのため）。
       announceSyncApplied()
     },
