@@ -128,49 +128,67 @@ export function createSyncService(deps: SyncDeps): SyncService {
     const bases = await deps.bases.list()
 
     // push 本体と dirty 判定で同一文字列を使う（ハッシュ対象＝送信バイト列）。
+    // 直列化（スキーマ検証）に失敗したレコードは、この回の同期から**完全に外す**（masked）。
+    // 1 件の壊れたレコードで reconcile 全体が死ぬと「すべて同期されない」になり、
+    // 逆に「ローカル欠落」として扱うと誤って purgeRemote が走るため、外して素通しする。
     const canon = new Map<string, string>()
-    const localWorks = await Promise.all(
-      works.map(async (w) => {
+    const maskedIds = new Set<string>()
+    const localWorks: Array<{ workId: string; updatedAt: number; hash: string }> = []
+    for (const w of works) {
+      try {
         const s = canonicalWorkJson(w)
         canon.set(w.id, s)
-        return { workId: w.id, updatedAt: w.updatedAt ?? 0, hash: await sha256Hex(s) }
-      }),
-    )
-    const localTrash = await Promise.all(
-      trash.map(async (t) => {
+        localWorks.push({ workId: w.id, updatedAt: w.updatedAt ?? 0, hash: await sha256Hex(s) })
+      } catch {
+        maskedIds.add(w.id)
+      }
+    }
+    const localTrash: Array<{
+      workId: string
+      updatedAt: number
+      trashedAt: number
+      hash: string
+    }> = []
+    for (const t of trash) {
+      try {
         const s = canonicalWorkJson(t.work)
         canon.set(t.work.id, s)
-        return {
+        localTrash.push({
           workId: t.work.id,
           updatedAt: t.work.updatedAt ?? 0,
           trashedAt: t.trashedAt,
           hash: await sha256Hex(s),
-        }
-      }),
-    )
+        })
+      } catch {
+        maskedIds.add(t.work.id)
+      }
+    }
 
     // 構造レイヤー・ネタ帳も同じ CAS 同期に載せる（種別プレフィックス付き id・D-SYNC2-ITEMS）。
     // ゴミ箱概念が無いので localTrash には入れず、削除はトゥームストーン直行になる。
     const structures = await deps.structures.list()
     const ideaNotes = await deps.ideas.list()
-    const localItems = [
-      ...(await Promise.all(
-        structures.map(async (s) => {
-          const syncId = `structure:${s.id}`
-          const str = canonicalJson(StructureSchema, s)
-          canon.set(syncId, str)
-          return { workId: syncId, updatedAt: s.updatedAt, hash: await sha256Hex(str) }
-        }),
-      )),
-      ...(await Promise.all(
-        ideaNotes.map(async (n) => {
-          const syncId = `idea:${n.id}`
-          const str = canonicalJson(IdeaNoteSchema, n)
-          canon.set(syncId, str)
-          return { workId: syncId, updatedAt: n.updatedAt, hash: await sha256Hex(str) }
-        }),
-      )),
-    ]
+    const localItems: Array<{ workId: string; updatedAt: number; hash: string }> = []
+    for (const s of structures) {
+      const syncId = `structure:${s.id}`
+      try {
+        const str = canonicalJson(StructureSchema, s)
+        canon.set(syncId, str)
+        localItems.push({ workId: syncId, updatedAt: s.updatedAt, hash: await sha256Hex(str) })
+      } catch {
+        maskedIds.add(syncId)
+      }
+    }
+    for (const n of ideaNotes) {
+      const syncId = `idea:${n.id}`
+      try {
+        const str = canonicalJson(IdeaNoteSchema, n)
+        canon.set(syncId, str)
+        localItems.push({ workId: syncId, updatedAt: n.updatedAt, hash: await sha256Hex(str) })
+      } catch {
+        maskedIds.add(syncId)
+      }
+    }
 
     const remoteMap = new Map(remote.map((r) => [r.workId, r]))
     const activeIds = new Set(works.map((w) => w.id))
@@ -185,8 +203,10 @@ export function createSyncService(deps: SyncDeps): SyncService {
       now,
       localWorks: [...localWorks, ...localItems],
       localTrash,
-      bases,
-      remote,
+      // masked（壊れたレコード）の base/remote も外し、当該 id をこの回の同期から完全に消す
+      // （残すと「ローカル欠落」と誤認して purgeRemote が走る）。
+      bases: bases.filter((b) => !maskedIds.has(b.workId)),
+      remote: remote.filter((r) => !maskedIds.has(r.workId)),
     })
     const conflictIds = new Set(conflicts.map((c) => c.workId))
 

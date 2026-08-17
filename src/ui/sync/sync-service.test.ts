@@ -534,3 +534,21 @@ describe('執筆の記録の同期（D-SYNC2-ACTIVITY-DB・max マージ）', ()
     expect((await activityRepo.list()).length).toBe(1)
   })
 })
+
+describe('壊れたローカルレコードの隔離（masked）', () => {
+  it('直列化できないレコードが 1 件あっても他の同期は続行し、誤 purge もしない', async () => {
+    const { store, repo, remote, bases, service } = makeEnv()
+    await repo.saveWork(mkWork('w1', '正常な作品', 100))
+    // スキーマを満たさない壊れたネタ帳レコード（旧バージョンの残骸などを想定）
+    await store.set('idea:broken', { garbage: true })
+    // 壊れた id に base とリモート行が残っている状況（＝欠落と誤認すると purgeRemote が走る）
+    await bases.set({ workId: 'idea:broken', baseHash: 'h-old', remoteUpdatedAt: 1, syncedAt: 1 })
+    await remote.seedItem('idea:broken', '{"whatever":1}', 50)
+
+    const summary = await service.reconcile()
+    expect(summary?.pushed).toBe(1) // 正常な作品は同期される
+    expect(remote.rows.get('w1')).toBeDefined()
+    expect(remote.rows.get('idea:broken')?.deleted).toBe(0) // 誤ってトゥームストーン化されない
+    expect(await bases.get('idea:broken')).toBeDefined() // base も温存
+  })
+})
