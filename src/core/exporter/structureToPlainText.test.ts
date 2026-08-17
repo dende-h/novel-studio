@@ -36,13 +36,21 @@ describe('structuresToPlainText', () => {
     expect(out).toContain('登場人物: 主人公、師匠')
   })
 
-  it('アウトライン：話（字数）に構成メモを添える', () => {
+  it('アウトライン：話（字数）に構成メモを階層インデント付きで添える', () => {
     let s = emptyStructure('o', 'w1', 'outline', 0)
     s = addNode(s, { id: 'm', kind: 'note', label: '導入の伏線', episodeRef: 'ep1' })
+    s = addNode(s, {
+      id: 'm2',
+      kind: 'note',
+      label: '時計の描写',
+      episodeRef: 'ep1',
+      parentId: 'm',
+    })
     const out = structuresToPlainText([s], work())
     expect(out).toContain('【アウトライン】')
-    expect(out).toContain('1. 第一話（3字）')
-    expect(out).toContain('- 導入の伏線')
+    expect(out).toContain('1. 第一話（3字） [episode_id: ep1]') // set_outline に渡す id を明示
+    expect(out).toContain('   - 導入の伏線')
+    expect(out).toContain('      - 時計の描写') // 子は 1 段深く
   })
 
   it('マインドマップ：ツリーをインデントで表す', () => {

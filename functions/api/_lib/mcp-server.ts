@@ -12,10 +12,12 @@ import { structuresToPlainText } from '../../../src/core/exporter/structureToPla
 import { glossaryToPlainText, workToPlainText } from '../../../src/core/exporter/toPlainText'
 import {
   addEpisode,
+  createWork,
   deleteGlossaryEntry,
   McpEditError,
   parseStructure,
   setEpisode,
+  setOutlineNotes,
   setWorkMeta,
   upsertGlossaryEntry,
   upsertStructure,
@@ -113,6 +115,39 @@ export const MCP_TOOLS = [
         body: { type: 'string', description: '本文（プレーンテキスト・任意）' },
       },
       required: ['work_id', 'title'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'create_work',
+    description:
+      '新しい作品（空の作品）を作成する。作成した work_id を返す。話は add_episode で追加する。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        title: { type: 'string', description: '作品タイトル（必須）' },
+        author: { type: 'string', description: '著者名（任意）' },
+        description: { type: 'string', description: 'あらすじ（任意）' },
+      },
+      required: ['title'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'set_outline',
+    description:
+      '1 つの話の構成メモ（アウトライン）を丸ごと書き換える。notes は 1 行 1 メモのプレーンテキストで、行頭のインデント（タブ 1 個または半角スペース 2 個で 1 段・最大 3 段）が階層になる。行頭の「- 」は無視される。空文字でその話のメモを全消去。現状は get_structures で確認できる。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        ...workIdProp,
+        episode_id: { type: 'string', description: 'list_works の各話 id' },
+        notes: {
+          type: 'string',
+          description: '構成メモ（1 行 1 メモ・行頭インデントで階層）',
+        },
+      },
+      required: ['work_id', 'episode_id', 'notes'],
       additionalProperties: false,
     },
   },
@@ -284,6 +319,8 @@ async function callTool(
     'set_work_meta',
     'set_episode',
     'add_episode',
+    'create_work',
+    'set_outline',
     'upsert_glossary_entry',
     'delete_glossary_entry',
     'set_structure',
@@ -338,6 +375,36 @@ async function callTool(
           ),
         }
         message = `話を追加しました。episode_id: ${episodeId}`
+      } else if (name === 'create_work') {
+        const newWorkId = deps.genId()
+        next = {
+          ...snap,
+          works: createWork(
+            works,
+            {
+              title: str(args, 'title') ?? '',
+              author: str(args, 'author'),
+              description: str(args, 'description'),
+            },
+            newWorkId,
+            now,
+          ),
+        }
+        message = `作品を作成しました。work_id: ${newWorkId}`
+      } else if (name === 'set_outline') {
+        next = {
+          ...snap,
+          structures: setOutlineNotes(
+            snap.structures ?? [],
+            works,
+            workId,
+            str(args, 'episode_id') ?? '',
+            str(args, 'notes') ?? '',
+            deps.genId,
+            now,
+          ),
+        }
+        message = '構成メモを書き換えました。'
       } else if (name === 'upsert_glossary_entry') {
         next = {
           ...snap,

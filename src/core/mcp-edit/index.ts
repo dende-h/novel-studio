@@ -1,6 +1,13 @@
+import { type FlatNote, MAX_NOTE_DEPTH, rebuildEpisodeNotes } from '../outline'
 import { parseEpisodeBody } from '../parser/parseNotation'
 import type { Episode, GlossaryEntry, Work } from '../schema'
-import { type Structure, StructureSchema } from '../structure'
+import {
+  emptyStructure,
+  pickPrimaryStructure,
+  type Structure,
+  StructureSchema,
+  singletonStructureId,
+} from '../structure'
 
 /**
  * MCP 書き込みの純ロジック。作品配列・構造配列に対する編集をイミュータブルに行う。
@@ -82,6 +89,91 @@ export function addEpisode(
     episodes: [...w.episodes, episode],
     updatedAt: now,
   }))
+}
+
+/** 新しい作品を追加する（空の作品）。話は add_episode で足す。 */
+export function createWork(
+  works: Work[],
+  input: { title: string; author?: string; description?: string },
+  workId: string,
+  now: number,
+): Work[] {
+  const title = input.title.trim()
+  if (title === '') throw new McpEditError('title が空です')
+  const work: Work = {
+    id: workId,
+    title,
+    episodes: [],
+    ...(emptyToUndef(input.author) ? { author: input.author } : {}),
+    ...(emptyToUndef(input.description) ? { description: input.description } : {}),
+    updatedAt: now,
+  }
+  return [...works, work]
+}
+
+/**
+ * インデント付きテキスト（1 行 1 メモ）を構成メモのフラット列に変換する。
+ * 行頭のタブ 1 個・半角スペース 2 個・全角スペース 1 個をそれぞれ 1 段と数え、
+ * 「- 」「・」「* 」の箇条書き記号は無視する。空行は読み飛ばす。
+ */
+export function parseOutlineNotes(notesText: string, genId: () => string): FlatNote[] {
+  const flat: FlatNote[] = []
+  for (const line of notesText.split('\n')) {
+    if (line.trim() === '') continue
+    let depth = 0
+    let i = 0
+    while (i < line.length) {
+      const ch = line[i]
+      if (ch === '\t' || ch === '　') {
+        depth++
+        i++
+      } else if (ch === ' ' && line[i + 1] === ' ') {
+        depth++
+        i += 2
+      } else if (ch === ' ') {
+        i++ // 奇数個の余り半角スペースは段に数えない
+      } else {
+        break
+      }
+    }
+    const label = line
+      .slice(i)
+      .replace(/^(?:[-*・]\s*)/, '')
+      .trim()
+    if (label === '') continue
+    flat.push({ id: genId(), label, depth: Math.min(depth, MAX_NOTE_DEPTH) })
+  }
+  return flat
+}
+
+/**
+ * 1 つの話の構成メモを丸ごと書き換える（アウトライン構造へ反映）。
+ * アウトライン構造は作品×種別の主インスタンスを選び、無ければ決定的 id で新規作成する
+ * （ビュー側の singleton 方式と同じ＝端末間で同じレコードに収束する）。
+ */
+export function setOutlineNotes(
+  structures: Structure[],
+  works: Work[],
+  workId: string,
+  episodeId: string,
+  notesText: string,
+  genId: () => string,
+  now: number,
+): Structure[] {
+  const work = works.find((w) => w.id === workId)
+  if (!work) throw new McpEditError(`work_id "${workId}" の作品が見つかりません`)
+  if (!work.episodes.some((e) => e.id === episodeId)) {
+    throw new McpEditError(`episode_id "${episodeId}" の話が見つかりません`)
+  }
+  const mine = structures.filter((s) => s.workId === workId)
+  const outline =
+    pickPrimaryStructure(mine, 'outline') ??
+    emptyStructure(singletonStructureId(workId, 'outline'), workId, 'outline', now, 'アウトライン')
+  const next = {
+    ...rebuildEpisodeNotes(outline, episodeId, parseOutlineNotes(notesText, genId)),
+    updatedAt: now,
+  }
+  return upsertStructure(structures, next)
 }
 
 /** 図鑑エントリを追加/更新（id 指定で更新、無ければ新規）。 */

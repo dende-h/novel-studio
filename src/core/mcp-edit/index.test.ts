@@ -3,10 +3,13 @@ import type { Work } from '../schema'
 import { emptyStructure } from '../structure'
 import {
   addEpisode,
+  createWork,
   deleteGlossaryEntry,
   McpEditError,
+  parseOutlineNotes,
   parseStructure,
   setEpisode,
+  setOutlineNotes,
   setWorkMeta,
   upsertGlossaryEntry,
   upsertStructure,
@@ -62,6 +65,62 @@ describe('mcp-edit（MCP 書き込みの純ロジック）', () => {
     const [w] = deleteGlossaryEntry([work()], 'w1', 'g1', 100)
     expect(w?.glossary).toHaveLength(0)
     expect(() => deleteGlossaryEntry([work()], 'w1', 'zzz', 1)).toThrow(McpEditError)
+  })
+
+  it('createWork は空の作品を追加し、空タイトルは McpEditError', () => {
+    const works = createWork(
+      [work()],
+      { title: ' 新作 ', author: '星野', description: '' },
+      'w2',
+      100,
+    )
+    expect(works).toHaveLength(2)
+    expect(works[1]).toMatchObject({ id: 'w2', title: '新作', author: '星野', updatedAt: 100 })
+    expect(works[1]?.description).toBeUndefined() // 空文字は未設定へ畳む
+    expect(works[1]?.episodes).toEqual([])
+    expect(() => createWork([], { title: '   ' }, 'w3', 1)).toThrow(McpEditError)
+  })
+
+  it('parseOutlineNotes はインデント（タブ・半角2個・全角1個）と箇条書き記号を解釈する', () => {
+    let n = 0
+    const flat = parseOutlineNotes(
+      '起\n  - 展開\n\t・伏線\n　結末候補\n\n        深すぎ',
+      () => `n${n++}`,
+    )
+    expect(flat.map((f) => [f.label, f.depth])).toEqual([
+      ['起', 0],
+      ['展開', 1],
+      ['伏線', 1],
+      ['結末候補', 1],
+      ['深すぎ', 2], // 上限（MAX_NOTE_DEPTH=2）で頭打ち
+    ])
+  })
+
+  it('setOutlineNotes は主アウトラインへ書き込み、無ければ決定的 id で作る', () => {
+    let n = 0
+    const genId = () => `n${n++}`
+    const structures = setOutlineNotes([], [work()], 'w1', 'e1', 'A\n  B', genId, 100)
+    expect(structures).toHaveLength(1)
+    expect(structures[0]?.id).toBe('w1:outline') // singleton id ＝端末間で収束する
+    expect(structures[0]?.updatedAt).toBe(100)
+    const notes = structures[0]?.nodes.filter((x) => x.episodeRef === 'e1') ?? []
+    expect(notes.map((x) => [x.label, x.parentId ?? null])).toEqual([
+      ['A', null],
+      ['B', 'n0'], // B は A の子
+    ])
+    // 2 回目は既存の主アウトラインを置換し、空文字で全消去できる
+    const cleared = setOutlineNotes(structures, [work()], 'w1', 'e1', '', genId, 200)
+    expect(cleared).toHaveLength(1)
+    expect(cleared[0]?.nodes.filter((x) => x.episodeRef === 'e1')).toEqual([])
+  })
+
+  it('setOutlineNotes は未知の作品・話を McpEditError で弾く', () => {
+    expect(() => setOutlineNotes([], [work()], 'zzz', 'e1', 'a', () => 'x', 1)).toThrow(
+      McpEditError,
+    )
+    expect(() => setOutlineNotes([], [work()], 'w1', 'zzz', 'a', () => 'x', 1)).toThrow(
+      McpEditError,
+    )
   })
 
   it('parseStructure は妥当な JSON を Structure に、不正は McpEditError', () => {

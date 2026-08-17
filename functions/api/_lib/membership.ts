@@ -22,6 +22,16 @@ export interface SubscriptionRow {
 /** 会員とみなす Stripe subscription.status。past_due（支払い遅延）は非会員扱い（fail-closed）。 */
 const MEMBER_STATUSES = new Set(['active', 'trialing'])
 
+/**
+ * 過去に課金・トライアルの履歴があるか（無料トライアルを初回のみ付ける判定に使う）。
+ * customer 作成直後のプレースホルダ行（status=incomplete・subscription 未紐付け）は
+ * 「まだ一度も契約していない」＝履歴なし。それ以外の行（active/trialing/canceled 等、
+ * または subscription id が付いた行）は履歴ありとみなす。
+ */
+export function hasBillingHistory(row: SubscriptionRow | null): boolean {
+  return row !== null && (row.stripe_subscription_id !== null || row.status !== 'incomplete')
+}
+
 /** userId のサブスク行を取得（無ければ null）。 */
 export async function readSubscription(
   db: D1Database,
