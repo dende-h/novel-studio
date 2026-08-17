@@ -44,8 +44,8 @@ export function FirstRunDialog({ open, onClose }: FirstRunDialogProps) {
             <strong className="text-on-surface">ファイルに書き出して</strong>保存できます。
           </p>
           <p>
-            端末の故障や紛失に備えるなら、
-            <strong className="text-on-surface">クラウドバックアップ</strong>
+            端末の故障や紛失に備えたり、複数の端末で書きたいなら、
+            <strong className="text-on-surface">自動同期＋クラウドバックアップ</strong>
             （クラウドプラン）という選択肢もあります。
           </p>
         </DialogBody>
