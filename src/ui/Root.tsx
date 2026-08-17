@@ -29,6 +29,7 @@ import {
 } from './store/createDefaultStore'
 import type { EditorStore } from './store/editorStore'
 import { createDefaultSyncService } from './sync/sync-service'
+import { withSyncTouch } from './sync/sync-touch'
 
 interface RootProps {
   store: EditorStore
@@ -72,9 +73,23 @@ export function Root({ store }: RootProps) {
   // ローカル（ファイル）バックアップも純ローカル・誰でも使える（全状態の書き出し／全置換復元）。
   const localBackup = useMemo(() => createLocalBackupService(), [])
   // ネタ帳（アイデアの受け皿）も純ローカル・誰でも使える。
-  const ideaRepo = useMemo(() => createDefaultIdeaRepository(), [])
+  // 構造・ネタ帳の編集は editorStore を通らないため、変更系メソッドに同期通知（sync-touch）を
+  // 差し込む＝編集の ~5 秒後に push される（これが無いと構造・ネタ帳の編集が push されない）。
+  const ideaRepo = useMemo(
+    () => withSyncTouch(createDefaultIdeaRepository(), ['add', 'update', 'remove']),
+    [],
+  )
   // 構造レイヤー（アウトライン／相関図／マインドマップ）は cloud 会員のみ利用。
-  const structureRepo = useMemo(() => createDefaultStructureRepository(), [])
+  const structureRepo = useMemo(
+    () =>
+      withSyncTouch(createDefaultStructureRepository(), [
+        'create',
+        'save',
+        'remove',
+        'removeByWork',
+      ]),
+    [],
+  )
   const [backupOpen, setBackupOpen] = useState(false)
   const [aiPullOpen, setAiPullOpen] = useState(false)
   const [mcpOpen, setMcpOpen] = useState(false)

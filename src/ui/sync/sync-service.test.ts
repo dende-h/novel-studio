@@ -470,7 +470,7 @@ describe('構造・ネタ帳の同期（D-SYNC2-ITEMS・プレフィックス付
     expect(lost.get('idea:n1')).toContain('消えるネタ')
   })
 
-  it('執筆画面で開いている作品に紐づく構造への pull は見送る', async () => {
+  it('開いている作品に紐づく構造でも pull は適用する（構造ビューは自前 state 表示で衝突しない）', async () => {
     const remote = makeFakeRemote()
     const { structures, service } = makeEnv(remote, { getOpenWorkId: () => 'w1' })
     await structures.put(mkStructure('s1', 'w1', 100, 'v1'))
@@ -481,8 +481,8 @@ describe('構造・ネタ帳の同期（D-SYNC2-ITEMS・プレフィックス付
       300,
     )
     const summary = await service.reconcile()
-    expect(summary?.pulled).toBe(0)
-    expect((await structures.get('s1'))?.title).toBe('v1') // 開いている間は上書きされない
+    expect(summary?.pulled).toBe(1)
+    expect((await structures.get('s1'))?.title).toBe('リモート編集')
   })
 
   it('ローカルで削除した構造は purge がリモートへ伝播する', async () => {
@@ -540,6 +540,25 @@ describe('執筆の記録の同期（D-SYNC2-ACTIVITY-DB・max マージ）', ()
     const summary = await service.reconcile()
     expect(summary).not.toBeNull()
     expect((await activityRepo.list()).length).toBe(1)
+  })
+})
+
+describe('poll の世代記録は成功時のみ', () => {
+  it('reconcile が失敗（オフライン）した回の世代は記録せず、回復後の poll で取り込める', async () => {
+    const remote = makeFakeRemote()
+    await remote.seed(mkWork('w1', '別端末の作品', 200)) // 世代が進んだ状態
+    const { repo, service } = makeEnv(remote)
+
+    // manifest だけ落ちている（オフライン相当）→ reconcile は null
+    const origManifest = remote.api.manifest
+    remote.api.manifest = async () => null
+    expect(await service.poll()).toBeNull()
+
+    // 回復後の poll：先ほどの世代を「見た」ことにしていなければ本同期が走り pull される
+    remote.api.manifest = origManifest
+    const after = await service.poll()
+    expect(after?.pulled).toBe(1)
+    expect((await repo.getWork('w1'))?.title).toBe('別端末の作品')
   })
 })
 

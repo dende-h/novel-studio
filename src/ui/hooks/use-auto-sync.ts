@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react'
 import type { ConflictInfo } from '@/core/sync/types'
 import type { EditorStore } from '@/ui/store/editorStore'
 import type { SyncService } from '@/ui/sync/sync-service'
+import { subscribeSyncTouch } from '@/ui/sync/sync-touch'
 
 /** 編集が止まってから push（reconcile）するまでの猶予。リアルタイム寄りに短く取る。 */
 const COALESCE_MS = 5_000
@@ -107,6 +108,8 @@ export function useAutoSync(
 
     run() // ログイン時＝全体同期（旧 D-SYNC-TRIGGER の「2 点」の 1 点目に相当）
     const unsub = store.subscribe(schedule)
+    // 構造・ネタ帳の編集は store を通らないため、専用シグナル（sync-touch）でも coalesce を張る。
+    const unsubTouch = subscribeSyncTouch(schedule)
     document.addEventListener('visibilitychange', onVisibility)
     window.addEventListener('focus', onFocus)
     window.addEventListener('pagehide', flush)
@@ -114,6 +117,7 @@ export function useAutoSync(
 
     return () => {
       unsub()
+      unsubTouch()
       unsubSummary()
       document.removeEventListener('visibilitychange', onVisibility)
       window.removeEventListener('focus', onFocus)

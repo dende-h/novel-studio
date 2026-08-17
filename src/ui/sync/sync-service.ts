@@ -296,11 +296,10 @@ export function createSyncService(deps: SyncDeps): SyncService {
             let currentJson: string | undefined
             try {
               if (kind === 'structure') {
+                // 開いている作品の構造でも pull は適用する：構造ビューは自前 state で表示して
+                // おり IDB 上書きと衝突しない。見送ると /write 内の構造画面で待つ端末が
+                // 永遠に受信できない（stg で実発生）。
                 const pulled = StructureSchema.parse(JSON.parse(got.json))
-                if (isOpenWork(pulled.workId)) {
-                  deferredIds.add(op.workId)
-                  break
-                }
                 const cur = await deps.structures.get(rawId)
                 currentJson = cur ? canonicalJson(StructureSchema, cur) : undefined
                 if (currentJson !== undefined) {
@@ -406,11 +405,6 @@ export function createSyncService(deps: SyncDeps): SyncService {
             await deps.repo.purgeTrashedWork(op.workId)
           } else if (kind === 'structure') {
             const cur = await deps.structures.get(rawIdOf(op.workId))
-            // 開いている作品に紐づく構造の purge は見送る（エディタ表示と食い違うため）。
-            if (cur && isOpenWork(cur.workId)) {
-              deferredIds.add(op.workId)
-              break
-            }
             // snapshot 機構が無いので synclost へ退避してから消す（黙って消えない）。
             if (cur) await deps.saveLost(op.workId, canonicalJson(StructureSchema, cur))
             await deps.structures.remove(rawIdOf(op.workId))
@@ -501,7 +495,8 @@ export function createSyncService(deps: SyncDeps): SyncService {
         return { pushed: 0, pulled: 0, conflicts: [], changedLocal: false }
       }
       const summary = await service.reconcile()
-      lastSeenVersion = (await deps.getVersion()) ?? v
+      // 失敗（null）時に世代を記録すると、この世代ぶんの変更を以後永遠にスキップしてしまう。
+      if (summary !== null) lastSeenVersion = (await deps.getVersion()) ?? v
       return summary
     },
     reconcile() {

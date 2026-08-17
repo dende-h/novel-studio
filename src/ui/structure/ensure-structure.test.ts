@@ -31,14 +31,15 @@ function makeRepo() {
 }
 
 describe('ensurePrimaryStructure', () => {
-  it('「新しくて空」より内容を持つ構造を優先し、空の重複を掃除する', async () => {
+  it('「新しくて空」より内容を持つ構造を優先する（重複は消さずに残す）', async () => {
     const repo = makeRepo()
     await repo.put(mk({ id: 'old', kind: 'outline', updatedAt: 100, nodes: [note('n1', 'メモ')] }))
     await repo.put(mk({ id: 'empty-new', kind: 'outline', updatedAt: 900 })) // 同期レースの残骸
 
     const picked = await ensurePrimaryStructure(repo, 'w1', 'outline')
     expect(picked.id).toBe('old') // 内容優先＝「消えた」内容が戻る
-    expect(await repo.get('empty-new')).toBeUndefined() // 空の重複は削除（同期で伝播）
+    // 自動削除はしない：メモ無しアウトラインは正当でも空になるため、空＝残骸と断定できない。
+    expect(await repo.get('empty-new')).toBeDefined()
   })
 
   it('内容を持つ重複は消さない（手動で救えるよう残す）', async () => {
@@ -53,14 +54,14 @@ describe('ensurePrimaryStructure', () => {
     expect(await repo.get('b')).toBeDefined()
   })
 
-  it('マインドマップの「空ラベル中心ノード 1 つだけ」も空とみなして掃除する', async () => {
+  it('マインドマップの「空ラベル中心ノード 1 つだけ」の残骸より本物を選ぶ（削除はしない）', async () => {
     const repo = makeRepo()
     await repo.put(mk({ id: 'real', kind: 'mindmap', updatedAt: 100, nodes: [note('n1', '主題')] }))
     await repo.put(mk({ id: 'stub', kind: 'mindmap', updatedAt: 900, nodes: [note('c', '')] }))
 
     const picked = await ensurePrimaryStructure(repo, 'w1', 'mindmap')
     expect(picked.id).toBe('real')
-    expect(await repo.get('stub')).toBeUndefined()
+    expect(await repo.get('stub')).toBeDefined()
   })
 
   it('1 つも無ければ決定的 id（workId:kind）で生成する＝どの端末でも同じレコードに収束', async () => {
