@@ -29,7 +29,7 @@ import {
 } from './store/createDefaultStore'
 import type { EditorStore } from './store/editorStore'
 import { createDefaultSyncService } from './sync/sync-service'
-import { withSyncTouch } from './sync/sync-touch'
+import { announceSyncApplied, withSyncTouch } from './sync/sync-touch'
 
 interface RootProps {
   store: EditorStore
@@ -130,7 +130,11 @@ export function Root({ store }: RootProps) {
     [status, store],
   )
   useAutoSync(store, syncService, status === 'member', {
-    onLocalChanged: () => void store.init(),
+    onLocalChanged: () => {
+      void store.init()
+      // 開いている構造ビュー・ネタ帳にも pull を反映させる（マウント時読み切りのため）。
+      announceSyncApplied()
+    },
     onConflicts: (conflicts) =>
       show(
         `別端末の変更と競合したため新しい方を採用しました（${conflicts.length}件・負けた版は端末内に退避済み）`,

@@ -4,6 +4,7 @@ import { type IdeaNote, sortIdeasByNewest } from '@/core/idea'
 import type { IdeaRepository } from '@/core/storage/ideaRepository'
 import { AppShell } from '@/ui/components/AppShell/app-shell'
 import { SideNav } from '@/ui/components/SideNav/side-nav'
+import { subscribeSyncApplied } from '@/ui/sync/sync-touch'
 
 const fmtDate = (ms: number) =>
   new Date(ms).toLocaleDateString('ja-JP', { year: 'numeric', month: 'long', day: 'numeric' })
@@ -36,6 +37,13 @@ export function IdeaboxPage({
 
   useEffect(() => {
     void repo.list().then(setNotes)
+  }, [repo])
+
+  // 同期の pull がローカルを書き換えたら開いたまま一覧を読み直す（入力中テキストは別 state で無事）。
+  useEffect(() => {
+    return subscribeSyncApplied(() => {
+      void repo.list().then(setNotes)
+    })
   }, [repo])
 
   const handleAdd = async () => {

@@ -23,6 +23,26 @@ export function subscribeSyncTouch(listener: () => void): () => void {
   }
 }
 
+// ---- 逆方向のシグナル：同期がローカルを書き換えた（pull 適用）通知 ----------------------
+// 構造ビュー・ネタ帳はマウント時に一度しかローカルデータを読まないため、pull が届いても
+// 画面が変わらず「ページ遷移しないと同期されない」ように見える（stg 実機で判明）。
+// Root が reconcile の changedLocal を受けてこれを鳴らし、開いている各ビューが再読込する。
+
+const appliedListeners = new Set<() => void>()
+
+/** 同期がローカルを書き換えたことを通知する（Root の onLocalChanged が呼ぶ）。 */
+export function announceSyncApplied(): void {
+  for (const l of appliedListeners) l()
+}
+
+/** pull 適用通知の購読（開いたまま自動反映したいビューが使う）。戻り値で解除。 */
+export function subscribeSyncApplied(listener: () => void): () => void {
+  appliedListeners.add(listener)
+  return () => {
+    appliedListeners.delete(listener)
+  }
+}
+
 /**
  * Repository の変更系メソッドの完了後に touchSync を差し込むラッパー（Root で結線）。
  * 同期サービスは自前の Repository インスタンスを使うため、pull で自分に跳ね返るループは起きない。

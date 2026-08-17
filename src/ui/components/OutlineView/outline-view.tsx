@@ -22,6 +22,7 @@ import type { Episode } from '@/core/schema'
 import type { StructureRepository } from '@/core/storage/structureRepository'
 import { addNode, removeNode, type Structure } from '@/core/structure'
 import { ensurePrimaryStructure } from '@/ui/structure/ensure-structure'
+import { subscribeSyncApplied } from '@/ui/sync/sync-touch'
 
 interface OutlineViewProps {
   repo: StructureRepository
@@ -58,13 +59,25 @@ export default function OutlineView({
   useEffect(() => {
     let alive = true
     void (async () => {
-      // 内容優先で 1 つに決める（同期レースの空重複は掃除・無ければ決定的 id で生成）。
+      // 内容優先で 1 つに決める（無ければ決定的 id で生成）。
       const found = await ensurePrimaryStructure(repo, workId, 'outline', 'アウトライン')
       if (alive) setOutline(found)
     })()
     return () => {
       alive = false
     }
+  }, [repo, workId])
+
+  // 同期の pull がローカルを書き換えたら開いたまま反映する（構成メモは即時保存なので
+  // 未保存バッファが無く、常に安全に再読込できる）。
+  useEffect(() => {
+    return subscribeSyncApplied(() => {
+      void ensurePrimaryStructure(repo, workId, 'outline', 'アウトライン').then((found) => {
+        setOutline((cur) =>
+          cur && found.id === cur.id && found.updatedAt === cur.updatedAt ? cur : found,
+        )
+      })
+    })
   }, [repo, workId])
 
   const rows = useMemo(() => buildOutlineRows(episodes, outline), [episodes, outline])
