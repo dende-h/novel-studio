@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { MAX_DESCRIPTION_LENGTH } from '@/core/schema'
 import { coverToDataUrl } from '@/ui/_utils/imageResizer'
 import { Button } from '@/ui/components/ui/button'
@@ -41,17 +41,21 @@ export function WorkMetaDialog({ open, onOpenChange, initial, onSubmit }: WorkMe
   const [imageBusy, setImageBusy] = useState(false)
   const [imageError, setImageError] = useState<string | null>(null)
 
-  // 開くたびに最新の初期値へ同期する。
+  // 開いた瞬間（閉→開の遷移）だけ最新の初期値へ同期する。表示中は initial の変化に追従しない
+  // （自動同期の pull 等で親が再レンダーされても、入力途中の値を巻き戻さない）。
+  const initialRef = useRef(initial)
+  initialRef.current = initial
   useEffect(() => {
     if (open) {
-      setTitle(initial.title ?? '')
-      setAuthor(initial.author ?? '')
-      setDescription(initial.description ?? '')
-      setCoverImage(initial.coverImage ?? '')
+      const init = initialRef.current
+      setTitle(init.title ?? '')
+      setAuthor(init.author ?? '')
+      setDescription(init.description ?? '')
+      setCoverImage(init.coverImage ?? '')
       setImageBusy(false)
       setImageError(null)
     }
-  }, [open, initial.title, initial.author, initial.description, initial.coverImage])
+  }, [open])
 
   const canSubmit = title.trim().length > 0
 

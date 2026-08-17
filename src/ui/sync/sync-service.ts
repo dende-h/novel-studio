@@ -132,7 +132,9 @@ export function createSyncService(deps: SyncDeps): SyncService {
     // purge の伝播に失敗した workId（base を消すと次回 pull で復活してしまうので温存する）。
     const failedPurges = new Set<string>()
     let replanNeeded = false
-    const openWorkId = deps.getOpenWorkId?.() ?? null
+    // op 実行のたびに問い直す：reconcile 開始後（ネットワーク往復中）にユーザーが
+    // 執筆画面でその作品を開いた場合も、破壊的 op を確実に見送るため。
+    const isOpenWork = (workId: string) => (deps.getOpenWorkId?.() ?? null) === workId
 
     for (const op of ops) {
       switch (op.op) {
@@ -161,7 +163,7 @@ export function createSyncService(deps: SyncDeps): SyncService {
         case 'pullContent': {
           // 執筆画面で開いている作品は上書きしない（エディタの編集状態と食い違うため）。
           // 画面を離れた後の reconcile が改めて計画する。
-          if (op.workId === openWorkId) {
+          if (isOpenWork(op.workId)) {
             deferredIds.add(op.workId)
             break
           }
@@ -224,7 +226,7 @@ export function createSyncService(deps: SyncDeps): SyncService {
         }
         case 'trashLocal': {
           // 開いている作品をゴミ箱へ移すのは見送る（エディタ表示と食い違うため・後の reconcile に委ねる）。
-          if (op.workId === openWorkId) {
+          if (isOpenWork(op.workId)) {
             deferredIds.add(op.workId)
             break
           }
@@ -250,7 +252,7 @@ export function createSyncService(deps: SyncDeps): SyncService {
         }
         case 'purgeLocal': {
           // 開いている作品の purge は見送る（後の reconcile に委ねる）。
-          if (op.workId === openWorkId) {
+          if (isOpenWork(op.workId)) {
             deferredIds.add(op.workId)
             break
           }
