@@ -1,4 +1,4 @@
-import { CalendarDays, Flame, PenLine, Sigma } from 'lucide-react'
+import { CalendarDays, Flame, PenLine, Share2, Sigma } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import {
   availableYears,
@@ -11,8 +11,14 @@ import {
 } from '@/core/activity'
 import type { ActivityRepository } from '@/core/storage/activityRepository'
 import { cn } from '@/lib/utils'
+import {
+  buildShareCardData,
+  renderShareCard,
+  shareCardText,
+} from '@/ui/components/ActivityPage/share-card'
 import { AppShell } from '@/ui/components/AppShell/app-shell'
 import { SideNav } from '@/ui/components/SideNav/side-nav'
+import { useToast } from '@/ui/components/Toast/toast'
 
 /** 草の濃さ（level 0〜4）→ ブランドの forest 緑。GitHub と同じく淡→濃で表す。 */
 const LEVEL_BG: Record<HeatCell['level'], string> = {
@@ -58,9 +64,47 @@ export function ActivityPage({
   onNavigateHelp,
 }: ActivityPageProps) {
   const [days, setDays] = useState<DailyActivity[] | null>(null)
+  const [sharing, setSharing] = useState(false)
+  const { show } = useToast()
   const today = localDateKey(Date.now())
   const currentYear = Number(today.slice(0, 4))
   const [year, setYear] = useState(currentYear)
+
+  /**
+   * 記録を PNG カードにして共有する。モバイル等では OS の共有シート（Web Share）、
+   * 使えない環境では画像を保存し投稿文をクリップボードへ（貼るだけで投稿できる）。
+   */
+  const shareCard = async () => {
+    setSharing(true)
+    try {
+      const data = buildShareCardData(days ?? [], today)
+      const text = shareCardText(data)
+      const blob = await renderShareCard(data)
+      if (!blob) {
+        show('画像の生成に失敗しました')
+        return
+      }
+      const file = new File([blob], `kotonoha-record-${today}.png`, { type: 'image/png' })
+      if (typeof navigator.canShare === 'function' && navigator.canShare({ files: [file] })) {
+        try {
+          await navigator.share({ files: [file], text })
+        } catch {
+          // 共有シートのキャンセルは正常系（何もしない）
+        }
+        return
+      }
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = file.name
+      a.click()
+      URL.revokeObjectURL(url)
+      await navigator.clipboard?.writeText(text).catch(() => {})
+      show('カード画像を保存し、投稿文をコピーしました')
+    } finally {
+      setSharing(false)
+    }
+  }
 
   useEffect(() => {
     void repo.list().then(setDays)
@@ -96,11 +140,22 @@ export function ActivityPage({
     >
       <div className="min-h-0 flex-1 overflow-y-auto px-5 py-6 sm:px-8 sm:py-9 md:px-10">
         <div className="mx-auto max-w-6xl pb-16">
-          <header className="mb-6">
-            <h1 className="font-semibold font-serif text-[26px] text-on-surface">執筆の記録</h1>
-            <p className="mt-1 text-[13px] text-on-surface-variant">
-              毎日の執筆量と、つづけた日数を記録します
-            </p>
+          <header className="mb-6 flex flex-wrap items-end justify-between gap-3">
+            <div>
+              <h1 className="font-semibold font-serif text-[26px] text-on-surface">執筆の記録</h1>
+              <p className="mt-1 text-[13px] text-on-surface-variant">
+                毎日の執筆量と、つづけた日数を記録します
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => void shareCard()}
+              disabled={sharing}
+              className="flex items-center gap-1.5 rounded-md border border-outline-variant/40 bg-surface-container-lowest px-3 py-1.5 font-sans text-[13px] text-on-surface transition-colors hover:bg-surface-container-high disabled:opacity-50"
+            >
+              <Share2 className="size-4" aria-hidden />
+              画像で共有
+            </button>
           </header>
 
           {/* サマリのカード群（通算・全期間） */}

@@ -46,4 +46,9 @@ describe('ActivityPage', () => {
     const row = await screen.findByRole('button', { name: '執筆の記録' })
     expect(row).toHaveAttribute('aria-current', 'page')
   })
+
+  it('「画像で共有」ボタンがある（記録カードの共有導線）', async () => {
+    render(<ActivityPage repo={fakeRepo([])} onNavigateCollection={() => {}} />)
+    expect(await screen.findByRole('button', { name: /画像で共有/ })).toBeInTheDocument()
+  })
 })
