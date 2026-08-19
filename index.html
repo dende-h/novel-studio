@@ -66,6 +66,11 @@
       アプリ内のエラー境界では拾えず、放っておくと白い画面のまま何も起きない
       （LP から来た初回＝cold load で電波が切れると踏む）。
       取得失敗だけを拾い、セッション中 1 回だけ自動で取り直す。二度目は案内を出す。
+
+      拾うのは「起動前」の失敗だけに限る（window.__nsBooted）。main.tsx が動き出した後は
+      React のエラー境界の担当で、ここで拾ってはいけない。起動後に遅れて失敗した動的
+      チャンクまで「起動失敗」と見なすと、main.tsx が毎回リトライ記録を消すため
+      1 回だけのはずの再読み込みが無限に繰り返される（本番で実際に踏んだ）。
     -->
     <script>
       (function () {
@@ -73,6 +78,7 @@
         addEventListener(
           'error',
           function (e) {
+            if (window.__nsBooted) return
             var el = e.target
             if (!el || el.tagName !== 'SCRIPT' || el.type !== 'module') return
             try {
