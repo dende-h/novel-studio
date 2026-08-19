@@ -1,11 +1,13 @@
 import type { DailyActivity } from '@/core/activity'
 import { IdeaNoteSchema } from '@/core/idea'
+import { PlotSchema } from '@/core/plot'
 import { ProfileRepository, ProfileSchema } from '@/core/profile'
 import { type Work, WorkSchema } from '@/core/schema'
 import { SnapshotRepository } from '@/core/snapshot/snapshotRepository'
 import { ActivityRepository } from '@/core/storage/activityRepository'
 import { IdbStore } from '@/core/storage/idbStore'
 import { IdeaRepository } from '@/core/storage/ideaRepository'
+import { PlotRepository } from '@/core/storage/plotRepository'
 import { StructureRepository } from '@/core/storage/structureRepository'
 import { WorkRepository } from '@/core/storage/workRepository'
 import { StructureSchema } from '@/core/structure'
@@ -68,11 +70,11 @@ export interface SyncService {
 }
 
 /**
- * 同期 id の種別。Work は素の id、構造・ネタ帳・プロフィールは種別プレフィックス付き id
- * （`structure:<id>` / `idea:<id>` / `profile:me`）で同じ D1 `works` テーブル・API に
+ * 同期 id の種別。Work は素の id、構造・ネタ帳・プロフィール・プロットは種別プレフィックス付き id
+ * （`structure:<id>` / `idea:<id>` / `profile:me` / `plot:<id>`）で同じ D1 `works` テーブル・API に
  * 相乗りする（D-SYNC2-ITEMS・サーバ無改修）。
  */
-type ItemKind = 'work' | 'structure' | 'idea' | 'profile'
+type ItemKind = 'work' | 'structure' | 'idea' | 'profile' | 'plot'
 
 /** プロフィールは端末に 1 件だけの singleton（決定的 id）。 */
 const PROFILE_SYNC_ID = 'profile:me'
@@ -84,9 +86,11 @@ const kindOf = (syncId: string): ItemKind =>
       ? 'idea'
       : syncId.startsWith('profile:')
         ? 'profile'
-        : 'work'
+        : syncId.startsWith('plot:')
+          ? 'plot'
+          : 'work'
 
-const rawIdOf = (syncId: string): string => syncId.replace(/^(?:structure|idea|profile):/, '')
+const rawIdOf = (syncId: string): string => syncId.replace(/^(?:structure|idea|profile|plot):/, '')
 
 /** テストで差し替える I/O。既定実装は createDefaultSyncService が結線する。 */
 export interface SyncDeps {
@@ -95,6 +99,7 @@ export interface SyncDeps {
   structures: StructureRepository
   ideas: IdeaRepository
   profile: ProfileRepository
+  plots: PlotRepository
   bases: SyncBaseRepository
   /**
    * 競合の敗者・purge 直前の内容の退避先（構造・ネタ帳用。Work は snapshot 機構を使う）。
@@ -211,6 +216,18 @@ export function createSyncService(deps: SyncDeps): SyncService {
         const str = canonicalJson(IdeaNoteSchema, n)
         canon.set(syncId, str)
         localItems.push({ workId: syncId, updatedAt: n.updatedAt, hash: await sha256Hex(str) })
+      } catch {
+        maskedIds.add(syncId)
+      }
+    }
+    // プロット（幕×ビート）も構造レイヤーと同じ流儀で相乗りする。
+    const plotList = await deps.plots.list()
+    for (const p of plotList) {
+      const syncId = `plot:${p.id}`
+      try {
+        const str = canonicalJson(PlotSchema, p)
+        canon.set(syncId, str)
+        localItems.push({ workId: syncId, updatedAt: p.updatedAt, hash: await sha256Hex(str) })
       } catch {
         maskedIds.add(syncId)
       }
@@ -365,6 +382,21 @@ export function createSyncService(deps: SyncDeps): SyncService {
                   if (conflictIds.has(op.workId)) await deps.saveLost(op.workId, currentJson)
                 }
                 await deps.ideas.put(pulled)
+              } else if (kind === 'plot') {
+                // プロットも構造と同じく開いている作品でも適用する：プロットビューは自前 state で
+                // 表示しており IDB 上書きと衝突しない（sync-applied 通知で再読込する）。
+                const pulled = PlotSchema.parse(JSON.parse(got.json))
+                const cur = await deps.plots.get(rawId)
+                currentJson = cur ? canonicalJson(PlotSchema, cur) : undefined
+                if (currentJson !== undefined) {
+                  const currentHash = await sha256Hex(currentJson)
+                  if (currentHash !== planHash.get(op.workId)) {
+                    replanNeeded = true
+                    break
+                  }
+                  if (conflictIds.has(op.workId)) await deps.saveLost(op.workId, currentJson)
+                }
+                await deps.plots.put(pulled)
               } else {
                 // プロフィール：競合の敗者は synclost へ退避してから LWW 勝者を採用する。
                 const pulled = ProfileSchema.parse(JSON.parse(got.json))
@@ -467,6 +499,10 @@ export function createSyncService(deps: SyncDeps): SyncService {
             const cur = await deps.ideas.get(rawIdOf(op.workId))
             if (cur) await deps.saveLost(op.workId, canonicalJson(IdeaNoteSchema, cur))
             await deps.ideas.remove(rawIdOf(op.workId))
+          } else if (kind === 'plot') {
+            const cur = await deps.plots.get(rawIdOf(op.workId))
+            if (cur) await deps.saveLost(op.workId, canonicalJson(PlotSchema, cur))
+            await deps.plots.remove(rawIdOf(op.workId))
           } else {
             break // プロフィールはローカルから消さない（tombstone が来ても保持＝防御）
           }
@@ -611,6 +647,7 @@ export function createDefaultSyncService(
     structures: new StructureRepository(store),
     ideas: new IdeaRepository(store),
     profile: new ProfileRepository(store),
+    plots: new PlotRepository(store),
     bases: new SyncBaseRepository(store),
     // 競合の敗者・purge 直前の内容の 1 世代退避（synclost:<syncId>）。
     saveLost: (syncId, json) => store.set(`synclost:${syncId}`, { at: Date.now(), json }),

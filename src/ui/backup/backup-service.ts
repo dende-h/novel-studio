@@ -3,6 +3,7 @@ import { ProfileRepository } from '@/core/profile'
 import { ActivityRepository } from '@/core/storage/activityRepository'
 import { IdbStore } from '@/core/storage/idbStore'
 import { IdeaRepository } from '@/core/storage/ideaRepository'
+import { PlotRepository } from '@/core/storage/plotRepository'
 import { StructureRepository } from '@/core/storage/structureRepository'
 import { WorkRepository } from '@/core/storage/workRepository'
 import { SyncBaseRepository } from '@/core/sync/syncBaseRepository'
@@ -86,6 +87,7 @@ export function createBackupService(deps: BackupDeps): BackupService {
         activity: backup.activity,
         ideas: backup.ideas,
         structures: backup.structures,
+        plots: backup.plots,
       })
       return true
     },
@@ -109,6 +111,7 @@ export function createBackupService(deps: BackupDeps): BackupService {
         activity: backup.activity,
         ideas: backup.ideas,
         structures: backup.structures,
+        plots: backup.plots,
       })
       return true
     },
@@ -126,6 +129,7 @@ export function createLocalBackupIO(): Pick<BackupDeps, 'gather' | 'replaceAll'>
   const activityRepo = new ActivityRepository(store)
   const ideaRepo = new IdeaRepository(store)
   const structureRepo = new StructureRepository(store)
+  const plotRepo = new PlotRepository(store)
   const syncBases = new SyncBaseRepository(store)
   return {
     gather: async () => ({
@@ -135,6 +139,7 @@ export function createLocalBackupIO(): Pick<BackupDeps, 'gather' | 'replaceAll'>
       activity: await activityRepo.list(),
       ideas: await ideaRepo.list(),
       structures: await structureRepo.list(),
+      plots: await plotRepo.list(),
     }),
     replaceAll: async (state) => {
       await repo.replaceAll(state.works, state.trash)
@@ -142,6 +147,7 @@ export function createLocalBackupIO(): Pick<BackupDeps, 'gather' | 'replaceAll'>
       await activityRepo.replaceAll(state.activity)
       await ideaRepo.replaceAll(state.ideas)
       await structureRepo.replaceAll(state.structures)
+      await plotRepo.replaceAll(state.plots)
       // 同期 base（最後に同期した点の記録）は復元後の実態と食い違うため全消しする。
       // 消すとこの端末は「新品」として三方向差分に入り、復元で消えた作品を誤って
       // リモート purge する事故（base 残留→ケース6誤爆）を防げる。

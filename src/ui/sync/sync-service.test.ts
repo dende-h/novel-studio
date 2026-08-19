@@ -1,12 +1,14 @@
 // @vitest-environment node
 import { describe, expect, it } from 'vitest'
 import type { IdeaNote } from '@/core/idea'
+import type { Plot } from '@/core/plot'
 import { ProfileRepository } from '@/core/profile'
 import type { Work } from '@/core/schema'
 import { SnapshotRepository } from '@/core/snapshot/snapshotRepository'
 import { ActivityRepository } from '@/core/storage/activityRepository'
 import { IdeaRepository } from '@/core/storage/ideaRepository'
 import { MemoryStore } from '@/core/storage/memoryStore'
+import { PlotRepository } from '@/core/storage/plotRepository'
 import { StructureRepository } from '@/core/storage/structureRepository'
 import { WorkRepository } from '@/core/storage/workRepository'
 import type { Structure } from '@/core/structure'
@@ -172,6 +174,7 @@ function makeEnv(
   const structures = new StructureRepository(store)
   const ideas = new IdeaRepository(store)
   const profile = new ProfileRepository(store)
+  const plots = new PlotRepository(store)
   const activityRepo = new ActivityRepository(store)
   const bases = new SyncBaseRepository(store)
   const lost = new Map<string, string>()
@@ -183,6 +186,7 @@ function makeEnv(
     structures,
     ideas,
     profile,
+    plots,
     bases,
     saveLost: async (syncId, json) => {
       lost.set(syncId, json)
@@ -210,6 +214,7 @@ function makeEnv(
     structures,
     ideas,
     profile,
+    plots,
     activityRepo,
     bases,
     lost,
@@ -503,6 +508,66 @@ describe('構造・ネタ帳の同期（D-SYNC2-ITEMS・プレフィックス付
     await structures.remove('s1')
     await service.reconcile()
     expect(remote.rows.get('structure:s1')?.deleted).toBe(1)
+  })
+})
+
+const mkPlot = (id: string, workId: string, updatedAt: number, title = '本編プロット'): Plot => ({
+  id,
+  workId,
+  title,
+  sections: [],
+  beats: [],
+  lines: [],
+  foreshadows: [],
+  updatedAt,
+})
+
+describe('プロットの同期（plot:<id>・D-SYNC2-ITEMS の第4種目）', () => {
+  it('ローカルのプロットを push し、プレフィックス付き id でリモートに載る', async () => {
+    const { plots, bases, remote, service } = makeEnv()
+    await plots.put(mkPlot('p1', 'w1', 100))
+    const summary = await service.reconcile()
+    expect(summary?.pushed).toBe(1)
+    expect(remote.rows.get('plot:p1')?.json).toContain('本編プロット')
+    expect(await bases.get('plot:p1')).toBeDefined()
+  })
+
+  it('他端末のプロットを pull し、updatedAt を刻印せずそのまま保存する', async () => {
+    const remote = makeFakeRemote()
+    await remote.seedItem('plot:p2', JSON.stringify(mkPlot('p2', 'w9', 777, '改稿第2案')), 777)
+    const { plots, service } = makeEnv(remote)
+    const summary = await service.reconcile()
+    expect(summary?.pulled).toBe(1)
+    const got = await plots.get('p2')
+    expect(got?.title).toBe('改稿第2案')
+    expect(got?.updatedAt).toBe(777) // put（素通し）＝時計が進まない
+  })
+
+  it('競合はリモートが新しければ synclost へ退避してから採用する', async () => {
+    const { plots, lost, remote, service } = makeEnv()
+    await plots.put(mkPlot('p1', 'w1', 100, 'v1'))
+    await service.reconcile()
+    await plots.put(mkPlot('p1', 'w1', 150, 'ローカル編集'))
+    await remote.seedItem('plot:p1', JSON.stringify(mkPlot('p1', 'w1', 300, 'リモート編集')), 300)
+    const summary = await service.reconcile()
+    expect(summary?.conflicts).toEqual([{ workId: 'plot:p1', winner: 'remote' }])
+    expect((await plots.get('p1'))?.title).toBe('リモート編集')
+    expect(lost.get('plot:p1')).toContain('ローカル編集')
+  })
+
+  it('削除は両方向へ伝播する（リモート tombstone→synclost 退避つき削除／ローカル削除→purge）', async () => {
+    const { plots, lost, remote, service } = makeEnv()
+    await plots.put(mkPlot('p1', 'w1', 100, '消えるプロット'))
+    await plots.put(mkPlot('p2', 'w1', 100))
+    await service.reconcile()
+    const row = remote.rows.get('plot:p1')
+    if (!row) throw new Error('seed 失敗')
+    remote.rows.set('plot:p1', { ...row, deleted: 1, json: '', updatedAt: 900 })
+    await plots.remove('p2')
+    await service.reconcile()
+    expect(await plots.get('p1')).toBeUndefined()
+    expect(lost.get('plot:p1')).toContain('消えるプロット')
+    expect(remote.rows.get('plot:p2')?.deleted).toBe(1)
   })
 })
 

@@ -25,6 +25,7 @@ import { useLocalFlag } from './hooks/use-local-flag'
 import {
   createDefaultActivityRepository,
   createDefaultIdeaRepository,
+  createDefaultPlotRepository,
   createDefaultStructureRepository,
 } from './store/createDefaultStore'
 import type { EditorStore } from './store/editorStore'
@@ -88,6 +89,13 @@ export function Root({ store }: RootProps) {
         'remove',
         'removeByWork',
       ]),
+    [],
+  )
+  // プロット（幕×ビートの物語設計）も cloud 会員のみ。編集は Repository 直書きなので
+  // 構造レイヤーと同じく sync-touch を差し込んで push の契機を作る。
+  const plotRepo = useMemo(
+    () =>
+      withSyncTouch(createDefaultPlotRepository(), ['create', 'save', 'remove', 'removeByWork']),
     [],
   )
   const [backupOpen, setBackupOpen] = useState(false)
@@ -259,6 +267,7 @@ export function Root({ store }: RootProps) {
           onNavigateHelp={() => navigate('/help')}
           activityRepo={activityRepo}
           structureRepo={structureRepo}
+          plotRepo={plotRepo}
           canUseStructure={status === 'member'}
           ideaRepo={ideaRepo}
         />

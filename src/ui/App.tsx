@@ -8,6 +8,7 @@ import type { GlossaryEntry } from '@/core/schema'
 import { countWorkChars } from '@/core/stats'
 import type { ActivityRepository } from '@/core/storage/activityRepository'
 import type { IdeaRepository } from '@/core/storage/ideaRepository'
+import type { PlotRepository } from '@/core/storage/plotRepository'
 import type { StructureRepository } from '@/core/storage/structureRepository'
 import { cn } from '@/lib/utils'
 import { isPublishAvailable } from '@/ui/_api/publish'
@@ -68,6 +69,8 @@ interface AppProps {
   activityRepo?: ActivityRepository
   /** 構造レイヤー（マインドマップ等）のリポジトリ。cloud 会員時のみ渡す。 */
   structureRepo?: StructureRepository
+  /** プロット（幕×ビートの物語設計）のリポジトリ。cloud 会員時のみ渡す。 */
+  plotRepo?: PlotRepository
   /** cloud 会員か（構造ツールの表示・アクセス可否）。 */
   canUseStructure?: boolean
   /** ネタ帳（マインドマップの取り込み用）。 */
@@ -80,6 +83,7 @@ const CorrelationChartView = lazy(
   () => import('@/ui/components/CorrelationChartView/correlation-chart-view'),
 )
 const OutlineView = lazy(() => import('@/ui/components/OutlineView/outline-view'))
+const PlotView = lazy(() => import('@/ui/components/PlotView/plot-view'))
 
 /** エディタツールバーの記法ボタン（ショートカットは EditorPane の SHORTCUTS と対応）。 */
 const NOTATION_BUTTONS: { kind: NotationKind; label: string; title: string }[] = [
@@ -104,6 +108,7 @@ export function App({
   onNavigateHelp,
   activityRepo,
   structureRepo,
+  plotRepo,
   canUseStructure,
   ideaRepo,
 }: AppProps) {
@@ -115,7 +120,7 @@ export function App({
   const [profileOpen, setProfileOpen] = useState(false)
   const [historyOpen, setHistoryOpen] = useState(false)
   const [activeScreen, setActiveScreen] = useState<
-    'episodes' | 'glossary' | 'outline' | 'mindmap' | 'chart'
+    'episodes' | 'glossary' | 'outline' | 'mindmap' | 'chart' | 'plot'
   >('episodes')
   // プレビューの組み方向（日本語小説の標準＝縦書きが既定。ツールバーで切替）。
   const [orientation, setOrientation] = useState<'vertical' | 'horizontal'>('vertical')
@@ -153,12 +158,16 @@ export function App({
   // ノード・辺の削除が opacity-0 group-hover のみでタッチから到達できないため、狭幅では入口を消す。
   const narrow = useIsNarrow()
   const structureAvailable = Boolean(work && canUseStructure && structureRepo && !narrow)
+  const plotAvailable = Boolean(work && canUseStructure && plotRepo && !narrow)
   // 広い画面で構造ツールを開いたまま縮める／回転すると、入口が消えても activeScreen が
   // 残って操作不能な画面に閉じ込められる。CSS では state を戻せないので JS で戻す。
   useEffect(() => {
     if (
       narrow &&
-      (activeScreen === 'outline' || activeScreen === 'mindmap' || activeScreen === 'chart')
+      (activeScreen === 'outline' ||
+        activeScreen === 'mindmap' ||
+        activeScreen === 'chart' ||
+        activeScreen === 'plot')
     ) {
       setActiveScreen('episodes')
     }
@@ -292,6 +301,7 @@ export function App({
           onNavigateMindmap={structureAvailable ? () => setActiveScreen('mindmap') : undefined}
           onNavigateChart={structureAvailable ? () => setActiveScreen('chart') : undefined}
           onNavigateOutline={structureAvailable ? () => setActiveScreen('outline') : undefined}
+          onNavigatePlot={plotAvailable ? () => setActiveScreen('plot') : undefined}
           cta={{
             label: '新しいエピソード',
             onClick: () => setNewEpisodeOpen(true),
@@ -345,7 +355,27 @@ export function App({
         ) : undefined
       }
     >
-      {activeScreen === 'mindmap' && work && structureRepo ? (
+      {activeScreen === 'plot' && work && plotRepo ? (
+        <Suspense
+          fallback={
+            <div className="grid h-full place-items-center text-on-surface-variant text-sm">
+              読み込み中…
+            </div>
+          }
+        >
+          <PlotView
+            repo={plotRepo}
+            workId={work.id}
+            glossary={work.glossary ?? []}
+            episodes={work.episodes}
+            ideaRepo={ideaRepo}
+            onOpenEpisode={(id) => {
+              store.openEpisode(id)
+              setActiveScreen('episodes')
+            }}
+          />
+        </Suspense>
+      ) : activeScreen === 'mindmap' && work && structureRepo ? (
         <Suspense
           fallback={
             <div className="grid h-full place-items-center text-on-surface-variant text-sm">
