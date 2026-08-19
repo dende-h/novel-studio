@@ -378,3 +378,37 @@ test('復元の差分ダイアログは変更が多くても本文をスクロ�
   })
   expect(scrolledTo).toBeGreaterThan(0)
 })
+
+/**
+ * index.html の「起動前の受け」は、アプリが起動できなかったときだけ 1 回自動で取り直す。
+ * 起動後に遅れて失敗した動的チャンクまで拾うと、main.tsx が毎回リトライ記録を消すため
+ * 無限に再読み込みが繰り返される（本番で実際に起き、白画面のまま復帰できなくなった）。
+ * 起動後の module script 失敗では再読み込みが走らないことを固定する。
+ */
+test('起動後に module script が失敗しても自動再読み込みが走らない', async ({ page }) => {
+  let navigations = 0
+  page.on('framenavigated', (f) => {
+    if (f === page.mainFrame()) navigations++
+  })
+  await page.goto('/')
+  await expect(page.getByRole('heading', { name: 'マイライブラリ' })).toBeVisible()
+  expect(await page.evaluate(() => window.__nsBooted === true)).toBe(true)
+
+  // 起動後に動的チャンクの取得が失敗する状況を作る（Clerk のチャンクなどで実際に起きた）
+  await page.evaluate(
+    () =>
+      new Promise<void>((resolve) => {
+        const s = document.createElement('script')
+        s.type = 'module'
+        s.src = '/assets/this-chunk-does-not-exist.js'
+        s.addEventListener('error', () => resolve())
+        s.addEventListener('load', () => resolve())
+        document.head.appendChild(s)
+      })
+  )
+  await page.waitForTimeout(2000)
+
+  // 最初の 1 回（goto）以外にナビゲーションが起きていない＝再読み込みループしていない
+  expect(navigations).toBe(1)
+  await expect(page.getByRole('heading', { name: 'マイライブラリ' })).toBeVisible()
+})

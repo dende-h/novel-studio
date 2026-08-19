@@ -19,6 +19,13 @@ import { Root } from './Root'
 import { createDefaultStore } from './store/createDefaultStore'
 import './index.css'
 
+declare global {
+  interface Window {
+    /** index.html の起動前フォールバックへ「アプリが起動した」ことを伝える印。 */
+    __nsBooted?: boolean
+  }
+}
+
 const root = document.getElementById('root')
 if (!root) throw new Error('#root not found')
 
@@ -33,11 +40,19 @@ if (!root) throw new Error('#root not found')
  * とき（＝真の更新）だけ再読み込みする。
  */
 const SW_UPDATE_INTERVAL_MS = 10 * 60_000
+/** SW 更新による自動再読み込みは 1 セッション 1 回まで（暴走した場合の歯止め）。 */
+const SW_RELOAD_KEY = 'ns-sw-reloaded'
 if ('serviceWorker' in navigator) {
   const hadController = navigator.serviceWorker.controller !== null
   let reloaded = false
   navigator.serviceWorker.addEventListener('controllerchange', () => {
     if (!hadController || reloaded) return
+    // タブ単位で 1 回に制限する。何かの拍子に controllerchange が繰り返し起きると、
+    // 再読み込み→再登録→再び controllerchange…と無限に回り、白い画面から復帰できなくなる。
+    try {
+      if (sessionStorage.getItem(SW_RELOAD_KEY)) return
+      sessionStorage.setItem(SW_RELOAD_KEY, '1')
+    } catch {}
     reloaded = true
     window.location.reload()
   })
@@ -86,8 +101,12 @@ function StartupFailure({ retry }: { retry: () => void }) {
   )
 }
 
-// ここまで来た＝アプリの JS が届いた。index.html が置いた自動再読み込みの記録を落とす
-// （次に取り損ねた時、また一度だけ取り直せるように）。
+// ここまで来た＝アプリの JS が届いた。index.html の「起動前の受け」を止める。
+// この印を立てないと、起動後に遅れて失敗した動的チャンク（Clerk のチャンクなど）まで
+// index.html 側が「起動失敗」と拾い、下でリトライ記録を消しているせいで
+// 1 回だけのはずの自動再読み込みが無限に繰り返される。
+window.__nsBooted = true
+// 記録も落とす（次に取り損ねた時、また一度だけ取り直せるように）。
 try {
   sessionStorage.removeItem('ns-boot-retry')
 } catch {}
