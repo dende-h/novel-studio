@@ -101,10 +101,7 @@ function DialogBody({ className, ...props }: React.ComponentProps<"div">) {
     <div
       data-slot="dialog-body"
       className={cn(
-        // 子は縮めない：flex の既定（shrink:1）のままだと、本文が最大高に達したときに子ブロックが
-        // 押し潰され、overflow-hidden な子（枠線付きのリストなど）は中身がクリップされて
-        // 読めなくなる（親もスクロールしないので見る手段が無くなる）。あふれた分は本文自身が縦スクロールする。
-        "-mx-6 flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-6 [&>*]:shrink-0",
+        "-mx-6 flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-6",
         className
       )}
       {...props}
