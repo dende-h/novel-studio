@@ -307,8 +307,6 @@ test('ゲスト（pk 不在）では同期 UI が一切出ない（Phase 2 ゲ�
 test('復元の差分ダイアログは変更が多くても本文をスクロールして最後まで読める', async ({
   page,
 }) => {
-  // 履歴の集約間隔（90秒）を跨いで 2 版作るため仮想時計を使う。
-  await page.clock.install()
   await page.goto('/')
   await createWork(page, '差分スクロール')
   await openWriter(page, '差分スクロール')
@@ -320,23 +318,51 @@ test('復元の差分ダイアログは変更が多くても本文をスクロ�
     (_, i) => `${i}行目の本文です。${'あ'.repeat(40)}`
   ).join('\n')
   await textarea.fill(base)
-  await page.clock.runFor(5000)
   await expect(page.getByText('保存済み')).toBeVisible()
 
-  // 集約間隔を跨いでから、離れた多数の行を書き換える（＝差分がダイアログに収まらない）
-  await page.clock.fastForward(120_000)
+  // 履歴は 90 秒以内の保存を最新版へ合体する。実時間を待つ代わりに記録済みの版の時刻を
+  // 過去へずらし、次の保存が「新しい版」として積まれる（＝復元できる版が生まれる）ようにする。
+  await page.evaluate(
+    () =>
+      new Promise<void>((resolve, reject) => {
+        const open = indexedDB.open('novel-studio', 1)
+        open.onerror = () => reject(open.error)
+        open.onsuccess = () => {
+          const tx = open.result.transaction('kv', 'readwrite')
+          const store = tx.objectStore('kv')
+          const keys = store.getAllKeys()
+          keys.onsuccess = () => {
+            for (const key of keys.result.map(String).filter((k) => k.startsWith('snap:'))) {
+              const got = store.get(key)
+              got.onsuccess = () => {
+                const snaps = got.result as { at: number }[]
+                store.put(
+                  snaps.map((s) => ({ ...s, at: s.at - 600_000 })),
+                  key
+                )
+              }
+            }
+          }
+          tx.oncomplete = () => resolve()
+          tx.onerror = () => reject(tx.error)
+        }
+      })
+  )
+
+  // 離れた多数の行を書き換える（＝差分がダイアログに収まらない）
   await textarea.fill(
     base
       .split('\n')
       .map((l, i) => (i % 3 === 0 ? `${l}（ここを加筆しました）` : l))
       .join('\n')
   )
-  await page.clock.runFor(5000)
-  await expect(page.getByText('保存済み')).toBeVisible()
 
   await page.getByRole('button', { name: '履歴' }).click()
   const panel = page.getByText('ローカル・セーフティネット').locator('xpath=ancestor::aside')
-  await panel.getByRole('button', { name: 'この版を復元' }).first().click()
+  // 自動保存で版が積まれるまで待つ（現在の版には復元ボタンが出ない）
+  const restore = panel.getByRole('button', { name: 'この版を復元' })
+  await expect(restore).toHaveCount(1)
+  await restore.click()
 
   const body = page.getByRole('dialog').locator('[data-slot=dialog-body]')
   await expect(body).toBeVisible()
