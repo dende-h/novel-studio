@@ -18,6 +18,7 @@ import {
   ArrowDownToLine,
   ArrowRight,
   ArrowUpToLine,
+  ChevronRight,
   GripVertical,
   Plus,
   StickyNote,
@@ -294,6 +295,11 @@ export default function PlotView({
             {plot.beats.length}ビート ・ 済 {doneCount}件
             {totalTarget > 0 ? ` ・ 予定合計 ${fmt(totalTarget)}字` : ''}
           </p>
+          {view === 'sheet' ? (
+            <p className="mt-1 text-[12px] text-on-surface-variant/70">
+              物語の出来事を「ビート」のカードにして幕へ並べます。カードを選ぶと右のパネルで詳しく書けます。
+            </p>
+          ) : null}
           <div className="mt-3 flex items-center gap-1.5">
             <ViewTab active={view === 'sheet'} onClick={() => setView('sheet')}>
               ビートシート
@@ -527,19 +533,6 @@ function SectionBlock({
           {beats.length}ビート{target > 0 ? ` ・ 予定 ${fmt(target)}字` : ''}
         </span>
         <span className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
-          {ideaRepo ? (
-            <HoverButton label="ネタ帳からビートを取り込む" onClick={() => setIdeasOpen((v) => !v)}>
-              <StickyNote className="size-3.5" />
-            </HoverButton>
-          ) : null}
-          {structureRepo ? (
-            <HoverButton
-              label="マインドマップからビートを取り込む"
-              onClick={() => setMindmapOpen((v) => !v)}
-            >
-              <Waypoints className="size-3.5" />
-            </HoverButton>
-          ) : null}
           <HoverButton
             label="幕を削除（ビートは隣の幕へ移動）"
             disabled={!canRemove}
@@ -548,6 +541,75 @@ function SectionBlock({
             <X className="size-3.5" />
           </HoverButton>
         </span>
+      </div>
+
+      <SortableContext items={section.beatIds} strategy={verticalListSortingStrategy}>
+        <ul className="mt-2 flex flex-col gap-2">
+          {beats.map((beat) => (
+            <BeatCard
+              key={beat.id}
+              plot={plot}
+              beat={beat}
+              selected={selectedId === beat.id}
+              canMoveUp={!isFirst}
+              canMoveDown={!isLast}
+              glossary={glossary}
+              episodes={episodes}
+              onSelect={() => onSelect(beat.id)}
+              onApply={onApply}
+              onMoveToNeighbor={(dir) => {
+                const sections = plot.sections
+                const idx = sections.findIndex((s) => s.id === section.id)
+                const neighbor = sections[idx + dir]
+                if (!neighbor) return
+                // 前の幕へは末尾、次の幕へは先頭に入れる（読み順が繋がる位置）。
+                const at = dir === -1 ? neighbor.beatIds.length : 0
+                onApply((p) => moveBeat(p, beat.id, neighbor.id, at))
+              }}
+              onOpenEpisode={onOpenEpisode}
+            />
+          ))}
+        </ul>
+      </SortableContext>
+
+      {/* 追加の入口は常時見える（ホバーで隠すと「何ができるか」が伝わらない）。 */}
+      <div className="mt-2 flex flex-wrap items-center gap-x-1 gap-y-1">
+        <button
+          type="button"
+          onClick={() => onAddBeat(section.id)}
+          className="flex items-center gap-1.5 rounded-md px-2 py-1 text-[13px] text-primary transition-colors hover:bg-surface-container-high"
+        >
+          <Plus className="size-3.5" />
+          ビートを追加
+        </button>
+        {ideaRepo ? (
+          <button
+            type="button"
+            aria-expanded={ideasOpen}
+            onClick={() => {
+              setMindmapOpen(false)
+              setIdeasOpen((v) => !v)
+            }}
+            className="flex items-center gap-1 rounded-md px-2 py-1 text-[12px] text-on-surface-variant transition-colors hover:bg-surface-container-high hover:text-primary"
+          >
+            <StickyNote className="size-3.5" />
+            ネタ帳から
+          </button>
+        ) : null}
+        {structureRepo ? (
+          <button
+            type="button"
+            aria-expanded={mindmapOpen}
+            onClick={() => {
+              setIdeasOpen(false)
+              setMindmapOpen((v) => !v)
+            }}
+            className="flex items-center gap-1 rounded-md px-2 py-1 text-[12px] text-on-surface-variant transition-colors hover:bg-surface-container-high hover:text-primary"
+          >
+            <Waypoints className="size-3.5" />
+            マインドマップから
+          </button>
+        ) : null}
       </div>
 
       {ideaRepo && ideasOpen ? (
@@ -584,44 +646,6 @@ function SectionBlock({
           onClose={() => setMindmapOpen(false)}
         />
       ) : null}
-
-      <SortableContext items={section.beatIds} strategy={verticalListSortingStrategy}>
-        <ul className="mt-2 flex flex-col gap-2">
-          {beats.map((beat) => (
-            <BeatCard
-              key={beat.id}
-              plot={plot}
-              beat={beat}
-              selected={selectedId === beat.id}
-              canMoveUp={!isFirst}
-              canMoveDown={!isLast}
-              glossary={glossary}
-              episodes={episodes}
-              onSelect={() => onSelect(beat.id)}
-              onApply={onApply}
-              onMoveToNeighbor={(dir) => {
-                const sections = plot.sections
-                const idx = sections.findIndex((s) => s.id === section.id)
-                const neighbor = sections[idx + dir]
-                if (!neighbor) return
-                // 前の幕へは末尾、次の幕へは先頭に入れる（読み順が繋がる位置）。
-                const at = dir === -1 ? neighbor.beatIds.length : 0
-                onApply((p) => moveBeat(p, beat.id, neighbor.id, at))
-              }}
-              onOpenEpisode={onOpenEpisode}
-            />
-          ))}
-        </ul>
-      </SortableContext>
-
-      <button
-        type="button"
-        onClick={() => onAddBeat(section.id)}
-        className="mt-2 flex items-center gap-1.5 rounded-md px-2 py-1 text-[13px] text-primary transition-colors hover:bg-surface-container-high"
-      >
-        <Plus className="size-3.5" />
-        ビートを追加
-      </button>
     </section>
   )
 }
@@ -782,7 +806,7 @@ function BeatCard({
               title={pov.summary}
               className="inline-flex items-center rounded-full bg-accent px-2 py-0.5 text-[10.5px] text-accent-foreground"
             >
-              POV: {pov.name}
+              視点: {pov.name}
             </span>
           ) : null}
           {foreshadowCount > 0 ? (
@@ -886,159 +910,170 @@ function BeatDetailPanel({
             ariaLabel="ビートの要約"
           />
         </Field>
-        <Field label="メモ">
-          <CommitTextarea
-            value={beat.note ?? ''}
-            onCommit={(v) => patch({ note: emptyToUndef(v) })}
-            placeholder="狙い・代案・保留メモ"
-            ariaLabel="ビートのメモ"
-          />
-        </Field>
-        <Field label="作中時間">
-          <CommitInput
-            value={beat.timeLabel ?? ''}
-            onCommit={(v) => patch({ timeLabel: emptyToUndef(v) })}
-            placeholder="例：三日後の夜"
-            ariaLabel="作中時間"
-          />
-        </Field>
 
-        <Field label="視点（POV）">
+        {/* 使う人だけ開く詳細。空のフィールドが並ぶと書く場所が分からなくなるため畳んでおく。 */}
+        <PanelGroup
+          title="人物と舞台"
+          defaultOpen={Boolean(
+            beat.povRef || beat.castRefs.length > 0 || beat.placeRefs.length > 0,
+          )}
+        >
           {glossary.length > 0 ? (
-            <SelectBox
-              value={beat.povRef ?? ''}
-              onChange={(v) => patch({ povRef: v === '' ? undefined : v })}
-              ariaLabel="視点キャラ"
-              options={[
-                { value: '', label: '（未設定）' },
-                ...glossary.map((g) => ({ value: g.id, label: g.name })),
-              ]}
-            />
+            <>
+              <Field label="視点（だれの目で書くか）">
+                <SelectBox
+                  value={beat.povRef ?? ''}
+                  onChange={(v) => patch({ povRef: v === '' ? undefined : v })}
+                  ariaLabel="視点キャラ"
+                  options={[
+                    { value: '', label: '（未設定）' },
+                    ...glossary.map((g) => ({ value: g.id, label: g.name })),
+                  ]}
+                />
+              </Field>
+              <RefChips
+                label="登場する人物"
+                ids={beat.castRefs}
+                glossary={glossary}
+                onChange={(ids) => patch({ castRefs: ids })}
+              />
+              <RefChips
+                label="舞台（場所）"
+                ids={beat.placeRefs}
+                glossary={glossary}
+                onChange={(ids) => patch({ placeRefs: ids })}
+              />
+            </>
           ) : (
             <GlossaryHint />
           )}
-        </Field>
-        {glossary.length > 0 ? (
-          <>
-            <RefChips
-              label="登場"
-              ids={beat.castRefs}
-              glossary={glossary}
-              onChange={(ids) => patch({ castRefs: ids })}
+          <Field label="作中時間">
+            <CommitInput
+              value={beat.timeLabel ?? ''}
+              onCommit={(v) => patch({ timeLabel: emptyToUndef(v) })}
+              placeholder="例：三日後の夜"
+              ariaLabel="作中時間"
             />
-            <RefChips
-              label="舞台"
-              ids={beat.placeRefs}
-              glossary={glossary}
-              onChange={(ids) => patch({ placeRefs: ids })}
+          </Field>
+        </PanelGroup>
+
+        <PanelGroup
+          title="構成メモ・伏線"
+          defaultOpen={Boolean(beat.note || beat.lineRefs.length > 0 || beatForeshadows.length > 0)}
+        >
+          <Field label="メモ">
+            <CommitTextarea
+              value={beat.note ?? ''}
+              onCommit={(v) => patch({ note: emptyToUndef(v) })}
+              placeholder="狙い・代案・保留メモ"
+              ariaLabel="ビートのメモ"
             />
-          </>
-        ) : null}
-        {plot.lines.length > 0 ? (
-          <LineChips
-            lines={plot.lines}
-            ids={beat.lineRefs}
-            onChange={(ids) => patch({ lineRefs: ids })}
-          />
-        ) : null}
-
-        {/* この beat に張られた／回収する伏線（編集は伏線ビュー） */}
-        <div className="flex flex-col gap-1">
-          <span className="font-medium text-[11px] text-on-surface-variant/70 tracking-wide">
-            伏線
-          </span>
-          <div className="flex flex-wrap items-center gap-1.5">
-            {beatForeshadows.map((f) => (
-              <span
-                key={f.id}
-                title={f.note}
-                className="inline-flex items-center gap-1 rounded-full bg-secondary-container px-2 py-0.5 text-[11px] text-on-secondary-container"
-              >
-                {f.plantBeatId === beat.id ? '張る' : '回収'}: {f.title}
-              </span>
-            ))}
-            <button
-              type="button"
-              onClick={onShowForeshadows}
-              className="text-[11px] text-primary hover:underline"
-            >
-              {beatForeshadows.length > 0 ? '伏線ビューで管理' : '＋ 伏線ビューで登録'}
-            </button>
-          </div>
-        </div>
-
-        <Field label="予定字数">
-          <CommitInput
-            value={beat.targetLength ? String(beat.targetLength) : ''}
-            onCommit={(v) => {
-              const n = Number.parseInt(v.replaceAll(',', ''), 10)
-              patch({ targetLength: Number.isFinite(n) && n > 0 ? n : undefined })
-            }}
-            placeholder="例：8000"
-            inputMode="numeric"
-            ariaLabel="予定字数"
-          />
-        </Field>
-        {actualChars !== null && target > 0 ? (
-          <div>
-            <div className="flex items-baseline justify-between text-[11.5px] text-on-surface-variant tabular-nums">
-              <span>
-                実績 {fmt(actualChars)}字 ／ 予定 {fmt(target)}字
-              </span>
-              <span>{percent}%</span>
-            </div>
-            <div className="mt-1 h-1.5 rounded-full bg-surface-container-high">
-              <div
-                className="h-1.5 rounded-full bg-[var(--forest-400)]"
-                style={{ width: `${percent}%` }}
-              />
-            </div>
-          </div>
-        ) : null}
-
-        <Field label="対応する話">
-          <SelectBox
-            value={beat.episodeRef ?? ''}
-            onChange={(v) => patch({ episodeRef: v === '' ? undefined : v })}
-            ariaLabel="対応する話"
-            options={[
-              { value: '', label: '（未対応）' },
-              ...episodes.map((e) => ({ value: e.id, label: e.title || '無題の話' })),
-            ]}
-          />
-        </Field>
-        <div className="flex items-center gap-1.5">
-          {episode ? (
-            <button
-              type="button"
-              onClick={() => onOpenEpisode(episode.id)}
-              className="flex items-center gap-1 rounded-md px-2 py-1 text-[12px] text-primary transition-colors hover:bg-surface-container-high"
-            >
-              <ArrowRight className="size-3.5" />
-              {`${episode.title || '無題の話'}を開く`}
-            </button>
-          ) : onCreateEpisode ? (
-            <button
-              type="button"
-              title="このビートのタイトルで話を新規作成して紐付ける"
-              onClick={() =>
-                void onCreateEpisode(beat.title || '無題のビート').then((episodeId) => {
-                  if (episodeId) patch({ episodeRef: episodeId })
-                })
-              }
-              className="flex items-center gap-1 rounded-md px-2 py-1 text-[12px] text-primary transition-colors hover:bg-surface-container-high"
-            >
-              <Plus className="size-3.5" />
-              話を作る
-            </button>
+          </Field>
+          {plot.lines.length > 0 ? (
+            <LineChips
+              lines={plot.lines}
+              ids={beat.lineRefs}
+              onChange={(ids) => patch({ lineRefs: ids })}
+            />
           ) : null}
-          {beat.ideaRef ? (
-            <span className="ml-auto inline-flex items-center gap-1 text-[11px] text-on-surface-variant/70">
-              <StickyNote className="size-3" />
-              ネタ帳から
+          <div className="flex flex-col gap-1">
+            <span className="font-medium text-[11px] text-on-surface-variant/70 tracking-wide">
+              伏線
             </span>
+            <div className="flex flex-wrap items-center gap-1.5">
+              {beatForeshadows.map((f) => (
+                <span
+                  key={f.id}
+                  title={f.note}
+                  className="inline-flex items-center gap-1 rounded-full bg-secondary-container px-2 py-0.5 text-[11px] text-on-secondary-container"
+                >
+                  {f.plantBeatId === beat.id ? '張る' : '回収'}: {f.title}
+                </span>
+              ))}
+              <button
+                type="button"
+                onClick={onShowForeshadows}
+                className="text-[11px] text-primary hover:underline"
+              >
+                {beatForeshadows.length > 0 ? '伏線ビューで管理' : '＋ 伏線ビューで登録'}
+              </button>
+            </div>
+          </div>
+        </PanelGroup>
+
+        <PanelGroup title="執筆と進捗" defaultOpen={Boolean(beat.targetLength || beat.episodeRef)}>
+          <Field label="予定字数">
+            <CommitInput
+              value={beat.targetLength ? String(beat.targetLength) : ''}
+              onCommit={(v) => {
+                const n = Number.parseInt(v.replaceAll(',', ''), 10)
+                patch({ targetLength: Number.isFinite(n) && n > 0 ? n : undefined })
+              }}
+              placeholder="例：8000"
+              inputMode="numeric"
+              ariaLabel="予定字数"
+            />
+          </Field>
+          {actualChars !== null && target > 0 ? (
+            <div>
+              <div className="flex items-baseline justify-between text-[11.5px] text-on-surface-variant tabular-nums">
+                <span>
+                  実績 {fmt(actualChars)}字 ／ 予定 {fmt(target)}字
+                </span>
+                <span>{percent}%</span>
+              </div>
+              <div className="mt-1 h-1.5 rounded-full bg-surface-container-high">
+                <div
+                  className="h-1.5 rounded-full bg-[var(--forest-400)]"
+                  style={{ width: `${percent}%` }}
+                />
+              </div>
+            </div>
           ) : null}
-        </div>
+          <Field label="対応する話">
+            <SelectBox
+              value={beat.episodeRef ?? ''}
+              onChange={(v) => patch({ episodeRef: v === '' ? undefined : v })}
+              ariaLabel="対応する話"
+              options={[
+                { value: '', label: '（未対応）' },
+                ...episodes.map((e) => ({ value: e.id, label: e.title || '無題の話' })),
+              ]}
+            />
+          </Field>
+          <div className="flex items-center gap-1.5">
+            {episode ? (
+              <button
+                type="button"
+                onClick={() => onOpenEpisode(episode.id)}
+                className="flex items-center gap-1 rounded-md px-2 py-1 text-[12px] text-primary transition-colors hover:bg-surface-container-high"
+              >
+                <ArrowRight className="size-3.5" />
+                {`${episode.title || '無題の話'}を開く`}
+              </button>
+            ) : onCreateEpisode ? (
+              <button
+                type="button"
+                title="このビートのタイトルで話を新規作成して紐付ける"
+                onClick={() =>
+                  void onCreateEpisode(beat.title || '無題のビート').then((episodeId) => {
+                    if (episodeId) patch({ episodeRef: episodeId })
+                  })
+                }
+                className="flex items-center gap-1 rounded-md px-2 py-1 text-[12px] text-primary transition-colors hover:bg-surface-container-high"
+              >
+                <Plus className="size-3.5" />
+                話を作る
+              </button>
+            ) : null}
+            {beat.ideaRef ? (
+              <span className="ml-auto inline-flex items-center gap-1 text-[11px] text-on-surface-variant/70">
+                <StickyNote className="size-3" />
+                ネタ帳から
+              </span>
+            ) : null}
+          </div>
+        </PanelGroup>
 
         <div className="border-outline-variant/20 border-t pt-2 text-right">
           <button
@@ -1449,6 +1484,33 @@ function TemplatePicker({ onPick }: { onPick: (template: PlotTemplate) => void }
   )
 }
 
+/**
+ * 詳細パネルの折りたたみグループ。空フィールドの羅列で書く場所が迷子にならないよう、
+ * 内容が入っているグループだけ初期展開する（native details＝状態管理いらず）。
+ */
+function PanelGroup({
+  title,
+  defaultOpen,
+  children,
+}: {
+  title: string
+  defaultOpen: boolean
+  children: ReactNode
+}) {
+  return (
+    <details open={defaultOpen} className="group/panel border-outline-variant/20 border-t pt-2">
+      <summary className="flex cursor-pointer select-none list-none items-center gap-1 font-medium text-[11.5px] text-on-surface-variant/80 tracking-wide hover:text-on-surface">
+        <ChevronRight
+          className="size-3 transition-transform group-open/panel:rotate-90"
+          aria-hidden
+        />
+        {title}
+      </summary>
+      <div className="mt-2 flex flex-col gap-3">{children}</div>
+    </details>
+  )
+}
+
 /** ラベル＋フィールドの縦組み。中の入力は aria-label で名前を持つ（label 要素にしない）。 */
 function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
@@ -1526,12 +1588,18 @@ function CommitTextarea({
     if (!focused.current) setDraft(value)
   }, [value])
   // 内容の増減に高さを追従させる（scrollHeight を測るため一度 0 にする）。
+  // 無限に伸びるとパネルが要約だけで埋まるため、上限を超えたら内側スクロールに切り替える。
+  const MAX_HEIGHT_PX = 200
+  const resizeToContent = (el: HTMLTextAreaElement) => {
+    el.style.height = '0'
+    el.style.height = `${Math.min(el.scrollHeight, MAX_HEIGHT_PX)}px`
+    el.style.overflowY = el.scrollHeight > MAX_HEIGHT_PX ? 'auto' : 'hidden'
+  }
+  // biome-ignore lint/correctness/useExhaustiveDependencies: draft の変化で高さを測り直す（resizeToContent は毎レンダー同一の純関数）
   useLayoutEffect(() => {
     const el = ref.current
-    if (!el) return
-    el.style.height = '0'
-    el.style.height = `${el.scrollHeight}px`
-  }, [])
+    if (el) resizeToContent(el)
+  }, [draft])
   return (
     <textarea
       ref={ref}
@@ -1539,9 +1607,7 @@ function CommitTextarea({
       value={draft}
       onChange={(e) => {
         setDraft(e.target.value)
-        const el = e.target
-        el.style.height = '0'
-        el.style.height = `${el.scrollHeight}px`
+        resizeToContent(e.target)
       }}
       onFocus={() => {
         focused.current = true
@@ -1555,7 +1621,7 @@ function CommitTextarea({
       }}
       placeholder={placeholder}
       aria-label={ariaLabel}
-      className="w-full resize-none overflow-hidden rounded-md border border-outline-variant/30 bg-surface px-2.5 py-1.5 text-[13px] text-on-surface leading-relaxed outline-none placeholder:text-on-surface-variant/45 focus:border-primary/50"
+      className="w-full resize-none rounded-md border border-outline-variant/30 bg-surface px-2.5 py-1.5 text-[13px] text-on-surface leading-relaxed outline-none placeholder:text-on-surface-variant/45 focus:border-primary/50"
     />
   )
 }
@@ -1681,7 +1747,7 @@ function IdeaPickerPanel({
     <div className="mt-2 rounded-lg border border-outline-variant/30 bg-surface-container-low p-2">
       <div className="flex items-center justify-between px-1 pb-1.5">
         <span className="text-[11px] text-on-surface-variant/70">
-          ネタ帳から選ぶ（メモは残ります）
+          メモを選ぶと、この幕に「検討中」のビートとして入ります（メモは残ります）
         </span>
         <HoverButton label="閉じる" onClick={onClose}>
           <X className="size-3.5" />
@@ -1751,7 +1817,7 @@ function MindmapPickerPanel({
     <div className="mt-2 rounded-lg border border-outline-variant/30 bg-surface-container-low p-2">
       <div className="flex items-center justify-between px-1 pb-1.5">
         <span className="text-[11px] text-on-surface-variant/70">
-          マインドマップから選ぶ（ノードは残ります）
+          ノードを選ぶと、この幕のビートになります（ラベル→タイトル・ノート→要約。ノードは残ります）
         </span>
         <HoverButton label="閉じる" onClick={onClose}>
           <X className="size-3.5" />

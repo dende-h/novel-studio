@@ -29,10 +29,10 @@ interface PlotPeekProps {
 }
 
 const STATUS_UI: Record<PlotBeatStatus, { label: string; className: string }> = {
-  idea: { label: '検討中', className: 'bg-surface-container-high text-on-surface-variant' },
+  idea: { label: '？ 検討中', className: 'bg-surface-container-high text-on-surface-variant' },
   fixed: { label: '確定', className: 'bg-secondary-container text-on-secondary-container' },
-  writing: { label: '執筆中', className: 'bg-primary/12 text-primary' },
-  done: { label: '済', className: 'bg-primary text-primary-foreground' },
+  writing: { label: '✎ 執筆中', className: 'bg-primary/12 text-primary' },
+  done: { label: '✓ 済', className: 'bg-primary text-primary-foreground' },
 }
 
 const fmt = (n: number) => n.toLocaleString('ja-JP')
