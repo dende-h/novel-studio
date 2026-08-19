@@ -297,3 +297,58 @@ test('ゲスト（pk 不在）では同期 UI が一切出ない（Phase 2 ゲ�
   await expect(page.getByText('同期中…')).toHaveCount(0)
   await expect(page.getByRole('button', { name: '今すぐ同期' })).toHaveCount(0)
 })
+
+/**
+ * 復元前の差分ダイアログは変更が多いと最大高（800px）を超える。DialogBody の子が
+ * flex で押し潰されると overflow-hidden な差分ボックスの中身がクリップされ、
+ * スクロールもできず「画面に入る分しか読めない」状態になる（実際に起きた不具合）。
+ * 本文がスクロールでき、末尾の差分まで辿れることを確認する。
+ */
+test('復元の差分ダイアログは変更が多くても本文をスクロールして最後まで読める', async ({
+  page,
+}) => {
+  // 履歴の集約間隔（90秒）を跨いで 2 版作るため仮想時計を使う。
+  await page.clock.install()
+  await page.goto('/')
+  await createWork(page, '差分スクロール')
+  await openWriter(page, '差分スクロール')
+  await addEpisode(page, '第一話')
+
+  const textarea = page.getByRole('textbox', { name: '本文' })
+  const base = Array.from(
+    { length: 120 },
+    (_, i) => `${i}行目の本文です。${'あ'.repeat(40)}`
+  ).join('\n')
+  await textarea.fill(base)
+  await page.clock.runFor(5000)
+  await expect(page.getByText('保存済み')).toBeVisible()
+
+  // 集約間隔を跨いでから、離れた多数の行を書き換える（＝差分がダイアログに収まらない）
+  await page.clock.fastForward(120_000)
+  await textarea.fill(
+    base
+      .split('\n')
+      .map((l, i) => (i % 3 === 0 ? `${l}（ここを加筆しました）` : l))
+      .join('\n')
+  )
+  await page.clock.runFor(5000)
+  await expect(page.getByText('保存済み')).toBeVisible()
+
+  await page.getByRole('button', { name: '履歴' }).click()
+  const panel = page.getByText('ローカル・セーフティネット').locator('xpath=ancestor::aside')
+  await panel.getByRole('button', { name: 'この版を復元' }).first().click()
+
+  const body = page.getByRole('dialog').locator('[data-slot=dialog-body]')
+  await expect(body).toBeVisible()
+  const { scrollH, clientH } = await body.evaluate((el) => ({
+    scrollH: el.scrollHeight,
+    clientH: el.clientHeight,
+  }))
+  // 収まりきらない量の差分がある＝スクロールできなければ読めない
+  expect(scrollH).toBeGreaterThan(clientH * 2)
+  const scrolledTo = await body.evaluate((el) => {
+    el.scrollTop = el.scrollHeight
+    return el.scrollTop
+  })
+  expect(scrolledTo).toBeGreaterThan(0)
+})
