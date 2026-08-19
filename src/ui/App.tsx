@@ -1,11 +1,11 @@
-import { BookMarked, Plus, Replace } from 'lucide-react'
+import { BookMarked, Milestone, Plus, Replace } from 'lucide-react'
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { localDateKey } from '@/core/activity'
 import { blocksToHtml } from '@/core/exporter/toHtml'
 import { findAppearances, resolvedNameSet, resolveRef } from '@/core/glossary'
 import { parseEpisodeBody } from '@/core/parser/parseNotation'
 import type { GlossaryEntry } from '@/core/schema'
-import { countWorkChars } from '@/core/stats'
+import { countEpisodeChars, countWorkChars } from '@/core/stats'
 import type { ActivityRepository } from '@/core/storage/activityRepository'
 import type { IdeaRepository } from '@/core/storage/ideaRepository'
 import type { PlotRepository } from '@/core/storage/plotRepository'
@@ -28,6 +28,7 @@ import {
 import { GlossaryPeek } from '@/ui/components/GlossaryPeek/glossary-peek'
 import { GlossaryView } from '@/ui/components/GlossaryView/glossary-view'
 import { HistoryPanel } from '@/ui/components/HistoryPanel/history-panel'
+import { PlotPeek } from '@/ui/components/PlotPeek/plot-peek'
 import { PreviewPane } from '@/ui/components/PreviewPane/preview-pane'
 import { ProfileDialog } from '@/ui/components/ProfileDialog/profile-dialog'
 import { SideNav } from '@/ui/components/SideNav/side-nav'
@@ -131,6 +132,10 @@ export function App({
   const [replaceOpen, setReplaceOpen] = useState(false)
   // 図鑑パネル（この話に登場＋選択 entry のチラ見）。@参照クリックでも開く。
   const [glossaryPanelOpen, setGlossaryPanelOpen] = useState(false)
+  // 「この話のプロット」パネル（episodeRef が現在話のビート＋実字数/予定字数の進捗）。
+  const [plotPanelOpen, setPlotPanelOpen] = useState(false)
+  // パネル等からプロット画面へ飛ぶときの着地ビート（PlotView が消費して null に戻す）。
+  const [plotFocusBeatId, setPlotFocusBeatId] = useState<string | null>(null)
   // 図鑑パネルで選択中の entry（id で引いて常に最新を見る）。
   const [peekId, setPeekId] = useState<string | null>(null)
   // 未解決 @参照クリックで起動するクイック作成（プリフィルする名前。'' は空フォーム）。
@@ -179,6 +184,11 @@ export function App({
   const previewHtml = useMemo(
     () => blocksToHtml(parseEpisodeBody(state.draft), resolvedNames),
     [state.draft, resolvedNames],
+  )
+  // 「この話のプロット」の進捗（実字数）。プレビューと同じ正本パーサで数える。
+  const draftChars = useMemo(
+    () => countEpisodeChars({ id: '', title: '', blocks: parseEpisodeBody(state.draft) }),
+    [state.draft],
   )
   useAutosave(state.draft, state.dirty, () => void store.save(), AUTOSAVE_DELAY_MS)
 
@@ -233,6 +243,7 @@ export function App({
       const entry = resolveRef(name, work?.glossary ?? [])
       if (entry) {
         setHistoryOpen(false)
+        setPlotPanelOpen(false)
         setPeekId(entry.id)
         setGlossaryPanelOpen(true)
       } else {
@@ -274,6 +285,7 @@ export function App({
         episode && onEpisodes
           ? () => {
               setGlossaryPanelOpen(false)
+              setPlotPanelOpen(false)
               setHistoryOpen((v) => !v)
             }
           : undefined
@@ -282,6 +294,7 @@ export function App({
       onCloseAside={() => {
         setHistoryOpen(false)
         setGlossaryPanelOpen(false)
+        setPlotPanelOpen(false)
       }}
       sidebar={
         <SideNav
@@ -328,7 +341,20 @@ export function App({
         />
       }
       aside={
-        onEpisodes && glossaryPanelOpen && work ? (
+        onEpisodes && plotPanelOpen && work && plotRepo ? (
+          <PlotPeek
+            repo={plotRepo}
+            workId={work.id}
+            episodeId={state.currentEpisodeId}
+            actualChars={draftChars}
+            onJumpBeat={(beatId) => {
+              setPlotFocusBeatId(beatId)
+              setActiveScreen('plot')
+            }}
+            onOpenPlot={() => setActiveScreen('plot')}
+            onClose={() => setPlotPanelOpen(false)}
+          />
+        ) : onEpisodes && glossaryPanelOpen && work ? (
           <GlossaryPeek
             entries={work.glossary ?? []}
             draft={state.draft}
@@ -369,9 +395,19 @@ export function App({
             glossary={work.glossary ?? []}
             episodes={work.episodes}
             ideaRepo={ideaRepo}
+            structureRepo={structureRepo}
+            focusBeatId={plotFocusBeatId}
+            onConsumeFocus={() => setPlotFocusBeatId(null)}
             onOpenEpisode={(id) => {
               store.openEpisode(id)
               setActiveScreen('episodes')
+            }}
+            onCreateEpisode={async (title) => {
+              // createEpisode は末尾に追加して id を返さないため、直後の snapshot から引く。
+              await store.createEpisode(title)
+              const snap = store.getSnapshot()
+              const ep = snap.work?.episodes[snap.work.episodes.length - 1]
+              return ep && ep.title === title ? ep.id : null
             }}
           />
         </Suspense>
@@ -542,6 +578,26 @@ export function App({
                   縦書き
                 </button>
               </fieldset>
+              {canUseStructure && plotRepo ? (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  aria-label="この話のプロット"
+                  aria-pressed={plotPanelOpen}
+                  onClick={() => {
+                    setHistoryOpen(false)
+                    setGlossaryPanelOpen(false)
+                    setPlotPanelOpen((v) => !v)
+                  }}
+                  className={cn(
+                    'gap-1.5 text-on-surface-variant hover:text-primary',
+                    plotPanelOpen && 'bg-accent text-primary',
+                  )}
+                >
+                  <Milestone className="size-4" aria-hidden />
+                  <span className="max-lg:hidden">プロット</span>
+                </Button>
+              ) : null}
               <Button
                 variant="ghost"
                 size="sm"
@@ -549,6 +605,7 @@ export function App({
                 aria-pressed={glossaryPanelOpen}
                 onClick={() => {
                   setHistoryOpen(false)
+                  setPlotPanelOpen(false)
                   setGlossaryPanelOpen((v) => !v)
                 }}
                 className={cn(

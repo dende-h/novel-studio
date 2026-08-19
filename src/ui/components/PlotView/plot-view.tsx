@@ -21,6 +21,7 @@ import {
   GripVertical,
   Plus,
   StickyNote,
+  Waypoints,
   X,
 } from 'lucide-react'
 import type { KeyboardEvent, ReactNode } from 'react'
@@ -59,6 +60,8 @@ import {
 import type { Episode, GlossaryEntry } from '@/core/schema'
 import type { IdeaRepository } from '@/core/storage/ideaRepository'
 import type { PlotRepository } from '@/core/storage/plotRepository'
+import type { StructureRepository } from '@/core/storage/structureRepository'
+import { pickPrimaryStructure, type StructureNode } from '@/core/structure'
 import { ConfirmDialog } from '@/ui/components/ConfirmDialog/confirm-dialog'
 import { subscribeSyncApplied } from '@/ui/sync/sync-touch'
 
@@ -71,8 +74,15 @@ interface PlotViewProps {
   episodes: Episode[]
   /** ネタ帳（ビートの種の取り込み元）。省略時は取り込み導線を出さない。 */
   ideaRepo?: IdeaRepository
+  /** 構造レイヤー（マインドマップ→ビート変換の読み取り元）。省略時は取り込み導線を出さない。 */
+  structureRepo?: StructureRepository
+  /** 外部（エディタのプロットパネル等）から指定ビートへ着地する。消費後 onConsumeFocus を呼ぶ。 */
+  focusBeatId?: string | null
+  onConsumeFocus?: () => void
   /** 話を本文エディタで開く。 */
   onOpenEpisode: (episodeId: string) => void
+  /** ビートから話を新規作成する（作成した episode id を返す。失敗は null）。 */
+  onCreateEpisode?: (title: string) => Promise<string | null>
 }
 
 const genId = () => crypto.randomUUID()
@@ -98,7 +108,11 @@ export default function PlotView({
   glossary,
   episodes,
   ideaRepo,
+  structureRepo,
+  focusBeatId,
+  onConsumeFocus,
   onOpenEpisode,
+  onCreateEpisode,
 }: PlotViewProps) {
   const [plot, setPlot] = useState<Plot | null>(null)
   const [loaded, setLoaded] = useState(false)
@@ -179,6 +193,13 @@ export default function PlotView({
     setScrollToId(beatId)
   }, [])
 
+  // 外部（エディタのプロットパネル等）からの着地。消費したら呼び出し側の予約を消す。
+  useEffect(() => {
+    if (focusBeatId == null) return
+    jumpToBeat(focusBeatId)
+    onConsumeFocus?.()
+  }, [focusBeatId, jumpToBeat, onConsumeFocus])
+
   if (!loaded) return null
 
   if (!plot) {
@@ -253,10 +274,12 @@ export default function PlotView({
                     glossary={glossary}
                     episodes={episodes}
                     ideaRepo={ideaRepo}
+                    structureRepo={structureRepo}
                     expandedId={expandedId}
                     onToggleExpand={(id) => setExpandedId((cur) => (cur === id ? null : id))}
                     onApply={(fn) => void apply(fn)}
                     onOpenEpisode={onOpenEpisode}
+                    onCreateEpisode={onCreateEpisode}
                     onRequestDeleteBeat={(beat) =>
                       setDeleteTarget({ id: beat.id, title: beat.title || '無題のビート' })
                     }
@@ -762,10 +785,12 @@ interface SectionBlockProps {
   glossary: GlossaryEntry[]
   episodes: Episode[]
   ideaRepo?: IdeaRepository
+  structureRepo?: StructureRepository
   expandedId: string | null
   onToggleExpand: (beatId: string) => void
   onApply: (fn: (p: Plot) => Plot) => void
   onOpenEpisode: (episodeId: string) => void
+  onCreateEpisode?: (title: string) => Promise<string | null>
   onRequestDeleteBeat: (beat: PlotBeat) => void
 }
 
@@ -778,16 +803,19 @@ function SectionBlock({
   glossary,
   episodes,
   ideaRepo,
+  structureRepo,
   expandedId,
   onToggleExpand,
   onApply,
   onOpenEpisode,
+  onCreateEpisode,
   onRequestDeleteBeat,
 }: SectionBlockProps) {
   const beats = beatsOfSection(plot, section.id)
   const target = sectionTargetTotal(plot, section.id)
   const [addInput, setAddInput] = useState('')
   const [ideasOpen, setIdeasOpen] = useState(false)
+  const [mindmapOpen, setMindmapOpen] = useState(false)
 
   const submitAdd = () => {
     const title = addInput.trim()
@@ -830,6 +858,14 @@ function SectionBlock({
               <StickyNote className="size-3.5" />
             </HoverButton>
           ) : null}
+          {structureRepo ? (
+            <HoverButton
+              label="マインドマップからビートを取り込む"
+              onClick={() => setMindmapOpen((v) => !v)}
+            >
+              <Waypoints className="size-3.5" />
+            </HoverButton>
+          ) : null}
           <HoverButton
             label="幕を削除（ビートは隣の幕へ移動）"
             disabled={!canRemove}
@@ -862,6 +898,33 @@ function SectionBlock({
         />
       ) : null}
 
+      {structureRepo && mindmapOpen ? (
+        <MindmapPickerPanel
+          structureRepo={structureRepo}
+          workId={plot.workId}
+          onPick={(node) => {
+            setMindmapOpen(false)
+            onApply((p) =>
+              addBeat(p, section.id, {
+                id: genId(),
+                title: clipTitle(node.label),
+                // ノートがあれば要約へ。無くてラベルが長い場合は全文を要約に残す（切り捨てない）。
+                ...(node.note?.trim()
+                  ? { summary: node.note }
+                  : node.label.trim().length > 24
+                    ? { summary: node.label.trim() }
+                    : {}),
+                castRefs: [],
+                placeRefs: [],
+                lineRefs: [],
+                status: 'idea',
+              }),
+            )
+          }}
+          onClose={() => setMindmapOpen(false)}
+        />
+      ) : null}
+
       <SortableContext items={section.beatIds} strategy={verticalListSortingStrategy}>
         <ul className="mt-2 flex flex-col gap-2">
           {beats.map((beat) => (
@@ -886,6 +949,7 @@ function SectionBlock({
                 onApply((p) => moveBeat(p, beat.id, neighbor.id, at))
               }}
               onOpenEpisode={onOpenEpisode}
+              onCreateEpisode={onCreateEpisode}
               onRequestDelete={() => onRequestDeleteBeat(beat)}
             />
           ))}
@@ -951,6 +1015,7 @@ interface BeatCardProps {
   /** -1＝前の幕の末尾へ、+1＝次の幕の先頭へ移す。 */
   onMoveToNeighbor: (dir: -1 | 1) => void
   onOpenEpisode: (episodeId: string) => void
+  onCreateEpisode?: (title: string) => Promise<string | null>
   onRequestDelete: () => void
 }
 
@@ -966,6 +1031,7 @@ function BeatCard({
   onApply,
   onMoveToNeighbor,
   onOpenEpisode,
+  onCreateEpisode,
   onRequestDelete,
 }: BeatCardProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
@@ -1075,6 +1141,7 @@ function BeatCard({
           lines={lines}
           onApply={onApply}
           onOpenEpisode={onOpenEpisode}
+          onCreateEpisode={onCreateEpisode}
           onRequestDelete={onRequestDelete}
         />
       ) : null}
@@ -1089,6 +1156,7 @@ interface BeatEditorProps {
   lines: PlotLine[]
   onApply: (fn: (p: Plot) => Plot) => void
   onOpenEpisode: (episodeId: string) => void
+  onCreateEpisode?: (title: string) => Promise<string | null>
   onRequestDelete: () => void
 }
 
@@ -1100,6 +1168,7 @@ function BeatEditor({
   lines,
   onApply,
   onOpenEpisode,
+  onCreateEpisode,
   onRequestDelete,
 }: BeatEditorProps) {
   const patch = (p: Partial<Omit<PlotBeat, 'id'>>) => onApply((pl) => updateBeat(pl, beat.id, p))
@@ -1190,6 +1259,20 @@ function BeatEditor({
                 >
                   開く
                   <ArrowRight className="size-3.5" />
+                </button>
+              ) : onCreateEpisode ? (
+                <button
+                  type="button"
+                  title="このビートのタイトルで話を新規作成して紐付ける"
+                  onClick={() =>
+                    void onCreateEpisode(beat.title || '無題のビート').then((episodeId) => {
+                      if (episodeId) patch({ episodeRef: episodeId })
+                    })
+                  }
+                  className="flex shrink-0 items-center gap-1 whitespace-nowrap rounded-md px-2 py-1 text-[12px] text-primary transition-colors hover:bg-surface-container-high"
+                >
+                  <Plus className="size-3.5" />
+                  話を作る
                 </button>
               ) : null}
             </div>
@@ -1499,10 +1582,79 @@ function IdeaPickerPanel({
   )
 }
 
-/** ネタ帳メモの先頭行をビートのタイトルにする（長すぎる場合は詰める）。 */
-function ideaTitleOf(note: IdeaNote): string {
-  const first = note.text.split('\n', 1)[0]?.trim() ?? ''
+/** テキストをビートのタイトル向けに詰める（先頭行・24字まで）。 */
+function clipTitle(text: string): string {
+  const first = text.split('\n', 1)[0]?.trim() ?? ''
   return first.length > 24 ? `${first.slice(0, 24)}…` : first || '無題のビート'
+}
+
+/** ネタ帳メモの先頭行をビートのタイトルにする。 */
+function ideaTitleOf(note: IdeaNote): string {
+  return clipTitle(note.text)
+}
+
+/** マインドマップのノード一覧から 1 件選んでビートの種にする（発想→設計の一方向変換）。 */
+function MindmapPickerPanel({
+  structureRepo,
+  workId,
+  onPick,
+  onClose,
+}: {
+  structureRepo: StructureRepository
+  workId: string
+  onPick: (node: StructureNode) => void
+  onClose: () => void
+}) {
+  const [nodes, setNodes] = useState<StructureNode[] | null>(null)
+  useEffect(() => {
+    let alive = true
+    void structureRepo.listByWork(workId).then((list) => {
+      if (!alive) return
+      const mindmap = pickPrimaryStructure(list, 'mindmap')
+      setNodes(mindmap ? mindmap.nodes.filter((n) => n.label.trim() !== '') : [])
+    })
+    return () => {
+      alive = false
+    }
+  }, [structureRepo, workId])
+  return (
+    <div className="mt-2 rounded-lg border border-outline-variant/30 bg-surface-container-low p-2">
+      <div className="flex items-center justify-between px-1 pb-1.5">
+        <span className="text-[11px] text-on-surface-variant/70">
+          マインドマップから選ぶ（ノードは残ります）
+        </span>
+        <HoverButton label="閉じる" onClick={onClose}>
+          <X className="size-3.5" />
+        </HoverButton>
+      </div>
+      {nodes === null ? (
+        <p className="px-1 py-2 text-[12px] text-on-surface-variant/60">読み込み中…</p>
+      ) : nodes.length === 0 ? (
+        <p className="px-1 py-2 text-[12px] text-on-surface-variant/60">
+          マインドマップにノードがありません。発想はマインドマップへどうぞ。
+        </p>
+      ) : (
+        <ul className="max-h-48 overflow-y-auto">
+          {nodes.map((node) => (
+            <li key={node.id}>
+              <button
+                type="button"
+                onClick={() => onPick(node)}
+                className="w-full rounded-md px-2 py-1.5 text-left text-[12.5px] text-on-surface leading-relaxed transition-colors hover:bg-surface-container-high"
+              >
+                <span className="block truncate">{node.label}</span>
+                {node.note?.trim() ? (
+                  <span className="block truncate text-[11px] text-on-surface-variant/70">
+                    {node.note}
+                  </span>
+                ) : null}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  )
 }
 
 /** ホバーで現れる小さな操作ボタン（OutlineView の NoteButton と同じ作法）。 */
