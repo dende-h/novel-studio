@@ -1,5 +1,25 @@
 import { type FlatNote, MAX_NOTE_DEPTH, rebuildEpisodeNotes } from '../outline'
 import { parseEpisodeBody } from '../parser/parseNotation'
+import {
+  addBeat,
+  addLine,
+  addSection,
+  emptyPlot,
+  moveBeat,
+  type Plot,
+  type PlotBeat,
+  PlotBeatStatusSchema,
+  pickPrimaryPlot,
+  removeBeat,
+  removeForeshadow,
+  removeLine,
+  removeSection,
+  singletonPlotId,
+  updateBeat,
+  updateLine,
+  updateSection,
+  upsertForeshadow,
+} from '../plot'
 import type { Episode, GlossaryEntry, Work } from '../schema'
 import {
   emptyStructure,
@@ -248,4 +268,330 @@ export function upsertStructure(structures: Structure[], structure: Structure): 
   return structures.some((s) => s.id === structure.id)
     ? structures.map((s) => (s.id === structure.id ? structure : s))
     : [...structures, structure]
+}
+
+// ---- プロット（幕×ビート）の編集 ----------------------------------------------------
+// MCP は「作品の主プロット」だけを対象にする（複数プロットの切替は UI 専用）。
+// 全ツールがビート/項目単位＝丸ごと置換をさせない（長編で AI の一手ミスが全損になるため）。
+
+/** 対象作品の主プロット。無ければ McpEditError（set_plot_meta が作成の入口）。 */
+function requirePlot(plots: Plot[], workId: string): Plot {
+  const mine = plots.filter((p) => p.workId === workId)
+  const primary = pickPrimaryPlot(mine)
+  if (!primary) {
+    throw new McpEditError(
+      `work_id "${workId}" のプロットがまだありません。先に set_plot_meta で作成してください`,
+    )
+  }
+  return primary
+}
+
+/** id 一致で置換（無ければ追加）し、updatedAt を刻む。 */
+function putPlot(plots: Plot[], next: Plot, now: number): Plot[] {
+  const stamped = { ...next, updatedAt: now }
+  return plots.some((p) => p.id === stamped.id)
+    ? plots.map((p) => (p.id === stamped.id ? stamped : p))
+    : [...plots, stamped]
+}
+
+/**
+ * プロットのメタ（タイトル・ログライン・テーマ）を更新する。渡した項目だけ書き換える。
+ * プロットが無い作品では空のプロットを作成して適用する（幕は upsert_plot_section で作る）。
+ */
+export function setPlotMeta(
+  plots: Plot[],
+  works: Work[],
+  workId: string,
+  patch: { title?: string; premise?: string; theme?: string },
+  now: number,
+): Plot[] {
+  if (!works.some((w) => w.id === workId)) {
+    throw new McpEditError(`work_id "${workId}" の作品が見つかりません`)
+  }
+  const mine = plots.filter((p) => p.workId === workId)
+  // 決定的 id＝どの端末・AI が作っても同じレコードへ収束（UI の singleton 方式と同じ）。
+  const base = pickPrimaryPlot(mine) ?? emptyPlot(singletonPlotId(workId), workId, now)
+  const next: Plot = {
+    ...base,
+    ...(emptyToUndef(patch.title) ? { title: patch.title as string } : {}),
+    ...(patch.premise !== undefined ? { premise: emptyToUndef(patch.premise) } : {}),
+    ...(patch.theme !== undefined ? { theme: emptyToUndef(patch.theme) } : {}),
+  }
+  return putPlot(plots, next, now)
+}
+
+/** 幕を追加/更新する（id 指定で更新、無ければ新規）。index で並び位置も動かせる。 */
+export function upsertPlotSection(
+  plots: Plot[],
+  workId: string,
+  input: { id?: string; title?: string; note?: string; index?: number },
+  newId: string,
+  now: number,
+): { plots: Plot[]; sectionId: string } {
+  const plot = requirePlot(plots, workId)
+  let next: Plot
+  let sectionId: string
+  if (input.id !== undefined) {
+    sectionId = input.id
+    if (!plot.sections.some((s) => s.id === sectionId)) {
+      throw new McpEditError(`section_id "${sectionId}" の幕が見つかりません`)
+    }
+    next = updateSection(plot, sectionId, {
+      ...(emptyToUndef(input.title) ? { title: input.title as string } : {}),
+      ...(input.note !== undefined ? { note: emptyToUndef(input.note) } : {}),
+    })
+    if (input.index !== undefined) {
+      const rest = next.sections.filter((s) => s.id !== sectionId)
+      const at = Math.max(0, Math.min(input.index, rest.length))
+      const moved = next.sections.find((s) => s.id === sectionId)
+      if (moved) next = { ...next, sections: [...rest.slice(0, at), moved, ...rest.slice(at)] }
+    }
+  } else {
+    const title = emptyToUndef(input.title)
+    if (!title) throw new McpEditError('新しい幕には title が必要です')
+    sectionId = newId
+    next = addSection(
+      plot,
+      {
+        id: sectionId,
+        title,
+        ...(emptyToUndef(input.note) ? { note: input.note } : {}),
+        beatIds: [],
+      },
+      input.index,
+    )
+  }
+  return { plots: putPlot(plots, next, now), sectionId }
+}
+
+/** upsert_plot_beat の入力（渡した項目だけ書き換える。空文字は「未設定へ戻す」）。 */
+export interface PlotBeatInput {
+  id?: string
+  sectionId?: string
+  index?: number
+  title?: string
+  summary?: string
+  note?: string
+  timeLabel?: string
+  povRef?: string
+  castRefs?: string[]
+  placeRefs?: string[]
+  lineRefs?: string[]
+  episodeRef?: string
+  status?: string
+  targetLength?: number
+}
+
+/** ビートを追加/更新する（id 指定で更新、無ければ新規）。作成/更新したビート id を返す。 */
+export function upsertPlotBeat(
+  plots: Plot[],
+  workId: string,
+  input: PlotBeatInput,
+  newId: string,
+  now: number,
+): { plots: Plot[]; beatId: string } {
+  const plot = requirePlot(plots, workId)
+
+  let status: PlotBeat['status'] | undefined
+  if (input.status !== undefined) {
+    const parsed = PlotBeatStatusSchema.safeParse(input.status)
+    if (!parsed.success) {
+      throw new McpEditError('status は idea / fixed / writing / done のいずれかです')
+    }
+    status = parsed.data
+  }
+  if (input.lineRefs) {
+    for (const lineId of input.lineRefs) {
+      if (!plot.lines.some((l) => l.id === lineId)) {
+        throw new McpEditError(`line_id "${lineId}" のプロットラインが見つかりません`)
+      }
+    }
+  }
+
+  const patch: Partial<Omit<PlotBeat, 'id'>> = {
+    ...(emptyToUndef(input.title) ? { title: input.title as string } : {}),
+    ...(input.summary !== undefined ? { summary: emptyToUndef(input.summary) } : {}),
+    ...(input.note !== undefined ? { note: emptyToUndef(input.note) } : {}),
+    ...(input.timeLabel !== undefined ? { timeLabel: emptyToUndef(input.timeLabel) } : {}),
+    ...(input.povRef !== undefined ? { povRef: emptyToUndef(input.povRef) } : {}),
+    ...(input.castRefs !== undefined ? { castRefs: input.castRefs } : {}),
+    ...(input.placeRefs !== undefined ? { placeRefs: input.placeRefs } : {}),
+    ...(input.lineRefs !== undefined ? { lineRefs: input.lineRefs } : {}),
+    ...(input.episodeRef !== undefined ? { episodeRef: emptyToUndef(input.episodeRef) } : {}),
+    ...(status !== undefined ? { status } : {}),
+    ...(input.targetLength !== undefined
+      ? { targetLength: input.targetLength > 0 ? input.targetLength : undefined }
+      : {}),
+  }
+
+  let next: Plot
+  let beatId: string
+  if (input.id !== undefined) {
+    beatId = input.id
+    if (!plot.beats.some((b) => b.id === beatId)) {
+      throw new McpEditError(`beat_id "${beatId}" のビートが見つかりません`)
+    }
+    next = updateBeat(plot, beatId, patch)
+    // 位置指定があれば移動（section_id 省略時は現在の幕内で並べ替え）。
+    if (input.sectionId !== undefined || input.index !== undefined) {
+      const current = next.sections.find((s) => s.beatIds.includes(beatId))
+      const toSection = input.sectionId ?? current?.id
+      if (!toSection || !next.sections.some((s) => s.id === toSection)) {
+        throw new McpEditError(`section_id "${input.sectionId ?? ''}" の幕が見つかりません`)
+      }
+      const target = next.sections.find((s) => s.id === toSection)
+      next = moveBeat(next, beatId, toSection, input.index ?? target?.beatIds.length ?? 0)
+    }
+  } else {
+    const title = emptyToUndef(input.title)
+    if (!title) throw new McpEditError('新しいビートには title が必要です')
+    // 幕が 1 つだけなら section_id を省略できる（テンプレ未使用の最短経路）。
+    const sectionId =
+      input.sectionId ?? (plot.sections.length === 1 ? plot.sections[0]?.id : undefined)
+    if (!sectionId || !plot.sections.some((s) => s.id === sectionId)) {
+      throw new McpEditError(
+        'section_id が必要です（get_plot の [section_id: …] を渡す。幕が無ければ upsert_plot_section で作成）',
+      )
+    }
+    beatId = newId
+    next = addBeat(
+      plot,
+      sectionId,
+      {
+        id: beatId,
+        title,
+        castRefs: input.castRefs ?? [],
+        placeRefs: input.placeRefs ?? [],
+        lineRefs: input.lineRefs ?? [],
+        status: status ?? 'idea',
+        ...(emptyToUndef(input.summary) ? { summary: input.summary } : {}),
+        ...(emptyToUndef(input.note) ? { note: input.note } : {}),
+        ...(emptyToUndef(input.timeLabel) ? { timeLabel: input.timeLabel } : {}),
+        ...(emptyToUndef(input.povRef) ? { povRef: input.povRef } : {}),
+        ...(emptyToUndef(input.episodeRef) ? { episodeRef: input.episodeRef } : {}),
+        ...(input.targetLength !== undefined && input.targetLength > 0
+          ? { targetLength: input.targetLength }
+          : {}),
+      },
+      input.index,
+    )
+  }
+  return { plots: putPlot(plots, next, now), beatId }
+}
+
+/** ビートを削除する。伏線の参照は残し「根なし」警告に落ちる（黙って辻褄を合わせない）。 */
+export function deletePlotBeat(plots: Plot[], workId: string, beatId: string, now: number): Plot[] {
+  const plot = requirePlot(plots, workId)
+  if (!plot.beats.some((b) => b.id === beatId)) {
+    throw new McpEditError(`beat_id "${beatId}" のビートが見つかりません`)
+  }
+  return putPlot(plots, removeBeat(plot, beatId), now)
+}
+
+/** プロットライン（サブプロット）を追加/更新する（id 指定で更新、無ければ新規）。 */
+export function upsertPlotLine(
+  plots: Plot[],
+  workId: string,
+  input: { id?: string; title?: string; note?: string },
+  newId: string,
+  now: number,
+): { plots: Plot[]; lineId: string } {
+  const plot = requirePlot(plots, workId)
+  let next: Plot
+  let lineId: string
+  if (input.id !== undefined) {
+    lineId = input.id
+    if (!plot.lines.some((l) => l.id === lineId)) {
+      throw new McpEditError(`line_id "${lineId}" のプロットラインが見つかりません`)
+    }
+    next = updateLine(plot, lineId, {
+      ...(emptyToUndef(input.title) ? { title: input.title as string } : {}),
+      ...(input.note !== undefined ? { note: emptyToUndef(input.note) } : {}),
+    })
+  } else {
+    const title = emptyToUndef(input.title)
+    if (!title) throw new McpEditError('新しいプロットラインには title が必要です')
+    lineId = newId
+    next = addLine(plot, {
+      id: lineId,
+      title,
+      ...(emptyToUndef(input.note) ? { note: input.note } : {}),
+    })
+  }
+  return { plots: putPlot(plots, next, now), lineId }
+}
+
+/**
+ * 伏線を追加/更新する（id 指定で更新、無ければ新規）。
+ * plant/payoff の beat_id は実在チェックする（空文字で解除）。
+ */
+export function upsertPlotForeshadow(
+  plots: Plot[],
+  workId: string,
+  input: {
+    id?: string
+    title?: string
+    note?: string
+    plantBeatId?: string
+    payoffBeatId?: string
+  },
+  newId: string,
+  now: number,
+): { plots: Plot[]; foreshadowId: string } {
+  const plot = requirePlot(plots, workId)
+  const checkBeat = (beatId: string | undefined, label: string) => {
+    if (beatId !== undefined && beatId !== '' && !plot.beats.some((b) => b.id === beatId)) {
+      throw new McpEditError(`${label} "${beatId}" のビートが見つかりません`)
+    }
+  }
+  checkBeat(input.plantBeatId, 'plant_beat_id')
+  checkBeat(input.payoffBeatId, 'payoff_beat_id')
+
+  const prev = input.id !== undefined ? plot.foreshadows.find((f) => f.id === input.id) : undefined
+  if (input.id !== undefined && !prev) {
+    throw new McpEditError(`foreshadow_id "${input.id}" の伏線が見つかりません`)
+  }
+  const title = emptyToUndef(input.title) ?? prev?.title
+  if (!title) throw new McpEditError('新しい伏線には title が必要です')
+  const foreshadowId = input.id ?? newId
+  const next = upsertForeshadow(plot, {
+    id: foreshadowId,
+    title,
+    note: input.note !== undefined ? emptyToUndef(input.note) : prev?.note,
+    plantBeatId:
+      input.plantBeatId !== undefined ? emptyToUndef(input.plantBeatId) : prev?.plantBeatId,
+    payoffBeatId:
+      input.payoffBeatId !== undefined ? emptyToUndef(input.payoffBeatId) : prev?.payoffBeatId,
+  })
+  return { plots: putPlot(plots, next, now), foreshadowId }
+}
+
+/** 幕・プロットライン・伏線を削除する（ビートは delete_plot_beat 専用＝誤爆防止）。 */
+export function deletePlotItem(
+  plots: Plot[],
+  workId: string,
+  kind: 'section' | 'line' | 'foreshadow',
+  itemId: string,
+  now: number,
+): Plot[] {
+  const plot = requirePlot(plots, workId)
+  if (kind === 'section') {
+    if (!plot.sections.some((s) => s.id === itemId)) {
+      throw new McpEditError(`section_id "${itemId}" の幕が見つかりません`)
+    }
+    if (plot.sections.length <= 1) {
+      throw new McpEditError('最後の幕は削除できません（ビートの行き場が無くなるため）')
+    }
+    return putPlot(plots, removeSection(plot, itemId), now)
+  }
+  if (kind === 'line') {
+    if (!plot.lines.some((l) => l.id === itemId)) {
+      throw new McpEditError(`line_id "${itemId}" のプロットラインが見つかりません`)
+    }
+    return putPlot(plots, removeLine(plot, itemId), now)
+  }
+  if (!plot.foreshadows.some((f) => f.id === itemId)) {
+    throw new McpEditError(`foreshadow_id "${itemId}" の伏線が見つかりません`)
+  }
+  return putPlot(plots, removeForeshadow(plot, itemId), now)
 }

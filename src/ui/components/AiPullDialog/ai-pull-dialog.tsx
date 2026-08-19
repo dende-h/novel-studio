@@ -50,8 +50,9 @@ export function AiPullDialog({
   const [info, setInfo] = useState<LiveMeta | null | undefined>(undefined)
   const [busy, setBusy] = useState(false)
   const [confirm, setConfirm] = useState(false)
-  // 取り込み前に現在の状態をクラウドへ退避するか（クラウドバックアップの復元と同じ任意の安全網）。
-  const [backupCurrent, setBackupCurrent] = useState(false)
+  // 取り込み前に現在の状態をクラウドへ退避するか。AI がプロット等を大量に書き換えられる
+  // ようになったため既定 ON（外すのを能動操作にする）。復元側の任意チェックと同じ安全網。
+  const [backupCurrent, setBackupCurrent] = useState(true)
 
   useEffect(() => {
     if (!open) return

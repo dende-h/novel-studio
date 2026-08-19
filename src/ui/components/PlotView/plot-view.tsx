@@ -24,27 +24,37 @@ import {
   X,
 } from 'lucide-react'
 import type { KeyboardEvent, ReactNode } from 'react'
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { IdeaNote } from '@/core/idea'
 import {
   addBeat,
+  addLine,
   addSection,
   beatsOfSection,
+  countOpenForeshadows,
+  type Foreshadow,
+  type ForeshadowStatus,
+  foreshadowStatus,
   moveBeat,
   nextBeatStatus,
   PLOT_TEMPLATES,
   type Plot,
   type PlotBeat,
   type PlotBeatStatus,
+  type PlotLine,
   type PlotSection,
   type PlotTemplate,
   pickPrimaryPlot,
   removeBeat,
+  removeForeshadow,
+  removeLine,
   removeSection,
   sectionTargetTotal,
   singletonPlotId,
   updateBeat,
+  updateLine,
   updateSection,
+  upsertForeshadow,
 } from '@/core/plot'
 import type { Episode, GlossaryEntry } from '@/core/schema'
 import type { IdeaRepository } from '@/core/storage/ideaRepository'
@@ -92,8 +102,11 @@ export default function PlotView({
 }: PlotViewProps) {
   const [plot, setPlot] = useState<Plot | null>(null)
   const [loaded, setLoaded] = useState(false)
+  const [view, setView] = useState<'sheet' | 'grid' | 'foreshadow'>('sheet')
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; title: string } | null>(null)
+  // グリッド・伏線ビューからビートシートの該当カードへ飛ぶための「着地予約」。
+  const [scrollToId, setScrollToId] = useState<string | null>(null)
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
@@ -150,6 +163,22 @@ export default function PlotView({
     [plot, apply],
   )
 
+  // ビュー切替後に該当カードへスクロール（グリッド・伏線からのジャンプの着地）。
+  useEffect(() => {
+    if (view !== 'sheet' || scrollToId === null) return
+    const id = scrollToId
+    setScrollToId(null)
+    requestAnimationFrame(() => {
+      document.getElementById(`plot-beat-${id}`)?.scrollIntoView({ block: 'center' })
+    })
+  }, [view, scrollToId])
+
+  const jumpToBeat = useCallback((beatId: string) => {
+    setView('sheet')
+    setExpandedId(beatId)
+    setScrollToId(beatId)
+  }, [])
+
   if (!loaded) return null
 
   if (!plot) {
@@ -165,6 +194,7 @@ export default function PlotView({
 
   const doneCount = plot.beats.filter((b) => b.status === 'done').length
   const totalTarget = plot.beats.reduce((sum, b) => sum + (b.targetLength ?? 0), 0)
+  const openForeshadows = countOpenForeshadows(plot)
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto px-6 py-6 md:px-9">
@@ -174,53 +204,85 @@ export default function PlotView({
           <p className="mt-1 text-[13px] text-on-surface-variant">
             {plot.beats.length}ビート ・ 済 {doneCount}件
             {totalTarget > 0 ? ` ・ 予定合計 ${fmt(totalTarget)}字` : ''}
-            <span className="ml-2 text-on-surface-variant/70">
-              カードをクリックで編集 ・ ドラッグで並べ替え ・ 状態はチップをクリックで切替
-            </span>
+            {view === 'sheet' ? (
+              <span className="ml-2 text-on-surface-variant/70">
+                カードをクリックで編集 ・ ドラッグで並べ替え ・ 状態はチップをクリックで切替
+              </span>
+            ) : null}
           </p>
-          <PremiseInput
-            value={plot.premise ?? ''}
-            onCommit={(v) => void apply((p) => ({ ...p, premise: emptyToUndef(v) }))}
-          />
+          <div className="mt-3 flex items-center gap-1.5">
+            <ViewTab active={view === 'sheet'} onClick={() => setView('sheet')}>
+              ビートシート
+            </ViewTab>
+            <ViewTab active={view === 'grid'} onClick={() => setView('grid')}>
+              グリッド
+            </ViewTab>
+            <ViewTab active={view === 'foreshadow'} onClick={() => setView('foreshadow')}>
+              伏線
+              {openForeshadows > 0 ? (
+                <span className="ml-1 inline-flex items-center rounded-full bg-secondary-container px-1.5 font-medium text-[10px] text-on-secondary-container tabular-nums">
+                  {openForeshadows}
+                </span>
+              ) : null}
+            </ViewTab>
+          </div>
+          {view === 'sheet' ? (
+            <PremiseInput
+              value={plot.premise ?? ''}
+              onCommit={(v) => void apply((p) => ({ ...p, premise: emptyToUndef(v) }))}
+            />
+          ) : null}
         </header>
 
-        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
-          <div className="flex flex-col gap-6">
-            {plot.sections.map((section, sectionIndex) => (
-              <SectionBlock
-                key={section.id}
-                plot={plot}
-                section={section}
-                isFirst={sectionIndex === 0}
-                isLast={sectionIndex === plot.sections.length - 1}
-                canRemove={plot.sections.length > 1}
-                glossary={glossary}
-                episodes={episodes}
-                ideaRepo={ideaRepo}
-                expandedId={expandedId}
-                onToggleExpand={(id) => setExpandedId((cur) => (cur === id ? null : id))}
-                onApply={(fn) => void apply(fn)}
-                onOpenEpisode={onOpenEpisode}
-                onRequestDeleteBeat={(beat) =>
-                  setDeleteTarget({ id: beat.id, title: beat.title || '無題のビート' })
-                }
-              />
-            ))}
-          </div>
-        </DndContext>
+        {view === 'grid' ? (
+          <GridView plot={plot} onApply={(fn) => void apply(fn)} onJumpBeat={jumpToBeat} />
+        ) : view === 'foreshadow' ? (
+          <ForeshadowView plot={plot} onApply={(fn) => void apply(fn)} onJumpBeat={jumpToBeat} />
+        ) : (
+          <>
+            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
+              <div className="flex flex-col gap-6">
+                {plot.sections.map((section, sectionIndex) => (
+                  <SectionBlock
+                    key={section.id}
+                    plot={plot}
+                    section={section}
+                    isFirst={sectionIndex === 0}
+                    isLast={sectionIndex === plot.sections.length - 1}
+                    canRemove={plot.sections.length > 1}
+                    glossary={glossary}
+                    episodes={episodes}
+                    ideaRepo={ideaRepo}
+                    expandedId={expandedId}
+                    onToggleExpand={(id) => setExpandedId((cur) => (cur === id ? null : id))}
+                    onApply={(fn) => void apply(fn)}
+                    onOpenEpisode={onOpenEpisode}
+                    onRequestDeleteBeat={(beat) =>
+                      setDeleteTarget({ id: beat.id, title: beat.title || '無題のビート' })
+                    }
+                  />
+                ))}
+              </div>
+            </DndContext>
 
-        <button
-          type="button"
-          onClick={() =>
-            void apply((p) =>
-              addSection(p, { id: genId(), title: `第${p.sections.length + 1}幕`, beatIds: [] }),
-            )
-          }
-          className="mt-6 flex items-center gap-1.5 rounded-md px-2 py-1.5 text-[13px] text-primary transition-colors hover:bg-surface-container-high"
-        >
-          <Plus className="size-4" />
-          幕を追加
-        </button>
+            <button
+              type="button"
+              onClick={() =>
+                void apply((p) =>
+                  addSection(p, {
+                    id: genId(),
+                    title: `第${p.sections.length + 1}幕`,
+                    beatIds: [],
+                  }),
+                )
+              }
+              className="mt-6 flex items-center gap-1.5 rounded-md px-2 py-1.5 text-[13px] text-primary transition-colors hover:bg-surface-container-high"
+            >
+              <Plus className="size-4" />
+              幕を追加
+            </button>
+          </>
+        )}
       </div>
 
       <ConfirmDialog
@@ -268,6 +330,379 @@ function PremiseInput({ value, onCommit }: { value: string; onCommit: (v: string
       aria-label="ログライン"
       className="mt-3 w-full rounded-md border border-outline-variant/30 bg-surface-container-lowest px-3 py-2 text-[13px] text-on-surface outline-none placeholder:text-on-surface-variant/45 focus:border-primary/50"
     />
+  )
+}
+
+/** ビュー切替タブ（ビートシート／グリッド／伏線）。 */
+function ViewTab({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean
+  onClick: () => void
+  children: ReactNode
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-current={active ? 'page' : undefined}
+      className={`inline-flex items-center rounded-full px-3 py-1 font-medium text-[12px] transition-colors ${
+        active
+          ? 'bg-primary text-primary-foreground'
+          : 'border border-outline-variant/40 bg-surface-container-lowest text-on-surface-variant hover:bg-surface-container-high'
+      }`}
+    >
+      {children}
+    </button>
+  )
+}
+
+/** グリッドのミニカードの状態ドット色（アプリの固有パレットを直接引く）。 */
+const STATUS_DOT: Record<PlotBeatStatus, string> = {
+  idea: 'bg-[var(--outline-variant)]',
+  fixed: 'bg-[var(--wheat-500)]',
+  writing: 'bg-[var(--forest-400)]',
+  done: 'bg-[var(--forest-700)]',
+}
+
+/**
+ * グリッド：行＝プロットライン×列＝幕。空セルの点線が
+ * 「このサブプロットはこの幕で動いていない」を一目にする。
+ */
+function GridView({
+  plot,
+  onApply,
+  onJumpBeat,
+}: {
+  plot: Plot
+  onApply: (fn: (p: Plot) => Plot) => void
+  onJumpBeat: (beatId: string) => void
+}) {
+  const [addInput, setAddInput] = useState('')
+  const beatsIn = (sectionId: string, lineId: string | null) =>
+    beatsOfSection(plot, sectionId).filter((b) =>
+      lineId === null ? b.lineRefs.length === 0 : b.lineRefs.includes(lineId),
+    )
+  const hasUnassigned = plot.beats.some((b) => b.lineRefs.length === 0)
+
+  const submitAdd = () => {
+    const title = addInput.trim()
+    if (title === '') return
+    onApply((p) => addLine(p, { id: genId(), title }))
+    setAddInput('')
+  }
+
+  const cell = (lineId: string | null, sectionId: string) => {
+    const beats = beatsIn(sectionId, lineId)
+    if (beats.length === 0) {
+      return (
+        <div className="grid min-h-12 place-items-center rounded-md border border-outline-variant/40 border-dashed text-[10px] text-on-surface-variant/40">
+          {lineId === null ? '' : '空'}
+        </div>
+      )
+    }
+    return (
+      <div className="flex flex-col gap-1">
+        {beats.map((b) => (
+          <button
+            key={b.id}
+            type="button"
+            onClick={() => onJumpBeat(b.id)}
+            title="ビートシートで開く"
+            className="flex w-full items-center gap-1.5 rounded-md border border-outline-variant/30 bg-surface-container-lowest px-2 py-1 text-left transition-colors hover:border-primary/40"
+          >
+            <span className={`size-1.5 shrink-0 rounded-full ${STATUS_DOT[b.status]}`} />
+            <span className="min-w-0 flex-1 truncate text-[11.5px] text-on-surface">
+              {b.title || '無題のビート'}
+            </span>
+          </button>
+        ))}
+      </div>
+    )
+  }
+
+  return (
+    <div>
+      {plot.lines.length === 0 ? (
+        <p className="mb-4 rounded-lg bg-surface-container-low px-4 py-3 text-[12.5px] text-on-surface-variant leading-relaxed">
+          プロットライン（メイン・サブプロット・キャラアークなどの筋）を作ると、幕ごとの動きを表で俯瞰できます。
+          ラインへの割り当てはビートの詳細編集から。
+        </p>
+      ) : (
+        <div className="overflow-x-auto pb-2">
+          <div
+            className="grid min-w-fit items-start gap-1.5"
+            style={{
+              gridTemplateColumns: `minmax(7rem, 9rem) repeat(${plot.sections.length}, minmax(10rem, 1fr))`,
+            }}
+          >
+            <div />
+            {plot.sections.map((s) => (
+              <div key={s.id} className="px-1 pb-1">
+                <span className="font-medium font-serif text-[13px] text-on-surface">
+                  {s.title}
+                </span>
+                <span className="ml-1.5 text-[10.5px] text-on-surface-variant tabular-nums">
+                  {s.beatIds.length}
+                </span>
+              </div>
+            ))}
+            {plot.lines.map((line) => (
+              <Fragment key={line.id}>
+                <div className="group flex items-center gap-1 pr-1">
+                  <span className="size-1.5 shrink-0 rounded-full bg-[var(--forest-400)]" />
+                  <CommitInput
+                    value={line.title}
+                    onCommit={(v) => {
+                      const t = v.trim()
+                      if (t !== '') onApply((p) => updateLine(p, line.id, { title: t }))
+                    }}
+                    ariaLabel="プロットラインの名前"
+                  />
+                  <span className="opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
+                    <HoverButton
+                      label="ラインを削除（ビートは残ります）"
+                      onClick={() => onApply((p) => removeLine(p, line.id))}
+                    >
+                      <X className="size-3.5" />
+                    </HoverButton>
+                  </span>
+                </div>
+                {plot.sections.map((s) => (
+                  <div key={s.id}>{cell(line.id, s.id)}</div>
+                ))}
+              </Fragment>
+            ))}
+            {hasUnassigned ? (
+              <Fragment>
+                <div className="pr-1 text-[11.5px] text-on-surface-variant/70">ライン未設定</div>
+                {plot.sections.map((s) => (
+                  <div key={s.id}>{cell(null, s.id)}</div>
+                ))}
+              </Fragment>
+            ) : null}
+          </div>
+        </div>
+      )}
+      <div className="mt-3 flex items-center gap-1.5 pl-1">
+        <Plus className="size-3.5 shrink-0 text-on-surface-variant/50" />
+        <input
+          value={addInput}
+          onChange={(e) => setAddInput(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault()
+              submitAdd()
+            } else if (e.key === 'Escape') {
+              setAddInput('')
+            }
+          }}
+          onBlur={submitAdd}
+          placeholder="プロットラインを追加（例：メイン、ユキの正体）"
+          aria-label="プロットラインを追加"
+          className="w-full max-w-sm bg-transparent font-sans text-[13px] text-on-surface outline-none placeholder:text-on-surface-variant/45"
+        />
+      </div>
+    </div>
+  )
+}
+
+const FORESHADOW_UI: Record<ForeshadowStatus, { label: string; className: string }> = {
+  resolved: { label: '回収済', className: 'bg-primary/12 text-primary' },
+  planted: { label: '未回収', className: 'bg-secondary-container text-on-secondary-container' },
+  orphan: { label: '根なし', className: 'bg-error-container text-error' },
+  unplaced: { label: '未配置', className: 'bg-surface-container-high text-on-surface-variant' },
+}
+
+/** 伏線：張る／回収の対応表。回収漏れ（未回収・根なし）の点検が役目。 */
+function ForeshadowView({
+  plot,
+  onApply,
+  onJumpBeat,
+}: {
+  plot: Plot
+  onApply: (fn: (p: Plot) => Plot) => void
+  onJumpBeat: (beatId: string) => void
+}) {
+  const [addInput, setAddInput] = useState('')
+  // 物語順（幕→幕内の並び）のビート一覧。選択肢と表示の両方で使う。
+  const orderedBeats = plot.sections.flatMap((s) => beatsOfSection(plot, s.id))
+  const beatOptions = [
+    { value: '', label: '（未定）' },
+    ...orderedBeats.map((b) => ({ value: b.id, label: b.title || '無題のビート' })),
+  ]
+
+  const submitAdd = () => {
+    const title = addInput.trim()
+    if (title === '') return
+    onApply((p) => upsertForeshadow(p, { id: genId(), title }))
+    setAddInput('')
+  }
+
+  const beatCell = (f: Foreshadow, key: 'plantBeatId' | 'payoffBeatId') => {
+    const beatId = f[key]
+    // 削除済みビートへの参照は選択肢に無い＝select が（未定）表示に落ちるので、明示的に外す。
+    const exists = beatId !== undefined && plot.beats.some((b) => b.id === beatId)
+    return (
+      <div className="flex items-center gap-1">
+        <SelectBox
+          value={exists ? (beatId ?? '') : ''}
+          onChange={(v) =>
+            onApply((p) => upsertForeshadow(p, { ...f, [key]: v === '' ? undefined : v }))
+          }
+          ariaLabel={key === 'plantBeatId' ? '張るビート' : '回収するビート'}
+          options={beatOptions}
+        />
+        {exists && beatId ? (
+          <HoverButton label="ビートシートで開く" onClick={() => onJumpBeat(beatId)}>
+            <ArrowRight className="size-3.5" />
+          </HoverButton>
+        ) : null}
+      </div>
+    )
+  }
+
+  return (
+    <div>
+      {plot.foreshadows.length === 0 ? (
+        <p className="mb-4 rounded-lg bg-surface-container-low px-4 py-3 text-[12.5px] text-on-surface-variant leading-relaxed">
+          伏線を登録して「張るビート」と「回収するビート」を結ぶと、回収漏れがここで一目で分かります。
+        </p>
+      ) : (
+        <div className="overflow-x-auto rounded-lg border border-outline-variant/30">
+          <table className="w-full min-w-[36rem] border-collapse bg-surface-container-lowest text-[13px]">
+            <thead>
+              <tr className="bg-surface-container-low text-left text-[11.5px] text-on-surface-variant">
+                <th className="px-3 py-2 font-medium">状態</th>
+                <th className="px-3 py-2 font-medium">伏線</th>
+                <th className="px-3 py-2 font-medium">張るビート</th>
+                <th className="px-3 py-2 font-medium">回収するビート</th>
+                <th className="px-2 py-2" />
+              </tr>
+            </thead>
+            <tbody>
+              {plot.foreshadows.map((f) => {
+                const ui = FORESHADOW_UI[foreshadowStatus(f, plot)]
+                return (
+                  <tr key={f.id} className="group border-outline-variant/20 border-t align-middle">
+                    <td className="px-3 py-2">
+                      <span
+                        className={`inline-flex shrink-0 items-center rounded-full px-2 py-0.5 font-medium text-[11px] ${ui.className}`}
+                      >
+                        {ui.label}
+                      </span>
+                    </td>
+                    <td className="min-w-[10rem] px-3 py-2">
+                      <CommitInput
+                        value={f.title}
+                        onCommit={(v) => {
+                          const t = v.trim()
+                          if (t !== '') onApply((p) => upsertForeshadow(p, { ...f, title: t }))
+                        }}
+                        ariaLabel="伏線の名前"
+                      />
+                    </td>
+                    <td className="px-3 py-2">{beatCell(f, 'plantBeatId')}</td>
+                    <td className="px-3 py-2">{beatCell(f, 'payoffBeatId')}</td>
+                    <td className="px-2 py-2">
+                      <span className="opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
+                        <HoverButton
+                          label="この伏線を削除"
+                          onClick={() => onApply((p) => removeForeshadow(p, f.id))}
+                        >
+                          <X className="size-3.5" />
+                        </HoverButton>
+                      </span>
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+      <div className="mt-3 flex items-center gap-1.5 pl-1">
+        <Plus className="size-3.5 shrink-0 text-on-surface-variant/50" />
+        <input
+          value={addInput}
+          onChange={(e) => setAddInput(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault()
+              submitAdd()
+            } else if (e.key === 'Escape') {
+              setAddInput('')
+            }
+          }}
+          onBlur={submitAdd}
+          placeholder="伏線を追加（例：手紙の署名）"
+          aria-label="伏線を追加"
+          className="w-full max-w-sm bg-transparent font-sans text-[13px] text-on-surface outline-none placeholder:text-on-surface-variant/45"
+        />
+      </div>
+    </div>
+  )
+}
+
+/** プロットラインの複数選択（ビート詳細用）。チップ＋追加セレクト。 */
+function LineChips({
+  lines,
+  ids,
+  onChange,
+}: {
+  lines: PlotLine[]
+  ids: string[]
+  onChange: (ids: string[]) => void
+}) {
+  const byId = useMemo(() => new Map(lines.map((l) => [l.id, l])), [lines])
+  const remaining = lines.filter((l) => !ids.includes(l.id))
+  return (
+    <div className="flex flex-col gap-1">
+      <span className="font-medium text-[11px] text-on-surface-variant/70 tracking-wide">
+        プロットライン
+      </span>
+      <div className="flex flex-wrap items-center gap-1.5">
+        {ids.map((id) => {
+          const line = byId.get(id)
+          return (
+            <span
+              key={id}
+              title={line?.note}
+              className="inline-flex items-center gap-1 rounded-full bg-surface-container-high px-2 py-0.5 text-[11px] text-on-surface"
+            >
+              {line?.title ?? '（削除済み）'}
+              <button
+                type="button"
+                aria-label={`${line?.title ?? 'このライン'}を外す`}
+                onClick={() => onChange(ids.filter((x) => x !== id))}
+                className="text-on-surface-variant/60 hover:text-on-surface"
+              >
+                <X className="size-3" />
+              </button>
+            </span>
+          )
+        })}
+        {remaining.length > 0 ? (
+          <select
+            value=""
+            onChange={(e) => {
+              if (e.target.value !== '') onChange([...ids, e.target.value])
+            }}
+            aria-label="プロットラインを追加"
+            className="rounded-md border border-outline-variant/30 bg-surface px-1.5 py-0.5 text-[11px] text-on-surface-variant outline-none focus:border-primary/50"
+          >
+            <option value="">＋ 追加</option>
+            {remaining.map((l) => (
+              <option key={l.id} value={l.id}>
+                {l.title}
+              </option>
+            ))}
+          </select>
+        ) : null}
+      </div>
+    </div>
   )
 }
 
@@ -438,6 +873,7 @@ function SectionBlock({
               canMoveDown={!isLast}
               glossary={glossary}
               episodes={episodes}
+              lines={plot.lines}
               onToggleExpand={() => onToggleExpand(beat.id)}
               onApply={onApply}
               onMoveToNeighbor={(dir) => {
@@ -509,6 +945,7 @@ interface BeatCardProps {
   canMoveDown: boolean
   glossary: GlossaryEntry[]
   episodes: Episode[]
+  lines: PlotLine[]
   onToggleExpand: () => void
   onApply: (fn: (p: Plot) => Plot) => void
   /** -1＝前の幕の末尾へ、+1＝次の幕の先頭へ移す。 */
@@ -524,6 +961,7 @@ function BeatCard({
   canMoveDown,
   glossary,
   episodes,
+  lines,
   onToggleExpand,
   onApply,
   onMoveToNeighbor,
@@ -540,6 +978,7 @@ function BeatCard({
 
   return (
     <li
+      id={`plot-beat-${beat.id}`}
       ref={setNodeRef}
       style={{ transform: CSS.Transform.toString(transform), transition }}
       className={`group rounded-lg border bg-surface-container-lowest ${
@@ -633,6 +1072,7 @@ function BeatCard({
           beat={beat}
           glossary={glossary}
           episodes={episodes}
+          lines={lines}
           onApply={onApply}
           onOpenEpisode={onOpenEpisode}
           onRequestDelete={onRequestDelete}
@@ -646,6 +1086,7 @@ interface BeatEditorProps {
   beat: PlotBeat
   glossary: GlossaryEntry[]
   episodes: Episode[]
+  lines: PlotLine[]
   onApply: (fn: (p: Plot) => Plot) => void
   onOpenEpisode: (episodeId: string) => void
   onRequestDelete: () => void
@@ -656,6 +1097,7 @@ function BeatEditor({
   beat,
   glossary,
   episodes,
+  lines,
   onApply,
   onOpenEpisode,
   onRequestDelete,
@@ -768,6 +1210,13 @@ function BeatEditor({
               onChange={(ids) => patch({ placeRefs: ids })}
             />
           </div>
+        ) : null}
+        {lines.length > 0 ? (
+          <LineChips
+            lines={lines}
+            ids={beat.lineRefs}
+            onChange={(ids) => patch({ lineRefs: ids })}
+          />
         ) : null}
         <div className="flex items-center justify-between pt-1">
           {beat.ideaRef ? (
