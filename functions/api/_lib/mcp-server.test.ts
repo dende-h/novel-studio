@@ -94,7 +94,7 @@ describe('handleMcpMessage — プロトコル', () => {
     ).toBeNull()
   })
 
-  it('tools/list は 15 ツール（読み4・書き8・バックアップ3）', async () => {
+  it('tools/list は 24 ツール（読み5・書き16・バックアップ3）', async () => {
     const res = (await handleMcpMessage(
       { jsonrpc: '2.0', id: 1, method: 'tools/list' },
       deps(),
@@ -102,7 +102,12 @@ describe('handleMcpMessage — プロトコル', () => {
       result: { tools: { name: string }[] }
     }
     const names = res.result.tools.map((t) => t.name)
-    expect(MCP_TOOLS).toHaveLength(15)
+    expect(MCP_TOOLS).toHaveLength(24)
+    expect(names).toContain('upsert_secret')
+    expect(names).toContain('get_plot')
+    expect(names).toContain('upsert_plot_beat')
+    expect(names).toContain('upsert_foreshadow')
+    expect(names).toContain('delete_plot_item')
     expect(names).toContain('set_episode')
     expect(names).toContain('create_work')
     expect(names).toContain('set_outline')
@@ -302,5 +307,215 @@ describe('handleMcpMessage — バックアップ', () => {
     expect(isError(await handleMcpMessage(call('restore_backup', { backup_id: 'x' }), d))).toBe(
       true,
     )
+  })
+})
+
+describe('プロットツール（get_plot / set_plot_meta / upsert_* / delete_*）', () => {
+  it('get_plot はプロットが無ければ作成方法の案内文を返す', async () => {
+    const res = await handleMcpMessage(call('get_plot', { work_id: 'w1' }), deps([work()]))
+    expect(isError(res)).toBe(false)
+    expect(contentText(res)).toContain('set_plot_meta')
+  })
+
+  it('set_plot_meta →幕→ビート→ライン→伏線の一連の書き込みが get_plot に反映される', async () => {
+    const env = makeDeps(snapshot([work()]))
+    const d = env.deps
+    // 作成（決定的 id へ収束）
+    let res = await handleMcpMessage(
+      call('set_plot_meta', { work_id: 'w1', premise: '届くはずのない手紙の話' }),
+      d,
+    )
+    expect(isError(res)).toBe(false)
+    expect(env.get()?.plots?.[0]?.id).toBe('w1:plot')
+    // 幕
+    res = await handleMcpMessage(call('upsert_plot_section', { work_id: 'w1', title: '第一幕' }), d)
+    const sectionId = /section_id: (\S+)/.exec(contentText(res))?.[1] ?? ''
+    expect(sectionId).not.toBe('')
+    // ビート（幕が1つだけなので section_id 省略可）
+    res = await handleMcpMessage(
+      call('upsert_plot_beat', {
+        work_id: 'w1',
+        title: '手紙が届く',
+        summary: '十年ぶりの手紙。差出人は故人。',
+        pov: 'g1',
+        status: 'fixed',
+        target_length: 8000,
+        episode_id: 'e1',
+      }),
+      d,
+    )
+    expect(isError(res)).toBe(false)
+    const beatId = /beat_id: (\S+)/.exec(contentText(res))?.[1] ?? ''
+    // ライン → ビートへ割り当て（渡した項目だけ書き換え）
+    res = await handleMcpMessage(call('upsert_plot_line', { work_id: 'w1', title: 'メイン' }), d)
+    const lineId = /line_id: (\S+)/.exec(contentText(res))?.[1] ?? ''
+    res = await handleMcpMessage(
+      call('upsert_plot_beat', { work_id: 'w1', id: beatId, line_ids: [lineId] }),
+      d,
+    )
+    expect(isError(res)).toBe(false)
+    // 伏線（張るだけ＝未回収）
+    res = await handleMcpMessage(
+      call('upsert_foreshadow', { work_id: 'w1', title: '手紙の署名', plant_beat_id: beatId }),
+      d,
+    )
+    expect(isError(res)).toBe(false)
+
+    const text = contentText(await handleMcpMessage(call('get_plot', { work_id: 'w1' }), d))
+    expect(text).toContain('ログライン: 届くはずのない手紙の話')
+    expect(text).toContain(`[section_id: ${sectionId}]`)
+    expect(text).toContain('[確定] 手紙が届く')
+    expect(text).toContain('視点: アカリ') // 図鑑名へ解決
+    expect(text).toContain('ライン: メイン')
+    expect(text).toContain('対応話: 第一話')
+    expect(text).toContain('[未回収] 手紙の署名')
+  })
+
+  it('不正な指定はドメインエラー（isError）で返し、以降の操作を壊さない', async () => {
+    const env = makeDeps(snapshot([work()]))
+    const d = env.deps
+    // プロット未作成でビート追加 → set_plot_meta への誘導
+    let res = await handleMcpMessage(call('upsert_plot_beat', { work_id: 'w1', title: 'x' }), d)
+    expect(isError(res)).toBe(true)
+    expect(contentText(res)).toContain('set_plot_meta')
+    await handleMcpMessage(call('set_plot_meta', { work_id: 'w1', title: '本編プロット' }), d)
+    // 幕なしでのビート追加は幕作成へ誘導
+    res = await handleMcpMessage(call('upsert_plot_beat', { work_id: 'w1', title: 'x' }), d)
+    expect(isError(res)).toBe(true)
+    await handleMcpMessage(call('upsert_plot_section', { work_id: 'w1', title: '第一幕' }), d)
+    // 不正 status
+    res = await handleMcpMessage(
+      call('upsert_plot_beat', { work_id: 'w1', title: 'x', status: 'invalid' }),
+      d,
+    )
+    expect(isError(res)).toBe(true)
+    // 存在しないビートの削除
+    res = await handleMcpMessage(call('delete_plot_beat', { work_id: 'w1', beat_id: 'nope' }), d)
+    expect(isError(res)).toBe(true)
+    // 最後の1幕は削除不可
+    const sectionId = env.get()?.plots?.[0]?.sections[0]?.id ?? ''
+    res = await handleMcpMessage(
+      call('delete_plot_item', { work_id: 'w1', kind: 'section', item_id: sectionId }),
+      d,
+    )
+    expect(isError(res)).toBe(true)
+    // kind 不正
+    res = await handleMcpMessage(
+      call('delete_plot_item', { work_id: 'w1', kind: 'beat', item_id: 'x' }),
+      d,
+    )
+    expect(isError(res)).toBe(true)
+  })
+
+  it('delete_plot_item は幕のビートを隣の幕へ逃がす', async () => {
+    const env = makeDeps(snapshot([work()]))
+    const d = env.deps
+    await handleMcpMessage(call('set_plot_meta', { work_id: 'w1', title: '本編' }), d)
+    const sec = async (title: string) =>
+      /section_id: (\S+)/.exec(
+        contentText(
+          await handleMcpMessage(call('upsert_plot_section', { work_id: 'w1', title }), d),
+        ),
+      )?.[1] ?? ''
+    const s1 = await sec('第一幕')
+    const s2 = await sec('第二幕')
+    const res = await handleMcpMessage(
+      call('upsert_plot_beat', { work_id: 'w1', section_id: s2, title: '逃がすビート' }),
+      d,
+    )
+    const beatId = /beat_id: (\S+)/.exec(contentText(res))?.[1] ?? ''
+    await handleMcpMessage(
+      call('delete_plot_item', { work_id: 'w1', kind: 'section', item_id: s2 }),
+      d,
+    )
+    const plot = env.get()?.plots?.[0]
+    expect(plot?.sections.map((s) => s.id)).toEqual([s1])
+    expect(plot?.sections[0]?.beatIds).toContain(beatId)
+    expect(plot?.beats.some((b) => b.id === beatId)).toBe(true)
+  })
+})
+
+describe('秘密ツール（upsert_secret / delete_plot_item kind:secret）', () => {
+  /** 幕1つ＋ビート1つのプロットを作り、その beat_id を返す。 */
+  const seedPlot = async (d: McpDeps) => {
+    await handleMcpMessage(call('set_plot_meta', { work_id: 'w1', title: '本編' }), d)
+    await handleMcpMessage(call('upsert_plot_section', { work_id: 'w1', title: '第一幕' }), d)
+    const res = await handleMcpMessage(
+      call('upsert_plot_beat', { work_id: 'w1', title: '正体が明かされる' }),
+      d,
+    )
+    return /beat_id: (\S+)/.exec(contentText(res))?.[1] ?? ''
+  }
+
+  it('秘密は開示ビート未設定だと [開示未定]、設定すると [開示予定] で get_plot に出る', async () => {
+    const { deps: d } = makeDeps(snapshot([work()]))
+    const beatId = await seedPlot(d)
+    let res = await handleMcpMessage(
+      call('upsert_secret', { work_id: 'w1', title: 'ユキの正体', truth: '三年前に死んだ妹' }),
+      d,
+    )
+    expect(isError(res)).toBe(false)
+    const secretId = /secret_id: (\S+)/.exec(contentText(res))?.[1] ?? ''
+    let text = contentText(await handleMcpMessage(call('get_plot', { work_id: 'w1' }), d))
+    expect(text).toContain('[開示未定] ユキの正体')
+    expect(text).toContain('真相: 三年前に死んだ妹')
+
+    res = await handleMcpMessage(
+      call('upsert_secret', { work_id: 'w1', id: secretId, reveal_beat_id: beatId }),
+      d,
+    )
+    expect(isError(res)).toBe(false)
+    text = contentText(await handleMcpMessage(call('get_plot', { work_id: 'w1' }), d))
+    expect(text).toContain('[開示予定] ユキの正体')
+    expect(text).toContain('読者に明かす: 正体が明かされる')
+  })
+
+  it('keep_hidden で点検対象から外れ、開示ビートを決めると印は下りる', async () => {
+    const env = makeDeps(snapshot([work()]))
+    const d = env.deps
+    const beatId = await seedPlot(d)
+    const res = await handleMcpMessage(
+      call('upsert_secret', { work_id: 'w1', title: '語り手の正体', keep_hidden: true }),
+      d,
+    )
+    const secretId = /secret_id: (\S+)/.exec(contentText(res))?.[1] ?? ''
+    expect(contentText(await handleMcpMessage(call('get_plot', { work_id: 'w1' }), d))).toContain(
+      '[明かさない] 語り手の正体',
+    )
+    await handleMcpMessage(
+      call('upsert_secret', { work_id: 'w1', id: secretId, reveal_beat_id: beatId }),
+      d,
+    )
+    expect(env.get()?.plots?.[0]?.secrets[0]?.keepHidden).toBeUndefined()
+  })
+
+  it('不正な指定は isError（存在しない開示ビート・存在しない secret_id・title なし）', async () => {
+    const { deps: d } = makeDeps(snapshot([work()]))
+    await seedPlot(d)
+    expect(
+      isError(
+        await handleMcpMessage(
+          call('upsert_secret', { work_id: 'w1', title: 'x', reveal_beat_id: 'nope' }),
+          d,
+        ),
+      ),
+    ).toBe(true)
+    expect(
+      isError(await handleMcpMessage(call('upsert_secret', { work_id: 'w1', id: 'nope' }), d)),
+    ).toBe(true)
+    expect(isError(await handleMcpMessage(call('upsert_secret', { work_id: 'w1' }), d))).toBe(true)
+  })
+
+  it('delete_plot_item kind:secret で削除できる', async () => {
+    const env = makeDeps(snapshot([work()]))
+    const d = env.deps
+    await seedPlot(d)
+    const res = await handleMcpMessage(call('upsert_secret', { work_id: 'w1', title: '秘密' }), d)
+    const secretId = /secret_id: (\S+)/.exec(contentText(res))?.[1] ?? ''
+    await handleMcpMessage(
+      call('delete_plot_item', { work_id: 'w1', kind: 'secret', item_id: secretId }),
+      d,
+    )
+    expect(env.get()?.plots?.[0]?.secrets).toHaveLength(0)
   })
 })

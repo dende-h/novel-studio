@@ -69,6 +69,7 @@ describe('ImportDialog（バックアップ取り込み）', () => {
         activity: [],
         ideas: [],
         structures: [],
+        plots: [],
       },
       Date.parse('2026-07-19T00:00:00Z'),
     )

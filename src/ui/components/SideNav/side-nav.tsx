@@ -6,6 +6,7 @@ import {
   FileText,
   Library,
   ListTree,
+  Milestone,
   Network,
   Pencil,
   PenLine,
@@ -32,6 +33,7 @@ export type NavKey =
   | 'ideas'
   | 'episodes'
   | 'glossary'
+  | 'plot'
   | 'outline'
   | 'mindmap'
   | 'chart'
@@ -79,6 +81,8 @@ interface SideNavProps {
   onNavigateEpisodes?: () => void
   /** 図鑑画面へ切替（作品オープン時のみ） */
   onNavigateGlossary?: () => void
+  /** プロット（幕×ビートの物語設計）へ切替（作品オープン＋cloud会員時のみ） */
+  onNavigatePlot?: () => void
   /** アウトラインへ切替（作品オープン＋cloud会員時のみ） */
   onNavigateOutline?: () => void
   /** マインドマップへ切替（作品オープン＋cloud会員時のみ） */
@@ -136,6 +140,7 @@ export function SideNav({
   onNavigateHelp,
   onNavigateEpisodes,
   onNavigateGlossary,
+  onNavigatePlot,
   onNavigateOutline,
   onNavigateMindmap,
   onNavigateChart,
@@ -229,6 +234,14 @@ export function SideNav({
               active={active === 'glossary'}
               onClick={onNavigateGlossary}
             />
+            {onNavigatePlot ? (
+              <NavRow
+                icon={Milestone}
+                label="プロット"
+                active={active === 'plot'}
+                onClick={onNavigatePlot}
+              />
+            ) : null}
             {onNavigateOutline ? (
               <NavRow
                 icon={ListTree}

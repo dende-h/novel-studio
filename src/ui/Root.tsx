@@ -25,6 +25,7 @@ import { useLocalFlag } from './hooks/use-local-flag'
 import {
   createDefaultActivityRepository,
   createDefaultIdeaRepository,
+  createDefaultPlotRepository,
   createDefaultStructureRepository,
 } from './store/createDefaultStore'
 import type { EditorStore } from './store/editorStore'
@@ -90,11 +91,21 @@ export function Root({ store }: RootProps) {
       ]),
     [],
   )
+  // プロット（幕×ビートの物語設計）も cloud 会員のみ。編集は Repository 直書きなので
+  // 構造レイヤーと同じく sync-touch を差し込んで push の契機を作る。
+  const plotRepo = useMemo(
+    () =>
+      withSyncTouch(createDefaultPlotRepository(), ['create', 'save', 'remove', 'removeByWork']),
+    [],
+  )
   const [backupOpen, setBackupOpen] = useState(false)
   const [aiPullOpen, setAiPullOpen] = useState(false)
   const [mcpOpen, setMcpOpen] = useState(false)
   // AI・MCP 接続済みか（トークン発行済み）。接続時のみ編集をライブスナップショットへ送る。
   const [mcpConnected, setMcpConnected] = useState(false)
+  // AI が書いた未取り込みの変更があるか（サーバが自動 push を 409 で弾いた＝AI の成果を保護中）。
+  // 立っている間はライブラリのデータ管理に印を出し、取り込みのタイミングを自分で選べるようにする。
+  const [aiEditPending, setAiEditPending] = useState(false)
 
   // ライブラリで保存済み作品一覧を表示するため、入口で一覧を読み込む。
   useEffect(() => {
@@ -111,7 +122,14 @@ export function Root({ store }: RootProps) {
   }, [status, getTokenStable])
 
   // 接続済み会員の編集をデバウンスでライブスナップショットへ反映（AI が最新を読める）。
-  useLiveSnapshot(store, backupService, mcpConnected)
+  // 未取り込みの AI 編集があるとサーバが push を弾く＝AI の成果が守られている状態なので、
+  // 上書きを諦めた事実ではなく「取り込める変更がある」ことを知らせる。
+  useLiveSnapshot(store, backupService, mcpConnected, () => {
+    setAiEditPending((was) => {
+      if (!was) show('AIの変更が届いています。「AIの変更を取り込む」で反映できます')
+      return true
+    })
+  })
 
   // 会員の Work 単位自動同期（CAS＋三方向差分・2026-08 改訂）。スマホ⇔PC の使い分けを
   // バックアップ→復元なしで成立させる。pull 等でローカルが変わったら一覧を読み直し、
@@ -259,6 +277,7 @@ export function Root({ store }: RootProps) {
           onNavigateHelp={() => navigate('/help')}
           activityRepo={activityRepo}
           structureRepo={structureRepo}
+          plotRepo={plotRepo}
           canUseStructure={status === 'member'}
           ideaRepo={ideaRepo}
         />
@@ -269,6 +288,7 @@ export function Root({ store }: RootProps) {
           onEnterPublish={() => navigate('/publish')}
           onOpenCloudBackup={backupService ? () => setBackupOpen(true) : undefined}
           onOpenAiPull={backupService ? () => setAiPullOpen(true) : undefined}
+          aiEditPending={aiEditPending}
           onOpenMcp={backupService ? () => setMcpOpen(true) : undefined}
           onOpenActivity={() => navigate('/activity')}
           onOpenIdeas={() => navigate('/ideas')}
@@ -299,7 +319,10 @@ export function Root({ store }: RootProps) {
           onOpenChange={setAiPullOpen}
           service={backupService}
           onNotify={show}
-          onRestored={() => store.init()}
+          onRestored={() => {
+            setAiEditPending(false) // 取り込んだので印を下ろす（自動 push も通常運転へ戻る）
+            return store.init()
+          }}
         />
       )}
       {backupService && (

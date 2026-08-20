@@ -16,9 +16,17 @@ export function useLiveSnapshot(
   store: EditorStore,
   service: BackupService | null,
   enabled: boolean,
+  /**
+   * 未取り込みの AI 編集があってサーバに push を拒否されたときの通知。
+   * AI の成果を守るためにサーバが弾いた状態なので、取り込みを促す合図として使う。
+   */
+  onAiEditPending?: () => void,
 ): void {
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const dirty = useRef(false)
+  // 通知コールバックは毎レンダーで新しくなり得るので ref 経由（effect を貼り直さない）。
+  const onAiEditPendingRef = useRef(onAiEditPending)
+  onAiEditPendingRef.current = onAiEditPending
 
   useEffect(() => {
     if (!service || !enabled) return
@@ -33,7 +41,9 @@ export function useLiveSnapshot(
       if (!dirty.current) return
       dirty.current = false
       clear()
-      void service.pushLive()
+      void service.pushLive().then((res) => {
+        if (res === 'ai_edit_pending') onAiEditPendingRef.current?.()
+      })
     }
     const schedule = () => {
       dirty.current = true

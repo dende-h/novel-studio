@@ -378,6 +378,47 @@ describe('editorStore（自前ストア・useSyncExternalStore 用）', () => {
     expect(store.getSnapshot().workList.find((w) => w.id === id)).toBeUndefined()
   })
 
+  it('作品の完全削除で、その作品の構造レイヤー・プロットも一緒に消える', async () => {
+    // 見えない孤児レコードが端末に溜まり同期にも載り続けるのを防ぐ（purge/emptyTrash/TTL 共通）。
+    const removedStructures: string[] = []
+    const removedPlots: string[] = []
+    const kv = new MemoryStore()
+    const s = createEditorStore({
+      repo: new WorkRepository(kv),
+      snapshotRepo: new SnapshotRepository(kv),
+      profileRepo: new ProfileRepository(kv),
+      activityRepo: new ActivityRepository(kv),
+      structureRepo: {
+        removeByWork: async (workId) => {
+          removedStructures.push(workId)
+        },
+      },
+      plotRepo: {
+        removeByWork: async (workId) => {
+          removedPlots.push(workId)
+        },
+      },
+      genId: () => `x${removedPlots.length}-${Math.random()}`,
+      now: () => 1,
+      snapshotMinIntervalMs: 0,
+      trashTtlMs: 1000,
+    })
+    await s.createWork('消される作品')
+    const id = s.getSnapshot().work?.id as string
+    await s.trashWork(id)
+    await s.purgeWork(id)
+    expect(removedStructures).toEqual([id])
+    expect(removedPlots).toEqual([id])
+
+    // emptyTrash 経由でも消える
+    await s.createWork('もう一つ')
+    const id2 = s.getSnapshot().work?.id as string
+    await s.trashWork(id2)
+    await s.emptyTrash()
+    expect(removedStructures).toEqual([id, id2])
+    expect(removedPlots).toEqual([id, id2])
+  })
+
   it('emptyTrash はゴミ箱を全件空にする', async () => {
     await store.createWork('A')
     const a = store.getSnapshot().work?.id as string

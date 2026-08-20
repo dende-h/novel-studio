@@ -29,7 +29,7 @@ interface McpConnectDialogProps {
   /** Clerk JWT を取得（API 認証）。 */
   getToken: () => Promise<string | null>
   /** 接続直後に最新状態をライブスナップショットへ送る（初回の空読みを防ぐ）。 */
-  pushLive: () => Promise<void>
+  pushLive: () => Promise<'ok' | 'ai_edit_pending' | 'failed'>
   /** 接続状態の変化を親へ通知（ライブ push の有効/無効を切り替える）。 */
   onConnectedChange: (connected: boolean) => void
   /** 完了通知（トースト）。 */

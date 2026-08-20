@@ -91,7 +91,24 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
 }
 
 /**
+ * ブラウザからのライブ上書きを拒否すべきか（拒否なら未取り込みの時刻・許可なら null）。
+ *
+ * 無条件に上書きすると、AI に書かせている最中にアプリ側で編集しただけで AI の成果が
+ * 目印（aiEditedAt）ごと消え、取り込み画面にも「未取り込みなし」と出て気づけない。
+ * 取り込み直後のリセットだけは force で通す（AiPull が呼ぶ＝目印を消して通常運転へ戻す）。
+ */
+export function rejectsLiveOverwrite(
+  aiEditedAt: string | undefined,
+  force: boolean,
+): number | null {
+  if (force || !aiEditedAt) return null
+  const at = Number(aiEditedAt)
+  return Number.isFinite(at) ? at : null
+}
+
+/**
  * PUT = MCP 用ライブスナップショット。**版は作らず 1 オブジェクト `${userId}/live` に上書き**する
+ * （未取り込みの AI 編集があるときは 409。`?force=1` は取り込み直後のリセット専用）
  * （AI が最新の作品を読めるよう会員の編集をデバウンスで反映・一覧やバックアップ世代には出ない）。
  */
 export const onRequestPut: PagesFunction<Env> = async (context) => {
@@ -101,6 +118,11 @@ export const onRequestPut: PagesFunction<Env> = async (context) => {
 
   const plaintext = await context.request.text()
   if (!plaintext || plaintext.length > MAX_BACKUP_BYTES) return json({ error: 'bad_request' }, 400)
+
+  const force = new URL(context.request.url).searchParams.get('force') === '1'
+  const head = force ? null : await context.env.MEDIA.head(`${userId}/live`)
+  const pending = rejectsLiveOverwrite(head?.customMetadata?.aiEditedAt, force)
+  if (pending !== null) return json({ error: 'ai_edit_pending', aiEditedAt: pending }, 409)
 
   const key = await importKey(context.env.ENCRYPTION_KEY)
   const blob = await encryptPart(plaintext, key, `${userId}:live`)

@@ -11,6 +11,19 @@ const state: BackupState = {
   activity: [{ date: '2026-07-12', added: 100, removed: 0, net: 100, saves: 1, updatedAt: 1 }],
   ideas: [{ id: 'i1', text: 'ネタ', createdAt: 10, updatedAt: 10 }],
   structures: [{ id: 's1', workId: 'w1', kind: 'outline', nodes: [], edges: [], updatedAt: 20 }],
+  plots: [
+    {
+      id: 'p1',
+      workId: 'w1',
+      title: '本編プロット',
+      sections: [{ id: 'sec1', title: '第一幕', beatIds: [] }],
+      beats: [],
+      lines: [],
+      foreshadows: [],
+      secrets: [],
+      updatedAt: 30,
+    },
+  ],
 }
 
 describe('serializeBackup / deserializeBackup（全体バックアップの直列化）', () => {
@@ -69,7 +82,7 @@ describe('serializeBackup / deserializeBackup（全体バックアップの直�
 
   it('空状態も往復できる', () => {
     const json = serializeBackup(
-      { works: [], trash: [], profile: {}, activity: [], ideas: [], structures: [] },
+      { works: [], trash: [], profile: {}, activity: [], ideas: [], structures: [], plots: [] },
       0,
     )
     const back = deserializeBackup(json)

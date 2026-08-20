@@ -8,24 +8,33 @@
  */
 
 import type { CloudBackup } from '../../../src/core/backup'
+import { plotToPlainText } from '../../../src/core/exporter/plotToPlainText'
 import { structuresToPlainText } from '../../../src/core/exporter/structureToPlainText'
 import { glossaryToPlainText, workToPlainText } from '../../../src/core/exporter/toPlainText'
 import {
   addEpisode,
   createWork,
   deleteGlossaryEntry,
+  deletePlotBeat,
+  deletePlotItem,
   McpEditError,
   parseStructure,
   setEpisode,
   setOutlineNotes,
+  setPlotMeta,
   setWorkMeta,
   upsertGlossaryEntry,
+  upsertPlotBeat,
+  upsertPlotForeshadow,
+  upsertPlotLine,
+  upsertPlotSecret,
+  upsertPlotSection,
   upsertStructure,
 } from '../../../src/core/mcp-edit'
 
 /** クライアントが未指定のときに名乗る MCP プロトコル版（十分に新しい安定版）。 */
 const DEFAULT_PROTOCOL_VERSION = '2025-06-18'
-const SERVER_INFO = { name: 'novel-studio', version: '1.1.0' } as const
+const SERVER_INFO = { name: 'novel-studio', version: '1.2.0' } as const
 
 /** 書き込み系の結果に添える案内（ブラウザで取り込むまでローカルには反映されない）。 */
 const PULL_HINT = 'アプリの「AIの変更を取り込む」でこの変更をローカルに反映してください。'
@@ -204,6 +213,185 @@ export const MCP_TOOLS = [
     },
   },
   {
+    name: 'get_plot',
+    description:
+      '1 作品のプロット（幕×ビート・プロットライン・伏線・秘密）を各要素の id 付きプレーンテキストで返す。upsert/delete 系プロットツールの対象 id はここで確認する。伏線は回収状態（未回収/回収済/根なし）、秘密は開示状態（開示予定/開示未定/明かさない）付き。',
+    inputSchema: {
+      type: 'object',
+      properties: workIdProp,
+      required: ['work_id'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'set_plot_meta',
+    description:
+      'プロットのメタ（タイトル・ログライン・テーマ）を更新する。渡した項目だけ書き換える（空文字で未設定に戻す）。プロットが無い作品では新規作成を兼ねる（幕は upsert_plot_section で作る）。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        ...workIdProp,
+        title: { type: 'string', description: 'プロットのタイトル（例：本編プロット）' },
+        premise: { type: 'string', description: 'ログライン（一行で言うと何の話か）' },
+        theme: { type: 'string', description: 'テーマ' },
+      },
+      required: ['work_id'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'upsert_plot_section',
+    description:
+      '幕（プロットの大きな区切り）を追加または更新する。id を渡すと更新、無ければ新規作成して section_id を返す。index（0 始まり）で並び位置を指定できる。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        ...workIdProp,
+        id: { type: 'string', description: '更新する幕の id（get_plot の [section_id: …]）' },
+        title: { type: 'string', description: '幕のタイトル（例：第一幕）。新規では必須' },
+        note: { type: 'string', description: '幕のメモ（空文字で削除）' },
+        index: { type: 'number', description: '並び位置（0 始まり）' },
+      },
+      required: ['work_id'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'upsert_plot_beat',
+    description:
+      'ビート（出来事カード）を追加または更新する。id を渡すと更新（渡した項目だけ書き換え・空文字で未設定に戻す）、無ければ新規作成して beat_id を返す。新規は title 必須、section_id は幕が 1 つだけなら省略可。section_id / index を渡すと移動・並べ替えになる。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        ...workIdProp,
+        id: { type: 'string', description: '更新するビートの id（get_plot の [beat_id: …]）' },
+        section_id: { type: 'string', description: '所属させる幕の id' },
+        index: { type: 'number', description: '幕内の位置（0 始まり）' },
+        title: { type: 'string', description: 'ビートのタイトル（新規では必須）' },
+        summary: { type: 'string', description: '何が起きるか（数行の要約）' },
+        note: { type: 'string', description: '狙い・代案などの自由メモ' },
+        time_label: { type: 'string', description: '作中時間の自由記述（例：三日後の夜）' },
+        pov: { type: 'string', description: '視点キャラ（get_glossary の entry_id）' },
+        cast: {
+          type: 'array',
+          items: { type: 'string' },
+          description: '登場キャラ（entry_id の配列・丸ごと置換）',
+        },
+        place: {
+          type: 'array',
+          items: { type: 'string' },
+          description: '舞台（entry_id の配列・丸ごと置換）',
+        },
+        line_ids: {
+          type: 'array',
+          items: { type: 'string' },
+          description: '属するプロットライン（get_plot の [line_id: …] の配列・丸ごと置換）',
+        },
+        episode_id: { type: 'string', description: '対応する本文の話 id（list_works の各話 id）' },
+        status: {
+          type: 'string',
+          description: '進行状態：idea（検討中）/ fixed（確定）/ writing（執筆中）/ done（済）',
+        },
+        target_length: { type: 'number', description: '予定文字数（0 で未設定に戻す）' },
+      },
+      required: ['work_id'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'delete_plot_beat',
+    description:
+      'ビートを削除する。伏線が参照していた場合、その伏線は get_plot で [根なし] 警告として残る。先に get_plot で [beat_id: …] を確認する。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        ...workIdProp,
+        beat_id: { type: 'string', description: 'ビートの id（get_plot の [beat_id: …]）' },
+      },
+      required: ['work_id', 'beat_id'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'upsert_plot_line',
+    description:
+      'プロットライン（メイン・サブプロット・キャラアークなどの筋）を追加または更新する。id を渡すと更新、無ければ新規作成して line_id を返す。ビートへの割り当ては upsert_plot_beat の line_ids で行う。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        ...workIdProp,
+        id: { type: 'string', description: '更新するラインの id（get_plot の [line_id: …]）' },
+        title: { type: 'string', description: 'ラインの名前（例：ユキの正体）。新規では必須' },
+        note: { type: 'string', description: 'ラインのメモ（空文字で削除）' },
+      },
+      required: ['work_id'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'upsert_foreshadow',
+    description:
+      '伏線を追加または更新する。plant_beat_id＝張るビート、payoff_beat_id＝回収するビート（空文字で解除）。回収漏れは get_plot の伏線一覧に [未回収]/[根なし] として出る。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        ...workIdProp,
+        id: { type: 'string', description: '更新する伏線の id（get_plot の [foreshadow_id: …]）' },
+        title: { type: 'string', description: '伏線の名前（新規では必須）' },
+        note: { type: 'string', description: 'メモ（空文字で削除）' },
+        plant_beat_id: { type: 'string', description: '張るビートの id（空文字で解除）' },
+        payoff_beat_id: { type: 'string', description: '回収するビートの id（空文字で解除）' },
+      },
+      required: ['work_id'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'upsert_secret',
+    description:
+      '秘密（読者に伏せている情報）を追加または更新する。伏線が「布石を張って回収したか」なのに対し、秘密は「読者がいつ真相を知るか」を管理する。truth＝真相（作者用メモ・本文には出ない）、reveal_beat_id＝読者に明かすビート（空文字で解除）。明かし忘れは get_plot に [開示未定] として出る。最後まで明かさないと決めた秘密は keep_hidden: true で点検対象から外す。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        ...workIdProp,
+        id: { type: 'string', description: '更新する秘密の id（get_plot の [secret_id: …]）' },
+        title: {
+          type: 'string',
+          description: '伏せている事柄の呼び名（例：ユキの正体。新規では必須）',
+        },
+        truth: { type: 'string', description: '真相（読者に伏せている中身・空文字で削除）' },
+        reveal_beat_id: {
+          type: 'string',
+          description: '読者に明かすビートの id（空文字で解除）',
+        },
+        keep_hidden: {
+          type: 'boolean',
+          description: '最後まで明かさない（true で点検対象から外す）',
+        },
+      },
+      required: ['work_id'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'delete_plot_item',
+    description:
+      '幕・プロットライン・伏線・秘密を削除する。kind に section / line / foreshadow / secret、item_id にその id を渡す。幕の削除では中のビートが隣の幕へ移動する（最後の 1 幕は削除不可）。ビートの削除は delete_plot_beat を使う。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        ...workIdProp,
+        kind: {
+          type: 'string',
+          description: '削除する種別：section / line / foreshadow / secret',
+        },
+        item_id: { type: 'string', description: '対象の id（get_plot で確認）' },
+      },
+      required: ['work_id', 'kind', 'item_id'],
+      additionalProperties: false,
+    },
+  },
+  {
     name: 'create_backup',
     description:
       '現在の全状態をクラウドに手動バックアップ（版を作る）。有料（cloud 会員）機能。作成した backup_id を返す。',
@@ -268,6 +456,12 @@ const strArray = (args: Record<string, unknown> | undefined, key: string): strin
     ? (args[key] as unknown[]).filter((x): x is string => typeof x === 'string')
     : undefined
 
+const num = (args: Record<string, unknown> | undefined, key: string): number | undefined =>
+  typeof args?.[key] === 'number' && Number.isFinite(args[key]) ? (args[key] as number) : undefined
+
+const bool = (args: Record<string, unknown> | undefined, key: string): boolean | undefined =>
+  typeof args?.[key] === 'boolean' ? (args[key] as boolean) : undefined
+
 function listWorksText(works: CloudBackup['works']): string {
   if (works.length === 0) return '作品はまだありません。'
   const lines = works.map((w) => {
@@ -324,6 +518,14 @@ async function callTool(
     'upsert_glossary_entry',
     'delete_glossary_entry',
     'set_structure',
+    'set_plot_meta',
+    'upsert_plot_section',
+    'upsert_plot_beat',
+    'delete_plot_beat',
+    'upsert_plot_line',
+    'upsert_foreshadow',
+    'upsert_secret',
+    'delete_plot_item',
   ])
   if (writeTools.has(name ?? '')) {
     if (!snap) {
@@ -435,6 +637,120 @@ async function callTool(
         const structure = parseStructure(str(args, 'structure_json') ?? '')
         next = { ...snap, structures: upsertStructure(snap.structures, structure) }
         message = '構造データを保存しました。'
+      } else if (name === 'set_plot_meta') {
+        next = {
+          ...snap,
+          plots: setPlotMeta(
+            snap.plots ?? [],
+            works,
+            workId,
+            {
+              title: str(args, 'title'),
+              premise: str(args, 'premise'),
+              theme: str(args, 'theme'),
+            },
+            now,
+          ),
+        }
+        message = 'プロットのメタを保存しました。'
+      } else if (name === 'upsert_plot_section') {
+        const res = upsertPlotSection(
+          snap.plots ?? [],
+          workId,
+          {
+            id: str(args, 'id'),
+            title: str(args, 'title'),
+            note: str(args, 'note'),
+            index: num(args, 'index'),
+          },
+          deps.genId(),
+          now,
+        )
+        next = { ...snap, plots: res.plots }
+        message = `幕を保存しました。section_id: ${res.sectionId}`
+      } else if (name === 'upsert_plot_beat') {
+        const res = upsertPlotBeat(
+          snap.plots ?? [],
+          workId,
+          {
+            id: str(args, 'id'),
+            sectionId: str(args, 'section_id'),
+            index: num(args, 'index'),
+            title: str(args, 'title'),
+            summary: str(args, 'summary'),
+            note: str(args, 'note'),
+            timeLabel: str(args, 'time_label'),
+            povRef: str(args, 'pov'),
+            castRefs: strArray(args, 'cast'),
+            placeRefs: strArray(args, 'place'),
+            lineRefs: strArray(args, 'line_ids'),
+            episodeRef: str(args, 'episode_id'),
+            status: str(args, 'status'),
+            targetLength: num(args, 'target_length'),
+          },
+          deps.genId(),
+          now,
+        )
+        next = { ...snap, plots: res.plots }
+        message = `ビートを保存しました。beat_id: ${res.beatId}`
+      } else if (name === 'delete_plot_beat') {
+        next = {
+          ...snap,
+          plots: deletePlotBeat(snap.plots ?? [], workId, str(args, 'beat_id') ?? '', now),
+        }
+        message = 'ビートを削除しました。'
+      } else if (name === 'upsert_plot_line') {
+        const res = upsertPlotLine(
+          snap.plots ?? [],
+          workId,
+          { id: str(args, 'id'), title: str(args, 'title'), note: str(args, 'note') },
+          deps.genId(),
+          now,
+        )
+        next = { ...snap, plots: res.plots }
+        message = `プロットラインを保存しました。line_id: ${res.lineId}`
+      } else if (name === 'upsert_foreshadow') {
+        const res = upsertPlotForeshadow(
+          snap.plots ?? [],
+          workId,
+          {
+            id: str(args, 'id'),
+            title: str(args, 'title'),
+            note: str(args, 'note'),
+            plantBeatId: str(args, 'plant_beat_id'),
+            payoffBeatId: str(args, 'payoff_beat_id'),
+          },
+          deps.genId(),
+          now,
+        )
+        next = { ...snap, plots: res.plots }
+        message = `伏線を保存しました。foreshadow_id: ${res.foreshadowId}`
+      } else if (name === 'upsert_secret') {
+        const res = upsertPlotSecret(
+          snap.plots ?? [],
+          workId,
+          {
+            id: str(args, 'id'),
+            title: str(args, 'title'),
+            truth: str(args, 'truth'),
+            revealBeatId: str(args, 'reveal_beat_id'),
+            keepHidden: bool(args, 'keep_hidden'),
+          },
+          deps.genId(),
+          now,
+        )
+        next = { ...snap, plots: res.plots }
+        message = `秘密を保存しました。secret_id: ${res.secretId}`
+      } else if (name === 'delete_plot_item') {
+        const kind = str(args, 'kind') ?? ''
+        if (kind !== 'section' && kind !== 'line' && kind !== 'foreshadow' && kind !== 'secret') {
+          throw new McpEditError('kind は section / line / foreshadow / secret のいずれかです')
+        }
+        next = {
+          ...snap,
+          plots: deletePlotItem(snap.plots ?? [], workId, kind, str(args, 'item_id') ?? '', now),
+        }
+        message = '削除しました。'
       }
 
       const saved = await deps.saveSnapshot(next)
@@ -449,7 +765,12 @@ async function callTool(
   // 読み取り（work 指定）
   const workId = str(args, 'work_id') ?? ''
   const work = works.find((w) => w.id === workId)
-  if (name === 'get_work' || name === 'get_glossary' || name === 'get_structures') {
+  if (
+    name === 'get_work' ||
+    name === 'get_glossary' ||
+    name === 'get_structures' ||
+    name === 'get_plot'
+  ) {
     if (!work) return text(`work_id "${workId}" の作品が見つかりません。`, true)
     if (name === 'get_work') return text(workToPlainText(work))
     if (name === 'get_glossary') {
@@ -458,6 +779,7 @@ async function callTool(
         glossaryToPlainText(work.glossary ?? [], { withIds: true }) || '（この作品の図鑑は空です）',
       )
     }
+    if (name === 'get_plot') return text(plotToPlainText(snap?.plots ?? [], work))
     return text(structuresToPlainText(snap?.structures ?? [], work))
   }
   return text(`未知のツール: ${name}`, true)

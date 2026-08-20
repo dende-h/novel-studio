@@ -13,6 +13,7 @@ function makeDeps(over: Partial<BackupDeps> = {}) {
     activity: [],
     ideas: [],
     structures: [],
+    plots: [],
   }
   const created: string[] = []
   const live: string[] = []
@@ -32,7 +33,7 @@ function makeDeps(over: Partial<BackupDeps> = {}) {
     putLiveRemote: async (plaintext) => {
       live.push(plaintext)
       remote.set('live', plaintext)
-      return true
+      return 'ok' as const
     },
     getLiveRemote: async () => remote.get('live') ?? null,
     getLiveMeta: async () =>
@@ -63,6 +64,7 @@ describe('createLocalBackupService（ローカル・ファイルバックアッ�
       activity: [],
       ideas: [{ id: 'i1', text: 'ネタ', createdAt: 1, updatedAt: 1 }],
       structures: [],
+      plots: [],
     }
     const svc = createLocalBackupService(io(state), () => 999)
     const back = deserializeBackup(await svc.exportPlaintext())
@@ -80,6 +82,7 @@ describe('createLocalBackupService（ローカル・ファイルバックアッ�
       activity: [],
       ideas: [],
       structures: [],
+      plots: [],
     }
     const svc = createLocalBackupService(
       io(empty, (s) => {
@@ -93,6 +96,7 @@ describe('createLocalBackupService（ローカル・ファイルバックアッ�
         profile: {},
         activity: [],
         ideas: [{ id: 'i2', text: 'x', createdAt: 2, updatedAt: 2 }],
+        plots: [],
         structures: [
           { id: 'st1', workId: 'w1', kind: 'chart', nodes: [], edges: [], updatedAt: 3 },
         ],
@@ -113,6 +117,7 @@ describe('createLocalBackupService（ローカル・ファイルバックアッ�
       activity: [],
       ideas: [],
       structures: [],
+      plots: [],
     }
     await expect(createLocalBackupService(io(empty)).restorePlaintext('not json')).rejects.toThrow()
   })
@@ -127,12 +132,52 @@ describe('createBackupService', () => {
     expect(created).toHaveLength(0) // 版バックアップは作らない
   })
 
+  it('pushLive は未取り込みの AI 編集があると ai_edit_pending を返す（AI の成果を守る）', async () => {
+    const { deps } = makeDeps({ putLiveRemote: async () => 'ai_edit_pending' as const })
+    expect(await createBackupService(deps).pushLive()).toBe('ai_edit_pending')
+  })
+
+  it('pullLive は取り込み後に force で目印を消す（自動 push を通常運転へ戻す）', async () => {
+    const forced: Array<boolean | undefined> = []
+    const { deps, remote } = makeDeps({
+      putLiveRemote: async (_plaintext, opts) => {
+        forced.push(opts?.force)
+        return 'ok' as const
+      },
+    })
+    remote.set(
+      'live',
+      serializeBackup(
+        {
+          works: [work('L')],
+          trash: [],
+          profile: {},
+          activity: [],
+          ideas: [],
+          structures: [],
+          plots: [],
+        },
+        5,
+      ),
+    )
+    await createBackupService(deps).pullLive()
+    expect(forced).toEqual([true])
+  })
+
   it('pullLive はライブを取り込み全置換する（無ければ false）', async () => {
     const { deps, replaced, remote } = makeDeps()
     remote.set(
       'live',
       serializeBackup(
-        { works: [work('L')], trash: [], profile: {}, activity: [], ideas: [], structures: [] },
+        {
+          works: [work('L')],
+          trash: [],
+          profile: {},
+          activity: [],
+          ideas: [],
+          structures: [],
+          plots: [],
+        },
         5,
       ),
     )
@@ -149,7 +194,15 @@ describe('createBackupService', () => {
     remote.set(
       'live',
       serializeBackup(
-        { works: [work('L')], trash: [], profile: {}, activity: [], ideas: [], structures: [] },
+        {
+          works: [work('L')],
+          trash: [],
+          profile: {},
+          activity: [],
+          ideas: [],
+          structures: [],
+          plots: [],
+        },
         5,
       ),
     )
@@ -183,6 +236,7 @@ describe('createBackupService', () => {
         activity: [],
         ideas: [],
         structures: [],
+        plots: [],
       },
       50,
     )
@@ -200,7 +254,15 @@ describe('createBackupService', () => {
   it('復元は執筆活動（activity）もローカルへ全置換する', async () => {
     const day = { date: '2026-07-11', added: 40, removed: 0, net: 40, saves: 1, updatedAt: 9 }
     const target = serializeBackup(
-      { works: [work('r')], trash: [], profile: {}, activity: [day], ideas: [], structures: [] },
+      {
+        works: [work('r')],
+        trash: [],
+        profile: {},
+        activity: [day],
+        ideas: [],
+        structures: [],
+        plots: [],
+      },
       50,
     )
     let restored: unknown
@@ -217,7 +279,15 @@ describe('createBackupService', () => {
   it('復元はネタ帳（ideas）もローカルへ全置換する', async () => {
     const note = { id: 'i1', text: 'ネタ', createdAt: 5, updatedAt: 5 }
     const target = serializeBackup(
-      { works: [work('r')], trash: [], profile: {}, activity: [], ideas: [note], structures: [] },
+      {
+        works: [work('r')],
+        trash: [],
+        profile: {},
+        activity: [],
+        ideas: [note],
+        structures: [],
+        plots: [],
+      },
       50,
     )
     let restored: unknown
@@ -240,6 +310,7 @@ describe('createBackupService', () => {
         activity: [],
         ideas: [],
         structures: [],
+        plots: [],
       },
       50,
     )

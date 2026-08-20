@@ -72,7 +72,7 @@ export function BackupDialog({ open, onOpenChange, workCount, onExport }: Backup
             <p className="flex items-start gap-2 rounded-md bg-surface-container-low p-3 text-on-surface-variant text-xs">
               <Info className="mt-0.5 size-4 shrink-0 text-primary" aria-hidden />
               <span>
-                作品・図鑑・ネタ帳・執筆記録・ゴミ箱・プロフィールを含みます。執筆履歴（版）は含まれません。取り込み時に全置換で復元できます。
+                作品・図鑑・プロット・アウトライン等の構造データ・ネタ帳・執筆記録・ゴミ箱・プロフィールを含みます。執筆履歴（版）は含まれません。取り込み時に全置換で復元できます。
               </span>
             </p>
           </div>

@@ -3,6 +3,7 @@ import { SnapshotRepository } from '../../core/snapshot/snapshotRepository'
 import { ActivityRepository } from '../../core/storage/activityRepository'
 import { IdbStore } from '../../core/storage/idbStore'
 import { IdeaRepository } from '../../core/storage/ideaRepository'
+import { PlotRepository } from '../../core/storage/plotRepository'
 import { StructureRepository } from '../../core/storage/structureRepository'
 import { WorkRepository } from '../../core/storage/workRepository'
 import { createEditorStore, type EditorStore } from './editorStore'
@@ -25,6 +26,10 @@ export function createDefaultStore(): EditorStore {
     snapshotRepo,
     profileRepo,
     activityRepo,
+    // 作品を完全削除したら、その作品の構造レイヤー・プロットも一緒に消す
+    // （残すと見えない孤児レコードが端末に溜まり、同期にも載り続ける）。
+    structureRepo: new StructureRepository(store),
+    plotRepo: new PlotRepository(store),
     genId: () => crypto.randomUUID(),
     now: () => Date.now(),
     snapshotMinIntervalMs: SNAPSHOT_MIN_INTERVAL_MS,
@@ -45,4 +50,9 @@ export function createDefaultIdeaRepository(): IdeaRepository {
 /** 構造レイヤー（アウトライン／相関図／マインドマップ）用のリポジトリ。 */
 export function createDefaultStructureRepository(): StructureRepository {
   return new StructureRepository(new IdbStore('novel-studio'))
+}
+
+/** プロット（幕×ビートの物語設計）用のリポジトリ。 */
+export function createDefaultPlotRepository(): PlotRepository {
+  return new PlotRepository(new IdbStore('novel-studio'))
 }
