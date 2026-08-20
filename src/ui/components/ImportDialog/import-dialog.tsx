@@ -181,12 +181,14 @@ export function ImportDialog({ open, onOpenChange, onImport, onRestoreAll }: Imp
                 <li>作品：{phase.backup.works.length}</li>
                 <li>ゴミ箱：{phase.backup.trash.length}</li>
                 <li>ネタ帳：{phase.backup.ideas.length}</li>
+                <li>プロット：{phase.backup.plots.length}</li>
+                <li>構造データ：{phase.backup.structures.length}</li>
                 <li>執筆記録：{phase.backup.activity.length}日</li>
               </ul>
               <p className="flex items-start gap-2 rounded-md bg-destructive/10 p-3 text-destructive text-xs">
                 <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden />
                 <span>
-                  現在のすべてのデータ（作品・図鑑・ネタ帳・執筆記録・ゴミ箱・プロフィール）が、このバックアップの内容に置き換わります。この操作は取り消せません。
+                  現在のすべてのデータ（作品・図鑑・プロット・構造データ・ネタ帳・執筆記録・ゴミ箱・プロフィール）が、このバックアップの内容に置き換わります。この操作は取り消せません。
                 </span>
               </p>
             </div>
