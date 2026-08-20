@@ -869,7 +869,9 @@ function BeatDetailPanel({
   const beatForeshadows = foreshadowsOfBeat(plot, beat.id)
 
   return (
-    <aside className="w-72 shrink-0 max-lg:hidden">
+    // self-stretch＝右カラムを行全体の高さに伸ばす。親がパネル自身の高さに縮むと
+    // sticky の可動域が無くなり、下のビートでパネルが画面外へ置き去りになる（実利用で発生）。
+    <aside className="w-72 shrink-0 self-stretch max-lg:hidden">
       <div className="sticky top-4 flex max-h-[calc(100vh-8rem)] flex-col gap-3 overflow-y-auto rounded-lg border border-outline-variant/30 bg-surface-container-low p-4">
         <Field label="タイトル">
           <CommitInput
