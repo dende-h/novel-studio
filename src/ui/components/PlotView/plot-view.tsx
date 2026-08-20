@@ -289,9 +289,11 @@ export default function PlotView({
   }
 
   return (
-    <div className="min-h-0 flex-1 overflow-y-auto px-6 py-6 md:px-9">
-      <div className="mx-auto max-w-5xl pb-16">
-        <header className="mb-5">
+    // ページ全体は縦に固定し、一覧とパネルをそれぞれ独立スクロールにする
+    // （全体スクロール＋パネル内スクロールの重複で迷子になるため）。
+    <div className="flex min-h-0 flex-1 flex-col px-6 pt-6 md:px-9">
+      <div className="mx-auto w-full max-w-5xl">
+        <header className="mb-4 shrink-0">
           <h1 className="font-semibold font-serif text-[24px] text-on-surface">プロット</h1>
           <p className="mt-1 text-[13px] text-on-surface-variant">
             {plot.beats.length}ビート ・ 済 {doneCount}件
@@ -324,92 +326,96 @@ export default function PlotView({
             ) : null}
           </div>
         </header>
-
-        {view === 'grid' ? (
-          <GridView plot={plot} onApply={(fn) => void apply(fn)} onJumpBeat={jumpToBeat} />
-        ) : view === 'foreshadow' ? (
-          <ForeshadowView plot={plot} onApply={(fn) => void apply(fn)} onJumpBeat={jumpToBeat} />
-        ) : (
-          <div className="flex items-start gap-6">
-            {/* 左：幕見出し＋ビートカードの一覧 */}
-            <div className="min-w-0 flex-1">
-              <PremiseInput
-                value={plot.premise ?? ''}
-                onCommit={(v) => void apply((p) => ({ ...p, premise: emptyToUndef(v) }))}
-              />
-              <DndContext
-                sensors={sensors}
-                collisionDetection={closestCenter}
-                onDragEnd={onDragEnd}
-              >
-                <div className="mt-4 flex flex-col gap-6">
-                  {plot.sections.map((section, sectionIndex) => (
-                    <SectionBlock
-                      key={section.id}
-                      plot={plot}
-                      section={section}
-                      isFirst={sectionIndex === 0}
-                      isLast={sectionIndex === plot.sections.length - 1}
-                      canRemove={plot.sections.length > 1}
-                      glossary={glossary}
-                      episodes={episodes}
-                      ideaRepo={ideaRepo}
-                      structureRepo={structureRepo}
-                      selectedId={selectedId}
-                      onSelect={(id) => {
-                        setSelectedId(id)
-                        setFocusTitleId(null)
-                      }}
-                      onAddBeat={addNewBeat}
-                      onApply={(fn) => void apply(fn)}
-                      onOpenEpisode={onOpenEpisode}
-                    />
-                  ))}
-                </div>
-              </DndContext>
-
-              <button
-                type="button"
-                onClick={() =>
-                  void apply((p) =>
-                    addSection(p, {
-                      id: genId(),
-                      title: `第${p.sections.length + 1}幕`,
-                      beatIds: [],
-                    }),
-                  )
-                }
-                className="mt-6 flex items-center gap-1.5 rounded-md px-2 py-1.5 text-[13px] text-primary transition-colors hover:bg-surface-container-high"
-              >
-                <Plus className="size-4" />
-                幕を追加
-              </button>
-            </div>
-
-            {/* 右：選択ビートの詳細パネル（画面設計の常設パネル） */}
-            {selectedBeat ? (
-              <BeatDetailPanel
-                key={selectedBeat.id}
-                plot={plot}
-                beat={selectedBeat}
-                glossary={glossary}
-                episodes={episodes}
-                autoFocusTitle={focusTitleId === selectedBeat.id}
-                onApply={(fn) => void apply(fn)}
-                onOpenEpisode={onOpenEpisode}
-                onCreateEpisode={onCreateEpisode}
-                onShowForeshadows={() => setView('foreshadow')}
-                onRequestDelete={() =>
-                  setDeleteTarget({
-                    id: selectedBeat.id,
-                    title: selectedBeat.title || '無題のビート',
-                  })
-                }
-              />
-            ) : null}
-          </div>
-        )}
       </div>
+
+      {view === 'grid' ? (
+        <div className="min-h-0 flex-1 overflow-y-auto pb-16">
+          <div className="mx-auto w-full max-w-5xl">
+            <GridView plot={plot} onApply={(fn) => void apply(fn)} onJumpBeat={jumpToBeat} />
+          </div>
+        </div>
+      ) : view === 'foreshadow' ? (
+        <div className="min-h-0 flex-1 overflow-y-auto pb-16">
+          <div className="mx-auto w-full max-w-5xl">
+            <ForeshadowView plot={plot} onApply={(fn) => void apply(fn)} onJumpBeat={jumpToBeat} />
+          </div>
+        </div>
+      ) : (
+        <div className="mx-auto flex min-h-0 w-full max-w-5xl flex-1 items-stretch gap-6">
+          {/* 左：幕見出し＋ビートカードの一覧（独立スクロール） */}
+          <div className="min-w-0 flex-1 overflow-y-auto pr-1 pb-16">
+            <PremiseInput
+              value={plot.premise ?? ''}
+              onCommit={(v) => void apply((p) => ({ ...p, premise: emptyToUndef(v) }))}
+            />
+            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
+              <div className="mt-4 flex flex-col gap-6">
+                {plot.sections.map((section, sectionIndex) => (
+                  <SectionBlock
+                    key={section.id}
+                    plot={plot}
+                    section={section}
+                    isFirst={sectionIndex === 0}
+                    isLast={sectionIndex === plot.sections.length - 1}
+                    canRemove={plot.sections.length > 1}
+                    glossary={glossary}
+                    episodes={episodes}
+                    ideaRepo={ideaRepo}
+                    structureRepo={structureRepo}
+                    selectedId={selectedId}
+                    onSelect={(id) => {
+                      setSelectedId(id)
+                      setFocusTitleId(null)
+                    }}
+                    onAddBeat={addNewBeat}
+                    onApply={(fn) => void apply(fn)}
+                    onOpenEpisode={onOpenEpisode}
+                  />
+                ))}
+              </div>
+            </DndContext>
+
+            <button
+              type="button"
+              onClick={() =>
+                void apply((p) =>
+                  addSection(p, {
+                    id: genId(),
+                    title: `第${p.sections.length + 1}幕`,
+                    beatIds: [],
+                  }),
+                )
+              }
+              className="mt-6 flex items-center gap-1.5 rounded-md px-2 py-1.5 text-[13px] text-primary transition-colors hover:bg-surface-container-high"
+            >
+              <Plus className="size-4" />
+              幕を追加
+            </button>
+          </div>
+
+          {/* 右：選択ビートの詳細パネル（画面設計の常設パネル） */}
+          {selectedBeat ? (
+            <BeatDetailPanel
+              key={selectedBeat.id}
+              plot={plot}
+              beat={selectedBeat}
+              glossary={glossary}
+              episodes={episodes}
+              autoFocusTitle={focusTitleId === selectedBeat.id}
+              onApply={(fn) => void apply(fn)}
+              onOpenEpisode={onOpenEpisode}
+              onCreateEpisode={onCreateEpisode}
+              onShowForeshadows={() => setView('foreshadow')}
+              onRequestDelete={() =>
+                setDeleteTarget({
+                  id: selectedBeat.id,
+                  title: selectedBeat.title || '無題のビート',
+                })
+              }
+            />
+          ) : null}
+        </div>
+      )}
 
       <ConfirmDialog
         open={deleteTarget !== null}
@@ -871,10 +877,9 @@ function BeatDetailPanel({
   const beatForeshadows = foreshadowsOfBeat(plot, beat.id)
 
   return (
-    // self-stretch＝右カラムを行全体の高さに伸ばす。親がパネル自身の高さに縮むと
-    // sticky の可動域が無くなり、下のビートでパネルが画面外へ置き去りになる（実利用で発生）。
-    <aside className="w-72 shrink-0 self-stretch max-lg:hidden">
-      <div className="sticky top-4 flex max-h-[calc(100vh-8rem)] flex-col gap-3 overflow-y-auto rounded-lg border border-outline-variant/30 bg-surface-container-low p-4">
+    // 親（2カラム行）が画面高に固定されているので、パネルは自分の中だけでスクロールする。
+    <aside className="min-h-0 w-72 shrink-0 pb-6 max-lg:hidden">
+      <div className="flex max-h-full flex-col gap-3 overflow-y-auto rounded-lg border border-outline-variant/30 bg-surface-container-low p-4">
         <Field label="タイトル">
           <CommitInput
             value={beat.title}
@@ -1183,7 +1188,7 @@ function GridView({
       {plot.lines.length === 0 ? (
         <p className="mb-4 rounded-lg bg-surface-container-low px-4 py-3 text-[12.5px] text-on-surface-variant leading-relaxed">
           プロットライン（メイン・サブプロット・キャラアークなどの筋）を作ると、筋ごとの列に分かれて
-          「どの幕で止まっているか」が見えるようになります。下の入力欄からどうぞ。
+          「どの幕で止まっているか」が見えるようになります。右上の「＋ ラインを追加」からどうぞ。
         </p>
       ) : null}
       <DndContext
@@ -1203,7 +1208,7 @@ function GridView({
           <div
             className="grid min-w-fit items-stretch gap-1.5"
             style={{
-              gridTemplateColumns: `minmax(5.5rem, 7rem) repeat(${columns.length}, minmax(13rem, 1fr))`,
+              gridTemplateColumns: `minmax(5.5rem, 7rem) repeat(${columns.length}, minmax(13rem, 1fr)) minmax(9rem, 11rem)`,
             }}
           >
             {/* 列見出し＝ライン */}
@@ -1244,6 +1249,26 @@ function GridView({
                 </div>
               )
             })}
+            {/* 横軸＝ラインの並びの右端に「追加」を置く（軸と同じ向きに増やす）。 */}
+            <div className="flex items-center gap-1 self-start rounded-md border border-outline-variant/40 border-dashed px-2 py-1">
+              <Plus className="size-3.5 shrink-0 text-on-surface-variant/50" />
+              <input
+                value={addInput}
+                onChange={(e) => setAddInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault()
+                    submitAdd()
+                  } else if (e.key === 'Escape') {
+                    setAddInput('')
+                  }
+                }}
+                onBlur={submitAdd}
+                placeholder="ラインを追加"
+                aria-label="プロットラインを追加"
+                className="w-full min-w-0 bg-transparent font-sans text-[12px] text-on-surface outline-none placeholder:text-on-surface-variant/45"
+              />
+            </div>
             {/* 行＝幕（時系列に縦へ） */}
             {plot.sections.map((s) => (
               <Fragment key={s.id}>
@@ -1266,6 +1291,8 @@ function GridView({
                     }}
                   />
                 ))}
+                {/* 「追加」列ぶんの空セル（グリッドの行ずれ防止）。 */}
+                <div />
               </Fragment>
             ))}
           </div>
@@ -1274,25 +1301,6 @@ function GridView({
       <p className="mt-2 pl-1 text-[11.5px] text-on-surface-variant/70">
         ビートはドラッグで幕・ラインを移動できます。クリックでビートシートの編集へ。
       </p>
-      <div className="mt-3 flex items-center gap-1.5 pl-1">
-        <Plus className="size-3.5 shrink-0 text-on-surface-variant/50" />
-        <input
-          value={addInput}
-          onChange={(e) => setAddInput(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') {
-              e.preventDefault()
-              submitAdd()
-            } else if (e.key === 'Escape') {
-              setAddInput('')
-            }
-          }}
-          onBlur={submitAdd}
-          placeholder="プロットラインを追加（例：メイン、ユキの正体）"
-          aria-label="プロットラインを追加"
-          className="w-full max-w-sm bg-transparent font-sans text-[13px] text-on-surface outline-none placeholder:text-on-surface-variant/45"
-        />
-      </div>
     </div>
   )
 }
@@ -1735,12 +1743,10 @@ function CommitTextarea({
     if (!focused.current) setDraft(value)
   }, [value])
   // 内容の増減に高さを追従させる（scrollHeight を測るため一度 0 にする）。
-  // 無限に伸びるとパネルが要約だけで埋まるため、上限を超えたら内側スクロールに切り替える。
-  const MAX_HEIGHT_PX = 200
+  // パネル自体が専用スクロールを持つので、内側スクロールは作らない（重複スクロールの排除）。
   const resizeToContent = (el: HTMLTextAreaElement) => {
     el.style.height = '0'
-    el.style.height = `${Math.min(el.scrollHeight, MAX_HEIGHT_PX)}px`
-    el.style.overflowY = el.scrollHeight > MAX_HEIGHT_PX ? 'auto' : 'hidden'
+    el.style.height = `${el.scrollHeight}px`
   }
   // biome-ignore lint/correctness/useExhaustiveDependencies: draft の変化で高さを測り直す（resizeToContent は毎レンダー同一の純関数）
   useLayoutEffect(() => {
@@ -1768,7 +1774,7 @@ function CommitTextarea({
       }}
       placeholder={placeholder}
       aria-label={ariaLabel}
-      className="w-full resize-none rounded-md border border-outline-variant/30 bg-surface px-2.5 py-1.5 text-[13px] text-on-surface leading-relaxed outline-none placeholder:text-on-surface-variant/45 focus:border-primary/50"
+      className="w-full resize-none overflow-hidden rounded-md border border-outline-variant/30 bg-surface px-2.5 py-1.5 text-[13px] text-on-surface leading-relaxed outline-none placeholder:text-on-surface-variant/45 focus:border-primary/50"
     />
   )
 }
