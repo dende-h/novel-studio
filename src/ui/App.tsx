@@ -409,6 +409,16 @@ export function App({
               const ep = snap.work?.episodes[snap.work.episodes.length - 1]
               return ep && ep.title === title ? ep.id : null
             }}
+            onCreateGlossaryEntry={async (name, category) => {
+              try {
+                const entry = await store.addGlossaryEntry({ name, category })
+                return entry.id
+              } catch {
+                // 既存と重複（D-GLOS-UNIQUE）なら、その既存エントリを選ぶ。
+                const existing = resolveRef(name, store.getSnapshot().work?.glossary ?? [])
+                return existing?.id ?? null
+              }
+            }}
           />
         </Suspense>
       ) : activeScreen === 'mindmap' && work && structureRepo ? (

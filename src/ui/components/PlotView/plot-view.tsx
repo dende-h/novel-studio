@@ -45,7 +45,6 @@ import {
   type Plot,
   type PlotBeat,
   type PlotBeatStatus,
-  type PlotLine,
   type PlotSection,
   type PlotTemplate,
   pickPrimaryPlot,
@@ -87,7 +86,16 @@ interface PlotViewProps {
   onOpenEpisode: (episodeId: string) => void
   /** ビートから話を新規作成する（作成した episode id を返す。失敗は null）。 */
   onCreateEpisode?: (title: string) => Promise<string | null>
+  /**
+   * 図鑑に無い人物・場所をその場で登録する（作成した entry id を返す。失敗は null）。
+   * 図鑑を常に正本に保つ＝プロット側に自由記述の別管理を作らない。
+   */
+  onCreateGlossaryEntry?: (name: string, category: '人物' | '場所') => Promise<string | null>
 }
+
+/** 図鑑カテゴリの絞り込み（固定5種＋旧データの自由入力に緩く一致させる）。 */
+const PERSON_CATEGORY = /人物|キャラ/
+const PLACE_CATEGORY = /場所|舞台/
 
 const genId = () => crypto.randomUUID()
 const fmt = (n: number) => n.toLocaleString('ja-JP')
@@ -148,6 +156,7 @@ export default function PlotView({
   onConsumeFocus,
   onOpenEpisode,
   onCreateEpisode,
+  onCreateGlossaryEntry,
 }: PlotViewProps) {
   const [plot, setPlot] = useState<Plot | null>(null)
   const [loaded, setLoaded] = useState(false)
@@ -405,6 +414,7 @@ export default function PlotView({
               onApply={(fn) => void apply(fn)}
               onOpenEpisode={onOpenEpisode}
               onCreateEpisode={onCreateEpisode}
+              onCreateGlossaryEntry={onCreateGlossaryEntry}
               onShowForeshadows={() => setView('foreshadow')}
               onRequestDelete={() =>
                 setDeleteTarget({
@@ -728,6 +738,8 @@ function BeatCard({
   const pov = beat.povRef ? glossary.find((g) => g.id === beat.povRef) : undefined
   const episode = beat.episodeRef ? episodes.find((e) => e.id === beat.episodeRef) : undefined
   const foreshadowCount = foreshadowsOfBeat(plot, beat.id).length
+  const firstLineId = beat.lineRefs[0]
+  const line = firstLineId !== undefined ? plot.lines.find((l) => l.id === firstLineId) : undefined
   const preview = beat.summary?.trim() || ''
 
   return (
@@ -809,6 +821,19 @@ function BeatCard({
           </p>
         ) : null}
         <div className="mt-1.5 flex items-center gap-1.5 pl-6">
+          {line ? (
+            <span
+              title={line.note}
+              className="inline-flex items-center gap-1 rounded-full bg-surface-container-high px-2 py-0.5 text-[10.5px] text-on-surface"
+            >
+              <span
+                aria-hidden
+                className="size-1.5 rounded-full"
+                style={{ background: lineColorOf(plot, line.id) }}
+              />
+              {line.title}
+            </span>
+          ) : null}
           {pov ? (
             <span
               title={pov.summary}
@@ -848,6 +873,7 @@ interface BeatDetailPanelProps {
   onApply: (fn: (p: Plot) => Plot) => void
   onOpenEpisode: (episodeId: string) => void
   onCreateEpisode?: (title: string) => Promise<string | null>
+  onCreateGlossaryEntry?: (name: string, category: '人物' | '場所') => Promise<string | null>
   /** 伏線ビューへ切り替える（伏線の追加・編集は伏線ビューが担当）。 */
   onShowForeshadows: () => void
   onRequestDelete: () => void
@@ -863,6 +889,7 @@ function BeatDetailPanel({
   onApply,
   onOpenEpisode,
   onCreateEpisode,
+  onCreateGlossaryEntry,
   onShowForeshadows,
   onRequestDelete,
 }: BeatDetailPanelProps) {
@@ -927,31 +954,46 @@ function BeatDetailPanel({
             beat.povRef || beat.castRefs.length > 0 || beat.placeRefs.length > 0,
           )}
         >
-          {glossary.length > 0 ? (
+          {glossary.length > 0 || onCreateGlossaryEntry ? (
             <>
               <Field label="視点（だれの目で書くか）">
-                <SelectBox
-                  value={beat.povRef ?? ''}
-                  onChange={(v) => patch({ povRef: v === '' ? undefined : v })}
+                <GlossaryRefSelect
+                  value={beat.povRef}
+                  glossary={glossary}
+                  categoryRe={PERSON_CATEGORY}
                   ariaLabel="視点キャラ"
-                  options={[
-                    { value: '', label: '（未設定）' },
-                    ...glossary.map((g) => ({ value: g.id, label: g.name })),
-                  ]}
+                  onChange={(v) => patch({ povRef: v })}
+                  onCreate={
+                    onCreateGlossaryEntry
+                      ? (name) => onCreateGlossaryEntry(name, '人物')
+                      : undefined
+                  }
                 />
               </Field>
               <RefChips
                 label="登場する人物"
                 ids={beat.castRefs}
                 glossary={glossary}
+                categoryRe={PERSON_CATEGORY}
                 onChange={(ids) => patch({ castRefs: ids })}
+                onCreate={
+                  onCreateGlossaryEntry ? (name) => onCreateGlossaryEntry(name, '人物') : undefined
+                }
               />
-              <RefChips
-                label="舞台（場所）"
-                ids={beat.placeRefs}
-                glossary={glossary}
-                onChange={(ids) => patch({ placeRefs: ids })}
-              />
+              <Field label="舞台（場所）">
+                <GlossaryRefSelect
+                  value={beat.placeRefs[0]}
+                  glossary={glossary}
+                  categoryRe={PLACE_CATEGORY}
+                  ariaLabel="舞台（場所）"
+                  onChange={(v) => patch({ placeRefs: v === undefined ? [] : [v] })}
+                  onCreate={
+                    onCreateGlossaryEntry
+                      ? (name) => onCreateGlossaryEntry(name, '場所')
+                      : undefined
+                  }
+                />
+              </Field>
             </>
           ) : (
             <GlossaryHint />
@@ -979,11 +1021,18 @@ function BeatDetailPanel({
             />
           </Field>
           {plot.lines.length > 0 ? (
-            <LineChips
-              lines={plot.lines}
-              ids={beat.lineRefs}
-              onChange={(ids) => patch({ lineRefs: ids })}
-            />
+            <Field label="プロットライン">
+              {/* 1ビート＝1ライン（グリッドの分割表・カードの色と一対一で対応させる）。 */}
+              <SelectBox
+                value={beat.lineRefs[0] ?? ''}
+                onChange={(v) => patch({ lineRefs: v === '' ? [] : [v] })}
+                ariaLabel="プロットライン"
+                options={[
+                  { value: '', label: '（なし）' },
+                  ...plot.lines.map((l) => ({ value: l.id, label: l.title })),
+                ]}
+              />
+            </Field>
           ) : null}
           <div className="flex flex-col gap-1">
             <span className="font-medium text-[11px] text-on-surface-variant/70 tracking-wide">
@@ -1099,16 +1148,10 @@ function BeatDetailPanel({
 }
 
 /**
- * グリッドのセル間移動（純関数）：幕が変われば末尾へ移し、ラインの割当を付け替える。
- * 未設定列へ落とすと元のラインから外れるだけで、他のライン割当は保つ（黙って全部消さない）。
+ * グリッドのセル間移動（純関数）：幕が変われば末尾へ移し、ラインを落とした列に付け替える。
+ * 1ビート＝1ライン運用（未設定列へ落とすと外れる）。
  */
-function moveBeatToCell(
-  p: Plot,
-  beatId: string,
-  fromLine: string | null,
-  toSectionId: string,
-  toLine: string | null,
-): Plot {
+function moveBeatToCell(p: Plot, beatId: string, toSectionId: string, toLine: string | null): Plot {
   let next = p
   const current = next.sections.find((s) => s.beatIds.includes(beatId))
   if (current && current.id !== toSectionId) {
@@ -1118,12 +1161,8 @@ function moveBeatToCell(
   }
   const beat = next.beats.find((b) => b.id === beatId)
   if (!beat) return next
-  if (toLine === null) {
-    if (fromLine !== null) {
-      next = updateBeat(next, beatId, { lineRefs: beat.lineRefs.filter((x) => x !== fromLine) })
-    }
-  } else if (fromLine !== toLine) {
-    const lineRefs = beat.lineRefs.filter((x) => x !== fromLine && x !== toLine).concat(toLine)
+  const lineRefs = toLine === null ? [] : [toLine]
+  if (beat.lineRefs.length !== lineRefs.length || beat.lineRefs[0] !== lineRefs[0]) {
     next = updateBeat(next, beatId, { lineRefs })
   }
   return next
@@ -1174,13 +1213,10 @@ function GridView({
     }, 0)
     const { active, over } = e
     if (!over) return
-    const from = (active.data.current ?? {}) as { lineId: string | null }
     const to = (over.data.current ?? {}) as { sectionId?: string; lineId: string | null }
     if (to.sectionId === undefined) return
     const toSectionId = to.sectionId
-    onApply((p) =>
-      moveBeatToCell(p, String(active.id), from.lineId ?? null, toSectionId, to.lineId ?? null),
-    )
+    onApply((p) => moveBeatToCell(p, String(active.id), toSectionId, to.lineId ?? null))
   }
 
   return (
@@ -1532,66 +1568,6 @@ function ForeshadowView({
   )
 }
 
-/** プロットラインの複数選択（ビート詳細用）。チップ＋追加セレクト。 */
-function LineChips({
-  lines,
-  ids,
-  onChange,
-}: {
-  lines: PlotLine[]
-  ids: string[]
-  onChange: (ids: string[]) => void
-}) {
-  const byId = useMemo(() => new Map(lines.map((l) => [l.id, l])), [lines])
-  const remaining = lines.filter((l) => !ids.includes(l.id))
-  return (
-    <div className="flex flex-col gap-1">
-      <span className="font-medium text-[11px] text-on-surface-variant/70 tracking-wide">
-        プロットライン
-      </span>
-      <div className="flex flex-wrap items-center gap-1.5">
-        {ids.map((id) => {
-          const line = byId.get(id)
-          return (
-            <span
-              key={id}
-              title={line?.note}
-              className="inline-flex items-center gap-1 rounded-full bg-surface-container-high px-2 py-0.5 text-[11px] text-on-surface"
-            >
-              {line?.title ?? '（削除済み）'}
-              <button
-                type="button"
-                aria-label={`${line?.title ?? 'このライン'}を外す`}
-                onClick={() => onChange(ids.filter((x) => x !== id))}
-                className="text-on-surface-variant/60 hover:text-on-surface"
-              >
-                <X className="size-3" />
-              </button>
-            </span>
-          )
-        })}
-        {remaining.length > 0 ? (
-          <select
-            value=""
-            onChange={(e) => {
-              if (e.target.value !== '') onChange([...ids, e.target.value])
-            }}
-            aria-label="プロットラインを追加"
-            className="rounded-md border border-outline-variant/30 bg-surface px-1.5 py-0.5 text-[11px] text-on-surface-variant outline-none focus:border-primary/50"
-          >
-            <option value="">＋ 追加</option>
-            {remaining.map((l) => (
-              <option key={l.id} value={l.id}>
-                {l.title}
-              </option>
-            ))}
-          </select>
-        ) : null}
-      </div>
-    </div>
-  )
-}
-
 /** 新規作成時のテンプレート選択。 */
 function TemplatePicker({ onPick }: { onPick: (template: PlotTemplate) => void }) {
   const entries = Object.entries(PLOT_TEMPLATES) as Array<
@@ -1806,20 +1782,28 @@ function SelectBox({
   )
 }
 
-/** 図鑑エントリの複数選択（登場・舞台）。チップ＋追加セレクト。 */
+/** 図鑑エントリの複数選択（登場人物用）。カテゴリで絞り、無ければその場で図鑑登録できる。 */
 function RefChips({
   label,
   ids,
   glossary,
+  categoryRe,
   onChange,
+  onCreate,
 }: {
   label: string
   ids: string[]
   glossary: GlossaryEntry[]
+  categoryRe: RegExp
   onChange: (ids: string[]) => void
+  onCreate?: (name: string) => Promise<string | null>
 }) {
   const byId = useMemo(() => new Map(glossary.map((g) => [g.id, g])), [glossary])
-  const remaining = glossary.filter((g) => !ids.includes(g.id))
+  const matched = glossary.filter(
+    (g) => categoryRe.test((g.category ?? '').trim()) && !ids.includes(g.id),
+  )
+  const other = glossary.filter((g) => !(g.category ?? '').trim() && !ids.includes(g.id))
+  const [creating, setCreating] = useState(false)
   return (
     <div className="flex flex-col gap-1">
       <span className="font-medium text-[11px] text-on-surface-variant/70 tracking-wide">
@@ -1846,24 +1830,164 @@ function RefChips({
             </span>
           )
         })}
-        {remaining.length > 0 ? (
+        {creating && onCreate ? (
+          <CreateEntryInline
+            onSubmit={async (name) => {
+              const id = await onCreate(name)
+              if (id && !ids.includes(id)) onChange([...ids, id])
+              setCreating(false)
+            }}
+            onCancel={() => setCreating(false)}
+          />
+        ) : matched.length > 0 || other.length > 0 || onCreate ? (
           <select
             value=""
             onChange={(e) => {
-              if (e.target.value !== '') onChange([...ids, e.target.value])
+              const v = e.target.value
+              if (v === '__create__') setCreating(true)
+              else if (v !== '') onChange([...ids, v])
             }}
             aria-label={`${label}を追加`}
             className="rounded-md border border-outline-variant/30 bg-surface px-1.5 py-0.5 text-[11px] text-on-surface-variant outline-none focus:border-primary/50"
           >
             <option value="">＋ 追加</option>
-            {remaining.map((g) => (
+            {matched.map((g) => (
               <option key={g.id} value={g.id}>
                 {g.name}
               </option>
             ))}
+            {other.length > 0 ? (
+              <optgroup label="カテゴリ未設定">
+                {other.map((g) => (
+                  <option key={g.id} value={g.id}>
+                    {g.name}
+                  </option>
+                ))}
+              </optgroup>
+            ) : null}
+            {onCreate ? <option value="__create__">＋ 図鑑に登録…</option> : null}
           </select>
         ) : null}
       </div>
+    </div>
+  )
+}
+
+/** 図鑑エントリの単一選択（視点・舞台用）。カテゴリで絞り、無ければその場で図鑑登録できる。 */
+function GlossaryRefSelect({
+  value,
+  glossary,
+  categoryRe,
+  ariaLabel,
+  onChange,
+  onCreate,
+}: {
+  value: string | undefined
+  glossary: GlossaryEntry[]
+  categoryRe: RegExp
+  ariaLabel: string
+  onChange: (id: string | undefined) => void
+  onCreate?: (name: string) => Promise<string | null>
+}) {
+  const [creating, setCreating] = useState(false)
+  const matched = glossary.filter((g) => categoryRe.test((g.category ?? '').trim()))
+  const other = glossary.filter((g) => !(g.category ?? '').trim())
+  // 現在値が絞り込み外（別カテゴリの旧データ等）でも選択肢に残す＝表示が勝手に消えない。
+  const current = value !== undefined ? glossary.find((g) => g.id === value) : undefined
+  const currentExtra =
+    current && !matched.includes(current) && !other.includes(current) ? current : undefined
+  if (creating && onCreate) {
+    return (
+      <CreateEntryInline
+        onSubmit={async (name) => {
+          const id = await onCreate(name)
+          if (id) onChange(id)
+          setCreating(false)
+        }}
+        onCancel={() => setCreating(false)}
+      />
+    )
+  }
+  return (
+    <select
+      value={value ?? ''}
+      onChange={(e) => {
+        const v = e.target.value
+        if (v === '__create__') setCreating(true)
+        else onChange(v === '' ? undefined : v)
+      }}
+      aria-label={ariaLabel}
+      className="w-full rounded-md border border-outline-variant/30 bg-surface px-2 py-1.5 text-[13px] text-on-surface outline-none focus:border-primary/50"
+    >
+      <option value="">（未設定）</option>
+      {matched.map((g) => (
+        <option key={g.id} value={g.id}>
+          {g.name}
+        </option>
+      ))}
+      {other.length > 0 ? (
+        <optgroup label="カテゴリ未設定">
+          {other.map((g) => (
+            <option key={g.id} value={g.id}>
+              {g.name}
+            </option>
+          ))}
+        </optgroup>
+      ) : null}
+      {currentExtra ? <option value={currentExtra.id}>{currentExtra.name}</option> : null}
+      {onCreate ? <option value="__create__">＋ 図鑑に登録…</option> : null}
+    </select>
+  )
+}
+
+/** その場登録の1行フォーム（名前だけ入れて Enter／登録。詳細はあとで図鑑で書ける）。 */
+function CreateEntryInline({
+  onSubmit,
+  onCancel,
+}: {
+  onSubmit: (name: string) => void | Promise<void>
+  onCancel: () => void
+}) {
+  const [name, setName] = useState('')
+  const submit = () => {
+    const t = name.trim()
+    if (t !== '') void onSubmit(t)
+    else onCancel()
+  }
+  return (
+    <div className="flex w-full items-center gap-1">
+      <input
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault()
+            submit()
+          } else if (e.key === 'Escape') {
+            onCancel()
+          }
+        }}
+        placeholder="名前を入力して図鑑に登録"
+        aria-label="図鑑に登録する名前"
+        // biome-ignore lint/a11y/noAutofocus: 「＋ 図鑑に登録…」を選んだ直後だけ意図的にフォーカスする
+        autoFocus
+        className="w-full min-w-0 rounded-md border border-primary/40 bg-surface px-2 py-1 text-[12px] text-on-surface outline-none placeholder:text-on-surface-variant/45"
+      />
+      <button
+        type="button"
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={submit}
+        className="shrink-0 rounded-md px-2 py-1 text-[12px] text-primary hover:bg-surface-container-high"
+      >
+        登録
+      </button>
+      <button
+        type="button"
+        onClick={onCancel}
+        className="shrink-0 rounded-md px-1.5 py-1 text-[12px] text-on-surface-variant hover:bg-surface-container-high"
+      >
+        取消
+      </button>
     </div>
   )
 }
