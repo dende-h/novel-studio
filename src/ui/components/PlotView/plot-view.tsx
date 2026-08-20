@@ -4,6 +4,8 @@ import {
   type DragEndEvent,
   KeyboardSensor,
   PointerSensor,
+  useDraggable,
+  useDroppable,
   useSensor,
   useSensors,
 } from '@dnd-kit/core'
@@ -1092,8 +1094,40 @@ function BeatDetailPanel({
 }
 
 /**
- * グリッド：行＝プロットライン×列＝幕。空セルの点線が
- * 「このサブプロットはこの幕で動いていない」を一目にする。
+ * グリッドのセル間移動（純関数）：幕が変われば末尾へ移し、ラインの割当を付け替える。
+ * 未設定列へ落とすと元のラインから外れるだけで、他のライン割当は保つ（黙って全部消さない）。
+ */
+function moveBeatToCell(
+  p: Plot,
+  beatId: string,
+  fromLine: string | null,
+  toSectionId: string,
+  toLine: string | null,
+): Plot {
+  let next = p
+  const current = next.sections.find((s) => s.beatIds.includes(beatId))
+  if (current && current.id !== toSectionId) {
+    const target = next.sections.find((s) => s.id === toSectionId)
+    if (!target) return p
+    next = moveBeat(next, beatId, toSectionId, target.beatIds.length)
+  }
+  const beat = next.beats.find((b) => b.id === beatId)
+  if (!beat) return next
+  if (toLine === null) {
+    if (fromLine !== null) {
+      next = updateBeat(next, beatId, { lineRefs: beat.lineRefs.filter((x) => x !== fromLine) })
+    }
+  } else if (fromLine !== toLine) {
+    const lineRefs = beat.lineRefs.filter((x) => x !== fromLine && x !== toLine).concat(toLine)
+    next = updateBeat(next, beatId, { lineRefs })
+  }
+  return next
+}
+
+/**
+ * グリッド：縦＝幕（時系列）×横＝プロットライン。幕が増えても縦に伸びるだけで
+ * 横スクロールしない。空セルの点線が「この筋はこの幕で動いていない」を一目にする。
+ * ビートのチップはドラッグで幕・ラインをまたいで動かせる（クリックはビートシートへ）。
  */
 function GridView({
   plot,
@@ -1105,11 +1139,19 @@ function GridView({
   onJumpBeat: (beatId: string) => void
 }) {
   const [addInput, setAddInput] = useState('')
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }))
+  // ドラッグ直後の click（pointerup と同時に発火する）でジャンプしないようにする目印。
+  const draggedRef = useRef(false)
   const beatsIn = (sectionId: string, lineId: string | null) =>
     beatsOfSection(plot, sectionId).filter((b) =>
       lineId === null ? b.lineRefs.length === 0 : b.lineRefs.includes(lineId),
     )
   const hasUnassigned = plot.beats.some((b) => b.lineRefs.length === 0)
+  // 列＝ライン（＋未設定の受け皿）。ラインがまだ無くても、幕またぎのドラッグはできるように出す。
+  const columns: Array<{ key: string; lineId: string | null }> = [
+    ...plot.lines.map((l) => ({ key: l.id, lineId: l.id as string | null })),
+    ...(hasUnassigned || plot.lines.length === 0 ? [{ key: 'none', lineId: null }] : []),
+  ]
 
   const submitAdd = () => {
     const title = addInput.trim()
@@ -1121,34 +1163,18 @@ function GridView({
     setAddInput('')
   }
 
-  /** セル＝1枚のカードにビート名を列挙（画面設計準拠）。空は点線プレースホルダ。 */
-  const cell = (lineId: string | null, sectionId: string) => {
-    const beats = beatsIn(sectionId, lineId)
-    if (beats.length === 0) {
-      if (lineId === null) return <div className="min-h-12" />
-      return (
-        <div
-          className="grid min-h-12 place-items-center rounded-md border border-dashed text-[10.5px]"
-          style={{ borderColor: 'var(--wheat-500)', color: 'var(--wheat-700)' }}
-        >
-          空白
-        </div>
-      )
-    }
-    return (
-      <div className="flex min-h-12 flex-col gap-0.5 rounded-md border border-outline-variant/30 bg-surface-container-lowest px-2 py-1.5">
-        {beats.map((b) => (
-          <button
-            key={b.id}
-            type="button"
-            onClick={() => onJumpBeat(b.id)}
-            title="ビートシートで開く"
-            className="truncate text-left text-[11.5px] text-on-surface transition-colors hover:text-primary"
-          >
-            {b.title || '無題のビート'}
-          </button>
-        ))}
-      </div>
+  const onDragEnd = (e: DragEndEvent) => {
+    setTimeout(() => {
+      draggedRef.current = false
+    }, 0)
+    const { active, over } = e
+    if (!over) return
+    const from = (active.data.current ?? {}) as { lineId: string | null }
+    const to = (over.data.current ?? {}) as { sectionId?: string; lineId: string | null }
+    if (to.sectionId === undefined) return
+    const toSectionId = to.sectionId
+    onApply((p) =>
+      moveBeatToCell(p, String(active.id), from.lineId ?? null, toSectionId, to.lineId ?? null),
     )
   }
 
@@ -1156,69 +1182,98 @@ function GridView({
     <div>
       {plot.lines.length === 0 ? (
         <p className="mb-4 rounded-lg bg-surface-container-low px-4 py-3 text-[12.5px] text-on-surface-variant leading-relaxed">
-          プロットライン（メイン・サブプロット・キャラアークなどの筋）を作ると、幕ごとの動きを表で俯瞰できます。
-          ラインへの割り当てはビートシートの右パネルから。
+          プロットライン（メイン・サブプロット・キャラアークなどの筋）を作ると、筋ごとの列に分かれて
+          「どの幕で止まっているか」が見えるようになります。下の入力欄からどうぞ。
         </p>
-      ) : (
+      ) : null}
+      <DndContext
+        sensors={sensors}
+        collisionDetection={closestCenter}
+        onDragStart={() => {
+          draggedRef.current = true
+        }}
+        onDragCancel={() => {
+          setTimeout(() => {
+            draggedRef.current = false
+          }, 0)
+        }}
+        onDragEnd={onDragEnd}
+      >
         <div className="overflow-x-auto pb-2">
           <div
-            className="grid min-w-fit items-start gap-1.5"
+            className="grid min-w-fit items-stretch gap-1.5"
             style={{
-              gridTemplateColumns: `minmax(7rem, 9rem) repeat(${plot.sections.length}, minmax(10rem, 1fr))`,
+              gridTemplateColumns: `minmax(5.5rem, 7rem) repeat(${columns.length}, minmax(13rem, 1fr))`,
             }}
           >
+            {/* 列見出し＝ライン */}
             <div />
-            {plot.sections.map((s) => (
-              <div key={s.id} className="px-1 pb-1">
-                <span className="font-medium font-serif text-[13px] text-on-surface">
-                  {s.title}
-                </span>
-                <span className="ml-1.5 text-[10.5px] text-on-surface-variant tabular-nums">
-                  {s.beatIds.length}
-                </span>
-              </div>
-            ))}
-            {plot.lines.map((line) => (
-              <Fragment key={line.id}>
-                <div className="group flex items-center gap-1.5 pr-1">
+            {columns.map((c) => {
+              if (c.lineId === null) {
+                return (
+                  <div key={c.key} className="flex items-center px-1 pb-1">
+                    <span className="text-[11.5px] text-on-surface-variant/70">ライン未設定</span>
+                  </div>
+                )
+              }
+              const lineId = c.lineId
+              const line = plot.lines.find((l) => l.id === lineId)
+              return (
+                <div key={c.key} className="group flex items-center gap-1.5 px-1 pb-1">
                   <span
                     aria-hidden
-                    className="h-8 w-1 shrink-0 rounded-full"
-                    style={{ background: lineColorOf(plot, line.id) }}
+                    className="h-5 w-1 shrink-0 rounded-full"
+                    style={{ background: lineColorOf(plot, lineId) }}
                   />
                   <CommitInput
-                    value={line.title}
+                    value={line?.title ?? ''}
                     onCommit={(v) => {
                       const t = v.trim()
-                      if (t !== '') onApply((p) => updateLine(p, line.id, { title: t }))
+                      if (t !== '') onApply((p) => updateLine(p, lineId, { title: t }))
                     }}
                     ariaLabel="プロットラインの名前"
                   />
                   <span className="opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
                     <HoverButton
                       label="ラインを削除（ビートは残ります）"
-                      onClick={() => onApply((p) => removeLine(p, line.id))}
+                      onClick={() => onApply((p) => removeLine(p, lineId))}
                     >
                       <X className="size-3.5" />
                     </HoverButton>
                   </span>
                 </div>
-                {plot.sections.map((s) => (
-                  <div key={s.id}>{cell(line.id, s.id)}</div>
+              )
+            })}
+            {/* 行＝幕（時系列に縦へ） */}
+            {plot.sections.map((s) => (
+              <Fragment key={s.id}>
+                <div className="pt-1 pr-1">
+                  <span className="font-medium font-serif text-[13px] text-on-surface">
+                    {s.title}
+                  </span>
+                  <span className="ml-1.5 text-[10.5px] text-on-surface-variant tabular-nums">
+                    {s.beatIds.length}
+                  </span>
+                </div>
+                {columns.map((c) => (
+                  <GridCell
+                    key={c.key}
+                    sectionId={s.id}
+                    lineId={c.lineId}
+                    beats={beatsIn(s.id, c.lineId)}
+                    onJumpBeat={(beatId) => {
+                      if (!draggedRef.current) onJumpBeat(beatId)
+                    }}
+                  />
                 ))}
               </Fragment>
             ))}
-            {hasUnassigned ? (
-              <Fragment>
-                <div className="pr-1 text-[11.5px] text-on-surface-variant/70">ライン未設定</div>
-                {plot.sections.map((s) => (
-                  <div key={s.id}>{cell(null, s.id)}</div>
-                ))}
-              </Fragment>
-            ) : null}
           </div>
         </div>
-      )}
+      </DndContext>
+      <p className="mt-2 pl-1 text-[11.5px] text-on-surface-variant/70">
+        ビートはドラッグで幕・ラインを移動できます。クリックでビートシートの編集へ。
+      </p>
       <div className="mt-3 flex items-center gap-1.5 pl-1">
         <Plus className="size-3.5 shrink-0 text-on-surface-variant/50" />
         <input
@@ -1239,6 +1294,96 @@ function GridView({
         />
       </div>
     </div>
+  )
+}
+
+/** グリッドのチップの状態ドット色（アプリの固有パレットを直接引く）。 */
+const STATUS_DOT: Record<PlotBeatStatus, string> = {
+  idea: 'bg-[var(--outline-variant)]',
+  fixed: 'bg-[var(--wheat-500)]',
+  writing: 'bg-[var(--forest-400)]',
+  done: 'bg-[var(--forest-700)]',
+}
+
+/** グリッドの1セル（ドロップ先）。空でも受け皿として存在し、ドラッグ中は縁が灯る。 */
+function GridCell({
+  sectionId,
+  lineId,
+  beats,
+  onJumpBeat,
+}: {
+  sectionId: string
+  lineId: string | null
+  beats: PlotBeat[]
+  onJumpBeat: (beatId: string) => void
+}) {
+  const { setNodeRef, isOver } = useDroppable({
+    id: `cell:${sectionId}:${lineId ?? 'none'}`,
+    data: { sectionId, lineId },
+  })
+  const empty = beats.length === 0
+  return (
+    <div
+      ref={setNodeRef}
+      className={`flex min-h-14 flex-col gap-1 rounded-md border p-1.5 transition-colors ${
+        isOver
+          ? 'border-primary/60 bg-accent'
+          : empty
+            ? 'grid place-items-center border-dashed'
+            : 'border-outline-variant/20 bg-surface-container-low/50'
+      }`}
+      style={
+        !isOver && empty && lineId !== null
+          ? { borderColor: 'var(--wheat-500)', color: 'var(--wheat-700)' }
+          : !isOver && empty
+            ? { borderColor: 'var(--outline-variant)' }
+            : undefined
+      }
+    >
+      {empty ? (
+        <span className="text-[10.5px]">{lineId !== null ? '空白' : ''}</span>
+      ) : (
+        beats.map((b) => <GridBeatChip key={b.id} beat={b} lineId={lineId} onJump={onJumpBeat} />)
+      )}
+    </div>
+  )
+}
+
+/** グリッドのビートチップ（ドラッグで幕・ライン移動、クリックでビートシートへ）。 */
+function GridBeatChip({
+  beat,
+  lineId,
+  onJump,
+}: {
+  beat: PlotBeat
+  lineId: string | null
+  onJump: (beatId: string) => void
+}) {
+  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
+    id: beat.id,
+    data: { lineId },
+  })
+  return (
+    <button
+      ref={setNodeRef}
+      type="button"
+      {...attributes}
+      {...listeners}
+      onClick={() => onJump(beat.id)}
+      title="ドラッグで幕・ラインを移動 ・ クリックでビートシートへ"
+      style={{
+        transform: CSS.Translate.toString(transform),
+        ...(isDragging ? { zIndex: 30, position: 'relative' as const } : {}),
+      }}
+      className={`flex w-full cursor-grab touch-none items-center gap-1.5 rounded-md border border-outline-variant/30 bg-surface-container-lowest px-2 py-1 text-left transition-colors hover:border-primary/40 active:cursor-grabbing ${
+        isDragging ? 'opacity-80 shadow-md' : ''
+      }`}
+    >
+      <span className={`size-1.5 shrink-0 rounded-full ${STATUS_DOT[beat.status]}`} />
+      <span className="min-w-0 flex-1 truncate text-[11.5px] text-on-surface">
+        {beat.title || '無題のビート'}
+      </span>
+    </button>
   )
 }
 
