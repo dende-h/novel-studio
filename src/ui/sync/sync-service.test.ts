@@ -519,6 +519,7 @@ const mkPlot = (id: string, workId: string, updatedAt: number, title = '本編�
   beats: [],
   lines: [],
   foreshadows: [],
+  secrets: [],
   updatedAt,
 })
 

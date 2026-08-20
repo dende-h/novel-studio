@@ -36,6 +36,7 @@ import {
   addSection,
   beatsOfSection,
   countOpenForeshadows,
+  countUnrevealedSecrets,
   type Foreshadow,
   type ForeshadowStatus,
   foreshadowStatus,
@@ -51,13 +52,18 @@ import {
   removeBeat,
   removeForeshadow,
   removeLine,
+  removeSecret,
   removeSection,
+  type SecretStatus,
+  secretStatus,
+  secretsHiddenAt,
   sectionTargetTotal,
   singletonPlotId,
   updateBeat,
   updateLine,
   updateSection,
   upsertForeshadow,
+  upsertSecret,
 } from '@/core/plot'
 import type { Episode, GlossaryEntry } from '@/core/schema'
 import { countEpisodeChars } from '@/core/stats'
@@ -270,7 +276,8 @@ export default function PlotView({
 
   const doneCount = plot.beats.filter((b) => b.status === 'done').length
   const totalTarget = plot.beats.reduce((sum, b) => sum + (b.targetLength ?? 0), 0)
-  const openForeshadows = countOpenForeshadows(plot)
+  // タブのバッジ＝脱稿前に片付けるべき件数（未回収の伏線＋開示未定の秘密）。
+  const openItems = countOpenForeshadows(plot) + countUnrevealedSecrets(plot)
   const selectedBeat = selectedId ? (plot.beats.find((b) => b.id === selectedId) ?? null) : null
   const templateLabel =
     plot.template === undefined
@@ -321,10 +328,13 @@ export default function PlotView({
               グリッド
             </ViewTab>
             <ViewTab active={view === 'foreshadow'} onClick={() => setView('foreshadow')}>
-              伏線
-              {openForeshadows > 0 ? (
-                <span className="ml-1 inline-flex items-center rounded-full bg-secondary-container px-1.5 font-medium text-[10px] text-on-secondary-container tabular-nums">
-                  {openForeshadows}
+              伏線・秘密
+              {openItems > 0 ? (
+                <span
+                  title="未回収の伏線＋開示未定の秘密"
+                  className="ml-1 inline-flex items-center rounded-full bg-secondary-container px-1.5 font-medium text-[10px] text-on-secondary-container tabular-nums"
+                >
+                  {openItems}
                 </span>
               ) : null}
             </ViewTab>
@@ -902,6 +912,8 @@ function BeatDetailPanel({
       ? Math.min(100, Math.round((actualChars / target) * 100))
       : null
   const beatForeshadows = foreshadowsOfBeat(plot, beat.id)
+  const revealedHere = plot.secrets.filter((s) => s.revealBeatId === beat.id)
+  const stillHidden = secretsHiddenAt(plot, beat.id)
 
   return (
     // 親（2カラム行）が画面高に固定されているので、パネルは自分の中だけでスクロールする。
@@ -1009,8 +1021,13 @@ function BeatDetailPanel({
         </PanelGroup>
 
         <PanelGroup
-          title="構成メモ・伏線"
-          defaultOpen={Boolean(beat.note || beat.lineRefs.length > 0 || beatForeshadows.length > 0)}
+          title="メモ・伏線・秘密"
+          defaultOpen={Boolean(
+            beat.note ||
+              beat.lineRefs.length > 0 ||
+              beatForeshadows.length > 0 ||
+              revealedHere.length > 0,
+          )}
         >
           <Field label="メモ">
             <CommitTextarea
@@ -1056,6 +1073,36 @@ function BeatDetailPanel({
                 {beatForeshadows.length > 0 ? '伏線ビューで管理' : '＋ 伏線ビューで登録'}
               </button>
             </div>
+          </div>
+
+          {/* 秘密＝読者の理解の管理。ここで明かす分と、この時点でまだ伏せている分。 */}
+          <div className="flex flex-col gap-1">
+            <span className="font-medium text-[11px] text-on-surface-variant/70 tracking-wide">
+              秘密（読者に伏せる情報）
+            </span>
+            <div className="flex flex-wrap items-center gap-1.5">
+              {revealedHere.map((s) => (
+                <span
+                  key={s.id}
+                  title={s.truth}
+                  className="inline-flex items-center gap-1 rounded-full bg-primary/12 px-2 py-0.5 text-[11px] text-primary"
+                >
+                  ここで明かす: {s.title}
+                </span>
+              ))}
+              <button
+                type="button"
+                onClick={onShowForeshadows}
+                className="text-[11px] text-primary hover:underline"
+              >
+                {revealedHere.length > 0 ? '秘密を管理' : '＋ 秘密を登録'}
+              </button>
+            </div>
+            {stillHidden.length > 0 ? (
+              <p className="text-[11px] text-on-surface-variant/70 leading-relaxed">
+                この時点で読者が知らないこと：{stillHidden.map((s) => s.title).join('、')}
+              </p>
+            ) : null}
           </div>
         </PanelGroup>
 
@@ -1488,6 +1535,10 @@ function ForeshadowView({
 
   return (
     <div>
+      <h2 className="mb-1 font-semibold font-serif text-[16px] text-on-surface">伏線</h2>
+      <p className="mb-2 text-[12px] text-on-surface-variant/70">
+        後で効く布石。どこで張って、どこで回収するか。
+      </p>
       {plot.foreshadows.length === 0 ? (
         <p className="mb-4 rounded-lg bg-surface-container-low px-4 py-3 text-[12.5px] text-on-surface-variant leading-relaxed">
           伏線を登録して「張るビート」と「回収するビート」を結ぶと、回収漏れがここで一目で分かります。
@@ -1561,6 +1612,190 @@ function ForeshadowView({
           onBlur={submitAdd}
           placeholder="伏線を追加（例：手紙の署名）"
           aria-label="伏線を追加"
+          className="w-full max-w-sm bg-transparent font-sans text-[13px] text-on-surface outline-none placeholder:text-on-surface-variant/45"
+        />
+      </div>
+
+      <SecretTable
+        plot={plot}
+        beatOptions={beatOptions}
+        onApply={onApply}
+        onJumpBeat={onJumpBeat}
+      />
+    </div>
+  )
+}
+
+const SECRET_UI: Record<SecretStatus, { label: string; className: string }> = {
+  revealed: { label: '開示予定', className: 'bg-primary/12 text-primary' },
+  unrevealed: {
+    label: '開示未定',
+    className: 'bg-secondary-container text-on-secondary-container',
+  },
+  kept: { label: '明かさない', className: 'bg-surface-container-high text-on-surface-variant' },
+}
+
+/**
+ * 秘密：読者に伏せている情報と、それを明かすビートの対応表。
+ * 伏線が「布石を回収したか」の点検なのに対し、こちらは「読者がいつ知るか」の設計。
+ */
+function SecretTable({
+  plot,
+  beatOptions,
+  onApply,
+  onJumpBeat,
+}: {
+  plot: Plot
+  beatOptions: Array<{ value: string; label: string }>
+  onApply: (fn: (p: Plot) => Plot) => void
+  onJumpBeat: (beatId: string) => void
+}) {
+  const [addInput, setAddInput] = useState('')
+  const submitAdd = () => {
+    const title = addInput.trim()
+    if (title === '') return
+    onApply((p) => upsertSecret(p, { id: genId(), title }))
+    setAddInput('')
+  }
+
+  return (
+    <div className="mt-8">
+      <h2 className="mb-1 font-semibold font-serif text-[16px] text-on-surface">
+        秘密（読者に伏せる情報）
+      </h2>
+      <p className="mb-2 text-[12px] text-on-surface-variant/70">
+        いま読者が知らないこと。真相は作者だけが見る欄で、どのビートで明かすかを決めます。
+      </p>
+      {plot.secrets.length === 0 ? (
+        <p className="mb-4 rounded-lg bg-surface-container-low px-4 py-3 text-[12.5px] text-on-surface-variant leading-relaxed">
+          「ユキの正体」「誰が犯人か」のように読者へ伏せていることを登録すると、
+          明かし忘れ（開示未定）がここで分かります。最後まで伏せると決めたものは「明かさない」に。
+        </p>
+      ) : (
+        <div className="overflow-x-auto rounded-lg border border-outline-variant/30">
+          <table className="w-full min-w-[38rem] border-collapse bg-surface-container-lowest text-[13px]">
+            <thead>
+              <tr className="bg-surface-container-low text-left text-[11.5px] text-on-surface-variant">
+                <th className="px-3 py-2 font-medium">秘密</th>
+                <th className="px-3 py-2 font-medium">真相（作者用メモ）</th>
+                <th className="px-3 py-2 font-medium">読者に明かすビート</th>
+                <th className="px-3 py-2 font-medium">状態</th>
+                <th className="px-2 py-2" />
+              </tr>
+            </thead>
+            <tbody>
+              {plot.secrets.map((s) => {
+                const status = secretStatus(s, plot)
+                const ui = SECRET_UI[status]
+                // 削除済みビートへの参照は選択肢に無い＝select が（未定）に落ちるので明示的に外す。
+                const exists =
+                  s.revealBeatId !== undefined && plot.beats.some((b) => b.id === s.revealBeatId)
+                return (
+                  <tr key={s.id} className="group border-outline-variant/20 border-t align-middle">
+                    <td className="min-w-[9rem] px-3 py-2">
+                      <CommitInput
+                        value={s.title}
+                        onCommit={(v) => {
+                          const t = v.trim()
+                          if (t !== '') onApply((p) => upsertSecret(p, { ...s, title: t }))
+                        }}
+                        ariaLabel="秘密の名前"
+                      />
+                    </td>
+                    <td className="min-w-[11rem] px-3 py-2">
+                      <CommitInput
+                        value={s.truth ?? ''}
+                        onCommit={(v) =>
+                          onApply((p) => upsertSecret(p, { ...s, truth: emptyToUndef(v) }))
+                        }
+                        placeholder="本当は何なのか"
+                        ariaLabel="秘密の真相"
+                      />
+                    </td>
+                    <td className="px-3 py-2">
+                      <div className="flex items-center gap-1">
+                        <SelectBox
+                          value={exists ? (s.revealBeatId ?? '') : ''}
+                          onChange={(v) =>
+                            onApply((p) =>
+                              upsertSecret(p, {
+                                ...s,
+                                revealBeatId: v === '' ? undefined : v,
+                                // 明かすビートを決めたら「明かさない」印は下ろす（矛盾を残さない）。
+                                ...(v === '' ? {} : { keepHidden: undefined }),
+                              }),
+                            )
+                          }
+                          ariaLabel="読者に明かすビート"
+                          options={beatOptions}
+                        />
+                        {exists && s.revealBeatId ? (
+                          <HoverButton
+                            label="ビートシートで開く"
+                            onClick={() => {
+                              if (s.revealBeatId) onJumpBeat(s.revealBeatId)
+                            }}
+                          >
+                            <ArrowRight className="size-3.5" />
+                          </HoverButton>
+                        ) : null}
+                      </div>
+                    </td>
+                    <td className="px-3 py-2">
+                      <div className="flex items-center gap-1.5">
+                        <span
+                          className={`inline-flex shrink-0 items-center rounded-full px-2 py-0.5 font-medium text-[11px] ${ui.className}`}
+                        >
+                          {ui.label}
+                        </span>
+                        {status !== 'revealed' ? (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              onApply((p) =>
+                                upsertSecret(p, { ...s, keepHidden: !s.keepHidden || undefined }),
+                              )
+                            }
+                            className="whitespace-nowrap text-[11px] text-primary hover:underline"
+                          >
+                            {s.keepHidden ? '開示予定に戻す' : '最後まで明かさない'}
+                          </button>
+                        ) : null}
+                      </div>
+                    </td>
+                    <td className="px-2 py-2">
+                      <span className="opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
+                        <HoverButton
+                          label="この秘密を削除"
+                          onClick={() => onApply((p) => removeSecret(p, s.id))}
+                        >
+                          <X className="size-3.5" />
+                        </HoverButton>
+                      </span>
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+      <div className="mt-3 flex items-center gap-1.5 pl-1">
+        <Plus className="size-3.5 shrink-0 text-on-surface-variant/50" />
+        <input
+          value={addInput}
+          onChange={(e) => setAddInput(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault()
+              submitAdd()
+            } else if (e.key === 'Escape') {
+              setAddInput('')
+            }
+          }}
+          onBlur={submitAdd}
+          placeholder="秘密を追加（例：ユキの正体）"
+          aria-label="秘密を追加"
           className="w-full max-w-sm bg-transparent font-sans text-[13px] text-on-surface outline-none placeholder:text-on-surface-variant/45"
         />
       </div>

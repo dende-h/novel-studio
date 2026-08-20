@@ -13,12 +13,14 @@ import {
   removeBeat,
   removeForeshadow,
   removeLine,
+  removeSecret,
   removeSection,
   singletonPlotId,
   updateBeat,
   updateLine,
   updateSection,
   upsertForeshadow,
+  upsertSecret,
 } from '../plot'
 import type { Episode, GlossaryEntry, Work } from '../schema'
 import {
@@ -566,11 +568,57 @@ export function upsertPlotForeshadow(
   return { plots: putPlot(plots, next, now), foreshadowId }
 }
 
-/** 幕・プロットライン・伏線を削除する（ビートは delete_plot_beat 専用＝誤爆防止）。 */
+/**
+ * 秘密（読者に伏せる情報）を追加/更新する（id 指定で更新、無ければ新規）。
+ * reveal_beat_id は実在チェックする（空文字で解除）。
+ */
+export function upsertPlotSecret(
+  plots: Plot[],
+  workId: string,
+  input: {
+    id?: string
+    title?: string
+    truth?: string
+    revealBeatId?: string
+    keepHidden?: boolean
+  },
+  newId: string,
+  now: number,
+): { plots: Plot[]; secretId: string } {
+  const plot = requirePlot(plots, workId)
+  if (
+    input.revealBeatId !== undefined &&
+    input.revealBeatId !== '' &&
+    !plot.beats.some((b) => b.id === input.revealBeatId)
+  ) {
+    throw new McpEditError(`reveal_beat_id "${input.revealBeatId}" のビートが見つかりません`)
+  }
+
+  const prev = input.id !== undefined ? plot.secrets.find((s) => s.id === input.id) : undefined
+  if (input.id !== undefined && !prev) {
+    throw new McpEditError(`secret_id "${input.id}" の秘密が見つかりません`)
+  }
+  const title = emptyToUndef(input.title) ?? prev?.title
+  if (!title) throw new McpEditError('新しい秘密には title が必要です')
+  const secretId = input.id ?? newId
+  const revealBeatId =
+    input.revealBeatId !== undefined ? emptyToUndef(input.revealBeatId) : prev?.revealBeatId
+  const next = upsertSecret(plot, {
+    id: secretId,
+    title,
+    truth: input.truth !== undefined ? emptyToUndef(input.truth) : prev?.truth,
+    revealBeatId,
+    // 明かすビートが決まっているなら「明かさない」印は立てない（矛盾を残さない）。
+    keepHidden: revealBeatId ? undefined : (input.keepHidden ?? prev?.keepHidden),
+  })
+  return { plots: putPlot(plots, next, now), secretId }
+}
+
+/** 幕・プロットライン・伏線・秘密を削除する（ビートは delete_plot_beat 専用＝誤爆防止）。 */
 export function deletePlotItem(
   plots: Plot[],
   workId: string,
-  kind: 'section' | 'line' | 'foreshadow',
+  kind: 'section' | 'line' | 'foreshadow' | 'secret',
   itemId: string,
   now: number,
 ): Plot[] {
@@ -589,6 +637,12 @@ export function deletePlotItem(
       throw new McpEditError(`line_id "${itemId}" のプロットラインが見つかりません`)
     }
     return putPlot(plots, removeLine(plot, itemId), now)
+  }
+  if (kind === 'secret') {
+    if (!plot.secrets.some((s) => s.id === itemId)) {
+      throw new McpEditError(`secret_id "${itemId}" の秘密が見つかりません`)
+    }
+    return putPlot(plots, removeSecret(plot, itemId), now)
   }
   if (!plot.foreshadows.some((f) => f.id === itemId)) {
     throw new McpEditError(`foreshadow_id "${itemId}" の伏線が見つかりません`)

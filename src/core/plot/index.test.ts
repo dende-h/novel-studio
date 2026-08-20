@@ -4,6 +4,7 @@ import {
   addSection,
   beatsOfSection,
   countOpenForeshadows,
+  countUnrevealedSecrets,
   createPlotFromTemplate,
   emptyPlot,
   foreshadowStatus,
@@ -14,11 +15,15 @@ import {
   PlotSchema,
   removeBeat,
   removeLine,
+  removeSecret,
   removeSection,
+  secretStatus,
+  secretsHiddenAt,
   sectionTargetTotal,
   singletonPlotId,
   updateBeat,
   upsertForeshadow,
+  upsertSecret,
 } from './index'
 
 const beat = (id: string, extra: Partial<PlotBeat> = {}): PlotBeat => ({
@@ -146,5 +151,56 @@ describe('plot（スキーマと純関数）', () => {
     expect(nextBeatStatus('fixed')).toBe('writing')
     expect(nextBeatStatus('writing')).toBe('done')
     expect(nextBeatStatus('done')).toBe('idea')
+  })
+})
+
+describe('secret（読者に伏せる情報と開示タイミング）', () => {
+  it('開示ビート未設定は unrevealed、設定すると revealed、keepHidden は kept', () => {
+    let p = fixture()
+    const s = { id: 'sec1', title: 'ユキの正体', truth: '三年前に死んだレンの妹' }
+    p = upsertSecret(p, s)
+    expect(secretStatus(s, p)).toBe('unrevealed')
+    expect(countUnrevealedSecrets(p)).toBe(1)
+
+    const revealed = { ...s, revealBeatId: 'b2' }
+    p = upsertSecret(p, revealed)
+    expect(secretStatus(revealed, p)).toBe('revealed')
+    expect(countUnrevealedSecrets(p)).toBe(0)
+
+    // 最後まで明かさないと決めた秘密は点検対象から外れる
+    const kept = { id: 'sec2', title: '語り手の正体', keepHidden: true }
+    p = upsertSecret(p, kept)
+    expect(secretStatus(kept, p)).toBe('kept')
+    expect(countUnrevealedSecrets(p)).toBe(0)
+  })
+
+  it('開示ビートを削除すると unrevealed に戻る（黙って回収済みにしない）', () => {
+    let p = fixture()
+    const s = { id: 'sec1', title: 'ユキの正体', revealBeatId: 'b2' }
+    p = upsertSecret(p, s)
+    expect(secretStatus(s, p)).toBe('revealed')
+    p = removeBeat(p, 'b2')
+    expect(secretStatus(s, p)).toBe('unrevealed')
+    expect(countUnrevealedSecrets(p)).toBe(1)
+  })
+
+  it('secretsHiddenAt はその時点で読者がまだ知らない秘密を返す', () => {
+    let p = fixture() // sec1 に b1, b2 の順で並ぶ
+    p = upsertSecret(p, { id: 'early', title: '早く明かす', revealBeatId: 'b1' })
+    p = upsertSecret(p, { id: 'late', title: '後で明かす', revealBeatId: 'b2' })
+    p = upsertSecret(p, { id: 'undecided', title: '開示未定' })
+    // b1 の時点：b1 で明かす秘密はもう読者が知っている（＝含めない）
+    expect(secretsHiddenAt(p, 'b1').map((s) => s.id)).toEqual(['late', 'undecided'])
+    // b2 の時点：後で明かす分が消え、未定だけ残る
+    expect(secretsHiddenAt(p, 'b2').map((s) => s.id)).toEqual(['undecided'])
+    // 存在しないビートは空
+    expect(secretsHiddenAt(p, 'nope')).toEqual([])
+  })
+
+  it('removeSecret で削除できる', () => {
+    let p = fixture()
+    p = upsertSecret(p, { id: 'sec1', title: '秘密' })
+    p = removeSecret(p, 'sec1')
+    expect(p.secrets).toHaveLength(0)
   })
 })

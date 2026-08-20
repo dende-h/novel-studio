@@ -5,6 +5,8 @@ import {
   type Plot,
   type PlotBeat,
   pickPrimaryPlot,
+  type Secret,
+  secretStatus,
   sectionTargetTotal,
 } from '../plot'
 import type { GlossaryEntry, Work } from '../schema'
@@ -72,6 +74,22 @@ function beatText(beat: PlotBeat, order: number, plot: Plot, work: Work): string
   return lines.join('\n')
 }
 
+const SECRET_LABEL = {
+  revealed: '開示予定',
+  unrevealed: '開示未定',
+  kept: '明かさない',
+} as const
+
+function secretText(s: Secret, plot: Plot): string {
+  const status = SECRET_LABEL[secretStatus(s, plot)]
+  const reveal =
+    s.revealBeatId !== undefined
+      ? (plot.beats.find((b) => b.id === s.revealBeatId)?.title ?? '（削除済みビート）')
+      : '未定'
+  const truth = s.truth ? ` ／ 真相: ${s.truth}` : ''
+  return `- [${status}] ${s.title} [secret_id: ${s.id}]（読者に明かす: ${reveal}）${truth}`
+}
+
 function foreshadowText(f: Foreshadow, plot: Plot): string {
   const status = FORESHADOW_LABEL[foreshadowStatus(f, plot)]
   const titleOf = (beatId: string | undefined) =>
@@ -123,5 +141,11 @@ export function plotToPlainText(plots: Plot[], work: Work): string {
       ? [`伏線:\n${plot.foreshadows.map((f) => foreshadowText(f, plot)).join('\n')}`]
       : []
 
-  return [head.join('\n'), ...sections, ...foreshadows].join('\n\n')
+  // 秘密＝読者に伏せている情報（真相は作者用メモ・本文には出さない）。
+  const secrets =
+    plot.secrets.length > 0
+      ? [`秘密（読者に伏せる情報）:\n${plot.secrets.map((s) => secretText(s, plot)).join('\n')}`]
+      : []
+
+  return [head.join('\n'), ...sections, ...foreshadows, ...secrets].join('\n\n')
 }

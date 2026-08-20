@@ -27,6 +27,7 @@ import {
   upsertPlotBeat,
   upsertPlotForeshadow,
   upsertPlotLine,
+  upsertPlotSecret,
   upsertPlotSection,
   upsertStructure,
 } from '../../../src/core/mcp-edit'
@@ -214,7 +215,7 @@ export const MCP_TOOLS = [
   {
     name: 'get_plot',
     description:
-      '1 作品のプロット（幕×ビート・プロットライン・伏線）を各要素の id 付きプレーンテキストで返す。upsert/delete 系プロットツールの対象 id はここで確認する。伏線は回収状態（未回収/回収済/根なし）付き。',
+      '1 作品のプロット（幕×ビート・プロットライン・伏線・秘密）を各要素の id 付きプレーンテキストで返す。upsert/delete 系プロットツールの対象 id はここで確認する。伏線は回収状態（未回収/回収済/根なし）、秘密は開示状態（開示予定/開示未定/明かさない）付き。',
     inputSchema: {
       type: 'object',
       properties: workIdProp,
@@ -346,14 +347,44 @@ export const MCP_TOOLS = [
     },
   },
   {
-    name: 'delete_plot_item',
+    name: 'upsert_secret',
     description:
-      '幕・プロットライン・伏線を削除する。kind に section / line / foreshadow、item_id にその id を渡す。幕の削除では中のビートが隣の幕へ移動する（最後の 1 幕は削除不可）。ビートの削除は delete_plot_beat を使う。',
+      '秘密（読者に伏せている情報）を追加または更新する。伏線が「布石を張って回収したか」なのに対し、秘密は「読者がいつ真相を知るか」を管理する。truth＝真相（作者用メモ・本文には出ない）、reveal_beat_id＝読者に明かすビート（空文字で解除）。明かし忘れは get_plot に [開示未定] として出る。最後まで明かさないと決めた秘密は keep_hidden: true で点検対象から外す。',
     inputSchema: {
       type: 'object',
       properties: {
         ...workIdProp,
-        kind: { type: 'string', description: '削除する種別：section / line / foreshadow' },
+        id: { type: 'string', description: '更新する秘密の id（get_plot の [secret_id: …]）' },
+        title: {
+          type: 'string',
+          description: '伏せている事柄の呼び名（例：ユキの正体。新規では必須）',
+        },
+        truth: { type: 'string', description: '真相（読者に伏せている中身・空文字で削除）' },
+        reveal_beat_id: {
+          type: 'string',
+          description: '読者に明かすビートの id（空文字で解除）',
+        },
+        keep_hidden: {
+          type: 'boolean',
+          description: '最後まで明かさない（true で点検対象から外す）',
+        },
+      },
+      required: ['work_id'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'delete_plot_item',
+    description:
+      '幕・プロットライン・伏線・秘密を削除する。kind に section / line / foreshadow / secret、item_id にその id を渡す。幕の削除では中のビートが隣の幕へ移動する（最後の 1 幕は削除不可）。ビートの削除は delete_plot_beat を使う。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        ...workIdProp,
+        kind: {
+          type: 'string',
+          description: '削除する種別：section / line / foreshadow / secret',
+        },
         item_id: { type: 'string', description: '対象の id（get_plot で確認）' },
       },
       required: ['work_id', 'kind', 'item_id'],
@@ -428,6 +459,9 @@ const strArray = (args: Record<string, unknown> | undefined, key: string): strin
 const num = (args: Record<string, unknown> | undefined, key: string): number | undefined =>
   typeof args?.[key] === 'number' && Number.isFinite(args[key]) ? (args[key] as number) : undefined
 
+const bool = (args: Record<string, unknown> | undefined, key: string): boolean | undefined =>
+  typeof args?.[key] === 'boolean' ? (args[key] as boolean) : undefined
+
 function listWorksText(works: CloudBackup['works']): string {
   if (works.length === 0) return '作品はまだありません。'
   const lines = works.map((w) => {
@@ -490,6 +524,7 @@ async function callTool(
     'delete_plot_beat',
     'upsert_plot_line',
     'upsert_foreshadow',
+    'upsert_secret',
     'delete_plot_item',
   ])
   if (writeTools.has(name ?? '')) {
@@ -690,10 +725,26 @@ async function callTool(
         )
         next = { ...snap, plots: res.plots }
         message = `伏線を保存しました。foreshadow_id: ${res.foreshadowId}`
+      } else if (name === 'upsert_secret') {
+        const res = upsertPlotSecret(
+          snap.plots ?? [],
+          workId,
+          {
+            id: str(args, 'id'),
+            title: str(args, 'title'),
+            truth: str(args, 'truth'),
+            revealBeatId: str(args, 'reveal_beat_id'),
+            keepHidden: bool(args, 'keep_hidden'),
+          },
+          deps.genId(),
+          now,
+        )
+        next = { ...snap, plots: res.plots }
+        message = `秘密を保存しました。secret_id: ${res.secretId}`
       } else if (name === 'delete_plot_item') {
         const kind = str(args, 'kind') ?? ''
-        if (kind !== 'section' && kind !== 'line' && kind !== 'foreshadow') {
-          throw new McpEditError('kind は section / line / foreshadow のいずれかです')
+        if (kind !== 'section' && kind !== 'line' && kind !== 'foreshadow' && kind !== 'secret') {
+          throw new McpEditError('kind は section / line / foreshadow / secret のいずれかです')
         }
         next = {
           ...snap,

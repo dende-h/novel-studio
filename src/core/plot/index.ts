@@ -70,6 +70,26 @@ export const ForeshadowSchema = z.object({
 })
 export type Foreshadow = z.infer<typeof ForeshadowSchema>
 
+/**
+ * 秘密＝読者に伏せている情報と、それを明かすビート。
+ *
+ * 伏線（張る→回収する「仕掛け」）とは別物として持つ。伏線が「後で効く布石を置いたか」
+ * を管理するのに対し、秘密は「いま読者は何を知らないか／どこで知るか」を管理する。
+ * 真相（truth）は作者だけが見る欄で、本文には出さない。
+ */
+export const SecretSchema = z.object({
+  id: z.string(),
+  /** 伏せている事柄の呼び名（例：ユキの正体）。 */
+  title: z.string(),
+  /** 真相そのもの（読者に伏せている中身）。 */
+  truth: z.string().optional(),
+  /** 読者へ明かすビート。未設定＝開示未定（点検対象）。 */
+  revealBeatId: z.string().optional(),
+  /** 最後まで明かさないと決めた秘密は点検から外す（未開示の警告を出さない）。 */
+  keepHidden: z.boolean().optional(),
+})
+export type Secret = z.infer<typeof SecretSchema>
+
 export const PlotTemplateSchema = z.enum([
   'three-act',
   'kishotenketsu',
@@ -91,6 +111,8 @@ export const PlotSchema = z.object({
   beats: z.array(PlotBeatSchema),
   lines: z.array(PlotLineSchema),
   foreshadows: z.array(ForeshadowSchema),
+  /** 読者に伏せる情報。後から足した項目なので、旧データ互換のため既定 []。 */
+  secrets: z.array(SecretSchema).optional().default([]),
   updatedAt: z.number(),
 })
 export type Plot = z.infer<typeof PlotSchema>
@@ -109,6 +131,7 @@ export function isTrivialPlot(p: Plot): boolean {
     p.beats.length === 0 &&
     p.lines.length === 0 &&
     p.foreshadows.length === 0 &&
+    p.secrets.length === 0 &&
     !p.premise &&
     !p.theme
   )
@@ -123,7 +146,7 @@ export function isTrivialPlot(p: Plot): boolean {
 export function pickPrimaryPlot(list: Plot[]): Plot | undefined {
   if (list.length === 0) return undefined
   const weight = (p: Plot) =>
-    p.beats.length + p.sections.length + p.lines.length + p.foreshadows.length
+    p.beats.length + p.sections.length + p.lines.length + p.foreshadows.length + p.secrets.length
   return [...list].sort((a, b) => {
     const aTrivial = isTrivialPlot(a) ? 1 : 0
     const bTrivial = isTrivialPlot(b) ? 1 : 0
@@ -144,6 +167,7 @@ export function emptyPlot(id: string, workId: string, at: number, title = '本�
     beats: [],
     lines: [],
     foreshadows: [],
+    secrets: [],
     updatedAt: at,
   }
 }
@@ -410,6 +434,58 @@ export function upsertForeshadow(plot: Plot, f: Foreshadow): Plot {
 /** 伏線を削除する。 */
 export function removeForeshadow(plot: Plot, id: string): Plot {
   return { ...plot, foreshadows: plot.foreshadows.filter((f) => f.id !== id) }
+}
+
+/** 秘密を追加/更新する（id 一致で置換、無ければ追加）。 */
+export function upsertSecret(plot: Plot, s: Secret): Plot {
+  return {
+    ...plot,
+    secrets: plot.secrets.some((x) => x.id === s.id)
+      ? plot.secrets.map((x) => (x.id === s.id ? s : x))
+      : [...plot.secrets, s],
+  }
+}
+
+/** 秘密を削除する。 */
+export function removeSecret(plot: Plot, id: string): Plot {
+  return { ...plot, secrets: plot.secrets.filter((s) => s.id !== id) }
+}
+
+/**
+ * 秘密の状態（導出）。
+ * revealed   = 明かすビートが決まっている
+ * kept       = 最後まで明かさないと決めた（点検対象外）
+ * unrevealed = 開示未定＝点検対象
+ * 削除済みビートへの参照は「無い」ものとして扱う（伏線と同じ規約）。
+ */
+export type SecretStatus = 'revealed' | 'kept' | 'unrevealed'
+export function secretStatus(s: Secret, plot: Plot): SecretStatus {
+  if (s.revealBeatId !== undefined && plot.beats.some((b) => b.id === s.revealBeatId)) {
+    return 'revealed'
+  }
+  return s.keepHidden ? 'kept' : 'unrevealed'
+}
+
+/** 開示未定の秘密数（タブのバッジ用）。 */
+export function countUnrevealedSecrets(plot: Plot): number {
+  return plot.secrets.filter((s) => secretStatus(s, plot) === 'unrevealed').length
+}
+
+/**
+ * 指定ビートの時点で、読者がまだ知らない秘密（＝そのビートより後で明かされる／
+ * 最後まで明かさない秘密）。「いまの読者は何を知らないか」を執筆中に確かめるための導出。
+ * 物語順（幕→幕内の並び）で位置を比べる。
+ */
+export function secretsHiddenAt(plot: Plot, beatId: string): Secret[] {
+  const order = plot.sections.flatMap((s) => s.beatIds)
+  const here = order.indexOf(beatId)
+  if (here < 0) return []
+  return plot.secrets.filter((s) => {
+    const st = secretStatus(s, plot)
+    if (st !== 'revealed') return true // 開示未定・最後まで伏せる＝この時点でも未開示
+    const at = order.indexOf(s.revealBeatId ?? '')
+    return at < 0 || at > here
+  })
 }
 
 /**

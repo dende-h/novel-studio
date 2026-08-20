@@ -94,7 +94,7 @@ describe('handleMcpMessage — プロトコル', () => {
     ).toBeNull()
   })
 
-  it('tools/list は 23 ツール（読み5・書き15・バックアップ3）', async () => {
+  it('tools/list は 24 ツール（読み5・書き16・バックアップ3）', async () => {
     const res = (await handleMcpMessage(
       { jsonrpc: '2.0', id: 1, method: 'tools/list' },
       deps(),
@@ -102,7 +102,8 @@ describe('handleMcpMessage — プロトコル', () => {
       result: { tools: { name: string }[] }
     }
     const names = res.result.tools.map((t) => t.name)
-    expect(MCP_TOOLS).toHaveLength(23)
+    expect(MCP_TOOLS).toHaveLength(24)
+    expect(names).toContain('upsert_secret')
     expect(names).toContain('get_plot')
     expect(names).toContain('upsert_plot_beat')
     expect(names).toContain('upsert_foreshadow')
@@ -431,5 +432,90 @@ describe('プロットツール（get_plot / set_plot_meta / upsert_* / delete_*
     expect(plot?.sections.map((s) => s.id)).toEqual([s1])
     expect(plot?.sections[0]?.beatIds).toContain(beatId)
     expect(plot?.beats.some((b) => b.id === beatId)).toBe(true)
+  })
+})
+
+describe('秘密ツール（upsert_secret / delete_plot_item kind:secret）', () => {
+  /** 幕1つ＋ビート1つのプロットを作り、その beat_id を返す。 */
+  const seedPlot = async (d: McpDeps) => {
+    await handleMcpMessage(call('set_plot_meta', { work_id: 'w1', title: '本編' }), d)
+    await handleMcpMessage(call('upsert_plot_section', { work_id: 'w1', title: '第一幕' }), d)
+    const res = await handleMcpMessage(
+      call('upsert_plot_beat', { work_id: 'w1', title: '正体が明かされる' }),
+      d,
+    )
+    return /beat_id: (\S+)/.exec(contentText(res))?.[1] ?? ''
+  }
+
+  it('秘密は開示ビート未設定だと [開示未定]、設定すると [開示予定] で get_plot に出る', async () => {
+    const { deps: d } = makeDeps(snapshot([work()]))
+    const beatId = await seedPlot(d)
+    let res = await handleMcpMessage(
+      call('upsert_secret', { work_id: 'w1', title: 'ユキの正体', truth: '三年前に死んだ妹' }),
+      d,
+    )
+    expect(isError(res)).toBe(false)
+    const secretId = /secret_id: (\S+)/.exec(contentText(res))?.[1] ?? ''
+    let text = contentText(await handleMcpMessage(call('get_plot', { work_id: 'w1' }), d))
+    expect(text).toContain('[開示未定] ユキの正体')
+    expect(text).toContain('真相: 三年前に死んだ妹')
+
+    res = await handleMcpMessage(
+      call('upsert_secret', { work_id: 'w1', id: secretId, reveal_beat_id: beatId }),
+      d,
+    )
+    expect(isError(res)).toBe(false)
+    text = contentText(await handleMcpMessage(call('get_plot', { work_id: 'w1' }), d))
+    expect(text).toContain('[開示予定] ユキの正体')
+    expect(text).toContain('読者に明かす: 正体が明かされる')
+  })
+
+  it('keep_hidden で点検対象から外れ、開示ビートを決めると印は下りる', async () => {
+    const env = makeDeps(snapshot([work()]))
+    const d = env.deps
+    const beatId = await seedPlot(d)
+    const res = await handleMcpMessage(
+      call('upsert_secret', { work_id: 'w1', title: '語り手の正体', keep_hidden: true }),
+      d,
+    )
+    const secretId = /secret_id: (\S+)/.exec(contentText(res))?.[1] ?? ''
+    expect(contentText(await handleMcpMessage(call('get_plot', { work_id: 'w1' }), d))).toContain(
+      '[明かさない] 語り手の正体',
+    )
+    await handleMcpMessage(
+      call('upsert_secret', { work_id: 'w1', id: secretId, reveal_beat_id: beatId }),
+      d,
+    )
+    expect(env.get()?.plots?.[0]?.secrets[0]?.keepHidden).toBeUndefined()
+  })
+
+  it('不正な指定は isError（存在しない開示ビート・存在しない secret_id・title なし）', async () => {
+    const { deps: d } = makeDeps(snapshot([work()]))
+    await seedPlot(d)
+    expect(
+      isError(
+        await handleMcpMessage(
+          call('upsert_secret', { work_id: 'w1', title: 'x', reveal_beat_id: 'nope' }),
+          d,
+        ),
+      ),
+    ).toBe(true)
+    expect(
+      isError(await handleMcpMessage(call('upsert_secret', { work_id: 'w1', id: 'nope' }), d)),
+    ).toBe(true)
+    expect(isError(await handleMcpMessage(call('upsert_secret', { work_id: 'w1' }), d))).toBe(true)
+  })
+
+  it('delete_plot_item kind:secret で削除できる', async () => {
+    const env = makeDeps(snapshot([work()]))
+    const d = env.deps
+    await seedPlot(d)
+    const res = await handleMcpMessage(call('upsert_secret', { work_id: 'w1', title: '秘密' }), d)
+    const secretId = /secret_id: (\S+)/.exec(contentText(res))?.[1] ?? ''
+    await handleMcpMessage(
+      call('delete_plot_item', { work_id: 'w1', kind: 'secret', item_id: secretId }),
+      d,
+    )
+    expect(env.get()?.plots?.[0]?.secrets).toHaveLength(0)
   })
 })

@@ -20,6 +20,7 @@ const state: BackupState = {
       beats: [],
       lines: [],
       foreshadows: [],
+      secrets: [],
       updatedAt: 30,
     },
   ],
