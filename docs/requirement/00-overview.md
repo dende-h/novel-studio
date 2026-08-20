@@ -43,4 +43,6 @@
 | [03-architecture.md](./03-architecture.md) | 技術土台・リポ構成・依存ポリシー |
 | [04-glossary.md](./04-glossary.md) | @参照／オブジェクト辞書・図鑑（P1） |
 | [05-sync.md](./05-sync.md) | クラウド同期（optin・Freemium 有料軸） |
+| [06-release-prep.md](./06-release-prep.md) | リリース手配・毎リリースのチェックリスト |
+| [07-novel-game.md](./07-novel-game.md) | ノベルゲーム化（サウンドノベル書き出し・PG） |
 | [99-open-questions.md](./99-open-questions.md) | 未決事項（grill 継続のバックログ） |
