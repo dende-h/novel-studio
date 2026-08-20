@@ -130,6 +130,12 @@ export interface EditorStoreDeps {
   profileRepo: ProfileRepository
   /** 執筆活動（日別の文字数増減）の記録先。純ローカル。 */
   activityRepo: ActivityRepository
+  /**
+   * 作品を完全削除したとき、その作品に紐づく構造レイヤー・プロットも一緒に消すための参照。
+   * 渡さないと孤児レコードが端末に残り、同期でも運ばれ続ける（cloud 会員時のみ結線）。
+   */
+  structureRepo?: { removeByWork(workId: string): Promise<void> }
+  plotRepo?: { removeByWork(workId: string): Promise<void> }
   genId: () => string
   now: () => number
   /** 履歴の集約間隔(ms)。連続編集中はこの間隔内の保存を最新版へ合体し、版の氾濫を防ぐ。 */
@@ -158,6 +164,8 @@ export function createEditorStore({
   snapshotRepo,
   profileRepo,
   activityRepo,
+  structureRepo,
+  plotRepo,
   genId,
   now,
   snapshotMinIntervalMs,
@@ -172,6 +180,16 @@ export function createEditorStore({
 
   const emit = () => {
     for (const l of listeners) l()
+  }
+
+  /**
+   * 作品の完全削除に伴う後始末。履歴（版）に加え、その作品の構造レイヤー・プロットも消す。
+   * 残すと本人には見えないまま端末に溜まり、同期にも載り続けるため。
+   */
+  const purgeWorkArtifacts = async (workId: string) => {
+    await snapshotRepo.clear(workId)
+    await structureRepo?.removeByWork(workId)
+    await plotRepo?.removeByWork(workId)
   }
   const set = (patch: Partial<EditorState>) => {
     state = { ...state, ...patch }
@@ -206,7 +224,7 @@ export function createEditorStore({
     async init() {
       // 起動時にゴミ箱の期限切れ（30日超）を自動 purge し、履歴も掃除する。
       const purged = await repo.purgeExpiredTrash(now(), trashTtlMs)
-      for (const id of purged) await snapshotRepo.clear(id)
+      for (const id of purged) await purgeWorkArtifacts(id)
       await refreshList()
       await refreshTrash()
       set({ profile: await profileRepo.get() })
@@ -372,14 +390,14 @@ export function createEditorStore({
 
     async purgeWork(id) {
       await repo.purgeTrashedWork(id)
-      await snapshotRepo.clear(id)
+      await purgeWorkArtifacts(id)
       await refreshTrash()
     },
 
     async emptyTrash() {
       for (const t of state.trashList) {
         await repo.purgeTrashedWork(t.id)
-        await snapshotRepo.clear(t.id)
+        await purgeWorkArtifacts(t.id)
       }
       await refreshTrash()
     },

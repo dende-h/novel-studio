@@ -26,6 +26,10 @@ export function createDefaultStore(): EditorStore {
     snapshotRepo,
     profileRepo,
     activityRepo,
+    // 作品を完全削除したら、その作品の構造レイヤー・プロットも一緒に消す
+    // （残すと見えない孤児レコードが端末に溜まり、同期にも載り続ける）。
+    structureRepo: new StructureRepository(store),
+    plotRepo: new PlotRepository(store),
     genId: () => crypto.randomUUID(),
     now: () => Date.now(),
     snapshotMinIntervalMs: SNAPSHOT_MIN_INTERVAL_MS,
