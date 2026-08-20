@@ -33,7 +33,7 @@ function makeDeps(over: Partial<BackupDeps> = {}) {
     putLiveRemote: async (plaintext) => {
       live.push(plaintext)
       remote.set('live', plaintext)
-      return true
+      return 'ok' as const
     },
     getLiveRemote: async () => remote.get('live') ?? null,
     getLiveMeta: async () =>
@@ -130,6 +130,38 @@ describe('createBackupService', () => {
     await svc.pushLive()
     expect(JSON.parse(live[0] ?? '{}').works[0].id).toBe('a')
     expect(created).toHaveLength(0) // 版バックアップは作らない
+  })
+
+  it('pushLive は未取り込みの AI 編集があると ai_edit_pending を返す（AI の成果を守る）', async () => {
+    const { deps } = makeDeps({ putLiveRemote: async () => 'ai_edit_pending' as const })
+    expect(await createBackupService(deps).pushLive()).toBe('ai_edit_pending')
+  })
+
+  it('pullLive は取り込み後に force で目印を消す（自動 push を通常運転へ戻す）', async () => {
+    const forced: Array<boolean | undefined> = []
+    const { deps, remote } = makeDeps({
+      putLiveRemote: async (_plaintext, opts) => {
+        forced.push(opts?.force)
+        return 'ok' as const
+      },
+    })
+    remote.set(
+      'live',
+      serializeBackup(
+        {
+          works: [work('L')],
+          trash: [],
+          profile: {},
+          activity: [],
+          ideas: [],
+          structures: [],
+          plots: [],
+        },
+        5,
+      ),
+    )
+    await createBackupService(deps).pullLive()
+    expect(forced).toEqual([true])
   })
 
   it('pullLive はライブを取り込み全置換する（無ければ false）', async () => {

@@ -61,6 +61,8 @@ interface LibraryProps {
   onOpenCloudBackup?: () => void
   /** AI の変更取り込みを開く（会員のみ・未指定なら非表示）。 */
   onOpenAiPull?: () => void
+  /** AI が書いた未取り込みの変更があるか（データ管理ボタンと項目に印を出す）。 */
+  aiEditPending?: boolean
   /** AI・MCP 接続の管理を開く（会員のみ・未指定なら非表示）。 */
   onOpenMcp?: () => void
   /** 執筆活動（草・ストリーク）ページを開く。 */
@@ -89,11 +91,14 @@ function DataMenuItem({
   label,
   onClick,
   disabled,
+  badge,
 }: {
   icon: React.ReactNode
   label: string
   onClick: () => void
   disabled?: boolean
+  /** 右端の小さな印（「AIの変更が届いています」等の未処理サイン）。 */
+  badge?: string
 }) {
   return (
     <button
@@ -104,7 +109,12 @@ function DataMenuItem({
       className="flex items-center gap-2.5 rounded-md px-3 py-2 text-left text-[13px] text-on-surface transition-colors hover:bg-surface-container-low disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent"
     >
       {icon}
-      {label}
+      <span className="flex-1">{label}</span>
+      {badge ? (
+        <span className="rounded-full bg-secondary-container px-1.5 py-0.5 font-medium text-[10px] text-on-secondary-container">
+          {badge}
+        </span>
+      ) : null}
     </button>
   )
 }
@@ -116,6 +126,7 @@ export function Library({
   onEnterPublish,
   onOpenCloudBackup,
   onOpenAiPull,
+  aiEditPending,
   onOpenMcp,
   onOpenActivity,
   onOpenIdeas,
@@ -384,6 +395,10 @@ export function Library({
                   >
                     <Database className="size-4" />
                     データ管理
+                    {aiEditPending ? (
+                      // 点は装飾（読み上げはメニュー内の「未取り込み」バッジが担う）。
+                      <span aria-hidden className="size-1.5 rounded-full bg-[var(--wheat-500)]" />
+                    ) : null}
                   </Button>
                   {dataMenuOpen ? (
                     <>
@@ -430,6 +445,7 @@ export function Library({
                           <DataMenuItem
                             icon={<Sparkles className="size-[15px]" />}
                             label="AIの変更を取り込む"
+                            badge={aiEditPending ? '未取り込み' : undefined}
                             onClick={() => {
                               setDataMenuOpen(false)
                               onOpenAiPull()

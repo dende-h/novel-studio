@@ -38,19 +38,28 @@ export async function createBackup(
   }
 }
 
-/** MCP 用ライブスナップショットを上書き保存（版は作らない）。成功で true。 */
-export async function putLiveBackup(getToken: GetToken, plaintext: string): Promise<boolean> {
+/**
+ * MCP 用ライブスナップショットを上書き保存（版は作らない）。
+ * 未取り込みの AI 編集があるとサーバが 409 で拒否する＝AI の成果を守る（'ai_edit_pending'）。
+ * force は取り込み直後のリセット専用（目印を消して通常運転へ戻す）。
+ */
+export async function putLiveBackup(
+  getToken: GetToken,
+  plaintext: string,
+  opts: { force?: boolean } = {},
+): Promise<'ok' | 'ai_edit_pending' | 'failed'> {
   const headers = await authHeader(getToken)
-  if (!headers) return false
+  if (!headers) return 'failed'
   try {
-    const res = await fetch('/api/backup', {
+    const res = await fetch(`/api/backup${opts.force ? '?force=1' : ''}`, {
       method: 'PUT',
       headers: { ...headers, 'content-type': 'application/json' },
       body: plaintext,
     })
-    return res.ok
+    if (res.ok) return 'ok'
+    return res.status === 409 ? 'ai_edit_pending' : 'failed'
   } catch {
-    return false
+    return 'failed'
   }
 }
 
