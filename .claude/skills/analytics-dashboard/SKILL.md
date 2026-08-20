@@ -60,13 +60,42 @@ query {
 - **サンプリング集計**のため count は概算（しばしば 10 の倍数）。1 桁の差は誤差。
 - `refererHost: "t.co"` ＝ X（旧 Twitter）経由。`""` ＝直接アクセス。
   自ドメイン（grove.cotonoha-leaf.org 等）＝サイト内回遊。
-- visits ≒ セッション数。PV と visits が近い日は「1 人が 1 ページずつ」＝開発者自身の
-  可能性が高い。
+- **count も visits も「回数」であって人数ではない**。Cloudflare は Cookie を使わず訪問者を
+  識別しないので、`visits` は「外部から着地したページビュー数」にすぎない。人数は下の D1 を見る。
+
+## データ取得その 2：人数（D1 `visitor_days`）
+
+Cloudflare が答えられない「何人来たか」は自前で数えている（設計は
+`docs/requirement/07-analytics.md`、実装は `functions/api/hit.ts`）。`d1_database_query` MCP
+（`mcp__Cloudflare_Developer_Platform__d1_database_query`）で直接引く。
+
+- database_name: `novel-studio` / database_id: `811bad99-8040-4c46-9192-26623aeabc99`
+- 1 行 ＝ 1 訪問者 × 1 日 × 1 サイト。`visitor` はその日限りの不可逆な符号（日をまたいで
+  追跡できない）。`hits` はページ読み込み回数、`landing_path`・`referer_host` はその日の最初の値。
+
+```sql
+SELECT date, site, COUNT(*) AS visitors, SUM(hits) AS loads
+FROM visitor_days WHERE date >= date('now', '-14 days')
+GROUP BY date, site ORDER BY date;
+
+SELECT site, CASE WHEN referer_host = '' THEN '(直接)' ELSE referer_host END AS src,
+       COUNT(*) AS visitors
+FROM visitor_days WHERE date >= date('now', '-7 days')
+GROUP BY site, src ORDER BY visitors DESC;
+```
+
+読み方の注意（これも脚注に載せる）：
+- 運営者本人は `?noanalytics=1` で除外済み。**この数字は「自分以外」**。
+  ただし設定し忘れた端末・ブラウザからのアクセスは他人として混ざる。
+- 同一回線・同一ブラウザ族の別人は 1 人に潰れ、モバイルで IP が変わると 1 人が 2 人に割れる。
+- 日付は **JST 区切り**。Cloudflare 側（UTC 区切り）と 1 日ずれて見えることがある。
+- 2026-08 に計測開始。それ以前の日付は行が無い（0 人ではなく「未計測」と書く）。
 
 ## 分析（ダッシュボードに載せるコメント）
 
 数字の羅列でなく判断を書く。最低限：
-1. **前週比**：leaf / grove それぞれの PV・訪問数の増減と、その説明（施策・スパイク源）
+1. **前週比**：leaf / grove それぞれの**訪問者数（D1）**と PV の増減、その説明（施策・スパイク源）。
+   主指標は人数。PV は「1 人あたり何ページ見たか」を語るための脇役として使う
 2. **ファネル**：leaf の `/lp/` PV → `/`（アプリ）PV。LP が刺さっているかの主指標
 3. **流入**：t.co（X）・検索・直接の内訳変化。施策を打った日と突き合わせる
 4. **grove の回遊**：/home → 作品 → エピソードの流れが起きているか
@@ -76,7 +105,7 @@ query {
 1. `dataviz` スキルと `artifact-design` スキルを**書き始める前に**読み込む（チャート・
    配色・テーマ対応の作法はそちらに従う）。
 2. 構成（1 ページ・上から）：
-   - KPI タイル：直近 7 日の leaf PV／grove PV／訪問数／X 経由 PV（各前週比付き）
+   - KPI タイル：直近 7 日の leaf 訪問者数／grove 訪問者数／leaf PV／grove PV（各前週比付き）
    - 日別チャート（leaf と grove を別系列・stg は含めない）
    - leaf ファネル（LP → アプリ）と grove ページ内訳
    - 参照元・国の表

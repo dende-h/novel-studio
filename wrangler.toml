@@ -53,3 +53,11 @@ bucket_name = "novel-studio-media-stg"
 # 非シークレット（Pages env・環境別／test と live で price ID が異なる）:
 #   STRIPE_PRICE_MONTHLY  = 月額 ¥500 の price ID
 #   STRIPE_PRICE_YEARLY   = 年額 ¥4,800 の price ID
+
+# --- 訪問者カウント（/api/hit・Cookie なし）------------------------------------
+# 日ごとの実訪問者数を D1 visitor_days に残す。Cloudflare Web Analytics は訪問者を
+# 識別しない（PV と着地回数だけ）ため、人数はこちらで数える。
+# シークレット（任意・`wrangler pages secret put ANALYTICS_SALT`・本番のみで足りる）:
+#   ANALYTICS_SALT = 訪問者符号のソルト。未設定でも動くが、設定すると IP の総当たりで
+#                    符号を突き合わせる経路まで塞げる。値を変えるとその日の集計が
+#                    途中で分かれるので、変更は日付が変わる前後を避ける。
