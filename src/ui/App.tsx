@@ -412,6 +412,16 @@ export function App({
               return ep && ep.title === title ? ep.id : null
             }}
             onRefClick={onRefClick}
+            onCreatePlainGlossaryEntry={async (name) => {
+              // サジェストの「＋ 図鑑に登録」。本文のクイック作成と同じく分類なしで作る
+              // （人物か場所かはここでは決まらないので、後から図鑑で付ける）。
+              try {
+                return (await store.addGlossaryEntry({ name })).name
+              } catch {
+                // 既存と重複（D-GLOS-UNIQUE）ならその既存の表記をそのまま使う。
+                return resolveRef(name, store.getSnapshot().work?.glossary ?? [])?.name ?? null
+              }
+            }}
             onCreateGlossaryEntry={async (name, category) => {
               try {
                 const entry = await store.addGlossaryEntry({ name, category })

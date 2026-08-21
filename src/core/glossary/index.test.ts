@@ -331,11 +331,15 @@ describe('suggestRefs（別名も独立候補・挿入表記付き・一致度�
     expect(out.every((r) => !r.isAlias)).toBe(true) // 空 query で別名は出さない
   })
 
-  it('GSG4: 既定上限は 8 件', () => {
+  it('GSG4: 既定では件数を絞らない（一致する分はすべて返す・UI 側でスクロール）', () => {
     const es = Array.from({ length: 12 }, (_, i) =>
       entry({ id: `e${i}`, name: `名${i}`, reading: `な${i}` }),
     )
-    expect(suggestRefs('な', es)).toHaveLength(8)
+    expect(suggestRefs('な', es)).toHaveLength(12)
+    // 空 query（打ち始める前）も図鑑全体をたどれる。
+    expect(suggestRefs('', es)).toHaveLength(12)
+    // limit を渡したときだけ絞る。
+    expect(suggestRefs('な', es, 3)).toHaveLength(3)
   })
 
   it('別名一致はその別名を独立候補にし、挿入表記も別名になる', () => {

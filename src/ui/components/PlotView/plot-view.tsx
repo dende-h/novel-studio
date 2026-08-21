@@ -40,7 +40,7 @@ import {
 } from 'react'
 import { blocksToHtml } from '@/core/exporter/toHtml'
 import { blocksToPlainText } from '@/core/exporter/toPlainText'
-import { resolvedNameSet, shouldTriggerSuggest, suggestRefs } from '@/core/glossary'
+import { resolvedNameSet, resolveRef, shouldTriggerSuggest, suggestRefs } from '@/core/glossary'
 import type { IdeaNote } from '@/core/idea'
 import { parseEpisodeBody } from '@/core/parser/parseNotation'
 import {
@@ -112,6 +112,11 @@ interface PlotViewProps {
    * 本文編集と同じ図鑑の見え方にするため、App 側の onRefClick をそのまま渡す。
    */
   onRefClick?: (name: string) => void
+  /**
+   * 要約・メモのサジェストから、分類を指定せず図鑑へ登録する（本文のクイック作成と同じ）。
+   * 作成した名前を返す（失敗は null）。
+   */
+  onCreatePlainGlossaryEntry?: (name: string) => Promise<string | null>
   /**
    * 図鑑に無い人物・場所をその場で登録する（作成した entry id を返す。失敗は null）。
    * 図鑑を常に正本に保つ＝プロット側に自由記述の別管理を作らない。
@@ -192,6 +197,7 @@ export default function PlotView({
   onOpenEpisode,
   onCreateEpisode,
   onCreateGlossaryEntry,
+  onCreatePlainGlossaryEntry,
   onRefClick,
 }: PlotViewProps) {
   const [plot, setPlot] = useState<Plot | null>(null)
@@ -457,6 +463,7 @@ export default function PlotView({
               onOpenEpisode={onOpenEpisode}
               onCreateEpisode={onCreateEpisode}
               onCreateGlossaryEntry={onCreateGlossaryEntry}
+              onCreatePlainGlossaryEntry={onCreatePlainGlossaryEntry}
               resolvedNames={resolvedNames}
               onRefClick={onRefClick}
               onShowForeshadows={() => setView('foreshadow')}
@@ -918,6 +925,8 @@ interface BeatDetailPanelProps {
   onOpenEpisode: (episodeId: string) => void
   onCreateEpisode?: (title: string) => Promise<string | null>
   onCreateGlossaryEntry?: (name: string, category: '人物' | '場所') => Promise<string | null>
+  /** サジェストの「＋ 図鑑に登録」（分類は後から図鑑で付けるので未指定で作る）。 */
+  onCreatePlainGlossaryEntry?: (name: string) => Promise<string | null>
   /** 図鑑に居る語の集合（要約・メモのプレビューで解決/未解決を描き分ける）。 */
   resolvedNames: Set<string>
   /** プレビュー内の [[用語]] クリック（図鑑の内容を見る）。 */
@@ -938,6 +947,7 @@ function BeatDetailPanel({
   onOpenEpisode,
   onCreateEpisode,
   onCreateGlossaryEntry,
+  onCreatePlainGlossaryEntry,
   resolvedNames,
   onRefClick,
   onShowForeshadows,
@@ -998,6 +1008,7 @@ function BeatDetailPanel({
             ariaLabel="ビートの要約"
             resolvedNames={resolvedNames}
             glossary={glossary}
+            onCreateEntry={onCreatePlainGlossaryEntry}
             onRefClick={onRefClick}
           />
         </Field>
@@ -1080,6 +1091,7 @@ function BeatDetailPanel({
               ariaLabel="ビートのメモ"
               resolvedNames={resolvedNames}
               glossary={glossary}
+              onCreateEntry={onCreatePlainGlossaryEntry}
               onRefClick={onRefClick}
             />
           </Field>
@@ -1993,6 +2005,7 @@ function NotationField({
   ariaLabel,
   resolvedNames,
   glossary,
+  onCreateEntry,
   onRefClick,
 }: {
   value: string
@@ -2003,6 +2016,8 @@ function NotationField({
   resolvedNames: Set<string>
   /** 図鑑（@ / [[ のサジェスト候補）。空ならサジェストしない。 */
   glossary: GlossaryEntry[]
+  /** 候補に無い語をその場で図鑑に登録する（サジェスト末尾の作成行）。 */
+  onCreateEntry?: (name: string) => Promise<string | null>
   /** プレビュー内の参照クリック。未指定ならリンクにしない。 */
   onRefClick?: (name: string) => void
 }) {
@@ -2059,6 +2074,7 @@ function NotationField({
           placeholder={placeholder}
           ariaLabel={ariaLabel}
           glossary={glossary}
+          onCreateEntry={onCreateEntry}
         />
       ) : value.trim() === '' ? (
         <button
@@ -2116,6 +2132,7 @@ function CommitTextarea({
   placeholder,
   ariaLabel,
   glossary,
+  onCreateEntry,
 }: {
   value: string
   onCommit: (v: string) => void
@@ -2123,6 +2140,8 @@ function CommitTextarea({
   ariaLabel: string
   /** 図鑑（@ / [[ のサジェスト候補）。省略・空ならサジェストしない。 */
   glossary?: GlossaryEntry[]
+  /** 候補に無い語をその場で図鑑に登録する（作成した名前を返す。失敗は null）。 */
+  onCreateEntry?: (name: string) => Promise<string | null>
 }) {
   const [draft, setDraft] = useState(value)
   const focused = useRef(false)
@@ -2145,7 +2164,15 @@ function CommitTextarea({
     () => (suggest ? suggestRefs(suggest.query, entries) : []),
     [suggest, entries],
   )
-  const open = suggest !== null && candidates.length > 0
+  // 図鑑に無い語を打っているときは「＋ 図鑑に登録」を末尾に出す（本文エディタと同じ規則）。
+  const showCreate = useMemo(() => {
+    if (!suggest || !onCreateEntry) return false
+    const q = suggest.query.trim()
+    if (q === '') return false
+    return resolveRef(q, entries) === undefined
+  }, [suggest, entries, onCreateEntry])
+  const total = candidates.length + (showCreate ? 1 : 0)
+  const open = suggest !== null && total > 0
 
   useEffect(() => {
     if (!focused.current) setDraft(value)
@@ -2204,11 +2231,20 @@ function CommitTextarea({
     setActiveIndex(0)
   }
 
-  /** 候補を [[名前]] として挿入する（打ちかけの @クエリ／[[クエリ を置換）。 */
-  const commitSuggestion = (index: number) => {
+  /**
+   * 候補（または「＋ 図鑑に登録」）を [[名前]] として挿入する。
+   * 作成行のときは図鑑へ登録してからその名前を入れる＝図鑑を正本に保つ。
+   */
+  const commitSuggestion = async (index: number) => {
     const el = ref.current
-    const picked = candidates[index]
-    if (!el || !suggest || !picked) return
+    if (!el || !suggest) return
+    const isCreate = showCreate && index === candidates.length
+    const name = isCreate ? suggest.query.trim() : candidates[index]?.name
+    if (!name) return
+    if (isCreate && onCreateEntry) {
+      const created = await onCreateEntry(name)
+      if (!created) return
+    }
     const caret = el.selectionStart ?? 0
     // 記法ボタン等で置いた空枠 [[]] の閉じ括弧を二重にしない。
     const hasCloser = draft.startsWith(']]', caret)
@@ -2220,7 +2256,7 @@ function CommitTextarea({
       draft.startsWith('[[', suggest.at - 2)
         ? suggest.at - 2
         : suggest.at
-    const inserted = `[[${picked.name}]]`
+    const inserted = `[[${name}]]`
     const next = draft.slice(0, start) + inserted + draft.slice(end)
     setDraft(next)
     setSuggest(null)
@@ -2268,17 +2304,17 @@ function CommitTextarea({
             // 候補が出ている間の矢印・Enter・Tab はサジェスト操作に使う（改行させない）。
             if (e.key === 'ArrowDown') {
               e.preventDefault()
-              setActiveIndex((i) => (i + 1) % candidates.length)
+              setActiveIndex((i) => (i + 1) % total)
               return
             }
             if (e.key === 'ArrowUp') {
               e.preventDefault()
-              setActiveIndex((i) => (i - 1 + candidates.length) % candidates.length)
+              setActiveIndex((i) => (i - 1 + total) % total)
               return
             }
             if (e.key === 'Enter' || e.key === 'Tab') {
               e.preventDefault()
-              commitSuggestion(activeIndex)
+              void commitSuggestion(activeIndex)
               return
             }
             if (e.key === 'Escape') {
@@ -2303,13 +2339,13 @@ function CommitTextarea({
         <RefSuggest
           candidates={candidates}
           query={suggest.query}
-          showCreate={false}
+          showCreate={showCreate}
           activeIndex={activeIndex}
           top={suggest.top}
           left={suggest.left}
           listId={listId}
           optionId={optionId}
-          onCommit={commitSuggestion}
+          onCommit={(i) => void commitSuggestion(i)}
           onHover={setActiveIndex}
         />
       ) : null}

@@ -215,13 +215,21 @@ export interface RefSuggestion {
 }
 
 /**
- * @ サジェスト候補（D-GLOS-SUGGEST-ORDER=一致度順・前方一致優先＋上限）。正式名だけでなく、
+ * @ サジェスト候補（D-GLOS-SUGGEST-ORDER=一致度順・前方一致優先）。正式名だけでなく、
  * query に一致する別名も **それぞれ独立した候補** として出す。別名候補を選ぶと本文にはその別名表記が
  * 入る（例: 別名「世界樹」を選ぶと `[[世界樹]]` が入り、resolveRef が別名解決するので図鑑に正しく紐づく）。
  * 正式名候補は name/reading の一致で出す。同ランクは五十音（別名は表記、正式名は reading→name）で
- * タイブレーク。空 query は正式名のみを五十音順に limit 件。
+ * タイブレーク。空 query は正式名のみを五十音順。
+ *
+ * 既定では件数を絞らない（一致する図鑑項目はすべて返す）。8 件で打ち切っていた頃は
+ * 「9 件目以降が選べない・空 query で図鑑全体を辿れない」状態だった。長い一覧は
+ * UI 側がスクロールで見せる（RefSuggest の max-height＋キーボード追従）。
  */
-export function suggestRefs(query: string, entries: GlossaryEntry[], limit = 8): RefSuggestion[] {
+export function suggestRefs(
+  query: string,
+  entries: GlossaryEntry[],
+  limit = Number.POSITIVE_INFINITY,
+): RefSuggestion[] {
   const q = query.trim().toLowerCase()
   if (q === '') {
     return sortEntries(entries)

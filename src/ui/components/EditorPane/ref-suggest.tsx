@@ -1,4 +1,5 @@
 import { Plus } from 'lucide-react'
+import { useEffect, useRef } from 'react'
 import type { RefSuggestion } from '@/core/glossary'
 import { cn } from '@/lib/utils'
 
@@ -40,8 +41,18 @@ export function RefSuggest({
   onHover,
 }: RefSuggestProps) {
   const createIndex = candidates.length
+  const listRef = useRef<HTMLDivElement>(null)
+
+  // 候補は絞らず全件出す（図鑑をスクロールで辿れる）ので、↑↓ の選択をリスト内で追う。
+  // block:'nearest' なのでページ自体はスクロールしない＝入力位置がずれない。
+  useEffect(() => {
+    const el = listRef.current?.querySelector<HTMLElement>(`#${CSS.escape(optionId(activeIndex))}`)
+    el?.scrollIntoView({ block: 'nearest' })
+  }, [activeIndex, optionId])
+
   return (
     <div
+      ref={listRef}
       role="listbox"
       id={listId}
       aria-label="参照候補"
