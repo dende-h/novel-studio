@@ -8,6 +8,7 @@ import {
   Plus,
   Search,
   Sparkles,
+  Undo2,
   Upload,
 } from 'lucide-react'
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
@@ -65,6 +66,10 @@ interface LibraryProps {
   aiEditPending?: boolean
   /** AI・MCP 接続の管理を開く（会員のみ・未指定なら非表示）。 */
   onOpenMcp?: () => void
+  /** 「同期で退避した版」の一覧を開く（会員のみ・未指定なら非表示）。 */
+  onOpenSyncLost?: () => void
+  /** 退避されている版の件数（0 なら項目に件数を出さない）。 */
+  syncLostCount?: number
   /** 執筆活動（草・ストリーク）ページを開く。 */
   onOpenActivity?: () => void
   /** ネタ帳ページを開く。 */
@@ -128,6 +133,8 @@ export function Library({
   onOpenAiPull,
   aiEditPending,
   onOpenMcp,
+  onOpenSyncLost,
+  syncLostCount = 0,
   onOpenActivity,
   onOpenIdeas,
   onOpenSettings,
@@ -459,6 +466,19 @@ export function Library({
                             onClick={() => {
                               setDataMenuOpen(false)
                               onOpenMcp()
+                            }}
+                          />
+                        ) : null}
+                        {/* 同期が採用しなかった版の置き場所。競合のたびに通知を出す代わりに、
+                            「どこに退避したのか」をいつでも辿れる入口をここに常設する。 */}
+                        {onOpenSyncLost ? (
+                          <DataMenuItem
+                            icon={<Undo2 className="size-[15px]" />}
+                            label="同期で退避した版"
+                            badge={syncLostCount > 0 ? String(syncLostCount) : undefined}
+                            onClick={() => {
+                              setDataMenuOpen(false)
+                              onOpenSyncLost()
                             }}
                           />
                         ) : null}

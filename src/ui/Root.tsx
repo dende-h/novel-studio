@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { IdbStore } from '@/core/storage/idbStore'
+import { SyncLostRepository } from '@/core/sync/syncLostRepository'
 import { getMcpTokenStatus } from './_api/mcp'
 import { triggerDownload } from './_utils/download'
 import { App } from './App'
@@ -15,6 +17,7 @@ import { McpConnectDialog } from './components/McpConnectDialog/mcp-connect-dial
 import { PublishRoute } from './components/PublishPage/publish-route'
 import { RestoreGrace } from './components/RestoreGrace/restore-grace'
 import { SettingsPage } from './components/SettingsPage/settings-page'
+import { SyncLostDialog } from './components/SyncLostDialog/sync-lost-dialog'
 import { SyncOnboarding } from './components/SyncOnboarding/sync-onboarding'
 import { useToast } from './components/Toast/toast'
 import { useAutoBackup } from './hooks/use-auto-backup'
@@ -101,6 +104,9 @@ export function Root({ store }: RootProps) {
   const [backupOpen, setBackupOpen] = useState(false)
   const [aiPullOpen, setAiPullOpen] = useState(false)
   const [mcpOpen, setMcpOpen] = useState(false)
+  // 同期で退避した版（＝採用しなかった方の置き場所）の一覧と件数。
+  const [syncLostOpen, setSyncLostOpen] = useState(false)
+  const [syncLostCount, setSyncLostCount] = useState(0)
   // AI・MCP 接続済みか（トークン発行済み）。接続時のみ編集をライブスナップショットへ送る。
   const [mcpConnected, setMcpConnected] = useState(false)
   // AI が書いた未取り込みの変更があるか（サーバが自動 push を 409 で弾いた＝AI の成果を保護中）。
@@ -111,6 +117,15 @@ export function Root({ store }: RootProps) {
   useEffect(() => {
     void store.init()
   }, [store])
+
+  // 退避の置き場所（synclost）。件数はデータ管理メニューに小さく出すだけで、通知はしない。
+  const syncLostRepo = useMemo(() => new SyncLostRepository(new IdbStore('novel-studio')), [])
+  const refreshSyncLost = useCallback(() => {
+    void syncLostRepo.list().then((list) => setSyncLostCount(list.length))
+  }, [syncLostRepo])
+  useEffect(() => {
+    refreshSyncLost()
+  }, [refreshSyncLost])
 
   // 会員なら現在の MCP 接続状態を取得し、接続済みならライブ push を有効化する。
   useEffect(() => {
@@ -133,7 +148,7 @@ export function Root({ store }: RootProps) {
 
   // 会員の Work 単位自動同期（CAS＋三方向差分・2026-08 改訂）。スマホ⇔PC の使い分けを
   // バックアップ→復元なしで成立させる。pull 等でローカルが変わったら一覧を読み直し、
-  // 競合（LWW で解決・敗者は履歴へ退避済み）はトーストで知らせる。
+  // 競合（LWW で解決・敗者は履歴／退避一覧へ保存済み）は通知せず、退避一覧の件数だけ更新する。
   // 執筆画面で開いている作品も、下書きが未保存（dirty）の間以外は pull を受け付け、
   // refreshOpenWork でエディタ状態を追随させる（図鑑・本文もページ遷移なしで届く）。
   const routeRef = useRef(route)
@@ -165,10 +180,12 @@ export function Root({ store }: RootProps) {
         // 開いている構造ビュー・ネタ帳にも pull を反映させる（マウント時読み切りのため）。
         announceSyncApplied()
       },
-      onConflicts: (conflicts) =>
-        show(
-          `別端末の変更と競合したため新しい方を採用しました（${conflicts.length}件・負けた版は端末内に退避済み）`,
-        ),
+      // 競合の決着はトーストで知らせない：同期は数秒おきに走るので通知が鳴り続け、
+      // 「勝ち負け」「バックアップしました」と言われても退避先が分からず不安だけが残る
+      // （実際、勝った側では退避が起きないのに退避済みと出ていた）。代わりに
+      // ①ヘッダーの「同期中…」で進行を淡々と見せ ②置き換わった版は端末内に残し
+      // ③データ管理の「同期で退避した版」からいつでも辿れるようにする。
+      onConflicts: () => refreshSyncLost(),
       // 画面遷移＝端末を持ち替えた/戻ってきた合図としてポーリングをバーストさせる（5 秒間隔・30 秒）。
     },
     route,
@@ -290,6 +307,8 @@ export function Root({ store }: RootProps) {
           onOpenAiPull={backupService ? () => setAiPullOpen(true) : undefined}
           aiEditPending={aiEditPending}
           onOpenMcp={backupService ? () => setMcpOpen(true) : undefined}
+          onOpenSyncLost={syncService ? () => setSyncLostOpen(true) : undefined}
+          syncLostCount={syncLostCount}
           onOpenActivity={() => navigate('/activity')}
           onOpenIdeas={() => navigate('/ideas')}
           onOpenSettings={() => navigate('/settings')}
@@ -325,6 +344,12 @@ export function Root({ store }: RootProps) {
           }}
         />
       )}
+      <SyncLostDialog
+        open={syncLostOpen}
+        onOpenChange={setSyncLostOpen}
+        repo={syncLostRepo}
+        onChanged={refreshSyncLost}
+      />
       {backupService && (
         <McpConnectDialog
           open={mcpOpen}

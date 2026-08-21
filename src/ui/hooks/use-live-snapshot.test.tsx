@@ -2,6 +2,7 @@ import { act, renderHook } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { BackupService } from '@/ui/backup/backup-service'
 import type { EditorStore } from '@/ui/store/editorStore'
+import { touchSync } from '@/ui/sync/sync-touch'
 import { useLiveSnapshot } from './use-live-snapshot'
 
 beforeEach(() => vi.useFakeTimers())
@@ -69,5 +70,34 @@ describe('useLiveSnapshot', () => {
     act(() => emit())
     unmount()
     expect(pushLive).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('useLiveSnapshot：AI が読む内容を古いままにしない', () => {
+  it('構造・プロット・ネタ帳の編集（sync-touch）でも push する', () => {
+    const { store } = makeStore()
+    const { service, pushLive } = makeService()
+    renderHook(() => useLiveSnapshot(store, service, true))
+
+    act(() => touchSync()) // プロットだけを直した状態
+    act(() => vi.advanceTimersByTime(4000))
+    expect(pushLive).toHaveBeenCalledTimes(1)
+  })
+
+  it('送信に失敗したら次の契機で送り直す（黙って古いままにしない）', async () => {
+    const { store, emit } = makeStore()
+    const pushLive = vi.fn(async () => 'failed' as const)
+    const service = { pushLive } as unknown as BackupService
+    renderHook(() => useLiveSnapshot(store, service, true))
+
+    act(() => emit())
+    await act(async () => {
+      vi.advanceTimersByTime(4000)
+    })
+    expect(pushLive).toHaveBeenCalledTimes(1)
+
+    // 失敗ぶんが残っているので、次の flush 契機（離脱）でもう一度送る
+    act(() => window.dispatchEvent(new Event('pagehide')))
+    expect(pushLive).toHaveBeenCalledTimes(2)
   })
 })

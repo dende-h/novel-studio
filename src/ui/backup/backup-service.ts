@@ -18,6 +18,7 @@ import {
   type BackupSummary,
   type LiveMeta,
 } from '@/ui/_api/backup'
+import { withSyncSuspended } from '@/ui/sync/sync-gate'
 
 export type { BackupSummary, LiveMeta }
 
@@ -152,18 +153,23 @@ export function createLocalBackupIO(): Pick<BackupDeps, 'gather' | 'replaceAll'>
       structures: await structureRepo.list(),
       plots: await plotRepo.list(),
     }),
-    replaceAll: async (state) => {
-      await repo.replaceAll(state.works, state.trash)
-      await profileRepo.save(state.profile)
-      await activityRepo.replaceAll(state.activity)
-      await ideaRepo.replaceAll(state.ideas)
-      await structureRepo.replaceAll(state.structures)
-      await plotRepo.replaceAll(state.plots)
-      // 同期 base（最後に同期した点の記録）は復元後の実態と食い違うため全消しする。
-      // 消すとこの端末は「新品」として三方向差分に入り、復元で消えた作品を誤って
-      // リモート purge する事故（base 残留→ケース6誤爆）を防げる。
-      await syncBases.clearAll()
-    },
+    // 全置換は自動同期と**排他**で行う（sync-gate）。同期は 5〜10 秒おきに走るので、
+    // 置換の最中に走っている reconcile が base を書き戻すと、base 全消しの意味が消えて
+    // 次の同期が「base はあるのにローカルに無い」＝削除済みと誤認し、サーバから purge
+    // してしまう（AI の変更の取り込み・クラウド復元・ファイル取り込みに共通の事故）。
+    replaceAll: (state) =>
+      withSyncSuspended(async () => {
+        await repo.replaceAll(state.works, state.trash)
+        await profileRepo.save(state.profile)
+        await activityRepo.replaceAll(state.activity)
+        await ideaRepo.replaceAll(state.ideas)
+        await structureRepo.replaceAll(state.structures)
+        await plotRepo.replaceAll(state.plots)
+        // 同期 base（最後に同期した点の記録）は復元後の実態と食い違うため全消しする。
+        // 消すとこの端末は「新品」として三方向差分に入り、復元で消えた作品を誤って
+        // リモート purge する事故（base 残留→ケース6誤爆）を防げる。
+        await syncBases.clearAll()
+      }),
   }
 }
 

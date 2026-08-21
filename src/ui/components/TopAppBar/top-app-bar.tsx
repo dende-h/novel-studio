@@ -16,6 +16,7 @@ import { cn } from '@/lib/utils'
 import { openBillingPortal } from '@/ui/_api/billing'
 import { useAuth } from '@/ui/auth/auth-context'
 import { Button } from '@/ui/components/ui/button'
+import { useSyncStatus } from '@/ui/hooks/use-sync-status'
 import type { SaveStatus } from '@/ui/store/editorStore'
 
 // 会員のアカウント操作（解約／サインアウト）は Clerk の UserButton。@clerk/clerk-react を含むので
@@ -167,7 +168,28 @@ function AccountControl() {
   return null
 }
 
-/** 全画面共通のトップバー（ブランド・作品パンくず・保存状態・履歴・書き出し・投稿）。 */
+/**
+ * 同期の進行表示。走っている間だけ小さく「同期中…」を出し、それ以外は何も出さない。
+ *
+ * 同期は編集のたび・数秒おきに走るので、結果をトーストで知らせると通知が鳴り続けて
+ * 「何か起きているのでは」と不安にさせる。ここは SaveStateIndicator と同じ作法で、
+ * 点滅・赤・警告アイコンを使わず、淡々と状態だけを置く。
+ */
+function SyncIndicator() {
+  const { enabled, syncing } = useSyncStatus()
+  if (!enabled || !syncing) return null
+  return (
+    <span
+      role="status"
+      className="flex items-center gap-1.5 font-sans text-on-surface-variant/80 text-xs"
+    >
+      <LoaderCircle className="size-3.5 animate-spin" aria-hidden />
+      <span className="max-sm:sr-only">同期中…</span>
+    </span>
+  )
+}
+
+/** 全画面共通のトップバー（ブランド・作品パンくず・保存状態・同期・履歴・書き出し・投稿）。 */
 export function TopAppBar({
   brand,
   onBrandClick,
@@ -234,6 +256,7 @@ export function TopAppBar({
       {/* 右側（状態表示とアカウント）は縮めない。左のロゴ側に幅を譲らせる。 */}
       <div className="flex shrink-0 items-center gap-3">
         {saveStatus ? <SaveIndicator {...saveStatus} /> : null}
+        <SyncIndicator />
         {onToggleHistory ? (
           <button
             type="button"

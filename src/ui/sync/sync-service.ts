@@ -3,6 +3,7 @@ import { IdeaNoteSchema } from '@/core/idea'
 import { PlotSchema } from '@/core/plot'
 import { ProfileRepository, ProfileSchema } from '@/core/profile'
 import { type Work, WorkSchema } from '@/core/schema'
+import { createSnapshot } from '@/core/snapshot'
 import { SnapshotRepository } from '@/core/snapshot/snapshotRepository'
 import { ActivityRepository } from '@/core/storage/activityRepository'
 import { IdbStore } from '@/core/storage/idbStore'
@@ -15,6 +16,11 @@ import { type ActivityDay, mergeActivity, toActivityDay } from '@/core/sync/acti
 import { canonicalJson, canonicalWorkJson, sha256Hex } from '@/core/sync/hash'
 import { planReconcile } from '@/core/sync/plan'
 import { SyncBaseRepository } from '@/core/sync/syncBaseRepository'
+import {
+  type SyncLostEntry,
+  type SyncLostReason,
+  SyncLostRepository,
+} from '@/core/sync/syncLostRepository'
 import type { ConflictInfo, RemoteWorkMeta } from '@/core/sync/types'
 import {
   deleteSyncWork as apiDelete,
@@ -25,6 +31,7 @@ import {
   postSyncActivity as apiPostActivity,
   putSyncWork as apiPut,
 } from '@/ui/_api/sync'
+import { isSyncSuspended, syncEpoch } from '@/ui/sync/sync-gate'
 
 /**
  * アイテム単位の自動同期（reconcile ループ）。対象＝Work＋構造レイヤー＋ネタ帳（CAS 同期）と
@@ -55,6 +62,11 @@ export interface ReconcileSummary {
 export interface SyncService {
   /** 1 回の同期。オフライン・未ログイン・非会員（manifest 不可）は null。多重呼び出しは合流する。 */
   reconcile(): Promise<ReconcileSummary | null>
+  /**
+   * 実際に同期（reconcile）が走っている間だけ true を流す。ヘッダーの「同期中…」表示用。
+   * 軽量 poll（世代チェックだけで終わる往復）は走行に数えない＝5 秒ごとに点滅させない。
+   */
+  subscribeRunning(listener: (running: boolean) => void): () => void
   /**
    * 軽量ポーリング用：サーバの同期世代（/api/sync/version）を確かめ、前回から動いていた
    * ときだけ本同期を走らせる。変化なしなら往復 1 回の超軽量 GET で終わる＝~15 秒間隔で
@@ -92,6 +104,18 @@ const kindOf = (syncId: string): ItemKind =>
 
 const rawIdOf = (syncId: string): string => syncId.replace(/^(?:structure|idea|profile|plot):/, '')
 
+/** ネタ帳の 1 行目を退避一覧の見出しに使う（長文は切り詰める）。 */
+const ideaTitle = (text: string | undefined): string | undefined => {
+  const head = text?.split('\n', 1)[0]?.trim()
+  if (!head) return undefined
+  return head.length > 24 ? `${head.slice(0, 24)}…` : head
+}
+
+/** 同じ作品の競合は 1 件に畳む（1 回目と再計画で二重に数えない）。 */
+const dedupeConflicts = (conflicts: ConflictInfo[]): ConflictInfo[] => [
+  ...new Map(conflicts.map((c) => [c.workId, c])).values(),
+]
+
 /** テストで差し替える I/O。既定実装は createDefaultSyncService が結線する。 */
 export interface SyncDeps {
   repo: WorkRepository
@@ -102,10 +126,19 @@ export interface SyncDeps {
   plots: PlotRepository
   bases: SyncBaseRepository
   /**
-   * 競合の敗者・purge 直前の内容の退避先（構造・ネタ帳用。Work は snapshot 機構を使う）。
-   * `synclost:<syncId>` に 1 世代だけ保持する「黙って消えない」ための最終逃げ場。
+   * 競合の敗者・purge 直前の内容の退避先（`synclost:<syncId>`・1 アイテム 1 世代・件数上限つき）。
+   * 作品の競合は履歴（snapshot）が内容を持つので記録だけを残し、履歴を開けなくなる削除の伝播と、
+   * 履歴を持たない構造・プロット・ネタ帳・プロフィールは JSON 本体も残す。
+   * UI（データ管理 →「同期で退避した版」）がこの一覧を見せる。
    */
-  saveLost(syncId: string, json: string): Promise<void>
+  saveLost(entry: SyncLostEntry): Promise<void>
+  /**
+   * 全置換（復元・AI の変更の取り込み）との排他。世代が変わった／保留中の間は、
+   * 取り込み前の前提で書き戻さない（base 書き戻しによる purgeRemote 誤爆の防止）。
+   * 省略時は常に「変化なし・保留なし」＝テストの既定挙動。
+   */
+  epoch?: () => number
+  suspended?: () => boolean
   /** 執筆の記録の同期（D1 max マージ）。全日分を送り、マージ済み全量を受け取る。失敗は null。 */
   postActivity(days: ActivityDay[]): Promise<ActivityDay[] | null>
   /** 執筆の記録のローカル一覧・全置換（マージ結果の反映先）。 */
@@ -150,6 +183,13 @@ export function createSyncService(deps: SyncDeps): SyncService {
   let activityRemoteDirty = true
 
   async function runOnce(depth: number): Promise<ReconcileSummary | null> {
+    // 全置換（復元・AI の変更の取り込み）の最中は走り出さない。
+    if (deps.suspended?.()) return null
+    // この実行が握る世代。全置換が始まると進むので、以後の書き込みをすべて止める
+    // （base を書き戻して purgeRemote を誤爆させない・取り込み前の本文で push しない）。
+    const epoch0 = deps.epoch?.() ?? 0
+    const stale = () => (deps.epoch?.() ?? 0) !== epoch0 || (deps.suspended?.() ?? false)
+
     const remote = await deps.manifest()
     if (remote === null) return null
 
@@ -270,10 +310,17 @@ export function createSyncService(deps: SyncDeps): SyncService {
       remote: remote.filter((r) => !maskedIds.has(r.workId)),
     })
     const conflictIds = new Set(conflicts.map((c) => c.workId))
+    const conflictById = new Map(conflicts.map((c) => [c.workId, c]))
 
-    const summary: ReconcileSummary = { pushed: 0, pulled: 0, conflicts, changedLocal: false }
-    // 開いている作品への破壊的 op を見送った workId（競合の報告からも外す＝未解決のため）。
-    const deferredIds = new Set<string>()
+    const summary: ReconcileSummary = { pushed: 0, pulled: 0, conflicts: [], changedLocal: false }
+    // 実際に決着した競合だけを積む。計画したが実行できなかったもの（オフラインで pull できない・
+    // 往復中に編集されて再計画へ回した・開いている作品で見送った）は**まだ競合していない**ので
+    // 報告しない：ここを計画ベースにしていたため、何も起きていないのに通知が出ていた。
+    const resolved: ConflictInfo[] = []
+    const markResolved = (workId: string) => {
+      const c = conflictById.get(workId)
+      if (c) resolved.push(c)
+    }
     // purge の伝播に失敗した workId（base を消すと次回 pull で復活してしまうので温存する）。
     const failedPurges = new Set<string>()
     let replanNeeded = false
@@ -286,7 +333,41 @@ export function createSyncService(deps: SyncDeps): SyncService {
       return o !== null && o.id === workId && o.dirty
     }
 
+    // base の書き込みは stale チェックの後ろに通す。全置換（復元・取り込み）が base を
+    // 全消しした**後**にここが書き戻すと、次の reconcile が「base はあるのにローカルに無い」＝
+    // 削除済みと誤認して purgeRemote を出し、全端末から作品が消える（事故の芯）。
+    const setBase = async (base: {
+      workId: string
+      baseHash: string
+      remoteUpdatedAt: number
+      syncedAt: number
+    }) => {
+      if (stale()) return
+      await deps.bases.set(base)
+    }
+    /**
+     * 消える／置き換わる直前の内容を退避の一覧へ記録する。
+     * json を渡さないのは作品の競合だけ（内容は履歴が持ち、一覧は履歴への道しるべになる）。
+     */
+    const recordLost = async (
+      syncId: string,
+      reason: SyncLostReason,
+      title: string | undefined,
+      json?: string,
+    ) => {
+      await deps.saveLost({
+        syncId,
+        at: deps.now(),
+        kind: kindOf(syncId),
+        reason,
+        title,
+        json,
+      })
+    }
+
     for (const op of ops) {
+      // 全置換が始まったら以降の op は実行しない（取り込み前の前提での書き込みを止める）。
+      if (stale()) break
       switch (op.op) {
         case 'push': {
           const body = canon.get(op.workId)
@@ -302,7 +383,9 @@ export function createSyncService(deps: SyncDeps): SyncService {
             break
           }
           summary.pushed++
-          await deps.bases.set({
+          // 競合でこちら（ローカル）が勝った＝サーバ側の版が置き換わった。決着として記録する。
+          markResolved(op.workId)
+          await setBase({
             workId: op.workId,
             baseHash: res.docHash,
             remoteUpdatedAt: op.updatedAt,
@@ -316,11 +399,12 @@ export function createSyncService(deps: SyncDeps): SyncService {
           // （適用後は Root が store.refreshOpenWork() でエディタ状態を追随させる）。
           // 未保存編集の最中だけ見送り、自動保存で確定した後の reconcile に委ねる。
           if (kind === 'work' && isOpenWorkDirty(op.workId)) {
-            deferredIds.add(op.workId)
             break
           }
           const got = await deps.getWork(op.workId)
           if (got === null) break
+          // 往復の間に全置換が走っていたら、取り込み後のローカルを古い内容で上書きしない。
+          if (stale()) break
 
           if (kind === 'work') {
             let pulled: Work
@@ -340,8 +424,10 @@ export function createSyncService(deps: SyncDeps): SyncService {
               }
             }
             // 競合の敗者（ローカル版）は上書き前に必ず履歴へ退避する＝丸ごと消失させない。
+            // 履歴に入れるだけだと「どこへ退避したのか」が分からないので、退避の一覧にも記録する。
             if (conflictIds.has(op.workId) && current) {
-              await deps.snapshotRepo.append(current, deps.now(), deps.genId())
+              await deps.snapshotRepo.append(current, deps.now(), deps.genId(), 'sync')
+              await recordLost(op.workId, 'conflict', current.title)
             }
             await deps.repo.saveWork(pulled)
             if (op.toTrashedAt !== null) {
@@ -366,7 +452,9 @@ export function createSyncService(deps: SyncDeps): SyncService {
                     replanNeeded = true
                     break
                   }
-                  if (conflictIds.has(op.workId)) await deps.saveLost(op.workId, currentJson)
+                  if (conflictIds.has(op.workId)) {
+                    await recordLost(op.workId, 'conflict', cur?.title, currentJson)
+                  }
                 }
                 await deps.structures.put(pulled)
               } else if (kind === 'idea') {
@@ -379,7 +467,9 @@ export function createSyncService(deps: SyncDeps): SyncService {
                     replanNeeded = true
                     break
                   }
-                  if (conflictIds.has(op.workId)) await deps.saveLost(op.workId, currentJson)
+                  if (conflictIds.has(op.workId)) {
+                    await recordLost(op.workId, 'conflict', ideaTitle(cur?.text), currentJson)
+                  }
                 }
                 await deps.ideas.put(pulled)
               } else if (kind === 'plot') {
@@ -394,7 +484,9 @@ export function createSyncService(deps: SyncDeps): SyncService {
                     replanNeeded = true
                     break
                   }
-                  if (conflictIds.has(op.workId)) await deps.saveLost(op.workId, currentJson)
+                  if (conflictIds.has(op.workId)) {
+                    await recordLost(op.workId, 'conflict', cur?.title, currentJson)
+                  }
                 }
                 await deps.plots.put(pulled)
               } else {
@@ -408,7 +500,9 @@ export function createSyncService(deps: SyncDeps): SyncService {
                     replanNeeded = true
                     break
                   }
-                  if (conflictIds.has(op.workId)) await deps.saveLost(op.workId, currentJson)
+                  if (conflictIds.has(op.workId)) {
+                    await recordLost(op.workId, 'conflict', 'プロフィール', currentJson)
+                  }
                 }
                 await deps.profile.save(pulled)
               }
@@ -418,7 +512,9 @@ export function createSyncService(deps: SyncDeps): SyncService {
           }
           summary.pulled++
           summary.changedLocal = true
-          await deps.bases.set({
+          // 競合でリモートが勝った＝ローカル版を退避してから置き換えた。決着として記録する。
+          markResolved(op.workId)
+          await setBase({
             workId: op.workId,
             baseHash: got.docHash,
             remoteUpdatedAt: got.updatedAt,
@@ -439,7 +535,7 @@ export function createSyncService(deps: SyncDeps): SyncService {
           }
           const r = remoteMap.get(op.workId)
           if (r) {
-            await deps.bases.set({
+            await setBase({
               workId: op.workId,
               baseHash: r.docHash,
               remoteUpdatedAt: op.updatedAt,
@@ -452,16 +548,17 @@ export function createSyncService(deps: SyncDeps): SyncService {
           if (kindOf(op.workId) !== 'work') break // ゴミ箱状態を持つのは Work のみ（防御）
           // 開いている作品をゴミ箱へ移すのは見送る（エディタ表示と食い違うため・後の reconcile に委ねる）。
           if (isOpenWork(op.workId)) {
-            deferredIds.add(op.workId)
             break
           }
           // active→trash。既にゴミ箱なら trashedAt の付け替え（復元→退避で実現・repo に専用 API を増やさない）。
           if (!activeIds.has(op.workId)) await deps.repo.restoreWork(op.workId)
           await deps.repo.trashWork(op.workId, op.trashedAt)
           summary.changedLocal = true
+          // リモートのゴミ箱移動に追随した＝ローカルの編集が引っ込んだ。決着として記録する。
+          markResolved(op.workId)
           const r = remoteMap.get(op.workId)
           if (r) {
-            await deps.bases.set({
+            await setBase({
               workId: op.workId,
               baseHash: r.docHash,
               remoteUpdatedAt: r.updatedAt,
@@ -481,32 +578,56 @@ export function createSyncService(deps: SyncDeps): SyncService {
           if (kind === 'work') {
             // 開いている作品の purge は見送る（後の reconcile に委ねる）。
             if (isOpenWork(op.workId)) {
-              deferredIds.add(op.workId)
               break
             }
-            // 他端末の purge（トゥームストーン）の伝播。消える内容は必ず履歴へ退避してから消す。
+            // 他端末の purge（トゥームストーン）の伝播。消える内容は退避してから消す。
+            // 退避先は履歴ではなく退避の一覧：作品が消えると履歴（`snap:<workId>`）を開く画面が
+            // 無くなり、本人に見えないまま端末に溜まり続けるため（editorStore の purge と同じ考え）。
+            // 一覧なら件数上限つきで残り、ファイルへ書き出して取り戻せる。画像は履歴と同じく外す。
             const active = await deps.repo.getWork(op.workId)
             const victim = active ?? trashById.get(op.workId)?.work
-            if (victim) await deps.snapshotRepo.append(victim, deps.now(), deps.genId())
+            if (victim) {
+              const slim = createSnapshot(victim, deps.now(), op.workId).work
+              await recordLost(op.workId, 'remoteDelete', victim.title, canonicalWorkJson(slim))
+            }
             await deps.repo.deleteWork(op.workId)
             await deps.repo.purgeTrashedWork(op.workId)
+            await deps.snapshotRepo.clear(op.workId) // 開く画面の無い履歴を残さない
           } else if (kind === 'structure') {
             const cur = await deps.structures.get(rawIdOf(op.workId))
             // snapshot 機構が無いので synclost へ退避してから消す（黙って消えない）。
-            if (cur) await deps.saveLost(op.workId, canonicalJson(StructureSchema, cur))
+            if (cur) {
+              await recordLost(
+                op.workId,
+                'remoteDelete',
+                cur.title,
+                canonicalJson(StructureSchema, cur),
+              )
+            }
             await deps.structures.remove(rawIdOf(op.workId))
           } else if (kind === 'idea') {
             const cur = await deps.ideas.get(rawIdOf(op.workId))
-            if (cur) await deps.saveLost(op.workId, canonicalJson(IdeaNoteSchema, cur))
+            if (cur) {
+              await recordLost(
+                op.workId,
+                'remoteDelete',
+                ideaTitle(cur.text),
+                canonicalJson(IdeaNoteSchema, cur),
+              )
+            }
             await deps.ideas.remove(rawIdOf(op.workId))
           } else if (kind === 'plot') {
             const cur = await deps.plots.get(rawIdOf(op.workId))
-            if (cur) await deps.saveLost(op.workId, canonicalJson(PlotSchema, cur))
+            if (cur) {
+              await recordLost(op.workId, 'remoteDelete', cur.title, canonicalJson(PlotSchema, cur))
+            }
             await deps.plots.remove(rawIdOf(op.workId))
           } else {
             break // プロフィールはローカルから消さない（tombstone が来ても保持＝防御）
           }
           summary.changedLocal = true
+          // 未同期の編集を消した場合は plan が競合として記録している。決着として報告する。
+          markResolved(op.workId)
           break
         }
         case 'purgeRemote': {
@@ -520,7 +641,7 @@ export function createSyncService(deps: SyncDeps): SyncService {
           break
         }
         case 'adoptBase': {
-          await deps.bases.set({
+          await setBase({
             workId: op.workId,
             baseHash: op.hash,
             remoteUpdatedAt: op.remoteUpdatedAt,
@@ -530,6 +651,7 @@ export function createSyncService(deps: SyncDeps): SyncService {
         }
         case 'dropBase': {
           if (failedPurges.has(op.workId)) break // purge 伝播に失敗した base は温存（上記）
+          if (stale()) break // 全置換の base 全消しの後に書き戻さない（setBase と同じ理由）
           await deps.bases.delete(op.workId)
           break
         }
@@ -542,7 +664,7 @@ export function createSyncService(deps: SyncDeps): SyncService {
     // ローカルが前回送信から不変で、リモート世代（poll の activity 版）も動いていなければ
     // 送らない：coalesce 2.5 秒化で reconcile 頻度が上がるぶん、変更系リクエストを削って
     // レート制限（60 req/min）の余裕を保つ。再計画（depth>0）では走らせない。
-    if (depth === 0) {
+    if (depth === 0 && !stale()) {
       const localDays = await deps.listActivity()
       const sig = JSON.stringify(localDays.map(toActivityDay))
       if (sig !== lastActivitySig || activityRemoteDirty) {
@@ -558,8 +680,11 @@ export function createSyncService(deps: SyncDeps): SyncService {
       }
     }
 
-    // 見送った作品（開いている作品への破壊的 op）の競合は未解決なので報告しない。
-    summary.conflicts = summary.conflicts.filter((c) => !deferredIds.has(c.workId))
+    // 決着した競合だけを報告する（見送り・オフライン・再計画へ回したものは未決着なので出さない）。
+    summary.conflicts = resolved
+
+    // 全置換に追い越された実行の結果は使わない（取り込み後の画面を古い前提で書き換えない）。
+    if (stale()) return null
 
     // CAS で弾かれた・実行中にローカルが動いた作品は、最新 manifest を取り直して
     // 1 回だけ再計画する（三方向差分に入り、勝敗と退避が正しく付く）。連敗したら次のトリガに任せる。
@@ -569,7 +694,8 @@ export function createSyncService(deps: SyncDeps): SyncService {
         return {
           pushed: summary.pushed + again.pushed,
           pulled: summary.pulled + again.pulled,
-          conflicts: [...summary.conflicts, ...again.conflicts],
+          // 同じ作品が 1 回目と再計画の両方に出たら 1 件に畳む（同じ競合を二重に数えない）。
+          conflicts: dedupeConflicts([...summary.conflicts, ...again.conflicts]),
           changedLocal: summary.changedLocal || again.changedLocal,
         }
       }
@@ -578,6 +704,10 @@ export function createSyncService(deps: SyncDeps): SyncService {
   }
 
   const listeners = new Set<(summary: ReconcileSummary) => void>()
+  const runningListeners = new Set<(running: boolean) => void>()
+  const setRunning = (running: boolean) => {
+    for (const l of runningListeners) l(running)
+  }
 
   // poll が最後に見たサーバ世代。同じなら本同期を省略する（reconcile 後は自分の push で
   // 世代が進むため、取り直して記録し、無限に自分の変更へ反応するのを防ぐ）。
@@ -607,6 +737,7 @@ export function createSyncService(deps: SyncDeps): SyncService {
         rerunRequested = true
         return inFlight
       }
+      setRunning(true) // ヘッダーの「同期中…」を灯す（消すのは finally＝追走も含めて必ず消える）
       inFlight = runOnce(0)
         .then((summary) => {
           // 追走・再試行の結果も含め、完了した実行はすべて listener に届ける
@@ -617,6 +748,7 @@ export function createSyncService(deps: SyncDeps): SyncService {
         .catch(() => null) // 想定外の失敗も飲み込み、次のトリガで再試行（オフライン耐性と同線）
         .finally(() => {
           inFlight = null
+          setRunning(false)
           if (rerunRequested) {
             rerunRequested = false
             void service.reconcile()
@@ -628,6 +760,12 @@ export function createSyncService(deps: SyncDeps): SyncService {
       listeners.add(listener)
       return () => {
         listeners.delete(listener)
+      }
+    },
+    subscribeRunning(listener) {
+      runningListeners.add(listener)
+      return () => {
+        runningListeners.delete(listener)
       }
     },
   }
@@ -649,8 +787,11 @@ export function createDefaultSyncService(
     profile: new ProfileRepository(store),
     plots: new PlotRepository(store),
     bases: new SyncBaseRepository(store),
-    // 競合の敗者・purge 直前の内容の 1 世代退避（synclost:<syncId>）。
-    saveLost: (syncId, json) => store.set(`synclost:${syncId}`, { at: Date.now(), json }),
+    // 競合の敗者・purge 直前の内容の 1 世代退避（synclost:<syncId>・件数上限つき押し出し）。
+    saveLost: (entry) => new SyncLostRepository(store).save(entry),
+    // 全置換（復元・AI の変更の取り込み）との排他（sync-gate）。
+    epoch: syncEpoch,
+    suspended: isSyncSuspended,
     postActivity: (days) => apiPostActivity(getToken, days),
     listActivity: () => activityRepo.list(),
     replaceActivity: (days) => activityRepo.replaceAll(days),

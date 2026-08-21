@@ -1,7 +1,14 @@
+import 'fake-indexeddb/auto'
 import { describe, expect, it, vi } from 'vitest'
 import { type BackupState, deserializeBackup, serializeBackup } from '@/core/backup'
 import type { Work } from '@/core/schema'
-import { type BackupDeps, createBackupService, createLocalBackupService } from './backup-service'
+import { isSyncSuspended, syncEpoch } from '@/ui/sync/sync-gate'
+import {
+  type BackupDeps,
+  createBackupService,
+  createLocalBackupIO,
+  createLocalBackupService,
+} from './backup-service'
 
 const work = (id: string): Work => ({ id, title: id, episodes: [], updatedAt: 1 })
 
@@ -348,5 +355,26 @@ describe('createBackupService', () => {
     expect((await svc.list()).map((b) => b.id)).toContain('x')
     await svc.remove('x')
     expect(del).toHaveBeenCalledWith('x')
+  })
+})
+
+describe('全置換（復元・AI の変更の取り込み）は自動同期と排他で走る', () => {
+  it('createLocalBackupIO の replaceAll は sync-gate の中で実行される', async () => {
+    const io = createLocalBackupIO()
+    const before = syncEpoch()
+    const running = io.replaceAll({
+      works: [],
+      trash: [],
+      profile: {},
+      activity: [],
+      ideas: [],
+      structures: [],
+      plots: [],
+    })
+    // 置換の最中は保留＝走っている reconcile が base を書き戻さない（誤 purge の防止）。
+    expect(isSyncSuspended()).toBe(true)
+    await running
+    expect(isSyncSuspended()).toBe(false)
+    expect(syncEpoch()).toBe(before + 2) // 開始と終了で世代が進む＝実行中の同期は stale になる
   })
 })
