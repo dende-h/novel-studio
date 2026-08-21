@@ -235,8 +235,10 @@ export function HistoryPanel({
                   }
                 >
                   <div className="flex items-center justify-between gap-2">
+                    {/* origin='sync'＝同期が別端末の版を採用する／削除を伝播する直前に退避した版。
+                        「バックアップしました」の行き先はここだと分かるように名前で示す。 */}
                     <span className="font-medium text-[12px] text-on-surface">
-                      {current ? '現在の版' : '自動保存'}
+                      {snap.origin === 'sync' ? '同期で退避' : current ? '現在の版' : '自動保存'}
                     </span>
                     <span className="text-[11px] text-on-surface-variant/70">
                       {formatRelative(snap.at, base)}

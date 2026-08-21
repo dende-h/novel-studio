@@ -34,6 +34,7 @@ const makeService = () => {
     reconcile,
     poll,
     subscribeSummary: () => () => {},
+    subscribeRunning: () => () => {},
   }
   return { service, reconcile, poll }
 }

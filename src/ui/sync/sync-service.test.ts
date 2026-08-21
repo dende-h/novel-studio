@@ -15,6 +15,7 @@ import type { Structure } from '@/core/structure'
 import type { ActivityDay } from '@/core/sync/activityMerge'
 import { canonicalWorkJson, sha256Hex } from '@/core/sync/hash'
 import { SyncBaseRepository } from '@/core/sync/syncBaseRepository'
+import type { SyncLostEntry } from '@/core/sync/syncLostRepository'
 import type { RemoteWorkMeta } from '@/core/sync/types'
 import { createSyncService, type SyncDeps } from './sync-service'
 
@@ -166,6 +167,9 @@ function makeEnv(
     postActivity?: (days: ActivityDay[]) => Promise<ActivityDay[] | null>
     /** /api/sync/version の activity 世代（既定 0 固定）。送信スキップ解除の検証用。 */
     getActivityVersion?: () => number
+    /** 全置換との排他（sync-gate）の擬似。既定は「世代不変・保留なし」＝従来どおり。 */
+    epoch?: () => number
+    suspended?: () => boolean
   } = {},
 ) {
   const store = new MemoryStore()
@@ -177,7 +181,7 @@ function makeEnv(
   const plots = new PlotRepository(store)
   const activityRepo = new ActivityRepository(store)
   const bases = new SyncBaseRepository(store)
-  const lost = new Map<string, string>()
+  const lost = new Map<string, SyncLostEntry>()
   let id = 0
   // remote.api は委譲で包む（テストが後から remote.api.* を差し替えられるように）。
   const service = createSyncService({
@@ -188,9 +192,11 @@ function makeEnv(
     profile,
     plots,
     bases,
-    saveLost: async (syncId, json) => {
-      lost.set(syncId, json)
+    saveLost: async (entry) => {
+      lost.set(entry.syncId, entry)
     },
+    epoch: opts.epoch,
+    suspended: opts.suspended,
     postActivity: opts.postActivity ?? (async () => null),
     listActivity: () => activityRepo.list(),
     replaceActivity: (days) => activityRepo.replaceAll(days),
@@ -299,8 +305,8 @@ describe('sync-service reconcile', () => {
     expect(remote.rows.get('w1')?.deleted).toBe(1)
   })
 
-  it('リモートのトゥームストーンでローカルを purge する（snapshot へ退避してから）', async () => {
-    const { repo, snapshotRepo, remote, service } = makeEnv()
+  it('リモートのトゥームストーンでローカルを purge する（退避の一覧へ内容を残してから）', async () => {
+    const { repo, lost, remote, service } = makeEnv()
     await repo.saveWork(mkWork('w1', '別端末で完全削除', 100))
     await service.reconcile()
     const row = remote.rows.get('w1')
@@ -308,7 +314,8 @@ describe('sync-service reconcile', () => {
     remote.rows.set('w1', { ...row, deleted: 1, json: '', updatedAt: 900 })
     await service.reconcile()
     expect(await repo.getWork('w1')).toBeUndefined()
-    expect((await snapshotRepo.list('w1')).length).toBeGreaterThan(0)
+    // 作品ごと消えると履歴を開く画面が無くなるので、退避の一覧に内容ごと残す。
+    expect(lost.get('w1')?.json).toContain('別端末で完全削除')
   })
 
   it('purge の伝播に失敗したら base を温存し、消した作品を pull で復活させない', async () => {
@@ -464,7 +471,7 @@ describe('構造・ネタ帳の同期（D-SYNC2-ITEMS・プレフィックス付
     const summary = await service.reconcile()
     expect(summary?.conflicts).toEqual([{ workId: 'structure:s1', winner: 'remote' }])
     expect((await structures.get('s1'))?.title).toBe('リモート編集')
-    expect(lost.get('structure:s1')).toContain('ローカル編集')
+    expect(lost.get('structure:s1')?.json).toContain('ローカル編集')
   })
 
   it('リモートのトゥームストーンで構造・ネタ帳を削除する（synclost へ退避してから）', async () => {
@@ -480,8 +487,8 @@ describe('構造・ネタ帳の同期（D-SYNC2-ITEMS・プレフィックス付
     await service.reconcile()
     expect(await structures.get('s1')).toBeUndefined()
     expect(await ideas.get('n1')).toBeUndefined()
-    expect(lost.get('structure:s1')).toContain('消える構造')
-    expect(lost.get('idea:n1')).toContain('消えるネタ')
+    expect(lost.get('structure:s1')?.json).toContain('消える構造')
+    expect(lost.get('idea:n1')?.json).toContain('消えるネタ')
   })
 
   it('開いている作品に紐づく構造でも pull は適用する（構造ビューは自前 state 表示で衝突しない）', async () => {
@@ -553,7 +560,7 @@ describe('プロットの同期（plot:<id>・D-SYNC2-ITEMS の第4種目）', (
     const summary = await service.reconcile()
     expect(summary?.conflicts).toEqual([{ workId: 'plot:p1', winner: 'remote' }])
     expect((await plots.get('p1'))?.title).toBe('リモート編集')
-    expect(lost.get('plot:p1')).toContain('ローカル編集')
+    expect(lost.get('plot:p1')?.json).toContain('ローカル編集')
   })
 
   it('削除は両方向へ伝播する（リモート tombstone→synclost 退避つき削除／ローカル削除→purge）', async () => {
@@ -567,7 +574,7 @@ describe('プロットの同期（plot:<id>・D-SYNC2-ITEMS の第4種目）', (
     await plots.remove('p2')
     await service.reconcile()
     expect(await plots.get('p1')).toBeUndefined()
-    expect(lost.get('plot:p1')).toContain('消えるプロット')
+    expect(lost.get('plot:p1')?.json).toContain('消えるプロット')
     expect(remote.rows.get('plot:p2')?.deleted).toBe(1)
   })
 })
@@ -618,7 +625,7 @@ describe('プロフィールの同期（profile:me・LWW）', () => {
     const summary = await service.reconcile()
     expect(summary?.conflicts).toEqual([{ workId: 'profile:me', winner: 'remote' }])
     expect((await profile.get()).penName).toBe('リモート編集')
-    expect(lost.get('profile:me')).toContain('ローカル編集')
+    expect(lost.get('profile:me')?.json).toContain('ローカル編集')
   })
 
   it('リモートのトゥームストーンでもローカルのプロフィールは消さない（防御）', async () => {
@@ -789,5 +796,113 @@ describe('poll（世代チェック付きの軽量同期）', () => {
     const active = await service.poll()
     expect(active?.pulled).toBe(1)
     expect((await repo.getWork('w2'))?.title).toBe('別端末の新作')
+  })
+})
+
+describe('全置換（復元・AI の変更の取り込み）との排他', () => {
+  it('全置換の最中（suspended）は同期を走らせない', async () => {
+    const { repo, remote, service } = makeEnv(makeFakeRemote(), { suspended: () => true })
+    await repo.saveWork(mkWork('w1', '取り込み中の編集', 100))
+    expect(await service.reconcile()).toBeNull()
+    expect(remote.rows.get('w1')).toBeUndefined() // 取り込み前の内容を push しない
+  })
+
+  it('実行中に全置換が走ったら base を書き戻さない（次の同期での誤 purge を防ぐ）', async () => {
+    // 事故の再現：AI の変更を取り込むと base は全消しされるが、取り込み前から走っていた
+    // reconcile が後から base を書き戻すと、次の同期が「base はあるのにローカルに無い」と
+    // 誤認して purgeRemote を出し、全端末から作品が消える。
+    const remote = makeFakeRemote()
+    await remote.seed(mkWork('w1', '別端末の作品', 200))
+    let epoch = 0
+    const { repo, bases, service } = makeEnv(remote, { epoch: () => epoch })
+    // manifest を取った直後（ネットワーク往復中）に全置換が始まった体で世代を進める。
+    const original = remote.api.getWork
+    remote.api.getWork = async (id: string) => {
+      epoch++
+      return original(id)
+    }
+
+    const summary = await service.reconcile()
+
+    expect(summary).toBeNull() // 追い越された実行の結果は使わない（画面も書き換えない）
+    expect(await repo.getWork('w1')).toBeUndefined() // 取り込み後のローカルを古い内容で上書きしない
+    expect(await bases.get('w1')).toBeUndefined() // base を書き戻さない＝誤 purge の芽を残さない
+  })
+})
+
+describe('競合の通知（決着したものだけ報告する）', () => {
+  it('pull できずに解決できなかった競合は報告しない（何も起きていないのに通知しない）', async () => {
+    const remote = makeFakeRemote()
+    const { repo, service } = makeEnv(remote)
+    await repo.saveWork(mkWork('w1', 'v1', 100))
+    await service.reconcile() // base 確立
+    await repo.saveWork(mkWork('w1', 'ローカル編集', 150))
+    await remote.seed(mkWork('w1', 'リモート編集', 300))
+    remote.api.getWork = async () => null // オフライン相当（本文が取れない）
+
+    const summary = await service.reconcile()
+    expect(summary?.conflicts).toEqual([]) // 退避も置換も起きていないので通知もしない
+    expect((await repo.getWork('w1'))?.title).toBe('ローカル編集')
+  })
+
+  it('決着した競合は退避の一覧にも記録する（退避先を後から辿れる）', async () => {
+    const { repo, lost, remote, service } = makeEnv()
+    await repo.saveWork(mkWork('w1', 'v1', 100))
+    await service.reconcile()
+    await repo.saveWork(mkWork('w1', 'ローカル編集', 150))
+    await remote.seed(mkWork('w1', 'リモート編集', 300))
+
+    await service.reconcile()
+    // 作品の内容は履歴（snapshot）にあるので json は持たず、辿るための記録だけを残す。
+    expect(lost.get('w1')).toMatchObject({
+      kind: 'work',
+      reason: 'conflict',
+      title: 'ローカル編集',
+    })
+    expect(lost.get('w1')?.json).toBeUndefined()
+  })
+
+  it('競合で退避した版は履歴で「同期で退避」と分かる', async () => {
+    const { repo, snapshotRepo, remote, service } = makeEnv()
+    await repo.saveWork(mkWork('w1', 'v1', 100))
+    await service.reconcile()
+    await repo.saveWork(mkWork('w1', 'ローカル編集', 150))
+    await remote.seed(mkWork('w1', 'リモート編集', 300))
+
+    await service.reconcile()
+    const snaps = await snapshotRepo.list('w1')
+    expect(snaps.find((s) => s.work.title === 'ローカル編集')?.origin).toBe('sync')
+  })
+})
+
+describe('同期中の表示（subscribeRunning）', () => {
+  it('reconcile の開始と終了で running を流す', async () => {
+    const { repo, service } = makeEnv()
+    const seen: boolean[] = []
+    service.subscribeRunning((r) => seen.push(r))
+    await repo.saveWork(mkWork('w1', 'v1', 100))
+    await service.reconcile()
+    expect(seen).toEqual([true, false])
+  })
+})
+
+describe('他端末の削除が届いたときの退避（端末に見えない履歴を残さない）', () => {
+  it('作品は退避の一覧へ内容ごと残し、開けなくなる履歴は消す', async () => {
+    const { repo, snapshotRepo, lost, remote, service } = makeEnv()
+    await repo.saveWork(mkWork('w1', '消える作品', 100))
+    await service.reconcile()
+    await snapshotRepo.append(mkWork('w1', '消える作品', 100), 90, 'snap-old') // 執筆中の履歴
+    const row = remote.rows.get('w1')
+    if (!row) throw new Error('seed 失敗')
+    remote.rows.set('w1', { ...row, deleted: 1, json: '', updatedAt: 900 })
+
+    await service.reconcile()
+
+    expect(await repo.getWork('w1')).toBeUndefined()
+    // 退避の一覧に内容ごと残る＝ファイルへ書き出して取り戻せる
+    expect(lost.get('w1')).toMatchObject({ kind: 'work', reason: 'remoteDelete' })
+    expect(lost.get('w1')?.json).toContain('消える作品')
+    // 作品が無くなり開く画面も無い履歴は端末に溜めない
+    expect(await snapshotRepo.list('w1')).toEqual([])
   })
 })

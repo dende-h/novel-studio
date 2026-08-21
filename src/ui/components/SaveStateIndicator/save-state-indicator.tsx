@@ -1,4 +1,5 @@
 import { useBackupMarks } from '@/ui/hooks/use-backup-marks'
+import { useSyncStatus } from '@/ui/hooks/use-sync-status'
 
 /**
  * 全データの保存状態を淡々と示すインジケータ（タスク1・A案3行）。マイライブラリの隅に常設する。
@@ -32,10 +33,15 @@ export function SaveStateIndicator({
   onOpenCloudBackup,
 }: SaveStateIndicatorProps) {
   const marks = useBackupMarks()
+  const sync = useSyncStatus()
   const rows: Array<{ label: string; value: string; onClick?: () => void }> = [
     { label: '最終更新', value: fmt(lastUpdatedAt) },
     { label: 'ファイルへの書き出し', value: fmt(marks.localBackupAt), onClick: onOpenFileBackup },
     { label: 'クラウドバックアップ', value: fmt(marks.cloudBackupAt), onClick: onOpenCloudBackup },
+    // 会員のときだけ。同期が動いていることを、通知ではなくこの一行で分かるようにする。
+    ...(sync.enabled
+      ? [{ label: 'クラウド同期', value: sync.syncing ? '同期中…' : fmt(sync.lastSyncedAt) }]
+      : []),
   ]
   return (
     <dl className="space-y-1 font-sans text-on-surface-variant text-xs">

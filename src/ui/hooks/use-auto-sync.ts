@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react'
 import type { ConflictInfo } from '@/core/sync/types'
 import type { EditorStore } from '@/ui/store/editorStore'
 import type { SyncService } from '@/ui/sync/sync-service'
+import { publishSyncStatus } from '@/ui/sync/sync-status'
 import { subscribeSyncTouch } from '@/ui/sync/sync-touch'
 
 /** 編集が止まってから push（reconcile）するまでの猶予。素早くタブを閉じても取り残さない
@@ -32,8 +33,10 @@ const FULL_SYNC_MS = 5 * 60_000
  * - タブが隠れる/離脱する直前に未送信分を flush（fire-and-forget）
  *
  * enabled=false（非会員・未ログイン）では一切動かない＝opt-in（D-SYNC-OPTIN）を維持する。
- * reconcile がローカルを変えたら onLocalChanged（store.init() での再読込）、競合を解決したら
- * onConflicts（トースト通知）を呼ぶ。オフライン失敗は service 側が握り潰し、次のトリガで再試行される。
+ * reconcile がローカルを変えたら onLocalChanged（store.init() での再読込）、競合が決着したら
+ * onConflicts を呼ぶ。オフライン失敗は service 側が握り潰し、次のトリガで再試行される。
+ * 進行状況は sync-status へ publish し、ヘッダーが「同期中…」を出す
+ * （結果をトーストで知らせない＝頻繁に走る処理で通知を鳴らし続けない）。
  */
 export function useAutoSync(
   store: EditorStore,
@@ -58,11 +61,17 @@ export function useAutoSync(
   useEffect(() => {
     if (!service || !enabled) return
 
+    publishSyncStatus({ enabled: true })
     // 追走・再試行を含む全実行の結果をここで拾う（reconcile() の戻り値だけだと取りこぼす）。
     const unsubSummary = service.subscribeSummary((summary) => {
+      publishSyncStatus({ lastSyncedAt: Date.now() })
       if (summary.changedLocal) handlersRef.current.onLocalChanged?.()
       if (summary.conflicts.length > 0) handlersRef.current.onConflicts?.(summary.conflicts)
     })
+    // ヘッダーのスピナー用（本同期の実行中だけ true。軽量 poll では点かない）。
+    const unsubRunning = service.subscribeRunning((running) =>
+      publishSyncStatus({ syncing: running }),
+    )
     const run = () => {
       dirty.current = false
       lastRunAt.current = Date.now()
@@ -132,6 +141,8 @@ export function useAutoSync(
       unsub()
       unsubTouch()
       unsubSummary()
+      unsubRunning()
+      publishSyncStatus({ enabled: false, syncing: false })
       runPollRef.current = null
       document.removeEventListener('visibilitychange', onVisibility)
       window.removeEventListener('focus', onFocus)

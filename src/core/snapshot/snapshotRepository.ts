@@ -22,10 +22,13 @@ export class SnapshotRepository {
     return trimSnapshots(raw ?? [], this.max)
   }
 
-  /** 現在の Work を履歴へ追加し、切り詰めた最新一覧を返す。 */
-  async append(work: Work, at: number, id: string): Promise<Snapshot[]> {
+  /**
+   * 現在の Work を履歴へ追加し、切り詰めた最新一覧を返す。
+   * origin='sync' は同期の退避（競合の敗者・他端末の削除の直前）＝履歴パネルで区別して見せる。
+   */
+  async append(work: Work, at: number, id: string, origin?: 'edit' | 'sync'): Promise<Snapshot[]> {
     const existing = (await this.store.get<Snapshot[]>(keyOf(work.id))) ?? []
-    const next = trimSnapshots([createSnapshot(work, at, id), ...existing], this.max)
+    const next = trimSnapshots([createSnapshot(work, at, id, origin), ...existing], this.max)
     await this.store.set(keyOf(work.id), next)
     return next
   }

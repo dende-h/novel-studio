@@ -1,6 +1,7 @@
-import { fireEvent, render, screen } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
+import { act, fireEvent, render, screen } from '@testing-library/react'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { AuthContext, type AuthState } from '@/ui/auth/auth-context'
+import { publishSyncStatus, resetSyncStatus } from '@/ui/sync/sync-status'
 import { TopAppBar } from './top-app-bar'
 
 // 会員の UserButton は lazy で Clerk を読み込むのでスタブ化（描画されることだけ観測する）。
@@ -78,5 +79,27 @@ describe('TopAppBar / AccountControl（同期アカウント表示）', () => {
   it('判定中（loading）は何も出さない（ちらつき防止）', () => {
     renderWithAuth(authState({ status: 'loading' }))
     expect(screen.queryByText('ログインでクラウドバックアップ')).toBeNull()
+  })
+})
+
+describe('TopAppBar / SyncIndicator（同期中の表示）', () => {
+  afterEach(() => resetSyncStatus())
+
+  it('同期中は小さく「同期中…」を出す（トーストで知らせない）', async () => {
+    render(<TopAppBar />)
+    act(() => publishSyncStatus({ enabled: true, syncing: true }))
+    expect(await screen.findByText('同期中…')).toBeInTheDocument()
+  })
+
+  it('同期していないときは何も出さない（常設の警告を置かない）', () => {
+    render(<TopAppBar />)
+    act(() => publishSyncStatus({ enabled: true, syncing: false, lastSyncedAt: 1 }))
+    expect(screen.queryByText('同期中…')).toBeNull()
+  })
+
+  it('非会員（同期が無効）では出さない', () => {
+    render(<TopAppBar />)
+    act(() => publishSyncStatus({ enabled: false, syncing: true }))
+    expect(screen.queryByText('同期中…')).toBeNull()
   })
 })
