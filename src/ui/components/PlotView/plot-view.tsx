@@ -2006,7 +2006,9 @@ function NotationField({
   /** プレビュー内の参照クリック。未指定ならリンクにしない。 */
   onRefClick?: (name: string) => void
 }) {
-  const [mode, setMode] = useState<'edit' | 'preview'>('edit')
+  // 既定はプレビュー（読むのが主・記法の記号を出さない）。空のときだけ編集で開き、
+  // すぐ書き始められるようにする。選択ビートが変わるとパネルごと作り直されるのでここへ戻る。
+  const [mode, setMode] = useState<'edit' | 'preview'>(value.trim() === '' ? 'edit' : 'preview')
   const html = useMemo(
     () => (mode === 'preview' ? blocksToHtml(parseEpisodeBody(value), resolvedNames) : ''),
     [mode, value, resolvedNames],
@@ -2059,9 +2061,13 @@ function NotationField({
           glossary={glossary}
         />
       ) : value.trim() === '' ? (
-        <p className="rounded-md border border-outline-variant/30 bg-surface px-2.5 py-1.5 text-[12px] text-on-surface-variant/50">
-          （まだ書かれていません）
-        </p>
+        <button
+          type="button"
+          onClick={() => setMode('edit')}
+          className="w-full rounded-md border border-outline-variant/30 bg-surface px-2.5 py-1.5 text-left text-[12px] text-on-surface-variant/50 hover:border-primary/40"
+        >
+          （まだ書かれていません）クリックで書く
+        </button>
       ) : (
         <div
           ref={previewRef}
