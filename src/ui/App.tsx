@@ -354,10 +354,12 @@ export function App({
             onOpenPlot={() => setActiveScreen('plot')}
             onClose={() => setPlotPanelOpen(false)}
           />
-        ) : onEpisodes && glossaryPanelOpen && work ? (
+        ) : (onEpisodes || activeScreen === 'plot') && glossaryPanelOpen && work ? (
           <GlossaryPeek
             entries={work.glossary ?? []}
-            draft={state.draft}
+            // プロット画面では「この話に登場」チップの母集団になる本文が無いので空を渡す
+            // （選んだ用語の中身＝図鑑の見え方は本文編集とまったく同じ）。
+            draft={onEpisodes ? state.draft : ''}
             entry={peekEntry}
             appearances={peekEntry ? getAppearances(peekEntry) : null}
             onSelect={(id) => setPeekId(id)}
@@ -409,6 +411,7 @@ export function App({
               const ep = snap.work?.episodes[snap.work.episodes.length - 1]
               return ep && ep.title === title ? ep.id : null
             }}
+            onRefClick={onRefClick}
             onCreateGlossaryEntry={async (name, category) => {
               try {
                 const entry = await store.addGlossaryEntry({ name, category })

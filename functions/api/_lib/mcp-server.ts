@@ -268,8 +268,15 @@ export const MCP_TOOLS = [
         section_id: { type: 'string', description: '所属させる幕の id' },
         index: { type: 'number', description: '幕内の位置（0 始まり）' },
         title: { type: 'string', description: 'ビートのタイトル（新規では必須）' },
-        summary: { type: 'string', description: '何が起きるか（数行の要約）' },
-        note: { type: 'string', description: '狙い・代案などの自由メモ' },
+        summary: {
+          type: 'string',
+          description:
+            '何が起きるか（数行の要約）。本文と同じ記法が使える：[[用語]] で図鑑とつながり、｜漢字《かんじ》でルビ、《《強調》》で傍点',
+        },
+        note: {
+          type: 'string',
+          description: '狙い・代案などの自由メモ（要約と同じ記法が使える）',
+        },
         time_label: { type: 'string', description: '作中時間の自由記述（例：三日後の夜）' },
         pov: { type: 'string', description: '視点キャラ（get_glossary の entry_id）' },
         cast: {

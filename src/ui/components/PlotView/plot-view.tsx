@@ -29,7 +29,11 @@ import {
 } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { blocksToHtml } from '@/core/exporter/toHtml'
+import { blocksToPlainText } from '@/core/exporter/toPlainText'
+import { resolvedNameSet } from '@/core/glossary'
 import type { IdeaNote } from '@/core/idea'
+import { parseEpisodeBody } from '@/core/parser/parseNotation'
 import {
   addBeat,
   addLine,
@@ -93,6 +97,11 @@ interface PlotViewProps {
   /** ビートから話を新規作成する（作成した episode id を返す。失敗は null）。 */
   onCreateEpisode?: (title: string) => Promise<string | null>
   /**
+   * 要約・メモのプレビューで [[用語]] をクリックしたときの通知。
+   * 本文編集と同じ図鑑の見え方にするため、App 側の onRefClick をそのまま渡す。
+   */
+  onRefClick?: (name: string) => void
+  /**
    * 図鑑に無い人物・場所をその場で登録する（作成した entry id を返す。失敗は null）。
    * 図鑑を常に正本に保つ＝プロット側に自由記述の別管理を作らない。
    */
@@ -104,6 +113,15 @@ const PERSON_CATEGORY = /人物|キャラ/
 const PLACE_CATEGORY = /場所|舞台/
 
 const genId = () => crypto.randomUUID()
+
+/**
+ * 記法（[[用語]]・ルビ・傍点）を剥がした表示用テキスト。
+ * カードの要約 1 行など「読むだけ」の場所で、記号がそのまま出るのを防ぐ。
+ */
+function plainOf(text: string | undefined): string {
+  if (!text) return ''
+  return blocksToPlainText(parseEpisodeBody(text)).trim()
+}
 const fmt = (n: number) => n.toLocaleString('ja-JP')
 /** 空文字は未設定(undefined)へ畳む（スキーマの任意項目を綺麗に保つ）。 */
 const emptyToUndef = (s: string): string | undefined => (s.trim() === '' ? undefined : s.trim())
@@ -163,6 +181,7 @@ export default function PlotView({
   onOpenEpisode,
   onCreateEpisode,
   onCreateGlossaryEntry,
+  onRefClick,
 }: PlotViewProps) {
   const [plot, setPlot] = useState<Plot | null>(null)
   const [loaded, setLoaded] = useState(false)
@@ -177,6 +196,8 @@ export default function PlotView({
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   )
+  // 要約・メモのプレビューで [[用語]] を解決/未解決に描き分ける基準（本文プレビューと同じ）。
+  const resolvedNames = useMemo(() => resolvedNameSet(glossary), [glossary])
 
   useEffect(() => {
     let alive = true
@@ -360,7 +381,7 @@ export default function PlotView({
           </div>
         </div>
       ) : (
-        <div className="mx-auto flex min-h-0 w-full max-w-5xl flex-1 items-stretch gap-6">
+        <div className="mx-auto flex min-h-0 w-full max-w-5xl flex-1 items-stretch gap-6 xl:max-w-7xl 2xl:max-w-[104rem]">
           {/* 左：幕見出し＋ビートカードの一覧（独立スクロール） */}
           <div className="min-w-0 flex-1 overflow-y-auto pr-1 pb-16">
             <PremiseInput
@@ -425,6 +446,8 @@ export default function PlotView({
               onOpenEpisode={onOpenEpisode}
               onCreateEpisode={onCreateEpisode}
               onCreateGlossaryEntry={onCreateGlossaryEntry}
+              resolvedNames={resolvedNames}
+              onRefClick={onRefClick}
               onShowForeshadows={() => setView('foreshadow')}
               onRequestDelete={() =>
                 setDeleteTarget({
@@ -750,7 +773,7 @@ function BeatCard({
   const foreshadowCount = foreshadowsOfBeat(plot, beat.id).length
   const firstLineId = beat.lineRefs[0]
   const line = firstLineId !== undefined ? plot.lines.find((l) => l.id === firstLineId) : undefined
-  const preview = beat.summary?.trim() || ''
+  const preview = plainOf(beat.summary)
 
   return (
     <li
@@ -884,6 +907,10 @@ interface BeatDetailPanelProps {
   onOpenEpisode: (episodeId: string) => void
   onCreateEpisode?: (title: string) => Promise<string | null>
   onCreateGlossaryEntry?: (name: string, category: '人物' | '場所') => Promise<string | null>
+  /** 図鑑に居る語の集合（要約・メモのプレビューで解決/未解決を描き分ける）。 */
+  resolvedNames: Set<string>
+  /** プレビュー内の [[用語]] クリック（図鑑の内容を見る）。 */
+  onRefClick?: (name: string) => void
   /** 伏線ビューへ切り替える（伏線の追加・編集は伏線ビューが担当）。 */
   onShowForeshadows: () => void
   onRequestDelete: () => void
@@ -900,6 +927,8 @@ function BeatDetailPanel({
   onOpenEpisode,
   onCreateEpisode,
   onCreateGlossaryEntry,
+  resolvedNames,
+  onRefClick,
   onShowForeshadows,
   onRequestDelete,
 }: BeatDetailPanelProps) {
@@ -917,7 +946,7 @@ function BeatDetailPanel({
 
   return (
     // 親（2カラム行）が画面高に固定されているので、パネルは自分の中だけでスクロールする。
-    <aside className="min-h-0 w-72 shrink-0 pb-6 max-lg:hidden">
+    <aside className="min-h-0 w-72 shrink-0 pb-6 max-lg:hidden xl:w-[26rem] 2xl:w-[36rem]">
       <div className="flex max-h-full flex-col gap-3 overflow-y-auto rounded-lg border border-outline-variant/30 bg-surface-container-low p-4">
         <Field label="タイトル">
           <CommitInput
@@ -951,11 +980,13 @@ function BeatDetailPanel({
           </div>
         </Field>
         <Field label="要約（何が起きるか）">
-          <CommitTextarea
+          <NotationField
             value={beat.summary ?? ''}
             onCommit={(v) => patch({ summary: emptyToUndef(v) })}
-            placeholder={beat.guide ?? '何が起きるかを数行で'}
+            placeholder={beat.guide ?? '何が起きるかを数行で（[[用語]] で図鑑とつながります）'}
             ariaLabel="ビートの要約"
+            resolvedNames={resolvedNames}
+            onRefClick={onRefClick}
           />
         </Field>
 
@@ -1030,11 +1061,13 @@ function BeatDetailPanel({
           )}
         >
           <Field label="メモ">
-            <CommitTextarea
+            <NotationField
               value={beat.note ?? ''}
               onCommit={(v) => patch({ note: emptyToUndef(v) })}
               placeholder="狙い・代案・保留メモ"
               ariaLabel="ビートのメモ"
+              resolvedNames={resolvedNames}
+              onRefClick={onRefClick}
             />
           </Field>
           {plot.lines.length > 0 ? (
@@ -1932,6 +1965,121 @@ function CommitInput({
       autoFocus={autoFocus}
       className="w-full rounded-md border border-outline-variant/30 bg-surface px-2.5 py-1.5 text-[13px] text-on-surface outline-none placeholder:text-on-surface-variant/45 focus:border-primary/50"
     />
+  )
+}
+
+/**
+ * 記法つきの複数行入力（要約・メモ）。「書く」と「プレビュー」を切り替えられる。
+ * 本文と同じ記法（[[用語]]・｜漢字《かんじ》・《《傍点》》）が使え、プレビューでは
+ * 図鑑に居る語がリンクになる（クリックで図鑑の内容を見る＝本文編集と同じ見方）。
+ */
+function NotationField({
+  value,
+  onCommit,
+  placeholder,
+  ariaLabel,
+  resolvedNames,
+  onRefClick,
+}: {
+  value: string
+  onCommit: (v: string) => void
+  placeholder?: string
+  ariaLabel: string
+  /** 図鑑に居る語の集合（プレビューの解決/未解決の描き分け）。 */
+  resolvedNames: Set<string>
+  /** プレビュー内の参照クリック。未指定ならリンクにしない。 */
+  onRefClick?: (name: string) => void
+}) {
+  const [mode, setMode] = useState<'edit' | 'preview'>('edit')
+  const html = useMemo(
+    () => (mode === 'preview' ? blocksToHtml(parseEpisodeBody(value), resolvedNames) : ''),
+    [mode, value, resolvedNames],
+  )
+  const previewRef = useRef<HTMLDivElement>(null)
+
+  // dangerouslySetInnerHTML で描いた .ref をリンク化してクリックを委譲する（PreviewPane と同じ作法）。
+  // biome-ignore lint/correctness/useExhaustiveDependencies: html は innerHTML 再描画の検知に必要
+  useEffect(() => {
+    const el = previewRef.current
+    if (!el || !onRefClick) return
+    for (const ref of el.querySelectorAll<HTMLElement>('.ref[data-ref-name]')) {
+      ref.setAttribute('role', 'link')
+      ref.tabIndex = 0
+    }
+    const handle = (e: Event) => {
+      const target = (e.target as HTMLElement | null)?.closest<HTMLElement>('[data-ref-name]')
+      if (!target) return
+      if (e.type === 'keydown') {
+        const key = (e as KeyboardEvent).key
+        if (key !== 'Enter' && key !== ' ') return
+        e.preventDefault()
+      }
+      onRefClick(target.getAttribute('data-ref-name') ?? '')
+    }
+    el.addEventListener('click', handle)
+    el.addEventListener('keydown', handle)
+    return () => {
+      el.removeEventListener('click', handle)
+      el.removeEventListener('keydown', handle)
+    }
+  }, [html, onRefClick])
+
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="flex items-center gap-1 self-end">
+        <ModeTab active={mode === 'edit'} onClick={() => setMode('edit')}>
+          書く
+        </ModeTab>
+        <ModeTab active={mode === 'preview'} onClick={() => setMode('preview')}>
+          プレビュー
+        </ModeTab>
+      </div>
+      {mode === 'edit' ? (
+        <CommitTextarea
+          value={value}
+          onCommit={onCommit}
+          placeholder={placeholder}
+          ariaLabel={ariaLabel}
+        />
+      ) : value.trim() === '' ? (
+        <p className="rounded-md border border-outline-variant/30 bg-surface px-2.5 py-1.5 text-[12px] text-on-surface-variant/50">
+          （まだ書かれていません）
+        </p>
+      ) : (
+        <div
+          ref={previewRef}
+          // biome-ignore lint/security/noDangerouslySetInnerHtml: core/exporter が全エスケープ済みの安全な HTML
+          dangerouslySetInnerHTML={{ __html: html }}
+          className="preview plot-notation-preview rounded-md border border-outline-variant/30 bg-surface-variant px-2.5 py-1.5 text-on-surface"
+        />
+      )}
+    </div>
+  )
+}
+
+/** 「書く／プレビュー」の小さな切替タブ。 */
+function ModeTab({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean
+  onClick: () => void
+  children: ReactNode
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={`rounded px-1.5 py-0.5 text-[10.5px] transition-colors ${
+        active
+          ? 'bg-surface-container-high font-medium text-on-surface'
+          : 'text-on-surface-variant/60 hover:text-on-surface'
+      }`}
+    >
+      {children}
+    </button>
   )
 }
 

@@ -1,5 +1,7 @@
 import { ArrowRight, Milestone, X } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
+import { blocksToPlainText } from '@/core/exporter/toPlainText'
+import { parseEpisodeBody } from '@/core/parser/parseNotation'
 import {
   beatsOfSection,
   nextBeatStatus,
@@ -36,6 +38,12 @@ const STATUS_UI: Record<PlotBeatStatus, { label: string; className: string }> = 
 }
 
 const fmt = (n: number) => n.toLocaleString('ja-JP')
+
+/** 記法（[[用語]]・ルビ・傍点）を剥がした表示用テキスト（読むだけの場所で記号を出さない）。 */
+function plainOf(text: string | undefined): string {
+  if (!text) return ''
+  return blocksToPlainText(parseEpisodeBody(text)).trim()
+}
 
 /**
  * 「この話のプロット」パネル（エディタ右の aside・図鑑パネルと同列）。
@@ -156,13 +164,13 @@ export function PlotPeek({
                         <ArrowRight className="size-3.5" />
                       </button>
                     </div>
-                    {beat.summary || beat.guide ? (
+                    {plainOf(beat.summary) || beat.guide ? (
                       <p
                         className={`mt-1 text-[11.5px] leading-relaxed ${
                           beat.summary ? 'text-on-surface-variant' : 'text-on-surface-variant/50'
                         }`}
                       >
-                        {beat.summary || beat.guide}
+                        {plainOf(beat.summary) || beat.guide}
                       </p>
                     ) : null}
                   </li>
