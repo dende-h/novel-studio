@@ -354,10 +354,12 @@ export function App({
             onOpenPlot={() => setActiveScreen('plot')}
             onClose={() => setPlotPanelOpen(false)}
           />
-        ) : onEpisodes && glossaryPanelOpen && work ? (
+        ) : (onEpisodes || activeScreen === 'plot') && glossaryPanelOpen && work ? (
           <GlossaryPeek
             entries={work.glossary ?? []}
-            draft={state.draft}
+            // プロット画面では「この話に登場」チップの母集団になる本文が無いので空を渡す
+            // （選んだ用語の中身＝図鑑の見え方は本文編集とまったく同じ）。
+            draft={onEpisodes ? state.draft : ''}
             entry={peekEntry}
             appearances={peekEntry ? getAppearances(peekEntry) : null}
             onSelect={(id) => setPeekId(id)}
@@ -408,6 +410,17 @@ export function App({
               const snap = store.getSnapshot()
               const ep = snap.work?.episodes[snap.work.episodes.length - 1]
               return ep && ep.title === title ? ep.id : null
+            }}
+            onRefClick={onRefClick}
+            onCreatePlainGlossaryEntry={async (name) => {
+              // サジェストの「＋ 図鑑に登録」。本文のクイック作成と同じく分類なしで作る
+              // （人物か場所かはここでは決まらないので、後から図鑑で付ける）。
+              try {
+                return (await store.addGlossaryEntry({ name })).name
+              } catch {
+                // 既存と重複（D-GLOS-UNIQUE）ならその既存の表記をそのまま使う。
+                return resolveRef(name, store.getSnapshot().work?.glossary ?? [])?.name ?? null
+              }
             }}
             onCreateGlossaryEntry={async (name, category) => {
               try {

@@ -28,8 +28,21 @@ import {
   X,
 } from 'lucide-react'
 import type { ReactNode } from 'react'
-import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import {
+  Fragment,
+  useCallback,
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
+import { blocksToHtml } from '@/core/exporter/toHtml'
+import { blocksToPlainText } from '@/core/exporter/toPlainText'
+import { resolvedNameSet, resolveRef, shouldTriggerSuggest, suggestRefs } from '@/core/glossary'
 import type { IdeaNote } from '@/core/idea'
+import { parseEpisodeBody } from '@/core/parser/parseNotation'
 import {
   addBeat,
   addLine,
@@ -71,7 +84,9 @@ import type { IdeaRepository } from '@/core/storage/ideaRepository'
 import type { PlotRepository } from '@/core/storage/plotRepository'
 import type { StructureRepository } from '@/core/storage/structureRepository'
 import { pickPrimaryStructure, type StructureNode } from '@/core/structure'
+import { getCaretCoordinates } from '@/ui/_utils/caretCoordinates'
 import { ConfirmDialog } from '@/ui/components/ConfirmDialog/confirm-dialog'
+import { RefSuggest } from '@/ui/components/EditorPane/ref-suggest'
 import { subscribeSyncApplied } from '@/ui/sync/sync-touch'
 
 interface PlotViewProps {
@@ -93,6 +108,16 @@ interface PlotViewProps {
   /** ビートから話を新規作成する（作成した episode id を返す。失敗は null）。 */
   onCreateEpisode?: (title: string) => Promise<string | null>
   /**
+   * 要約・メモのプレビューで [[用語]] をクリックしたときの通知。
+   * 本文編集と同じ図鑑の見え方にするため、App 側の onRefClick をそのまま渡す。
+   */
+  onRefClick?: (name: string) => void
+  /**
+   * 要約・メモのサジェストから、分類を指定せず図鑑へ登録する（本文のクイック作成と同じ）。
+   * 作成した名前を返す（失敗は null）。
+   */
+  onCreatePlainGlossaryEntry?: (name: string) => Promise<string | null>
+  /**
    * 図鑑に無い人物・場所をその場で登録する（作成した entry id を返す。失敗は null）。
    * 図鑑を常に正本に保つ＝プロット側に自由記述の別管理を作らない。
    */
@@ -104,6 +129,15 @@ const PERSON_CATEGORY = /人物|キャラ/
 const PLACE_CATEGORY = /場所|舞台/
 
 const genId = () => crypto.randomUUID()
+
+/**
+ * 記法（[[用語]]・ルビ・傍点）を剥がした表示用テキスト。
+ * カードの要約 1 行など「読むだけ」の場所で、記号がそのまま出るのを防ぐ。
+ */
+function plainOf(text: string | undefined): string {
+  if (!text) return ''
+  return blocksToPlainText(parseEpisodeBody(text)).trim()
+}
 const fmt = (n: number) => n.toLocaleString('ja-JP')
 /** 空文字は未設定(undefined)へ畳む（スキーマの任意項目を綺麗に保つ）。 */
 const emptyToUndef = (s: string): string | undefined => (s.trim() === '' ? undefined : s.trim())
@@ -163,6 +197,8 @@ export default function PlotView({
   onOpenEpisode,
   onCreateEpisode,
   onCreateGlossaryEntry,
+  onCreatePlainGlossaryEntry,
+  onRefClick,
 }: PlotViewProps) {
   const [plot, setPlot] = useState<Plot | null>(null)
   const [loaded, setLoaded] = useState(false)
@@ -177,6 +213,8 @@ export default function PlotView({
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   )
+  // 要約・メモのプレビューで [[用語]] を解決/未解決に描き分ける基準（本文プレビューと同じ）。
+  const resolvedNames = useMemo(() => resolvedNameSet(glossary), [glossary])
 
   useEffect(() => {
     let alive = true
@@ -360,7 +398,7 @@ export default function PlotView({
           </div>
         </div>
       ) : (
-        <div className="mx-auto flex min-h-0 w-full max-w-5xl flex-1 items-stretch gap-6">
+        <div className="mx-auto flex min-h-0 w-full max-w-5xl flex-1 items-stretch gap-6 2xl:max-w-[82rem]">
           {/* 左：幕見出し＋ビートカードの一覧（独立スクロール） */}
           <div className="min-w-0 flex-1 overflow-y-auto pr-1 pb-16">
             <PremiseInput
@@ -425,6 +463,9 @@ export default function PlotView({
               onOpenEpisode={onOpenEpisode}
               onCreateEpisode={onCreateEpisode}
               onCreateGlossaryEntry={onCreateGlossaryEntry}
+              onCreatePlainGlossaryEntry={onCreatePlainGlossaryEntry}
+              resolvedNames={resolvedNames}
+              onRefClick={onRefClick}
               onShowForeshadows={() => setView('foreshadow')}
               onRequestDelete={() =>
                 setDeleteTarget({
@@ -750,7 +791,7 @@ function BeatCard({
   const foreshadowCount = foreshadowsOfBeat(plot, beat.id).length
   const firstLineId = beat.lineRefs[0]
   const line = firstLineId !== undefined ? plot.lines.find((l) => l.id === firstLineId) : undefined
-  const preview = beat.summary?.trim() || ''
+  const preview = plainOf(beat.summary)
 
   return (
     <li
@@ -884,6 +925,12 @@ interface BeatDetailPanelProps {
   onOpenEpisode: (episodeId: string) => void
   onCreateEpisode?: (title: string) => Promise<string | null>
   onCreateGlossaryEntry?: (name: string, category: '人物' | '場所') => Promise<string | null>
+  /** サジェストの「＋ 図鑑に登録」（分類は後から図鑑で付けるので未指定で作る）。 */
+  onCreatePlainGlossaryEntry?: (name: string) => Promise<string | null>
+  /** 図鑑に居る語の集合（要約・メモのプレビューで解決/未解決を描き分ける）。 */
+  resolvedNames: Set<string>
+  /** プレビュー内の [[用語]] クリック（図鑑の内容を見る）。 */
+  onRefClick?: (name: string) => void
   /** 伏線ビューへ切り替える（伏線の追加・編集は伏線ビューが担当）。 */
   onShowForeshadows: () => void
   onRequestDelete: () => void
@@ -900,6 +947,9 @@ function BeatDetailPanel({
   onOpenEpisode,
   onCreateEpisode,
   onCreateGlossaryEntry,
+  onCreatePlainGlossaryEntry,
+  resolvedNames,
+  onRefClick,
   onShowForeshadows,
   onRequestDelete,
 }: BeatDetailPanelProps) {
@@ -917,7 +967,7 @@ function BeatDetailPanel({
 
   return (
     // 親（2カラム行）が画面高に固定されているので、パネルは自分の中だけでスクロールする。
-    <aside className="min-h-0 w-72 shrink-0 pb-6 max-lg:hidden">
+    <aside className="min-h-0 w-72 shrink-0 pb-6 max-lg:hidden 2xl:w-[36rem]">
       <div className="flex max-h-full flex-col gap-3 overflow-y-auto rounded-lg border border-outline-variant/30 bg-surface-container-low p-4">
         <Field label="タイトル">
           <CommitInput
@@ -951,11 +1001,15 @@ function BeatDetailPanel({
           </div>
         </Field>
         <Field label="要約（何が起きるか）">
-          <CommitTextarea
+          <NotationField
             value={beat.summary ?? ''}
             onCommit={(v) => patch({ summary: emptyToUndef(v) })}
-            placeholder={beat.guide ?? '何が起きるかを数行で'}
+            placeholder={beat.guide ?? '何が起きるかを数行で（[[用語]] で図鑑とつながります）'}
             ariaLabel="ビートの要約"
+            resolvedNames={resolvedNames}
+            glossary={glossary}
+            onCreateEntry={onCreatePlainGlossaryEntry}
+            onRefClick={onRefClick}
           />
         </Field>
 
@@ -1030,11 +1084,15 @@ function BeatDetailPanel({
           )}
         >
           <Field label="メモ">
-            <CommitTextarea
+            <NotationField
               value={beat.note ?? ''}
               onCommit={(v) => patch({ note: emptyToUndef(v) })}
               placeholder="狙い・代案・保留メモ"
               ariaLabel="ビートのメモ"
+              resolvedNames={resolvedNames}
+              glossary={glossary}
+              onCreateEntry={onCreatePlainGlossaryEntry}
+              onRefClick={onRefClick}
             />
           </Field>
           {plot.lines.length > 0 ? (
@@ -1935,21 +1993,187 @@ function CommitInput({
   )
 }
 
-/** blur で確定する自動伸長テキストエリア。 */
-function CommitTextarea({
+/**
+ * 記法つきの複数行入力（要約・メモ）。「書く」と「プレビュー」を切り替えられる。
+ * 本文と同じ記法（[[用語]]・｜漢字《かんじ》・《《傍点》》）が使え、プレビューでは
+ * 図鑑に居る語がリンクになる（クリックで図鑑の内容を見る＝本文編集と同じ見方）。
+ */
+function NotationField({
   value,
   onCommit,
   placeholder,
   ariaLabel,
+  resolvedNames,
+  glossary,
+  onCreateEntry,
+  onRefClick,
 }: {
   value: string
   onCommit: (v: string) => void
   placeholder?: string
   ariaLabel: string
+  /** 図鑑に居る語の集合（プレビューの解決/未解決の描き分け）。 */
+  resolvedNames: Set<string>
+  /** 図鑑（@ / [[ のサジェスト候補）。空ならサジェストしない。 */
+  glossary: GlossaryEntry[]
+  /** 候補に無い語をその場で図鑑に登録する（サジェスト末尾の作成行）。 */
+  onCreateEntry?: (name: string) => Promise<string | null>
+  /** プレビュー内の参照クリック。未指定ならリンクにしない。 */
+  onRefClick?: (name: string) => void
+}) {
+  // 既定はプレビュー（読むのが主・記法の記号を出さない）。空のときだけ編集で開き、
+  // すぐ書き始められるようにする。選択ビートが変わるとパネルごと作り直されるのでここへ戻る。
+  const [mode, setMode] = useState<'edit' | 'preview'>(value.trim() === '' ? 'edit' : 'preview')
+  const html = useMemo(
+    () => (mode === 'preview' ? blocksToHtml(parseEpisodeBody(value), resolvedNames) : ''),
+    [mode, value, resolvedNames],
+  )
+  const previewRef = useRef<HTMLDivElement>(null)
+
+  // dangerouslySetInnerHTML で描いた .ref をリンク化してクリックを委譲する（PreviewPane と同じ作法）。
+  // biome-ignore lint/correctness/useExhaustiveDependencies: html は innerHTML 再描画の検知に必要
+  useEffect(() => {
+    const el = previewRef.current
+    if (!el || !onRefClick) return
+    for (const ref of el.querySelectorAll<HTMLElement>('.ref[data-ref-name]')) {
+      ref.setAttribute('role', 'link')
+      ref.tabIndex = 0
+    }
+    const handle = (e: Event) => {
+      const target = (e.target as HTMLElement | null)?.closest<HTMLElement>('[data-ref-name]')
+      if (!target) return
+      if (e.type === 'keydown') {
+        const key = (e as KeyboardEvent).key
+        if (key !== 'Enter' && key !== ' ') return
+        e.preventDefault()
+      }
+      onRefClick(target.getAttribute('data-ref-name') ?? '')
+    }
+    el.addEventListener('click', handle)
+    el.addEventListener('keydown', handle)
+    return () => {
+      el.removeEventListener('click', handle)
+      el.removeEventListener('keydown', handle)
+    }
+  }, [html, onRefClick])
+
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="flex items-center gap-1 self-end">
+        <ModeTab active={mode === 'edit'} onClick={() => setMode('edit')}>
+          書く
+        </ModeTab>
+        <ModeTab active={mode === 'preview'} onClick={() => setMode('preview')}>
+          プレビュー
+        </ModeTab>
+      </div>
+      {mode === 'edit' ? (
+        <CommitTextarea
+          value={value}
+          onCommit={onCommit}
+          placeholder={placeholder}
+          ariaLabel={ariaLabel}
+          glossary={glossary}
+          onCreateEntry={onCreateEntry}
+        />
+      ) : value.trim() === '' ? (
+        <button
+          type="button"
+          onClick={() => setMode('edit')}
+          className="w-full rounded-md border border-outline-variant/30 bg-surface px-2.5 py-1.5 text-left text-[12px] text-on-surface-variant/50 hover:border-primary/40"
+        >
+          （まだ書かれていません）クリックで書く
+        </button>
+      ) : (
+        <div
+          ref={previewRef}
+          // biome-ignore lint/security/noDangerouslySetInnerHtml: core/exporter が全エスケープ済みの安全な HTML
+          dangerouslySetInnerHTML={{ __html: html }}
+          className="preview plot-notation-preview rounded-md border border-outline-variant/30 bg-surface-variant px-2.5 py-1.5 text-on-surface"
+        />
+      )}
+    </div>
+  )
+}
+
+/** 「書く／プレビュー」の小さな切替タブ。 */
+function ModeTab({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean
+  onClick: () => void
+  children: ReactNode
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={`rounded px-1.5 py-0.5 text-[10.5px] transition-colors ${
+        active
+          ? 'bg-surface-container-high font-medium text-on-surface'
+          : 'text-on-surface-variant/60 hover:text-on-surface'
+      }`}
+    >
+      {children}
+    </button>
+  )
+}
+
+/** blur で確定する自動伸長テキストエリア。 */
+/** @／＠ が図鑑サジェストのトリガ（本文エディタと同じ）。 */
+const isSuggestTrigger = (ch: string) => ch === '@' || ch === '＠'
+
+function CommitTextarea({
+  value,
+  onCommit,
+  placeholder,
+  ariaLabel,
+  glossary,
+  onCreateEntry,
+}: {
+  value: string
+  onCommit: (v: string) => void
+  placeholder?: string
+  ariaLabel: string
+  /** 図鑑（@ / [[ のサジェスト候補）。省略・空ならサジェストしない。 */
+  glossary?: GlossaryEntry[]
+  /** 候補に無い語をその場で図鑑に登録する（作成した名前を返す。失敗は null）。 */
+  onCreateEntry?: (name: string) => Promise<string | null>
 }) {
   const [draft, setDraft] = useState(value)
   const focused = useRef(false)
   const ref = useRef<HTMLTextAreaElement>(null)
+  // 図鑑サジェスト（本文エディタと同じ挙動）。at＝トリガ位置、triggerLen＝@:1 / [[:2。
+  const [suggest, setSuggest] = useState<{
+    at: number
+    triggerLen: number
+    query: string
+    top: number
+    left: number
+  } | null>(null)
+  const [activeIndex, setActiveIndex] = useState(0)
+  // IME 変換中は候補を出さない（確定前の文字で絞り込むと候補が暴れる）。
+  const composing = useRef(false)
+  const listId = useId()
+  const optionId = (i: number) => `${listId}-opt-${i}`
+  const entries = glossary ?? []
+  const candidates = useMemo(
+    () => (suggest ? suggestRefs(suggest.query, entries) : []),
+    [suggest, entries],
+  )
+  // 図鑑に無い語を打っているときは「＋ 図鑑に登録」を末尾に出す（本文エディタと同じ規則）。
+  const showCreate = useMemo(() => {
+    if (!suggest || !onCreateEntry) return false
+    const q = suggest.query.trim()
+    if (q === '') return false
+    return resolveRef(q, entries) === undefined
+  }, [suggest, entries, onCreateEntry])
+  const total = candidates.length + (showCreate ? 1 : 0)
+  const open = suggest !== null && total > 0
+
   useEffect(() => {
     if (!focused.current) setDraft(value)
   }, [value])
@@ -1964,29 +2188,168 @@ function CommitTextarea({
     const el = ref.current
     if (el) resizeToContent(el)
   }, [draft])
+
+  /** キャレット直前を走査してサジェストの開閉・絞り込みを更新する（本文エディタと同じ規則）。 */
+  const refresh = (el: HTMLTextAreaElement) => {
+    if (entries.length === 0 || composing.current) {
+      setSuggest(null)
+      return
+    }
+    const caret = el.selectionStart ?? 0
+    const text = el.value
+    let at = -1
+    let triggerLen = 0
+    for (let i = caret - 1; i >= 0; i--) {
+      const ch = text[i] ?? ''
+      if (isSuggestTrigger(ch)) {
+        at = i
+        triggerLen = 1
+        break
+      }
+      // [[ 検出（記法そのもの）。先頭の [ をトリガ位置にする。
+      if (ch === '[' && (text[i - 1] ?? '') === '[') {
+        at = i - 1
+        triggerLen = 2
+        break
+      }
+      // 区切り（空白・改行・] ＝ ref 閉じ）か 32 文字超で打ち切り。
+      if (/\s/u.test(ch) || ch === ']' || caret - i > 32) break
+    }
+    // @ はメールアドレス等と紛れるので core のヒューリスティックで判定。[[ は常に発火。
+    if (at < 0 || (triggerLen === 1 && !shouldTriggerSuggest(text.slice(0, at + 1)))) {
+      setSuggest(null)
+      return
+    }
+    const c = getCaretCoordinates(el, at)
+    setSuggest({
+      at,
+      triggerLen,
+      query: text.slice(at + triggerLen, caret),
+      top: el.offsetTop + c.top + c.height,
+      left: el.offsetLeft + c.left,
+    })
+    setActiveIndex(0)
+  }
+
+  /**
+   * 候補（または「＋ 図鑑に登録」）を [[名前]] として挿入する。
+   * 作成行のときは図鑑へ登録してからその名前を入れる＝図鑑を正本に保つ。
+   */
+  const commitSuggestion = async (index: number) => {
+    const el = ref.current
+    if (!el || !suggest) return
+    const isCreate = showCreate && index === candidates.length
+    const name = isCreate ? suggest.query.trim() : candidates[index]?.name
+    if (!name) return
+    if (isCreate && onCreateEntry) {
+      const created = await onCreateEntry(name)
+      if (!created) return
+    }
+    const caret = el.selectionStart ?? 0
+    // 記法ボタン等で置いた空枠 [[]] の閉じ括弧を二重にしない。
+    const hasCloser = draft.startsWith(']]', caret)
+    const end = hasCloser ? caret + 2 : caret
+    const start =
+      suggest.triggerLen === 1 &&
+      hasCloser &&
+      suggest.at >= 2 &&
+      draft.startsWith('[[', suggest.at - 2)
+        ? suggest.at - 2
+        : suggest.at
+    const inserted = `[[${name}]]`
+    const next = draft.slice(0, start) + inserted + draft.slice(end)
+    setDraft(next)
+    setSuggest(null)
+    // 挿入直後のキャレットを閉じ括弧の後ろへ置く（続けて書ける）。
+    requestAnimationFrame(() => {
+      const pos = start + inserted.length
+      el.setSelectionRange(pos, pos)
+      el.focus()
+      resizeToContent(el)
+    })
+  }
+
   return (
-    <textarea
-      ref={ref}
-      rows={2}
-      value={draft}
-      onChange={(e) => {
-        setDraft(e.target.value)
-        resizeToContent(e.target)
-      }}
-      onFocus={() => {
-        focused.current = true
-      }}
-      onBlur={() => {
-        focused.current = false
-        if (draft !== value) onCommit(draft)
-      }}
-      onKeyDown={(e) => {
-        if (e.key === 'Escape') setDraft(value)
-      }}
-      placeholder={placeholder}
-      aria-label={ariaLabel}
-      className="w-full resize-none overflow-hidden rounded-md border border-outline-variant/30 bg-surface px-2.5 py-1.5 text-[13px] text-on-surface leading-relaxed outline-none placeholder:text-on-surface-variant/45 focus:border-primary/50"
-    />
+    <div className="relative">
+      <textarea
+        ref={ref}
+        rows={2}
+        value={draft}
+        aria-controls={open ? listId : undefined}
+        aria-activedescendant={open ? optionId(activeIndex) : undefined}
+        onChange={(e) => {
+          setDraft(e.target.value)
+          resizeToContent(e.target)
+          refresh(e.target)
+        }}
+        onClick={(e) => refresh(e.currentTarget)}
+        onCompositionStart={() => {
+          composing.current = true
+          setSuggest(null)
+        }}
+        onCompositionEnd={(e) => {
+          composing.current = false
+          refresh(e.currentTarget)
+        }}
+        onFocus={() => {
+          focused.current = true
+        }}
+        onBlur={() => {
+          focused.current = false
+          setSuggest(null)
+          if (draft !== value) onCommit(draft)
+        }}
+        onKeyDown={(e) => {
+          if (open) {
+            // 候補が出ている間の矢印・Enter・Tab はサジェスト操作に使う（改行させない）。
+            if (e.key === 'ArrowDown') {
+              e.preventDefault()
+              setActiveIndex((i) => (i + 1) % total)
+              return
+            }
+            if (e.key === 'ArrowUp') {
+              e.preventDefault()
+              setActiveIndex((i) => (i - 1 + total) % total)
+              return
+            }
+            if (e.key === 'Enter' || e.key === 'Tab') {
+              e.preventDefault()
+              void commitSuggestion(activeIndex)
+              return
+            }
+            if (e.key === 'Escape') {
+              e.preventDefault()
+              setSuggest(null)
+              return
+            }
+          }
+          if (e.key === 'Escape') setDraft(value)
+        }}
+        onKeyUp={(e) => {
+          // 矢印・Home/End 等でキャレットだけ動いた場合の追従（入力は onChange で拾う）。
+          if (!open && (e.key.startsWith('Arrow') || e.key === 'Home' || e.key === 'End')) {
+            refresh(e.currentTarget)
+          }
+        }}
+        placeholder={placeholder}
+        aria-label={ariaLabel}
+        className="w-full resize-none overflow-hidden rounded-md border border-outline-variant/30 bg-surface px-2.5 py-1.5 text-[13px] text-on-surface leading-relaxed outline-none placeholder:text-on-surface-variant/45 focus:border-primary/50"
+      />
+      {open && suggest ? (
+        <RefSuggest
+          candidates={candidates}
+          query={suggest.query}
+          showCreate={showCreate}
+          activeIndex={activeIndex}
+          top={suggest.top}
+          left={suggest.left}
+          listId={listId}
+          optionId={optionId}
+          onCommit={(i) => void commitSuggestion(i)}
+          onHover={setActiveIndex}
+        />
+      ) : null}
+    </div>
   )
 }
 

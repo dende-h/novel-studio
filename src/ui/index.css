@@ -347,3 +347,18 @@
   outline: 2px solid var(--primary);
   outline-offset: 2px;
 }
+
+/*
+ * プロットの要約・メモのプレビュー。@参照・ルビ・傍点の描き分けは本文プレビュー（.preview）
+ * をそのまま継ぐが、こちらはパネル内の短文なので本文用の明朝・読書サイズは上書きして
+ * UI と同じゴシックの小さめに戻す（本文と取り違えないための区別でもある）。
+ */
+.plot-notation-preview {
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.75;
+  writing-mode: horizontal-tb;
+}
+.plot-notation-preview p + p {
+  margin-block-start: 0.35em;
+}
