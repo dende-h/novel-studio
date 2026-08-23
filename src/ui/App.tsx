@@ -20,6 +20,7 @@ import {
   type NotationKind,
 } from '@/ui/components/EditorPane/editor-pane'
 import { ReplacePanel } from '@/ui/components/EditorPane/replace-panel'
+import { ErrorBoundary } from '@/ui/components/ErrorBoundary/error-boundary'
 import { ExportDialog } from '@/ui/components/ExportDialog/export-dialog'
 import {
   GlossaryEntryForm,
@@ -100,6 +101,24 @@ const NOTATION_BUTTONS: { kind: NotationKind; label: string; title: string }[] =
 /** 自動保存：本文の入力が止まってから保存するまでの待ち時間(ms)。純ローカル処理なので
  * 短くても安い。同期の push 猶予（保存後 1.5 秒）と直列に効くため、ここも短く保つ。 */
 const AUTOSAVE_DELAY_MS = 1000
+
+/**
+ * 画面の描画が失敗したときに、その画面の場所だけに出す受け皿。
+ * 原稿は端末に残っているので、まずそれを伝えてから復帰の手段を出す。
+ */
+function ScreenFailure({ retry }: { retry: () => void }) {
+  return (
+    <div className="flex flex-1 flex-col items-center justify-center gap-4 p-8 text-center">
+      <p className="text-[15px] text-on-surface">この画面を表示できませんでした。</p>
+      <p className="max-w-md text-[13px] text-on-surface-variant leading-relaxed">
+        書いた内容はこの端末に保存されています。もう一度開くか、左のメニューから別の画面へ移れます。
+      </p>
+      <Button variant="outline" onClick={retry}>
+        もう一度開く
+      </Button>
+    </div>
+  )
+}
 
 /** 原稿エディタ（サイドバー＋ツールバー＋本文／プレビュー＋用語集パネル／履歴）。 */
 export function App({
@@ -385,332 +404,340 @@ export function App({
         ) : undefined
       }
     >
-      {activeScreen === 'plot' && work && plotRepo ? (
-        <Suspense
-          fallback={
-            <div className="grid h-full place-items-center text-on-surface-variant text-sm">
-              読み込み中…
-            </div>
-          }
-        >
-          <PlotView
-            repo={plotRepo}
-            workId={work.id}
-            glossary={work.glossary ?? []}
-            episodes={work.episodes}
-            ideaRepo={ideaRepo}
-            structureRepo={structureRepo}
-            focusBeatId={plotFocusBeatId}
-            onConsumeFocus={() => setPlotFocusBeatId(null)}
-            onOpenEpisode={(id) => {
-              store.openEpisode(id)
-              setActiveScreen('episodes')
-            }}
-            onCreateEpisode={async (title) => {
-              // createEpisode は末尾に追加して id を返さないため、直後の snapshot から引く。
-              await store.createEpisode(title)
-              const snap = store.getSnapshot()
-              const ep = snap.work?.episodes[snap.work.episodes.length - 1]
-              return ep && ep.title === title ? ep.id : null
-            }}
-            onRefClick={onRefClick}
-            onCreatePlainGlossaryEntry={async (name) => {
-              // サジェストの「＋ 用語集に登録」。本文のクイック作成と同じく分類なしで作る
-              // （人物か場所かはここでは決まらないので、後から用語集で付ける）。
-              try {
-                return (await store.addGlossaryEntry({ name })).name
-              } catch {
-                // 既存と重複（D-GLOS-UNIQUE）ならその既存の表記をそのまま使う。
-                return resolveRef(name, store.getSnapshot().work?.glossary ?? [])?.name ?? null
-              }
-            }}
-            onCreateGlossaryEntry={async (name, category) => {
-              try {
-                const entry = await store.addGlossaryEntry({ name, category })
-                return entry.id
-              } catch {
-                // 既存と重複（D-GLOS-UNIQUE）なら、その既存エントリを選ぶ。
-                const existing = resolveRef(name, store.getSnapshot().work?.glossary ?? [])
-                return existing?.id ?? null
-              }
-            }}
-          />
-        </Suspense>
-      ) : activeScreen === 'mindmap' && work && structureRepo ? (
-        <Suspense
-          fallback={
-            <div className="grid h-full place-items-center text-on-surface-variant text-sm">
-              読み込み中…
-            </div>
-          }
-        >
-          <MindmapView repo={structureRepo} workId={work.id} ideaRepo={ideaRepo} />
-        </Suspense>
-      ) : activeScreen === 'chart' && work && structureRepo ? (
-        <Suspense
-          fallback={
-            <div className="grid h-full place-items-center text-on-surface-variant text-sm">
-              読み込み中…
-            </div>
-          }
-        >
-          <CorrelationChartView
-            repo={structureRepo}
-            workId={work.id}
-            glossary={work.glossary ?? []}
-          />
-        </Suspense>
-      ) : activeScreen === 'outline' && work && structureRepo ? (
-        <Suspense
-          fallback={
-            <div className="grid h-full place-items-center text-on-surface-variant text-sm">
-              読み込み中…
-            </div>
-          }
-        >
-          <OutlineView
-            repo={structureRepo}
-            workId={work.id}
-            episodes={work.episodes}
-            onOpenEpisode={(id) => {
-              store.openEpisode(id)
-              setActiveScreen('episodes')
-            }}
-            onReorder={(ids) => void store.reorderEpisodes(ids)}
-          />
-        </Suspense>
-      ) : activeScreen === 'glossary' && work ? (
-        <GlossaryView
-          entries={work.glossary ?? []}
-          workTitle={work.title}
-          getAppearances={getAppearances}
-          onCreate={async (values) => {
-            await store.addGlossaryEntry({ name: values.name, ...toFieldPatch(values) })
-          }}
-          onUpdate={async (id, values) => {
-            await store.updateGlossaryEntry(id, toFieldPatch(values))
-          }}
-          onRename={async (id, newName, opts) => {
-            await store.renameGlossaryEntry(id, newName, opts)
-          }}
-          onDelete={(id) => void store.deleteGlossaryEntry(id)}
-        />
-      ) : episode ? (
-        <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col">
-          {/* エディタツールバー */}
-          <div className="flex h-[46px] shrink-0 items-center justify-between gap-3 border-outline-variant/30 border-b bg-surface-container-lowest px-4">
-            <div className="flex min-w-0 items-center gap-2.5">
-              {/* 狭幅では話タイトルを畳む（ドロワーの話一覧で分かる）。代わりに面の切替を置く。 */}
-              <span className="truncate font-medium font-sans text-[13px] text-on-surface max-lg:hidden">
-                {episode.title}
-              </span>
-              {/* 本文／プレビューの切替（狭幅のみ）。組み方向トグルと同じ視覚言語で揃える。 */}
-              <fieldset
-                aria-label="表示する面"
-                className="m-0 flex items-center gap-1 border-0 p-0 lg:hidden"
-              >
-                <button
-                  type="button"
-                  aria-pressed={pane === 'editor'}
-                  onClick={() => setPane('editor')}
-                  className={cn(
-                    'flex h-9 items-center rounded-md px-3 font-sans text-xs transition-colors',
-                    pane === 'editor'
-                      ? 'bg-primary text-white'
-                      : 'text-on-surface-variant hover:bg-surface-container-high',
-                  )}
-                >
-                  本文
-                </button>
-                <button
-                  type="button"
-                  aria-pressed={pane === 'preview'}
-                  onClick={() => setPane('preview')}
-                  className={cn(
-                    'flex h-9 items-center rounded-md px-3 font-sans text-xs transition-colors',
-                    pane === 'preview'
-                      ? 'bg-primary text-white'
-                      : 'text-on-surface-variant hover:bg-surface-container-high',
-                  )}
-                >
-                  プレビュー
-                </button>
-              </fieldset>
-              {/* 記法の挿入（PC のみ。狭幅はキーボード直上の記法バーが担当する）。
-                  選択があれば囲み、無ければ空の型を置く。ショートカットは EditorPane 側。 */}
-              <div className="flex items-center gap-1 max-lg:hidden">
-                {NOTATION_BUTTONS.map(({ kind, label, title }) => (
-                  <button
-                    key={kind}
-                    type="button"
-                    title={title}
-                    // クリックで textarea のフォーカス・選択範囲を失うと挿入先が分からなくなる。
-                    onMouseDown={(e) => e.preventDefault()}
-                    onClick={() => editorRef.current?.applyNotation(kind)}
-                    className="flex h-[26px] items-center rounded-md px-2.5 font-sans text-on-surface-variant text-xs transition-colors hover:bg-surface-container-high hover:text-on-surface"
-                  >
-                    {label}
-                  </button>
-                ))}
+      {/*
+        画面ごとの描画エラーをここで受け止める。境界がアプリの根元にしか無かったころは、
+        1 画面の例外でサイドバーもヘッダーも巻き添えに消え、利用者からは「別の画面へ飛ばされて
+        メニューが減った」ようにしか見えなかった（リロードでしか戻れない）。
+        activeScreen を key にしているので、別の画面へ移れば境界は張り直される。
+      */}
+      <ErrorBoundary key={activeScreen} fallback={(retry) => <ScreenFailure retry={retry} />}>
+        {activeScreen === 'plot' && work && plotRepo ? (
+          <Suspense
+            fallback={
+              <div className="grid h-full place-items-center text-on-surface-variant text-sm">
+                読み込み中…
               </div>
-            </div>
-            <div className="flex shrink-0 items-center gap-2">
-              <Button
-                variant="ghost"
-                size="sm"
-                aria-pressed={replaceOpen}
-                onClick={() => setReplaceOpen((v) => !v)}
-                className={cn(
-                  'gap-1.5 text-on-surface-variant hover:text-primary',
-                  replaceOpen && 'bg-accent text-primary',
-                )}
-              >
-                <Replace className="size-4" aria-hidden />
-                <span className="max-lg:hidden">置換</span>
-              </Button>
-              {/* 組み方向の切替（プレビュー）。狭幅では本文タブの時に意味を持たないので畳む。 */}
-              <fieldset
-                aria-label="本文の組み方向"
-                className={cn(
-                  'm-0 flex items-center gap-1 border-0 p-0',
-                  pane === 'editor' && 'max-lg:hidden',
-                )}
-              >
-                <button
-                  type="button"
-                  aria-pressed={orientation === 'horizontal'}
-                  onClick={() => setOrientation('horizontal')}
-                  className={cn(
-                    'flex h-11 items-center rounded-md px-2.5 font-sans text-xs transition-colors md:h-[26px]',
-                    orientation === 'horizontal'
-                      ? 'bg-primary text-white'
-                      : 'text-on-surface-variant hover:bg-surface-container-high',
-                  )}
+            }
+          >
+            <PlotView
+              repo={plotRepo}
+              workId={work.id}
+              glossary={work.glossary ?? []}
+              episodes={work.episodes}
+              ideaRepo={ideaRepo}
+              structureRepo={structureRepo}
+              focusBeatId={plotFocusBeatId}
+              onConsumeFocus={() => setPlotFocusBeatId(null)}
+              onOpenEpisode={(id) => {
+                store.openEpisode(id)
+                setActiveScreen('episodes')
+              }}
+              onCreateEpisode={async (title) => {
+                // createEpisode は末尾に追加して id を返さないため、直後の snapshot から引く。
+                await store.createEpisode(title)
+                const snap = store.getSnapshot()
+                const ep = snap.work?.episodes[snap.work.episodes.length - 1]
+                return ep && ep.title === title ? ep.id : null
+              }}
+              onRefClick={onRefClick}
+              onCreatePlainGlossaryEntry={async (name) => {
+                // サジェストの「＋ 用語集に登録」。本文のクイック作成と同じく分類なしで作る
+                // （人物か場所かはここでは決まらないので、後から用語集で付ける）。
+                try {
+                  return (await store.addGlossaryEntry({ name })).name
+                } catch {
+                  // 既存と重複（D-GLOS-UNIQUE）ならその既存の表記をそのまま使う。
+                  return resolveRef(name, store.getSnapshot().work?.glossary ?? [])?.name ?? null
+                }
+              }}
+              onCreateGlossaryEntry={async (name, category) => {
+                try {
+                  const entry = await store.addGlossaryEntry({ name, category })
+                  return entry.id
+                } catch {
+                  // 既存と重複（D-GLOS-UNIQUE）なら、その既存エントリを選ぶ。
+                  const existing = resolveRef(name, store.getSnapshot().work?.glossary ?? [])
+                  return existing?.id ?? null
+                }
+              }}
+            />
+          </Suspense>
+        ) : activeScreen === 'mindmap' && work && structureRepo ? (
+          <Suspense
+            fallback={
+              <div className="grid h-full place-items-center text-on-surface-variant text-sm">
+                読み込み中…
+              </div>
+            }
+          >
+            <MindmapView repo={structureRepo} workId={work.id} ideaRepo={ideaRepo} />
+          </Suspense>
+        ) : activeScreen === 'chart' && work && structureRepo ? (
+          <Suspense
+            fallback={
+              <div className="grid h-full place-items-center text-on-surface-variant text-sm">
+                読み込み中…
+              </div>
+            }
+          >
+            <CorrelationChartView
+              repo={structureRepo}
+              workId={work.id}
+              glossary={work.glossary ?? []}
+            />
+          </Suspense>
+        ) : activeScreen === 'outline' && work && structureRepo ? (
+          <Suspense
+            fallback={
+              <div className="grid h-full place-items-center text-on-surface-variant text-sm">
+                読み込み中…
+              </div>
+            }
+          >
+            <OutlineView
+              repo={structureRepo}
+              workId={work.id}
+              episodes={work.episodes}
+              onOpenEpisode={(id) => {
+                store.openEpisode(id)
+                setActiveScreen('episodes')
+              }}
+              onReorder={(ids) => void store.reorderEpisodes(ids)}
+            />
+          </Suspense>
+        ) : activeScreen === 'glossary' && work ? (
+          <GlossaryView
+            entries={work.glossary ?? []}
+            workTitle={work.title}
+            getAppearances={getAppearances}
+            onCreate={async (values) => {
+              await store.addGlossaryEntry({ name: values.name, ...toFieldPatch(values) })
+            }}
+            onUpdate={async (id, values) => {
+              await store.updateGlossaryEntry(id, toFieldPatch(values))
+            }}
+            onRename={async (id, newName, opts) => {
+              await store.renameGlossaryEntry(id, newName, opts)
+            }}
+            onDelete={(id) => void store.deleteGlossaryEntry(id)}
+          />
+        ) : episode ? (
+          <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col">
+            {/* エディタツールバー */}
+            <div className="flex h-[46px] shrink-0 items-center justify-between gap-3 border-outline-variant/30 border-b bg-surface-container-lowest px-4">
+              <div className="flex min-w-0 items-center gap-2.5">
+                {/* 狭幅では話タイトルを畳む（ドロワーの話一覧で分かる）。代わりに面の切替を置く。 */}
+                <span className="truncate font-medium font-sans text-[13px] text-on-surface max-lg:hidden">
+                  {episode.title}
+                </span>
+                {/* 本文／プレビューの切替（狭幅のみ）。組み方向トグルと同じ視覚言語で揃える。 */}
+                <fieldset
+                  aria-label="表示する面"
+                  className="m-0 flex items-center gap-1 border-0 p-0 lg:hidden"
                 >
-                  横書き
-                </button>
-                <button
-                  type="button"
-                  aria-pressed={orientation === 'vertical'}
-                  onClick={() => setOrientation('vertical')}
-                  className={cn(
-                    'flex h-11 items-center rounded-md px-2.5 font-sans text-xs transition-colors md:h-[26px]',
-                    orientation === 'vertical'
-                      ? 'bg-primary text-white'
-                      : 'text-on-surface-variant hover:bg-surface-container-high',
-                  )}
-                >
-                  縦書き
-                </button>
-              </fieldset>
-              {canUseStructure && plotRepo ? (
+                  <button
+                    type="button"
+                    aria-pressed={pane === 'editor'}
+                    onClick={() => setPane('editor')}
+                    className={cn(
+                      'flex h-9 items-center rounded-md px-3 font-sans text-xs transition-colors',
+                      pane === 'editor'
+                        ? 'bg-primary text-white'
+                        : 'text-on-surface-variant hover:bg-surface-container-high',
+                    )}
+                  >
+                    本文
+                  </button>
+                  <button
+                    type="button"
+                    aria-pressed={pane === 'preview'}
+                    onClick={() => setPane('preview')}
+                    className={cn(
+                      'flex h-9 items-center rounded-md px-3 font-sans text-xs transition-colors',
+                      pane === 'preview'
+                        ? 'bg-primary text-white'
+                        : 'text-on-surface-variant hover:bg-surface-container-high',
+                    )}
+                  >
+                    プレビュー
+                  </button>
+                </fieldset>
+                {/* 記法の挿入（PC のみ。狭幅はキーボード直上の記法バーが担当する）。
+                  選択があれば囲み、無ければ空の型を置く。ショートカットは EditorPane 側。 */}
+                <div className="flex items-center gap-1 max-lg:hidden">
+                  {NOTATION_BUTTONS.map(({ kind, label, title }) => (
+                    <button
+                      key={kind}
+                      type="button"
+                      title={title}
+                      // クリックで textarea のフォーカス・選択範囲を失うと挿入先が分からなくなる。
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={() => editorRef.current?.applyNotation(kind)}
+                      className="flex h-[26px] items-center rounded-md px-2.5 font-sans text-on-surface-variant text-xs transition-colors hover:bg-surface-container-high hover:text-on-surface"
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="flex shrink-0 items-center gap-2">
                 <Button
                   variant="ghost"
                   size="sm"
-                  aria-label="この話のプロット"
-                  aria-pressed={plotPanelOpen}
+                  aria-pressed={replaceOpen}
+                  onClick={() => setReplaceOpen((v) => !v)}
+                  className={cn(
+                    'gap-1.5 text-on-surface-variant hover:text-primary',
+                    replaceOpen && 'bg-accent text-primary',
+                  )}
+                >
+                  <Replace className="size-4" aria-hidden />
+                  <span className="max-lg:hidden">置換</span>
+                </Button>
+                {/* 組み方向の切替（プレビュー）。狭幅では本文タブの時に意味を持たないので畳む。 */}
+                <fieldset
+                  aria-label="本文の組み方向"
+                  className={cn(
+                    'm-0 flex items-center gap-1 border-0 p-0',
+                    pane === 'editor' && 'max-lg:hidden',
+                  )}
+                >
+                  <button
+                    type="button"
+                    aria-pressed={orientation === 'horizontal'}
+                    onClick={() => setOrientation('horizontal')}
+                    className={cn(
+                      'flex h-11 items-center rounded-md px-2.5 font-sans text-xs transition-colors md:h-[26px]',
+                      orientation === 'horizontal'
+                        ? 'bg-primary text-white'
+                        : 'text-on-surface-variant hover:bg-surface-container-high',
+                    )}
+                  >
+                    横書き
+                  </button>
+                  <button
+                    type="button"
+                    aria-pressed={orientation === 'vertical'}
+                    onClick={() => setOrientation('vertical')}
+                    className={cn(
+                      'flex h-11 items-center rounded-md px-2.5 font-sans text-xs transition-colors md:h-[26px]',
+                      orientation === 'vertical'
+                        ? 'bg-primary text-white'
+                        : 'text-on-surface-variant hover:bg-surface-container-high',
+                    )}
+                  >
+                    縦書き
+                  </button>
+                </fieldset>
+                {canUseStructure && plotRepo ? (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    aria-label="この話のプロット"
+                    aria-pressed={plotPanelOpen}
+                    onClick={() => {
+                      setHistoryOpen(false)
+                      setGlossaryPanelOpen(false)
+                      setPlotPanelOpen((v) => !v)
+                    }}
+                    className={cn(
+                      'gap-1.5 text-on-surface-variant hover:text-primary',
+                      plotPanelOpen && 'bg-accent text-primary',
+                    )}
+                  >
+                    <Milestone className="size-4" aria-hidden />
+                    <span className="max-lg:hidden">プロット</span>
+                  </Button>
+                ) : null}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  aria-label="用語集パネル"
+                  aria-pressed={glossaryPanelOpen}
                   onClick={() => {
                     setHistoryOpen(false)
-                    setGlossaryPanelOpen(false)
-                    setPlotPanelOpen((v) => !v)
+                    setPlotPanelOpen(false)
+                    setGlossaryPanelOpen((v) => !v)
                   }}
                   className={cn(
                     'gap-1.5 text-on-surface-variant hover:text-primary',
-                    plotPanelOpen && 'bg-accent text-primary',
+                    glossaryPanelOpen && 'bg-accent text-primary',
                   )}
                 >
-                  <Milestone className="size-4" aria-hidden />
-                  <span className="max-lg:hidden">プロット</span>
+                  <BookMarked className="size-4" aria-hidden />
+                  <span className="max-lg:hidden">用語集</span>
                 </Button>
-              ) : null}
-              <Button
-                variant="ghost"
-                size="sm"
-                aria-label="用語集パネル"
-                aria-pressed={glossaryPanelOpen}
-                onClick={() => {
-                  setHistoryOpen(false)
-                  setPlotPanelOpen(false)
-                  setGlossaryPanelOpen((v) => !v)
-                }}
+              </div>
+            </div>
+
+            {/* 本文＋プレビュー。lg 以上は従来どおり横並び、lg 未満は pane で切り替える（D-EDIT-2）。 */}
+            <div className="flex min-h-0 flex-1">
+              <div
                 className={cn(
-                  'gap-1.5 text-on-surface-variant hover:text-primary',
-                  glossaryPanelOpen && 'bg-accent text-primary',
+                  'relative flex min-w-0 flex-[1.3_1_0%] flex-col border-outline-variant/30 lg:border-r',
+                  pane !== 'editor' && 'max-lg:hidden',
                 )}
               >
-                <BookMarked className="size-4" aria-hidden />
-                <span className="max-lg:hidden">用語集</span>
-              </Button>
-            </div>
-          </div>
-
-          {/* 本文＋プレビュー。lg 以上は従来どおり横並び、lg 未満は pane で切り替える（D-EDIT-2）。 */}
-          <div className="flex min-h-0 flex-1">
-            <div
-              className={cn(
-                'relative flex min-w-0 flex-[1.3_1_0%] flex-col border-outline-variant/30 lg:border-r',
-                pane !== 'editor' && 'max-lg:hidden',
-              )}
-            >
-              <EditorPane
-                ref={editorRef}
-                value={state.draft}
-                onChange={(v) => store.setDraft(v)}
-                glossary={work?.glossary ?? []}
-                onCreateEntry={(name) => store.addGlossaryEntry({ name })}
-              />
-              {replaceOpen ? (
-                <ReplacePanel
+                <EditorPane
+                  ref={editorRef}
                   value={state.draft}
-                  onApply={(next, count) => {
-                    store.setDraft(next)
-                    setReplaceOpen(false)
-                    show(`${count}件を置換しました`)
-                  }}
-                  onClose={() => setReplaceOpen(false)}
+                  onChange={(v) => store.setDraft(v)}
+                  glossary={work?.glossary ?? []}
+                  onCreateEntry={(name) => store.addGlossaryEntry({ name })}
                 />
-              ) : null}
+                {replaceOpen ? (
+                  <ReplacePanel
+                    value={state.draft}
+                    onApply={(next, count) => {
+                      store.setDraft(next)
+                      setReplaceOpen(false)
+                      show(`${count}件を置換しました`)
+                    }}
+                    onClose={() => setReplaceOpen(false)}
+                  />
+                ) : null}
+              </div>
+              <div className={cn('min-w-0 flex-[1_1_0%]', pane !== 'preview' && 'max-lg:hidden')}>
+                <PreviewPane html={previewHtml} onRefClick={onRefClick} orientation={orientation} />
+              </div>
             </div>
-            <div className={cn('min-w-0 flex-[1_1_0%]', pane !== 'preview' && 'max-lg:hidden')}>
-              <PreviewPane html={previewHtml} onRefClick={onRefClick} orientation={orientation} />
-            </div>
-          </div>
 
-          {/* ステータスバー */}
-          <div className="flex h-[38px] shrink-0 items-center justify-between border-outline-variant/30 border-t bg-surface-container-lowest px-4 max-lg:h-7">
-            {/* 狭幅は縦を本文に譲る（TopAppBar+ツールバー+ここで既に 120px 超を消費している）。 */}
-            <span className="font-sans text-[11px] text-on-surface-variant/60 max-lg:hidden">
-              自動保存 ON
-            </span>
-            <span className="font-sans text-[12px] text-on-surface-variant tabular-nums">
-              {lineCount}行 ・ {charCount}文字
-              {todayNet !== null
-                ? ` ・ 今日 ${todayNet >= 0 ? '+' : ''}${todayNet.toLocaleString('ja-JP')}字`
-                : ''}
-            </span>
-          </div>
-        </div>
-      ) : work ? (
-        <div className="flex flex-1 items-center justify-center p-8">
-          <button
-            type="button"
-            onClick={() => setNewEpisodeOpen(true)}
-            className="group flex flex-col items-center justify-center rounded-xl border-2 border-outline-variant/50 border-dashed px-12 py-10 font-sans text-on-surface-variant transition-colors hover:bg-surface-container-low"
-          >
-            <div className="mb-4 flex size-12 items-center justify-center rounded-full bg-surface-container-highest transition-colors group-hover:bg-primary group-hover:text-on-primary">
-              <Plus className="size-5" />
+            {/* ステータスバー */}
+            <div className="flex h-[38px] shrink-0 items-center justify-between border-outline-variant/30 border-t bg-surface-container-lowest px-4 max-lg:h-7">
+              {/* 狭幅は縦を本文に譲る（TopAppBar+ツールバー+ここで既に 120px 超を消費している）。 */}
+              <span className="font-sans text-[11px] text-on-surface-variant/60 max-lg:hidden">
+                自動保存 ON
+              </span>
+              <span className="font-sans text-[12px] text-on-surface-variant tabular-nums">
+                {lineCount}行 ・ {charCount}文字
+                {todayNet !== null
+                  ? ` ・ 今日 ${todayNet >= 0 ? '+' : ''}${todayNet.toLocaleString('ja-JP')}字`
+                  : ''}
+              </span>
             </div>
-            <h3 className="font-semibold font-serif text-lg text-on-surface">
-              新しいエピソードを追加
-            </h3>
-            <p className="text-sm">白紙から書き始める</p>
-          </button>
-        </div>
-      ) : (
-        <div className="flex flex-1 items-center justify-center p-8 text-center text-on-surface-variant text-sm">
-          ライブラリから作品を開いてください
-        </div>
-      )}
+          </div>
+        ) : work ? (
+          <div className="flex flex-1 items-center justify-center p-8">
+            <button
+              type="button"
+              onClick={() => setNewEpisodeOpen(true)}
+              className="group flex flex-col items-center justify-center rounded-xl border-2 border-outline-variant/50 border-dashed px-12 py-10 font-sans text-on-surface-variant transition-colors hover:bg-surface-container-low"
+            >
+              <div className="mb-4 flex size-12 items-center justify-center rounded-full bg-surface-container-highest transition-colors group-hover:bg-primary group-hover:text-on-primary">
+                <Plus className="size-5" />
+              </div>
+              <h3 className="font-semibold font-serif text-lg text-on-surface">
+                新しいエピソードを追加
+              </h3>
+              <p className="text-sm">白紙から書き始める</p>
+            </button>
+          </div>
+        ) : (
+          <div className="flex flex-1 items-center justify-center p-8 text-center text-on-surface-variant text-sm">
+            ライブラリから作品を開いてください
+          </div>
+        )}
+      </ErrorBoundary>
 
       <TitlePromptDialog
         open={newEpisodeOpen}

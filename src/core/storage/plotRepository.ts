@@ -1,4 +1,4 @@
-import { createPlotFromTemplate, type Plot, type PlotTemplate } from '../plot'
+import { createPlotFromTemplate, normalizePlot, type Plot, type PlotTemplate } from '../plot'
 import type { KeyValueStore } from './types'
 
 /**
@@ -15,9 +15,13 @@ export class PlotRepository {
     private now: () => number = () => Date.now(),
   ) {}
 
-  /** ID で1件取得。 */
+  /**
+   * ID で1件取得。読み出しは normalizePlot を通す＝後から足した項目の欠落を入り口で埋める
+   * （store.get はキャストするだけで検証しないため、古いレコードは型どおりの形をしていない）。
+   */
   async get(id: string): Promise<Plot | undefined> {
-    return this.store.get<Plot>(keyOf(id))
+    const raw = await this.store.get<Plot>(keyOf(id))
+    return raw ? normalizePlot(raw) : undefined
   }
 
   /**
@@ -74,7 +78,7 @@ export class PlotRepository {
   async list(): Promise<Plot[]> {
     const keys = await this.store.keys(PREFIX)
     const rows = await Promise.all(keys.map((k) => this.store.get<Plot>(k)))
-    return rows.filter((r): r is Plot => r != null)
+    return rows.filter((r): r is Plot => r != null).map(normalizePlot)
   }
 
   /** 全置換する（クラウド復元用・既存を消してから書き込む）。 */

@@ -65,7 +65,9 @@ const GROUPS: { key: WorldSlotGroup; label: string; caption: string }[] = [
 const CUSTOM_SECTION = 'custom'
 
 export function WorldView({ plot, onApply }: WorldViewProps) {
-  const notes = plot.world
+  // 読み込み時に normalizePlot が埋めるが、この画面は欠落しても落ちない側に倒しておく
+  // （落ちると画面だけでなくアプリのツリーごと消えるため）。
+  const notes = plot.world ?? []
   const bySlot = (key: string) => notes.find((n) => n.slot === key)
   const customs = notes.filter((n) => !WORLD_SLOTS.some((s) => s.key === n.slot))
   const filled = WORLD_SLOTS.filter((s) => bySlot(s.key) !== undefined).length
