@@ -8,7 +8,7 @@ interface NotationBarProps {
 const ITEMS: { kind: NotationKind; label: string; hint: string }[] = [
   { kind: 'ruby', label: 'ルビ', hint: '｜漢字《かんじ》' },
   { kind: 'dots', label: '傍点', hint: '《《強調》》' },
-  // 「図鑑」はナビとパネルのトグルで既に使っているため、挿入されるもの＝参照で呼び分ける。
+  // 「用語集」はナビとパネルのトグルで既に使っているため、挿入されるもの＝参照で呼び分ける。
   { kind: 'ref', label: '参照', hint: '[[用語]]' },
 ]
 

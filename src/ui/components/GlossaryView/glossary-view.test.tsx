@@ -51,7 +51,7 @@ function setup(over: Partial<React.ComponentProps<typeof GlossaryView>> = {}) {
   return props
 }
 
-describe('GlossaryView（図鑑一覧・検索・カテゴリ・CRUD）', () => {
+describe('GlossaryView（用語集一覧・検索・カテゴリ・CRUD）', () => {
   it('項目名・概要・登場数を一覧表示する', () => {
     setup()
     expect(screen.getByRole('heading', { name: 'アリス' })).toBeInTheDocument()
@@ -63,7 +63,7 @@ describe('GlossaryView（図鑑一覧・検索・カテゴリ・CRUD）', () => 
 
   it('検索は name・別名・読みに部分一致（body 等は対象外）', () => {
     setup()
-    fireEvent.change(screen.getByLabelText('図鑑を検索'), { target: { value: 'ありす' } })
+    fireEvent.change(screen.getByLabelText('用語集を検索'), { target: { value: 'ありす' } })
     expect(screen.getByRole('heading', { name: 'アリス' })).toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: '王都' })).toBeNull()
   })
@@ -130,7 +130,7 @@ describe('GlossaryView（図鑑一覧・検索・カテゴリ・CRUD）', () => 
     fireEvent.click(await screen.findByRole('button', { name: '編集' }))
     const select = (await screen.findByLabelText('カテゴリ')) as HTMLSelectElement
     const labels = Array.from(select.options).map((o) => o.textContent)
-    expect(labels).toEqual(['未分類', '人物', '場所', '用語', '世界観', 'アイテム', '地名'])
+    expect(labels).toEqual(['未分類', '人物', '場所', '組織', '用語', 'アイテム', '生物', '地名'])
     expect(select.value).toBe('地名') // 旧・自由入力値が保全される
   })
 
@@ -157,6 +157,6 @@ describe('GlossaryView（図鑑一覧・検索・カテゴリ・CRUD）', () => 
 
   it('項目が無い時は空状態を表示', () => {
     setup({ entries: [] })
-    expect(screen.getByText(/まだ図鑑がありません/)).toBeInTheDocument()
+    expect(screen.getByText(/まだ用語集がありません/)).toBeInTheDocument()
   })
 })

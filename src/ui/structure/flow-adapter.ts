@@ -5,11 +5,11 @@ import type { StructureNodeData } from './structure-node'
 /**
  * Structure（コアのデータモデル）と React Flow の Node/Edge の相互変換。
  * 相関図・マインドマップの両ビューで共用する。純関数。
- * カスタムノード 'structure' を使い、data に kind・色・図鑑参照を載せて往復させる
+ * カスタムノード 'structure' を使い、data に kind・色・用語集参照を載せて往復させる
  * （新規ノードでも glossaryRef/kind が失われないように data で持ち回る）。
  */
 
-/** 図鑑参照の解決関数（相関図で使う）。id → ラベル文字列（見つからなければ null）。 */
+/** 用語集参照の解決関数（相関図で使う）。id → ラベル文字列（見つからなければ null）。 */
 export type ResolveGlossary = (id: string) => string | null
 
 /** Structure のノードを React Flow の Node に変換する（位置未設定は原点）。 */

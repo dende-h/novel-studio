@@ -65,7 +65,7 @@ export async function coverToDataUrl(file: File): Promise<string> {
   )
 }
 
-/** 図鑑サムネ：中央正方形クロップ 256×256（拡大なし）→ JPEG data URL。 */
+/** 用語集サムネ：中央正方形クロップ 256×256（拡大なし）→ JPEG data URL。 */
 export async function thumbnailToDataUrl(file: File): Promise<string> {
   const img = await loadImage(file)
   const { w, h } = dimsOf(img)

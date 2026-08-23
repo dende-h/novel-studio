@@ -17,12 +17,12 @@ import { NotationBar } from './notation-bar'
 import { RefSuggest } from './ref-suggest'
 import { RefSuggestBar } from './ref-suggest-bar'
 
-/** 挿入できる記法。ルビ ｜親文字《よみ》／傍点 《《text》》／図鑑参照 [[名前]]。 */
+/** 挿入できる記法。ルビ ｜親文字《よみ》／傍点 《《text》》／用語集参照 [[名前]]。 */
 export type NotationKind = 'ruby' | 'dots' | 'ref'
 
 /**
  * Cmd/Ctrl + キー → 記法。太字・斜体・リンクの標準スロットを意味で割り当てる
- * （縦書きの強調＝傍点、図鑑参照＝リンク）。いずれもブラウザの既定動作と衝突しない。
+ * （縦書きの強調＝傍点、用語集参照＝リンク）。いずれもブラウザの既定動作と衝突しない。
  */
 const SHORTCUTS: Record<string, NotationKind | undefined> = {
   b: 'dots',
@@ -175,7 +175,7 @@ export function EditorPane({
   }
 
   /**
-   * 記法（ルビ・傍点・図鑑参照）をキャレット位置に挿入する。
+   * 記法（ルビ・傍点・用語集参照）をキャレット位置に挿入する。
    * 選択があればそれを囲み、無ければ空の型だけ置いて中にキャレットを移す。
    * 置換とキャレット復元は insertRef と同じ仕組み（pendingCaretRef ＋ useLayoutEffect）。
    */
@@ -313,7 +313,7 @@ export function EditorPane({
           composingRef.current = false
           refresh(e.currentTarget)
         }}
-        placeholder="ここから書き始めましょう。[[用語]] で図鑑にリンク、@ で図鑑から呼び出せます。"
+        placeholder="ここから書き始めましょう。[[用語]] で用語集にリンク、@ で用語集から呼び出せます。"
         spellCheck={false}
       />
 

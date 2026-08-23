@@ -41,6 +41,7 @@
 | [01-mvp-scope.md](./01-mvp-scope.md) | MVP の機能スコープ（含む / 含まない） |
 | [02-notation-and-format.md](./02-notation-and-format.md) | 記法仕様 ＋ 正本 block スキーマ |
 | [03-architecture.md](./03-architecture.md) | 技術土台・リポ構成・依存ポリシー |
-| [04-glossary.md](./04-glossary.md) | @参照／オブジェクト辞書・図鑑（P1） |
+| [04-glossary.md](./04-glossary.md) | @参照／オブジェクト辞書・用語集（P1） |
 | [05-sync.md](./05-sync.md) | クラウド同期（optin・Freemium 有料軸） |
+| [08-worldbuilding.md](./08-worldbuilding.md) | 世界観設定（作者専用）と「用語集」への改名 |
 | [99-open-questions.md](./99-open-questions.md) | 未決事項（grill 継続のバックログ） |

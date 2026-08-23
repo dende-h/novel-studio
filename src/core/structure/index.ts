@@ -3,10 +3,10 @@ import { z } from 'zod'
 /**
  * 構造レイヤー（アウトライン／相関図／マインドマップ）の共通データモデル。
  * 3ビューは同じ「器」（ノード＋エッジ＋階層）を共有し、用途別に別インスタンスで持つ。
- * ノードの kind と参照（glossaryRef／episodeRef）が図鑑・本文との結合点になる。
+ * ノードの kind と参照（glossaryRef／episodeRef）が用語集・本文との結合点になる。
  */
 
-/** ノード1個。kind で意味づけし、参照フィールドで図鑑・本文と結ぶ。 */
+/** ノード1個。kind で意味づけし、参照フィールドで用語集・本文と結ぶ。 */
 export const StructureNodeSchema = z.object({
   id: z.string(),
   kind: z.enum(['scene', 'character', 'idea', 'place', 'note']),
@@ -15,7 +15,7 @@ export const StructureNodeSchema = z.object({
   note: z.string().optional(),
   /** ノードの色（マインドマップの色分け用。トークン名 or 未設定＝既定）。 */
   color: z.string().optional(),
-  /** 図鑑エントリID（相関図キャラ＝図鑑と同一実体）。 */
+  /** 用語集エントリID（相関図キャラ＝用語集と同一実体）。 */
   glossaryRef: z.string().optional(),
   /** 本文の話ID（アウトライン＝本文と双方向同期）。 */
   episodeRef: z.string().optional(),

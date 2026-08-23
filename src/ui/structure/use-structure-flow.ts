@@ -22,7 +22,7 @@ function contentSig(base: Structure, nodes: Node[], edges: Edge[]): string {
 /**
  * 構造ビュー（マインドマップ・相関図）共通のロジック。
  * 指定作品の該当 kind を読み込み（無ければ作成）、変更を静止後に Structure へ書き戻す。
- * resolveGlossary を渡すと図鑑参照ノードの表示ラベルを解決する（相関図用）。
+ * resolveGlossary を渡すと用語集参照ノードの表示ラベルを解決する（相関図用）。
  */
 export function useStructureFlow(
   repo: StructureRepository,

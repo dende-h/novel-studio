@@ -1,4 +1,4 @@
-import { Pencil, Plus, Tag, X } from 'lucide-react'
+import { Lock, Pencil, Plus, Tag, X } from 'lucide-react'
 import { useMemo } from 'react'
 import { type Appearances, resolveRef } from '@/core/glossary'
 import { parseEpisodeBody } from '@/core/parser/parseNotation'
@@ -10,7 +10,7 @@ import { ScrollArea } from '@/ui/components/ui/scroll-area'
 import { ZoomableImage } from '@/ui/components/ui/zoomable-image'
 
 interface GlossaryPeekProps {
-  /** 図鑑の全 entry（用語チップの解決に使う）。 */
+  /** 用語集の全 entry（用語チップの解決に使う）。 */
   entries: GlossaryEntry[]
   /** 現在の話の本文（[[用語]] を抽出して「この話に登場」を出す）。 */
   draft: string
@@ -51,8 +51,8 @@ function termsInDraft(draft: string): string[] {
 }
 
 /**
- * 図鑑パネル（エディタ右の aside）。「この話に登場」する用語チップと、選択中 entry の
- * チラ見（読み取り専用・編集は図鑑画面へ誘導）をまとめる。プレビューの @参照クリックでも開く。
+ * 用語集パネル（エディタ右の aside）。「この話に登場」する用語チップと、選択中 entry の
+ * チラ見（読み取り専用・編集は用語集画面へ誘導）をまとめる。プレビューの @参照クリックでも開く。
  */
 export function GlossaryPeek({
   entries,
@@ -78,12 +78,14 @@ export function GlossaryPeek({
     // （min() なのでブレークポイント無しで全幅域に効く）。
     <aside className="flex w-[min(300px,85vw)] shrink-0 flex-col border-outline-variant/30 border-l bg-surface-container-lowest font-sans">
       <div className="flex items-center justify-between border-outline-variant/30 border-b px-4 py-3">
-        <span className="font-medium text-[12px] text-on-surface tracking-widest">図鑑パネル</span>
+        <span className="font-medium text-[12px] text-on-surface tracking-widest">
+          用語集パネル
+        </span>
         <Button
           variant="ghost"
           size="icon"
           onClick={onClose}
-          aria-label="図鑑パネルを閉じる"
+          aria-label="用語集パネルを閉じる"
           className="-mr-1.5 size-11 text-on-surface-variant hover:text-on-surface md:size-7"
         >
           <X className="size-4" aria-hidden />
@@ -174,6 +176,23 @@ export function GlossaryPeek({
             ) : (
               <p className="text-[13px] text-on-surface-variant/60">説明はまだありません。</p>
             )}
+            {entry.body ? (
+              <p className="whitespace-pre-wrap text-[12.5px] text-on-surface-variant leading-relaxed">
+                {entry.body}
+              </p>
+            ) : null}
+            {/* 作者メモは公開されない欄。執筆中も「内緒の情報だ」と分かる見た目にしておく。 */}
+            {entry.authorNote ? (
+              <div className="space-y-1 rounded-lg bg-surface-container-high px-2.5 py-2">
+                <div className="flex items-center gap-1.5 text-[10.5px] text-on-surface-variant/70">
+                  <Lock className="size-2.5" aria-hidden />
+                  作者メモ（公開されません）
+                </div>
+                <p className="whitespace-pre-wrap text-[12.5px] text-on-surface leading-relaxed">
+                  {entry.authorNote}
+                </p>
+              </div>
+            ) : null}
             <Button variant="outline" size="sm" onClick={onEdit} className="w-full gap-2">
               <Pencil className="size-3.5" aria-hidden />
               編集

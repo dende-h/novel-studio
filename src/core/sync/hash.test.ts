@@ -1,7 +1,8 @@
 // @vitest-environment node
 import { describe, expect, it } from 'vitest'
+import { emptyPlot, PlotSchema, setWorldNote } from '../plot'
 import type { Work } from '../schema'
-import { canonicalWorkJson, sha256Hex } from './hash'
+import { canonicalJson, canonicalWorkJson, sha256Hex } from './hash'
 
 describe('sha256Hex', () => {
   it('既知ベクトルと一致する（空文字列）', async () => {
@@ -67,5 +68,30 @@ describe('canonicalWorkJson', () => {
 
   it('スキーマ違反の Work は throw する（破損データを黙って同期しない）', () => {
     expect(() => canonicalWorkJson({ id: 'w1' } as Work)).toThrow()
+  })
+})
+
+describe('canonicalJson（同期に載る内容）', () => {
+  // 自動同期は plot:<id> を canonicalJson(PlotSchema, …) で送る。world は Plot の一部なので
+  // 自動的に載るが、スキーマから漏れると黙って同期対象外になるため明示的に固定する。
+  it('プロットの canonical JSON に世界観設定が含まれる', () => {
+    const p = setWorldNote(
+      emptyPlot('p1', 'w1', 1),
+      { slot: 'forbidden', body: '神視点の地の文を書かない' },
+      'n1',
+      2,
+    )
+    const json = canonicalJson(PlotSchema, p)
+    expect(JSON.parse(json).world).toEqual([
+      { id: 'n1', slot: 'forbidden', body: '神視点の地の文を書かない', updatedAt: 2 },
+    ])
+  })
+
+  it('世界観設定を書き換えるとハッシュが変わる（同期が差分に気づく）', async () => {
+    const base = emptyPlot('p1', 'w1', 1)
+    const edited = setWorldNote(base, { slot: 'rules', body: 'ルール' }, 'n1', 2)
+    expect(await sha256Hex(canonicalJson(PlotSchema, base))).not.toBe(
+      await sha256Hex(canonicalJson(PlotSchema, edited)),
+    )
   })
 })

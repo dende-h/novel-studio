@@ -47,25 +47,25 @@ describe('ExportDialog（AI に渡す）', () => {
     expect(await screen.findByText(/コピーしました/)).toBeInTheDocument()
   })
 
-  it('「図鑑も一緒にコピー」を ON にすると本文の後ろに図鑑が付く', async () => {
+  it('「用語集も一緒にコピー」を ON にすると本文の後ろに用語集が付く', async () => {
     render(<ExportDialog open onOpenChange={() => {}} work={makeWorkWithGlossary()} />)
     fireEvent.click(screen.getByText('AI に渡す'))
-    fireEvent.click(screen.getByRole('switch', { name: /図鑑も一緒に渡す/ }))
+    fireEvent.click(screen.getByRole('switch', { name: /用語集も一緒に渡す/ }))
     fireEvent.click(screen.getByRole('button', { name: 'コピー' }))
     await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1))
     const text = writeText.mock.calls[0]?.[0] as string
     expect(text).toContain('むかしむかし')
-    expect(text).toContain('# 図鑑')
+    expect(text).toContain('# 用語集')
     expect(text).toContain('## アリス')
     expect(text).toContain('勇敢な少女。')
   })
 
-  it('図鑑トグルが OFF（既定）なら本文だけコピーする', async () => {
+  it('用語集トグルが OFF（既定）なら本文だけコピーする', async () => {
     render(<ExportDialog open onOpenChange={() => {}} work={makeWorkWithGlossary()} />)
     fireEvent.click(screen.getByText('AI に渡す'))
     fireEvent.click(screen.getByRole('button', { name: 'コピー' }))
     await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1))
-    expect(writeText.mock.calls[0]?.[0] as string).not.toContain('# 図鑑')
+    expect(writeText.mock.calls[0]?.[0] as string).not.toContain('# 用語集')
   })
 
   it('コピー失敗時はエラー表示を出す', async () => {

@@ -13,7 +13,7 @@ describe('snapshot（最小版管理・純ロジック）', () => {
     expect(s.work.title).toBe('初稿')
   })
 
-  it('createSnapshot は画像（表紙・図鑑サムネ）を版に含めない（履歴肥大の防止）', () => {
+  it('createSnapshot は画像（表紙・用語集サムネ）を版に含めない（履歴肥大の防止）', () => {
     const w: Work = {
       id: 'w1',
       title: '初稿',

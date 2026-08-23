@@ -5,13 +5,13 @@ import type { Structure, StructureNode } from '../structure'
 
 /**
  * 構造レイヤー（アウトライン・相関図・マインドマップ）→ AI が読めるプレーンテキスト。
- * read-only リモート MCP の `get_structures` ペイロード。図鑑参照は名前へ解決、
+ * read-only リモート MCP の `get_structures` ペイロード。用語集参照は名前へ解決、
  * アウトラインは本文の話（順序・字数）に構成メモを添える。純ロジック。
  */
 
 const KIND_ORDER: Record<Structure['kind'], number> = { outline: 0, chart: 1, mindmap: 2 }
 
-/** 図鑑参照なら図鑑名、無ければノードのラベル。 */
+/** 用語集参照なら用語集名、無ければノードのラベル。 */
 function nodeLabel(n: StructureNode, glossary: GlossaryEntry[]): string {
   if (n.glossaryRef) {
     const g = glossary.find((x) => x.id === n.glossaryRef)
@@ -36,7 +36,7 @@ function outlineText(s: Structure, work: Work): string {
   return `【アウトライン】\n${lines.join('\n')}`
 }
 
-/** 相関図：登場人物一覧＋関係（from —（関係）→ to）。図鑑名で解決。 */
+/** 相関図：登場人物一覧＋関係（from —（関係）→ to）。用語集名で解決。 */
 function chartText(s: Structure, glossary: GlossaryEntry[]): string {
   const byId = new Map(s.nodes.map((n) => [n.id, n]))
   const rels = s.edges

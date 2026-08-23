@@ -53,7 +53,7 @@ describe('App（エディタ結合：本文/プレビュー・自動保存・履
     })
   })
 
-  it('プレビューの @参照は図鑑に在れば解決リンク、無ければ未解決点線で描く', async () => {
+  it('プレビューの @参照は用語集に在れば解決リンク、無ければ未解決点線で描く', async () => {
     const store = makeStore()
     await seedWorkEpisode(store)
     await store.addGlossaryEntry({ name: 'アリス' })
@@ -105,7 +105,7 @@ describe('App（エディタ結合：本文/プレビュー・自動保存・履
     expect(await screen.findByRole('button', { name: '序章' })).toBeInTheDocument()
   })
 
-  it('サイドバー「図鑑」で図鑑画面へ切替え、作成した項目が一覧に出てプレビューで解決する', async () => {
+  it('サイドバー「用語集」で用語集画面へ切替え、作成した項目が一覧に出てプレビューで解決する', async () => {
     const store = makeStore()
     await seedWorkEpisode(store)
     render(<App store={store} />)
@@ -119,9 +119,9 @@ describe('App（エディタ結合：本文/プレビュー・自動保存・履
       expect(ref?.classList.contains('ref--unresolved')).toBe(true)
     })
 
-    // 図鑑画面へ → 作成
-    fireEvent.click(screen.getByRole('button', { name: '図鑑' }))
-    expect(await screen.findByRole('heading', { name: '図鑑' })).toBeInTheDocument()
+    // 用語集画面へ → 作成
+    fireEvent.click(screen.getByRole('button', { name: '用語集' }))
+    expect(await screen.findByRole('heading', { name: '用語集' })).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: '新しく登録' }))
     fireEvent.change(screen.getByLabelText('名前'), { target: { value: 'アリス' } })
     fireEvent.click(screen.getByRole('button', { name: '作成' }))
@@ -135,7 +135,7 @@ describe('App（エディタ結合：本文/プレビュー・自動保存・履
     })
   })
 
-  it('プレビューの解決済み @参照をクリックすると図鑑パネルに用語のチラ見が出る', async () => {
+  it('プレビューの解決済み @参照をクリックすると用語集パネルに用語のチラ見が出る', async () => {
     const store = makeStore()
     await seedWorkEpisode(store)
     await store.addGlossaryEntry({ name: 'アリス', summary: '物語の主人公。' })
@@ -155,11 +155,11 @@ describe('App（エディタ結合：本文/プレビュー・自動保存・履
     expect(screen.getByText('物語の主人公。')).toBeInTheDocument()
 
     // 閉じるとパネルが消える
-    fireEvent.click(screen.getByRole('button', { name: '図鑑パネルを閉じる' }))
+    fireEvent.click(screen.getByRole('button', { name: '用語集パネルを閉じる' }))
     expect(screen.queryByText('物語の主人公。')).toBeNull()
   })
 
-  it('ツールバーの「図鑑パネル」トグルで、この話に登場する用語チップが見える', async () => {
+  it('ツールバーの「用語集パネル」トグルで、この話に登場する用語チップが見える', async () => {
     const store = makeStore()
     await seedWorkEpisode(store)
     await store.addGlossaryEntry({ name: 'アリス' })
@@ -168,7 +168,7 @@ describe('App（エディタ結合：本文/プレビュー・自動保存・履
     fireEvent.change(await screen.findByRole('textbox', { name: '本文' }), {
       target: { value: '[[アリス]]が来た' },
     })
-    fireEvent.click(screen.getByRole('button', { name: '図鑑パネル' }))
+    fireEvent.click(screen.getByRole('button', { name: '用語集パネル' }))
     expect(await screen.findByText('この話に登場')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'アリス' })).toBeInTheDocument()
   })
@@ -333,11 +333,11 @@ describe('App（構造ツールの画面幅ゲート）', () => {
 })
 
 /**
- * 執筆の流れを切らないための導線（図鑑をその場で編集・作品情報をエディタから編集）。
+ * 執筆の流れを切らないための導線（用語集をその場で編集・作品情報をエディタから編集）。
  * どちらも「画面遷移させない」ことが要件なので、モーダルが開くところまでを見る。
  */
 describe('App（執筆中に開く編集モーダル）', () => {
-  it('図鑑パネルの「編集」は画面遷移せずモーダルを開く', async () => {
+  it('用語集パネルの「編集」は画面遷移せずモーダルを開く', async () => {
     const store = makeStore()
     await seedWorkEpisode(store)
     await store.addGlossaryEntry({ name: 'アリス', summary: '物語の主人公。' })
@@ -359,13 +359,13 @@ describe('App（執筆中に開く編集モーダル）', () => {
     const dialog = await screen.findByRole('dialog')
     expect(within(dialog).getByLabelText('名前')).toHaveValue('アリス')
 
-    // 閉じると本文エディタに戻る＝図鑑ページへ遷移していない（その場のモーダル）。
+    // 閉じると本文エディタに戻る＝用語集ページへ遷移していない（その場のモーダル）。
     // モーダル表示中は Radix が背景を a11y ツリーから外すため、閉じてから確かめる。
     fireEvent.keyDown(dialog, { key: 'Escape' })
     expect(await screen.findByRole('textbox', { name: '本文' })).toBeInTheDocument()
   })
 
-  it('図鑑パネルの編集で改名すると、旧名を別名に残したまま更新される', async () => {
+  it('用語集パネルの編集で改名すると、旧名を別名に残したまま更新される', async () => {
     const store = makeStore()
     await seedWorkEpisode(store)
     await store.addGlossaryEntry({ name: 'アリス' })

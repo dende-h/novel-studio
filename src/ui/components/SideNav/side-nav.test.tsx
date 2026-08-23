@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { SideNav } from './side-nav'
 
 // 作品を開いている（エディタ）状態の基本 props。
-// この状態でのみ 戻るリンク／作品カード／本文を書く・図鑑／草稿の話リスト が現れる。
+// この状態でのみ 戻るリンク／作品カード／本文を書く・用語集／草稿の話リスト が現れる。
 const baseProps = {
   active: 'episodes' as const,
   onNavigateCollection: () => {},
@@ -99,10 +99,10 @@ describe('SideNav（サイドバー）', () => {
     expect(onNavigateCollection).toHaveBeenCalledTimes(1)
   })
 
-  it('図鑑行: active=glossary で aria-current・押下で onNavigateGlossary を発火する', () => {
+  it('用語集行: active=glossary で aria-current・押下で onNavigateGlossary を発火する', () => {
     const onNavigateGlossary = vi.fn()
     render(<SideNav {...baseProps} active="glossary" onNavigateGlossary={onNavigateGlossary} />)
-    const g = screen.getByRole('button', { name: '図鑑' })
+    const g = screen.getByRole('button', { name: '用語集' })
     expect(g).toHaveAttribute('aria-current', 'page')
     expect(g).not.toBeDisabled()
     fireEvent.click(g)
@@ -115,7 +115,7 @@ describe('SideNav（サイドバー）', () => {
     expect(screen.getByText('3話 ・ 9,000字')).toBeInTheDocument()
   })
 
-  it('ライブラリ状態（workTitle 未指定）は本文を書く/図鑑を出さず、マイライブラリが active', () => {
+  it('ライブラリ状態（workTitle 未指定）は本文を書く/用語集を出さず、マイライブラリが active', () => {
     render(
       <SideNav
         active="collection"
@@ -124,7 +124,7 @@ describe('SideNav（サイドバー）', () => {
       />,
     )
     expect(screen.queryByRole('button', { name: '本文を書く' })).toBeNull()
-    expect(screen.queryByRole('button', { name: '図鑑' })).toBeNull()
+    expect(screen.queryByRole('button', { name: '用語集' })).toBeNull()
     expect(screen.getByRole('button', { name: 'マイライブラリ' })).toHaveAttribute(
       'aria-current',
       'page',

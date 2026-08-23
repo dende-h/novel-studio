@@ -25,7 +25,7 @@ const noop = {
   onNewEntry: () => {},
 }
 
-describe('GlossaryPeek（図鑑パネル）', () => {
+describe('GlossaryPeek（用語集パネル）', () => {
   it('選択 entry の名前・読み・カテゴリ・別名・概要・登場数を表示', () => {
     render(
       <GlossaryPeek entries={[entry]} draft="" entry={entry} appearances={appearances} {...noop} />,
@@ -114,7 +114,7 @@ describe('GlossaryPeek（図鑑パネル）', () => {
         onNewEntry={onNewEntry}
       />,
     )
-    fireEvent.click(screen.getByRole('button', { name: '図鑑パネルを閉じる' }))
+    fireEvent.click(screen.getByRole('button', { name: '用語集パネルを閉じる' }))
     expect(onClose).toHaveBeenCalledTimes(1)
     fireEvent.click(screen.getByRole('button', { name: '編集' }))
     expect(onEdit).toHaveBeenCalledTimes(1)

@@ -95,6 +95,8 @@ export interface NewGlossaryEntry {
   reading?: string
   summary?: string
   body?: string
+  /** 作者だけが見るメモ（公開時に落とす）。 */
+  authorNote?: string
   /** サムネ画像の data URL。空文字/未指定なら付与しない。 */
   thumbnail?: string
 }
@@ -106,6 +108,8 @@ export interface GlossaryFieldPatch {
   reading?: string
   summary?: string
   body?: string
+  /** 作者だけが見るメモ（公開時に落とす）。 */
+  authorNote?: string
   /** サムネ画像の data URL。空文字 '' は削除（キーを落とす）、undefined は据え置き。 */
   thumbnail?: string
 }
@@ -492,6 +496,7 @@ export function createEditorStore({
         ...(input.reading !== undefined ? { reading: input.reading } : {}),
         ...(input.summary !== undefined ? { summary: input.summary } : {}),
         ...(input.body !== undefined ? { body: input.body } : {}),
+        ...(input.authorNote !== undefined ? { authorNote: input.authorNote } : {}),
         // 空文字/未指定は付与しない（クイック作成・サムネ未設定の作成経路を許容）。
         ...(input.thumbnail ? { thumbnail: input.thumbnail } : {}),
         createdAt: ts,

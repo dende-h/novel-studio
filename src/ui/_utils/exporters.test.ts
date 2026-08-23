@@ -59,7 +59,7 @@ describe('exporters（書き出しビルダー・純粋）', () => {
     expect(d[1]).toBe(0x4b)
   })
 
-  it('AI テキスト: .txt、本文を含み、図鑑は既定で付かない/ON で付く', () => {
+  it('AI テキスト: .txt、本文を含み、用語集は既定で付かない/ON で付く', () => {
     const withGlossary: Work = {
       ...work,
       glossary: [
@@ -70,10 +70,10 @@ describe('exporters（書き出しビルダー・純粋）', () => {
     expect(off.filename).toBe('夜の物語_AI.txt')
     expect(off.mime).toContain('text/plain')
     expect(off.data as string).toContain('# 夜の物語')
-    expect(off.data as string).not.toContain('# 図鑑')
+    expect(off.data as string).not.toContain('# 用語集')
 
     const on = workAiTextExport(withGlossary, true)
-    expect(on.data as string).toContain('# 図鑑')
+    expect(on.data as string).toContain('# 用語集')
     expect(on.data as string).toContain('## アリス')
   })
 })

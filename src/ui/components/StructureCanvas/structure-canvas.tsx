@@ -38,7 +38,7 @@ interface StructureCanvasProps {
   toolbar?: ReactNode
 }
 
-/** 図鑑参照ノードは改名しても保存されない（ラベルは図鑑が真実）ので編集を抑止する。 */
+/** 用語集参照ノードは改名しても保存されない（ラベルは用語集が真実）ので編集を抑止する。 */
 const isGlossaryNode = (node: Node) => (node.data as { isGlossary?: unknown }).isGlossary === true
 
 /**
@@ -79,7 +79,7 @@ export function StructureCanvas({
     <div className="relative h-full w-full">
       <div className="absolute top-3 left-3 z-10 flex items-center gap-2">{toolbar}</div>
 
-      {/* 選択中ノードの編集バー（色・改名）。図鑑参照ノードは色のみ、改名は無効時に隠す。 */}
+      {/* 選択中ノードの編集バー（色・改名）。用語集参照ノードは色のみ、改名は無効時に隠す。 */}
       {selected ? (
         <div className="absolute top-3 right-3 z-10 flex items-center gap-2 rounded-md border border-outline-variant/40 bg-surface-container-lowest/95 px-2 py-1.5 shadow-sm backdrop-blur">
           {onRecolorNode ? (

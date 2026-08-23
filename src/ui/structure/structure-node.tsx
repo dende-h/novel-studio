@@ -21,17 +21,17 @@ export const NODE_COLORS: Record<string, Swatch> = {
 
 export const NODE_COLOR_KEYS = Object.keys(NODE_COLORS)
 
-/** カスタムノードの data 形。ラベル・色・図鑑参照の状態を持つ。 */
+/** カスタムノードの data 形。ラベル・色・用語集参照の状態を持つ。 */
 export interface StructureNodeData {
   label: string
   /** ノード種別（往復で保持）。 */
   kind?: string
   color?: string
-  /** 図鑑エントリID（参照ノードの往復で保持）。 */
+  /** 用語集エントリID（参照ノードの往復で保持）。 */
   glossaryRef?: string
-  /** 図鑑参照ノードか（相関図で図鑑アバターや印を出す）。 */
+  /** 用語集参照ノードか（相関図で用語集アバターや印を出す）。 */
   isGlossary?: boolean
-  /** 図鑑参照が解決できない（削除済み等）。 */
+  /** 用語集参照が解決できない（削除済み等）。 */
   refMissing?: boolean
   [key: string]: unknown
 }
@@ -42,7 +42,7 @@ const swatch = (key?: string): Swatch => NODE_COLORS[key ?? 'default'] ?? DEFAUL
 const HANDLE_CLASS = '!size-2.5 !border-2 !border-surface-container-lowest !bg-primary/50'
 
 /**
- * 構造ビュー共通のカスタムノード。色分けと図鑑参照バッジに対応する。
+ * 構造ビュー共通のカスタムノード。色分けと用語集参照バッジに対応する。
  * 上下左右すべてに接続点を持ち（loose モードで source/target 兼用）、どの辺からでも繋げる。
  * hover で削除ボタンを出す。ラベル編集はビュー側（ダブルクリック等）で行う。
  */
@@ -68,14 +68,14 @@ export function StructureFlowNode({ id, data, selected }: NodeProps) {
           {d.isGlossary ? (
             <BookMarked
               className="size-3.5 shrink-0 opacity-70"
-              aria-label="図鑑のキャラ"
+              aria-label="用語集のキャラ"
               style={{ color: d.refMissing ? '#9c4d33' : c.border }}
             />
           ) : null}
           <span className="break-words">{d.label || '（無題）'}</span>
         </div>
         {d.refMissing ? (
-          <span className="mt-0.5 block text-[10px] text-[#9c4d33]">図鑑に見つかりません</span>
+          <span className="mt-0.5 block text-[10px] text-[#9c4d33]">用語集に見つかりません</span>
         ) : null}
       </div>
 

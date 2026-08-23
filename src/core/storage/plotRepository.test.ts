@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest'
-import { emptyPlot } from '../plot'
+import { emptyPlot, type Plot } from '../plot'
 import { PlotRepository } from './plotRepository'
 import type { KeyValueStore } from './types'
 
@@ -70,5 +70,46 @@ describe('PlotRepository（プロットの永続化）', () => {
     expect((await repo.list()).map((p) => p.id)).toEqual([keep.id])
     await repo.replaceAll([emptyPlot('x1', 'w9', 5)])
     expect((await repo.list()).map((p) => p.id)).toEqual(['x1'])
+  })
+})
+
+describe('保存済みレコードの穴埋め（読み出しの入り口）', () => {
+  /** world / secrets を足す前に保存されたプロット（store は検証せず素通しで返す）。 */
+  const legacyRow = {
+    id: 'old',
+    workId: 'w1',
+    title: '本編プロット',
+    sections: [],
+    beats: [],
+    lines: [],
+    foreshadows: [],
+    updatedAt: 1,
+  }
+
+  it('get は欠けている配列を埋めて返す', async () => {
+    const store = memStore()
+    await store.set('plot:old', legacyRow)
+    const repo = new PlotRepository(store)
+    const p = await repo.get('old')
+    expect(p?.world).toEqual([])
+    expect(p?.secrets).toEqual([])
+  })
+
+  it('list / listByWork も同じく埋めて返す', async () => {
+    const store = memStore()
+    await store.set('plot:old', legacyRow)
+    const repo = new PlotRepository(store)
+    expect((await repo.list())[0]?.world).toEqual([])
+    expect((await repo.listByWork('w1'))[0]?.world).toEqual([])
+  })
+
+  it('埋めるだけで、他の項目は書き換えない', async () => {
+    const store = memStore()
+    const withData = { ...legacyRow, id: 'x', beats: [{ id: 'b1' }], premise: 'ログライン' }
+    await store.set('plot:x', withData)
+    const repo = new PlotRepository(store)
+    const p = (await repo.get('x')) as Plot
+    expect(p.premise).toBe('ログライン')
+    expect(p.beats).toHaveLength(1)
   })
 })

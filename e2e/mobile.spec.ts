@@ -121,7 +121,7 @@ test('ドロワーは行き先を選ぶと自動で閉じる', async ({ page }) 
   await openNav(page)
   await expect(nav).toBeVisible()
 
-  await page.getByRole('button', { name: '図鑑', exact: true }).click()
+  await page.getByRole('button', { name: '用語集', exact: true }).click()
   await expect(nav).toBeHidden()
 })
 
@@ -174,9 +174,9 @@ test('@サジェストは狭幅ではキーボード直上のバーで出る', a
   await openWriter(page, 'サジェスト検証')
   await addEpisode(page, '第一話')
 
-  // 図鑑に用語を1件用意する
+  // 用語集に用語を1件用意する
   await openNav(page)
-  await page.getByRole('button', { name: '図鑑', exact: true }).click()
+  await page.getByRole('button', { name: '用語集', exact: true }).click()
   await page.getByRole('button', { name: '新しく登録' }).click()
   await page.getByLabel('名前').fill('アリス')
   await page.getByRole('button', { name: '作成', exact: true }).click()
@@ -207,7 +207,7 @@ test('記法バーの参照で空枠を置いてから候補確定しても括�
   await addEpisode(page, '第一話')
 
   await openNav(page)
-  await page.getByRole('button', { name: '図鑑', exact: true }).click()
+  await page.getByRole('button', { name: '用語集', exact: true }).click()
   await page.getByRole('button', { name: '新しく登録' }).click()
   await page.getByLabel('名前').fill('ユグドラシル')
   await page.getByRole('button', { name: '作成', exact: true }).click()
@@ -264,7 +264,7 @@ test('記法バー：フォーカス中だけ出て、選択を囲む。@サジ�
 
   // 候補が出る状態を作る（候補 0 件ならサジェスト自体が開かないため用語を1件登録する）
   await openNav(page)
-  await page.getByRole('button', { name: '図鑑', exact: true }).click()
+  await page.getByRole('button', { name: '用語集', exact: true }).click()
   await page.getByRole('button', { name: '新しく登録' }).click()
   await page.getByLabel('名前').fill('アリス')
   await page.getByRole('button', { name: '作成', exact: true }).click()

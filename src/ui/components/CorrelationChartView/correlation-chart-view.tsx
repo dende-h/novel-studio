@@ -18,15 +18,15 @@ import { useStructureFlow } from '@/ui/structure/use-structure-flow'
 interface CorrelationChartViewProps {
   repo: StructureRepository
   workId: string
-  /** 図鑑エントリ一覧（参照ノードの解決・追加候補に使う）。 */
+  /** 用語集エントリ一覧（参照ノードの解決・追加候補に使う）。 */
   glossary: GlossaryEntry[]
 }
 
 const genId = () => crypto.randomUUID()
 
 /**
- * 相関図（構造レイヤー kind:chart）。図鑑のキャラを参照ノードにし、関係ラベル付きの辺で結ぶ。
- * 図鑑に無い端役は自由ノードで置ける。バンドルが重いので default export（遅延ロード）。
+ * 相関図（構造レイヤー kind:chart）。用語集のキャラを参照ノードにし、関係ラベル付きの辺で結ぶ。
+ * 用語集に無い端役は自由ノードで置ける。バンドルが重いので default export（遅延ロード）。
  */
 export default function CorrelationChartView({
   repo,
@@ -44,7 +44,7 @@ export default function CorrelationChartView({
   const [relOpen, setRelOpen] = useState(false)
   const pendingConnection = useRef<Connection | null>(null)
 
-  // まだ相関図に載っていない図鑑キャラ。
+  // まだ相関図に載っていない用語集キャラ。
   const usedRefs = useMemo(
     () =>
       new Set(nodes.map((n) => (n.data as { glossaryRef?: string }).glossaryRef).filter(Boolean)),
@@ -149,17 +149,17 @@ export default function CorrelationChartView({
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="font-serif text-primary text-xl">
-              図鑑から登場人物を追加
+              用語集から登場人物を追加
             </DialogTitle>
           </DialogHeader>
           <DialogBody>
             {glossary.length === 0 ? (
               <p className="py-6 text-center text-on-surface-variant text-sm">
-                図鑑にまだ登録がありません。図鑑にキャラを登録すると、ここから相関図に追加できます。
+                用語集にまだ登録がありません。用語集にキャラを登録すると、ここから相関図に追加できます。
               </p>
             ) : candidates.length === 0 ? (
               <p className="py-6 text-center text-on-surface-variant text-sm">
-                図鑑のキャラはすべて相関図に追加済みです。
+                用語集のキャラはすべて相関図に追加済みです。
               </p>
             ) : (
               <ul className="flex max-h-80 flex-col gap-1.5 overflow-y-auto py-1">

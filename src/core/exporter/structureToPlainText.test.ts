@@ -25,7 +25,7 @@ describe('structuresToPlainText', () => {
     expect(structuresToPlainText([], work())).toContain('まだありません')
   })
 
-  it('相関図：図鑑名で解決し、関係ラベル付きで並べる', () => {
+  it('相関図：用語集名で解決し、関係ラベル付きで並べる', () => {
     let s = emptyStructure('c', 'w1', 'chart', 0)
     s = addNode(s, { id: 'a', kind: 'character', label: '', glossaryRef: 'g1' })
     s = addNode(s, { id: 'b', kind: 'character', label: '', glossaryRef: 'g2' })

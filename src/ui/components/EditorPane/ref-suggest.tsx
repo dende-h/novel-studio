@@ -43,7 +43,7 @@ export function RefSuggest({
   const createIndex = candidates.length
   const listRef = useRef<HTMLDivElement>(null)
 
-  // 候補は絞らず全件出す（図鑑をスクロールで辿れる）ので、↑↓ の選択をリスト内で追う。
+  // 候補は絞らず全件出す（用語集をスクロールで辿れる）ので、↑↓ の選択をリスト内で追う。
   // block:'nearest' なのでページ自体はスクロールしない＝入力位置がずれない。
   useEffect(() => {
     const el = listRef.current?.querySelector<HTMLElement>(`#${CSS.escape(optionId(activeIndex))}`)
@@ -81,7 +81,7 @@ export function RefSuggest({
           {/* 挿入される表記（別名候補なら別名そのもの）を主表示にする。 */}
           <span className="truncate font-serif">{item.name}</span>
           {item.isAlias ? (
-            // 別名候補: どの図鑑（正式名）に紐づくかを添える。
+            // 別名候補: どの用語集（正式名）に紐づくかを添える。
             <span className="max-w-[8rem] shrink-0 truncate text-on-surface-variant/50 text-xs">
               → {item.entry.name}
             </span>

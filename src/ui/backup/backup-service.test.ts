@@ -103,7 +103,29 @@ describe('createLocalBackupService（ローカル・ファイルバックアッ�
         profile: {},
         activity: [],
         ideas: [{ id: 'i2', text: 'x', createdAt: 2, updatedAt: 2 }],
-        plots: [],
+        plots: [
+          {
+            id: 'pl1',
+            workId: 'w1',
+            title: '本編プロット',
+            sections: [{ id: 'sec1', title: '第一幕', beatIds: ['b1'] }],
+            beats: [
+              {
+                id: 'b1',
+                title: '出会い',
+                castRefs: [],
+                placeRefs: [],
+                lineRefs: [],
+                status: 'idea',
+              },
+            ],
+            lines: [],
+            foreshadows: [],
+            secrets: [{ id: 's1', title: 'ユキの正体', truth: '管理AI' }],
+            world: [{ id: 'n1', slot: 'rules', body: '死者は生き返らない', updatedAt: 4 }],
+            updatedAt: 4,
+          },
+        ],
         structures: [
           { id: 'st1', workId: 'w1', kind: 'chart', nodes: [], edges: [], updatedAt: 3 },
         ],
@@ -113,7 +135,15 @@ describe('createLocalBackupService（ローカル・ファイルバックアッ�
     await svc.restorePlaintext(json)
     expect(restored?.works.map((w) => w.id)).toEqual(['r'])
     expect(restored?.ideas.map((i) => i.id)).toEqual(['i2'])
+    // 構造データ（アウトライン／相関図／マインドマップ）
     expect(restored?.structures.map((s) => s.id)).toEqual(['st1'])
+    // プロット。ビート・秘密の真相・世界観設定まで、中身ごと戻ること
+    expect(restored?.plots[0]).toMatchObject({
+      id: 'pl1',
+      beats: [{ id: 'b1', title: '出会い' }],
+      secrets: [{ id: 's1', truth: '管理AI' }],
+      world: [{ slot: 'rules', body: '死者は生き返らない' }],
+    })
   })
 
   it('restorePlaintext は壊れた JSON で throw する', async () => {

@@ -10,11 +10,12 @@ import { Button } from '@/ui/components/ui/button'
  * 会員状態の取得先は D1（/api/billing/status）、決済は Stripe 直課金。
  */
 
+// 構想の道具（プロット・アウトライン・相関図・マインドマップ）はここに載せない。
+// 無料アカウント登録で使えるので、有料の理由にならない。課金の線は「保全」にある。
 const FEATURES = [
-  'アウトライン・相関図・マインドマップ',
+  '複数端末で同じ原稿を同期',
   '全データ暗号化のクラウドバックアップ＆復元',
   'AI に読み書きさせる（Claude・Genspark／MCP）',
-  '複数端末で同じ原稿を同期',
 ]
 
 const PLANS: Array<{

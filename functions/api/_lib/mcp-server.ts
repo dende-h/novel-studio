@@ -8,7 +8,11 @@
  */
 
 import type { CloudBackup } from '../../../src/core/backup'
-import { plotToPlainText } from '../../../src/core/exporter/plotToPlainText'
+import {
+  plotToPlainText,
+  worldPointerLine,
+  worldToPlainText,
+} from '../../../src/core/exporter/plotToPlainText'
 import { structuresToPlainText } from '../../../src/core/exporter/structureToPlainText'
 import { glossaryToPlainText, workToPlainText } from '../../../src/core/exporter/toPlainText'
 import {
@@ -17,11 +21,13 @@ import {
   deleteGlossaryEntry,
   deletePlotBeat,
   deletePlotItem,
+  deletePlotWorldNote,
   McpEditError,
   parseStructure,
   setEpisode,
   setOutlineNotes,
   setPlotMeta,
+  setPlotWorldNote,
   setWorkMeta,
   upsertGlossaryEntry,
   upsertPlotBeat,
@@ -31,15 +37,57 @@ import {
   upsertPlotSection,
   upsertStructure,
 } from '../../../src/core/mcp-edit'
+import { pickPrimaryPlot, WORLD_CUSTOM_SLOT, WORLD_SLOTS } from '../../../src/core/plot'
 
 /** クライアントが未指定のときに名乗る MCP プロトコル版（十分に新しい安定版）。 */
 const DEFAULT_PROTOCOL_VERSION = '2025-06-18'
-const SERVER_INFO = { name: 'novel-studio', version: '1.2.0' } as const
+const SERVER_INFO = { name: 'novel-studio', version: '1.3.0' } as const
+
+/**
+ * クライアント（AI）へ最初に渡す使い方。MCP の `initialize` が返す標準の instructions。
+ *
+ * ここの主眼は**器の住み分けを毎回思い出させること**。用語集は読者へ公開される器で、
+ * 世界観設定は作者だけの器。これを知らないと、AI は設定やネタバレを用語集へ書いてしまう
+ * （実際にそうなった）。加えて「書く前に決め事を読む」を促し、毎回の精度を底上げする。
+ */
+const SERVER_INSTRUCTIONS = [
+  'コトノハは小説の執筆アプリです。作品ごとに次の器があります。',
+  '',
+  '- 本文（get_work / set_episode）… 読者が読む小説そのもの。',
+  '- 用語集（get_glossary / upsert_glossary_entry）… 人物・場所・組織・用語・アイテム・生物の事典。',
+  '  **公開サイトへ投稿され、読者にも見えます**（その用語が出てくる話まで読んだ読者に開きます）。',
+  '  各項目の「作者メモ」欄だけは公開されません。',
+  '- 世界観設定（get_world / set_world_note）… 作品の決め事・設定ルール・執筆方針を置く',
+  '  **作者だけの場所。公開されません。**',
+  '- プロット（get_plot / upsert_plot_beat 等）… 幕とビート、プロットライン、伏線、秘密。公開されません。',
+  '',
+  '守ってほしい手順：',
+  '1. 用語集・プロット・本文のいずれかを書き換える前に、まず get_world でこの作品の決め事を読む。',
+  '   世界観設定は作品ごとの前提であり、そこに書かれたルールに従って書く。',
+  '2. 設定のルール・執筆の決め事・世界の仕組み・読者への開示方針は、',
+  '   **用語集ではなく set_world_note へ書く**。用語集は読者に見える器なので、',
+  '   そこへ書くとネタバレが公開されます。',
+  '3. 特定の項目にだけ紐づく内緒の情報（この人物の正体など）は、',
+  '   upsert_glossary_entry の author_note に書く（この欄は公開時に取り除かれます）。',
+  '4. 読者にいつ何を明かすかの管理は upsert_secret（秘密）を使う。',
+].join('\n')
 
 /** 書き込み系の結果に添える案内（ブラウザで取り込むまでローカルには反映されない）。 */
 const PULL_HINT = 'アプリの「AIの変更を取り込む」でこの変更をローカルに反映してください。'
 
 const workIdProp = { work_id: { type: 'string', description: 'list_works が返す作品 id' } }
+
+/**
+ * set_world_note の slot 説明。枠の定義（WORLD_SLOTS）から組み立てる＝
+ * 画面に出す案内と AI に渡す選択肢が食い違わない。
+ */
+const WORLD_SLOT_DESCRIPTION = [
+  '枠：',
+  [
+    ...WORLD_SLOTS.map((slot) => `${slot.key}（${slot.label}）`),
+    `${WORLD_CUSTOM_SLOT}（自由枠・title 必須）`,
+  ].join(' / '),
+].join('')
 
 /** 公開ツール定義。inputSchema はクライアントの引数検証に使われる。 */
 export const MCP_TOOLS = [
@@ -51,7 +99,8 @@ export const MCP_TOOLS = [
   },
   {
     name: 'get_work',
-    description: '1 作品の本文全体をプレーンテキスト（タイトル・各話見出し付き）で返す。',
+    description:
+      '1 作品の本文全体をプレーンテキスト（タイトル・各話見出し付き）で返す。書き換える前に get_world でこの作品の決め事（語り手・言葉づかい・やらないこと等）を確認すること。',
     inputSchema: {
       type: 'object',
       properties: workIdProp,
@@ -62,7 +111,7 @@ export const MCP_TOOLS = [
   {
     name: 'get_glossary',
     description:
-      '1 作品の図鑑（設定資料・オブジェクト辞書）を各エントリの [entry_id: …] 付きで返す。この entry_id を upsert_glossary_entry の id / delete_glossary_entry の entry_id に渡す。',
+      '1 作品の用語集（人物・場所・組織・用語・アイテム・生物の事典）を各項目の [entry_id: …] 付きで返す。この entry_id を upsert_glossary_entry の id / delete_glossary_entry の entry_id に渡す。用語集は公開サイトで読者にも見える器なので、書き換える前に get_world で作品の決め事を確認すること。',
     inputSchema: {
       type: 'object',
       properties: workIdProp,
@@ -73,7 +122,7 @@ export const MCP_TOOLS = [
   {
     name: 'get_structures',
     description:
-      '1 作品の構造データ（アウトライン・相関図・マインドマップ）をプレーンテキストで返す。',
+      '1 作品の構造データ（アウトライン・相関図・マインドマップ）をプレーンテキストで返す。書き換える前に get_world で作品の決め事を確認すること。',
     inputSchema: {
       type: 'object',
       properties: workIdProp,
@@ -100,7 +149,7 @@ export const MCP_TOOLS = [
   {
     name: 'set_episode',
     description:
-      '既存の話のタイトル・本文を更新する。body はプレーンテキスト（改行で段落・行頭「＊」でシーン区切り・｜漢字《かんじ》でルビ）。渡した項目だけ書き換える。',
+      '既存の話のタイトル・本文を更新する。body はプレーンテキスト（改行で段落・行頭「＊」でシーン区切り・｜漢字《かんじ》でルビ）。渡した項目だけ書き換える。**書く前に get_world で作品の決め事（語り手と文体・言葉づかい・開示方針・やらないこと）を読み、それに従うこと。**',
     inputSchema: {
       type: 'object',
       properties: {
@@ -115,7 +164,8 @@ export const MCP_TOOLS = [
   },
   {
     name: 'add_episode',
-    description: '作品に新しい話を末尾に追加する。作成した episode_id を返す。',
+    description:
+      '作品に新しい話を末尾に追加する。作成した episode_id を返す。**書く前に get_world で作品の決め事を読み、それに従うこと。**',
     inputSchema: {
       type: 'object',
       properties: {
@@ -163,7 +213,7 @@ export const MCP_TOOLS = [
   {
     name: 'upsert_glossary_entry',
     description:
-      '図鑑エントリ（キャラ・用語・場所など）を追加または更新する。id を渡すと更新、無ければ新規作成。既存を更新するときは先に get_glossary で [entry_id: …] を確認して id に渡す。',
+      '用語集の項目（人物・場所・組織・用語・アイテム・生物）を追加または更新する。id を渡すと更新、無ければ新規作成。既存を更新するときは先に get_glossary で [entry_id: …] を確認して id に渡す。【重要】name/summary/body は公開サイトで読者にも見える。設定ルール・執筆の決め事・世界の仕組みはここではなく set_world_note へ書く。項目に紐づく非公開の情報は author_note へ書く。',
     inputSchema: {
       type: 'object',
       properties: {
@@ -176,8 +226,13 @@ export const MCP_TOOLS = [
         aliases: { type: 'array', items: { type: 'string' }, description: '別名' },
         category: { type: 'string', description: '分類（キャラ/用語/場所 等）' },
         reading: { type: 'string', description: 'よみ' },
-        summary: { type: 'string', description: '一行要約' },
-        body: { type: 'string', description: '詳細な本文' },
+        summary: { type: 'string', description: '一行要約（読者にも見える）' },
+        body: { type: 'string', description: '詳細な本文（読者にも見える）' },
+        author_note: {
+          type: 'string',
+          description:
+            '作者メモ。この項目に紐づく非公開の情報（正体・後の展開など）。公開時に取り除かれる（空文字で削除）',
+        },
       },
       required: ['work_id', 'name'],
       additionalProperties: false,
@@ -185,14 +240,14 @@ export const MCP_TOOLS = [
   },
   {
     name: 'delete_glossary_entry',
-    description: '図鑑エントリを削除する。先に get_glossary で対象の [entry_id: …] を確認する。',
+    description: '用語集の項目を削除する。先に get_glossary で対象の [entry_id: …] を確認する。',
     inputSchema: {
       type: 'object',
       properties: {
         ...workIdProp,
         entry_id: {
           type: 'string',
-          description: '図鑑エントリの id（get_glossary の [entry_id: …]）',
+          description: '用語集の項目の id（get_glossary の [entry_id: …]）',
         },
       },
       required: ['work_id', 'entry_id'],
@@ -215,7 +270,7 @@ export const MCP_TOOLS = [
   {
     name: 'get_plot',
     description:
-      '1 作品のプロット（幕×ビート・プロットライン・伏線・秘密）を各要素の id 付きプレーンテキストで返す。upsert/delete 系プロットツールの対象 id はここで確認する。伏線は回収状態（未回収/回収済/根なし）、秘密は開示状態（開示予定/開示未定/明かさない）付き。',
+      '1 作品のプロット（幕×ビート・プロットライン・伏線・秘密）を各要素の id 付きプレーンテキストで返す。先頭にこの作品の世界観設定（作者だけの決め事）が付くので、書き換えの前にそれに従うこと。upsert/delete 系プロットツールの対象 id はここで確認する。伏線は回収状態（未回収/回収済/根なし）、秘密は開示状態（開示予定/開示未定/明かさない）付き。',
     inputSchema: {
       type: 'object',
       properties: workIdProp,
@@ -271,7 +326,7 @@ export const MCP_TOOLS = [
         summary: {
           type: 'string',
           description:
-            '何が起きるか（数行の要約）。本文と同じ記法が使える：[[用語]] で図鑑とつながり、｜漢字《かんじ》でルビ、《《強調》》で傍点',
+            '何が起きるか（数行の要約）。本文と同じ記法が使える：[[用語]] で用語集とつながり、｜漢字《かんじ》でルビ、《《強調》》で傍点',
         },
         note: {
           type: 'string',
@@ -395,6 +450,53 @@ export const MCP_TOOLS = [
         item_id: { type: 'string', description: '対象の id（get_plot で確認）' },
       },
       required: ['work_id', 'kind', 'item_id'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'get_world',
+    description:
+      '1 作品の世界観設定（作者だけの決め事・設定ルール・執筆方針）を [slot: …, note_id: …] 付きで返す。**用語集・プロット・本文を書き換える前に必ず最初に読むこと。**ここは公開されないので、まだ読者に伏せている情報も書かれている。',
+    inputSchema: {
+      type: 'object',
+      properties: workIdProp,
+      required: ['work_id'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'set_world_note',
+    description:
+      '世界観設定の枠を書き込む（作者だけの場所・公開されない）。設定のルール・世界の仕組み・読者への開示方針・執筆の決め事はすべてここへ書く（用語集へ書かない）。定型枠は slot 一致で 1 枠に上書きされ、slot: custom は自分で見出しを付ける自由枠。body を空文字にするとその枠を削除する。プロットがまだ無い作品でも書ける。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        ...workIdProp,
+        slot: { type: 'string', description: WORLD_SLOT_DESCRIPTION },
+        id: {
+          type: 'string',
+          description: '更新する自由枠の note_id（get_world の [note_id: …]）。定型枠では不要',
+        },
+        title: { type: 'string', description: '自由枠（slot: custom）の見出し。定型枠では不要' },
+        body: { type: 'string', description: '本文（空文字でその枠を削除）' },
+      },
+      required: ['work_id', 'slot', 'body'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'delete_world_note',
+    description: '世界観設定の枠を削除する。先に get_world で対象の [note_id: …] を確認する。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        ...workIdProp,
+        note_id: {
+          type: 'string',
+          description: '世界観設定の note_id（get_world の [note_id: …]）',
+        },
+      },
+      required: ['work_id', 'note_id'],
       additionalProperties: false,
     },
   },
@@ -533,6 +635,8 @@ async function callTool(
     'upsert_foreshadow',
     'upsert_secret',
     'delete_plot_item',
+    'set_world_note',
+    'delete_world_note',
   ])
   if (writeTools.has(name ?? '')) {
     if (!snap) {
@@ -628,18 +732,19 @@ async function callTool(
               reading: str(args, 'reading'),
               summary: str(args, 'summary'),
               body: str(args, 'body'),
+              authorNote: str(args, 'author_note'),
             },
             deps.genId(),
             now,
           ),
         }
-        message = '図鑑エントリを保存しました。'
+        message = '用語集の項目を保存しました。'
       } else if (name === 'delete_glossary_entry') {
         next = {
           ...snap,
           works: deleteGlossaryEntry(works, workId, str(args, 'entry_id') ?? '', now),
         }
-        message = '図鑑エントリを削除しました。'
+        message = '用語集の項目を削除しました。'
       } else if (name === 'set_structure') {
         const structure = parseStructure(str(args, 'structure_json') ?? '')
         next = { ...snap, structures: upsertStructure(snap.structures, structure) }
@@ -748,6 +853,31 @@ async function callTool(
         )
         next = { ...snap, plots: res.plots }
         message = `秘密を保存しました。secret_id: ${res.secretId}`
+      } else if (name === 'set_world_note') {
+        const res = setPlotWorldNote(
+          snap.plots ?? [],
+          works,
+          workId,
+          {
+            id: str(args, 'id'),
+            slot: str(args, 'slot') ?? '',
+            title: str(args, 'title'),
+            body: str(args, 'body') ?? '',
+          },
+          deps.genId(),
+          now,
+        )
+        next = { ...snap, plots: res.plots }
+        message =
+          res.noteId === null
+            ? '世界観設定の枠を削除しました。'
+            : `世界観設定を保存しました。note_id: ${res.noteId}`
+      } else if (name === 'delete_world_note') {
+        next = {
+          ...snap,
+          plots: deletePlotWorldNote(snap.plots ?? [], workId, str(args, 'note_id') ?? '', now),
+        }
+        message = '世界観設定の枠を削除しました。'
       } else if (name === 'delete_plot_item') {
         const kind = str(args, 'kind') ?? ''
         if (kind !== 'section' && kind !== 'line' && kind !== 'foreshadow' && kind !== 'secret') {
@@ -776,18 +906,35 @@ async function callTool(
     name === 'get_work' ||
     name === 'get_glossary' ||
     name === 'get_structures' ||
-    name === 'get_plot'
+    name === 'get_plot' ||
+    name === 'get_world'
   ) {
     if (!work) return text(`work_id "${workId}" の作品が見つかりません。`, true)
-    if (name === 'get_work') return text(workToPlainText(work))
-    if (name === 'get_glossary') {
-      // 各エントリに entry_id を添える＝ upsert（更新）/ delete の対象を AI が指定できる。
+    // 本文・構造も「書き換える前に決め事を読む」の対象。1 行の導線を先頭に置く
+    // （本体を載せると本文が長いので、取りに行かせる形にする）。
+    const primaryPlot = () =>
+      pickPrimaryPlot((snap?.plots ?? []).filter((p) => p.workId === workId))
+    if (name === 'get_work') {
+      return text(`${worldPointerLine(primaryPlot())}\n\n${workToPlainText(work)}`)
+    }
+    if (name === 'get_world') {
       return text(
-        glossaryToPlainText(work.glossary ?? [], { withIds: true }) || '（この作品の図鑑は空です）',
+        worldToPlainText(primaryPlot()) ||
+          'この作品にはまだ世界観設定がありません。set_world_note で書けます（作者だけの場所で、公開はされません）。',
       )
     }
+    if (name === 'get_glossary') {
+      // 用語集は公開される器。器の住み分けを見失わないよう、世界観設定への導線を先頭に置く。
+      const body =
+        // 各エントリに entry_id を添える＝ upsert（更新）/ delete の対象を AI が指定できる。
+        glossaryToPlainText(work.glossary ?? [], { withIds: true }) ||
+        '（この作品の用語集は空です）'
+      return text(`${worldPointerLine(primaryPlot())}\n\n${body}`)
+    }
     if (name === 'get_plot') return text(plotToPlainText(snap?.plots ?? [], work))
-    return text(structuresToPlainText(snap?.structures ?? [], work))
+    return text(
+      `${worldPointerLine(primaryPlot())}\n\n${structuresToPlainText(snap?.structures ?? [], work)}`,
+    )
   }
   return text(`未知のツール: ${name}`, true)
 }
@@ -806,6 +953,7 @@ export async function handleMcpMessage(msg: JsonRpcMessage, deps: McpDeps): Prom
         protocolVersion: params?.protocolVersion ?? DEFAULT_PROTOCOL_VERSION,
         capabilities: { tools: {} },
         serverInfo: SERVER_INFO,
+        instructions: SERVER_INSTRUCTIONS,
       })
     case 'notifications/initialized':
     case 'notifications/cancelled':

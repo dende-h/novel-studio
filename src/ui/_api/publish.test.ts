@@ -190,6 +190,43 @@ describe('toBundleWork（送信するバンドルの work）', () => {
     expect('platform' in bundle).toBe(false)
   })
 
+  // 用語集そのものは読者へ送る（先方が段階公開する）。その中の作者メモだけは非公開の器なので、
+  // 他の項目を巻き込まずに、ここで確実に落ちることを固定する。
+  it('用語集は送るが、作者メモだけは落とす', async () => {
+    const { toBundleWork } = await loadModule()
+    const bundle = toBundleWork({
+      ...work,
+      glossary: [
+        {
+          id: 'g1',
+          name: 'ミア',
+          aliases: ['少女'],
+          summary: '旅の同行者',
+          body: '本文に出る詳しい説明',
+          authorNote: '正体は管理AI。第六編まで伏せる',
+          createdAt: 1,
+          updatedAt: 2,
+        },
+      ],
+    })
+    const entry = bundle.glossary?.[0]
+    expect(entry).toBeDefined()
+    expect('authorNote' in (entry ?? {})).toBe(false)
+    // 落とすのは作者メモだけ＝読者に見せる項目は欠けない
+    expect(entry).toMatchObject({
+      id: 'g1',
+      name: 'ミア',
+      aliases: ['少女'],
+      summary: '旅の同行者',
+      body: '本文に出る詳しい説明',
+    })
+  })
+
+  it('用語集を持たない作品では glossary キーが生えない', async () => {
+    const { toBundleWork } = await loadModule()
+    expect('glossary' in toBundleWork(work)).toBe(false)
+  })
+
   it('送信本体にもローカル専用キーは載らない', async () => {
     const { publishWorkToPlatform } = await loadModule()
     const fetchMock = vi

@@ -56,13 +56,18 @@ export function GlossaryView({
         {/* ヘッダ */}
         <header className="flex flex-wrap items-end justify-between gap-4">
           <div>
-            <h1 className="font-semibold font-serif text-[26px] text-on-surface">図鑑</h1>
+            <h1 className="font-semibold font-serif text-[26px] text-on-surface">用語集</h1>
             <p className="mt-1 text-[13px] text-on-surface-variant">
               {workTitle
-                ? `「${workTitle}」の人物・場所・用語 ・ ${entries.length}項目`
+                ? `「${workTitle}」の人物・場所・用語・アイテム ・ ${entries.length}項目`
                 : entries.length > 0
                   ? `${entries.length}項目`
                   : '本文に [[名前]] で参照できる項目'}
+            </p>
+            {/* 用語集は公開される器。設定やネタバレの行き先を最初に示して、書き分けで迷わせない。 */}
+            <p className="mt-1 text-[12px] text-on-surface-variant/70 leading-relaxed">
+              本文やプロットから @ で呼び出せる、作品の事典です。投稿すると読者にも見えます
+              （作品の決め事やネタバレは、プロットの「世界観設定」へ）。
             </p>
           </div>
           <Button onClick={() => setCreateOpen(true)} className="gap-2">
@@ -75,7 +80,7 @@ export function GlossaryView({
         <div className="relative">
           <Search className="-translate-y-1/2 absolute top-1/2 left-3 size-4 text-on-surface-variant/60" />
           <Input
-            aria-label="図鑑を検索"
+            aria-label="用語集を検索"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="名前・別名・読みで検索"
@@ -107,7 +112,7 @@ export function GlossaryView({
         {visible.length === 0 ? (
           <p className="py-14 text-center text-[13px] text-on-surface-variant">
             {entries.length === 0
-              ? 'まだ図鑑がありません。「新しく登録」または本文の @ から追加できます。'
+              ? 'まだ用語集がありません。「新しく登録」または本文の @ から追加できます。'
               : '条件に合う項目がありません。'}
           </p>
         ) : (
@@ -174,7 +179,7 @@ export function GlossaryView({
         title="この項目を削除しますか？"
         description={
           deleteTarget
-            ? `「${deleteTarget.name}」を図鑑から削除します。本文中の参照は残り、未解決リンクになります。`
+            ? `「${deleteTarget.name}」を用語集から削除します。本文中の参照は残り、未解決リンクになります。`
             : undefined
         }
         confirmLabel="削除する"
