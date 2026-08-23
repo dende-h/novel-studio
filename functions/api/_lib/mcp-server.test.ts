@@ -548,7 +548,7 @@ describe('世界観設定ツール（get_world / set_world_note / delete_world_n
     expect(get()?.plots?.[0]?.world).toHaveLength(1)
 
     const read = await handleMcpMessage(call('get_world', { work_id: 'w1' }), d)
-    expect(contentText(read)).toContain('世界のルール')
+    expect(contentText(read)).toContain('この作品の約束事')
     expect(contentText(read)).toContain('死者は生き返らない')
     expect(contentText(read)).toContain('公開されません')
   })

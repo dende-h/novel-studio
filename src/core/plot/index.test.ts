@@ -252,8 +252,16 @@ describe('世界観設定（作者専用ノート）', () => {
     let p = emptyPlot('p1', 'w1', 1)
     p = setWorldNote(p, { slot: 'style', body: '一人称' }, 'n1', at)
     p = setWorldNote(p, { slot: 'custom', body: '見出しなし' }, 'c1', at)
-    expect(worldNoteLabel(p.world[0] as never)).toBe('文体と視点')
+    expect(worldNoteLabel(p.world[0] as never)).toBe('語り手と文体')
     expect(worldNoteLabel(p.world[1] as never)).toBe('無題のメモ')
+  })
+
+  it('定義から外れた枠は slot 名を見出しにする（中身を「無題」で見失わせない）', () => {
+    let p = emptyPlot('p1', 'w1', 1)
+    p = setWorldNote(p, { slot: 'legacy-slot', body: '昔の枠に書いたもの' }, 'n1', at)
+    expect(worldNoteLabel(p.world[0] as never)).toBe('legacy-slot')
+    // 定型枠ではないので、並びは自由枠と同じく後ろへ回る
+    expect(worldNotesInOrder(p).map((n) => n.slot)).toEqual(['legacy-slot'])
   })
 
   it('並び順は WORLD_SLOTS の順 → 自由枠の保存順', () => {

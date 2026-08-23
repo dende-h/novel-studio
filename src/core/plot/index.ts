@@ -110,8 +110,11 @@ export const WorldNoteSchema = z.object({
 })
 export type WorldNote = z.infer<typeof WorldNoteSchema>
 
-/** 世界観設定の枠のまとまり。世界そのものの設定と、書くときの決め事を分ける。 */
-export type WorldSlotGroup = 'world' | 'writing'
+/**
+ * 世界観設定の枠のまとまり。アコーディオンの 1 セクションに対応する。
+ * 「世界そのもの」「どう書くか」「読者にどう見せるか」の 3 つ。
+ */
+export type WorldSlotGroup = 'world' | 'writing' | 'reader'
 
 export interface WorldSlotDef {
   key: string
@@ -121,88 +124,108 @@ export interface WorldSlotDef {
   guide: string
   /** 書き出しの取っかかり（textarea の placeholder）。 */
   placeholder: string
+  /** 作品によっては要らない枠（空のままで構わないことを画面で明示する）。 */
+  optional?: boolean
 }
 
 /**
  * 定型枠の定義（表示順）。空でも一覧に出し、案内文をそのまま読ませる＝
  * 「何を書けばいいか分からない」で止まらないための器。増やすときは末尾へ足す
  * （key は保存済みデータの結合キーなので変えない）。
+ *
+ * **ジャンルを選ばない語で書く。**「力の体系」「種族」のような語は異世界物を前提にしてしまい、
+ * 現代物・ミステリ・恋愛・私小説の作者には空欄の押しつけになる。どの作品にもある問い
+ *（いつどこの話か／人は何に縛られているか／何を破らないか）に言い換え、現実に無い仕組みを
+ * 持つ作品だけが使う枠は 1 つに畳んで optional にした。placeholder も現代物と架空世界の
+ * 両方を並べ、「自分の作品には関係ない」と思わせない。
  */
 export const WORLD_SLOTS: WorldSlotDef[] = [
   {
-    key: 'rules',
-    group: 'world',
-    label: '世界のルール',
-    guide:
-      'この作品で絶対に破らない決め事。ここが崩れると話が成立しない、という芯を先に書いておきます。',
-    placeholder: '例：死者は生き返らない／魔法は等価の代償を要る／空を飛べる種族はいない',
-  },
-  {
     key: 'stage',
     group: 'world',
-    label: '時代と舞台',
-    guide: 'いつ・どこの話か。文明の水準、気候や地形、人の暮らしの広がり。',
-    placeholder: '例：産業革命前夜の大陸。冬が長く、街道は雪で三月ふさがる',
+    label: '時代と場所',
+    guide: 'いつ・どこの話か。土地の広がり、季節、街や部屋の空気。',
+    placeholder:
+      '例：現代の地方都市、夏。駅前だけが明るい\n例：氷に閉ざされた大陸。冬が長く、街道は三月ふさがる',
   },
   {
     key: 'society',
     group: 'world',
-    label: '社会と制度',
-    guide: '誰が力を持ち、人はどう暮らすか。身分・お金・仕事・信仰・掟。',
-    placeholder: '例：教団が配給を握る。等級は生まれで決まらないが、事実上は動かない',
-  },
-  {
-    key: 'power',
-    group: 'world',
-    label: '力の体系',
+    label: '人を縛るもの',
     guide:
-      '魔法・技術・異能など「この世界でできること」の仕組みと限界。とくに**できないこと**を決めておくと話が締まります。現代物などで不要なら空のままで大丈夫です。',
-    placeholder: '例：魔法は体系として使えるが、原理は誰にも分かっていない',
+      'その世界で人が従っているもの。立場・お金・仕事・信仰・慣習・空気。誰が力を持っているか。',
+    placeholder:
+      '例：進学校の中の序列。親の期待がいちばん強い\n例：教団が配給を握る。等級は生まれで決まらないが、事実上は動かない',
   },
   {
-    key: 'people',
+    key: 'rules',
     group: 'world',
-    label: '種族と集団',
-    guide: '人間以外がいるか。国・民族・組織のちがいと、その間にある感情。',
-    placeholder: '例：エルフは名前を継ぐ。上がってきた種は魔法が使えない',
+    label: 'この作品の約束事',
+    guide:
+      '破ると話が壊れる芯。「この作品では○○は起こらない」を決めておきます。現実どおりの世界なら、そう書いておくだけで十分です。',
+    placeholder:
+      '例：現実どおり。偶然や超常で問題は解決しない\n例：死者は生き返らない。力には必ず代償が要る',
   },
   {
     key: 'history',
     group: 'world',
-    label: '歴史と年表',
+    label: 'ここまでの経緯',
     guide: '物語が始まる前に何があったか。いま起きていることの前提になる出来事。',
-    placeholder: '例：数万年前に厄災。以後、外殻の内側だけで暮らしている',
+    placeholder:
+      '例：三年前の事故から、家族は口をきいていない\n例：数万年前の厄災。以後、人は外殻の内側だけで暮らす',
   },
   {
-    key: 'words',
-    group: 'writing',
-    label: '言葉の決め事',
+    key: 'special',
+    group: 'world',
+    label: '固有の仕組み',
+    optional: true,
     guide:
-      'この世界に**ある言葉**と**ない言葉**。地の文と会話で使い分ける語、呼び名の原則。ここが揃うと文章の世界がぶれません。',
-    placeholder: '例：「星」という語がない／地の文は主人公の語彙、セリフは世界の語彙',
-  },
-  {
-    key: 'reveal',
-    group: 'writing',
-    label: '読者への開示方針',
-    guide:
-      '何を、いつまで伏せるか。手がかりの出し方の方針を書きます。個々の秘密そのものは「伏線・秘密」タブで管理します。',
-    placeholder: '例：手がかりは与える、答えは与えない。読者は主人公が知る以上を知らない',
+      '現実には無い仕組みがある作品だけの枠。魔法・異能・未来技術・特殊なルールなど、その理屈と限界。とくに「できないこと」を決めると話が締まります。無ければ空のままで大丈夫です。',
+    placeholder: '例：体系として使えるが、原理は誰にも分かっていない',
   },
   {
     key: 'style',
     group: 'writing',
-    label: '文体と視点',
-    guide: '人称・視点・時制。地の文の温度、1 話の長さ、章の切り方。',
-    placeholder: '例：一人称・現在の主人公視点。神視点の地の文は書かない。1 話 3000 字前後',
+    label: '語り手と文体',
+    guide: '誰の目で語るか。人称・視点・時制、地の文の温度。',
+    placeholder: '例：一人称・現在形。主人公が知らないことは地の文に出さない',
+  },
+  {
+    key: 'words',
+    group: 'writing',
+    label: '言葉づかい',
+    guide: '誰がどう話すか。使う言葉と使わない言葉、呼び名の原則。ここが揃うと文章がぶれません。',
+    placeholder: '例：主人公は誰にでも敬語。心の中だけ崩れる\n例：この世界に「星」という語がない',
+  },
+  {
+    key: 'characters',
+    group: 'writing',
+    label: '人物の描き方',
+    guide:
+      '人物を立てるときの自分ルール。何で見せ、何を説明しないか。個々の人物の設定そのものは用語集へ。',
+    placeholder: '例：内面を説明せず、動作で見せる。主人公を万能にしない',
+  },
+  {
+    key: 'structure',
+    group: 'writing',
+    label: '話の組み立て',
+    guide: '1 話の長さ、章の切り方、引きの作り方、連載のリズム。',
+    placeholder: '例：1 話 3000 字前後。章の終わりは必ず引きで閉じる',
+  },
+  {
+    key: 'reveal',
+    group: 'reader',
+    label: '何を、いつ明かすか',
+    guide:
+      '伏せることと、出す順番の方針。個々の秘密がどこで明かされるかは「伏線・秘密」タブが管理します。',
+    placeholder: '例：手がかりは与える、答えは与えない。読者は主人公が知る以上を知らない',
   },
   {
     key: 'forbidden',
-    group: 'writing',
+    group: 'reader',
     label: 'やらないこと',
-    guide:
-      '書かないと決めたもの。うっかり手が滑りやすい逸脱を先に潰しておくと、あとで直す手間が消えます。',
-    placeholder: '例：章間の「管理者ログ」を挟まない／主人公を正義漢にしない',
+    guide: '書かないと決めたもの。手が滑りやすい逸脱を先に潰しておくと、あとで直す手間が消えます。',
+    placeholder: '例：都合のいい偶然で助けない／章間に神視点の解説を挟まない',
   },
 ]
 
@@ -217,7 +240,10 @@ export function worldNoteLabel(note: WorldNote): string {
   const slot = WORLD_SLOTS.find((s) => s.key === note.slot)
   if (slot) return slot.label
   const title = note.title?.trim()
-  return title && title.length > 0 ? title : '無題のメモ'
+  if (title && title.length > 0) return title
+  // 見出しの無い自由枠は既定文言。定義から外れた枠（過去の定型枠など）は slot 名をそのまま出す
+  // ＝中身のあるノートが「無題」に見えて見失われることがない。
+  return note.slot === WORLD_CUSTOM_SLOT ? '無題のメモ' : note.slot
 }
 
 /**
