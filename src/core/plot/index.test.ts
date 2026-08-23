@@ -12,8 +12,11 @@ import {
   isTrivialPlot,
   moveBeat,
   nextBeatStatus,
+  normalizePlot,
+  type Plot,
   type PlotBeat,
   PlotSchema,
+  pickPrimaryPlot,
   removeBeat,
   removeLine,
   removeSecret,
@@ -308,5 +311,51 @@ describe('世界観設定（作者専用ノート）', () => {
     expect(new Set(keys).size).toBe(keys.length)
     expect(keys).not.toContain('custom') // 自由枠の予約語と衝突しない
     for (const s of WORLD_SLOTS) expect(s.guide.length).toBeGreaterThan(0)
+  })
+})
+
+describe('normalizePlot（保存済みレコードの穴埋め）', () => {
+  // 永続化層は zod を通さないので、項目を後から足すと「型は必須・実体は undefined」が出る。
+  // 実際、world を足した直後にこれで画面が落ちた（プロットを開いてタブを押すと
+  // plot.world.filter が TypeError になり、アプリのツリーごと消えた）。
+  const legacy = {
+    id: 'p1',
+    workId: 'w1',
+    title: '本編プロット',
+    sections: [],
+    beats: [],
+    lines: [],
+    foreshadows: [],
+    updatedAt: 1,
+  } as unknown as Plot
+
+  it('後から足した配列（secrets・world）を空配列で埋める', () => {
+    const p = normalizePlot(legacy)
+    expect(p.world).toEqual([])
+    expect(p.secrets).toEqual([])
+  })
+
+  it('既にある値は触らない', () => {
+    const filled = {
+      ...legacy,
+      secrets: [{ id: 's1', title: '秘密' }],
+      world: [{ id: 'n1', slot: 'rules', body: 'ルール', updatedAt: 2 }],
+    } as unknown as Plot
+    const p = normalizePlot(filled)
+    expect(p.secrets).toHaveLength(1)
+    expect(p.world).toHaveLength(1)
+  })
+
+  it('穴埋めした後は世界観設定の読み書きがそのまま通る', () => {
+    const p = setWorldNote(normalizePlot(legacy), { slot: 'rules', body: 'ルール' }, 'n1', 5)
+    expect(worldNotesInOrder(p)).toHaveLength(1)
+  })
+
+  it('欠落したままでも導出関数は落ちない（Repository を通らない経路の保険）', () => {
+    expect(isTrivialPlot(legacy)).toBe(true)
+    expect(countWorldNotes(legacy)).toBe(0)
+    // 複数プロットの選別は比較関数が secrets/world を読む＝ここが最初に踏まれる
+    const other = { ...legacy, id: 'p2', updatedAt: 2 } as unknown as Plot
+    expect(pickPrimaryPlot([legacy, other])?.id).toBeDefined()
   })
 })

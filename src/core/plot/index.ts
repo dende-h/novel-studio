@@ -344,6 +344,21 @@ export const PlotSchema = z.object({
 export type Plot = z.infer<typeof PlotSchema>
 
 /**
+ * 保存済みレコードを現行スキーマの形へ揃える（後から足した配列を埋める）。
+ *
+ * 永続化層は `store.get<Plot>()` の**キャストで読み出しており zod を通さない**ため、
+ * 項目を後から足すと「型は必須なのに実体は undefined」という値が普通に出てくる
+ * （`secrets` は 2026-08、`world` は 2026-08 に追加）。読み手ごとに `?? []` を書くと
+ * 書き漏らした一箇所で画面が落ちるので、**入り口で一度だけ**揃える。
+ *
+ * 検証（parse）ではなく穴埋めなのは、少し形の崩れたレコードを弾いて
+ * プロットごと読めなくするより、読める範囲で開くほうが被害が小さいため。
+ */
+export function normalizePlot(raw: Plot): Plot {
+  return { ...raw, secrets: raw.secrets ?? [], world: raw.world ?? [] }
+}
+
+/**
  * 作品既定プロットの決定的 id。複数端末が同時に自動作成しても同じレコードへ収束し、
  * 同期レースで空プロットが増殖しない（構造レイヤーの singletonStructureId と同じ流儀）。
  */
@@ -357,8 +372,8 @@ export function isTrivialPlot(p: Plot): boolean {
     p.beats.length === 0 &&
     p.lines.length === 0 &&
     p.foreshadows.length === 0 &&
-    p.secrets.length === 0 &&
-    p.world.length === 0 &&
+    (p.secrets?.length ?? 0) === 0 &&
+    (p.world?.length ?? 0) === 0 &&
     !p.premise &&
     !p.theme
   )
@@ -377,8 +392,8 @@ export function pickPrimaryPlot(list: Plot[]): Plot | undefined {
     p.sections.length +
     p.lines.length +
     p.foreshadows.length +
-    p.secrets.length +
-    p.world.length
+    (p.secrets?.length ?? 0) +
+    (p.world?.length ?? 0)
   return [...list].sort((a, b) => {
     const aTrivial = isTrivialPlot(a) ? 1 : 0
     const bTrivial = isTrivialPlot(b) ? 1 : 0
