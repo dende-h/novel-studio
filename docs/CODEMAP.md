@@ -60,7 +60,7 @@ Cloudflare Pages Functions
 | モジュール | 責務 | 主な export |
 |---|---|---|
 | `schema/` | **正本 block スキーマ（Zod）**。全データの型の源 | `Block` `Inline` `Episode` `Work` `GlossaryEntry`（`authorNote` は公開時に落とす） `WorkPlatform` `PLATFORM_GENRES` |
-| `plot/` | プロット（幕/ライン/ビート/伏線/秘密）＋**世界観設定**（`Plot.world`・作者専用） | `PlotSection` `PlotLine` `PlotBeat` `Foreshadow` `Secret` / `WorldNote` `WORLD_SLOTS` `WORLD_CUSTOM_SLOT` `worldNoteLabel` `worldNotesInOrder` `countWorldNotes` `setWorldNote` `removeWorldNote` |
+| `plot/` | プロット（幕/ライン/ビート/伏線/秘密）＋**世界観設定**（`Plot.world`・作者専用） | `PlotSection` `PlotLine` `PlotBeat` `Foreshadow` `Secret` / `WorldNote` `WORLD_SLOTS` `WORLD_CUSTOM_SLOT` `worldNoteLabel` `worldNotesInOrder` `setWorldNote` `removeWorldNote` |
 | `structure/` | 構造レイヤー（outline/chart/mindmap）のノード・辺 | `StructureNode` `StructureEdge` `StructureKind` `emptyStructure` `addNode` `pickPrimaryStructure` |
 | `idea/` | ネタ帳のメモ | `IdeaNote` `normalizeIdeaText` |
 | `profile/` | 作者プロフィール | `Profile` `ProfileRepository` |

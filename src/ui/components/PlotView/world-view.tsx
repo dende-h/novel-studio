@@ -66,11 +66,20 @@ export function WorldView({ plot, onApply, glossary, onCreateGlossaryEntry }: Wo
   const selectedSlot = WORLD_SLOTS.find((s) => s.key === selectedId)
   const selectedCustom = customs.find((n) => n.id === selectedId)
 
+  // 足した直後のメモの id。保存は非同期なので、plot に現れるまでの一瞬は
+  // 「選択中の項目が無い」状態になる。そこで戻してしまうと、足したメモではなく
+  // 先頭の枠が開いてしまうため、この間だけ戻さない。
+  const pendingId = useRef<string | null>(null)
+
   // 選択していた自由枠が消えたら（削除・同期）先頭の枠へ戻す＝右が空白のままにならない。
   useEffect(() => {
-    if (selectedSlot || selectedCustom) return
+    if (selectedSlot || selectedCustom) {
+      pendingId.current = null
+      return
+    }
+    if (pendingId.current === selectedId) return
     setSelectedId(WORLD_SLOTS[0]?.key ?? '')
-  }, [selectedSlot, selectedCustom])
+  }, [selectedSlot, selectedCustom, selectedId])
 
   const commitSlot = (slot: WorldSlotDef, body: string) => {
     onApply((p) => setWorldNote(p, { slot: slot.key, body }, genId(), Date.now()))
@@ -94,6 +103,7 @@ export function WorldView({ plot, onApply, glossary, onCreateGlossaryEntry }: Wo
 
   const addCustom = () => {
     const id = genId()
+    pendingId.current = id
     onApply((p) =>
       setWorldNote(p, { slot: WORLD_CUSTOM_SLOT, title: '新しいメモ', body: '' }, id, Date.now()),
     )
@@ -284,10 +294,7 @@ function NoteEditor({
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             {onRenameLabel ? (
-              <>
-                <LabelInput value={label} onCommit={onRenameLabel} />
-                <Pencil className="size-3.5 shrink-0 text-on-surface-variant/50" aria-hidden />
-              </>
+              <LabelInput value={label} onCommit={onRenameLabel} />
             ) : (
               <label
                 htmlFor={`${uid}-body`}
@@ -343,30 +350,48 @@ function NoteEditor({
 function LabelInput({ value, onCommit }: { value: string; onCommit: (v: string) => void }) {
   const [draft, setDraft] = useState(value)
   const focused = useRef(false)
+  const ref = useRef<HTMLInputElement>(null)
   useEffect(() => {
     if (!focused.current) setDraft(value)
   }, [value])
   return (
-    <input
-      value={draft}
-      onChange={(e) => setDraft(e.target.value)}
-      onFocus={() => {
-        focused.current = true
-      }}
-      onBlur={() => {
-        focused.current = false
-        // 見出しを空にはできない（自由枠は見出しが本体）。空なら元へ戻す。
-        if (draft.trim() === '') setDraft(value)
-        else if (draft !== value) onCommit(draft)
-      }}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter') e.currentTarget.blur()
-        if (e.key === 'Escape') setDraft(value)
-      }}
-      aria-label="メモの見出し"
-      // field-sizing:content で中身ぶんの幅に収める＝すぐ隣に鉛筆の印を置ける
-      //（flex-1 で伸ばすと印が右端まで飛び、見出しが編集できることが伝わらない）。
-      className="min-w-[6rem] max-w-full rounded-md bg-transparent px-1 font-semibold font-serif text-[17px] text-on-surface outline-none transition-colors [field-sizing:content] hover:bg-surface-container-high focus:bg-surface-container-high"
-    />
+    <span className="flex min-w-0 items-center gap-0.5">
+      <input
+        ref={ref}
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onFocus={() => {
+          focused.current = true
+        }}
+        onBlur={() => {
+          focused.current = false
+          // 見出しを空にはできない（自由枠は見出しが本体）。空なら元へ戻す。
+          if (draft.trim() === '') setDraft(value)
+          else if (draft !== value) onCommit(draft)
+        }}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') e.currentTarget.blur()
+          if (e.key === 'Escape') setDraft(value)
+        }}
+        aria-label="メモの見出し"
+        // field-sizing:content で中身ぶんの幅に収める＝すぐ隣に鉛筆のボタンを置ける
+        //（flex-1 で伸ばすとボタンが右端まで飛び、見出しと結びついて見えない）。
+        className="min-w-[6rem] max-w-full rounded-md bg-transparent px-1 font-semibold font-serif text-[17px] text-on-surface outline-none transition-colors [field-sizing:content] hover:bg-surface-container-high focus:bg-surface-container-high"
+      />
+      {/* 押して編集に入れる。飾りの印だと「押しても何も起きない」ので、必ず操作を持たせる。
+          既存の見出しは丸ごと選択しておく＝「新しいメモ」を打ち直すのが 1 手で済む。 */}
+      <button
+        type="button"
+        aria-label="見出しを変える"
+        title="見出しを変える"
+        onClick={() => {
+          ref.current?.focus()
+          ref.current?.select()
+        }}
+        className="shrink-0 rounded-md p-1 text-on-surface-variant/50 transition-colors hover:bg-surface-container-high hover:text-primary"
+      >
+        <Pencil className="size-3.5" aria-hidden />
+      </button>
+    </span>
   )
 }

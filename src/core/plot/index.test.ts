@@ -5,7 +5,6 @@ import {
   beatsOfSection,
   countOpenForeshadows,
   countUnrevealedSecrets,
-  countWorldNotes,
   createPlotFromTemplate,
   emptyPlot,
   foreshadowStatus,
@@ -287,7 +286,7 @@ describe('世界観設定（作者専用ノート）', () => {
     p = setWorldNote(p, { slot: 'forbidden', body: 'y' }, 'n1', at)
     p = setWorldNote(p, { slot: 'rules', body: 'z' }, 'n2', at)
     expect(worldNotesInOrder(p).map((n) => n.slot)).toEqual(['rules', 'forbidden', 'custom'])
-    expect(countWorldNotes(p)).toBe(3)
+    expect(worldNotesInOrder(p)).toHaveLength(3)
   })
 
   it('removeWorldNote で削除でき、無い id は no-op', () => {
@@ -366,7 +365,7 @@ describe('normalizePlot（保存済みレコードの穴埋め）', () => {
 
   it('欠落したままでも導出関数は落ちない（Repository を通らない経路の保険）', () => {
     expect(isTrivialPlot(legacy)).toBe(true)
-    expect(countWorldNotes(legacy)).toBe(0)
+    expect(worldNotesInOrder(legacy)).toEqual([])
     // 複数プロットの選別は比較関数が secrets/world を読む＝ここが最初に踏まれる
     const other = { ...legacy, id: 'p2', updatedAt: 2 } as unknown as Plot
     expect(pickPrimaryPlot([legacy, other])?.id).toBeDefined()

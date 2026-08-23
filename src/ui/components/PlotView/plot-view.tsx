@@ -41,7 +41,6 @@ import {
   beatsOfSection,
   countOpenForeshadows,
   countUnrevealedSecrets,
-  countWorldNotes,
   type Foreshadow,
   type ForeshadowStatus,
   foreshadowStatus,
@@ -308,7 +307,6 @@ export default function PlotView({
   const totalTarget = plot.beats.reduce((sum, b) => sum + (b.targetLength ?? 0), 0)
   // タブのバッジ＝脱稿前に片付けるべき件数（未回収の伏線＋開示未定の秘密）。
   const openItems = countOpenForeshadows(plot) + countUnrevealedSecrets(plot)
-  const worldCount = countWorldNotes(plot)
   const selectedBeat = selectedId ? (plot.beats.find((b) => b.id === selectedId) ?? null) : null
   const templateLabel =
     plot.template === undefined
@@ -358,16 +356,11 @@ export default function PlotView({
           {/* 世界観設定を先頭に置く：決め事を決めてからプロットを組む、という順で読める。
               ただし開いた直後に出すのはビートシートのまま（プロットを触りに来た人の手を止めない）。 */}
           <div className="mt-3 flex items-center gap-1.5">
+            {/* ここにバッジは置かない。伏線・秘密の数字は「片付けるべき件数」だが、
+                世界観設定の記入数は対処が要るものではないうえ、タブを開けば
+                「N / 11 の枠に記入済み」が出るので二重になる。 */}
             <ViewTab active={view === 'world'} onClick={() => setView('world')}>
               世界観設定
-              {worldCount > 0 ? (
-                <span
-                  title="記入済みの枠"
-                  className="ml-1 inline-flex items-center rounded-full bg-secondary-container px-1.5 font-medium text-[10px] text-on-secondary-container tabular-nums"
-                >
-                  {worldCount}
-                </span>
-              ) : null}
             </ViewTab>
             <ViewTab active={view === 'sheet'} onClick={() => setView('sheet')}>
               ビートシート

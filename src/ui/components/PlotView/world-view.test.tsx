@@ -1,4 +1,5 @@
 import { fireEvent, render, screen } from '@testing-library/react'
+import { useState } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 import { emptyPlot, type Plot, setWorldNote, WORLD_SLOTS } from '@/core/plot'
 import type { GlossaryEntry } from '@/core/schema'
@@ -24,17 +25,29 @@ const GLOSSARY: GlossaryEntry[] = [
   { id: 'g1', name: 'ユキ', aliases: [], createdAt: 0, updatedAt: 0 },
 ]
 
+/**
+ * 実際の画面と同じく、onApply の結果が次の描画へ反映される形で組む。
+ * 受け取るだけのモックにすると「保存が返るまでの一瞬」に起きる取りこぼし
+ *（足したメモではなく先頭の枠が開く等）をテストが素通ししてしまう。
+ */
 function setup(plot: Plot = emptyPlot('p1', 'w1', 1), over: { onCreate?: typeof noop } = {}) {
   const onApply = vi.fn()
   const onCreateGlossaryEntry = vi.fn(async (name: string) => name)
-  render(
-    <WorldView
-      plot={plot}
-      onApply={onApply}
-      glossary={GLOSSARY}
-      onCreateGlossaryEntry={over.onCreate ?? onCreateGlossaryEntry}
-    />,
-  )
+  function Harness() {
+    const [current, setCurrent] = useState(plot)
+    return (
+      <WorldView
+        plot={current}
+        onApply={(fn) => {
+          onApply(fn)
+          setCurrent((p) => fn(p))
+        }}
+        glossary={GLOSSARY}
+        onCreateGlossaryEntry={over.onCreate ?? onCreateGlossaryEntry}
+      />
+    )
+  }
+  render(<Harness />)
   // onApply は純関数を受け取る形なので、テストからは「適用後のプロット」を取り出して確かめる。
   const applied = () => {
     const fn = onApply.mock.calls.at(-1)?.[0] as ((p: Plot) => Plot) | undefined
@@ -157,6 +170,27 @@ describe('WorldView（世界観設定）', () => {
     fireEvent.click(screen.getByRole('button', { name: 'メモを足す' }))
     // 見出しだけで本文が空のまま残る＝足した直後に離れても消えない
     expect(applied()?.world[0]).toMatchObject({ slot: 'custom', title: '新しいメモ', body: '' })
+    // 右に開くのは足したメモ（保存が返るまでの一瞬で先頭の枠へ戻らない）
+    expect(screen.getByLabelText('メモの見出し')).toHaveValue('新しいメモ')
+    expect(screen.getByRole('button', { name: '見出しを変える' })).toBeInTheDocument()
+  })
+
+  // 飾りの印だと「押しても何も起きない」ので、鉛筆は必ず編集に入る操作を持つ。
+  it('鉛筆を押すと見出しの入力に入り、既存の見出しが選択される', () => {
+    setup(plotWith({ slot: 'custom', title: '新しいメモ', body: '' }))
+    pick('新しいメモ')
+    const heading = screen.getByLabelText('メモの見出し') as HTMLInputElement
+    expect(heading).not.toBe(document.activeElement)
+    fireEvent.click(screen.getByRole('button', { name: '見出しを変える' }))
+    expect(heading).toBe(document.activeElement)
+    // 丸ごと選択されている＝打ち直しが 1 手で済む
+    expect(heading.selectionStart).toBe(0)
+    expect(heading.selectionEnd).toBe('新しいメモ'.length)
+  })
+
+  it('定型枠には見出しの編集ボタンを出さない', () => {
+    setup(plotWith({ slot: 'stage', body: '夏の街' }))
+    expect(screen.queryByRole('button', { name: '見出しを変える' })).toBeNull()
   })
 
   it('自由枠だけ見出しを編集でき、削除できる', () => {
@@ -168,9 +202,15 @@ describe('WorldView（世界観設定）', () => {
     fireEvent.change(heading, { target: { value: '食べ物と酒' } })
     fireEvent.blur(heading)
     expect(applied()?.world[0]?.title).toBe('食べ物と酒')
+    // 改名は左の一覧にも即座に出る
+    expect(screen.getByRole('navigation', { name: '世界観設定の項目' })).toHaveTextContent(
+      '食べ物と酒',
+    )
 
-    fireEvent.click(screen.getByRole('button', { name: '食べ物を削除' }))
-    expect(applied()?.world).toEqual([])
+    fireEvent.click(screen.getByRole('button', { name: '食べ物と酒を削除' }))
+    // 消えたら右は先頭の枠へ戻る（空白のまま置き去りにしない）
+    expect(screen.getByLabelText(slot('stage').label)).toBe(editor())
+    expect(screen.queryByLabelText('メモの見出し')).toBeNull()
   })
 
   // 本文・プロットと同じ記法をここでも使えるようにした（器が違っても書き方は 1 つ）。

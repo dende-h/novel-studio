@@ -259,11 +259,6 @@ export function worldNotesInOrder(plot: Plot): WorldNote[] {
   return [...fixed, ...custom]
 }
 
-/** 何か書かれている枠の数（タブのバッジ用）。 */
-export function countWorldNotes(plot: Plot): number {
-  return worldNotesInOrder(plot).length
-}
-
 /**
  * 世界観設定のノートを書き込む。
  *
