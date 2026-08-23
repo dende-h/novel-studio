@@ -103,6 +103,21 @@ const NOTATION_BUTTONS: { kind: NotationKind; label: string; title: string }[] =
 const AUTOSAVE_DELAY_MS = 1000
 
 /**
+ * 遅延ロードした画面を待つあいだの表示。
+ *
+ * flex-1 で main の幅いっぱいに広げてから中央へ置く。幅を持たせずに置くと、
+ * flex の子は内容幅（数十 px）まで縮んでサイドバーの縁に貼りつき、
+ * 中央寄せも効かないまま「サイドバーの下に隠れている」ように見える。
+ */
+function ScreenLoading() {
+  return (
+    <div className="flex flex-1 items-center justify-center p-8 text-on-surface-variant text-sm">
+      読み込み中…
+    </div>
+  )
+}
+
+/**
  * 画面の描画が失敗したときに、その画面の場所だけに出す受け皿。
  * 原稿は端末に残っているので、まずそれを伝えてから復帰の手段を出す。
  */
@@ -412,13 +427,7 @@ export function App({
       */}
       <ErrorBoundary key={activeScreen} fallback={(retry) => <ScreenFailure retry={retry} />}>
         {activeScreen === 'plot' && work && plotRepo ? (
-          <Suspense
-            fallback={
-              <div className="grid h-full place-items-center text-on-surface-variant text-sm">
-                読み込み中…
-              </div>
-            }
-          >
+          <Suspense fallback={<ScreenLoading />}>
             <PlotView
               repo={plotRepo}
               workId={work.id}
@@ -463,23 +472,11 @@ export function App({
             />
           </Suspense>
         ) : activeScreen === 'mindmap' && work && structureRepo ? (
-          <Suspense
-            fallback={
-              <div className="grid h-full place-items-center text-on-surface-variant text-sm">
-                読み込み中…
-              </div>
-            }
-          >
+          <Suspense fallback={<ScreenLoading />}>
             <MindmapView repo={structureRepo} workId={work.id} ideaRepo={ideaRepo} />
           </Suspense>
         ) : activeScreen === 'chart' && work && structureRepo ? (
-          <Suspense
-            fallback={
-              <div className="grid h-full place-items-center text-on-surface-variant text-sm">
-                読み込み中…
-              </div>
-            }
-          >
+          <Suspense fallback={<ScreenLoading />}>
             <CorrelationChartView
               repo={structureRepo}
               workId={work.id}
@@ -487,13 +484,7 @@ export function App({
             />
           </Suspense>
         ) : activeScreen === 'outline' && work && structureRepo ? (
-          <Suspense
-            fallback={
-              <div className="grid h-full place-items-center text-on-surface-variant text-sm">
-                読み込み中…
-              </div>
-            }
-          >
+          <Suspense fallback={<ScreenLoading />}>
             <OutlineView
               repo={structureRepo}
               workId={work.id}
