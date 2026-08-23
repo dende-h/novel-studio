@@ -37,7 +37,8 @@ Cloudflare Pages Functions
 | エディタの入力・ショートカット・サジェスト | `src/ui/components/EditorPane/` |
 | 保存・自動保存・undo・開いている作品の状態 | `src/ui/store/editorStore.ts` |
 | データの永続化・スキーマ移行 | `src/core/storage/*Repository.ts` |
-| 図鑑（用語辞書）の挙動 | `src/core/glossary/index.ts` + `src/ui/components/GlossaryView/` |
+| 用語集（`@`参照の解決先・**公開サイトへ送られる**）の挙動 | `src/core/glossary/index.ts` + `src/ui/components/GlossaryView/` |
+| 世界観設定（作者専用・**公開されない**）の挙動 | `src/core/plot/index.ts`（`WORLD_SLOTS` ほか）+ `src/ui/components/PlotView/world-view.tsx` |
 | プロット（幕×ビート・伏線・秘密） | `src/core/plot/index.ts` + `src/ui/components/PlotView/plot-view.tsx` |
 | マインドマップ／相関図／アウトライン | `src/core/structure/` + `src/ui/structure/` + 各 View |
 | クラウド同期の競合・差分ロジック | `src/core/sync/plan.ts`（純ロジック）→ `src/ui/sync/sync-service.ts`（配線） |
@@ -57,8 +58,8 @@ Cloudflare Pages Functions
 ### データ定義
 | モジュール | 責務 | 主な export |
 |---|---|---|
-| `schema/` | **正本 block スキーマ（Zod）**。全データの型の源 | `Block` `Inline` `Episode` `Work` `GlossaryEntry` `WorkPlatform` `PLATFORM_GENRES` |
-| `plot/` | プロット（幕/ライン/ビート/伏線/秘密）のスキーマと操作 | `PlotSection` `PlotLine` `PlotBeat` `Foreshadow` `Secret` |
+| `schema/` | **正本 block スキーマ（Zod）**。全データの型の源 | `Block` `Inline` `Episode` `Work` `GlossaryEntry`（`authorNote` は公開時に落とす） `WorkPlatform` `PLATFORM_GENRES` |
+| `plot/` | プロット（幕/ライン/ビート/伏線/秘密）＋**世界観設定**（`Plot.world`・作者専用） | `PlotSection` `PlotLine` `PlotBeat` `Foreshadow` `Secret` / `WorldNote` `WORLD_SLOTS` `WORLD_CUSTOM_SLOT` `worldNoteLabel` `worldNotesInOrder` `countWorldNotes` `setWorldNote` `removeWorldNote` |
 | `structure/` | 構造レイヤー（outline/chart/mindmap）のノード・辺 | `StructureNode` `StructureEdge` `StructureKind` `emptyStructure` `addNode` `pickPrimaryStructure` |
 | `idea/` | ネタ帳のメモ | `IdeaNote` `normalizeIdeaText` |
 | `profile/` | 作者プロフィール | `Profile` `ProfileRepository` |
@@ -95,7 +96,7 @@ Cloudflare Pages Functions
 | `src/core/nudge/backup-nudge.ts` | バックアップ促しの判定（節目・クールダウン） |
 | `src/core/billing/stripe-event.ts` | Stripe イベント → `StripeAction` 解釈 |
 | `src/core/billing/reap-policy.ts` | 未課金アカウントの回収判定（`shouldReap`） |
-| `src/core/mcp-edit/index.ts` | **MCP 経由の編集操作の純ロジック**（`createWork` `setEpisode` `upsertGlossaryEntry` `setPlotMeta` 等）。サーバの MCP ツールはこれを呼ぶ |
+| `src/core/mcp-edit/index.ts` | **MCP 経由の編集操作の純ロジック**（`createWork` `setEpisode` `upsertGlossaryEntry` `setPlotMeta` `setPlotWorldNote` `deletePlotWorldNote` 等）。サーバの MCP ツールはこれを呼ぶ |
 | `activity/` | 執筆記録（`localDateKey` `currentStreak` `buildHeatmap`） |
 | `stats/` | 文字数カウント |
 | `outline/` | アウトラインのメモ木操作（`indentNote` `moveNote` 等） |
@@ -110,8 +111,8 @@ Cloudflare Pages Functions
 |---|---|
 | `src/ui/main.tsx` | フォント読込・`createRoot`・Provider 積み上げ |
 | `src/ui/Root.tsx` | **ハッシュルーティングの分岐点**（下表）。リポジトリ生成と会員判定の配線 |
-| `src/ui/App.tsx` | 執筆画面本体（`#/write`）。エディタ・プレビュー・図鑑・履歴パネルの統括。**813行 / 最も密度が高い** |
-| `src/ui/store/editorStore.ts` | 自前ストア。`getSnapshot`/`subscribe` + 作品・話・図鑑・ゴミ箱・プロフィールの全操作 |
+| `src/ui/App.tsx` | 執筆画面本体（`#/write`）。エディタ・プレビュー・用語集・履歴パネルの統括。**813行 / 最も密度が高い** |
+| `src/ui/store/editorStore.ts` | 自前ストア。`getSnapshot`/`subscribe` + 作品・話・用語集・ゴミ箱・プロフィールの全操作 |
 | `src/ui/store/createDefaultStore.ts` | 本番のリポジトリ配線 |
 | `src/ui/hooks/use-editor-store.ts` | `useSyncExternalStore` の薄いラッパ |
 
@@ -122,8 +123,8 @@ Cloudflare Pages Functions
 ### 画面（`components/` — PascalCase ディレクトリ + kebab ファイル・1ファイル1コンポーネント）
 - **執筆**: `EditorPane/`（textarea + 記法バー + `@` サジェスト + 置換パネル）, `PreviewPane/`, `HistoryPanel/`
 - **作品管理**: `Library/`（カード/リスト・作品メニュー）, `TrashDialog/`, `WorkMetaDialog/`, `TitlePromptDialog/`
-- **図鑑**: `GlossaryView/`（一覧＋`glossary-detail-dialog.tsx`）, `GlossaryEntryForm/`, `GlossaryPeek/`
-- **構造ツール（有料・遅延ロード）**: `MindmapView/`, `CorrelationChartView/`, `OutlineView/`, `PlotView/`, `PlotPeek/`, `StructureCanvas/`
+- **用語集**: `GlossaryView/`（一覧＋`glossary-detail-dialog.tsx`）, `GlossaryEntryForm/`, `GlossaryPeek/`
+- **構造ツール（有料・遅延ロード）**: `MindmapView/`, `CorrelationChartView/`, `OutlineView/`, `PlotView/`（`plot-view.tsx` ＋ 世界観設定タブ `world-view.tsx`）, `PlotPeek/`, `StructureCanvas/`
 - **入出力**: `ExportDialog/`, `ImportDialog/`, `BackupDialog/`, `CloudBackupDialog/`, `AiPullDialog/`
 - **同期/課金**: `SyncOnboarding/`, `SyncLostDialog/`, `RestoreGrace/`, `McpConnectDialog/`, `SaveStateIndicator/`, `BackupNudgeDialog/`
 - **その他**: `ActivityPage/`, `IdeaboxPage/`, `PublishPage/`, `SettingsPage/`, `HelpPage/`, `ProfileDialog/`, `FirstRunDialog/`
@@ -145,6 +146,7 @@ Cloudflare Pages Functions
 | `dropdown-menu.tsx` | `DropdownMenu` `DropdownMenuTrigger` `DropdownMenuContent` `DropdownMenuItem` `DropdownMenuCheckboxItem` `DropdownMenuRadioGroup` `DropdownMenuRadioItem` `DropdownMenuLabel` `DropdownMenuSeparator` `DropdownMenuShortcut` `DropdownMenuSub` ほか |
 | `card.tsx` | `Card` `CardHeader` `CardTitle` `CardDescription` `CardAction` `CardContent` `CardFooter` |
 | `badge.tsx` | `Badge` `badgeVariants` |
+| `accordion.tsx` | `Accordion` `AccordionItem` `AccordionTrigger` `AccordionContent` |
 | `switch.tsx` / `progress.tsx` / `separator.tsx` | `Switch` / `Progress` / `Separator` |
 | `scroll-area.tsx` | `ScrollArea` `ScrollBar` |
 | `tooltip.tsx` | `Tooltip` `TooltipProvider` `TooltipTrigger` `TooltipContent` |
@@ -256,7 +258,8 @@ pnpm d1:migrate:local / :remote
 | `docs/requirement/01-mvp-scope.md` | MVP の含む/含まない |
 | `docs/requirement/02-notation-and-format.md` | **記法仕様と正本 block スキーマ**（parser/exporter を触るなら必読） |
 | `docs/requirement/03-architecture.md` | **core/ui 境界・依存ポリシー・component 規約** |
-| `docs/requirement/04-glossary.md` | 図鑑・`@` 参照の仕様 |
+| `docs/requirement/04-glossary.md` | 用語集・`@` 参照の仕様 |
+| `docs/requirement/08-worldbuilding.md` | 世界観設定（作者専用スロット）の仕様 |
 | `docs/requirement/05-sync.md` / `docs/requirement/05-sync-setup.md` | 同期の設計と構築手順 |
 | `docs/requirement/06-release-prep.md` | リリース準備 |
 | `docs/requirement/07-analytics.md` | アクセス解析 |
