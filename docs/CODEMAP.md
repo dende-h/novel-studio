@@ -47,6 +47,7 @@ Cloudflare Pages Functions
 | 課金・会員判定 | `src/core/billing/` + `functions/api/billing/` + `functions/api/_lib/membership.ts` |
 | 無料／有料の線（どの機能をどの状態で出すか） | `src/ui/Root.tsx`（`canUseCreativeTools` ほか）+ `src/ui/auth/derive-status.ts` |
 | AI/MCP 連携（外部から原稿を編集） | `src/core/mcp-edit/index.ts` + `functions/api/_lib/mcp-server.ts` |
+| MCP コネクタの接続（OAuth ディスカバリ・認可の窓口） | `functions/_middleware.ts` + `functions/api/oauth/[[path]].ts` |
 | **UI 部品・ヘルパを新規に作りたい** | まず §3「共通部品カタログ」で在庫を確認する（重複作成の防止） |
 | 画面遷移・ルート追加 | `src/ui/Root.tsx` + `src/ui/hooks/use-hash-route.ts` |
 | DB スキーマ | `migrations/*.sql` + `wrangler.toml` |
@@ -210,7 +211,11 @@ Cloudflare Pages Functions
 
 ## 4. `functions/` — Cloudflare Pages Functions
 
-`functions/_middleware.ts` が `/.well-known/*`（OAuth メタデータ）を Clerk へプロキシ。
+`functions/_middleware.ts` が `/.well-known/*`（OAuth ディスカバリ）を、**自オリジンを名乗る形へ
+書き換えて**配る（ChatGPT は MCP ホストの well-known を直接読み、issuer がそのホストと一致することを
+求めるため）。実体の窓口は `/api/oauth/*` が Clerk へ中継する。
+窓口が `/oauth/*` でなく **`/api/oauth/*`** なのは、Service Worker のナビゲーションフォールバックが
+`/api/` だけを除外しているから（`vite.config.ts`）。移すと認可画面がアプリの画面に差し替わる。
 
 | エンドポイント | 責務 |
 |---|---|
@@ -225,10 +230,11 @@ Cloudflare Pages Functions
 | `/api/mcp` | リモート MCP（Streamable HTTP・JSON-RPC 2.0） |
 | `/api/mcp/token` | MCP アクセストークン発行（会員のみ） |
 | `/api/mcp/oauth-protected-resource` | RFC 9728 メタデータ |
+| `/api/oauth/*` | 認可サーバー窓口。`authorize` は Clerk へ 302、`token`/`register` ほかはサーバー側中継 |
 
 `api/_lib/`: `auth`（Clerk 検証・`verifyMember`）, `membership`（**会員判定の単一の真実 = D1 `subscriptions`**）,
 `crypto`（at-rest 暗号化）, `mcp-server`（MCP プロトコル核・約960行）, `mcp-auth`, `mcp-token`,
-`oauth-metadata`, `stripe`, `rate-limit`, `purge`, `visitor`。
+`oauth-metadata`, `oauth-upstream`（中継先 Clerk の取得）, `stripe`, `rate-limit`, `purge`, `visitor`。
 
 **バインディング**（`wrangler.toml`）: `DB` = D1 `novel-studio`、`MEDIA` = R2 `novel-studio-media`
 （preview 環境は `-stg` サフィックス）。
