@@ -44,6 +44,7 @@ Cloudflare Pages Functions
 | 同期 API の挙動 | `functions/api/sync/` |
 | 課金・会員判定 | `src/core/billing/` + `functions/api/billing/` + `functions/api/_lib/membership.ts` |
 | AI/MCP 連携（外部から原稿を編集） | `src/core/mcp-edit/index.ts` + `functions/api/_lib/mcp-server.ts` |
+| **UI 部品・ヘルパを新規に作りたい** | まず §3「共通部品カタログ」で在庫を確認する（重複作成の防止） |
 | 画面遷移・ルート追加 | `src/ui/Root.tsx` + `src/ui/hooks/use-hash-route.ts` |
 | DB スキーマ | `migrations/*.sql` + `wrangler.toml` |
 
@@ -121,13 +122,68 @@ Cloudflare Pages Functions
 ### 画面（`components/` — PascalCase ディレクトリ + kebab ファイル・1ファイル1コンポーネント）
 - **執筆**: `EditorPane/`（textarea + 記法バー + `@` サジェスト + 置換パネル）, `PreviewPane/`, `HistoryPanel/`
 - **作品管理**: `Library/`（カード/リスト・作品メニュー）, `TrashDialog/`, `WorkMetaDialog/`, `TitlePromptDialog/`
-- **図鑑**: `GlossaryView/`, `GlossaryEntryForm/`, `GlossaryPeek/`, `GlossaryEntryForm`
+- **図鑑**: `GlossaryView/`（一覧＋`glossary-detail-dialog.tsx`）, `GlossaryEntryForm/`, `GlossaryPeek/`
 - **構造ツール（有料・遅延ロード）**: `MindmapView/`, `CorrelationChartView/`, `OutlineView/`, `PlotView/`, `PlotPeek/`, `StructureCanvas/`
 - **入出力**: `ExportDialog/`, `ImportDialog/`, `BackupDialog/`, `CloudBackupDialog/`, `AiPullDialog/`
 - **同期/課金**: `SyncOnboarding/`, `SyncLostDialog/`, `RestoreGrace/`, `McpConnectDialog/`, `SaveStateIndicator/`, `BackupNudgeDialog/`
 - **その他**: `ActivityPage/`, `IdeaboxPage/`, `PublishPage/`, `SettingsPage/`, `HelpPage/`, `ProfileDialog/`, `FirstRunDialog/`
 - **共通**: `AppShell/`, `PageLayout/`, `SideNav/`, `TopAppBar/`, `Toast/`, `ConfirmDialog/`, `ErrorBoundary/`
-- `components/ui/` = shadcn/ui コピー品（**biome の lint 対象外**。手を入れない方針）
+- `components/ui/` = shadcn/ui コピー品（**biome の lint 対象外**・手を入れない）→ 中身は次節のカタログ参照
+
+### 共通部品カタログ — **新しく作る前に必ずここを見る**
+
+同じものを二度作らないための在庫表。ここに載っているものは import して使う。
+足りない場合も、まず既存を拡張できないか検討してから新規作成する。
+
+**プリミティブ `src/ui/components/ui/`**（shadcn/ui コピー品・biome 対象外・手を入れない）
+
+| ファイル | export |
+|---|---|
+| `button.tsx` | `Button` `buttonVariants` |
+| `input.tsx` / `textarea.tsx` / `label.tsx` | `Input` / `Textarea` / `Label` |
+| `dialog.tsx` | `Dialog` `DialogTrigger` `DialogContent` `DialogHeader` `DialogTitle` `DialogDescription` `DialogBody` `DialogFooter` `DialogClose` `DialogOverlay` `DialogPortal` |
+| `dropdown-menu.tsx` | `DropdownMenu` `DropdownMenuTrigger` `DropdownMenuContent` `DropdownMenuItem` `DropdownMenuCheckboxItem` `DropdownMenuRadioGroup` `DropdownMenuRadioItem` `DropdownMenuLabel` `DropdownMenuSeparator` `DropdownMenuShortcut` `DropdownMenuSub` ほか |
+| `card.tsx` | `Card` `CardHeader` `CardTitle` `CardDescription` `CardAction` `CardContent` `CardFooter` |
+| `badge.tsx` | `Badge` `badgeVariants` |
+| `switch.tsx` / `progress.tsx` / `separator.tsx` | `Switch` / `Progress` / `Separator` |
+| `scroll-area.tsx` | `ScrollArea` `ScrollBar` |
+| `tooltip.tsx` | `Tooltip` `TooltipProvider` `TooltipTrigger` `TooltipContent` |
+| `zoomable-image.tsx` | `ZoomableImage`（自前・shadcn 由来ではない） |
+
+**アプリ共通コンポーネント** — ブラウザ標準 API の代わりにこちらを使う
+
+| 用途 | 使うもの | 素で書かない |
+|---|---|---|
+| 画面の骨格（トップバー＋サイドバー＋本文） | `AppShell`（`src/ui/components/AppShell/app-shell.tsx`） | — |
+| 設定・ヘルプ等の一枚ものページ | `PageLayout`（`src/ui/components/PageLayout/page-layout.tsx`） | — |
+| 一時通知 | `useToast()`（`src/ui/components/Toast/toast.tsx`） | `alert()` |
+| 破壊操作の確認 | `ConfirmDialog`（`src/ui/components/ConfirmDialog/confirm-dialog.tsx`） | `window.confirm()` |
+| 文字列の入力を求める | `TitlePromptDialog`（`src/ui/components/TitlePromptDialog/title-prompt-dialog.tsx`） | `window.prompt()` |
+| 描画例外の受け止め | `ErrorBoundary`（`src/ui/components/ErrorBoundary/error-boundary.tsx`） | — |
+| 作品/話のナビゲーション | `SideNav` / `TopAppBar` | — |
+| 軽量なケバブメニュー（Radix 不使用の作例） | `ProjectMenu`（`src/ui/components/Library/project-menu.tsx`） | — |
+
+**フック `src/ui/hooks/`**（React ライフサイクル依存のものだけを置く）
+
+`useEditorStore` / `useAutosave` / `useAutoSync` / `useAutoBackup` / `useLiveSnapshot` / `useSyncStatus`
+/ `useHashRoute` / `useIsNarrow`（+ `NARROW_MAX_PX` `NARROW_QUERY`） / `useKeyboardInset`
+/ `useLocalFlag`（localStorage 永続の真偽フラグ） / `usePreferences`（+ `setTheme` `setReadingSize`）
+/ `useBackupMarks`（+ `markLocalBackup` `markCloudBackup` `readBackupMarks`） / `readNudgeAck` `acknowledgeNudge`
+
+**純関数 `src/ui/_utils/`**（React 非依存のヘルパ。ここに無いものだけ新規作成する）
+
+| ファイル | export |
+|---|---|
+| `format.ts` | `formatRelative`（相対時刻） `formatCount` |
+| `download.ts` | `triggerDownload` `readFileText` |
+| `clipboard.ts` | `copyText` |
+| `exporters.ts` | `episodeNarouExport` `episodeKakuyomuExport` `workEpubExport` `workFolderZipExport` `workAiTextExport` `worksBundleExport`（`ExportFile` を返す・core/exporter への配線） |
+| `imageResizer.ts` | `coverToDataUrl` `thumbnailToDataUrl` |
+| `caretCoordinates.ts` | `getCaretCoordinates`（textarea のキャレット座標） |
+| `cover-tone.ts` | `coverTone` `COVER_TONES` |
+
+**クラス名の結合**: `cn()`（`src/lib/utils.ts` = clsx + tailwind-merge）。自前で文字列連結しない。
+
 
 ### 補助
 | ディレクトリ | 責務 |

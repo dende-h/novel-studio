@@ -36,6 +36,7 @@ git diff --stat main...HEAD   # ブランチ全体（main が基点でない場�
 | 新機能・新しい関心事 | §1「◯◯を変えたい」の表に1行足す（**ここが一番使われる。優先度最高**） |
 | `src/core/` のモジュール増減・export 変更 | §2 の該当表 |
 | 画面・ルート・hooks・store の変更 | §3（ルート一覧・components の分類・補助ディレクトリ） |
+| **共通部品の追加・削除・改名**（`components/ui/` の export、共通コンポーネント、`hooks/`、`_utils/`、`cn()`） | §3「共通部品カタログ」。**ここが古いと重複コンポーネントが生まれるので優先度が高い** |
 | API・`functions/`・マイグレーション・バインディング | §4 |
 | scripts・CI・lint・ツールのバージョン | §5 |
 | `docs/` 配下の増減 | §6 |
@@ -65,6 +66,18 @@ grep -oE '`[A-Za-z0-9_./@-]+`' docs/CODEMAP.md | tr -d '`' \
 `MISSING:` が出たら直す。リポジトリのルート直下ディレクトリで始まらない表記
 （`plotToPlainText.ts` のような同ディレクトリ内の列挙、`#/write` のようなルート名）は
 意図的に対象外にしてあるので、そこは目視で確認する。
+
+共通部品カタログに載せた export 名が実在するかも確かめる:
+
+```bash
+sed -n '/^### 共通部品カタログ/,/^### 補助/p' docs/CODEMAP.md \
+  | grep -oE '`[A-Za-z][A-Za-z0-9_]+`' | tr -d '`' \
+  | grep -vE '\.(ts|tsx)$|^(Radix|React|localStorage|clsx|import|export)$' | sort -u \
+  | while read -r sym; do
+      grep -rqE "export (async )?(function|const|class|interface|type) $sym\b|export \{[^}]*\b$sym\b|^  $sym,?$" \
+        src/ --include=*.ts --include=*.tsx || echo "NOT FOUND: $sym"
+    done
+```
 
 ### 5. 報告する
 
