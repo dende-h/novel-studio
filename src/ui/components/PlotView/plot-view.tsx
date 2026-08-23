@@ -355,7 +355,20 @@ export default function PlotView({
               この作品の決め事を置く、作者だけの場所です。用語集と違って公開されません。
             </p>
           ) : null}
+          {/* 世界観設定を先頭に置く：決め事を決めてからプロットを組む、という順で読める。
+              ただし開いた直後に出すのはビートシートのまま（プロットを触りに来た人の手を止めない）。 */}
           <div className="mt-3 flex items-center gap-1.5">
+            <ViewTab active={view === 'world'} onClick={() => setView('world')}>
+              世界観設定
+              {worldCount > 0 ? (
+                <span
+                  title="記入済みの枠"
+                  className="ml-1 inline-flex items-center rounded-full bg-secondary-container px-1.5 font-medium text-[10px] text-on-secondary-container tabular-nums"
+                >
+                  {worldCount}
+                </span>
+              ) : null}
+            </ViewTab>
             <ViewTab active={view === 'sheet'} onClick={() => setView('sheet')}>
               ビートシート
             </ViewTab>
@@ -370,17 +383,6 @@ export default function PlotView({
                   className="ml-1 inline-flex items-center rounded-full bg-secondary-container px-1.5 font-medium text-[10px] text-on-secondary-container tabular-nums"
                 >
                   {openItems}
-                </span>
-              ) : null}
-            </ViewTab>
-            <ViewTab active={view === 'world'} onClick={() => setView('world')}>
-              世界観設定
-              {worldCount > 0 ? (
-                <span
-                  title="記入済みの枠"
-                  className="ml-1 inline-flex items-center rounded-full bg-secondary-container px-1.5 font-medium text-[10px] text-on-secondary-container tabular-nums"
-                >
-                  {worldCount}
                 </span>
               ) : null}
             </ViewTab>

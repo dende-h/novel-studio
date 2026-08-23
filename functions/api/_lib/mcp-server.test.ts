@@ -622,6 +622,29 @@ describe('世界観設定ツール（get_world / set_world_note / delete_world_n
     )
   })
 
+  // 「作品を触る前に決め事を読む」は本文・構造にも要る。読み取りの先頭に導線を置いてある。
+  it('本文・構造の読み取りにも世界観設定への導線が出る', async () => {
+    const { deps: d } = makeDeps(snapshot([work()]))
+    await handleMcpMessage(
+      call('set_world_note', { work_id: 'w1', slot: 'style', body: '一人称・現在形' }),
+      d,
+    )
+    for (const tool of ['get_work', 'get_structures']) {
+      const out = contentText(await handleMcpMessage(call(tool, { work_id: 'w1' }), d))
+      expect(out).toContain('get_world')
+      // 本体（本文・構造）はそのまま続く＝導線を足しただけで中身は削らない
+      expect(out.length).toBeGreaterThan('get_world'.length)
+    }
+  })
+
+  it('本文の書き込みツールの説明が get_world を指す', () => {
+    const byName = (n: string) => MCP_TOOLS.find((t) => t.name === n)?.description ?? ''
+    expect(byName('set_episode')).toContain('get_world')
+    expect(byName('add_episode')).toContain('get_world')
+    expect(byName('get_work')).toContain('get_world')
+    expect(byName('get_structures')).toContain('get_world')
+  })
+
   it('世界観設定があれば get_plot の先頭に丸ごと載る（読み落とさせない）', async () => {
     const { deps: d } = makeDeps(snapshot([work()]))
     await handleMcpMessage(

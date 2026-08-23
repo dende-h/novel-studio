@@ -21,7 +21,7 @@ const state: BackupState = {
       lines: [],
       foreshadows: [],
       secrets: [],
-      world: [],
+      world: [{ id: 'n1', slot: 'rules', body: '死者は生き返らない', updatedAt: 25 }],
       updatedAt: 30,
     },
   ],
@@ -89,5 +89,16 @@ describe('serializeBackup / deserializeBackup（全体バックアップの直�
     const back = deserializeBackup(json)
     expect(back.works).toEqual([])
     expect(back.trash).toEqual([])
+  })
+})
+
+describe('世界観設定の保全', () => {
+  // world は Plot の一部なので、バックアップ・復元・クラウド同期の器へ自動的に相乗りする。
+  // ただし「相乗りしているつもり」で落ちるのが一番怖いので、往復で残ることを明示的に固定する。
+  it('書き出し → 読み込みの往復で世界観設定が残る', () => {
+    const round = deserializeBackup(serializeBackup(state, 0))
+    expect(round.plots[0]?.world).toEqual([
+      { id: 'n1', slot: 'rules', body: '死者は生き返らない', updatedAt: 25 },
+    ])
   })
 })

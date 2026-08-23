@@ -99,7 +99,8 @@ export const MCP_TOOLS = [
   },
   {
     name: 'get_work',
-    description: '1 作品の本文全体をプレーンテキスト（タイトル・各話見出し付き）で返す。',
+    description:
+      '1 作品の本文全体をプレーンテキスト（タイトル・各話見出し付き）で返す。書き換える前に get_world でこの作品の決め事（語り手・言葉づかい・やらないこと等）を確認すること。',
     inputSchema: {
       type: 'object',
       properties: workIdProp,
@@ -121,7 +122,7 @@ export const MCP_TOOLS = [
   {
     name: 'get_structures',
     description:
-      '1 作品の構造データ（アウトライン・相関図・マインドマップ）をプレーンテキストで返す。',
+      '1 作品の構造データ（アウトライン・相関図・マインドマップ）をプレーンテキストで返す。書き換える前に get_world で作品の決め事を確認すること。',
     inputSchema: {
       type: 'object',
       properties: workIdProp,
@@ -148,7 +149,7 @@ export const MCP_TOOLS = [
   {
     name: 'set_episode',
     description:
-      '既存の話のタイトル・本文を更新する。body はプレーンテキスト（改行で段落・行頭「＊」でシーン区切り・｜漢字《かんじ》でルビ）。渡した項目だけ書き換える。',
+      '既存の話のタイトル・本文を更新する。body はプレーンテキスト（改行で段落・行頭「＊」でシーン区切り・｜漢字《かんじ》でルビ）。渡した項目だけ書き換える。**書く前に get_world で作品の決め事（語り手と文体・言葉づかい・開示方針・やらないこと）を読み、それに従うこと。**',
     inputSchema: {
       type: 'object',
       properties: {
@@ -163,7 +164,8 @@ export const MCP_TOOLS = [
   },
   {
     name: 'add_episode',
-    description: '作品に新しい話を末尾に追加する。作成した episode_id を返す。',
+    description:
+      '作品に新しい話を末尾に追加する。作成した episode_id を返す。**書く前に get_world で作品の決め事を読み、それに従うこと。**',
     inputSchema: {
       type: 'object',
       properties: {
@@ -908,25 +910,31 @@ async function callTool(
     name === 'get_world'
   ) {
     if (!work) return text(`work_id "${workId}" の作品が見つかりません。`, true)
-    if (name === 'get_work') return text(workToPlainText(work))
+    // 本文・構造も「書き換える前に決め事を読む」の対象。1 行の導線を先頭に置く
+    // （本体を載せると本文が長いので、取りに行かせる形にする）。
+    const primaryPlot = () =>
+      pickPrimaryPlot((snap?.plots ?? []).filter((p) => p.workId === workId))
+    if (name === 'get_work') {
+      return text(`${worldPointerLine(primaryPlot())}\n\n${workToPlainText(work)}`)
+    }
     if (name === 'get_world') {
-      const plot = pickPrimaryPlot((snap?.plots ?? []).filter((p) => p.workId === workId))
       return text(
-        worldToPlainText(plot) ||
+        worldToPlainText(primaryPlot()) ||
           'この作品にはまだ世界観設定がありません。set_world_note で書けます（作者だけの場所で、公開はされません）。',
       )
     }
     if (name === 'get_glossary') {
       // 用語集は公開される器。器の住み分けを見失わないよう、世界観設定への導線を先頭に置く。
-      const plot = pickPrimaryPlot((snap?.plots ?? []).filter((p) => p.workId === workId))
       const body =
         // 各エントリに entry_id を添える＝ upsert（更新）/ delete の対象を AI が指定できる。
         glossaryToPlainText(work.glossary ?? [], { withIds: true }) ||
         '（この作品の用語集は空です）'
-      return text(`${worldPointerLine(plot)}\n\n${body}`)
+      return text(`${worldPointerLine(primaryPlot())}\n\n${body}`)
     }
     if (name === 'get_plot') return text(plotToPlainText(snap?.plots ?? [], work))
-    return text(structuresToPlainText(snap?.structures ?? [], work))
+    return text(
+      `${worldPointerLine(primaryPlot())}\n\n${structuresToPlainText(snap?.structures ?? [], work)}`,
+    )
   }
   return text(`未知のツール: ${name}`, true)
 }

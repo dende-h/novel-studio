@@ -94,6 +94,19 @@
 
 > 後から `Plot` / `Structure` などへ項目を足すときは、**スキーマの `.default()` だけでは保存済みデータに効かない**ことに注意する（効くのは zod を通す経路＝バックアップ・同期のみ）。`normalizePlot` に 1 行足すこと。
 
+## 2.3 保全（バックアップ・同期・ライブスナップショット）
+
+`world` は `Plot` の一部なので、**既存の器へ自動的に相乗りする**。新しい経路は要らない。
+
+| 経路 | 乗る理由 |
+|---|---|
+| 手動・自動バックアップ | `createLocalBackupIO` の `gather` が `plotRepo.list()` を集め、`CloudBackupSchema.plots` が `PlotSchema` で検証する |
+| クラウド自動同期 | `sync-service` が `plot:<id>` を `canonicalJson(PlotSchema, p)` で送る。`world` を書き換えるとハッシュが変わり差分として拾われる |
+| ライブスナップショット（MCP が読む） | `pushLive` が同じ `gather` を使う |
+| 公開バンドル | **乗らない**（`toBundleWork` が運ぶのは `Work` だけ）＝作者専用が保たれる |
+
+> 「相乗りしているつもり」で落ちるのが一番怖いので、往復と canonical JSON の両方をテストで固定してある（§5）。
+
 ## 3. スキーマ
 
 ```ts
@@ -120,8 +133,8 @@ type GlossaryEntry = { /* 既存 */ authorNote?: string }  // 公開時に落と
 | 層 | 何を渡すか |
 |---|---|
 | `initialize` の `instructions` | 4 つの器の説明と、「書き換える前に `get_world` を読む」「設定・決め事は用語集ではなく `set_world_note` へ」の手順 |
-| ツール説明 | `upsert_glossary_entry` に「name/summary/body は読者にも見える。設定ルールは `set_world_note` へ」を明記 |
-| ツールの戻り値 | `get_plot` は**世界観設定を本文ごと先頭に載せる**。`get_glossary` は件数と `get_world` への導線を 1 行で先頭に置く（用語集は元から巨大なので本体は載せない） |
+| ツール説明 | `upsert_glossary_entry` に「name/summary/body は読者にも見える。設定ルールは `set_world_note` へ」を明記。本文を書く `set_episode` / `add_episode` にも「書く前に `get_world` を読み、それに従うこと」を明記 |
+| ツールの戻り値 | `get_plot` は**世界観設定を本文ごと先頭に載せる**。`get_glossary` / `get_work` / `get_structures` は件数と `get_world` への導線を 1 行で先頭に置く（用語集も本文も元から巨大なので本体は載せない）＝**どの器を読みに来ても決め事の存在が目に入る** |
 
 追加ツール：
 
@@ -150,6 +163,9 @@ type GlossaryEntry = { /* 既存 */ authorNote?: string }  // 公開時に落と
 - 自由枠は見出しがあれば本文が空でも残り、定型枠は空なら消える。
 - `@` で用語集のサジェストが出て、選ぶと `[[名前]]` が入る。`[[` でも出る。用語集に無い語は登録してから挿入される。
 - 自由枠だけ見出しを変えられ、削除できる（定型枠には削除ボタンを出さない）。
+- バックアップの書き出し → 読み込みの往復で世界観設定が残る。
+- プロットの canonical JSON（同期に載る内容）に世界観設定が含まれ、書き換えるとハッシュが変わる。
+- `get_work` / `get_structures` の読み取りにも `get_world` への導線が出る。`set_episode` / `add_episode` の説明が `get_world` を指す。
 - `world` / `secrets` を持たない保存済みレコードを `PlotRepository` 経由で読むと空配列で埋まる（埋めるだけで他の項目は書き換えない）。欠落したままでも `isTrivialPlot` / `countWorldNotes` / `pickPrimaryPlot` は落ちない。
 
 ## 6. 積み残し
