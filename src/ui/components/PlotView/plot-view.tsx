@@ -410,10 +410,10 @@ export default function PlotView({
           </div>
         </div>
       ) : view === 'world' ? (
-        <div className="min-h-0 flex-1 overflow-y-auto">
-          <div className="mx-auto w-full max-w-5xl">
-            <WorldView plot={plot} onApply={(fn) => void apply(fn)} />
-          </div>
+        // ページ自体は縦に動かさず、左の一覧と右の入力欄がそれぞれ高さを持つ
+        //（ビートシートと同じ構造。入力欄に画面いっぱいの高さを渡すため）。
+        <div className="mx-auto flex min-h-0 w-full max-w-5xl flex-1 pb-6 2xl:max-w-[82rem]">
+          <WorldView plot={plot} onApply={(fn) => void apply(fn)} />
         </div>
       ) : view === 'foreshadow' ? (
         <div className="min-h-0 flex-1 overflow-y-auto pb-16">

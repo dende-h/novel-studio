@@ -4,9 +4,9 @@ import { emptyPlot, type Plot, setWorldNote, WORLD_SLOTS } from '@/core/plot'
 import { WorldView } from './world-view'
 
 /**
- * 世界観設定タブ。関心は「整理が苦手な人でも埋められるか」なので、
- * 枠と案内文が読めること・書いた内容が確定すること・畳んでも中身の在りかが分かること・
- * 公開されないと明示されることを固定する。
+ * 世界観設定タブ。関心は「縦に迷子にならずに書けるか」なので、
+ * 一覧から項目を選ぶと右がその項目だけになること・入力欄が画面に 1 つしか無いこと・
+ * 切り替えても書きかけが消えないこと・公開されないと明示されることを固定する。
  */
 
 const plotWith = (...entries: { slot: string; title?: string; body: string }[]): Plot => {
@@ -19,18 +19,14 @@ const plotWith = (...entries: { slot: string; title?: string; body: string }[]):
 
 function setup(plot: Plot = emptyPlot('p1', 'w1', 1)) {
   const onApply = vi.fn()
-  const view = render(<WorldView plot={plot} onApply={onApply} />)
+  render(<WorldView plot={plot} onApply={onApply} />)
   // onApply は純関数を受け取る形なので、テストからは「適用後のプロット」を取り出して確かめる。
   const applied = () => {
     const fn = onApply.mock.calls.at(-1)?.[0] as ((p: Plot) => Plot) | undefined
     return fn ? fn(plot) : null
   }
-  return { onApply, applied, view }
+  return { onApply, applied }
 }
-
-/** アコーディオンのまとまりを開く（畳んだ中身は DOM に出ないため）。 */
-const openSection = (label: string) =>
-  fireEvent.click(screen.getByRole('button', { name: new RegExp(label) }))
 
 const slot = (key: string) => {
   const found = WORLD_SLOTS.find((s) => s.key === key)
@@ -38,51 +34,54 @@ const slot = (key: string) => {
   return found
 }
 
+/** 左の一覧から項目を選ぶ（記入済みの項目は名前のうしろに読み上げ用の語が付く）。 */
+const pick = (label: string) =>
+  fireEvent.click(screen.getByRole('button', { name: new RegExp(`^${label}`) }))
+
+/** 右の入力欄（本文用の textarea。自由枠では見出しの input と 2 つになる）。 */
+const editor = () => {
+  const area = screen.getAllByRole('textbox').find((el) => el.tagName === 'TEXTAREA')
+  if (!area) throw new Error('本文の入力欄が見つかりません')
+  return area as HTMLTextAreaElement
+}
+
 describe('WorldView（世界観設定）', () => {
-  it('既定では最初のまとまりだけ開き、残りは畳んでおく', () => {
+  it('左の一覧に全部の項目が並ぶ（畳まないので探さずに選べる）', () => {
     setup()
-    // 開いている「世界と舞台」の枠は入力欄まで出る
-    expect(screen.getByLabelText(slot('stage').label)).toBeInTheDocument()
-    // 畳んだまとまりの枠は DOM に出ない（画面が最初から長大にならない）
-    expect(screen.queryByLabelText(slot('style').label)).toBeNull()
-    // それでも見出しは並んでいるので、どこに何があるかは分かる
-    expect(screen.getByRole('button', { name: /書き方の決め事/ })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /読者への見せ方/ })).toBeInTheDocument()
-  })
-
-  it('まとまりを開くと、その枠と案内文がすべて読める', () => {
-    setup()
-    openSection('書き方の決め事')
-    for (const s of WORLD_SLOTS.filter((x) => x.group === 'writing')) {
-      expect(screen.getByLabelText(s.label)).toBeInTheDocument()
-      expect(screen.getByText(s.guide)).toBeInTheDocument()
+    const nav = screen.getByRole('navigation', { name: '世界観設定の項目' })
+    for (const s of WORLD_SLOTS) {
+      expect(nav).toHaveTextContent(s.label)
     }
+    expect(nav).toHaveTextContent('世界と舞台')
+    expect(nav).toHaveTextContent('書き方の決め事')
+    expect(nav).toHaveTextContent('読者への見せ方')
   })
 
-  it('「すべて開く」で全部の枠が出る', () => {
-    setup()
-    fireEvent.click(screen.getByRole('button', { name: 'すべて開く' }))
-    for (const s of WORLD_SLOTS) expect(screen.getByLabelText(s.label)).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'すべて閉じる' })).toBeInTheDocument()
+  it('入力欄は画面に 1 つだけ（項目ぶん縦に積まない）', () => {
+    setup(plotWith({ slot: 'stage', body: '夏の街' }, { slot: 'style', body: '一人称' }))
+    expect(screen.getAllByRole('textbox').filter((el) => el.tagName === 'TEXTAREA')).toHaveLength(1)
   })
 
-  it('畳んだままでも、まとまりごとの記入数が見出しに出る（中身を見失わせない）', () => {
-    // style は「書き方の決め事」＝既定で畳まれているまとまり
-    setup(plotWith({ slot: 'style', body: '一人称' }, { slot: 'words', body: '敬語' }))
-    expect(screen.getByRole('button', { name: /書き方の決め事/ })).toHaveTextContent('2 / 4')
-    expect(screen.getByRole('button', { name: /読者への見せ方/ })).toHaveTextContent('0 / 2')
-    expect(screen.getByText(`2 / ${WORLD_SLOTS.length} の枠に記入済み`)).toBeInTheDocument()
+  it('既定は先頭の項目を開き、案内文と中身を右に出す', () => {
+    setup(plotWith({ slot: 'stage', body: '夏の街' }))
+    // 入力欄が項目名と結びついている（見出しがラベルになっている）
+    expect(screen.getByLabelText(slot('stage').label)).toBe(editor())
+    expect(screen.getByText(slot('stage').guide)).toBeInTheDocument()
+    expect(editor().value).toBe('夏の街')
   })
 
-  it('公開されない場所であることを明示する', () => {
-    setup()
-    expect(screen.getAllByText('公開されません').length).toBeGreaterThan(0)
-    expect(screen.getByText(/読者が読む人物や用語の説明は「用語集」へ/)).toBeInTheDocument()
+  it('項目を選ぶと右がその項目に入れ替わる', () => {
+    setup(plotWith({ slot: 'stage', body: '夏の街' }, { slot: 'words', body: '敬語' }))
+    pick(slot('words').label)
+    expect(screen.getByText(slot('words').guide)).toBeInTheDocument()
+    expect(editor().value).toBe('敬語')
+    // 前の項目の案内文はもう出ていない＝1 項目だけを見て書ける
+    expect(screen.queryByText(slot('stage').guide)).toBeNull()
   })
 
   it('入力して離れると保存される', () => {
     const { onApply, applied } = setup()
-    const area = screen.getByLabelText(slot('stage').label)
+    const area = editor()
     fireEvent.focus(area)
     fireEvent.change(area, { target: { value: '現代の地方都市、夏' } })
     fireEvent.blur(area)
@@ -90,17 +89,28 @@ describe('WorldView（世界観設定）', () => {
     expect(applied()?.world[0]).toMatchObject({ slot: 'stage', body: '現代の地方都市、夏' })
   })
 
+  it('書きかけのまま別の項目へ移っても消えない', () => {
+    const { applied } = setup()
+    const area = editor()
+    fireEvent.focus(area)
+    fireEvent.change(area, { target: { value: '書きかけのまま移動' } })
+    // blur を経ずに一覧をクリックする（実際に起きる操作）
+    pick(slot('words').label)
+    expect(applied()?.world[0]).toMatchObject({ slot: 'stage', body: '書きかけのまま移動' })
+  })
+
   it('中身を変えずに離れても保存しない（無駄な更新を打たない）', () => {
     const { onApply } = setup(plotWith({ slot: 'stage', body: '夏の街' }))
-    const area = screen.getByLabelText(slot('stage').label)
+    const area = editor()
     fireEvent.focus(area)
     fireEvent.blur(area)
+    pick(slot('words').label)
     expect(onApply).not.toHaveBeenCalled()
   })
 
   it('Esc は書きかけを捨てる', () => {
     const { onApply } = setup(plotWith({ slot: 'stage', body: '夏の街' }))
-    const area = screen.getByLabelText(slot('stage').label) as HTMLTextAreaElement
+    const area = editor()
     fireEvent.focus(area)
     fireEvent.change(area, { target: { value: '書きかけ' } })
     fireEvent.keyDown(area, { key: 'Escape' })
@@ -109,32 +119,34 @@ describe('WorldView（世界観設定）', () => {
     expect(area.value).toBe('夏の街')
   })
 
-  it('まとまりを畳んでも書きかけを取りこぼさない', () => {
-    const { applied } = setup()
-    const area = screen.getByLabelText(slot('stage').label)
-    fireEvent.focus(area)
-    fireEvent.change(area, { target: { value: '書きかけのまま畳む' } })
-    // blur を経ずに畳む（欄が外れる）
-    openSection('世界と舞台')
-    expect(applied()?.world[0]).toMatchObject({ slot: 'stage', body: '書きかけのまま畳む' })
+  it('記入済みの項目と件数が分かる', () => {
+    setup(plotWith({ slot: 'stage', body: 'a' }, { slot: 'style', body: 'b' }))
+    expect(screen.getByText(`2 / ${WORLD_SLOTS.length} の枠に記入済み`)).toBeInTheDocument()
+    expect(screen.getAllByText('記入済み')).toHaveLength(2)
+  })
+
+  it('公開されない場所であることを明示する', () => {
+    setup()
+    expect(screen.getByText('公開されません')).toBeInTheDocument()
+    expect(screen.getByText(/読者に見せる人物や用語の説明は「用語集」へ/)).toBeInTheDocument()
   })
 
   it('作品によって要らない枠は「任意」と分かる', () => {
     setup()
-    expect(screen.getByText('任意')).toBeInTheDocument()
+    expect(screen.getAllByText('任意').length).toBeGreaterThan(0)
     expect(slot('special').optional).toBe(true)
   })
 
-  it('自由枠は見出しを付けて足せる', () => {
+  it('メモを足すと、その場で選ばれて書き始められる', () => {
     const { applied } = setup()
-    openSection('そのほか')
     fireEvent.click(screen.getByRole('button', { name: 'メモを足す' }))
-    expect(applied()?.world[0]).toMatchObject({ slot: 'custom', title: '新しいメモ' })
+    // 見出しだけで本文が空のまま残る＝足した直後に離れても消えない
+    expect(applied()?.world[0]).toMatchObject({ slot: 'custom', title: '新しいメモ', body: '' })
   })
 
   it('自由枠だけ見出しを編集でき、削除できる', () => {
     const { applied } = setup(plotWith({ slot: 'custom', title: '食べ物', body: '麦' }))
-    openSection('そのほか')
+    pick('食べ物')
     const heading = screen.getByLabelText('メモの見出し') as HTMLInputElement
     expect(heading.value).toBe('食べ物')
     fireEvent.focus(heading)

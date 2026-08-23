@@ -151,7 +151,6 @@ Cloudflare Pages Functions
 | `dropdown-menu.tsx` | `DropdownMenu` `DropdownMenuTrigger` `DropdownMenuContent` `DropdownMenuItem` `DropdownMenuCheckboxItem` `DropdownMenuRadioGroup` `DropdownMenuRadioItem` `DropdownMenuLabel` `DropdownMenuSeparator` `DropdownMenuShortcut` `DropdownMenuSub` ほか |
 | `card.tsx` | `Card` `CardHeader` `CardTitle` `CardDescription` `CardAction` `CardContent` `CardFooter` |
 | `badge.tsx` | `Badge` `badgeVariants` |
-| `accordion.tsx` | `Accordion` `AccordionItem` `AccordionTrigger` `AccordionContent` |
 | `switch.tsx` / `progress.tsx` / `separator.tsx` | `Switch` / `Progress` / `Separator` |
 | `scroll-area.tsx` | `ScrollArea` `ScrollBar` |
 | `tooltip.tsx` | `Tooltip` `TooltipProvider` `TooltipTrigger` `TooltipContent` |

@@ -265,9 +265,12 @@ export function countWorldNotes(plot: Plot): number {
 }
 
 /**
- * 世界観設定のノートを書き込む。本文が空になったノートは**削除する**
- * （空の器を残さない＝一覧が常に「書いたものだけ」になる）。
- * 定型枠は slot 一致で 1 枠 1 ノートに収束し、自由枠は id 一致で更新する。
+ * 世界観設定のノートを書き込む。
+ *
+ * 定型枠（WORLD_SLOTS）は slot 一致で 1 枠 1 ノートに収束し、**本文が空になったら削除する**
+ * （枠そのものは画面に常にあるので、空のレコードを持つ意味がない）。
+ * 自由枠は id 一致で更新し、見出しがあるかぎり本文が空でも残す
+ * （作者が作った器なので、書く前に離れただけで消えると驚く）。
  */
 export function setWorldNote(
   plot: Plot,
@@ -284,13 +287,16 @@ export function setWorldNote(
       : undefined
 
   const body = input.body.trim()
-  if (body === '') {
-    // 空にしたら削除。もともと無ければ何もしない（no-op は呼び出し側が保存を省ける）。
+  const title = input.title?.trim()
+  // 定型枠は器が常に画面にあるので、空＝未記入として持たない。
+  // 自由枠は器そのものを作者が作ったものなので、見出しがあるかぎり空でも残す
+  //（足した直後に何も書かずに離れると消える、という驚きを避ける）。
+  if (body === '' && !(!isFixed && title)) {
+    // もともと無ければ何もしない（no-op は呼び出し側が保存を省ける）。
     if (!prev) return plot
     return { ...plot, world: notes.filter((n) => n.id !== prev.id) }
   }
 
-  const title = input.title?.trim()
   const note: WorldNote = {
     id: prev?.id ?? input.id ?? newId,
     slot: input.slot,

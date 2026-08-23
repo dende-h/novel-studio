@@ -227,11 +227,24 @@ describe('世界観設定（作者専用ノート）', () => {
     expect(p.world[0]?.updatedAt).toBe(at + 1)
   })
 
-  it('本文を空にすると枠ごと削除される（空の器を残さない）', () => {
+  it('定型枠は本文を空にすると枠ごと削除される（空の器を残さない）', () => {
     let p = emptyPlot('p1', 'w1', 1)
     p = setWorldNote(p, { slot: 'rules', body: 'ルール' }, 'n1', at)
     p = setWorldNote(p, { slot: 'rules', body: '   ' }, 'n2', at + 1)
     expect(p.world).toEqual([])
+  })
+
+  // 定型枠は器が常に画面にあるので空なら持たなくてよいが、自由枠は作者が作った器そのもの。
+  // 足した直後に何も書かずに離れただけで消えると、作った操作が無かったことになる。
+  it('自由枠は見出しがあれば本文が空でも残る', () => {
+    let p = emptyPlot('p1', 'w1', 1)
+    p = setWorldNote(p, { slot: 'custom', title: '食べ物', body: '' }, 'c1', at)
+    expect(p.world).toHaveLength(1)
+    expect(p.world[0]).toMatchObject({ slot: 'custom', title: '食べ物', body: '' })
+    // 見出しが無ければ従来どおり残さない
+    expect(
+      setWorldNote(emptyPlot('p2', 'w1', 1), { slot: 'custom', body: '' }, 'c2', at).world,
+    ).toEqual([])
   })
 
   it('もともと無い枠を空で保存しても no-op（同一参照を返す）', () => {

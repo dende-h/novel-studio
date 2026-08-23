@@ -1,5 +1,5 @@
-import { Lock, Plus, Trash2 } from 'lucide-react'
-import { useCallback, useEffect, useId, useRef, useState } from 'react'
+import { Check, Lock, Plus, Trash2 } from 'lucide-react'
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import {
   type Plot,
   removeWorldNote,
@@ -11,14 +11,6 @@ import {
   type WorldSlotGroup,
   worldNoteLabel,
 } from '@/core/plot'
-import {
-  Accordion,
-  AccordionContent,
-  AccordionItem,
-  AccordionTrigger,
-} from '@/ui/components/ui/accordion'
-import { Button } from '@/ui/components/ui/button'
-import { Label } from '@/ui/components/ui/label'
 import { Textarea } from '@/ui/components/ui/textarea'
 
 /**
@@ -28,12 +20,11 @@ import { Textarea } from '@/ui/components/ui/textarea'
  * 行き場がなかった。ここはプロットと同じ器（Plot.world）に住むので公開バンドルには載らない＝
  * 安心して書ける。
  *
- * 作りは**案内文つきの決まった枠**。空でも枠を並べ、それぞれに「ここに何を書くのか」を添える
- * （自由記述 1 枚だと、何を書けばいいか分からないまま止まるか、際限なく伸びるかのどちらかになる）。
- *
- * 枠数が多いので、まとまりごとにアコーディオンで畳む（progressive disclosure）。畳んだ中身は
- * 忘れられるのが定石の弱点なので、見出しに「N / M 記入済み」を出して、開かなくても
- * どこに何があるか分かるようにしてある。
+ * 画面はビートシートと同じ**左：項目の一覧／右：編集**の二枚看板にしてある。
+ * 枠を縦に積む作りだと、案内文つきの入力欄が 11 個ぶん連なって、書くたびにスクロールで
+ * 迷子になる（アコーディオンで畳んでも「開いた節の中で縦に長い」は消えなかった）。
+ * 左は項目名と記入済みの印だけなので細くてよく、そのぶん右の入力欄に幅と**画面いっぱいの高さ**を
+ * 渡せる。項目の切り替えはクリック 1 回で、ページは縦に動かない。
  */
 
 const genId = () => crypto.randomUUID()
@@ -43,40 +34,38 @@ interface WorldViewProps {
   onApply: (fn: (p: Plot) => Plot) => void
 }
 
-const GROUPS: { key: WorldSlotGroup; label: string; caption: string }[] = [
-  {
-    key: 'world',
-    label: '世界と舞台',
-    caption: 'この物語が立っている場所。読者へ説明する文ではなく、作者が迷わないための控えです。',
-  },
-  {
-    key: 'writing',
-    label: '書き方の決め事',
-    caption: '語り口・言葉・組み立て。書きながらぶれる部分を、先に決めておきます。',
-  },
-  {
-    key: 'reader',
-    label: '読者への見せ方',
-    caption: '何を、いつ、どう出すか。そして書かないと決めたこと。',
-  },
+const GROUPS: { key: WorldSlotGroup; label: string }[] = [
+  { key: 'world', label: '世界と舞台' },
+  { key: 'writing', label: '書き方の決め事' },
+  { key: 'reader', label: '読者への見せ方' },
 ]
-
-/** アコーディオンの value（グループ key と自由枠セクション）。 */
-const CUSTOM_SECTION = 'custom'
 
 export function WorldView({ plot, onApply }: WorldViewProps) {
   // 読み込み時に normalizePlot が埋めるが、この画面は欠落しても落ちない側に倒しておく
   // （落ちると画面だけでなくアプリのツリーごと消えるため）。
   const notes = plot.world ?? []
-  const bySlot = (key: string) => notes.find((n) => n.slot === key)
-  const customs = notes.filter((n) => !WORLD_SLOTS.some((s) => s.key === n.slot))
+  const bySlot = useCallback(
+    (key: string) => notes.find((n) => n.slot === key),
+    // notes は毎描画で作り直されるが、比較したいのは中身なので plot.world を見る
+    [notes],
+  )
+  const customs = useMemo(
+    () => notes.filter((n) => !WORLD_SLOTS.some((s) => s.key === n.slot)),
+    [notes],
+  )
   const filled = WORLD_SLOTS.filter((s) => bySlot(s.key) !== undefined).length
 
-  // 既定は最初のまとまりだけ開く。畳んだ中身は見出しの件数で見えているので、
-  // 全部開いた状態を初期値にして長大な画面から始めることはしない。
-  const [open, setOpen] = useState<string[]>([GROUPS[0]?.key ?? 'world'])
-  const allValues = [...GROUPS.map((g) => g.key), CUSTOM_SECTION]
-  const allOpen = allValues.every((v) => open.includes(v))
+  // 選択中の項目。定型枠は slot の key、自由枠はノートの id をそのまま入れる
+  // （slot の key と uuid は衝突しないので 1 つの文字列で足りる）。
+  const [selectedId, setSelectedId] = useState<string>(WORLD_SLOTS[0]?.key ?? '')
+  const selectedSlot = WORLD_SLOTS.find((s) => s.key === selectedId)
+  const selectedCustom = customs.find((n) => n.id === selectedId)
+
+  // 選択していた自由枠が消えたら（削除・同期）先頭の枠へ戻す＝右が空白のままにならない。
+  useEffect(() => {
+    if (selectedSlot || selectedCustom) return
+    setSelectedId(WORLD_SLOTS[0]?.key ?? '')
+  }, [selectedSlot, selectedCustom])
 
   const commitSlot = (slot: WorldSlotDef, body: string) => {
     onApply((p) => setWorldNote(p, { slot: slot.key, body }, genId(), Date.now()))
@@ -99,193 +88,156 @@ export function WorldView({ plot, onApply }: WorldViewProps) {
   }
 
   const addCustom = () => {
-    setOpen((cur) => (cur.includes(CUSTOM_SECTION) ? cur : [...cur, CUSTOM_SECTION]))
+    const id = genId()
     onApply((p) =>
-      setWorldNote(
-        p,
-        { slot: WORLD_CUSTOM_SLOT, title: '新しいメモ', body: 'ここに書きます' },
-        genId(),
-        Date.now(),
-      ),
+      setWorldNote(p, { slot: WORLD_CUSTOM_SLOT, title: '新しいメモ', body: '' }, id, Date.now()),
     )
+    setSelectedId(id)
   }
 
   return (
-    <div className="flex flex-col gap-4 pb-16">
-      {/* 何のための場所かを最初に言い切る。「用語集と何が違うのか」で毎回迷わせない。 */}
-      <div className="rounded-xl border border-outline-variant/30 bg-surface-container-lowest px-4 py-3.5">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="inline-flex items-center gap-1 rounded-full bg-secondary-container px-2 py-0.5 font-medium text-[11px] text-on-secondary-container">
-            <Lock className="size-2.5" aria-hidden />
-            公開されません
-          </span>
-          <span className="text-[12px] text-on-surface-variant tabular-nums">
-            {filled} / {WORLD_SLOTS.length} の枠に記入済み
-          </span>
-        </div>
-        <p className="mt-2 text-[13px] text-on-surface-variant leading-relaxed">
-          この作品の決め事を置く、作者だけの場所です。設定のルール・世界の仕組み・執筆の方針は
-          ここへ書いてください。読者が読む人物や用語の説明は「用語集」へ
-          （そちらは投稿すると読者にも見えます）。
-        </p>
-        <p className="mt-1.5 text-[12px] text-on-surface-variant/70 leading-relaxed">
-          全部埋める必要はありません。作品に関係のない枠は空のままで大丈夫です。AI（MCP）は
-          用語集やプロットを書き換える前にここを読むので、書いておくほど頼んだときの精度が上がります。
-        </p>
+    <div className="flex min-h-0 flex-1 flex-col gap-3">
+      {/* 器の説明は 1 行に畳む。入力欄の高さを稼ぐのがこの画面の主目的なので、
+          毎回読む必要のない案内で上を占領しない（詳しい話は左カラムの下に置く）。 */}
+      <div className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-on-surface-variant">
+        <span className="inline-flex items-center gap-1 rounded-full bg-secondary-container px-2 py-0.5 font-medium text-[11px] text-on-secondary-container">
+          <Lock className="size-2.5" aria-hidden />
+          公開されません
+        </span>
+        <span className="tabular-nums">
+          {filled} / {WORLD_SLOTS.length} の枠に記入済み
+        </span>
+        <span className="text-on-surface-variant/70">
+          作者だけの場所です。読者に見せる人物や用語の説明は「用語集」へ。
+        </span>
       </div>
 
-      <div className="flex justify-end">
-        <button
-          type="button"
-          onClick={() => setOpen(allOpen ? [] : allValues)}
-          className="rounded-md px-2 py-1 text-[12px] text-on-surface-variant transition-colors hover:bg-surface-container-high hover:text-primary"
+      <div className="flex min-h-0 flex-1 items-stretch gap-5">
+        {/* 左：項目の一覧。1 項目 1 行なので、11 枠あっても畳まずに全部見える。 */}
+        <nav
+          aria-label="世界観設定の項目"
+          className="flex w-[13.5rem] shrink-0 flex-col overflow-y-auto pb-6"
         >
-          {allOpen ? 'すべて閉じる' : 'すべて開く'}
-        </button>
-      </div>
-
-      <Accordion
-        type="multiple"
-        value={open}
-        onValueChange={setOpen}
-        className="rounded-xl border border-outline-variant/30 bg-surface-container-lowest px-4"
-      >
-        {GROUPS.map((group) => {
-          const slots = WORLD_SLOTS.filter((s) => s.group === group.key)
-          const done = slots.filter((s) => bySlot(s.key) !== undefined).length
-          return (
-            <AccordionItem key={group.key} value={group.key}>
-              <AccordionTrigger>
-                <SectionHeading
-                  label={group.label}
-                  caption={group.caption}
-                  badge={`${done} / ${slots.length}`}
-                  filled={done > 0}
+          {GROUPS.map((group) => (
+            <div key={group.key} className="mb-3">
+              <h2 className="px-2 pb-1 font-medium text-[11px] text-on-surface-variant/70">
+                {group.label}
+              </h2>
+              {WORLD_SLOTS.filter((s) => s.group === group.key).map((slot) => (
+                <ItemButton
+                  key={slot.key}
+                  label={slot.label}
+                  optional={slot.optional}
+                  done={bySlot(slot.key) !== undefined}
+                  active={selectedId === slot.key}
+                  onClick={() => setSelectedId(slot.key)}
                 />
-              </AccordionTrigger>
-              <AccordionContent className="flex flex-col gap-5">
-                {slots.map((slot) => (
-                  <SlotField
-                    key={slot.key}
-                    slot={slot}
-                    body={bySlot(slot.key)?.body ?? ''}
-                    onCommit={(body) => commitSlot(slot, body)}
-                  />
-                ))}
-              </AccordionContent>
-            </AccordionItem>
-          )
-        })}
+              ))}
+            </div>
+          ))}
 
-        <AccordionItem value={CUSTOM_SECTION}>
-          <AccordionTrigger>
-            <SectionHeading
-              label="そのほか"
-              caption="上の枠に収まらないものは、自分で見出しを付けて足せます。"
-              badge={customs.length > 0 ? `${customs.length}件` : '—'}
-              filled={customs.length > 0}
-            />
-          </AccordionTrigger>
-          <AccordionContent className="flex flex-col gap-5">
+          <div className="mb-3">
+            <h2 className="px-2 pb-1 font-medium text-[11px] text-on-surface-variant/70">
+              そのほか
+            </h2>
             {customs.map((note) => (
-              <CustomField
+              <ItemButton
                 key={note.id}
-                note={note}
-                onCommit={(patch) => commitCustom(note, patch)}
-                onDelete={() => onApply((p) => removeWorldNote(p, note.id))}
+                label={worldNoteLabel(note)}
+                done
+                active={selectedId === note.id}
+                onClick={() => setSelectedId(note.id)}
               />
             ))}
-            <Button variant="outline" onClick={addCustom} className="w-fit gap-2">
-              <Plus className="size-4" aria-hidden />
+            <button
+              type="button"
+              onClick={addCustom}
+              className="flex w-full items-center gap-1.5 rounded-md px-2 py-1.5 text-left text-[12.5px] text-on-surface-variant transition-colors hover:bg-surface-container-high hover:text-primary"
+            >
+              <Plus className="size-3.5 shrink-0" aria-hidden />
               メモを足す
-            </Button>
-          </AccordionContent>
-        </AccordionItem>
-      </Accordion>
+            </button>
+          </div>
+
+          {/* 幅が細いので、毎回読ませたい要点だけを 2 文で置く。 */}
+          <p className="mt-auto px-2 pt-4 text-[11px] text-on-surface-variant/60 leading-relaxed">
+            全部埋める必要はありません。
+            <br />
+            AI（MCP）は書き換える前にここを読みます。
+          </p>
+        </nav>
+
+        {/* 右：選択中の項目だけを、幅も高さも使って書く。 */}
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+          {selectedSlot ? (
+            <NoteEditor
+              key={selectedSlot.key}
+              label={selectedSlot.label}
+              guide={selectedSlot.guide}
+              placeholder={selectedSlot.placeholder}
+              optional={selectedSlot.optional}
+              body={bySlot(selectedSlot.key)?.body ?? ''}
+              onCommit={(body) => commitSlot(selectedSlot, body)}
+            />
+          ) : selectedCustom ? (
+            <NoteEditor
+              key={selectedCustom.id}
+              label={worldNoteLabel(selectedCustom)}
+              guide=""
+              placeholder="ここに書きます"
+              body={selectedCustom.body}
+              onCommit={(body) => commitCustom(selectedCustom, { body })}
+              onRenameLabel={(title) => commitCustom(selectedCustom, { title })}
+              onDelete={() => onApply((p) => removeWorldNote(p, selectedCustom.id))}
+            />
+          ) : null}
+        </div>
+      </div>
     </div>
   )
 }
 
-/**
- * アコーディオンの見出し。畳んだままでも「どこに何があるか」が読めるように、
- * まとまりの説明と記入済みの件数を必ず出す（畳んだ中身が忘れられるのを防ぐ）。
- */
-function SectionHeading({
+/** 左カラムの 1 行。記入済みかどうかがひと目で分かるようにする。 */
+function ItemButton({
   label,
-  caption,
-  badge,
-  filled,
+  done,
+  active,
+  optional,
+  onClick,
 }: {
   label: string
-  caption: string
-  badge: string
-  filled: boolean
+  done: boolean
+  active: boolean
+  optional?: boolean
+  onClick: () => void
 }) {
   return (
-    <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-      <span className="flex items-center gap-2">
-        <span className="font-semibold font-serif text-[15px] text-on-surface">{label}</span>
-        <span
-          className={`shrink-0 rounded-full px-1.5 py-0.5 font-medium text-[10.5px] tabular-nums ${
-            filled
-              ? 'bg-secondary-container text-on-secondary-container'
-              : 'bg-surface-container-high text-on-surface-variant/70'
-          }`}
-        >
-          {badge}
-        </span>
-      </span>
-      <span className="text-[12px] text-on-surface-variant/80 leading-relaxed">{caption}</span>
-    </span>
+    <button
+      type="button"
+      onClick={onClick}
+      aria-current={active ? 'true' : undefined}
+      className={`flex w-full items-center gap-1.5 rounded-md px-2 py-1.5 text-left text-[12.5px] transition-colors ${
+        active
+          ? 'bg-secondary-container font-medium text-on-secondary-container'
+          : 'text-on-surface hover:bg-surface-container-high'
+      }`}
+    >
+      {done ? (
+        <Check className="size-3.5 shrink-0 text-primary" aria-hidden />
+      ) : (
+        <span className="size-3.5 shrink-0" aria-hidden />
+      )}
+      <span className="min-w-0 flex-1 truncate">{label}</span>
+      {/* 印は色と形だけでは伝わらないので、読み上げ用の語を項目名のうしろに足す。 */}
+      {done ? <span className="sr-only">記入済み</span> : null}
+      {optional && !done ? (
+        <span className="shrink-0 text-[10px] text-on-surface-variant/60">任意</span>
+      ) : null}
+    </button>
   )
 }
 
-/** 定型枠 1 つ。ラベル＋案内文＋入力欄の、ごく普通のフォーム行。 */
-function SlotField({
-  slot,
-  body,
-  onCommit,
-}: {
-  slot: WorldSlotDef
-  body: string
-  onCommit: (body: string) => void
-}) {
-  return (
-    <NoteField
-      label={slot.label}
-      guide={slot.guide}
-      placeholder={slot.placeholder}
-      optional={slot.optional}
-      body={body}
-      onCommit={onCommit}
-    />
-  )
-}
-
-/** 自由枠。見出しも編集でき、削除できる（定型枠は空にできても消せない）。 */
-function CustomField({
-  note,
-  onCommit,
-  onDelete,
-}: {
-  note: WorldNote
-  onCommit: (patch: { title?: string; body?: string }) => void
-  onDelete: () => void
-}) {
-  return (
-    <NoteField
-      label={worldNoteLabel(note)}
-      guide=""
-      placeholder="ここに書きます"
-      body={note.body}
-      onCommit={(body) => onCommit({ body })}
-      onRenameLabel={(title) => onCommit({ title })}
-      onDelete={onDelete}
-    />
-  )
-}
-
-interface NoteFieldProps {
+interface NoteEditorProps {
   label: string
   guide: string
   placeholder: string
@@ -294,11 +246,15 @@ interface NoteFieldProps {
   onCommit: (body: string) => void
   /** 自由枠だけ渡す（見出しを編集できる）。 */
   onRenameLabel?: (title: string) => void
-  /** 自由枠だけ渡す。 */
+  /** 自由枠だけ渡す（定型枠は空にできても消せない）。 */
   onDelete?: () => void
 }
 
-function NoteField({
+/**
+ * 右カラムの編集面。見出しと案内文は上に固定し、入力欄が残りの高さを全部取る。
+ * 項目を切り替えると key が変わって作り直される＝下の「外れるときに送る」が確定処理になる。
+ */
+function NoteEditor({
   label,
   guide,
   placeholder,
@@ -307,7 +263,7 @@ function NoteField({
   onCommit,
   onRenameLabel,
   onDelete,
-}: NoteFieldProps) {
+}: NoteEditorProps) {
   const uid = useId()
   const [draft, setDraft] = useState(body)
   const focused = useRef(false)
@@ -332,8 +288,8 @@ function NoteField({
     [onCommit],
   )
 
-  // アコーディオンを閉じる・タブを離れるなどで欄が外れるとき、書きかけを取りこぼさない。
-  // blur が先に走る経路がほとんどだが、そこに頼り切ると「閉じたら消えた」が起きうる。
+  // 項目を切り替える・タブを離れるなどで欄が外れるとき、書きかけを取りこぼさない。
+  // 左の一覧をクリックすると blur より先に切り替わる経路があるので、ここが本命の確定処理。
   const latest = useRef({ draft, commit })
   latest.current = { draft, commit }
   useEffect(() => {
@@ -343,26 +299,28 @@ function NoteField({
   }, [])
 
   return (
-    <div className="space-y-2">
-      <div className="flex items-start justify-between gap-3">
+    <>
+      <div className="mb-2 flex shrink-0 items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
-          {onRenameLabel ? (
-            <LabelInput value={label} onCommit={onRenameLabel} />
-          ) : (
-            // 「任意」の印はラベルの外に置く＝入力欄の名前は枠の名前だけで濁らせない。
-            <div className="flex items-center gap-2">
-              <Label htmlFor={`${uid}-body`} className="text-[13.5px]">
+          <div className="flex items-center gap-2">
+            {onRenameLabel ? (
+              <LabelInput value={label} onCommit={onRenameLabel} />
+            ) : (
+              <label
+                htmlFor={`${uid}-body`}
+                className="font-semibold font-serif text-[17px] text-on-surface"
+              >
                 {label}
-              </Label>
-              {optional ? (
-                <span className="rounded-full bg-surface-container-high px-1.5 py-0.5 font-medium text-[10px] text-on-surface-variant/80">
-                  任意
-                </span>
-              ) : null}
-            </div>
-          )}
+              </label>
+            )}
+            {optional ? (
+              <span className="shrink-0 rounded-full bg-surface-container-high px-1.5 py-0.5 font-medium text-[10px] text-on-surface-variant/80">
+                任意
+              </span>
+            ) : null}
+          </div>
           {guide ? (
-            <p className="mt-1 text-[12px] text-on-surface-variant/80 leading-relaxed">{guide}</p>
+            <p className="mt-1 text-[12.5px] text-on-surface-variant/80 leading-relaxed">{guide}</p>
           ) : null}
         </div>
         {onDelete ? (
@@ -377,9 +335,9 @@ function NoteField({
         ) : null}
       </div>
       {/*
-        入力欄は共有 Textarea（field-sizing-content）。中身に合わせて伸びるが max-h で頭打ちになり、
-        そこから先は欄の中でスクロールする＝長文でページが無限に伸びず、書いた文字も隠れない。
-        scrollbar-gutter:stable はスクロールバーが出た瞬間に文字が横へ跳ねるのを防ぐ。
+        入力欄が残りの高さを全部取る。field-sizing:fixed へ戻すのは、内容に合わせて伸びる
+        既定のままだと flex の伸長と競合して高さが安定しないため。溢れたぶんは欄の中で
+        スクロールし、ページ自体は縦に動かない。
       */}
       <Textarea
         id={`${uid}-body`}
@@ -402,10 +360,9 @@ function NoteField({
           }
         }}
         placeholder={placeholder}
-        rows={3}
-        className="max-h-[32vh] min-h-[4.5rem] [scrollbar-gutter:stable] text-[13.5px] leading-relaxed"
+        className="min-h-0 max-h-none flex-1 [field-sizing:fixed] [scrollbar-gutter:stable] text-[14px] leading-relaxed"
       />
-    </div>
+    </>
   )
 }
 
@@ -434,7 +391,7 @@ function LabelInput({ value, onCommit }: { value: string; onCommit: (v: string) 
         if (e.key === 'Escape') setDraft(value)
       }}
       aria-label="メモの見出し"
-      className="w-full rounded-md bg-transparent font-medium text-[13.5px] text-on-surface outline-none transition-colors hover:bg-surface-container-high focus:bg-surface-container-high"
+      className="min-w-0 flex-1 rounded-md bg-transparent font-semibold font-serif text-[17px] text-on-surface outline-none transition-colors hover:bg-surface-container-high focus:bg-surface-container-high"
     />
   )
 }
