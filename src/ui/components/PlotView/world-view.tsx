@@ -1,4 +1,4 @@
-import { Check, Lock, Plus, Trash2 } from 'lucide-react'
+import { Check, Lock, Pencil, Plus, Trash2 } from 'lucide-react'
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import {
   type Plot,
@@ -11,7 +11,8 @@ import {
   type WorldSlotGroup,
   worldNoteLabel,
 } from '@/core/plot'
-import { Textarea } from '@/ui/components/ui/textarea'
+import type { GlossaryEntry } from '@/core/schema'
+import { CommitTextarea } from './commit-textarea'
 
 /**
  * 世界観設定タブ（作者専用の設定置き場）。
@@ -32,6 +33,10 @@ const genId = () => crypto.randomUUID()
 interface WorldViewProps {
   plot: Plot
   onApply: (fn: (p: Plot) => Plot) => void
+  /** 用語集（@ / [[ のサジェスト候補）。 */
+  glossary: GlossaryEntry[]
+  /** 候補に無い語をその場で用語集へ登録する（作成した名前を返す。失敗は null）。 */
+  onCreateGlossaryEntry?: (name: string) => Promise<string | null>
 }
 
 const GROUPS: { key: WorldSlotGroup; label: string }[] = [
@@ -40,7 +45,7 @@ const GROUPS: { key: WorldSlotGroup; label: string }[] = [
   { key: 'reader', label: '読者への見せ方' },
 ]
 
-export function WorldView({ plot, onApply }: WorldViewProps) {
+export function WorldView({ plot, onApply, glossary, onCreateGlossaryEntry }: WorldViewProps) {
   // 読み込み時に normalizePlot が埋めるが、この画面は欠落しても落ちない側に倒しておく
   // （落ちると画面だけでなくアプリのツリーごと消えるため）。
   const notes = plot.world ?? []
@@ -178,6 +183,8 @@ export function WorldView({ plot, onApply }: WorldViewProps) {
               optional={selectedSlot.optional}
               body={bySlot(selectedSlot.key)?.body ?? ''}
               onCommit={(body) => commitSlot(selectedSlot, body)}
+              glossary={glossary}
+              onCreateGlossaryEntry={onCreateGlossaryEntry}
             />
           ) : selectedCustom ? (
             <NoteEditor
@@ -189,6 +196,8 @@ export function WorldView({ plot, onApply }: WorldViewProps) {
               onCommit={(body) => commitCustom(selectedCustom, { body })}
               onRenameLabel={(title) => commitCustom(selectedCustom, { title })}
               onDelete={() => onApply((p) => removeWorldNote(p, selectedCustom.id))}
+              glossary={glossary}
+              onCreateGlossaryEntry={onCreateGlossaryEntry}
             />
           ) : null}
         </div>
@@ -248,6 +257,8 @@ interface NoteEditorProps {
   onRenameLabel?: (title: string) => void
   /** 自由枠だけ渡す（定型枠は空にできても消せない）。 */
   onDelete?: () => void
+  glossary: GlossaryEntry[]
+  onCreateGlossaryEntry?: (name: string) => Promise<string | null>
 }
 
 /**
@@ -263,48 +274,20 @@ function NoteEditor({
   onCommit,
   onRenameLabel,
   onDelete,
+  glossary,
+  onCreateGlossaryEntry,
 }: NoteEditorProps) {
   const uid = useId()
-  const [draft, setDraft] = useState(body)
-  const focused = useRef(false)
-
-  // 同期の pull などで確定値が変わったら追随させる（入力中のフィールドは巻き戻さない）。
-  useEffect(() => {
-    if (!focused.current) setDraft(body)
-  }, [body])
-
-  // 最後に送った内容。保存は非同期なので body の更新を待たずに二重送信しないための控え。
-  const sent = useRef(body)
-  useEffect(() => {
-    if (!focused.current) sent.current = body
-  }, [body])
-
-  const commit = useCallback(
-    (next: string) => {
-      if (next.trim() === sent.current.trim()) return
-      sent.current = next
-      onCommit(next)
-    },
-    [onCommit],
-  )
-
-  // 項目を切り替える・タブを離れるなどで欄が外れるとき、書きかけを取りこぼさない。
-  // 左の一覧をクリックすると blur より先に切り替わる経路があるので、ここが本命の確定処理。
-  const latest = useRef({ draft, commit })
-  latest.current = { draft, commit }
-  useEffect(() => {
-    return () => {
-      latest.current.commit(latest.current.draft)
-    }
-  }, [])
-
   return (
     <>
       <div className="mb-2 flex shrink-0 items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             {onRenameLabel ? (
-              <LabelInput value={label} onCommit={onRenameLabel} />
+              <>
+                <LabelInput value={label} onCommit={onRenameLabel} />
+                <Pencil className="size-3.5 shrink-0 text-on-surface-variant/50" aria-hidden />
+              </>
             ) : (
               <label
                 htmlFor={`${uid}-body`}
@@ -323,45 +306,35 @@ function NoteEditor({
             <p className="mt-1 text-[12.5px] text-on-surface-variant/80 leading-relaxed">{guide}</p>
           ) : null}
         </div>
+        {/* 自由枠だけの操作。アイコンだけだと気づかれないので、文字も添える。 */}
         {onDelete ? (
           <button
             type="button"
             onClick={onDelete}
             aria-label={`${label}を削除`}
-            className="shrink-0 rounded-md p-1.5 text-on-surface-variant/60 transition-colors hover:bg-error-container hover:text-destructive"
+            className="flex shrink-0 items-center gap-1 rounded-md px-2 py-1.5 text-[12px] text-on-surface-variant/70 transition-colors hover:bg-error-container hover:text-destructive"
           >
-            <Trash2 className="size-4" aria-hidden />
+            <Trash2 className="size-3.5" aria-hidden />
+            削除
           </button>
         ) : null}
       </div>
-      {/*
-        入力欄が残りの高さを全部取る。field-sizing:fixed へ戻すのは、内容に合わせて伸びる
-        既定のままだと flex の伸長と競合して高さが安定しないため。溢れたぶんは欄の中で
-        スクロールし、ページ自体は縦に動かない。
-      */}
-      <Textarea
+      {/* 本文・プロットと同じ記法が使える：@／＠／[[ で用語集を呼び出し、無い語はその場で作れる。 */}
+      <CommitTextarea
         id={`${uid}-body`}
-        aria-label={onRenameLabel ? label : undefined}
-        value={draft}
-        onChange={(e) => setDraft(e.target.value)}
-        onFocus={() => {
-          focused.current = true
-        }}
-        onBlur={() => {
-          focused.current = false
-          commit(draft)
-        }}
-        onKeyDown={(e) => {
-          // 長文なので Enter は改行のまま。Esc だけ書きかけを捨てる逃げ道にする。
-          if (e.key === 'Escape') {
-            setDraft(body)
-            sent.current = body
-            e.currentTarget.blur()
-          }
-        }}
+        ariaLabel={label}
+        value={body}
+        onCommit={onCommit}
         placeholder={placeholder}
-        className="min-h-0 max-h-none flex-1 [field-sizing:fixed] [scrollbar-gutter:stable] text-[14px] leading-relaxed"
+        glossary={glossary}
+        onCreateEntry={onCreateGlossaryEntry}
+        grow={false}
+        wrapperClassName="flex min-h-0 flex-1 flex-col"
+        className="min-h-0 flex-1 px-3 py-2 text-[14px]"
       />
+      <p className="mt-1.5 shrink-0 text-[11px] text-on-surface-variant/60">
+        @ または [[ で用語集を呼び出せます（無い語はその場で登録できます）。
+      </p>
     </>
   )
 }
@@ -391,7 +364,9 @@ function LabelInput({ value, onCommit }: { value: string; onCommit: (v: string) 
         if (e.key === 'Escape') setDraft(value)
       }}
       aria-label="メモの見出し"
-      className="min-w-0 flex-1 rounded-md bg-transparent font-semibold font-serif text-[17px] text-on-surface outline-none transition-colors hover:bg-surface-container-high focus:bg-surface-container-high"
+      // field-sizing:content で中身ぶんの幅に収める＝すぐ隣に鉛筆の印を置ける
+      //（flex-1 で伸ばすと印が右端まで飛び、見出しが編集できることが伝わらない）。
+      className="min-w-[6rem] max-w-full rounded-md bg-transparent px-1 font-semibold font-serif text-[17px] text-on-surface outline-none transition-colors [field-sizing:content] hover:bg-surface-container-high focus:bg-surface-container-high"
     />
   )
 }

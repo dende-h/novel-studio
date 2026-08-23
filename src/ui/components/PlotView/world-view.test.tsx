@@ -1,6 +1,7 @@
 import { fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import { emptyPlot, type Plot, setWorldNote, WORLD_SLOTS } from '@/core/plot'
+import type { GlossaryEntry } from '@/core/schema'
 import { WorldView } from './world-view'
 
 /**
@@ -17,15 +18,29 @@ const plotWith = (...entries: { slot: string; title?: string; body: string }[]):
   return p
 }
 
-function setup(plot: Plot = emptyPlot('p1', 'w1', 1)) {
+const noop = async (_name: string): Promise<string | null> => null
+
+const GLOSSARY: GlossaryEntry[] = [
+  { id: 'g1', name: 'ユキ', aliases: [], createdAt: 0, updatedAt: 0 },
+]
+
+function setup(plot: Plot = emptyPlot('p1', 'w1', 1), over: { onCreate?: typeof noop } = {}) {
   const onApply = vi.fn()
-  render(<WorldView plot={plot} onApply={onApply} />)
+  const onCreateGlossaryEntry = vi.fn(async (name: string) => name)
+  render(
+    <WorldView
+      plot={plot}
+      onApply={onApply}
+      glossary={GLOSSARY}
+      onCreateGlossaryEntry={over.onCreate ?? onCreateGlossaryEntry}
+    />,
+  )
   // onApply は純関数を受け取る形なので、テストからは「適用後のプロット」を取り出して確かめる。
   const applied = () => {
     const fn = onApply.mock.calls.at(-1)?.[0] as ((p: Plot) => Plot) | undefined
     return fn ? fn(plot) : null
   }
-  return { onApply, applied }
+  return { onApply, applied, onCreateGlossaryEntry }
 }
 
 const slot = (key: string) => {
@@ -156,6 +171,47 @@ describe('WorldView（世界観設定）', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '食べ物を削除' }))
     expect(applied()?.world).toEqual([])
+  })
+
+  // 本文・プロットと同じ記法をここでも使えるようにした（器が違っても書き方は 1 つ）。
+  it('@ で用語集のサジェストが出て、選ぶと [[名前]] が入る', async () => {
+    const { applied } = setup()
+    const area = editor()
+    fireEvent.focus(area)
+    // @ の直前が文字だと発火しない（メールの逃げ道）ので、行頭から打つ
+    fireEvent.change(area, { target: { value: '@' } })
+    const option = await screen.findByText('ユキ')
+    fireEvent.mouseDown(option)
+    fireEvent.click(option)
+    fireEvent.blur(area)
+    expect(applied()?.world[0]?.body).toBe('[[ユキ]]')
+  })
+
+  it('[[ でもサジェストが出る', async () => {
+    setup()
+    const area = editor()
+    fireEvent.focus(area)
+    fireEvent.change(area, { target: { value: '舞台は[[' } })
+    expect(await screen.findByText('ユキ')).toBeInTheDocument()
+  })
+
+  it('用語集に無い語は、その場で登録してから挿入される', async () => {
+    const onCreate = vi.fn(async (name: string) => name)
+    const { applied } = setup(emptyPlot('p1', 'w1', 1), { onCreate })
+    const area = editor()
+    fireEvent.focus(area)
+    fireEvent.change(area, { target: { value: '@灰嶺' } })
+    const create = await screen.findByText(/「灰嶺」を新規作成/)
+    fireEvent.click(create)
+    await screen.findByDisplayValue('[[灰嶺]]')
+    expect(onCreate).toHaveBeenCalledWith('灰嶺')
+    fireEvent.blur(area)
+    expect(applied()?.world[0]?.body).toBe('[[灰嶺]]')
+  })
+
+  it('記法が使えることを画面で案内する', () => {
+    setup()
+    expect(screen.getByText(/@ または \[\[ で用語集を呼び出せます/)).toBeInTheDocument()
   })
 
   it('定型枠には削除ボタンを出さない（枠そのものは消えない）', () => {

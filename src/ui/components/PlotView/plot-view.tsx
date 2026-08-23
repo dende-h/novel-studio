@@ -28,19 +28,10 @@ import {
   X,
 } from 'lucide-react'
 import type { ReactNode } from 'react'
-import {
-  Fragment,
-  useCallback,
-  useEffect,
-  useId,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-} from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { blocksToHtml } from '@/core/exporter/toHtml'
 import { blocksToPlainText } from '@/core/exporter/toPlainText'
-import { resolvedNameSet, resolveRef, shouldTriggerSuggest, suggestRefs } from '@/core/glossary'
+import { resolvedNameSet } from '@/core/glossary'
 import type { IdeaNote } from '@/core/idea'
 import { parseEpisodeBody } from '@/core/parser/parseNotation'
 import {
@@ -85,10 +76,9 @@ import type { IdeaRepository } from '@/core/storage/ideaRepository'
 import type { PlotRepository } from '@/core/storage/plotRepository'
 import type { StructureRepository } from '@/core/storage/structureRepository'
 import { pickPrimaryStructure, type StructureNode } from '@/core/structure'
-import { getCaretCoordinates } from '@/ui/_utils/caretCoordinates'
 import { ConfirmDialog } from '@/ui/components/ConfirmDialog/confirm-dialog'
-import { RefSuggest } from '@/ui/components/EditorPane/ref-suggest'
 import { subscribeSyncApplied } from '@/ui/sync/sync-touch'
+import { CommitTextarea } from './commit-textarea'
 import { WorldView } from './world-view'
 
 interface PlotViewProps {
@@ -413,7 +403,12 @@ export default function PlotView({
         // ページ自体は縦に動かさず、左の一覧と右の入力欄がそれぞれ高さを持つ
         //（ビートシートと同じ構造。入力欄に画面いっぱいの高さを渡すため）。
         <div className="mx-auto flex min-h-0 w-full max-w-5xl flex-1 pb-6 2xl:max-w-[82rem]">
-          <WorldView plot={plot} onApply={(fn) => void apply(fn)} />
+          <WorldView
+            plot={plot}
+            onApply={(fn) => void apply(fn)}
+            glossary={glossary}
+            onCreateGlossaryEntry={onCreatePlainGlossaryEntry}
+          />
         </div>
       ) : view === 'foreshadow' ? (
         <div className="min-h-0 flex-1 overflow-y-auto pb-16">
@@ -2143,237 +2138,6 @@ function ModeTab({
     >
       {children}
     </button>
-  )
-}
-
-/** blur で確定する自動伸長テキストエリア。 */
-/** @／＠ が用語集サジェストのトリガ（本文エディタと同じ）。 */
-const isSuggestTrigger = (ch: string) => ch === '@' || ch === '＠'
-
-function CommitTextarea({
-  value,
-  onCommit,
-  placeholder,
-  ariaLabel,
-  glossary,
-  onCreateEntry,
-}: {
-  value: string
-  onCommit: (v: string) => void
-  placeholder?: string
-  ariaLabel: string
-  /** 用語集（@ / [[ のサジェスト候補）。省略・空ならサジェストしない。 */
-  glossary?: GlossaryEntry[]
-  /** 候補に無い語をその場で用語集に登録する（作成した名前を返す。失敗は null）。 */
-  onCreateEntry?: (name: string) => Promise<string | null>
-}) {
-  const [draft, setDraft] = useState(value)
-  const focused = useRef(false)
-  const ref = useRef<HTMLTextAreaElement>(null)
-  // 用語集サジェスト（本文エディタと同じ挙動）。at＝トリガ位置、triggerLen＝@:1 / [[:2。
-  const [suggest, setSuggest] = useState<{
-    at: number
-    triggerLen: number
-    query: string
-    top: number
-    left: number
-  } | null>(null)
-  const [activeIndex, setActiveIndex] = useState(0)
-  // IME 変換中は候補を出さない（確定前の文字で絞り込むと候補が暴れる）。
-  const composing = useRef(false)
-  const listId = useId()
-  const optionId = (i: number) => `${listId}-opt-${i}`
-  const entries = glossary ?? []
-  const candidates = useMemo(
-    () => (suggest ? suggestRefs(suggest.query, entries) : []),
-    [suggest, entries],
-  )
-  // 用語集に無い語を打っているときは「＋ 用語集に登録」を末尾に出す（本文エディタと同じ規則）。
-  const showCreate = useMemo(() => {
-    if (!suggest || !onCreateEntry) return false
-    const q = suggest.query.trim()
-    if (q === '') return false
-    return resolveRef(q, entries) === undefined
-  }, [suggest, entries, onCreateEntry])
-  const total = candidates.length + (showCreate ? 1 : 0)
-  const open = suggest !== null && total > 0
-
-  useEffect(() => {
-    if (!focused.current) setDraft(value)
-  }, [value])
-  // 内容の増減に高さを追従させる（scrollHeight を測るため一度 0 にする）。
-  // パネル自体が専用スクロールを持つので、内側スクロールは作らない（重複スクロールの排除）。
-  const resizeToContent = (el: HTMLTextAreaElement) => {
-    el.style.height = '0'
-    el.style.height = `${el.scrollHeight}px`
-  }
-  // biome-ignore lint/correctness/useExhaustiveDependencies: draft の変化で高さを測り直す（resizeToContent は毎レンダー同一の純関数）
-  useLayoutEffect(() => {
-    const el = ref.current
-    if (el) resizeToContent(el)
-  }, [draft])
-
-  /** キャレット直前を走査してサジェストの開閉・絞り込みを更新する（本文エディタと同じ規則）。 */
-  const refresh = (el: HTMLTextAreaElement) => {
-    if (entries.length === 0 || composing.current) {
-      setSuggest(null)
-      return
-    }
-    const caret = el.selectionStart ?? 0
-    const text = el.value
-    let at = -1
-    let triggerLen = 0
-    for (let i = caret - 1; i >= 0; i--) {
-      const ch = text[i] ?? ''
-      if (isSuggestTrigger(ch)) {
-        at = i
-        triggerLen = 1
-        break
-      }
-      // [[ 検出（記法そのもの）。先頭の [ をトリガ位置にする。
-      if (ch === '[' && (text[i - 1] ?? '') === '[') {
-        at = i - 1
-        triggerLen = 2
-        break
-      }
-      // 区切り（空白・改行・] ＝ ref 閉じ）か 32 文字超で打ち切り。
-      if (/\s/u.test(ch) || ch === ']' || caret - i > 32) break
-    }
-    // @ はメールアドレス等と紛れるので core のヒューリスティックで判定。[[ は常に発火。
-    if (at < 0 || (triggerLen === 1 && !shouldTriggerSuggest(text.slice(0, at + 1)))) {
-      setSuggest(null)
-      return
-    }
-    const c = getCaretCoordinates(el, at)
-    setSuggest({
-      at,
-      triggerLen,
-      query: text.slice(at + triggerLen, caret),
-      top: el.offsetTop + c.top + c.height,
-      left: el.offsetLeft + c.left,
-    })
-    setActiveIndex(0)
-  }
-
-  /**
-   * 候補（または「＋ 用語集に登録」）を [[名前]] として挿入する。
-   * 作成行のときは用語集へ登録してからその名前を入れる＝用語集を正本に保つ。
-   */
-  const commitSuggestion = async (index: number) => {
-    const el = ref.current
-    if (!el || !suggest) return
-    const isCreate = showCreate && index === candidates.length
-    const name = isCreate ? suggest.query.trim() : candidates[index]?.name
-    if (!name) return
-    if (isCreate && onCreateEntry) {
-      const created = await onCreateEntry(name)
-      if (!created) return
-    }
-    const caret = el.selectionStart ?? 0
-    // 記法ボタン等で置いた空枠 [[]] の閉じ括弧を二重にしない。
-    const hasCloser = draft.startsWith(']]', caret)
-    const end = hasCloser ? caret + 2 : caret
-    const start =
-      suggest.triggerLen === 1 &&
-      hasCloser &&
-      suggest.at >= 2 &&
-      draft.startsWith('[[', suggest.at - 2)
-        ? suggest.at - 2
-        : suggest.at
-    const inserted = `[[${name}]]`
-    const next = draft.slice(0, start) + inserted + draft.slice(end)
-    setDraft(next)
-    setSuggest(null)
-    // 挿入直後のキャレットを閉じ括弧の後ろへ置く（続けて書ける）。
-    requestAnimationFrame(() => {
-      const pos = start + inserted.length
-      el.setSelectionRange(pos, pos)
-      el.focus()
-      resizeToContent(el)
-    })
-  }
-
-  return (
-    <div className="relative">
-      <textarea
-        ref={ref}
-        rows={2}
-        value={draft}
-        aria-controls={open ? listId : undefined}
-        aria-activedescendant={open ? optionId(activeIndex) : undefined}
-        onChange={(e) => {
-          setDraft(e.target.value)
-          resizeToContent(e.target)
-          refresh(e.target)
-        }}
-        onClick={(e) => refresh(e.currentTarget)}
-        onCompositionStart={() => {
-          composing.current = true
-          setSuggest(null)
-        }}
-        onCompositionEnd={(e) => {
-          composing.current = false
-          refresh(e.currentTarget)
-        }}
-        onFocus={() => {
-          focused.current = true
-        }}
-        onBlur={() => {
-          focused.current = false
-          setSuggest(null)
-          if (draft !== value) onCommit(draft)
-        }}
-        onKeyDown={(e) => {
-          if (open) {
-            // 候補が出ている間の矢印・Enter・Tab はサジェスト操作に使う（改行させない）。
-            if (e.key === 'ArrowDown') {
-              e.preventDefault()
-              setActiveIndex((i) => (i + 1) % total)
-              return
-            }
-            if (e.key === 'ArrowUp') {
-              e.preventDefault()
-              setActiveIndex((i) => (i - 1 + total) % total)
-              return
-            }
-            if (e.key === 'Enter' || e.key === 'Tab') {
-              e.preventDefault()
-              void commitSuggestion(activeIndex)
-              return
-            }
-            if (e.key === 'Escape') {
-              e.preventDefault()
-              setSuggest(null)
-              return
-            }
-          }
-          if (e.key === 'Escape') setDraft(value)
-        }}
-        onKeyUp={(e) => {
-          // 矢印・Home/End 等でキャレットだけ動いた場合の追従（入力は onChange で拾う）。
-          if (!open && (e.key.startsWith('Arrow') || e.key === 'Home' || e.key === 'End')) {
-            refresh(e.currentTarget)
-          }
-        }}
-        placeholder={placeholder}
-        aria-label={ariaLabel}
-        className="w-full resize-none overflow-hidden rounded-md border border-outline-variant/30 bg-surface px-2.5 py-1.5 text-[13px] text-on-surface leading-relaxed outline-none placeholder:text-on-surface-variant/45 focus:border-primary/50"
-      />
-      {open && suggest ? (
-        <RefSuggest
-          candidates={candidates}
-          query={suggest.query}
-          showCreate={showCreate}
-          activeIndex={activeIndex}
-          top={suggest.top}
-          left={suggest.left}
-          listId={listId}
-          optionId={optionId}
-          onCommit={(i) => void commitSuggestion(i)}
-          onHover={setActiveIndex}
-        />
-      ) : null}
-    </div>
   )
 }
 
