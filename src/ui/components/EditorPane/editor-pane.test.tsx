@@ -199,7 +199,7 @@ describe('EditorPane（[[ 補助トリガ）', () => {
       return (
         <>
           <button type="button" onClick={() => ref.current?.applyNotation('ref')}>
-            図鑑
+            用語集
           </button>
           <EditorPane
             ref={ref}
@@ -225,7 +225,7 @@ describe('EditorPane（[[ 補助トリガ）', () => {
     it('候補を選んでも [[名前]]]] にならない', () => {
       render(<FrameHarness glossary={[g('ユグドラシル', 'ゆぐどらしる')]} />)
       const ta = screen.getByRole('textbox', { name: '本文' }) as HTMLTextAreaElement
-      fireEvent.click(screen.getByRole('button', { name: '図鑑' }))
+      fireEvent.click(screen.getByRole('button', { name: '用語集' }))
       expect(ta).toHaveValue('[[]]')
 
       typeInFrame(ta, 'ユグ')
@@ -239,7 +239,7 @@ describe('EditorPane（[[ 補助トリガ）', () => {
       const onCreateEntry = vi.fn((name: string) => g(name))
       render(<FrameHarness onCreateEntry={onCreateEntry} />)
       const ta = screen.getByRole('textbox', { name: '本文' })
-      fireEvent.click(screen.getByRole('button', { name: '図鑑' }))
+      fireEvent.click(screen.getByRole('button', { name: '用語集' }))
 
       typeInFrame(ta, '新キャラ')
       fireEvent.click(screen.getByRole('option', { name: /新規作成/ }))
@@ -250,7 +250,7 @@ describe('EditorPane（[[ 補助トリガ）', () => {
     it('空枠の中で @ から呼び出しても括弧が二重にならない', () => {
       render(<FrameHarness glossary={[g('ユグドラシル', 'ゆぐどらしる')]} />)
       const ta = screen.getByRole('textbox', { name: '本文' })
-      fireEvent.click(screen.getByRole('button', { name: '図鑑' }))
+      fireEvent.click(screen.getByRole('button', { name: '用語集' }))
 
       typeInFrame(ta, '@ユグ')
       fireEvent.click(screen.getByRole('option', { name: /ユグドラシル/ }))
@@ -353,7 +353,7 @@ function NotationHarness({ initial = '' }: { initial?: string }) {
         傍点
       </button>
       <button type="button" onClick={() => ref.current?.applyNotation('ref')}>
-        図鑑
+        用語集
       </button>
       <EditorPane ref={ref} value={value} onChange={setValue} />
     </>
@@ -409,18 +409,18 @@ describe('EditorPane（記法の挿入）', () => {
     expect(ta.selectionStart).toBe(2)
   })
 
-  it('選択を図鑑参照で囲む', () => {
+  it('選択を用語集参照で囲む', () => {
     render(<NotationHarness initial="アリスが笑った" />)
     const ta = screen.getByRole('textbox', { name: '本文' }) as HTMLTextAreaElement
     select(ta, 0, 3)
-    fireEvent.click(screen.getByRole('button', { name: '図鑑' }))
+    fireEvent.click(screen.getByRole('button', { name: '用語集' }))
     expect(ta).toHaveValue('[[アリス]]が笑った')
   })
 
-  it('選択なしの図鑑参照は [[ の直後にキャレットを置く（次の打鍵でサジェストが開く）', () => {
+  it('選択なしの用語集参照は [[ の直後にキャレットを置く（次の打鍵でサジェストが開く）', () => {
     render(<NotationHarness />)
     const ta = screen.getByRole('textbox', { name: '本文' }) as HTMLTextAreaElement
-    fireEvent.click(screen.getByRole('button', { name: '図鑑' }))
+    fireEvent.click(screen.getByRole('button', { name: '用語集' }))
     expect(ta).toHaveValue('[[]]')
     expect(ta.selectionStart).toBe(2)
   })
@@ -429,7 +429,7 @@ describe('EditorPane（記法の挿入）', () => {
 describe('EditorPane（記法のショートカット）', () => {
   const shortcut = (ta: HTMLElement, key: string) => fireEvent.keyDown(ta, { key, metaKey: true })
 
-  it('Cmd+B で傍点、Cmd+I でルビ、Cmd+K で図鑑参照', () => {
+  it('Cmd+B で傍点、Cmd+I でルビ、Cmd+K で用語集参照', () => {
     render(<NotationHarness initial="重要" />)
     const ta = screen.getByRole('textbox', { name: '本文' }) as HTMLTextAreaElement
 

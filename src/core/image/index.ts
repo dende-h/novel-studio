@@ -33,7 +33,7 @@ export interface CropRect {
 }
 
 /**
- * 図鑑サムネ用：中央正方形クロップの矩形を求める。
+ * 用語集サムネ用：中央正方形クロップの矩形を求める。
  * side=min(w,h) を中央から切り出し、dSize=min(maxSize, side)（拡大しない）。
  */
 export function squareCropRect(w: number, h: number, maxSize: number): CropRect {

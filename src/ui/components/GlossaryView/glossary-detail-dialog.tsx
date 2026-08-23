@@ -1,4 +1,4 @@
-import { Pencil, Tag, Trash2 } from 'lucide-react'
+import { Lock, Pencil, Tag, Trash2 } from 'lucide-react'
 import type { Appearances } from '@/core/glossary'
 import type { GlossaryEntry } from '@/core/schema'
 import { Badge } from '@/ui/components/ui/badge'
@@ -27,8 +27,8 @@ interface GlossaryDetailDialogProps {
 }
 
 /**
- * 図鑑項目の閲覧ダイアログ。カード押下で開き、内容（サムネ・読み・カテゴリ・別名・概要・登場数）を
- * ゆったり読める大きめのダイアログで表示する。ここから「編集」「削除」へ進む（カードの3点リーダは廃止）。
+ * 用語集の項目の閲覧ダイアログ。カード押下で開き、内容（サムネ・読み・カテゴリ・別名・概要・詳細・
+ * 作者メモ・登場数）をゆったり読める大きめのダイアログで表示する。ここから「編集」「削除」へ進む。
  * 情報が多いときは本文（DialogBody）だけがスクロールし、ヘッダー／フッターは固定される。
  */
 export function GlossaryDetailDialog({
@@ -74,7 +74,7 @@ export function GlossaryDetailDialog({
                     </DialogDescription>
                   ) : (
                     <DialogDescription className="sr-only">
-                      図鑑項目「{entry.name}」の詳細
+                      用語「{entry.name}」の詳細
                     </DialogDescription>
                   )}
                   <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -114,6 +114,26 @@ export function GlossaryDetailDialog({
                   <p className="text-[14px] text-on-surface-variant/60">説明はまだありません。</p>
                 )}
               </div>
+              {entry.body ? (
+                <div className="space-y-1">
+                  <div className="text-[11px] text-on-surface-variant/60 tracking-wide">詳細</div>
+                  <p className="whitespace-pre-wrap text-[14px] text-on-surface leading-relaxed">
+                    {entry.body}
+                  </p>
+                </div>
+              ) : null}
+              {/* 作者メモは公開されない欄。他と地色を変えて「ここは内緒」を一目で分からせる。 */}
+              {entry.authorNote ? (
+                <div className="space-y-1 rounded-lg bg-surface-container-high px-3 py-2.5">
+                  <div className="flex items-center gap-1.5 text-[11px] text-on-surface-variant/70 tracking-wide">
+                    <Lock className="size-3" />
+                    作者メモ（公開されません）
+                  </div>
+                  <p className="whitespace-pre-wrap text-[13.5px] text-on-surface leading-relaxed">
+                    {entry.authorNote}
+                  </p>
+                </div>
+              ) : null}
             </DialogBody>
 
             <DialogFooter className="sm:justify-between">

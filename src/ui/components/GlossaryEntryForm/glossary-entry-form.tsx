@@ -1,3 +1,4 @@
+import { Lock } from 'lucide-react'
 import { useEffect, useId, useRef, useState } from 'react'
 import type { GlossaryEntry } from '@/core/schema'
 import { thumbnailToDataUrl } from '@/ui/_utils/imageResizer'
@@ -16,8 +17,12 @@ import { Label } from '@/ui/components/ui/label'
 import { Textarea } from '@/ui/components/ui/textarea'
 import { ZoomableImage } from '@/ui/components/ui/zoomable-image'
 
-/** 図鑑カテゴリの選択肢（プルダウンで固定）。既存データの自由入力値は編集時のみ選択肢に含めて保全する。 */
-export const GLOSSARY_CATEGORIES = ['人物', '場所', '用語', '世界観', 'アイテム'] as const
+/**
+ * 用語集カテゴリの選択肢（プルダウンで固定）。既存データの自由入力値は編集時のみ選択肢に含めて保全する。
+ * 「世界観」は置かない：作品全体の設定・決め事はプロットの世界観設定が受け持つ器なので、
+ * 同じ言葉が二か所にあると「どちらに書くのか」が毎回迷いになる。
+ */
+export const GLOSSARY_CATEGORIES = ['人物', '場所', '組織', '用語', 'アイテム', '生物'] as const
 
 export interface GlossaryFormValues {
   name: string
@@ -25,6 +30,10 @@ export interface GlossaryFormValues {
   category: string
   reading: string
   summary: string
+  /** 詳細（読者にも見せる本文）。 */
+  body: string
+  /** 作者メモ（公開バンドルから落とされる非公開欄）。 */
+  authorNote: string
   /** サムネ画像の data URL。空文字 '' は未設定／削除を表す。 */
   thumbnail: string
 }
@@ -51,7 +60,7 @@ function parseAliases(raw: string): string[] {
 }
 
 /**
- * 図鑑 entry の作成／編集ダイアログ。
+ * 用語集の項目の作成／編集ダイアログ。
  * - 編集でも名前を変更できる（旧名は renameEntry が自動で別名へ退避し、本文の参照は解決され続ける）。
  * - カテゴリは固定リストのプルダウン。既存の自由入力値は選択肢へ含めて壊さない。
  * - 衝突（同名）時は onSubmit が reject し、ダイアログを保ったままエラー文言を表示する。
@@ -69,6 +78,8 @@ export function GlossaryEntryForm({
   const [aliases, setAliases] = useState('')
   const [category, setCategory] = useState('')
   const [summary, setSummary] = useState('')
+  const [body, setBody] = useState('')
+  const [authorNote, setAuthorNote] = useState('')
   const [thumbnail, setThumbnail] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -87,6 +98,8 @@ export function GlossaryEntryForm({
     setAliases((init?.aliases ?? []).join('、'))
     setCategory(init?.category ?? '')
     setSummary(init?.summary ?? '')
+    setBody(init?.body ?? '')
+    setAuthorNote(init?.authorNote ?? '')
     setThumbnail(init?.thumbnail ?? '')
     setError(null)
     setBusy(false)
@@ -128,6 +141,8 @@ export function GlossaryEntryForm({
         category: category.trim(),
         reading: reading.trim(),
         summary: summary.trim(),
+        body: body.trim(),
+        authorNote: authorNote.trim(),
         thumbnail,
       })
       onOpenChange(false)
@@ -142,11 +157,11 @@ export function GlossaryEntryForm({
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle className="font-serif text-on-surface">
-            {isEdit ? '図鑑項目を編集' : '図鑑に登録'}
+            {isEdit ? '用語を編集' : '用語集に登録'}
           </DialogTitle>
           <DialogDescription className="sr-only">
             {isEdit
-              ? '図鑑項目の内容を編集します。'
+              ? '用語集の項目の内容を編集します。'
               : '本文に [[名前]] で参照できる項目を作成します。'}
           </DialogDescription>
         </DialogHeader>
@@ -217,10 +232,46 @@ export function GlossaryEntryForm({
                 id={`${uid}-summary`}
                 value={summary}
                 onChange={(e) => setSummary(e.target.value)}
-                placeholder="一覧やパネルに表示される説明"
-                rows={4}
+                placeholder="一覧やパネルに表示される、一行〜数行の説明"
+                rows={3}
                 className="max-h-28"
               />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor={`${uid}-body`}>詳細（任意）</Label>
+              <Textarea
+                id={`${uid}-body`}
+                value={body}
+                onChange={(e) => setBody(e.target.value)}
+                placeholder="来歴・見た目・関係・成り立ちなど、じっくり書きたいこと"
+                rows={7}
+                className="max-h-56"
+              />
+              <p className="text-[11.5px] text-on-surface-variant/70 leading-relaxed">
+                概要と詳細は、公開サイトへ投稿すると読者にも見えます（その用語が出てくる話まで
+                読んだ読者だけに開きます）。
+              </p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor={`${uid}-authorNote`} className="gap-2">
+                作者メモ（任意）
+                <span className="inline-flex items-center gap-1 rounded-full bg-secondary-container px-2 py-0.5 font-medium text-[10.5px] text-on-secondary-container">
+                  <Lock className="size-2.5" />
+                  公開されません
+                </span>
+              </Label>
+              <Textarea
+                id={`${uid}-authorNote`}
+                value={authorNote}
+                onChange={(e) => setAuthorNote(e.target.value)}
+                placeholder="この人物の正体、この場所で後に起きること——まだ読者に見せないこと"
+                rows={4}
+                className="max-h-40"
+              />
+              <p className="text-[11.5px] text-on-surface-variant/70 leading-relaxed">
+                この欄だけは投稿時に取り除かれます。作品全体の決め事や設定ルールは、プロットの
+                「世界観設定」へ書くとまとまります。
+              </p>
             </div>
             <div className="space-y-2">
               <Label htmlFor={`${uid}-thumbnail`}>サムネイル画像（任意）</Label>

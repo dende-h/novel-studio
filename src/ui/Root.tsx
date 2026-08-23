@@ -150,7 +150,7 @@ export function Root({ store }: RootProps) {
   // バックアップ→復元なしで成立させる。pull 等でローカルが変わったら一覧を読み直し、
   // 競合（LWW で解決・敗者は履歴／退避一覧へ保存済み）は通知せず、退避一覧の件数だけ更新する。
   // 執筆画面で開いている作品も、下書きが未保存（dirty）の間以外は pull を受け付け、
-  // refreshOpenWork でエディタ状態を追随させる（図鑑・本文もページ遷移なしで届く）。
+  // refreshOpenWork でエディタ状態を追随させる（用語集・本文もページ遷移なしで届く）。
   const routeRef = useRef(route)
   routeRef.current = route
   const syncService = useMemo(
@@ -174,7 +174,7 @@ export function Root({ store }: RootProps) {
     {
       onLocalChanged: () => {
         void store.init()
-        // 開いている作品（本文・図鑑）のメモリ状態を pull へ追随させる。
+        // 開いている作品（本文・用語集）のメモリ状態を pull へ追随させる。
         // 追随しないと次の save() が古い状態で上書きし、pull を黙って巻き戻してしまう。
         void store.refreshOpenWork()
         // 開いている構造ビュー・ネタ帳にも pull を反映させる（マウント時読み切りのため）。

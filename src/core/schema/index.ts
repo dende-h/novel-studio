@@ -66,8 +66,13 @@ export const EpisodeSchema = z.object({
 export type Episode = z.infer<typeof EpisodeSchema>
 
 /**
- * オブジェクト辞書の1項目（@参照の解決先）。P1。作品ごと（Work 相乗り）。
+ * 用語集の1項目（@参照の解決先）。P1。作品ごと（Work 相乗り）。
  * name + aliases が解決キー（trim 後の完全一致）。reading はサジェスト/ソート用で解決対象外。
+ *
+ * **この器は公開サイトへ送られる**（読者は初出の話まで読むと項目が開く＝段階公開）。
+ * よって summary / body は「いずれ読者が読む文」であり、まだ伏せている真相や執筆の決め事は
+ * ここへ書かない。項目ごとの内緒話は `authorNote`（公開時に落とす）、作品全体の決め事は
+ * プロットの世界観設定（`Plot.world`）が受け持つ。
  */
 export const GlossaryEntrySchema = z.object({
   id: z.string(),
@@ -77,6 +82,11 @@ export const GlossaryEntrySchema = z.object({
   reading: z.string().optional(),
   summary: z.string().optional(),
   body: z.string().optional(),
+  /**
+   * 作者だけが見るメモ。**公開バンドルから必ず落とす**（publish.ts の toBundleWork）。
+   * 「この人物の正体」「この場所で後に起きること」など、項目に紐づくがまだ読者に見せない情報。
+   */
+  authorNote: z.string().optional(),
   // サムネイル画像（リサイズ済み JPEG の data URL）。P1.1。1枚・任意・旧データ互換。
   thumbnail: z
     .string()

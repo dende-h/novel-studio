@@ -126,7 +126,7 @@ pnpm build && pnpm dev:edge   # Functions＋D1(--local)＋R2(--local) 込みで�
 - 作品作成 → autosave（~30s coalesce） → `PUT /api/sync/work` が 200、R2 に `<userId>/<workId>/doc`
   が入り D1 `works` に upsert される。
 - リロード → `GET /api/sync/manifest` ＋差分 pull で復元される。
-- coverImage / 図鑑 thumbnail を変えたときだけ `media` part が送られる（本文だけの編集では doc のみ）。
+- coverImage / 用語集 thumbnail を変えたときだけ `media` part が送られる（本文だけの編集では doc のみ）。
 - 別ブラウザで同アカウントにログイン → 旧端末の push が **409 → 同期停止バナー**、新端末で最新が pull。
 - ゴミ箱へ移動は何も送らない／purge で D1 `deleted=1` ＋ R2 削除。
 - 25MB 超の work → 413、容量逼迫 → 507 で**同期だけ止まり**、ローカルの執筆・書き出しは継続。

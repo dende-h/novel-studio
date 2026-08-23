@@ -23,7 +23,7 @@ export function createSnapshot(
   origin?: 'edit' | 'sync',
 ): Snapshot {
   const clone = structuredClone(work)
-  // 画像（表紙・図鑑サムネ）は正本（IDB の Work）にのみ持ち、版管理しない。
+  // 画像（表紙・用語集サムネ）は正本（IDB の Work）にのみ持ち、版管理しない。
   // 復元は本文（episodes）しか使わないため不要で、相乗りさせると履歴が肥大する（最大版数ぶん複製される）。
   clone.coverImage = undefined
   if (clone.glossary) for (const e of clone.glossary) e.thumbnail = undefined

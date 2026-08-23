@@ -30,7 +30,7 @@ export type PlotLine = z.infer<typeof PlotLineSchema>
 export const PlotBeatStatusSchema = z.enum(['idea', 'fixed', 'writing', 'done'])
 export type PlotBeatStatus = z.infer<typeof PlotBeatStatusSchema>
 
-/** ビート＝出来事カード。物語設計の最小単位。参照は図鑑・本文・ネタ帳と結ぶ。 */
+/** ビート＝出来事カード。物語設計の最小単位。参照は用語集・本文・ネタ帳と結ぶ。 */
 export const PlotBeatSchema = z.object({
   id: z.string(),
   title: z.string(),
@@ -40,11 +40,11 @@ export const PlotBeatSchema = z.object({
   note: z.string().optional(),
   /** テンプレート由来のガイド文。summary が空の間だけプレースホルダ表示に使う。 */
   guide: z.string().optional(),
-  /** 視点キャラ（図鑑 entry id）。 */
+  /** 視点キャラ（用語集 entry id）。 */
   povRef: z.string().optional(),
-  /** 登場キャラ（図鑑 entry id）。 */
+  /** 登場キャラ（用語集 entry id）。 */
   castRefs: z.array(z.string()),
-  /** 舞台（図鑑 entry id）。 */
+  /** 舞台（用語集 entry id）。 */
   placeRefs: z.array(z.string()),
   /** 作中時間の自由記述（「三日後の夜」等）。 */
   timeLabel: z.string().optional(),
@@ -90,6 +90,201 @@ export const SecretSchema = z.object({
 })
 export type Secret = z.infer<typeof SecretSchema>
 
+/**
+ * 世界観設定の 1 項目（作者専用のノート）。
+ *
+ * 用語集（Work.glossary）は**読者に段階公開される場所**なので、設定のルールや執筆の決め事、
+ * まだ伏せている真相をそこへ書くと公開経路に乗ってしまう。世界観設定はプロット側に置くことで
+ * 公開バンドル（toBundleWork が運ぶのは Work だけ）に構造的に載らない＝作者だけの場所になる。
+ *
+ * `slot` が枠の識別子。WORLD_SLOTS の key と一致するものは案内文つきの定型枠、
+ * `'custom'` は作者が自分で見出しを付けた自由枠。
+ */
+export const WorldNoteSchema = z.object({
+  id: z.string(),
+  slot: z.string(),
+  /** 見出し。定型枠では WORLD_SLOTS のラベルを使うので空でよい（自由枠は必須）。 */
+  title: z.string().optional(),
+  body: z.string(),
+  updatedAt: z.number(),
+})
+export type WorldNote = z.infer<typeof WorldNoteSchema>
+
+/** 世界観設定の枠のまとまり。世界そのものの設定と、書くときの決め事を分ける。 */
+export type WorldSlotGroup = 'world' | 'writing'
+
+export interface WorldSlotDef {
+  key: string
+  group: WorldSlotGroup
+  label: string
+  /** 「ここに何を書くのか」の案内。空の枠でも常に表示して、作者が迷わないようにする。 */
+  guide: string
+  /** 書き出しの取っかかり（textarea の placeholder）。 */
+  placeholder: string
+}
+
+/**
+ * 定型枠の定義（表示順）。空でも一覧に出し、案内文をそのまま読ませる＝
+ * 「何を書けばいいか分からない」で止まらないための器。増やすときは末尾へ足す
+ * （key は保存済みデータの結合キーなので変えない）。
+ */
+export const WORLD_SLOTS: WorldSlotDef[] = [
+  {
+    key: 'rules',
+    group: 'world',
+    label: '世界のルール',
+    guide:
+      'この作品で絶対に破らない決め事。ここが崩れると話が成立しない、という芯を先に書いておきます。',
+    placeholder: '例：死者は生き返らない／魔法は等価の代償を要る／空を飛べる種族はいない',
+  },
+  {
+    key: 'stage',
+    group: 'world',
+    label: '時代と舞台',
+    guide: 'いつ・どこの話か。文明の水準、気候や地形、人の暮らしの広がり。',
+    placeholder: '例：産業革命前夜の大陸。冬が長く、街道は雪で三月ふさがる',
+  },
+  {
+    key: 'society',
+    group: 'world',
+    label: '社会と制度',
+    guide: '誰が力を持ち、人はどう暮らすか。身分・お金・仕事・信仰・掟。',
+    placeholder: '例：教団が配給を握る。等級は生まれで決まらないが、事実上は動かない',
+  },
+  {
+    key: 'power',
+    group: 'world',
+    label: '力の体系',
+    guide:
+      '魔法・技術・異能など「この世界でできること」の仕組みと限界。とくに**できないこと**を決めておくと話が締まります。現代物などで不要なら空のままで大丈夫です。',
+    placeholder: '例：魔法は体系として使えるが、原理は誰にも分かっていない',
+  },
+  {
+    key: 'people',
+    group: 'world',
+    label: '種族と集団',
+    guide: '人間以外がいるか。国・民族・組織のちがいと、その間にある感情。',
+    placeholder: '例：エルフは名前を継ぐ。上がってきた種は魔法が使えない',
+  },
+  {
+    key: 'history',
+    group: 'world',
+    label: '歴史と年表',
+    guide: '物語が始まる前に何があったか。いま起きていることの前提になる出来事。',
+    placeholder: '例：数万年前に厄災。以後、外殻の内側だけで暮らしている',
+  },
+  {
+    key: 'words',
+    group: 'writing',
+    label: '言葉の決め事',
+    guide:
+      'この世界に**ある言葉**と**ない言葉**。地の文と会話で使い分ける語、呼び名の原則。ここが揃うと文章の世界がぶれません。',
+    placeholder: '例：「星」という語がない／地の文は主人公の語彙、セリフは世界の語彙',
+  },
+  {
+    key: 'reveal',
+    group: 'writing',
+    label: '読者への開示方針',
+    guide:
+      '何を、いつまで伏せるか。手がかりの出し方の方針を書きます。個々の秘密そのものは「伏線・秘密」タブで管理します。',
+    placeholder: '例：手がかりは与える、答えは与えない。読者は主人公が知る以上を知らない',
+  },
+  {
+    key: 'style',
+    group: 'writing',
+    label: '文体と視点',
+    guide: '人称・視点・時制。地の文の温度、1 話の長さ、章の切り方。',
+    placeholder: '例：一人称・現在の主人公視点。神視点の地の文は書かない。1 話 3000 字前後',
+  },
+  {
+    key: 'forbidden',
+    group: 'writing',
+    label: 'やらないこと',
+    guide:
+      '書かないと決めたもの。うっかり手が滑りやすい逸脱を先に潰しておくと、あとで直す手間が消えます。',
+    placeholder: '例：章間の「管理者ログ」を挟まない／主人公を正義漢にしない',
+  },
+]
+
+/** 定型枠の key の集合（保存済みの未知 slot を自由枠として扱うための判定に使う）。 */
+const WORLD_SLOT_KEYS = new Set(WORLD_SLOTS.map((s) => s.key))
+
+/** 自由枠（作者が自分で見出しを付けたノート）の slot 値。 */
+export const WORLD_CUSTOM_SLOT = 'custom'
+
+/** ノートの見出し。定型枠は WORLD_SLOTS のラベル、自由枠は title（無ければ「無題のメモ」）。 */
+export function worldNoteLabel(note: WorldNote): string {
+  const slot = WORLD_SLOTS.find((s) => s.key === note.slot)
+  if (slot) return slot.label
+  const title = note.title?.trim()
+  return title && title.length > 0 ? title : '無題のメモ'
+}
+
+/**
+ * 世界観設定を表示順に並べる（定型枠を WORLD_SLOTS の順で先に、自由枠を保存順で後ろに）。
+ * 中身が空のノートは持たない規約なので、ここに出るものは必ず本文がある。
+ */
+export function worldNotesInOrder(plot: Plot): WorldNote[] {
+  const notes = plot.world ?? []
+  const fixed = WORLD_SLOTS.map((s) => notes.find((n) => n.slot === s.key)).filter(
+    (n): n is WorldNote => n !== undefined,
+  )
+  const custom = notes.filter((n) => !WORLD_SLOT_KEYS.has(n.slot))
+  return [...fixed, ...custom]
+}
+
+/** 何か書かれている枠の数（タブのバッジ用）。 */
+export function countWorldNotes(plot: Plot): number {
+  return worldNotesInOrder(plot).length
+}
+
+/**
+ * 世界観設定のノートを書き込む。本文が空になったノートは**削除する**
+ * （空の器を残さない＝一覧が常に「書いたものだけ」になる）。
+ * 定型枠は slot 一致で 1 枠 1 ノートに収束し、自由枠は id 一致で更新する。
+ */
+export function setWorldNote(
+  plot: Plot,
+  input: { id?: string; slot: string; title?: string; body: string },
+  newId: string,
+  at: number,
+): Plot {
+  const notes = plot.world ?? []
+  const isFixed = WORLD_SLOT_KEYS.has(input.slot)
+  const prev = input.id
+    ? notes.find((n) => n.id === input.id)
+    : isFixed
+      ? notes.find((n) => n.slot === input.slot)
+      : undefined
+
+  const body = input.body.trim()
+  if (body === '') {
+    // 空にしたら削除。もともと無ければ何もしない（no-op は呼び出し側が保存を省ける）。
+    if (!prev) return plot
+    return { ...plot, world: notes.filter((n) => n.id !== prev.id) }
+  }
+
+  const title = input.title?.trim()
+  const note: WorldNote = {
+    id: prev?.id ?? input.id ?? newId,
+    slot: input.slot,
+    ...(!isFixed && title ? { title } : {}),
+    body,
+    updatedAt: at,
+  }
+  return {
+    ...plot,
+    world: prev ? notes.map((n) => (n.id === note.id ? note : n)) : [...notes, note],
+  }
+}
+
+/** 世界観設定のノートを削除する。 */
+export function removeWorldNote(plot: Plot, id: string): Plot {
+  const notes = plot.world ?? []
+  if (!notes.some((n) => n.id === id)) return plot
+  return { ...plot, world: notes.filter((n) => n.id !== id) }
+}
+
 export const PlotTemplateSchema = z.enum([
   'three-act',
   'kishotenketsu',
@@ -113,6 +308,11 @@ export const PlotSchema = z.object({
   foreshadows: z.array(ForeshadowSchema),
   /** 読者に伏せる情報。後から足した項目なので、旧データ互換のため既定 []。 */
   secrets: z.array(SecretSchema).optional().default([]),
+  /**
+   * 世界観設定（作者専用のノート）。後から足した項目なので、旧データ互換のため既定 []。
+   * 用語集と違って公開バンドルには載らない＝ネタバレを安心して書ける場所。
+   */
+  world: z.array(WorldNoteSchema).optional().default([]),
   updatedAt: z.number(),
 })
 export type Plot = z.infer<typeof PlotSchema>
@@ -132,6 +332,7 @@ export function isTrivialPlot(p: Plot): boolean {
     p.lines.length === 0 &&
     p.foreshadows.length === 0 &&
     p.secrets.length === 0 &&
+    p.world.length === 0 &&
     !p.premise &&
     !p.theme
   )
@@ -146,7 +347,12 @@ export function isTrivialPlot(p: Plot): boolean {
 export function pickPrimaryPlot(list: Plot[]): Plot | undefined {
   if (list.length === 0) return undefined
   const weight = (p: Plot) =>
-    p.beats.length + p.sections.length + p.lines.length + p.foreshadows.length + p.secrets.length
+    p.beats.length +
+    p.sections.length +
+    p.lines.length +
+    p.foreshadows.length +
+    p.secrets.length +
+    p.world.length
   return [...list].sort((a, b) => {
     const aTrivial = isTrivialPlot(a) ? 1 : 0
     const bTrivial = isTrivialPlot(b) ? 1 : 0
@@ -168,6 +374,7 @@ export function emptyPlot(id: string, workId: string, at: number, title = '本�
     lines: [],
     foreshadows: [],
     secrets: [],
+    world: [],
     updatedAt: at,
   }
 }

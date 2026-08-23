@@ -50,6 +50,8 @@ const toFieldPatch = (v: GlossaryFormValues) => ({
   category: emptyToUndef(v.category),
   reading: emptyToUndef(v.reading),
   summary: emptyToUndef(v.summary),
+  body: emptyToUndef(v.body),
+  authorNote: emptyToUndef(v.authorNote),
   // サムネは空文字をそのまま渡す（更新時 '' = 削除指示。作成時は addGlossaryEntry が空を弾く）。
   thumbnail: v.thumbnail,
 })
@@ -90,16 +92,16 @@ const PlotView = lazy(() => import('@/ui/components/PlotView/plot-view'))
 const NOTATION_BUTTONS: { kind: NotationKind; label: string; title: string }[] = [
   { kind: 'ruby', label: 'ルビ', title: 'ルビ ｜漢字《かんじ》（Ctrl/Cmd + I）' },
   { kind: 'dots', label: '傍点', title: '傍点 《《強調》》（Ctrl/Cmd + B）' },
-  // 「図鑑」はナビ（図鑑ページ）とツールバー（図鑑パネル）で既に使っているため、
+  // 「用語集」はナビ（用語集ページ）とツールバー（用語集パネル）で既に使っているため、
   // 記法ボタンは挿入されるもの＝参照で呼び分ける。
-  { kind: 'ref', label: '参照', title: '図鑑参照 [[用語]]（Ctrl/Cmd + K）' },
+  { kind: 'ref', label: '参照', title: '用語集参照 [[用語]]（Ctrl/Cmd + K）' },
 ]
 
 /** 自動保存：本文の入力が止まってから保存するまでの待ち時間(ms)。純ローカル処理なので
  * 短くても安い。同期の push 猶予（保存後 1.5 秒）と直列に効くため、ここも短く保つ。 */
 const AUTOSAVE_DELAY_MS = 1000
 
-/** 原稿エディタ（サイドバー＋ツールバー＋本文／プレビュー＋図鑑パネル／履歴）。 */
+/** 原稿エディタ（サイドバー＋ツールバー＋本文／プレビュー＋用語集パネル／履歴）。 */
 export function App({
   store,
   onExit,
@@ -130,17 +132,17 @@ export function App({
   const [pane, setPane] = useState<'editor' | 'preview'>('editor')
   // 一括置換パネル（この話の本文だけを対象）。
   const [replaceOpen, setReplaceOpen] = useState(false)
-  // 図鑑パネル（この話に登場＋選択 entry のチラ見）。@参照クリックでも開く。
+  // 用語集パネル（この話に登場＋選択 entry のチラ見）。@参照クリックでも開く。
   const [glossaryPanelOpen, setGlossaryPanelOpen] = useState(false)
   // 「この話のプロット」パネル（episodeRef が現在話のビート＋実字数/予定字数の進捗）。
   const [plotPanelOpen, setPlotPanelOpen] = useState(false)
   // パネル等からプロット画面へ飛ぶときの着地ビート（PlotView が消費して null に戻す）。
   const [plotFocusBeatId, setPlotFocusBeatId] = useState<string | null>(null)
-  // 図鑑パネルで選択中の entry（id で引いて常に最新を見る）。
+  // 用語集パネルで選択中の entry（id で引いて常に最新を見る）。
   const [peekId, setPeekId] = useState<string | null>(null)
   // 未解決 @参照クリックで起動するクイック作成（プリフィルする名前。'' は空フォーム）。
   const [quickCreateName, setQuickCreateName] = useState<string | null>(null)
-  // 図鑑パネルからの編集対象。作成と同じくその場のモーダルで完結させる（本文から離れさせない）。
+  // 用語集パネルからの編集対象。作成と同じくその場のモーダルで完結させる（本文から離れさせない）。
   const [editEntryId, setEditEntryId] = useState<string | null>(null)
   // ツールバーの記法ボタンから本文へ挿入するためのハンドル（選択範囲は EditorPane が持つ）。
   const editorRef = useRef<EditorPaneHandle>(null)
@@ -224,8 +226,8 @@ export function App({
   )
 
   /**
-   * 図鑑 entry の編集確定。改名を先に確定（衝突は reject させてダイアログに出す）、
-   * その後フィールドを更新する。図鑑ページ（GlossaryView）内の編集と同じ順序。
+   * 用語集 entry の編集確定。改名を先に確定（衝突は reject させてダイアログに出す）、
+   * その後フィールドを更新する。用語集ページ（GlossaryView）内の編集と同じ順序。
    */
   const submitEntryEdit = useCallback(
     async (entry: GlossaryEntry, values: GlossaryFormValues) => {
@@ -237,7 +239,7 @@ export function App({
     [store],
   )
 
-  // プレビューの @参照クリック：解決済み→図鑑パネルで表示、未解決→当該名でクイック作成。
+  // プレビューの @参照クリック：解決済み→用語集パネルで表示、未解決→当該名でクイック作成。
   const onRefClick = useCallback(
     (name: string) => {
       const entry = resolveRef(name, work?.glossary ?? [])
@@ -358,14 +360,14 @@ export function App({
           <GlossaryPeek
             entries={work.glossary ?? []}
             // プロット画面では「この話に登場」チップの母集団になる本文が無いので空を渡す
-            // （選んだ用語の中身＝図鑑の見え方は本文編集とまったく同じ）。
+            // （選んだ用語の中身＝用語集の見え方は本文編集とまったく同じ）。
             draft={onEpisodes ? state.draft : ''}
             entry={peekEntry}
             appearances={peekEntry ? getAppearances(peekEntry) : null}
             onSelect={(id) => setPeekId(id)}
             onQuickCreate={(name) => setQuickCreateName(name)}
             onClose={() => setGlossaryPanelOpen(false)}
-            // 作成と同じくその場のモーダルで編集する（図鑑ページへ飛ばさない）。
+            // 作成と同じくその場のモーダルで編集する（用語集ページへ飛ばさない）。
             // パネルは開いたままにして、編集後にチップ一覧へ自然に戻れるようにする。
             onEdit={() => {
               if (peekEntry) setEditEntryId(peekEntry.id)
@@ -413,8 +415,8 @@ export function App({
             }}
             onRefClick={onRefClick}
             onCreatePlainGlossaryEntry={async (name) => {
-              // サジェストの「＋ 図鑑に登録」。本文のクイック作成と同じく分類なしで作る
-              // （人物か場所かはここでは決まらないので、後から図鑑で付ける）。
+              // サジェストの「＋ 用語集に登録」。本文のクイック作成と同じく分類なしで作る
+              // （人物か場所かはここでは決まらないので、後から用語集で付ける）。
               try {
                 return (await store.addGlossaryEntry({ name })).name
               } catch {
@@ -624,7 +626,7 @@ export function App({
               <Button
                 variant="ghost"
                 size="sm"
-                aria-label="図鑑パネル"
+                aria-label="用語集パネル"
                 aria-pressed={glossaryPanelOpen}
                 onClick={() => {
                   setHistoryOpen(false)
@@ -637,7 +639,7 @@ export function App({
                 )}
               >
                 <BookMarked className="size-4" aria-hidden />
-                <span className="max-lg:hidden">図鑑</span>
+                <span className="max-lg:hidden">用語集</span>
               </Button>
             </div>
           </div>
@@ -736,7 +738,7 @@ export function App({
           if (renameEpisodeTarget) void store.renameEpisode(renameEpisodeTarget.id, title)
         }}
       />
-      {/* 図鑑パネルからの編集（名前の変更も同じダイアログ。旧名は自動で別名に残る）。 */}
+      {/* 用語集パネルからの編集（名前の変更も同じダイアログ。旧名は自動で別名に残る）。 */}
       <GlossaryEntryForm
         open={editEntry !== null}
         onOpenChange={(o) => {

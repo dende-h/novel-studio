@@ -69,7 +69,7 @@ interface SideNavProps {
   /** プロフィール編集を開く。指定時のみプロフィール欄を表示。 */
   onEditProfile?: () => void
   /**
-   * 開いている作品のタイトル。指定時は「作品モード」（戻るリンク＋作品カード＋本文/図鑑ナビ＋草稿）。
+   * 開いている作品のタイトル。指定時は「作品モード」（戻るリンク＋作品カード＋本文/用語集ナビ＋草稿）。
    * 省略時（ライブラリ・執筆の記録）は「ライブラリモード」（プロフィール＋CTA＋メインナビ）。
    */
   workTitle?: string
@@ -79,7 +79,7 @@ interface SideNavProps {
   workMeta?: string
   /** エディタ画面へ切替（作品オープン時のみ） */
   onNavigateEpisodes?: () => void
-  /** 図鑑画面へ切替（作品オープン時のみ） */
+  /** 用語集画面へ切替（作品オープン時のみ） */
   onNavigateGlossary?: () => void
   /** プロット（幕×ビートの物語設計）へ切替（作品オープン＋cloud会員時のみ） */
   onNavigatePlot?: () => void
@@ -158,7 +158,7 @@ export function SideNav({
   platformHref,
 }: SideNavProps) {
   const groveHref = platformHref ?? PLATFORM_ORIGIN
-  // 作品が開いていれば作品モード（戻る＋作品カード＋本文/図鑑）、未オープンはライブラリモード。
+  // 作品が開いていれば作品モード（戻る＋作品カード＋本文/用語集）、未オープンはライブラリモード。
   const workOpen = workTitle !== undefined
   const workInitial = (workTitle ?? '').trim().charAt(0) || '無'
   return (
@@ -230,7 +230,7 @@ export function SideNav({
             />
             <NavRow
               icon={BookMarked}
-              label="図鑑"
+              label="用語集"
               active={active === 'glossary'}
               onClick={onNavigateGlossary}
             />

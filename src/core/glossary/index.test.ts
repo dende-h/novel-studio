@@ -336,7 +336,7 @@ describe('suggestRefs（別名も独立候補・挿入表記付き・一致度�
       entry({ id: `e${i}`, name: `名${i}`, reading: `な${i}` }),
     )
     expect(suggestRefs('な', es)).toHaveLength(12)
-    // 空 query（打ち始める前）も図鑑全体をたどれる。
+    // 空 query（打ち始める前）も用語集全体をたどれる。
     expect(suggestRefs('', es)).toHaveLength(12)
     // limit を渡したときだけ絞る。
     expect(suggestRefs('な', es, 3)).toHaveLength(3)
@@ -352,7 +352,7 @@ describe('suggestRefs（別名も独立候補・挿入表記付き・一致度�
     const out = suggestRefs('世', [yggd])
     expect(out).toHaveLength(1)
     expect(out[0]).toMatchObject({ name: '世界樹', isAlias: true })
-    expect(out[0]?.entry.id).toBe('y') // 図鑑（正式名）へは entry で辿れる
+    expect(out[0]?.entry.id).toBe('y') // 用語集（正式名）へは entry で辿れる
   })
 
   it('正式名で引くと正式名候補（別名は出さない）', () => {

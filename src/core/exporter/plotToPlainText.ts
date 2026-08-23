@@ -8,13 +8,16 @@ import {
   type Secret,
   secretStatus,
   sectionTargetTotal,
+  WORLD_SLOTS,
+  worldNoteLabel,
+  worldNotesInOrder,
 } from '../plot'
 import type { GlossaryEntry, Work } from '../schema'
 
 /**
  * プロット（幕×ビート）→ AI が読めるプレーンテキスト。リモート MCP の `get_plot` ペイロード。
  * 各要素に [beat_id: …] 等を添え、upsert/delete 系ツールの対象を AI が指定できるようにする。
- * 図鑑参照は名前へ、話参照はタイトルへ解決する。純ロジック。
+ * 用語集参照は名前へ、話参照はタイトルへ解決する。純ロジック。
  */
 
 const STATUS_LABEL: Record<PlotBeat['status'], string> = {
@@ -101,6 +104,40 @@ function foreshadowText(f: Foreshadow, plot: Plot): string {
 }
 
 /**
+ * 世界観設定 → AI が読める1ドキュメント。リモート MCP の `get_world` ペイロード。
+ *
+ * この作品を触る前に読ませたい「作品の決め事」。用語集と違って公開経路に載らないので、
+ * まだ伏せている真相もそのまま書かれている前提で扱う。定型枠は WORLD_SLOTS の順、
+ * 自由枠はその後ろ。中身のある枠だけが並ぶ（空の器は保存されない）。
+ */
+export function worldToPlainText(plot: Plot | undefined): string {
+  const notes = plot ? worldNotesInOrder(plot) : []
+  if (notes.length === 0) return ''
+  const body = notes.map((n) => {
+    const slot = WORLD_SLOTS.find((s) => s.key === n.slot)
+    const head = `## ${worldNoteLabel(n)} [slot: ${slot ? slot.key : n.slot}, note_id: ${n.id}]`
+    return `${head}\n${n.body}`
+  })
+  return [
+    '# 世界観設定（作者専用・読者には公開されません）',
+    'この作品の決め事です。用語集・プロット・本文を書き換える前に、必ずここに従ってください。',
+    ...body,
+  ].join('\n\n')
+}
+
+/**
+ * `get_plot` / `get_glossary` の先頭に添える 1 行。世界観設定があることと、
+ * それを読む手段（get_world）を必ず目に入れる＝毎回の精度をここで底上げする。
+ * 何も書かれていなければ「まずここを埋めよう」と促す。
+ */
+export function worldPointerLine(plot: Plot | undefined): string {
+  const count = plot ? worldNotesInOrder(plot).length : 0
+  return count > 0
+    ? `※ この作品には世界観設定（作者専用の決め事）が ${count} 項目あります。編集の前に get_world で必ず確認してください。`
+    : '※ この作品にはまだ世界観設定がありません。決め事・設定・執筆ルールは用語集ではなく set_world_note へ書いてください（用語集は読者に公開されます）。'
+}
+
+/**
  * 指定作品の主プロットを1ドキュメントにまとめる。plots は全作品ぶんでよい（内部で絞る）。
  * 無ければ作成方法の案内文を返す。
  */
@@ -108,7 +145,11 @@ export function plotToPlainText(plots: Plot[], work: Work): string {
   const mine = plots.filter((p) => p.workId === work.id)
   const plot = pickPrimaryPlot(mine)
   if (!plot) {
-    return '（この作品のプロットはまだありません。set_plot_meta で作成できます）'
+    // プロットが無い作品ほど「設定をどこへ書くか」の案内が要る（用語集へ流れ込むのはここ）。
+    return [
+      worldPointerLine(undefined),
+      '（この作品のプロットはまだありません。set_plot_meta で作成できます）',
+    ].join('\n\n')
   }
 
   const head: string[] = [`【プロット】${plot.title} [plot_id: ${plot.id}]`]
@@ -147,5 +188,10 @@ export function plotToPlainText(plots: Plot[], work: Work): string {
       ? [`秘密（読者に伏せる情報）:\n${plot.secrets.map((s) => secretText(s, plot)).join('\n')}`]
       : []
 
-  return [head.join('\n'), ...sections, ...foreshadows, ...secrets].join('\n\n')
+  // 世界観設定はプロットと同じ器（Plot）にあり、プロットを触る AI が最初に読むべきもの。
+  // get_world を待たずにここへ丸ごと載せる＝「まず決め事を読む」を取りこぼさない。
+  const world = worldToPlainText(plot)
+  const preamble = world !== '' ? [world] : [worldPointerLine(plot)]
+
+  return [...preamble, head.join('\n'), ...sections, ...foreshadows, ...secrets].join('\n\n')
 }

@@ -391,7 +391,7 @@
         { id: 'F-EDIT-006', feature: 'エディタ（記法入力＋プレビュー）', layer: 'e2e', status: 'proposed', scenario: '分割ペイン表示', given: 'エディタ画面', when: '表示', then: '入力ペインとプレビューペインが並ぶ', note: '向き/モバイルは D-EDIT-2（決定済：lg以上は横並び、lg未満はタブ切替）' },
         { id: 'F-EDIT-007', feature: 'エディタ（記法入力＋プレビュー）', layer: 'e2e', status: 'proposed', scenario: 'IME変換が壊れない', given: '日本語IME', when: '変換中の未確定文字を入力', then: '変換が分断されず確定後にプレビュー更新（textareaなのでcompositionが安全）' },
         { id: 'F-EDIT-008', feature: 'エディタ（記法入力＋プレビュー）', layer: 'integration', status: 'proposed', scenario: '空枠 [[]] から書き始めても閉じ括弧が二重にならない', given: '記法ボタン（PC ツールバー／スマホ記法バー）で [[]] を挿入', when: '枠の中に用語を打ちサジェストから確定（既存候補・新規作成・枠内 @ 呼び出しのいずれも）', then: '[[用語]] になり [[用語]]]] にならない（参照が効く）' },
-        { id: 'F-EDIT-009', feature: 'エディタ（記法入力＋プレビュー）', layer: 'integration', status: 'proposed', scenario: '参照とルビ／傍点を重ねてもプレビューが正しい', given: 'エディタ', when: '[[｜言葉《ことば》]] や [[《《言葉》》]] を入力', then: 'プレビューで図鑑リンクとして表示されつつルビ／傍点も効く' },
+        { id: 'F-EDIT-009', feature: 'エディタ（記法入力＋プレビュー）', layer: 'integration', status: 'proposed', scenario: '参照とルビ／傍点を重ねてもプレビューが正しい', given: 'エディタ', when: '[[｜言葉《ことば》]] や [[《《言葉》》]] を入力', then: 'プレビューで用語集リンクとして表示されつつルビ／傍点も効く' },
 
         // ── 自動保存・dirty・最小版管理
         { id: 'F-SAVE-001', feature: '自動保存・版管理', layer: 'integration', status: 'proposed', scenario: 'idleで自動保存しdirty解消', given: '未保存の編集', when: '一定時間入力が止まる', then: '自動保存されdirty表示が消える', note: '契機は D-SAVE-1' },

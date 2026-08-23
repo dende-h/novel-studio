@@ -15,12 +15,16 @@ import {
   removeLine,
   removeSecret,
   removeSection,
+  removeWorldNote,
+  setWorldNote,
   singletonPlotId,
   updateBeat,
   updateLine,
   updateSection,
   upsertForeshadow,
   upsertSecret,
+  WORLD_CUSTOM_SLOT,
+  WORLD_SLOTS,
 } from '../plot'
 import type { Episode, GlossaryEntry, Work } from '../schema'
 import {
@@ -198,7 +202,7 @@ export function setOutlineNotes(
   return upsertStructure(structures, next)
 }
 
-/** 図鑑エントリを追加/更新（id 指定で更新、無ければ新規）。 */
+/** 用語集の項目を追加/更新（id 指定で更新、無ければ新規）。 */
 export function upsertGlossaryEntry(
   works: Work[],
   workId: string,
@@ -210,6 +214,7 @@ export function upsertGlossaryEntry(
     reading?: string
     summary?: string
     body?: string
+    authorNote?: string
   },
   newId: string,
   now: number,
@@ -226,6 +231,7 @@ export function upsertGlossaryEntry(
       ...(emptyToUndef(input.reading) ? { reading: input.reading } : {}),
       ...(emptyToUndef(input.summary) ? { summary: input.summary } : {}),
       ...(emptyToUndef(input.body) ? { body: input.body } : {}),
+      ...(emptyToUndef(input.authorNote) ? { authorNote: input.authorNote } : {}),
       createdAt: prev?.createdAt ?? now,
       updatedAt: now,
     }
@@ -236,7 +242,7 @@ export function upsertGlossaryEntry(
   })
 }
 
-/** 図鑑エントリを削除する。 */
+/** 用語集エントリを削除する。 */
 export function deleteGlossaryEntry(
   works: Work[],
   workId: string,
@@ -246,7 +252,7 @@ export function deleteGlossaryEntry(
   return updateWork(works, workId, (w) => {
     const glossary = w.glossary ?? []
     if (!glossary.some((g) => g.id === entryId)) {
-      throw new McpEditError(`entry_id "${entryId}" の図鑑項目が見つかりません`)
+      throw new McpEditError(`entry_id "${entryId}" の用語集項目が見つかりません`)
     }
     return { ...w, glossary: glossary.filter((g) => g.id !== entryId), updatedAt: now }
   })
@@ -612,6 +618,70 @@ export function upsertPlotSecret(
     keepHidden: revealBeatId ? undefined : (input.keepHidden ?? prev?.keepHidden),
   })
   return { plots: putPlot(plots, next, now), secretId }
+}
+
+/** 世界観設定で指定できる枠の一覧（ツール説明とエラー文言で使う）。 */
+export const WORLD_SLOT_CHOICES = [...WORLD_SLOTS.map((s) => s.key), WORLD_CUSTOM_SLOT]
+
+/**
+ * 世界観設定のノートを書き込む。
+ *
+ * プロットがまだ無い作品でも書けるようにする（決め事はプロットより先に決まることが多く、
+ * 「幕を作らないと設定が書けない」は順序が逆）。定型枠は slot 一致で 1 枠に収束し、
+ * 自由枠（custom）は title 必須・id 指定で更新する。body を空にすると枠ごと消える。
+ */
+export function setPlotWorldNote(
+  plots: Plot[],
+  works: Work[],
+  workId: string,
+  input: { id?: string; slot: string; title?: string; body: string },
+  newId: string,
+  now: number,
+): { plots: Plot[]; noteId: string | null } {
+  if (!works.some((w) => w.id === workId)) {
+    throw new McpEditError(`work_id "${workId}" の作品が見つかりません`)
+  }
+  const slot = input.slot.trim()
+  if (!WORLD_SLOT_CHOICES.includes(slot)) {
+    throw new McpEditError(`slot は ${WORLD_SLOT_CHOICES.join(' / ')} のいずれかです`)
+  }
+  const isCustom = slot === WORLD_CUSTOM_SLOT
+
+  const mine = plots.filter((p) => p.workId === workId)
+  // 決定的 id＝どの端末・AI が作っても同じレコードへ収束（setPlotMeta と同じ流儀）。
+  const base = pickPrimaryPlot(mine) ?? emptyPlot(singletonPlotId(workId), workId, now)
+
+  if (input.id !== undefined && !base.world.some((n) => n.id === input.id)) {
+    throw new McpEditError(`note_id "${input.id}" の世界観設定が見つかりません`)
+  }
+  const prevTitle = input.id ? base.world.find((n) => n.id === input.id)?.title : undefined
+  const title = emptyToUndef(input.title) ?? prevTitle
+  if (isCustom && !title) {
+    throw new McpEditError('自由枠（slot: custom）には title が必要です')
+  }
+
+  const next = setWorldNote(base, { id: input.id, slot, title, body: input.body }, newId, now)
+  // body を空にした呼び出しは削除なので、返す note_id は無い。
+  // 定型枠は既存ノートの id を引き継ぐので、書き込み後の枠から引き直す。
+  const noteId =
+    input.body.trim() === ''
+      ? null
+      : (input.id ?? (isCustom ? newId : (next.world.find((n) => n.slot === slot)?.id ?? newId)))
+  return { plots: putPlot(plots, next, now), noteId }
+}
+
+/** 世界観設定のノートを削除する。 */
+export function deletePlotWorldNote(
+  plots: Plot[],
+  workId: string,
+  noteId: string,
+  now: number,
+): Plot[] {
+  const plot = requirePlot(plots, workId)
+  if (!plot.world.some((n) => n.id === noteId)) {
+    throw new McpEditError(`note_id "${noteId}" の世界観設定が見つかりません`)
+  }
+  return putPlot(plots, removeWorldNote(plot, noteId), now)
 }
 
 /** 幕・プロットライン・伏線・秘密を削除する（ビートは delete_plot_beat 専用＝誤爆防止）。 */

@@ -5,6 +5,7 @@ import {
   beatsOfSection,
   countOpenForeshadows,
   countUnrevealedSecrets,
+  countWorldNotes,
   createPlotFromTemplate,
   emptyPlot,
   foreshadowStatus,
@@ -17,13 +18,18 @@ import {
   removeLine,
   removeSecret,
   removeSection,
+  removeWorldNote,
   secretStatus,
   secretsHiddenAt,
   sectionTargetTotal,
+  setWorldNote,
   singletonPlotId,
   updateBeat,
   upsertForeshadow,
   upsertSecret,
+  WORLD_SLOTS,
+  worldNoteLabel,
+  worldNotesInOrder,
 } from './index'
 
 const beat = (id: string, extra: Partial<PlotBeat> = {}): PlotBeat => ({
@@ -202,5 +208,97 @@ describe('secret（読者に伏せる情報と開示タイミング）', () => {
     p = upsertSecret(p, { id: 'sec1', title: '秘密' })
     p = removeSecret(p, 'sec1')
     expect(p.secrets).toHaveLength(0)
+  })
+})
+
+describe('世界観設定（作者専用ノート）', () => {
+  const at = 100
+
+  it('定型枠は slot 一致で 1 枠 1 ノートに収束する', () => {
+    let p = emptyPlot('p1', 'w1', 1)
+    p = setWorldNote(p, { slot: 'rules', body: '死者は生き返らない' }, 'n1', at)
+    p = setWorldNote(p, { slot: 'rules', body: '死者は生き返らない。ただし一度だけ' }, 'n2', at + 1)
+    expect(p.world).toHaveLength(1)
+    expect(p.world[0]?.id).toBe('n1') // 既存 id を保つ＝毎回作り直さない
+    expect(p.world[0]?.body).toBe('死者は生き返らない。ただし一度だけ')
+    expect(p.world[0]?.updatedAt).toBe(at + 1)
+  })
+
+  it('本文を空にすると枠ごと削除される（空の器を残さない）', () => {
+    let p = emptyPlot('p1', 'w1', 1)
+    p = setWorldNote(p, { slot: 'rules', body: 'ルール' }, 'n1', at)
+    p = setWorldNote(p, { slot: 'rules', body: '   ' }, 'n2', at + 1)
+    expect(p.world).toEqual([])
+  })
+
+  it('もともと無い枠を空で保存しても no-op（同一参照を返す）', () => {
+    const p = emptyPlot('p1', 'w1', 1)
+    expect(setWorldNote(p, { slot: 'rules', body: '' }, 'n1', at)).toBe(p)
+  })
+
+  it('自由枠は id ごとに増え、見出しを持てる', () => {
+    let p = emptyPlot('p1', 'w1', 1)
+    p = setWorldNote(p, { slot: 'custom', title: '食べ物', body: '麦はあるが姿が違う' }, 'c1', at)
+    p = setWorldNote(p, { slot: 'custom', title: '通貨', body: '銀貨が基準' }, 'c2', at)
+    expect(p.world).toHaveLength(2)
+    expect(worldNoteLabel(p.world[0] as never)).toBe('食べ物')
+    // id を渡せば既存の自由枠を更新する
+    p = setWorldNote(p, { id: 'c1', slot: 'custom', title: '食べ物', body: '麦と芋' }, 'x', at + 1)
+    expect(p.world).toHaveLength(2)
+    expect(p.world.find((n) => n.id === 'c1')?.body).toBe('麦と芋')
+  })
+
+  it('見出しは定型枠がラベル、自由枠は title（無ければ既定文言）', () => {
+    let p = emptyPlot('p1', 'w1', 1)
+    p = setWorldNote(p, { slot: 'style', body: '一人称' }, 'n1', at)
+    p = setWorldNote(p, { slot: 'custom', body: '見出しなし' }, 'c1', at)
+    expect(worldNoteLabel(p.world[0] as never)).toBe('文体と視点')
+    expect(worldNoteLabel(p.world[1] as never)).toBe('無題のメモ')
+  })
+
+  it('並び順は WORLD_SLOTS の順 → 自由枠の保存順', () => {
+    let p = emptyPlot('p1', 'w1', 1)
+    // わざと定義順と逆に入れる
+    p = setWorldNote(p, { slot: 'custom', title: '自由', body: 'x' }, 'c1', at)
+    p = setWorldNote(p, { slot: 'forbidden', body: 'y' }, 'n1', at)
+    p = setWorldNote(p, { slot: 'rules', body: 'z' }, 'n2', at)
+    expect(worldNotesInOrder(p).map((n) => n.slot)).toEqual(['rules', 'forbidden', 'custom'])
+    expect(countWorldNotes(p)).toBe(3)
+  })
+
+  it('removeWorldNote で削除でき、無い id は no-op', () => {
+    let p = emptyPlot('p1', 'w1', 1)
+    p = setWorldNote(p, { slot: 'rules', body: 'ルール' }, 'n1', at)
+    expect(removeWorldNote(p, 'nope')).toBe(p)
+    p = removeWorldNote(p, 'n1')
+    expect(p.world).toEqual([])
+  })
+
+  it('世界観設定だけ書いたプロットは「中身なし」ではない', () => {
+    let p = emptyPlot('p1', 'w1', 1)
+    expect(isTrivialPlot(p)).toBe(true)
+    p = setWorldNote(p, { slot: 'rules', body: 'ルール' }, 'n1', at)
+    expect(isTrivialPlot(p)).toBe(false)
+  })
+
+  it('旧データ（world 欠落）を読み込むと空配列で埋まる', () => {
+    const parsed = PlotSchema.parse({
+      id: 'p1',
+      workId: 'w1',
+      title: '本編プロット',
+      sections: [],
+      beats: [],
+      lines: [],
+      foreshadows: [],
+      updatedAt: 1,
+    })
+    expect(parsed.world).toEqual([])
+  })
+
+  it('定型枠の key は重複せず、案内文が必ずある', () => {
+    const keys = WORLD_SLOTS.map((s) => s.key)
+    expect(new Set(keys).size).toBe(keys.length)
+    expect(keys).not.toContain('custom') // 自由枠の予約語と衝突しない
+    for (const s of WORLD_SLOTS) expect(s.guide.length).toBeGreaterThan(0)
   })
 })

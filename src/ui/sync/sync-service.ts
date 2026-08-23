@@ -168,7 +168,7 @@ export interface SyncDeps {
    * いま執筆画面で開いている作品の状態（無ければ null）。
    * - pull：dirty（下書きに未保存の編集がある）の間だけ見送る。それ以外は開いたまま反映し、
    *   呼び出し側（Root）が store.refreshOpenWork() でエディタ状態を追随させる
-   *   （＝図鑑・本文の変更もページ遷移なしで届く）。
+   *   （＝用語集・本文の変更もページ遷移なしで届く）。
    * - trashLocal / purgeLocal：開いている間は常に見送る（作品が editor の下から消えるのは
    *   破壊的すぎるため。画面を離れた後の reconcile に委ねる）。
    */

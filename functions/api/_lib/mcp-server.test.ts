@@ -88,13 +88,26 @@ describe('handleMcpMessage — プロトコル', () => {
     expect(res.result.serverInfo.name).toBe('novel-studio')
   })
 
+  // 器の住み分け（用語集は公開・世界観設定は非公開）を知らせるのは instructions が唯一の場所。
+  // ここが落ちると AI が設定を用語集へ書き戻すので、初期化の応答に載ることを固定する。
+  it('initialize は器の住み分けを instructions で渡す', async () => {
+    const res = (await handleMcpMessage(
+      { jsonrpc: '2.0', id: 1, method: 'initialize' },
+      deps(),
+    )) as { result: { instructions?: string } }
+    const text = res.result.instructions ?? ''
+    expect(text).toContain('get_world')
+    expect(text).toContain('set_world_note')
+    expect(text).toMatch(/用語集[\s\S]*読者にも見え/)
+  })
+
   it('notifications/initialized は null', async () => {
     expect(
       await handleMcpMessage({ jsonrpc: '2.0', method: 'notifications/initialized' }, deps()),
     ).toBeNull()
   })
 
-  it('tools/list は 24 ツール（読み5・書き16・バックアップ3）', async () => {
+  it('tools/list は 27 ツール（読み6・書き18・バックアップ3）', async () => {
     const res = (await handleMcpMessage(
       { jsonrpc: '2.0', id: 1, method: 'tools/list' },
       deps(),
@@ -102,7 +115,7 @@ describe('handleMcpMessage — プロトコル', () => {
       result: { tools: { name: string }[] }
     }
     const names = res.result.tools.map((t) => t.name)
-    expect(MCP_TOOLS).toHaveLength(24)
+    expect(MCP_TOOLS).toHaveLength(27)
     expect(names).toContain('upsert_secret')
     expect(names).toContain('get_plot')
     expect(names).toContain('upsert_plot_beat')
@@ -115,6 +128,9 @@ describe('handleMcpMessage — プロトコル', () => {
     expect(names).toContain('set_structure')
     expect(names).toContain('create_backup')
     expect(names).toContain('restore_backup')
+    expect(names).toContain('get_world')
+    expect(names).toContain('set_world_note')
+    expect(names).toContain('delete_world_note')
   })
 
   it('ping は空結果、未知メソッドは -32601', async () => {
@@ -365,7 +381,7 @@ describe('プロットツール（get_plot / set_plot_meta / upsert_* / delete_*
     expect(text).toContain('ログライン: 届くはずのない手紙の話')
     expect(text).toContain(`[section_id: ${sectionId}]`)
     expect(text).toContain('[確定] 手紙が届く')
-    expect(text).toContain('視点: アカリ') // 図鑑名へ解決
+    expect(text).toContain('視点: アカリ') // 用語集名へ解決
     expect(text).toContain('ライン: メイン')
     expect(text).toContain('対応話: 第一話')
     expect(text).toContain('[未回収] 手紙の署名')
@@ -517,5 +533,126 @@ describe('秘密ツール（upsert_secret / delete_plot_item kind:secret）', ()
       d,
     )
     expect(env.get()?.plots?.[0]?.secrets).toHaveLength(0)
+  })
+})
+
+describe('世界観設定ツール（get_world / set_world_note / delete_world_note）', () => {
+  it('プロットが無い作品でも書ける（決め事はプロットより先に決まる）', async () => {
+    const { deps: d, get } = makeDeps(snapshot([work()]))
+    const res = await handleMcpMessage(
+      call('set_world_note', { work_id: 'w1', slot: 'rules', body: '死者は生き返らない' }),
+      d,
+    )
+    expect(isError(res)).toBe(false)
+    expect(contentText(res)).toContain('note_id:')
+    expect(get()?.plots?.[0]?.world).toHaveLength(1)
+
+    const read = await handleMcpMessage(call('get_world', { work_id: 'w1' }), d)
+    expect(contentText(read)).toContain('世界のルール')
+    expect(contentText(read)).toContain('死者は生き返らない')
+    expect(contentText(read)).toContain('公開されません')
+  })
+
+  it('同じ定型枠へ書き直すと上書きされる（枠が増えない）', async () => {
+    const { deps: d, get } = makeDeps(snapshot([work()]))
+    await handleMcpMessage(
+      call('set_world_note', { work_id: 'w1', slot: 'style', body: '一人称' }),
+      d,
+    )
+    await handleMcpMessage(
+      call('set_world_note', { work_id: 'w1', slot: 'style', body: '一人称・現在形' }),
+      d,
+    )
+    expect(get()?.plots?.[0]?.world).toHaveLength(1)
+    expect(get()?.plots?.[0]?.world?.[0]?.body).toBe('一人称・現在形')
+  })
+
+  it('自由枠は title 必須、未知の slot は弾く', async () => {
+    const d = deps([work()])
+    const noTitle = await handleMcpMessage(
+      call('set_world_note', { work_id: 'w1', slot: 'custom', body: 'x' }),
+      d,
+    )
+    expect(isError(noTitle)).toBe(true)
+    expect(contentText(noTitle)).toContain('title')
+
+    const badSlot = await handleMcpMessage(
+      call('set_world_note', { work_id: 'w1', slot: 'nope', body: 'x' }),
+      d,
+    )
+    expect(isError(badSlot)).toBe(true)
+  })
+
+  it('body を空文字にすると枠ごと消える', async () => {
+    const { deps: d, get } = makeDeps(snapshot([work()]))
+    await handleMcpMessage(call('set_world_note', { work_id: 'w1', slot: 'rules', body: 'x' }), d)
+    const res = await handleMcpMessage(
+      call('set_world_note', { work_id: 'w1', slot: 'rules', body: '' }),
+      d,
+    )
+    expect(contentText(res)).toContain('削除')
+    expect(get()?.plots?.[0]?.world).toEqual([])
+  })
+
+  it('delete_world_note は note_id 指定で消し、無い id はエラー', async () => {
+    const { deps: d, get } = makeDeps(snapshot([work()]))
+    const saved = await handleMcpMessage(
+      call('set_world_note', { work_id: 'w1', slot: 'history', body: '年表' }),
+      d,
+    )
+    const noteId = /note_id: (\S+)/.exec(contentText(saved))?.[1] ?? ''
+    expect(noteId).not.toBe('')
+    expect(
+      isError(
+        await handleMcpMessage(call('delete_world_note', { work_id: 'w1', note_id: 'nope' }), d),
+      ),
+    ).toBe(true)
+    await handleMcpMessage(call('delete_world_note', { work_id: 'w1', note_id: noteId }), d)
+    expect(get()?.plots?.[0]?.world).toEqual([])
+  })
+
+  it('世界観設定が未記入なら、用語集ではなくここへ書くよう促す', async () => {
+    const d = deps([work()])
+    expect(
+      contentText(await handleMcpMessage(call('get_glossary', { work_id: 'w1' }), d)),
+    ).toContain('set_world_note')
+    // プロット側も同じ案内を先頭に出す
+    expect(contentText(await handleMcpMessage(call('get_plot', { work_id: 'w1' }), d))).toContain(
+      'set_world_note',
+    )
+  })
+
+  it('世界観設定があれば get_plot の先頭に丸ごと載る（読み落とさせない）', async () => {
+    const { deps: d } = makeDeps(snapshot([work()]))
+    await handleMcpMessage(
+      call('set_world_note', { work_id: 'w1', slot: 'forbidden', body: '神視点を書かない' }),
+      d,
+    )
+    const plotText = contentText(await handleMcpMessage(call('get_plot', { work_id: 'w1' }), d))
+    expect(plotText.indexOf('神視点を書かない')).toBeGreaterThanOrEqual(0)
+    expect(plotText.indexOf('神視点を書かない')).toBeLessThan(plotText.indexOf('【プロット】'))
+    // 用語集側は件数の案内だけ（本体は get_world に取りに行かせる）
+    const glossaryText = contentText(
+      await handleMcpMessage(call('get_glossary', { work_id: 'w1' }), d),
+    )
+    expect(glossaryText).toContain('get_world')
+    expect(glossaryText).not.toContain('神視点を書かない')
+  })
+
+  it('用語集の作者メモは保存され、非公開の見出し付きで読み出される', async () => {
+    const { deps: d, get } = makeDeps(snapshot([work()]))
+    await handleMcpMessage(
+      call('upsert_glossary_entry', {
+        work_id: 'w1',
+        id: 'g1',
+        name: 'アカリ',
+        author_note: '正体は管理AI',
+      }),
+      d,
+    )
+    expect(get()?.works[0]?.glossary?.[0]?.authorNote).toBe('正体は管理AI')
+    const text = contentText(await handleMcpMessage(call('get_glossary', { work_id: 'w1' }), d))
+    expect(text).toContain('作者メモ（非公開）')
+    expect(text).toContain('正体は管理AI')
   })
 })

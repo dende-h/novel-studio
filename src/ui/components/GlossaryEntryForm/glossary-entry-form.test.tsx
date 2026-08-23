@@ -7,7 +7,7 @@ import { GlossaryEntryForm } from './glossary-entry-form'
  * 「表示中のフォームは props の変化で巻き戻らない」ことの回帰テスト。
  * 自動同期（pull 後の store.init()）で親が任意のタイミングで再レンダーされるようになったため、
  * initial の参照・値が変わっても、開いている間は入力途中のフィールドを保持しなければならない
- * （stg で報告された「図鑑の入力中データがしばらくすると消える」の再発防止）。
+ * （stg で報告された「用語集の入力中データがしばらくすると消える」の再発防止）。
  */
 
 const entry = (over: Partial<GlossaryEntry> = {}): GlossaryEntry => ({

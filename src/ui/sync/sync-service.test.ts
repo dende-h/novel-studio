@@ -370,7 +370,7 @@ describe('sync-service reconcile', () => {
     dirty = false // 自動保存が確定した（開いたままで良い）
     const after = await service.reconcile()
     expect(after?.pulled).toBe(1)
-    expect((await repo.getWork('w1'))?.title).toBe('リモート編集') // 図鑑・本文が開いたまま届く
+    expect((await repo.getWork('w1'))?.title).toBe('リモート編集') // 用語集・本文が開いたまま届く
   })
 
   it('pull のネットワーク往復中にローカルが編集されたら上書きせず、再計画で競合として扱う', async () => {
@@ -527,6 +527,7 @@ const mkPlot = (id: string, workId: string, updatedAt: number, title = '本編�
   lines: [],
   foreshadows: [],
   secrets: [],
+  world: [],
   updatedAt,
 })
 

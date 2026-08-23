@@ -50,6 +50,7 @@ import {
   beatsOfSection,
   countOpenForeshadows,
   countUnrevealedSecrets,
+  countWorldNotes,
   type Foreshadow,
   type ForeshadowStatus,
   foreshadowStatus,
@@ -88,11 +89,12 @@ import { getCaretCoordinates } from '@/ui/_utils/caretCoordinates'
 import { ConfirmDialog } from '@/ui/components/ConfirmDialog/confirm-dialog'
 import { RefSuggest } from '@/ui/components/EditorPane/ref-suggest'
 import { subscribeSyncApplied } from '@/ui/sync/sync-touch'
+import { WorldView } from './world-view'
 
 interface PlotViewProps {
   repo: PlotRepository
   workId: string
-  /** 図鑑（視点・登場・舞台チップの解決先）。 */
+  /** 用語集（視点・登場・舞台チップの解決先）。 */
   glossary: GlossaryEntry[]
   /** 本文の話一覧（ビートと話の紐付け先・実績字数の計数元）。 */
   episodes: Episode[]
@@ -109,22 +111,22 @@ interface PlotViewProps {
   onCreateEpisode?: (title: string) => Promise<string | null>
   /**
    * 要約・メモのプレビューで [[用語]] をクリックしたときの通知。
-   * 本文編集と同じ図鑑の見え方にするため、App 側の onRefClick をそのまま渡す。
+   * 本文編集と同じ用語集の見え方にするため、App 側の onRefClick をそのまま渡す。
    */
   onRefClick?: (name: string) => void
   /**
-   * 要約・メモのサジェストから、分類を指定せず図鑑へ登録する（本文のクイック作成と同じ）。
+   * 要約・メモのサジェストから、分類を指定せず用語集へ登録する（本文のクイック作成と同じ）。
    * 作成した名前を返す（失敗は null）。
    */
   onCreatePlainGlossaryEntry?: (name: string) => Promise<string | null>
   /**
-   * 図鑑に無い人物・場所をその場で登録する（作成した entry id を返す。失敗は null）。
-   * 図鑑を常に正本に保つ＝プロット側に自由記述の別管理を作らない。
+   * 用語集に無い人物・場所をその場で登録する（作成した entry id を返す。失敗は null）。
+   * 用語集を常に正本に保つ＝プロット側に自由記述の別管理を作らない。
    */
   onCreateGlossaryEntry?: (name: string, category: '人物' | '場所') => Promise<string | null>
 }
 
-/** 図鑑カテゴリの絞り込み（固定5種＋旧データの自由入力に緩く一致させる）。 */
+/** 用語集カテゴリの絞り込み（固定5種＋旧データの自由入力に緩く一致させる）。 */
 const PERSON_CATEGORY = /人物|キャラ/
 const PLACE_CATEGORY = /場所|舞台/
 
@@ -202,7 +204,7 @@ export default function PlotView({
 }: PlotViewProps) {
   const [plot, setPlot] = useState<Plot | null>(null)
   const [loaded, setLoaded] = useState(false)
-  const [view, setView] = useState<'sheet' | 'grid' | 'foreshadow'>('sheet')
+  const [view, setView] = useState<'sheet' | 'grid' | 'foreshadow' | 'world'>('sheet')
   const [selectedId, setSelectedId] = useState<string | null>(null)
   // 追加直後のビートはタイトル入力へフォーカスする（リンクで作ってすぐ書ける）。
   const [focusTitleId, setFocusTitleId] = useState<string | null>(null)
@@ -316,6 +318,7 @@ export default function PlotView({
   const totalTarget = plot.beats.reduce((sum, b) => sum + (b.targetLength ?? 0), 0)
   // タブのバッジ＝脱稿前に片付けるべき件数（未回収の伏線＋開示未定の秘密）。
   const openItems = countOpenForeshadows(plot) + countUnrevealedSecrets(plot)
+  const worldCount = countWorldNotes(plot)
   const selectedBeat = selectedId ? (plot.beats.find((b) => b.id === selectedId) ?? null) : null
   const templateLabel =
     plot.template === undefined
@@ -357,6 +360,10 @@ export default function PlotView({
             <p className="mt-1 text-[12px] text-on-surface-variant/70">
               物語の出来事を「ビート」のカードにして幕へ並べます。カードを選ぶと右のパネルで詳しく書けます。
             </p>
+          ) : view === 'world' ? (
+            <p className="mt-1 text-[12px] text-on-surface-variant/70">
+              この作品の決め事を置く、作者だけの場所です。用語集と違って公開されません。
+            </p>
           ) : null}
           <div className="mt-3 flex items-center gap-1.5">
             <ViewTab active={view === 'sheet'} onClick={() => setView('sheet')}>
@@ -376,6 +383,17 @@ export default function PlotView({
                 </span>
               ) : null}
             </ViewTab>
+            <ViewTab active={view === 'world'} onClick={() => setView('world')}>
+              世界観設定
+              {worldCount > 0 ? (
+                <span
+                  title="記入済みの枠"
+                  className="ml-1 inline-flex items-center rounded-full bg-secondary-container px-1.5 font-medium text-[10px] text-on-secondary-container tabular-nums"
+                >
+                  {worldCount}
+                </span>
+              ) : null}
+            </ViewTab>
             {templateLabel ? (
               <span className="ml-auto text-[11.5px] text-on-surface-variant">
                 テンプレ: {templateLabel}
@@ -389,6 +407,12 @@ export default function PlotView({
         <div className="min-h-0 flex-1 overflow-y-auto pb-16">
           <div className="mx-auto w-full max-w-5xl">
             <GridView plot={plot} onApply={(fn) => void apply(fn)} onJumpBeat={jumpToBeat} />
+          </div>
+        </div>
+      ) : view === 'world' ? (
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          <div className="mx-auto w-full max-w-5xl">
+            <WorldView plot={plot} onApply={(fn) => void apply(fn)} />
           </div>
         </div>
       ) : view === 'foreshadow' ? (
@@ -925,11 +949,11 @@ interface BeatDetailPanelProps {
   onOpenEpisode: (episodeId: string) => void
   onCreateEpisode?: (title: string) => Promise<string | null>
   onCreateGlossaryEntry?: (name: string, category: '人物' | '場所') => Promise<string | null>
-  /** サジェストの「＋ 図鑑に登録」（分類は後から図鑑で付けるので未指定で作る）。 */
+  /** サジェストの「＋ 用語集に登録」（分類は後から用語集で付けるので未指定で作る）。 */
   onCreatePlainGlossaryEntry?: (name: string) => Promise<string | null>
-  /** 図鑑に居る語の集合（要約・メモのプレビューで解決/未解決を描き分ける）。 */
+  /** 用語集に居る語の集合（要約・メモのプレビューで解決/未解決を描き分ける）。 */
   resolvedNames: Set<string>
-  /** プレビュー内の [[用語]] クリック（図鑑の内容を見る）。 */
+  /** プレビュー内の [[用語]] クリック（用語集の内容を見る）。 */
   onRefClick?: (name: string) => void
   /** 伏線ビューへ切り替える（伏線の追加・編集は伏線ビューが担当）。 */
   onShowForeshadows: () => void
@@ -1004,7 +1028,7 @@ function BeatDetailPanel({
           <NotationField
             value={beat.summary ?? ''}
             onCommit={(v) => patch({ summary: emptyToUndef(v) })}
-            placeholder={beat.guide ?? '何が起きるかを数行で（[[用語]] で図鑑とつながります）'}
+            placeholder={beat.guide ?? '何が起きるかを数行で（[[用語]] で用語集とつながります）'}
             ariaLabel="ビートの要約"
             resolvedNames={resolvedNames}
             glossary={glossary}
@@ -1996,7 +2020,7 @@ function CommitInput({
 /**
  * 記法つきの複数行入力（要約・メモ）。「書く」と「プレビュー」を切り替えられる。
  * 本文と同じ記法（[[用語]]・｜漢字《かんじ》・《《傍点》》）が使え、プレビューでは
- * 図鑑に居る語がリンクになる（クリックで図鑑の内容を見る＝本文編集と同じ見方）。
+ * 用語集に居る語がリンクになる（クリックで用語集の内容を見る＝本文編集と同じ見方）。
  */
 function NotationField({
   value,
@@ -2012,11 +2036,11 @@ function NotationField({
   onCommit: (v: string) => void
   placeholder?: string
   ariaLabel: string
-  /** 図鑑に居る語の集合（プレビューの解決/未解決の描き分け）。 */
+  /** 用語集に居る語の集合（プレビューの解決/未解決の描き分け）。 */
   resolvedNames: Set<string>
-  /** 図鑑（@ / [[ のサジェスト候補）。空ならサジェストしない。 */
+  /** 用語集（@ / [[ のサジェスト候補）。空ならサジェストしない。 */
   glossary: GlossaryEntry[]
-  /** 候補に無い語をその場で図鑑に登録する（サジェスト末尾の作成行）。 */
+  /** 候補に無い語をその場で用語集に登録する（サジェスト末尾の作成行）。 */
   onCreateEntry?: (name: string) => Promise<string | null>
   /** プレビュー内の参照クリック。未指定ならリンクにしない。 */
   onRefClick?: (name: string) => void
@@ -2123,7 +2147,7 @@ function ModeTab({
 }
 
 /** blur で確定する自動伸長テキストエリア。 */
-/** @／＠ が図鑑サジェストのトリガ（本文エディタと同じ）。 */
+/** @／＠ が用語集サジェストのトリガ（本文エディタと同じ）。 */
 const isSuggestTrigger = (ch: string) => ch === '@' || ch === '＠'
 
 function CommitTextarea({
@@ -2138,15 +2162,15 @@ function CommitTextarea({
   onCommit: (v: string) => void
   placeholder?: string
   ariaLabel: string
-  /** 図鑑（@ / [[ のサジェスト候補）。省略・空ならサジェストしない。 */
+  /** 用語集（@ / [[ のサジェスト候補）。省略・空ならサジェストしない。 */
   glossary?: GlossaryEntry[]
-  /** 候補に無い語をその場で図鑑に登録する（作成した名前を返す。失敗は null）。 */
+  /** 候補に無い語をその場で用語集に登録する（作成した名前を返す。失敗は null）。 */
   onCreateEntry?: (name: string) => Promise<string | null>
 }) {
   const [draft, setDraft] = useState(value)
   const focused = useRef(false)
   const ref = useRef<HTMLTextAreaElement>(null)
-  // 図鑑サジェスト（本文エディタと同じ挙動）。at＝トリガ位置、triggerLen＝@:1 / [[:2。
+  // 用語集サジェスト（本文エディタと同じ挙動）。at＝トリガ位置、triggerLen＝@:1 / [[:2。
   const [suggest, setSuggest] = useState<{
     at: number
     triggerLen: number
@@ -2164,7 +2188,7 @@ function CommitTextarea({
     () => (suggest ? suggestRefs(suggest.query, entries) : []),
     [suggest, entries],
   )
-  // 図鑑に無い語を打っているときは「＋ 図鑑に登録」を末尾に出す（本文エディタと同じ規則）。
+  // 用語集に無い語を打っているときは「＋ 用語集に登録」を末尾に出す（本文エディタと同じ規則）。
   const showCreate = useMemo(() => {
     if (!suggest || !onCreateEntry) return false
     const q = suggest.query.trim()
@@ -2232,8 +2256,8 @@ function CommitTextarea({
   }
 
   /**
-   * 候補（または「＋ 図鑑に登録」）を [[名前]] として挿入する。
-   * 作成行のときは図鑑へ登録してからその名前を入れる＝図鑑を正本に保つ。
+   * 候補（または「＋ 用語集に登録」）を [[名前]] として挿入する。
+   * 作成行のときは用語集へ登録してからその名前を入れる＝用語集を正本に保つ。
    */
   const commitSuggestion = async (index: number) => {
     const el = ref.current
@@ -2380,7 +2404,7 @@ function SelectBox({
   )
 }
 
-/** 図鑑エントリの複数選択（登場人物用）。カテゴリで絞り、無ければその場で図鑑登録できる。 */
+/** 用語集エントリの複数選択（登場人物用）。カテゴリで絞り、無ければその場で用語集登録できる。 */
 function RefChips({
   label,
   ids,
@@ -2463,7 +2487,7 @@ function RefChips({
                 ))}
               </optgroup>
             ) : null}
-            {onCreate ? <option value="__create__">＋ 図鑑に登録…</option> : null}
+            {onCreate ? <option value="__create__">＋ 用語集に登録…</option> : null}
           </select>
         ) : null}
       </div>
@@ -2471,7 +2495,7 @@ function RefChips({
   )
 }
 
-/** 図鑑エントリの単一選択（視点・舞台用）。カテゴリで絞り、無ければその場で図鑑登録できる。 */
+/** 用語集エントリの単一選択（視点・舞台用）。カテゴリで絞り、無ければその場で用語集登録できる。 */
 function GlossaryRefSelect({
   value,
   glossary,
@@ -2533,12 +2557,12 @@ function GlossaryRefSelect({
         </optgroup>
       ) : null}
       {currentExtra ? <option value={currentExtra.id}>{currentExtra.name}</option> : null}
-      {onCreate ? <option value="__create__">＋ 図鑑に登録…</option> : null}
+      {onCreate ? <option value="__create__">＋ 用語集に登録…</option> : null}
     </select>
   )
 }
 
-/** その場登録の1行フォーム（名前だけ入れて Enter／登録。詳細はあとで図鑑で書ける）。 */
+/** その場登録の1行フォーム（名前だけ入れて Enter／登録。詳細はあとで用語集で書ける）。 */
 function CreateEntryInline({
   onSubmit,
   onCancel,
@@ -2565,9 +2589,9 @@ function CreateEntryInline({
             onCancel()
           }
         }}
-        placeholder="名前を入力して図鑑に登録"
-        aria-label="図鑑に登録する名前"
-        // biome-ignore lint/a11y/noAutofocus: 「＋ 図鑑に登録…」を選んだ直後だけ意図的にフォーカスする
+        placeholder="名前を入力して用語集に登録"
+        aria-label="用語集に登録する名前"
+        // biome-ignore lint/a11y/noAutofocus: 「＋ 用語集に登録…」を選んだ直後だけ意図的にフォーカスする
         autoFocus
         className="w-full min-w-0 rounded-md border border-primary/40 bg-surface px-2 py-1 text-[12px] text-on-surface outline-none placeholder:text-on-surface-variant/45"
       />
@@ -2593,7 +2617,7 @@ function CreateEntryInline({
 function GlossaryHint() {
   return (
     <p className="text-[12px] text-on-surface-variant/60">
-      図鑑にキャラ・場所を登録すると、ここで選べるようになります。
+      用語集にキャラ・場所を登録すると、ここで選べるようになります。
     </p>
   )
 }

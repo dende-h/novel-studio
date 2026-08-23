@@ -835,7 +835,7 @@ describe('refreshOpenWork（同期の pull をエディタへ追随させる）'
     await store.refreshOpenWork()
 
     const s = store.getSnapshot()
-    expect(s.work?.glossary?.[0]?.name).toBe('アリス') // 図鑑の変更が届く
+    expect(s.work?.glossary?.[0]?.name).toBe('アリス') // 用語集の変更が届く
     expect(s.currentEpisodeId).toBe('e1')
     expect(s.draft).toContain('別端末の本文') // 本文の下書きも組み直される
     expect(s.dirty).toBe(false)

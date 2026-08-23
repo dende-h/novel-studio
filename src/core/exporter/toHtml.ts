@@ -53,7 +53,7 @@ function inlineToHtml(inline: Inline, resolvedNames?: Set<string>): string {
       return `<em class="dots">${wrapTcy(escapeHtml(inline.text))}</em>`
     case 'ref': {
       // 装飾を重ねた ref（[[｜言葉《ことば》]]）は children をそのまま描く＝
-      // ルビ／傍点つきのまま図鑑リンクになる。children は ref を含まない（重ねは 1 段）。
+      // ルビ／傍点つきのまま用語集リンクになる。children は ref を含まない（重ねは 1 段）。
       const label = inline.children
         ? inline.children.map((c) => inlineToHtml(c, resolvedNames)).join('')
         : wrapTcy(escapeHtml(inline.name))

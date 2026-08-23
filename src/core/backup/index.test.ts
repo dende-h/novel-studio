@@ -21,6 +21,7 @@ const state: BackupState = {
       lines: [],
       foreshadows: [],
       secrets: [],
+      world: [],
       updatedAt: 30,
     },
   ],

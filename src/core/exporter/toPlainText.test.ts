@@ -89,7 +89,7 @@ describe('glossaryToPlainText', () => {
     ]
     expect(glossaryToPlainText(g)).toBe(
       [
-        '# 図鑑',
+        '# 用語集',
         '',
         '## アリス',
         '分類: 人物 ・ よみ: ありす ・ 別名: アリスちゃん, A',
@@ -103,30 +103,30 @@ describe('glossaryToPlainText', () => {
 
   it('名前だけの項目は見出しのみ（空メタ行を出さない）', () => {
     expect(glossaryToPlainText([entry({ name: '謎の人物' })])).toBe(
-      ['# 図鑑', '', '## 謎の人物'].join('\n'),
+      ['# 用語集', '', '## 謎の人物'].join('\n'),
     )
   })
 
   it('別名が空ならメタに「別名」を出さない', () => {
     expect(glossaryToPlainText([entry({ name: '王国', category: '地名' })])).toBe(
-      ['# 図鑑', '', '## 王国', '分類: 地名'].join('\n'),
+      ['# 用語集', '', '## 王国', '分類: 地名'].join('\n'),
     )
   })
 
-  it('複数項目を 図鑑見出しの下に連結する', () => {
+  it('複数項目を 用語集見出しの下に連結する', () => {
     const g = [entry({ name: 'A', summary: 'a' }), entry({ name: 'B', summary: 'b' })]
     expect(glossaryToPlainText(g)).toBe(
-      ['# 図鑑', '', '## A', '', 'a', '', '## B', '', 'b'].join('\n'),
+      ['# 用語集', '', '## A', '', 'a', '', '## B', '', 'b'].join('\n'),
     )
   })
 
-  it('空の図鑑は空文字（コピー対象なし）', () => {
+  it('空の用語集は空文字（コピー対象なし）', () => {
     expect(glossaryToPlainText([])).toBe('')
   })
 
   it('withIds を立てると見出しに entry_id を添える（MCP の更新/削除対象の指定用）', () => {
     expect(glossaryToPlainText([entry({ name: 'アリス', summary: 'a' })], { withIds: true })).toBe(
-      ['# 図鑑', '', '## アリス [entry_id: g-アリス]', '', 'a'].join('\n'),
+      ['# 用語集', '', '## アリス [entry_id: g-アリス]', '', 'a'].join('\n'),
     )
     // 既定（無料コピー導線）は ID を出さない。
     expect(glossaryToPlainText([entry({ name: 'アリス' })])).not.toContain('entry_id')

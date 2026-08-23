@@ -275,7 +275,7 @@ export function ExportDialog({ open, onOpenChange, work, onEditMeta }: ExportDia
                         htmlFor={glossaryToggleId}
                         className="font-normal text-on-surface text-sm"
                       >
-                        登録した図鑑も一緒に渡す
+                        登録した用語集も一緒に渡す
                         <span className="mt-0.5 block text-on-surface-variant text-xs">
                           人物・用語などの設定（{glossaryCount} 件）を本文の後ろに付けます。
                         </span>

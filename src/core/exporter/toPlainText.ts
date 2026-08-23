@@ -50,8 +50,11 @@ export function workToPlainText(work: Work): string {
 }
 
 /**
- * 図鑑1項目 → 見出し＋メタ（分類/よみ/別名）＋要約＋本文。画像・時刻は持ち込まない。
+ * 用語集1項目 → 見出し＋メタ（分類/よみ/別名）＋概要＋詳細＋作者メモ。画像・時刻は持ち込まない。
  * `withId` のときだけ見出しに entry_id を添える（MCP の更新/削除対象の指定に必要）。
+ *
+ * 作者メモは公開バンドルには載らない情報なので、非公開であることが読み手（AI・作者本人）に
+ * 分かる見出しを必ず添える。
  */
 function entryToPlainText(entry: GlossaryEntry, withId = false): string {
   const meta: string[] = []
@@ -65,12 +68,13 @@ function entryToPlainText(entry: GlossaryEntry, withId = false): string {
   const blocks = [head.join('\n')]
   if (entry.summary) blocks.push(entry.summary)
   if (entry.body) blocks.push(entry.body)
+  if (entry.authorNote) blocks.push(`### 作者メモ（非公開）\n${entry.authorNote}`)
   return blocks.join('\n\n')
 }
 
 /**
- * 図鑑（オブジェクト辞書）→ AI が読める1ドキュメント。
- * read-only リモート MCP の `get_glossary` ペイロード、および「図鑑も一緒にコピー」導線の共通土台。
+ * 用語集 → AI が読める1ドキュメント。
+ * read-only リモート MCP の `get_glossary` ペイロード、および「用語集も一緒にコピー」導線の共通土台。
  * 入力の並び順を保つ（並べ替えは呼び出し側の責務）。空なら空文字。
  * `withIds`（MCP 用）を立てると各エントリに entry_id を添える＝更新/削除の対象を指定できる。
  * 無料コピー導線は既定（ID 無し）のまま＝ユーザーに内部 id を見せない。
@@ -80,5 +84,5 @@ export function glossaryToPlainText(
   opts: { withIds?: boolean } = {},
 ): string {
   if (glossary.length === 0) return ''
-  return ['# 図鑑', ...glossary.map((e) => entryToPlainText(e, opts.withIds))].join('\n\n')
+  return ['# 用語集', ...glossary.map((e) => entryToPlainText(e, opts.withIds))].join('\n\n')
 }
