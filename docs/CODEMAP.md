@@ -83,6 +83,11 @@ Cloudflare Pages Functions
 その上に薄いリポジトリ: `WorkRepository`（作品・ゴミ箱・`WorkSummary`）、`StructureRepository`、
 `PlotRepository`、`IdeaRepository`、`ActivityRepository`。スナップショットは `snapshot/`。
 
+> **罠**: IndexedDB からの直読みは Zod を通らないので、スキーマの `.default([])` が効かない
+> （効くのはバックアップ・同期など Zod を通る経路だけ）。既存レコードに実体が無い項目を足したら、
+> 読み出しの入口で既定値を埋める（先例: `normalizePlot`＝`src/core/plot/index.ts` で定義し、
+> `src/core/storage/plotRepository.ts` の `get`/`list` が通す）。
+
 ### 同期・バックアップ・課金
 | モジュール | 責務 |
 |---|---|
@@ -111,7 +116,7 @@ Cloudflare Pages Functions
 |---|---|
 | `src/ui/main.tsx` | フォント読込・`createRoot`・Provider 積み上げ |
 | `src/ui/Root.tsx` | **ハッシュルーティングの分岐点**（下表）。リポジトリ生成と会員判定の配線 |
-| `src/ui/App.tsx` | 執筆画面本体（`#/write`）。エディタ・プレビュー・用語集・履歴パネルの統括。**813行 / 最も密度が高い** |
+| `src/ui/App.tsx` | 執筆画面本体（`#/write`）。エディタ・プレビュー・用語集・履歴パネルの統括。**約840行 / 最も密度が高い** |
 | `src/ui/store/editorStore.ts` | 自前ストア。`getSnapshot`/`subscribe` + 作品・話・用語集・ゴミ箱・プロフィールの全操作 |
 | `src/ui/store/createDefaultStore.ts` | 本番のリポジトリ配線 |
 | `src/ui/hooks/use-editor-store.ts` | `useSyncExternalStore` の薄いラッパ |
@@ -193,7 +198,7 @@ Cloudflare Pages Functions
 | `_api/` | サーバ呼び出しの薄いクライアント（`sync` `backup` `billing` `publish` `author` `mcp`） |
 | `_utils/` | 純関数（`caretCoordinates` `imageResizer` `exporters` `download` `format` `clipboard` `cover-tone`） |
 | `hooks/` | React ライフサイクル依存のみ（`use-autosave` `use-auto-sync` `use-auto-backup` `use-live-snapshot` `use-preferences` `use-narrow` `use-keyboard-inset` 等） |
-| `sync/` | 同期クライアント。`src/ui/sync/sync-service.ts` が本体（808行）・`sync-gate` `sync-status` `sync-touch` |
+| `sync/` | 同期クライアント。`src/ui/sync/sync-service.ts` が本体（約800行）・`sync-gate` `sync-status` `sync-touch` |
 | `src/ui/backup/backup-service.ts` | クラウド全体バックアップの実行 |
 | `structure/` | React Flow アダプタ（`flow-adapter` `tree-layout` `use-structure-flow` `ensure-structure`） |
 | `auth/` | Clerk 配線（`auth-provider` `clerk-gate` `derive-status` `cloud-pricing`） |
@@ -219,7 +224,7 @@ Cloudflare Pages Functions
 | `/api/mcp/oauth-protected-resource` | RFC 9728 メタデータ |
 
 `api/_lib/`: `auth`（Clerk 検証・`verifyMember`）, `membership`（**会員判定の単一の真実 = D1 `subscriptions`**）,
-`crypto`（at-rest 暗号化）, `mcp-server`（MCP プロトコル核・823行）, `mcp-auth`, `mcp-token`,
+`crypto`（at-rest 暗号化）, `mcp-server`（MCP プロトコル核・約960行）, `mcp-auth`, `mcp-token`,
 `oauth-metadata`, `stripe`, `rate-limit`, `purge`, `visitor`。
 
 **バインディング**（`wrangler.toml`）: `DB` = D1 `novel-studio`、`MEDIA` = R2 `novel-studio-media`
