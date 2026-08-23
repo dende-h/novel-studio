@@ -71,11 +71,11 @@ interface AppProps {
   onNavigateHelp?: () => void
   /** 執筆活動の読み取り（ステータスバーの「今日 +N字」）。省略時は非表示。 */
   activityRepo?: ActivityRepository
-  /** 構造レイヤー（マインドマップ等）のリポジトリ。cloud 会員時のみ渡す。 */
+  /** 構造レイヤー（マインドマップ等）のリポジトリ。 */
   structureRepo?: StructureRepository
-  /** プロット（幕×ビートの物語設計）のリポジトリ。cloud 会員時のみ渡す。 */
+  /** プロット（幕×ビートの物語設計・世界観設定）のリポジトリ。 */
   plotRepo?: PlotRepository
-  /** cloud 会員か（構造ツールの表示・アクセス可否）。 */
+  /** 構想の道具（プロット・アウトライン・相関図・マインドマップ）を出すか＝無料アカウント登録で true。 */
   canUseStructure?: boolean
   /** ネタ帳（マインドマップの取り込み用）。 */
   ideaRepo?: IdeaRepository

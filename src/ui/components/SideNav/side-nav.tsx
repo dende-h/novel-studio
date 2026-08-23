@@ -81,13 +81,13 @@ interface SideNavProps {
   onNavigateEpisodes?: () => void
   /** 用語集画面へ切替（作品オープン時のみ） */
   onNavigateGlossary?: () => void
-  /** プロット（幕×ビートの物語設計）へ切替（作品オープン＋cloud会員時のみ） */
+  /** プロット（幕×ビートの物語設計）へ切替（作品オープン＋アカウント登録時のみ） */
   onNavigatePlot?: () => void
-  /** アウトラインへ切替（作品オープン＋cloud会員時のみ） */
+  /** アウトラインへ切替（作品オープン＋アカウント登録時のみ） */
   onNavigateOutline?: () => void
-  /** マインドマップへ切替（作品オープン＋cloud会員時のみ） */
+  /** マインドマップへ切替（作品オープン＋アカウント登録時のみ） */
   onNavigateMindmap?: () => void
-  /** 相関図へ切替（作品オープン＋cloud会員時のみ） */
+  /** 相関図へ切替（作品オープン＋アカウント登録時のみ） */
   onNavigateChart?: () => void
   /** エディタ時の話サブリスト */
   episodes?: EpisodeItem[]

@@ -83,7 +83,8 @@ export function Root({ store }: RootProps) {
     () => withSyncTouch(createDefaultIdeaRepository(), ['add', 'update', 'remove']),
     [],
   )
-  // 構造レイヤー（アウトライン／相関図／マインドマップ）は cloud 会員のみ利用。
+  // 構造レイヤー（アウトライン／相関図／マインドマップ）。純ローカルなので器は誰にも作るが、
+  // 画面へ出すかは canUseCreativeTools（無料アカウント登録で可）で決める。
   const structureRepo = useMemo(
     () =>
       withSyncTouch(createDefaultStructureRepository(), [
@@ -94,13 +95,24 @@ export function Root({ store }: RootProps) {
       ]),
     [],
   )
-  // プロット（幕×ビートの物語設計）も cloud 会員のみ。編集は Repository 直書きなので
+  // プロット（幕×ビートの物語設計・世界観設定）も同じ。編集は Repository 直書きなので
   // 構造レイヤーと同じく sync-touch を差し込んで push の契機を作る。
   const plotRepo = useMemo(
     () =>
       withSyncTouch(createDefaultPlotRepository(), ['create', 'save', 'remove', 'removeByWork']),
     [],
   )
+  /**
+   * 構想の道具（プロット・世界観設定・アウトライン・相関図・マインドマップ）を出すか。
+   *
+   * **無料アカウント登録で使える**（`free` も `member` も可）。これらは純ローカルで動き、
+   * サーバ資源を使わない＝課金の線を引く理由がない。課金の線は「保全」に引いてある
+   *（端末間の自動同期・クラウドバックアップ／復元・MCP）。
+   * 未サインイン（guest）で出さないのは、作品が端末にしか無い状態で構想まで積み上げると
+   * 失ったときの損害が大きいため。登録しておけば、あとからクラウドへ引き上げられる。
+   */
+  const canUseCreativeTools = status === 'free' || status === 'member'
+
   const [backupOpen, setBackupOpen] = useState(false)
   const [aiPullOpen, setAiPullOpen] = useState(false)
   const [mcpOpen, setMcpOpen] = useState(false)
@@ -295,7 +307,7 @@ export function Root({ store }: RootProps) {
           activityRepo={activityRepo}
           structureRepo={structureRepo}
           plotRepo={plotRepo}
-          canUseStructure={status === 'member'}
+          canUseStructure={canUseCreativeTools}
           ideaRepo={ideaRepo}
         />
       ) : (
