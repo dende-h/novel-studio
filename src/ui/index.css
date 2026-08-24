@@ -362,3 +362,84 @@
 .notation-preview p + p {
   margin-block-start: 0.35em;
 }
+
+/*
+ * NotationField プレビューのマークダウン描画（core/markdown）。本文プレビューには効かせない
+ * （本文はマークダウン非対応・.notation-preview はパネル内の短文だけが持つクラス）。
+ * 見出しは UI の階層を壊さない控えめな段差にする：h3 は太字（13px）より半歩大きいだけで、
+ * h1 でもパネルの見出し（17px）は超えない。
+ */
+.notation-preview h1,
+.notation-preview h2,
+.notation-preview h3 {
+  font-weight: 650;
+  line-height: 1.5;
+  margin-block: 0.7em 0.3em;
+}
+.notation-preview h1 {
+  font-size: 16px;
+}
+.notation-preview h2 {
+  font-size: 14.5px;
+}
+.notation-preview h3 {
+  font-size: 13.5px;
+}
+.notation-preview > h1:first-child,
+.notation-preview > h2:first-child,
+.notation-preview > h3:first-child {
+  margin-block-start: 0;
+}
+.notation-preview ul,
+.notation-preview ol {
+  margin-block: 0.25em;
+  padding-inline-start: 1.5em;
+}
+.notation-preview ul {
+  list-style: disc;
+}
+.notation-preview ul ul {
+  list-style: circle;
+}
+.notation-preview ul ul ul {
+  list-style: square;
+}
+.notation-preview ol {
+  list-style: decimal;
+}
+/* 入れ子のリストは外側の余白を重ねない（親 li との間が空きすぎる）。 */
+.notation-preview li > ul,
+.notation-preview li > ol {
+  margin-block: 0;
+}
+.notation-preview blockquote {
+  margin-block: 0.35em;
+  border-inline-start: 3px solid color-mix(in srgb, var(--outline-variant) 50%, transparent);
+  padding-inline-start: 0.75em;
+  color: var(--on-surface-variant);
+}
+.notation-preview hr {
+  border: 0;
+  border-block-start: 1px solid color-mix(in srgb, var(--outline-variant) 40%, transparent);
+  margin-block: 0.75em;
+}
+/* 横に長い表はパネルを押し広げず、表だけが横スクロールする。 */
+.notation-preview .md-table {
+  overflow-x: auto;
+  margin-block: 0.5em;
+}
+.notation-preview table {
+  border-collapse: collapse;
+  font-size: 12.5px;
+  line-height: 1.6;
+}
+.notation-preview th,
+.notation-preview td {
+  border: 1px solid color-mix(in srgb, var(--outline-variant) 40%, transparent);
+  padding: 0.3em 0.7em;
+  text-align: left; /* 揃え指定（:---: 等）は td/th の style 属性が上書きする */
+}
+.notation-preview th {
+  background: var(--surface-container-high);
+  font-weight: 600;
+}

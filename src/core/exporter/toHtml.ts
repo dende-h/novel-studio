@@ -37,6 +37,11 @@ export function blocksToHtml(blocks: Block[], resolvedNames?: Set<string>): stri
   return blocks.map((b) => blockToHtml(b, resolvedNames)).join('')
 }
 
+/** inline 列だけを HTML 化する（マークダウンプレビュー等、段落を自前で組む呼び出し側用）。 */
+export function inlinesToHtml(inlines: Inline[], resolvedNames?: Set<string>): string {
+  return inlines.map((inl) => inlineToHtml(inl, resolvedNames)).join('')
+}
+
 function blockToHtml(block: Block, resolvedNames?: Set<string>): string {
   if (block.inlines.length === 0) return '<p class="blank"></p>'
   return `<p>${block.inlines.map((inl) => inlineToHtml(inl, resolvedNames)).join('')}</p>`

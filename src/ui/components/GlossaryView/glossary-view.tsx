@@ -19,6 +19,7 @@ import {
 } from '@/ui/components/GlossaryEntryForm/glossary-entry-form'
 import { GlossaryEntryDetail } from '@/ui/components/GlossaryPeek/entry-detail'
 import { NotationField } from '@/ui/components/NotationField/notation-field'
+import { NotationHelpButton } from '@/ui/components/NotationField/notation-help'
 import { Button } from '@/ui/components/ui/button'
 import {
   Dialog,
@@ -544,6 +545,7 @@ function EntryEditor({
             <BookOpen className="size-2.5" aria-hidden />
             読者に見えます
           </span>
+          <NotationHelpButton />
         </div>
         <NotationField
           value={publicTextOf(entry)}
@@ -570,6 +572,7 @@ function EntryEditor({
             <Lock className="size-2.5" aria-hidden />
             公開されません
           </span>
+          <NotationHelpButton />
         </div>
         <NotationField
           value={entry.authorNote ?? ''}

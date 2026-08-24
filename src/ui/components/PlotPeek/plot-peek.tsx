@@ -1,6 +1,7 @@
 import { ArrowRight, Milestone, X } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 import { blocksToPlainText } from '@/core/exporter/toPlainText'
+import { stripMarkdown } from '@/core/markdown'
 import { parseEpisodeBody } from '@/core/parser/parseNotation'
 import {
   beatsOfSection,
@@ -39,10 +40,10 @@ const STATUS_UI: Record<PlotBeatStatus, { label: string; className: string }> = 
 
 const fmt = (n: number) => n.toLocaleString('ja-JP')
 
-/** 記法（[[用語]]・ルビ・傍点）を剥がした表示用テキスト（読むだけの場所で記号を出さない）。 */
+/** 記法（[[用語]]・ルビ・傍点）とマークダウンを剥がした表示用テキスト（読むだけの場所で記号を出さない）。 */
 function plainOf(text: string | undefined): string {
   if (!text) return ''
-  return blocksToPlainText(parseEpisodeBody(text)).trim()
+  return blocksToPlainText(parseEpisodeBody(stripMarkdown(text))).trim()
 }
 
 /**
