@@ -183,6 +183,24 @@ describe('GlossaryView（左右2カラム：一覧・検索・その場編集）
     )
   })
 
+  it('旧データの項目で別の欄だけ編集しても、公開情報（概要＋詳細）は失われない', async () => {
+    // 本番利用者の旧データ保全：無関係な欄の確定が summary/body の中身を落とさないこと。
+    const { onUpdate } = setup()
+    openEntry('王都') // summary + 旧 body の 2 欄が残る項目
+    const note = screen.getByLabelText('作者メモ')
+    fireEvent.change(note, { target: { value: '首都の由来はあとで書く' } })
+    fireEvent.blur(note)
+    await waitFor(() =>
+      expect(onUpdate).toHaveBeenCalledWith(
+        't',
+        expect.objectContaining({
+          summary: '概要のみ\n\n旧・詳細の文',
+          authorNote: '首都の由来はあとで書く',
+        }),
+      ),
+    )
+  })
+
   it('名前は blur で onRename され、一覧にも新名が出る', async () => {
     const { onRename } = setup()
     openEntry('アリス')
