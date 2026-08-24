@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { useState } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 import type { Appearances } from '@/core/glossary'
@@ -225,12 +225,29 @@ describe('GlossaryView（左右2カラム：一覧・検索・その場編集）
     expect(screen.queryByLabelText('名前')).toBeNull()
   })
 
-  it('プレビューの [[用語]] クリックでその項目へ切り替わる（事典の渡り歩き）', async () => {
+  it('プレビューの [[用語]] クリックは右のチラ見で開き、編集対象は変わらない', async () => {
     setup()
     openEntry('アリス') // 公開情報に [[ボブ]] が居る＝既定プレビューでリンクになる
     const ref = await screen.findByRole('link', { name: 'ボブ' })
     fireEvent.click(ref)
+    // チラ見ドロワーにボブが出るが、編集面はアリスのまま（書いている場所を失わない）
+    const peek = await screen.findByRole('complementary', { name: '用語のチラ見' })
+    expect(within(peek).getByRole('heading', { name: 'ボブ' })).toBeInTheDocument()
+    expect(screen.getByLabelText('名前')).toHaveValue('アリス')
+    // 「この項目を編集」で初めて切り替わり、ドロワーは閉じる
+    fireEvent.click(within(peek).getByRole('button', { name: 'この項目を編集' }))
     await waitFor(() => expect(screen.getByLabelText('名前')).toHaveValue('ボブ'))
+    expect(screen.queryByRole('complementary', { name: '用語のチラ見' })).toBeNull()
+  })
+
+  it('チラ見は閉じるボタンで消え、編集面はそのまま', async () => {
+    setup()
+    openEntry('アリス')
+    fireEvent.click(await screen.findByRole('link', { name: 'ボブ' }))
+    const peek = await screen.findByRole('complementary', { name: '用語のチラ見' })
+    fireEvent.click(within(peek).getByRole('button', { name: 'チラ見を閉じる' }))
+    expect(screen.queryByRole('complementary', { name: '用語のチラ見' })).toBeNull()
+    expect(screen.getByLabelText('名前')).toHaveValue('アリス')
   })
 
   it('項目が無い時は空状態を表示', () => {

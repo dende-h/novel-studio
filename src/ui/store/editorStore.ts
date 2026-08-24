@@ -215,6 +215,25 @@ export function createEditorStore({
     set({ trashList: trash })
   }
 
+  /**
+   * 用語集の変更（add/update/rename/delete）を 1 本ずつ直列に実行する。
+   *
+   * 各メソッドは「state.work を読む → work を丸ごと保存 → set」で、読みと set の間に
+   * IndexedDB 書き込みの await を挟む。ここで別の変更が走ると、同じ古い state.work を
+   * 読んで保存し、先行の変更が丸ごと消える（実例：サジェストの「◯◯を新規作成」の直後に
+   * 欄を離れると、blur の確定が作成前の work を保存して、作ったばかりの項目が消えた）。
+   * 失敗した操作はチェーンを止めない（次の操作は普通に走る）。
+   */
+  let glossaryChain: Promise<unknown> = Promise.resolve()
+  const serializeGlossary = <T>(fn: () => Promise<T>): Promise<T> => {
+    const run = glossaryChain.then(fn, fn)
+    glossaryChain = run.then(
+      () => undefined,
+      () => undefined,
+    )
+    return run
+  }
+
   return {
     getSnapshot: () => state,
 
@@ -484,103 +503,113 @@ export function createEditorStore({
       return works.filter((w): w is Work => w !== undefined)
     },
 
-    async addGlossaryEntry(input) {
-      if (!state.work) throw new Error('作品が開かれていません')
-      const entries = state.work.glossary ?? []
-      const ts = now()
-      const entry: GlossaryEntry = {
-        id: genId(),
-        name: input.name,
-        aliases: input.aliases ?? [],
-        ...(input.category !== undefined ? { category: input.category } : {}),
-        ...(input.reading !== undefined ? { reading: input.reading } : {}),
-        ...(input.summary !== undefined ? { summary: input.summary } : {}),
-        ...(input.body !== undefined ? { body: input.body } : {}),
-        ...(input.authorNote !== undefined ? { authorNote: input.authorNote } : {}),
-        // 空文字/未指定は付与しない（クイック作成・サムネ未設定の作成経路を許容）。
-        ...(input.thumbnail ? { thumbnail: input.thumbnail } : {}),
-        createdAt: ts,
-        updatedAt: ts,
-      }
-      // D-GLOS-UNIQUE: 新 entry の name/別名が既存 entry の name/別名と完全一致したら拒否
-      for (const key of [entry.name, ...entry.aliases]) {
-        if (key.trim() === '') continue
-        if (resolveRef(key, entries)) throw new Error(`「${key}」は既存の項目と重複しています`)
-      }
-      const work: Work = { ...state.work, glossary: [...entries, entry], updatedAt: ts }
-      await repo.saveWork(work)
-      set({ work })
-      await refreshList()
-      return entry
-    },
-
-    async updateGlossaryEntry(id, patch) {
-      if (!state.work) return
-      const entries = state.work.glossary ?? []
-      const cur = entries.find((e) => e.id === id)
-      if (!cur) return
-      // 別名を変更するときは他 entry の name/別名との衝突を拒否（D-GLOS-UNIQUE）
-      if (patch.aliases) {
-        const others = entries.filter((e) => e.id !== id)
-        for (const a of patch.aliases) {
-          if (a.trim() === '') continue
-          if (resolveRef(a, others)) throw new Error(`「${a}」は既存の項目と重複しています`)
+    addGlossaryEntry(input) {
+      return serializeGlossary(async () => {
+        if (!state.work) throw new Error('作品が開かれていません')
+        const entries = state.work.glossary ?? []
+        const ts = now()
+        const entry: GlossaryEntry = {
+          id: genId(),
+          name: input.name,
+          aliases: input.aliases ?? [],
+          ...(input.category !== undefined ? { category: input.category } : {}),
+          ...(input.reading !== undefined ? { reading: input.reading } : {}),
+          ...(input.summary !== undefined ? { summary: input.summary } : {}),
+          ...(input.body !== undefined ? { body: input.body } : {}),
+          ...(input.authorNote !== undefined ? { authorNote: input.authorNote } : {}),
+          // 空文字/未指定は付与しない（クイック作成・サムネ未設定の作成経路を許容）。
+          ...(input.thumbnail ? { thumbnail: input.thumbnail } : {}),
+          createdAt: ts,
+          updatedAt: ts,
         }
-      }
-      const ts = now()
-      const updated: GlossaryEntry = { ...cur, ...patch, updatedAt: ts }
-      // thumbnail は空文字 '' を「削除」とする（undefined＝据え置きと区別）。
-      if (patch.thumbnail === '') delete updated.thumbnail
-      const work: Work = {
-        ...state.work,
-        glossary: entries.map((e) => (e.id === id ? updated : e)),
-        updatedAt: ts,
-      }
-      await repo.saveWork(work)
-      set({ work })
-      await refreshList()
-    },
-
-    async renameGlossaryEntry(id, newName, opts) {
-      if (!state.work) return
-      // renameEntry が衝突を throw・no-op なら同一参照を返す（自動エイリアス＋任意の本文書換）
-      const renamed = renameEntry(state.work, id, newName, opts ?? {})
-      if (renamed === state.work) return
-      const ts = now()
-      const work: Work = {
-        ...renamed,
-        glossary: (renamed.glossary ?? []).map((e) => (e.id === id ? { ...e, updatedAt: ts } : e)),
-        updatedAt: ts,
-      }
-      await repo.saveWork(work)
-      const patch: Partial<EditorState> = { work }
-      // rewriteBody で現在話の本文が変わったら draft も再生成する。
-      // そうしないと古い名前を保持した draft が次の save で本文を巻き戻してしまう。
-      // 未保存編集（dirty）中は上書きを避け、ユーザーの下書きを優先する。
-      if (opts?.rewriteBody && !state.dirty) {
-        const ep = work.episodes.find((e) => e.id === state.currentEpisodeId)
-        if (ep) {
-          patch.draft = blocksToNotation(ep.blocks)
-          patch.dirty = false
+        // D-GLOS-UNIQUE: 新 entry の name/別名が既存 entry の name/別名と完全一致したら拒否
+        for (const key of [entry.name, ...entry.aliases]) {
+          if (key.trim() === '') continue
+          if (resolveRef(key, entries)) throw new Error(`「${key}」は既存の項目と重複しています`)
         }
-      }
-      set(patch)
-      await refreshList()
+        const work: Work = { ...state.work, glossary: [...entries, entry], updatedAt: ts }
+        await repo.saveWork(work)
+        set({ work })
+        await refreshList()
+        return entry
+      })
     },
 
-    async deleteGlossaryEntry(id) {
-      if (!state.work) return
-      const entries = state.work.glossary ?? []
-      if (!entries.some((e) => e.id === id)) return
-      // 本文の ref はそのまま残す＝解決先を失い未解決リンク化する（仕様どおり）
-      const work: Work = {
-        ...state.work,
-        glossary: entries.filter((e) => e.id !== id),
-        updatedAt: now(),
-      }
-      await repo.saveWork(work)
-      set({ work })
-      await refreshList()
+    updateGlossaryEntry(id, patch) {
+      return serializeGlossary(async () => {
+        if (!state.work) return
+        const entries = state.work.glossary ?? []
+        const cur = entries.find((e) => e.id === id)
+        if (!cur) return
+        // 別名を変更するときは他 entry の name/別名との衝突を拒否（D-GLOS-UNIQUE）
+        if (patch.aliases) {
+          const others = entries.filter((e) => e.id !== id)
+          for (const a of patch.aliases) {
+            if (a.trim() === '') continue
+            if (resolveRef(a, others)) throw new Error(`「${a}」は既存の項目と重複しています`)
+          }
+        }
+        const ts = now()
+        const updated: GlossaryEntry = { ...cur, ...patch, updatedAt: ts }
+        // thumbnail は空文字 '' を「削除」とする（undefined＝据え置きと区別）。
+        if (patch.thumbnail === '') delete updated.thumbnail
+        const work: Work = {
+          ...state.work,
+          glossary: entries.map((e) => (e.id === id ? updated : e)),
+          updatedAt: ts,
+        }
+        await repo.saveWork(work)
+        set({ work })
+        await refreshList()
+      })
+    },
+
+    renameGlossaryEntry(id, newName, opts) {
+      return serializeGlossary(async () => {
+        if (!state.work) return
+        // renameEntry が衝突を throw・no-op なら同一参照を返す（自動エイリアス＋任意の本文書換）
+        const renamed = renameEntry(state.work, id, newName, opts ?? {})
+        if (renamed === state.work) return
+        const ts = now()
+        const work: Work = {
+          ...renamed,
+          glossary: (renamed.glossary ?? []).map((e) =>
+            e.id === id ? { ...e, updatedAt: ts } : e,
+          ),
+          updatedAt: ts,
+        }
+        await repo.saveWork(work)
+        const patch: Partial<EditorState> = { work }
+        // rewriteBody で現在話の本文が変わったら draft も再生成する。
+        // そうしないと古い名前を保持した draft が次の save で本文を巻き戻してしまう。
+        // 未保存編集（dirty）中は上書きを避け、ユーザーの下書きを優先する。
+        if (opts?.rewriteBody && !state.dirty) {
+          const ep = work.episodes.find((e) => e.id === state.currentEpisodeId)
+          if (ep) {
+            patch.draft = blocksToNotation(ep.blocks)
+            patch.dirty = false
+          }
+        }
+        set(patch)
+        await refreshList()
+      })
+    },
+
+    deleteGlossaryEntry(id) {
+      return serializeGlossary(async () => {
+        if (!state.work) return
+        const entries = state.work.glossary ?? []
+        if (!entries.some((e) => e.id === id)) return
+        // 本文の ref はそのまま残す＝解決先を失い未解決リンク化する（仕様どおり）
+        const work: Work = {
+          ...state.work,
+          glossary: entries.filter((e) => e.id !== id),
+          updatedAt: now(),
+        }
+        await repo.saveWork(work)
+        set({ work })
+        await refreshList()
+      })
     },
 
     async updateProfile(input) {

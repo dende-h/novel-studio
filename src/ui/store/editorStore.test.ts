@@ -637,6 +637,19 @@ describe('editorStore（自前ストア・useSyncExternalStore 用）', () => {
       expect(s.work?.glossary?.[0]?.name).toBe('アリス')
     })
 
+    it('作成と更新が同時に走っても、後から始まった保存が先の変更を消さない（直列化）', async () => {
+      await store.createWork('作')
+      const akari = await store.addGlossaryEntry({ name: 'アカリ' })
+      // サジェストの「カイを新規作成」（保存の await 中）に、blur の確定が割り込む形。
+      // 直列化が無いと、update が「カイ追加前の work」を読んで丸ごと保存し、カイが消える。
+      const p1 = store.addGlossaryEntry({ name: 'カイ' })
+      const p2 = store.updateGlossaryEntry(akari.id, { summary: '灯台守の見習い。' })
+      await Promise.all([p1, p2])
+      const glossary = store.getSnapshot().work?.glossary ?? []
+      expect(glossary.map((g) => g.name).sort()).toEqual(['アカリ', 'カイ'])
+      expect(glossary.find((g) => g.id === akari.id)?.summary).toBe('灯台守の見習い。')
+    })
+
     it('addGlossaryEntry は別名・カテゴリ・読み・概要・本文を保持し、永続化される', async () => {
       await store.createWork('作')
       const id = store.getSnapshot().work?.id as string
