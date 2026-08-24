@@ -107,8 +107,8 @@ export function GlossaryView({
   }
 
   return (
-    <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-surface">
-      <div className="mx-auto flex min-h-0 w-full max-w-[1200px] flex-1 flex-col gap-3 px-5 pt-7 md:px-8">
+    <div className="flex min-h-0 min-w-0 flex-1 bg-surface">
+      <div className="mx-auto flex min-h-0 w-full min-w-0 max-w-[1200px] flex-1 flex-col gap-3 px-5 pt-7 md:px-8">
         {/* ヘッダ（1 行に畳む＝下の一覧と編集面に高さを渡す） */}
         <header className="shrink-0">
           <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
@@ -124,7 +124,7 @@ export function GlossaryView({
           </p>
         </header>
 
-        <div className="relative flex min-h-0 flex-1 items-stretch gap-6">
+        <div className="flex min-h-0 flex-1 items-stretch gap-6">
           {/* 左：検索・絞り込み・項目一覧。狭幅では選択中は隠して編集面に譲る。 */}
           <nav
             aria-label="用語集の項目"
@@ -220,45 +220,45 @@ export function GlossaryView({
               </div>
             )}
           </section>
-
-          {/* プレビューの [[用語]] クリックで開くチラ見ドロワー（本文エディタの用語集パネルと
-              同じ見方）。編集面はそのまま＝参照しながら書き続けられる。狭幅では編集面を
-              潰さないよう右からかぶせる（md 以上は 3 カラム目として並ぶ）。 */}
-          {peeked ? (
-            <aside
-              aria-label="用語のチラ見"
-              className="absolute inset-y-0 right-0 z-10 flex w-[min(300px,85vw)] shrink-0 flex-col border-outline-variant/30 border-l bg-surface-container-lowest font-sans shadow-xl md:static md:shadow-none"
-            >
-              <div className="flex shrink-0 items-center justify-between border-outline-variant/30 border-b px-4 py-3">
-                <span className="font-medium text-[12px] text-on-surface tracking-widest">
-                  用語のチラ見
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setPeekId(null)}
-                  aria-label="チラ見を閉じる"
-                  className="-mr-1.5 flex size-7 items-center justify-center rounded-md text-on-surface-variant transition-colors hover:text-on-surface"
-                >
-                  <X className="size-4" aria-hidden />
-                </button>
-              </div>
-              <div className="min-h-0 flex-1 overflow-y-auto">
-                <div className="flex flex-col gap-2.5 px-4 py-4">
-                  <GlossaryEntryDetail
-                    entry={peeked}
-                    appearances={getAppearances(peeked)}
-                    editLabel="この項目を編集"
-                    onEdit={() => {
-                      setSelectedId(peeked.id)
-                      setPeekId(null)
-                    }}
-                  />
-                </div>
-              </div>
-            </aside>
-          ) : null}
         </div>
       </div>
+
+      {/* プレビューの [[用語]] クリックで開くチラ見ドロワー。本文・プロットの用語集パネルと
+          同じく、コンテンツ幅の内側ではなく**メイン領域の右端に全高**で出す。
+          編集面はそのまま＝参照しながら書き続けられる。 */}
+      {peeked ? (
+        <aside
+          aria-label="用語のチラ見"
+          className="flex w-[min(300px,85vw)] shrink-0 flex-col border-outline-variant/30 border-l bg-surface-container-lowest font-sans"
+        >
+          <div className="flex shrink-0 items-center justify-between border-outline-variant/30 border-b px-4 py-3">
+            <span className="font-medium text-[12px] text-on-surface tracking-widest">
+              用語のチラ見
+            </span>
+            <button
+              type="button"
+              onClick={() => setPeekId(null)}
+              aria-label="チラ見を閉じる"
+              className="-mr-1.5 flex size-7 items-center justify-center rounded-md text-on-surface-variant transition-colors hover:text-on-surface"
+            >
+              <X className="size-4" aria-hidden />
+            </button>
+          </div>
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            <div className="flex flex-col gap-2.5 px-4 py-4">
+              <GlossaryEntryDetail
+                entry={peeked}
+                appearances={getAppearances(peeked)}
+                editLabel="この項目を編集"
+                onEdit={() => {
+                  setSelectedId(peeked.id)
+                  setPeekId(null)
+                }}
+              />
+            </div>
+          </div>
+        </aside>
+      ) : null}
 
       {/* 新規作成（名前だけ決めて、続きは編集面で書く） */}
       <CreateEntryDialog
