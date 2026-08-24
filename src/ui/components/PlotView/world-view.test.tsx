@@ -254,6 +254,26 @@ describe('WorldView（世界観設定）', () => {
     expect(screen.getByText(/@ または \[\[ で用語集を呼び出せます/)).toBeInTheDocument()
   })
 
+  // プレビュー（マークダウン描画）は NotationField 経由。器の配線が外れていないことを固定する。
+  it('プレビューに切り替えるとマークダウンが描画され、書くへ戻れば編集できる', () => {
+    setup(plotWith({ slot: 'stage', body: '## 街の構造\n- 上層区' }))
+    fireEvent.click(screen.getByRole('button', { name: 'プレビュー' }))
+    expect(screen.getByRole('heading', { level: 2, name: '街の構造' })).toBeInTheDocument()
+    expect(screen.getByRole('listitem')).toHaveTextContent('上層区')
+    fireEvent.click(screen.getByRole('button', { name: '書く' }))
+    expect(editor().value).toBe('## 街の構造\n- 上層区')
+  })
+
+  it('ラベル横のⓘから使える記法の説明が開く（マークダウンと @／[[用語]] の両方）', () => {
+    setup()
+    fireEvent.click(screen.getByRole('button', { name: '使える記法の説明を開く' }))
+    const dialog = screen.getByRole('dialog')
+    expect(dialog).toHaveTextContent('この欄で使える記法')
+    expect(dialog).toHaveTextContent('[[用語]]')
+    expect(dialog).toHaveTextContent('**強調**')
+    expect(dialog).toHaveTextContent('- 箇条書き')
+  })
+
   it('定型枠には削除ボタンを出さない（枠そのものは消えない）', () => {
     setup(plotWith({ slot: 'stage', body: '夏の街' }))
     expect(screen.queryByRole('button', { name: `${slot('stage').label}を削除` })).toBeNull()

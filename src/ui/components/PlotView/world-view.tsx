@@ -1,5 +1,6 @@
 import { Check, Lock, Pencil, Plus, Trash2 } from 'lucide-react'
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
+import { resolvedNameSet } from '@/core/glossary'
 import {
   type Plot,
   removeWorldNote,
@@ -12,7 +13,8 @@ import {
   worldNoteLabel,
 } from '@/core/plot'
 import type { GlossaryEntry } from '@/core/schema'
-import { CommitTextarea } from '@/ui/components/NotationField/commit-textarea'
+import { NotationField } from '@/ui/components/NotationField/notation-field'
+import { NotationHelpButton } from '@/ui/components/NotationField/notation-help'
 
 /**
  * 世界観設定タブ（作者専用の設定置き場）。
@@ -37,6 +39,8 @@ interface WorldViewProps {
   glossary: GlossaryEntry[]
   /** 候補に無い語をその場で用語集へ登録する（作成した名前を返す。失敗は null）。 */
   onCreateGlossaryEntry?: (name: string) => Promise<string | null>
+  /** プレビュー内の [[用語]] クリック（ビートの詳細パネルと同じ見え方にする）。 */
+  onRefClick?: (name: string) => void
 }
 
 const GROUPS: { key: WorldSlotGroup; label: string }[] = [
@@ -45,10 +49,17 @@ const GROUPS: { key: WorldSlotGroup; label: string }[] = [
   { key: 'reader', label: '読者への見せ方' },
 ]
 
-export function WorldView({ plot, onApply, glossary, onCreateGlossaryEntry }: WorldViewProps) {
+export function WorldView({
+  plot,
+  onApply,
+  glossary,
+  onCreateGlossaryEntry,
+  onRefClick,
+}: WorldViewProps) {
   // 読み込み時に normalizePlot が埋めるが、この画面は欠落しても落ちない側に倒しておく
   // （落ちると画面だけでなくアプリのツリーごと消えるため）。
   const notes = plot.world ?? []
+  const resolvedNames = useMemo(() => resolvedNameSet(glossary), [glossary])
   const bySlot = useCallback(
     (key: string) => notes.find((n) => n.slot === key),
     // notes は毎描画で作り直されるが、比較したいのは中身なので plot.world を見る
@@ -195,6 +206,8 @@ export function WorldView({ plot, onApply, glossary, onCreateGlossaryEntry }: Wo
               onCommit={(body) => commitSlot(selectedSlot, body)}
               glossary={glossary}
               onCreateGlossaryEntry={onCreateGlossaryEntry}
+              resolvedNames={resolvedNames}
+              onRefClick={onRefClick}
             />
           ) : selectedCustom ? (
             <NoteEditor
@@ -208,6 +221,8 @@ export function WorldView({ plot, onApply, glossary, onCreateGlossaryEntry }: Wo
               onDelete={() => onApply((p) => removeWorldNote(p, selectedCustom.id))}
               glossary={glossary}
               onCreateGlossaryEntry={onCreateGlossaryEntry}
+              resolvedNames={resolvedNames}
+              onRefClick={onRefClick}
             />
           ) : null}
         </div>
@@ -269,6 +284,8 @@ interface NoteEditorProps {
   onDelete?: () => void
   glossary: GlossaryEntry[]
   onCreateGlossaryEntry?: (name: string) => Promise<string | null>
+  resolvedNames: Set<string>
+  onRefClick?: (name: string) => void
 }
 
 /**
@@ -286,6 +303,8 @@ function NoteEditor({
   onDelete,
   glossary,
   onCreateGlossaryEntry,
+  resolvedNames,
+  onRefClick,
 }: NoteEditorProps) {
   const uid = useId()
   return (
@@ -303,6 +322,7 @@ function NoteEditor({
                 {label}
               </label>
             )}
+            <NotationHelpButton />
             {optional ? (
               <span className="shrink-0 rounded-full bg-surface-container-high px-1.5 py-0.5 font-medium text-[10px] text-on-surface-variant/80">
                 任意
@@ -326,21 +346,25 @@ function NoteEditor({
           </button>
         ) : null}
       </div>
-      {/* 本文・プロットと同じ記法が使える：@／＠／[[ で用語集を呼び出し、無い語はその場で作れる。 */}
-      <CommitTextarea
+      {/* 本文・プロットと同じ記法が使える：@／＠／[[ で用語集を呼び出し、無い語はその場で作れる。
+          書くのが主の画面なので既定は編集で開き、プレビュー（マークダウン描画）はタブで見る。 */}
+      <NotationField
         id={`${uid}-body`}
         ariaLabel={label}
         value={body}
         onCommit={onCommit}
         placeholder={placeholder}
+        resolvedNames={resolvedNames}
         glossary={glossary}
         onCreateEntry={onCreateGlossaryEntry}
-        grow={false}
-        wrapperClassName="flex min-h-0 flex-1 flex-col"
-        className="min-h-0 flex-1 px-3 py-2 text-[14px]"
+        onRefClick={onRefClick}
+        fill
+        defaultMode="edit"
+        textareaClassName="min-h-0 flex-1 px-3 py-2 text-[14px]"
       />
       <p className="mt-1.5 shrink-0 text-[11px] text-on-surface-variant/60">
-        @ または [[ で用語集を呼び出せます（無い語はその場で登録できます）。
+        @ または [[ で用語集を呼び出せます（無い語はその場で登録できます）。見出しや箇条書きなどの
+        マークダウンも使えます（書き方はラベル横の情報ボタンで確認できます）。
       </p>
     </>
   )
