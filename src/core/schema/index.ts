@@ -80,7 +80,12 @@ export const GlossaryEntrySchema = z.object({
   aliases: z.array(z.string()),
   category: z.string().optional(),
   reading: z.string().optional(),
+  /** 公開情報（読者に見える説明文）。概要と詳細はこの 1 欄に統合された（D-GLOS-PUBLIC-ONE）。 */
   summary: z.string().optional(),
+  /**
+   * 旧「詳細」欄。**新規には書かない**（読み出しは `publicTextOf` が summary と結合し、
+   * 保存時に summary へ一本化される）。旧データ・旧バックアップを受けるためだけに残す。
+   */
   body: z.string().optional(),
   /**
    * 作者だけが見るメモ。**公開バンドルから必ず落とす**（publish.ts の toBundleWork）。
