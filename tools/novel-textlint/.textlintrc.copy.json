@@ -1,0 +1,11 @@
+{
+  "rules": {
+    "ja-no-successive-word": {
+      "severity": "warning"
+    },
+    "no-ai-cliche": {
+      "severity": "warning",
+      "dicts": ["ai-cliche-common.json", "ai-cliche-copy.json"]
+    }
+  }
+}

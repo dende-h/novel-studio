@@ -51,6 +51,9 @@ Cloudflare Pages Functions
 | 画面遷移・ルート追加 | `src/ui/Root.tsx` + `src/ui/hooks/use-hash-route.ts` |
 | DB スキーマ | `migrations/*.sql` + `wrangler.toml` |
 | ランディングページ（機能紹介・プラン表・スクリーンショット） | `public/lp/index.html` + `public/lp/shots/` |
+| ユーザー向け文言（LP・案内・ボタン・エラー等）を書く/直す | `.claude/skills/toc-copy/`（トーン・用語表・マイクロコピーの型） |
+| 小説本文の執筆・推敲（MCP/ローカル） | `.claude/skills/novel-writing/`（執筆制約・レビュー観点） |
+| 原稿・文言の機械検査（textlint）のルール・AI臭辞書 | `tools/novel-textlint/`（アプリ本体とは独立。README 参照） |
 
 ---
 
@@ -249,6 +252,7 @@ pnpm format         # biome format --write .
 pnpm build          # tsc -b && vite build
 pnpm test:e2e       # Playwright（e2e/smoke.spec.ts, e2e/mobile.spec.ts）
 pnpm d1:migrate:local / :remote
+pnpm --dir tools/novel-textlint lint:novel <file> / lint:copy <file>  # 原稿・文言の textlint（CI 対象外）
 ```
 
 - CI（`.github/workflows/ci.yml`）は main / stg への push・PR で lint → typecheck → test → build → e2e。
