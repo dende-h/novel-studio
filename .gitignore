@@ -32,3 +32,7 @@ playwright-report
 
 # WSL が付ける Windows 由来のメタデータ
 *Zone.Identifier
+
+# Python (natural-japanese スキルのスクリプト実行時に生成される)
+__pycache__/
+*.pyc
