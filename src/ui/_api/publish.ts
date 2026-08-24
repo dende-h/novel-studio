@@ -1,3 +1,4 @@
+import { publicTextOf } from '@/core/glossary'
 import type { Episode, GlossaryEntry, Work, WorkPlatform } from '@/core/schema'
 
 /**
@@ -123,10 +124,17 @@ export function toBundleEpisodes(work: Work): { episodes: BundleEpisode[]; decla
  * その中で authorNote だけは「項目に紐づくが、まだ読者に見せない情報」の置き場なので、
  * ここで確実に取り除く。作品全体の設定・執筆の決め事はプロットの世界観設定側にあり、
  * プロットはそもそもこのバンドルに載らない。
+ *
+ * 公開情報は 1 欄（D-GLOS-PUBLIC-ONE）：ローカルに旧形式（summary + body）が残っていても、
+ * ここで summary へ一本化して送る＝先方は summary だけ読めば公開情報の全文になる。
  */
 function toBundleGlossary(glossary: GlossaryEntry[] | undefined): GlossaryEntry[] | undefined {
   if (!glossary) return undefined
-  return glossary.map(({ authorNote: _authorNote, ...rest }) => rest)
+  return glossary.map((entry) => {
+    const { authorNote: _authorNote, body: _body, summary: _summary, ...rest } = entry
+    const merged = publicTextOf(entry)
+    return merged ? { ...rest, summary: merged } : rest
+  })
 }
 
 /** 送信するバンドルの work を組み立てる（契約に無いローカル専用キーを落とす）。 */

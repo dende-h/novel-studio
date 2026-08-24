@@ -1,5 +1,5 @@
-import { fireEvent, render, screen } from '@testing-library/react'
-import { describe, expect, it } from 'vitest'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { describe, expect, it, vi } from 'vitest'
 import type { GlossaryEntry } from '@/core/schema'
 import { GlossaryEntryForm } from './glossary-entry-form'
 
@@ -23,7 +23,29 @@ const entry = (over: Partial<GlossaryEntry> = {}): GlossaryEntry => ({
 })
 
 const nameInput = () => screen.getByLabelText('名前') as HTMLInputElement
-const summaryInput = () => screen.getByLabelText('概要（任意）') as HTMLTextAreaElement
+const summaryInput = () => screen.getByLabelText('公開情報（任意）') as HTMLTextAreaElement
+
+describe('GlossaryEntryForm: 公開／非公開の2欄', () => {
+  it('旧データ（概要＋詳細）は公開情報 1 欄に結合して開き、保存で一本化される', async () => {
+    const onSubmit = vi.fn()
+    render(
+      <GlossaryEntryForm
+        open
+        onOpenChange={() => {}}
+        mode="edit"
+        initial={entry({ summary: '概要', body: '旧・詳細' })}
+        onSubmit={onSubmit}
+      />,
+    )
+    expect(summaryInput().value).toBe('概要\n\n旧・詳細')
+    fireEvent.blur(summaryInput())
+    fireEvent.click(screen.getByRole('button', { name: '保存する' }))
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled())
+    const values = onSubmit.mock.calls[0]?.[0]
+    expect(values.summary).toBe('概要\n\n旧・詳細')
+    expect(values).not.toHaveProperty('body')
+  })
+})
 
 describe('GlossaryEntryForm: 表示中は初期値へ巻き戻さない', () => {
   it('initial の参照が変わる再レンダーでも入力途中の値を保持する', () => {

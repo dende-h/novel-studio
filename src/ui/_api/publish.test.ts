@@ -192,7 +192,7 @@ describe('toBundleWork（送信するバンドルの work）', () => {
 
   // 用語集そのものは読者へ送る（先方が段階公開する）。その中の作者メモだけは非公開の器なので、
   // 他の項目を巻き込まずに、ここで確実に落ちることを固定する。
-  it('用語集は送るが、作者メモだけは落とす', async () => {
+  it('用語集は送るが、作者メモだけは落とす（公開情報は summary へ一本化）', async () => {
     const { toBundleWork } = await loadModule()
     const bundle = toBundleWork({
       ...work,
@@ -212,13 +212,13 @@ describe('toBundleWork（送信するバンドルの work）', () => {
     const entry = bundle.glossary?.[0]
     expect(entry).toBeDefined()
     expect('authorNote' in (entry ?? {})).toBe(false)
-    // 落とすのは作者メモだけ＝読者に見せる項目は欠けない
+    // 旧形式（summary + body）は summary へ結合して送る＝先方は summary だけで公開情報の全文
+    expect('body' in (entry ?? {})).toBe(false)
     expect(entry).toMatchObject({
       id: 'g1',
       name: 'ミア',
       aliases: ['少女'],
-      summary: '旅の同行者',
-      body: '本文に出る詳しい説明',
+      summary: '旅の同行者\n\n本文に出る詳しい説明',
     })
   })
 

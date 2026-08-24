@@ -202,7 +202,17 @@ export function setOutlineNotes(
   return upsertStructure(structures, next)
 }
 
-/** 用語集の項目を追加/更新（id 指定で更新、無ければ新規）。 */
+/**
+ * 用語集の項目を追加/更新（id 指定で更新、無ければ新規）。
+ *
+ * 更新は**渡した項目だけ書き換える**（省略＝据え置き・空文字＝削除）。set_episode /
+ * set_work_meta と同じパッチ方式。以前は入力だけから項目を組み直す全置換で、AI が
+ * 「読みだけ直す」つもりの更新で公開情報や作者メモが黙って消えていた。
+ *
+ * 改名（更新で name が変わる）は UI の renameEntry と同じ規則：旧名を別名へ自動退避する
+ * ＝本文の [[旧名]] は解決され続ける。name／別名が他項目と完全一致する書き込みは拒否
+ * （D-GLOS-UNIQUE。resolveRef を 0/1 件で決定的に保つ）。
+ */
 export function upsertGlossaryEntry(
   works: Work[],
   workId: string,
@@ -220,18 +230,68 @@ export function upsertGlossaryEntry(
   now: number,
 ): Work[] {
   const entryId = input.id ?? newId
+  // 省略＝据え置き・空文字＝削除・非空＝設定（更新のパッチ規則。新規では prevVal が無いだけ）。
+  const patched = (next: string | undefined, prevVal: string | undefined) =>
+    next === undefined ? prevVal : emptyToUndef(next)
   return updateWork(works, workId, (w) => {
     const glossary = w.glossary ?? []
     const prev = glossary.find((g) => g.id === entryId)
+    const name = emptyToUndef(input.name) ?? prev?.name
+    if (name === undefined) throw new McpEditError('name は必須です')
+
+    // D-GLOS-UNIQUE: name と（渡された）別名は、他項目の name/別名との完全一致を拒否する。
+    // 据え置きの別名は再検査しない（登録時に検査済み。旧データを後追いで弾かない）。
+    const others = glossary.filter((g) => g.id !== entryId)
+    const collides = (key: string) => {
+      const k = key.trim()
+      return (
+        k !== '' && others.some((o) => o.name.trim() === k || o.aliases.some((a) => a.trim() === k))
+      )
+    }
+    if (collides(name)) throw new McpEditError(`「${name}」は既存の項目と重複しています`)
+    if (input.aliases !== undefined) {
+      for (const a of input.aliases) {
+        if (collides(a)) throw new McpEditError(`「${a}」は既存の項目と重複しています`)
+      }
+    }
+
+    // 改名は旧名を別名へ退避する（UI の renameEntry と同じ）。旧名で書かれた本文の
+    // [[参照]] が未解決に落ちない。新名が自分の別名に居た場合は昇格＝重複を残さない。
+    let aliases = input.aliases ?? prev?.aliases ?? []
+    if (prev !== undefined && name.trim() !== prev.name.trim()) {
+      const withoutNew = aliases.filter((a) => a.trim() !== name.trim())
+      aliases = withoutNew.some((a) => a.trim() === prev.name.trim())
+        ? withoutNew
+        : [...withoutNew, prev.name]
+    }
+
+    // 公開情報は 1 欄（D-GLOS-PUBLIC-ONE）。summary（または旧・body）を渡したときだけ
+    // 書き換え、summary へ一本化して body は畳む。触らない更新では旧 2 欄をそのまま保つ。
+    const touchPublic = input.summary !== undefined || input.body !== undefined
+    const mergedPublic = [emptyToUndef(input.summary), emptyToUndef(input.body)]
+      .filter((s): s is string => s !== undefined)
+      .join('\n\n')
+
+    const category = patched(input.category, prev?.category)
+    const reading = patched(input.reading, prev?.reading)
+    const authorNote = patched(input.authorNote, prev?.authorNote)
     const entry: GlossaryEntry = {
       id: entryId,
-      name: input.name,
-      aliases: input.aliases ?? [],
-      ...(emptyToUndef(input.category) ? { category: input.category } : {}),
-      ...(emptyToUndef(input.reading) ? { reading: input.reading } : {}),
-      ...(emptyToUndef(input.summary) ? { summary: input.summary } : {}),
-      ...(emptyToUndef(input.body) ? { body: input.body } : {}),
-      ...(emptyToUndef(input.authorNote) ? { authorNote: input.authorNote } : {}),
+      name,
+      aliases,
+      ...(category !== undefined ? { category } : {}),
+      ...(reading !== undefined ? { reading } : {}),
+      ...(touchPublic
+        ? mergedPublic !== ''
+          ? { summary: mergedPublic }
+          : {}
+        : {
+            ...(prev?.summary !== undefined ? { summary: prev.summary } : {}),
+            ...(prev?.body !== undefined ? { body: prev.body } : {}),
+          }),
+      ...(authorNote !== undefined ? { authorNote } : {}),
+      // サムネは MCP から操作できない＝更新で既存の画像を落とさない。
+      ...(prev?.thumbnail ? { thumbnail: prev.thumbnail } : {}),
       createdAt: prev?.createdAt ?? now,
       updatedAt: now,
     }

@@ -51,7 +51,9 @@ const toFieldPatch = (v: GlossaryFormValues) => ({
   category: emptyToUndef(v.category),
   reading: emptyToUndef(v.reading),
   summary: emptyToUndef(v.summary),
-  body: emptyToUndef(v.body),
+  // 公開情報は summary へ一本化（D-GLOS-PUBLIC-ONE）。旧・詳細（body）は保存のたびに畳む
+  // （フォームは publicTextOf で結合した文を summary として返してくる）。
+  body: undefined,
   authorNote: emptyToUndef(v.authorNote),
   // サムネは空文字をそのまま渡す（更新時 '' = 削除指示。作成時は addGlossaryEntry が空を弾く）。
   thumbnail: v.thumbnail,
@@ -289,6 +291,22 @@ export function App({
     [work?.glossary],
   )
 
+  /**
+   * サジェストの「＋ 用語集に登録」（本文のクイック作成と同じ：分類なしで名前だけ作る）。
+   * プロット・世界観設定・用語集の各入力欄で共有する。
+   */
+  const createPlainGlossaryEntry = useCallback(
+    async (name: string) => {
+      try {
+        return (await store.addGlossaryEntry({ name })).name
+      } catch {
+        // 既存と重複（D-GLOS-UNIQUE）ならその既存の表記をそのまま使う。
+        return resolveRef(name, store.getSnapshot().work?.glossary ?? [])?.name ?? null
+      }
+    },
+    [store],
+  )
+
   // ステータスバーの「今日 +N字」：保存が確定するたびに当日の執筆活動を読み直す。
   const [todayNet, setTodayNet] = useState<number | null>(null)
   useEffect(() => {
@@ -449,16 +467,7 @@ export function App({
                 return ep && ep.title === title ? ep.id : null
               }}
               onRefClick={onRefClick}
-              onCreatePlainGlossaryEntry={async (name) => {
-                // サジェストの「＋ 用語集に登録」。本文のクイック作成と同じく分類なしで作る
-                // （人物か場所かはここでは決まらないので、後から用語集で付ける）。
-                try {
-                  return (await store.addGlossaryEntry({ name })).name
-                } catch {
-                  // 既存と重複（D-GLOS-UNIQUE）ならその既存の表記をそのまま使う。
-                  return resolveRef(name, store.getSnapshot().work?.glossary ?? [])?.name ?? null
-                }
-              }}
+              onCreatePlainGlossaryEntry={createPlainGlossaryEntry}
               onCreateGlossaryEntry={async (name, category) => {
                 try {
                   const entry = await store.addGlossaryEntry({ name, category })
@@ -501,9 +510,7 @@ export function App({
             entries={work.glossary ?? []}
             workTitle={work.title}
             getAppearances={getAppearances}
-            onCreate={async (values) => {
-              await store.addGlossaryEntry({ name: values.name, ...toFieldPatch(values) })
-            }}
+            onCreate={async (name) => (await store.addGlossaryEntry({ name })).id}
             onUpdate={async (id, values) => {
               await store.updateGlossaryEntry(id, toFieldPatch(values))
             }}
@@ -511,6 +518,7 @@ export function App({
               await store.renameGlossaryEntry(id, newName, opts)
             }}
             onDelete={(id) => void store.deleteGlossaryEntry(id)}
+            onCreateEntry={createPlainGlossaryEntry}
           />
         ) : episode ? (
           <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col">
@@ -767,6 +775,8 @@ export function App({
         onSubmit={async (values) => {
           if (editEntry) await submitEntryEdit(editEntry, values)
         }}
+        glossary={work?.glossary ?? []}
+        onCreateEntry={createPlainGlossaryEntry}
       />
       {/* 未解決 @参照クリックからのクイック作成（名前プリフィル）。 */}
       <GlossaryEntryForm
@@ -779,6 +789,8 @@ export function App({
         onSubmit={async (values) => {
           await store.addGlossaryEntry({ name: values.name, ...toFieldPatch(values) })
         }}
+        glossary={work?.glossary ?? []}
+        onCreateEntry={createPlainGlossaryEntry}
       />
       <ExportDialog
         open={exportOpen}

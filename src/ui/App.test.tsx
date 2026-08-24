@@ -125,7 +125,9 @@ describe('App（エディタ結合：本文/プレビュー・自動保存・履
     fireEvent.click(screen.getByRole('button', { name: '新しく登録' }))
     fireEvent.change(screen.getByLabelText('名前'), { target: { value: 'アリス' } })
     fireEvent.click(screen.getByRole('button', { name: '作成' }))
-    expect(await screen.findByRole('heading', { name: 'アリス' })).toBeInTheDocument()
+    // 作成した項目がその場で選ばれ、編集面に開く（一覧の行にも出る）
+    await waitFor(() => expect(screen.getByLabelText('名前')).toHaveValue('アリス'))
+    expect(screen.getByRole('button', { name: '「アリス」を編集' })).toBeInTheDocument()
 
     // 本文を書くへ戻ると参照が解決済みリンクになる
     fireEvent.click(screen.getByRole('button', { name: '本文を書く' }))

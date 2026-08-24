@@ -5,15 +5,24 @@
 // ChatGPT などの MCP クライアントは resource_metadata ヘッダを辿らず、リソースドメインの
 // ルート `/.well-known/oauth-protected-resource` を直接叩く。ここが 404 だと、認可画面に
 // 到達する前に接続失敗する。
-// ※ Claude は 401 の WWW-Authenticate（/api/mcp/oauth-protected-resource）経由で従来どおり動く。
+//
+// さらに ChatGPT は AS メタデータ／OIDC 設定も **MCP ホスト側の** well-known へ直接叩き、
+// RFC 8414 §3.3 のとおり「引いたホスト＝issuer」を要求する。Clerk のドキュメントをそのまま
+// 中継すると issuer が *.clerk.accounts.dev になって弾かれるため、issuer と窓口を自オリジンへ
+// 書き換えた版を配る（実体は /api/oauth/* が Clerk へ中継する）。
+// トークンを発行・検証するのは従来どおり Clerk なので、発行済みトークンには影響しない。
 //
 // かつて Preview(=stg) をベーシック認証（BASIC_AUTH_USER/PASS）で保護していたが撤去した。
 // ダッシュボードに残った同名の環境変数はもう参照されない（残っていても無害）。
 
-import { buildProtectedResourceMetadata } from './api/_lib/oauth-metadata'
+import {
+  buildFacadeAuthServerMetadata,
+  buildProtectedResourceMetadata,
+} from './api/_lib/oauth-metadata'
+import { fetchUpstreamAs, normalizeIssuer } from './api/_lib/oauth-upstream'
 
 interface Env {
-  /** 認可サーバー(Clerk)の issuer URL。PRM の authorization_servers に載せる。 */
+  /** 上流の認可サーバー(Clerk)の issuer URL。窓口の中継先として使う。 */
   MCP_OAUTH_ISSUER?: string
   /** 対応スコープ（スペース区切り・任意）。 */
   MCP_OAUTH_SCOPES?: string
@@ -42,14 +51,18 @@ const jsonDiscovery = (body: string): Response =>
     },
   })
 
-/**
- * OAuth ディスカバリ要求ならレスポンスを返す（該当しなければ null）。
- *
- * ChatGPT は PRM の authorization_servers ポインタを辿らず、AS メタデータ／OIDC 設定を
- * MCP ホスト側の well-known へ直接叩き、しかも 302 リダイレクトを追わないことがある。
- * そこで AS 系ドキュメントは Clerk から取得して **200 JSON でそのまま中継**する
- * （取得失敗時のみ Clerk へ 302 フォールバック）。Claude は従来どおりポインタ経由で動く。
- */
+/** ディスカバリを組めないときの応答。誤った内容を配るより落ちて見せる（no-store）。 */
+const discoveryUnavailable = (): Response =>
+  new Response(JSON.stringify({ error: 'temporarily_unavailable' }), {
+    status: 503,
+    headers: {
+      'content-type': 'application/json',
+      'cache-control': 'no-store',
+      ...DISCOVERY_CORS,
+    },
+  })
+
+/** OAuth ディスカバリ要求ならレスポンスを返す（該当しなければ null）。 */
 async function oauthDiscovery(context: MiddlewareContext, url: URL): Promise<Response | null> {
   const path = url.pathname
   const isPrm =
@@ -65,28 +78,26 @@ async function oauthDiscovery(context: MiddlewareContext, url: URL): Promise<Res
     return new Response(null, { status: 204, headers: DISCOVERY_CORS })
   }
 
+  const issuer = normalizeIssuer(context.env.MCP_OAUTH_ISSUER)
+
   if (isPrm) {
     const meta = buildProtectedResourceMetadata({
       // リソースの正準 URI＝MCP エンドポイント（同一オリジンの /api/mcp）。
       resource: `${url.origin}/api/mcp`,
-      authorizationServers: context.env.MCP_OAUTH_ISSUER ? [context.env.MCP_OAUTH_ISSUER] : [],
+      // 認可サーバーも同一オリジンを名乗る（実体は /api/oauth/* が Clerk へ中継）。
+      // 上流が未設定のときは名乗れないので空にする。
+      authorizationServers: issuer ? [url.origin] : [],
       scopesSupported: context.env.MCP_OAUTH_SCOPES?.split(/\s+/).filter(Boolean),
       resourceName: 'コトノハ-leaf-',
     })
     return jsonDiscovery(JSON.stringify(meta))
   }
 
-  // isAsMeta：Clerk の同名ドキュメント（同じ well-known パス）を取得して 200 で中継する。
-  const issuer = context.env.MCP_OAUTH_ISSUER?.replace(/\/$/, '')
+  // isAsMeta：上流(Clerk)の同名ドキュメントを取り、issuer と窓口を自オリジンへ書き換えて配る。
   if (!issuer) return null
-  const upstream = `${issuer}${path}`
-  try {
-    const res = await fetch(upstream, { headers: { accept: 'application/json' } })
-    if (res.ok) return jsonDiscovery(await res.text())
-  } catch {
-    // 取得失敗時は下の 302 へフォールバック。
-  }
-  return new Response(null, { status: 302, headers: { location: upstream, ...DISCOVERY_CORS } })
+  const upstream = await fetchUpstreamAs(issuer, path)
+  if (!upstream) return discoveryUnavailable()
+  return jsonDiscovery(JSON.stringify(buildFacadeAuthServerMetadata(upstream, url.origin)))
 }
 
 export async function onRequest(context: MiddlewareContext): Promise<Response> {
