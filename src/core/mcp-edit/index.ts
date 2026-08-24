@@ -202,7 +202,13 @@ export function setOutlineNotes(
   return upsertStructure(structures, next)
 }
 
-/** 用語集の項目を追加/更新（id 指定で更新、無ければ新規）。 */
+/**
+ * 用語集の項目を追加/更新（id 指定で更新、無ければ新規）。
+ *
+ * 更新は**渡した項目だけ書き換える**（省略＝据え置き・空文字＝削除）。set_episode /
+ * set_work_meta と同じパッチ方式。以前は入力だけから項目を組み直す全置換で、AI が
+ * 「読みだけ直す」つもりの更新で公開情報や作者メモが黙って消えていた。
+ */
 export function upsertGlossaryEntry(
   works: Work[],
   workId: string,
@@ -220,22 +226,40 @@ export function upsertGlossaryEntry(
   now: number,
 ): Work[] {
   const entryId = input.id ?? newId
+  // 省略＝据え置き・空文字＝削除・非空＝設定（更新のパッチ規則。新規では prevVal が無いだけ）。
+  const patched = (next: string | undefined, prevVal: string | undefined) =>
+    next === undefined ? prevVal : emptyToUndef(next)
   return updateWork(works, workId, (w) => {
     const glossary = w.glossary ?? []
     const prev = glossary.find((g) => g.id === entryId)
-    // 公開情報は 1 欄（D-GLOS-PUBLIC-ONE）。旧クライアントが body（旧・詳細）を送ってきても
-    // summary へ結合して一本化する＝body キーはもう書かない。
-    const summary = [emptyToUndef(input.summary), emptyToUndef(input.body)]
+    const name = emptyToUndef(input.name) ?? prev?.name
+    if (name === undefined) throw new McpEditError('name は必須です')
+
+    // 公開情報は 1 欄（D-GLOS-PUBLIC-ONE）。summary（または旧・body）を渡したときだけ
+    // 書き換え、summary へ一本化して body は畳む。触らない更新では旧 2 欄をそのまま保つ。
+    const touchPublic = input.summary !== undefined || input.body !== undefined
+    const mergedPublic = [emptyToUndef(input.summary), emptyToUndef(input.body)]
       .filter((s): s is string => s !== undefined)
       .join('\n\n')
+
+    const category = patched(input.category, prev?.category)
+    const reading = patched(input.reading, prev?.reading)
+    const authorNote = patched(input.authorNote, prev?.authorNote)
     const entry: GlossaryEntry = {
       id: entryId,
-      name: input.name,
-      aliases: input.aliases ?? [],
-      ...(emptyToUndef(input.category) ? { category: input.category } : {}),
-      ...(emptyToUndef(input.reading) ? { reading: input.reading } : {}),
-      ...(summary !== '' ? { summary } : {}),
-      ...(emptyToUndef(input.authorNote) ? { authorNote: input.authorNote } : {}),
+      name,
+      aliases: input.aliases ?? prev?.aliases ?? [],
+      ...(category !== undefined ? { category } : {}),
+      ...(reading !== undefined ? { reading } : {}),
+      ...(touchPublic
+        ? mergedPublic !== ''
+          ? { summary: mergedPublic }
+          : {}
+        : {
+            ...(prev?.summary !== undefined ? { summary: prev.summary } : {}),
+            ...(prev?.body !== undefined ? { body: prev.body } : {}),
+          }),
+      ...(authorNote !== undefined ? { authorNote } : {}),
       // サムネは MCP から操作できない＝更新で既存の画像を落とさない。
       ...(prev?.thumbnail ? { thumbnail: prev.thumbnail } : {}),
       createdAt: prev?.createdAt ?? now,

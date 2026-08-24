@@ -74,6 +74,115 @@ describe('mcp-edit（MCP 書き込みの純ロジック）', () => {
     expect(g?.body).toBeUndefined()
   })
 
+  it('upsertGlossaryEntry の更新は渡した項目だけ書き換える（省略で公開情報・作者メモは消えない）', () => {
+    const base = work()
+    const rich: typeof base = {
+      ...base,
+      glossary: [
+        {
+          id: 'g1',
+          name: 'アカリ',
+          aliases: ['灯守の娘'],
+          category: '人物',
+          reading: 'あかり',
+          summary: '灯台守の見習い。',
+          authorNote: '正体は管理AI',
+          createdAt: 1,
+          updatedAt: 1,
+        },
+      ],
+    }
+    // 読みだけ直すつもりの更新。以前は全置換で、他のフィールドが黙って消えていた。
+    const [w] = upsertGlossaryEntry(
+      [rich],
+      'w1',
+      { id: 'g1', name: 'アカリ', reading: 'あかり（燈）' },
+      'x',
+      100,
+    )
+    const g = w?.glossary?.find((e) => e.id === 'g1')
+    expect(g).toMatchObject({
+      reading: 'あかり（燈）',
+      aliases: ['灯守の娘'],
+      category: '人物',
+      summary: '灯台守の見習い。',
+      authorNote: '正体は管理AI',
+    })
+  })
+
+  it('upsertGlossaryEntry は空文字で項目を削除できる（明示削除だけが消す）', () => {
+    const base = work()
+    const rich: typeof base = {
+      ...base,
+      glossary: [
+        {
+          id: 'g1',
+          name: 'アカリ',
+          aliases: [],
+          summary: '灯台守の見習い。',
+          authorNote: '正体は管理AI',
+          createdAt: 1,
+          updatedAt: 1,
+        },
+      ],
+    }
+    const [w] = upsertGlossaryEntry(
+      [rich],
+      'w1',
+      { id: 'g1', name: 'アカリ', authorNote: '' },
+      'x',
+      100,
+    )
+    const g = w?.glossary?.find((e) => e.id === 'g1')
+    expect(g?.authorNote).toBeUndefined()
+    expect(g?.summary).toBe('灯台守の見習い。') // 触っていない欄は残る
+  })
+
+  it('upsertGlossaryEntry は summary を触らない更新では旧 2 欄（summary+body）を保つ', () => {
+    const base = work()
+    const legacy: typeof base = {
+      ...base,
+      glossary: [
+        {
+          id: 'g1',
+          name: 'アカリ',
+          aliases: [],
+          summary: '概要',
+          body: '旧・詳細',
+          createdAt: 1,
+          updatedAt: 1,
+        },
+      ],
+    }
+    const [w] = upsertGlossaryEntry(
+      [legacy],
+      'w1',
+      { id: 'g1', name: 'アカリ', reading: 'あかり' },
+      'x',
+      100,
+    )
+    const g = w?.glossary?.find((e) => e.id === 'g1')
+    expect(g?.summary).toBe('概要')
+    expect(g?.body).toBe('旧・詳細')
+    // summary を渡したときだけ一本化される（D-GLOS-PUBLIC-ONE）
+    const [w2] = upsertGlossaryEntry(
+      [legacy],
+      'w1',
+      { id: 'g1', name: 'アカリ', summary: '新しい公開情報' },
+      'x',
+      100,
+    )
+    const g2 = w2?.glossary?.find((e) => e.id === 'g1')
+    expect(g2?.summary).toBe('新しい公開情報')
+    expect(g2?.body).toBeUndefined()
+  })
+
+  it('upsertGlossaryEntry は新規作成で name が空なら McpEditError', () => {
+    expect(() => upsertGlossaryEntry([work()], 'w1', { name: ' ' }, 'g9', 100)).toThrow(
+      McpEditError,
+    )
+  })
+
   it('upsertGlossaryEntry は更新時に既存サムネイルを保つ（MCP から画像は触れない）', () => {
     const base = work()
     const withThumb: typeof base = {
