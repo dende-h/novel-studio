@@ -1,6 +1,6 @@
 import { Lock, Pencil, Plus, Tag, X } from 'lucide-react'
 import { useMemo } from 'react'
-import { type Appearances, resolveRef } from '@/core/glossary'
+import { type Appearances, publicTextOf, resolveRef } from '@/core/glossary'
 import { parseEpisodeBody } from '@/core/parser/parseNotation'
 import type { GlossaryEntry } from '@/core/schema'
 import { cn } from '@/lib/utils'
@@ -169,18 +169,13 @@ export function GlossaryPeek({
                 {entry.aliases.join('、')}
               </p>
             ) : null}
-            {entry.summary ? (
+            {publicTextOf(entry) ? (
               <p className="whitespace-pre-wrap text-[13px] text-on-surface leading-relaxed">
-                {entry.summary}
+                {publicTextOf(entry)}
               </p>
             ) : (
               <p className="text-[13px] text-on-surface-variant/60">説明はまだありません。</p>
             )}
-            {entry.body ? (
-              <p className="whitespace-pre-wrap text-[12.5px] text-on-surface-variant leading-relaxed">
-                {entry.body}
-              </p>
-            ) : null}
             {/* 作者メモは公開されない欄。執筆中も「内緒の情報だ」と分かる見た目にしておく。 */}
             {entry.authorNote ? (
               <div className="space-y-1 rounded-lg bg-surface-container-high px-2.5 py-2">

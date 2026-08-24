@@ -180,7 +180,8 @@ test('@サジェストは狭幅ではキーボード直上のバーで出る', a
   await page.getByRole('button', { name: '新しく登録' }).click()
   await page.getByLabel('名前').fill('アリス')
   await page.getByRole('button', { name: '作成', exact: true }).click()
-  await expect(page.getByRole('heading', { name: 'アリス' })).toBeVisible()
+  // 作成した項目がその場で選ばれ、編集面に開く（マスター・ディテール）
+  await expect(page.getByLabel('項目の編集').getByLabel('名前')).toHaveValue('アリス')
 
   await openNav(page)
   await page.getByRole('button', { name: '本文を書く', exact: true }).click()
@@ -211,7 +212,8 @@ test('記法バーの参照で空枠を置いてから候補確定しても括�
   await page.getByRole('button', { name: '新しく登録' }).click()
   await page.getByLabel('名前').fill('ユグドラシル')
   await page.getByRole('button', { name: '作成', exact: true }).click()
-  await expect(page.getByRole('heading', { name: 'ユグドラシル' })).toBeVisible()
+  // 作成した項目がその場で選ばれ、編集面に開く（マスター・ディテール）
+  await expect(page.getByLabel('項目の編集').getByLabel('名前')).toHaveValue('ユグドラシル')
   await openNav(page)
   await page.getByRole('button', { name: '本文を書く', exact: true }).click()
 
@@ -268,7 +270,8 @@ test('記法バー：フォーカス中だけ出て、選択を囲む。@サジ�
   await page.getByRole('button', { name: '新しく登録' }).click()
   await page.getByLabel('名前').fill('アリス')
   await page.getByRole('button', { name: '作成', exact: true }).click()
-  await expect(page.getByRole('heading', { name: 'アリス' })).toBeVisible()
+  // 作成した項目がその場で選ばれ、編集面に開く（マスター・ディテール）
+  await expect(page.getByLabel('項目の編集').getByLabel('名前')).toHaveValue('アリス')
   await openNav(page)
   await page.getByRole('button', { name: '本文を書く', exact: true }).click()
 

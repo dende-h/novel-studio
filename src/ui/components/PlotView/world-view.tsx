@@ -12,7 +12,7 @@ import {
   worldNoteLabel,
 } from '@/core/plot'
 import type { GlossaryEntry } from '@/core/schema'
-import { CommitTextarea } from './commit-textarea'
+import { CommitTextarea } from '@/ui/components/NotationField/commit-textarea'
 
 /**
  * 世界観設定タブ（作者専用の設定置き場）。

@@ -5,6 +5,7 @@ import {
   categoriesOf,
   findAppearances,
   matchesQuery,
+  publicTextOf,
   renameEntry,
   resolvedNameSet,
   resolveRef,
@@ -398,5 +399,26 @@ describe('resolvedNameSet（プレビュー解決判定用の名前集合）', (
 
   it('空配列は空集合', () => {
     expect(resolvedNameSet([]).size).toBe(0)
+  })
+})
+
+describe('publicTextOf（公開情報＝概要＋旧・詳細の一本化）', () => {
+  it('summary だけならそのまま返す', () => {
+    expect(publicTextOf({ summary: '主人公。' })).toBe('主人公。')
+  })
+
+  it('旧データ（summary + body）は空行 1 つで結合する', () => {
+    expect(publicTextOf({ summary: '主人公。', body: '灯台守の見習い。' })).toBe(
+      '主人公。\n\n灯台守の見習い。',
+    )
+  })
+
+  it('body だけの旧データも公開情報として拾う', () => {
+    expect(publicTextOf({ body: '灯台守の見習い。' })).toBe('灯台守の見習い。')
+  })
+
+  it('両方無し・空白のみは空文字', () => {
+    expect(publicTextOf({})).toBe('')
+    expect(publicTextOf({ summary: '  ', body: '\n' })).toBe('')
   })
 })

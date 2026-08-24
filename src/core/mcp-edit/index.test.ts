@@ -61,6 +61,29 @@ describe('mcp-edit（MCP 書き込みの純ロジック）', () => {
     expect(g).toMatchObject({ name: 'アカリ改', createdAt: 1, updatedAt: 100 })
   })
 
+  it('upsertGlossaryEntry は body（旧・詳細）を summary へ一本化し、body キーを書かない', () => {
+    const [w] = upsertGlossaryEntry(
+      [work()],
+      'w1',
+      { name: '師匠', summary: '主人公の師。', body: '若い頃は灯台守だった。' },
+      'g2',
+      100,
+    )
+    const g = w?.glossary?.find((e) => e.id === 'g2')
+    expect(g?.summary).toBe('主人公の師。\n\n若い頃は灯台守だった。')
+    expect(g?.body).toBeUndefined()
+  })
+
+  it('upsertGlossaryEntry は更新時に既存サムネイルを保つ（MCP から画像は触れない）', () => {
+    const base = work()
+    const withThumb: typeof base = {
+      ...base,
+      glossary: base.glossary?.map((g) => ({ ...g, thumbnail: 'data:image/jpeg;base64,x' })),
+    }
+    const [w] = upsertGlossaryEntry([withThumb], 'w1', { id: 'g1', name: 'アカリ' }, 'x', 100)
+    expect(w?.glossary?.find((e) => e.id === 'g1')?.thumbnail).toBe('data:image/jpeg;base64,x')
+  })
+
   it('deleteGlossaryEntry は削除、存在しなければ McpEditError', () => {
     const [w] = deleteGlossaryEntry([work()], 'w1', 'g1', 100)
     expect(w?.glossary).toHaveLength(0)

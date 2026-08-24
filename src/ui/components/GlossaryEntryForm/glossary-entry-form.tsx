@@ -1,7 +1,9 @@
-import { Lock } from 'lucide-react'
+import { BookOpen, Lock } from 'lucide-react'
 import { useEffect, useId, useRef, useState } from 'react'
+import { publicTextOf } from '@/core/glossary'
 import type { GlossaryEntry } from '@/core/schema'
 import { thumbnailToDataUrl } from '@/ui/_utils/imageResizer'
+import { CommitTextarea } from '@/ui/components/NotationField/commit-textarea'
 import { Button } from '@/ui/components/ui/button'
 import {
   Dialog,
@@ -14,7 +16,6 @@ import {
 } from '@/ui/components/ui/dialog'
 import { Input } from '@/ui/components/ui/input'
 import { Label } from '@/ui/components/ui/label'
-import { Textarea } from '@/ui/components/ui/textarea'
 import { ZoomableImage } from '@/ui/components/ui/zoomable-image'
 
 /**
@@ -29,9 +30,8 @@ export interface GlossaryFormValues {
   aliases: string[]
   category: string
   reading: string
+  /** 公開情報（読者に見える説明文）。概要と旧・詳細はこの 1 欄に統合（D-GLOS-PUBLIC-ONE）。 */
   summary: string
-  /** 詳細（読者にも見せる本文）。 */
-  body: string
   /** 作者メモ（公開バンドルから落とされる非公開欄）。 */
   authorNote: string
   /** サムネ画像の data URL。空文字 '' は未設定／削除を表す。 */
@@ -47,6 +47,10 @@ interface GlossaryEntryFormProps {
   initial?: Partial<GlossaryEntry>
   /** 確定。衝突など失敗時は reject すると、ダイアログを閉じずにエラーを表示する。 */
   onSubmit: (values: GlossaryFormValues) => Promise<void> | void
+  /** 用語集（公開情報・作者メモの @ / [[ サジェスト候補）。省略ならサジェストしない。 */
+  glossary?: GlossaryEntry[]
+  /** 候補に無い語をその場で用語集に登録する（作成した名前を返す。失敗は null）。 */
+  onCreateEntry?: (name: string) => Promise<string | null>
 }
 
 /** 別名入力（カンマ／読点／改行区切り）を配列へ。trim・空除去・重複除去。 */
@@ -71,6 +75,8 @@ export function GlossaryEntryForm({
   mode,
   initial,
   onSubmit,
+  glossary,
+  onCreateEntry,
 }: GlossaryEntryFormProps) {
   const uid = useId()
   const [name, setName] = useState('')
@@ -78,7 +84,6 @@ export function GlossaryEntryForm({
   const [aliases, setAliases] = useState('')
   const [category, setCategory] = useState('')
   const [summary, setSummary] = useState('')
-  const [body, setBody] = useState('')
   const [authorNote, setAuthorNote] = useState('')
   const [thumbnail, setThumbnail] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -97,8 +102,8 @@ export function GlossaryEntryForm({
     setReading(init?.reading ?? '')
     setAliases((init?.aliases ?? []).join('、'))
     setCategory(init?.category ?? '')
-    setSummary(init?.summary ?? '')
-    setBody(init?.body ?? '')
+    // 旧データ（概要＋詳細）は結合して 1 欄で開く＝保存すると一本化される。
+    setSummary(init ? publicTextOf(init) : '')
     setAuthorNote(init?.authorNote ?? '')
     setThumbnail(init?.thumbnail ?? '')
     setError(null)
@@ -141,7 +146,6 @@ export function GlossaryEntryForm({
         category: category.trim(),
         reading: reading.trim(),
         summary: summary.trim(),
-        body: body.trim(),
         authorNote: authorNote.trim(),
         thumbnail,
       })
@@ -227,29 +231,27 @@ export function GlossaryEntryForm({
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor={`${uid}-summary`}>概要（任意）</Label>
-              <Textarea
+              <Label htmlFor={`${uid}-summary`} className="gap-2">
+                公開情報（任意）
+                <span className="inline-flex items-center gap-1 rounded-full bg-primary-container px-2 py-0.5 font-medium text-[10.5px] text-on-primary-container">
+                  <BookOpen className="size-2.5" />
+                  読者に見えます
+                </span>
+              </Label>
+              <CommitTextarea
                 id={`${uid}-summary`}
+                ariaLabel="公開情報（任意）"
                 value={summary}
-                onChange={(e) => setSummary(e.target.value)}
-                placeholder="一覧やパネルに表示される、一行〜数行の説明"
-                rows={3}
-                className="max-h-28"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor={`${uid}-body`}>詳細（任意）</Label>
-              <Textarea
-                id={`${uid}-body`}
-                value={body}
-                onChange={(e) => setBody(e.target.value)}
-                placeholder="来歴・見た目・関係・成り立ちなど、じっくり書きたいこと"
-                rows={7}
-                className="max-h-56"
+                onCommit={setSummary}
+                placeholder="一行の要約から、来歴・見た目などの詳しい説明まで、読者に見せる文をここへ"
+                glossary={glossary}
+                onCreateEntry={onCreateEntry}
+                grow={false}
+                className="min-h-24 max-h-48 text-[13px]"
               />
               <p className="text-[11.5px] text-on-surface-variant/70 leading-relaxed">
-                概要と詳細は、公開サイトへ投稿すると読者にも見えます（その用語が出てくる話まで
-                読んだ読者だけに開きます）。
+                公開サイトへ投稿すると読者にも見えます（その用語が出てくる話まで読んだ読者だけに
+                開きます）。@ または [[ で用語集を呼び出せます。
               </p>
             </div>
             <div className="space-y-2">
@@ -260,13 +262,16 @@ export function GlossaryEntryForm({
                   公開されません
                 </span>
               </Label>
-              <Textarea
+              <CommitTextarea
                 id={`${uid}-authorNote`}
+                ariaLabel="作者メモ（任意）"
                 value={authorNote}
-                onChange={(e) => setAuthorNote(e.target.value)}
+                onCommit={setAuthorNote}
                 placeholder="この人物の正体、この場所で後に起きること——まだ読者に見せないこと"
-                rows={4}
-                className="max-h-40"
+                glossary={glossary}
+                onCreateEntry={onCreateEntry}
+                grow={false}
+                className="min-h-20 max-h-40 text-[13px]"
               />
               <p className="text-[11.5px] text-on-surface-variant/70 leading-relaxed">
                 この欄だけは投稿時に取り除かれます。作品全体の決め事や設定ルールは、プロットの

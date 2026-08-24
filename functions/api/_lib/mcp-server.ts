@@ -41,7 +41,7 @@ import { pickPrimaryPlot, WORLD_CUSTOM_SLOT, WORLD_SLOTS } from '../../../src/co
 
 /** クライアントが未指定のときに名乗る MCP プロトコル版（十分に新しい安定版）。 */
 const DEFAULT_PROTOCOL_VERSION = '2025-06-18'
-const SERVER_INFO = { name: 'novel-studio', version: '1.3.0' } as const
+const SERVER_INFO = { name: 'novel-studio', version: '1.4.0' } as const
 
 /**
  * クライアント（AI）へ最初に渡す使い方。MCP の `initialize` が返す標準の instructions。
@@ -213,7 +213,7 @@ export const MCP_TOOLS = [
   {
     name: 'upsert_glossary_entry',
     description:
-      '用語集の項目（人物・場所・組織・用語・アイテム・生物）を追加または更新する。id を渡すと更新、無ければ新規作成。既存を更新するときは先に get_glossary で [entry_id: …] を確認して id に渡す。【重要】name/summary/body は公開サイトで読者にも見える。設定ルール・執筆の決め事・世界の仕組みはここではなく set_world_note へ書く。項目に紐づく非公開の情報は author_note へ書く。',
+      '用語集の項目（人物・場所・組織・用語・アイテム・生物）を追加または更新する。id を渡すと更新、無ければ新規作成。既存を更新するときは先に get_glossary で [entry_id: …] を確認して id に渡す。【重要】name/summary は公開サイトで読者にも見える。設定ルール・執筆の決め事・世界の仕組みはここではなく set_world_note へ書く。項目に紐づく非公開の情報は author_note へ書く。',
     inputSchema: {
       type: 'object',
       properties: {
@@ -226,8 +226,16 @@ export const MCP_TOOLS = [
         aliases: { type: 'array', items: { type: 'string' }, description: '別名' },
         category: { type: 'string', description: '分類（キャラ/用語/場所 等）' },
         reading: { type: 'string', description: 'よみ' },
-        summary: { type: 'string', description: '一行要約（読者にも見える）' },
-        body: { type: 'string', description: '詳細な本文（読者にも見える）' },
+        summary: {
+          type: 'string',
+          description:
+            '公開情報（読者にも見える説明文。一行要約〜詳しい本文までここに 1 本で書く）',
+        },
+        body: {
+          type: 'string',
+          description:
+            '【非推奨・旧フィールド】渡すと summary の末尾に結合される。summary を使うこと',
+        },
         author_note: {
           type: 'string',
           description:

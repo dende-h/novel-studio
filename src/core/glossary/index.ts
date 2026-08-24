@@ -18,6 +18,19 @@ export function resolveRef(name: string, entries: GlossaryEntry[]): GlossaryEntr
 }
 
 /**
+ * 公開情報（読者に見える説明文）を 1 本のテキストとして返す。
+ *
+ * 概要（summary）と詳細（body）は「公開情報」1 欄に統合された（D-GLOS-PUBLIC-ONE）。
+ * 旧データは 2 欄に分かれて残っているため、読み出す側は必ずこの関数を通して結合する。
+ * 保存側（編集画面・MCP の upsert）は summary へ一本化して body を空にする＝
+ * 触られた項目から順に旧形式が消えていく。
+ */
+export function publicTextOf(entry: Pick<GlossaryEntry, 'summary' | 'body'>): string {
+  const parts = [entry.summary?.trim(), entry.body?.trim()].filter((s): s is string => !!s)
+  return parts.join('\n\n')
+}
+
+/**
  * 解決済み @参照名の集合を作る（プレビューの blocksToHtml(blocks, set) 用）。
  * 各 entry の name ＋ aliases を trim して非空のものだけ収める（resolveRef と同じ突合キー）。
  * これに含まれる名前を持つ ref が「解決」、含まれないものが「未解決」（点線）になる。

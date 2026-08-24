@@ -1,3 +1,4 @@
+import { publicTextOf } from '../glossary'
 import type { Block, GlossaryEntry, Inline, Work } from '../schema'
 
 /**
@@ -50,9 +51,10 @@ export function workToPlainText(work: Work): string {
 }
 
 /**
- * 用語集1項目 → 見出し＋メタ（分類/よみ/別名）＋概要＋詳細＋作者メモ。画像・時刻は持ち込まない。
+ * 用語集1項目 → 見出し＋メタ（分類/よみ/別名）＋公開情報＋作者メモ。画像・時刻は持ち込まない。
  * `withId` のときだけ見出しに entry_id を添える（MCP の更新/削除対象の指定に必要）。
  *
+ * 公開情報は 1 欄（D-GLOS-PUBLIC-ONE）＝旧データの summary / body は publicTextOf で結合して出す。
  * 作者メモは公開バンドルには載らない情報なので、非公開であることが読み手（AI・作者本人）に
  * 分かる見出しを必ず添える。
  */
@@ -66,8 +68,8 @@ function entryToPlainText(entry: GlossaryEntry, withId = false): string {
   if (meta.length > 0) head.push(meta.join(' ・ '))
 
   const blocks = [head.join('\n')]
-  if (entry.summary) blocks.push(entry.summary)
-  if (entry.body) blocks.push(entry.body)
+  const pub = publicTextOf(entry)
+  if (pub) blocks.push(pub)
   if (entry.authorNote) blocks.push(`### 作者メモ（非公開）\n${entry.authorNote}`)
   return blocks.join('\n\n')
 }

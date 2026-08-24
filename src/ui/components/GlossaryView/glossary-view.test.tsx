@@ -1,7 +1,9 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { useState } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 import type { Appearances } from '@/core/glossary'
 import type { GlossaryEntry } from '@/core/schema'
+import type { GlossaryFormValues } from '@/ui/components/GlossaryEntryForm/glossary-entry-form'
 import { GlossaryView } from './glossary-view'
 
 function entry(p: Partial<GlossaryEntry> & { id: string; name: string }): GlossaryEntry {
@@ -13,6 +15,7 @@ function entry(p: Partial<GlossaryEntry> & { id: string; name: string }): Glossa
     reading: p.reading,
     summary: p.summary,
     body: p.body,
+    authorNote: p.authorNote,
     createdAt: 0,
     updatedAt: 0,
   }
@@ -24,11 +27,11 @@ const ENTRIES: GlossaryEntry[] = [
     name: 'アリス',
     reading: 'ありす',
     category: '人物',
-    summary: '主人公',
+    summary: '主人公。[[ボブ]]の幼なじみ。',
     aliases: ['Alice'],
   }),
   entry({ id: 'b', name: 'ボブ', category: '人物' }),
-  entry({ id: 't', name: '王都', category: '地名' }),
+  entry({ id: 't', name: '王都', category: '地名', summary: '概要のみ', body: '旧・詳細の文' }),
 ]
 
 const appearances: Record<string, Appearances> = {
@@ -37,126 +40,201 @@ const appearances: Record<string, Appearances> = {
   t: { episodeIds: ['e1'], refCount: 1 },
 }
 
-function setup(over: Partial<React.ComponentProps<typeof GlossaryView>> = {}) {
-  const props = {
-    entries: ENTRIES,
-    getAppearances: (e: GlossaryEntry) => appearances[e.id] ?? { episodeIds: [], refCount: 0 },
+/**
+ * 適用結果が次の描画に反映される **stateful** なハーネス。
+ * onApply を受け取るだけのモックだと「作成した項目がその場で選ばれる」「改名が一覧へ出る」
+ * を検証できない（world-view.test で学んだ形）。
+ */
+function setup(initial: GlossaryEntry[] = ENTRIES) {
+  const calls = {
     onCreate: vi.fn(),
     onUpdate: vi.fn(),
     onRename: vi.fn(),
     onDelete: vi.fn(),
-    ...over,
   }
-  render(<GlossaryView {...props} />)
-  return props
+  function Harness() {
+    const [entries, setEntries] = useState(initial)
+    return (
+      <GlossaryView
+        entries={entries}
+        getAppearances={(e) => appearances[e.id] ?? { episodeIds: [], refCount: 0 }}
+        onCreate={async (name) => {
+          calls.onCreate(name)
+          if (entries.some((e) => e.name === name))
+            throw new Error(`「${name}」は既存の項目と重複しています`)
+          const id = `new-${name}`
+          setEntries((cur) => [...cur, entry({ id, name })])
+          return id
+        }}
+        onUpdate={async (id, values: GlossaryFormValues) => {
+          calls.onUpdate(id, values)
+          setEntries((cur) =>
+            cur.map((e) =>
+              e.id === id
+                ? {
+                    ...e,
+                    aliases: values.aliases,
+                    category: values.category || undefined,
+                    reading: values.reading || undefined,
+                    summary: values.summary || undefined,
+                    body: undefined,
+                    authorNote: values.authorNote || undefined,
+                  }
+                : e,
+            ),
+          )
+        }}
+        onRename={async (id, newName, opts) => {
+          calls.onRename(id, newName, opts)
+          if (newName === '重複名') throw new Error('「重複名」は既存の項目と重複しています')
+          setEntries((cur) => cur.map((e) => (e.id === id ? { ...e, name: newName } : e)))
+        }}
+        onDelete={(id) => {
+          calls.onDelete(id)
+          setEntries((cur) => cur.filter((e) => e.id !== id))
+        }}
+      />
+    )
+  }
+  render(<Harness />)
+  return calls
 }
 
-describe('GlossaryView（用語集一覧・検索・カテゴリ・CRUD）', () => {
-  it('項目名・概要・登場数を一覧表示する', () => {
+const openEntry = (name: string) =>
+  fireEvent.click(screen.getByRole('button', { name: `「${name}」を編集` }))
+
+describe('GlossaryView（左右2カラム：一覧・検索・その場編集）', () => {
+  it('一覧に名前と分類・未使用が出て、選ぶと編集面が開く', () => {
     setup()
-    expect(screen.getByRole('heading', { name: 'アリス' })).toBeInTheDocument()
-    expect(screen.getByText('主人公')).toBeInTheDocument()
-    expect(screen.getByText('別名: Alice')).toBeInTheDocument()
-    expect(screen.getByText('2話・5回 登場')).toBeInTheDocument()
-    expect(screen.getByText('未使用')).toBeInTheDocument() // ボブ
+    expect(screen.getByRole('button', { name: '「アリス」を編集' })).toBeInTheDocument()
+    expect(screen.getByText('人物 ・ 未使用')).toBeInTheDocument() // ボブ
+    openEntry('アリス')
+    expect(screen.getByLabelText('名前')).toHaveValue('アリス')
+    expect(screen.getByLabelText('読み（任意）')).toHaveValue('ありす')
+    expect(screen.getByLabelText('別名（読点区切り・任意）')).toHaveValue('Alice')
+    expect(screen.getByText(/2話・5回 登場/)).toBeInTheDocument()
   })
 
-  it('検索は name・別名・読みに部分一致（body 等は対象外）', () => {
+  it('検索は name・別名・読みに部分一致', () => {
     setup()
     fireEvent.change(screen.getByLabelText('用語集を検索'), { target: { value: 'ありす' } })
-    expect(screen.getByRole('heading', { name: 'アリス' })).toBeInTheDocument()
-    expect(screen.queryByRole('heading', { name: '王都' })).toBeNull()
+    expect(screen.getByRole('button', { name: '「アリス」を編集' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '「王都」を編集' })).toBeNull()
   })
 
   it('カテゴリチップで絞り込む', () => {
     setup()
     fireEvent.click(screen.getByRole('button', { name: '地名' }))
-    expect(screen.getByRole('heading', { name: '王都' })).toBeInTheDocument()
-    expect(screen.queryByRole('heading', { name: 'アリス' })).toBeNull()
+    expect(screen.getByRole('button', { name: '「王都」を編集' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '「アリス」を編集' })).toBeNull()
   })
 
-  it('「新しく登録」で作成フォームを開き、入力して onCreate を呼ぶ', () => {
+  it('「新しく登録」は名前だけで作り、その場で選ばれて書き始められる', async () => {
     const { onCreate } = setup()
     fireEvent.click(screen.getByRole('button', { name: '新しく登録' }))
     fireEvent.change(screen.getByLabelText('名前'), { target: { value: 'キャロル' } })
     fireEvent.click(screen.getByRole('button', { name: '作成' }))
-    expect(onCreate).toHaveBeenCalledWith(expect.objectContaining({ name: 'キャロル' }))
+    await waitFor(() => expect(onCreate).toHaveBeenCalledWith('キャロル'))
+    // 作成した項目が選ばれ、編集面で続きを書ける
+    await waitFor(() => expect(screen.getByLabelText('名前')).toHaveValue('キャロル'))
   })
 
-  it('カード押下で閲覧ダイアログが開き、読み・別名・概要・登場数を表示する', async () => {
+  it('作成が重複で reject されるとエラーを表示しダイアログを保つ', async () => {
     setup()
-    fireEvent.click(screen.getByRole('button', { name: '「アリス」の詳細を開く' }))
-    const dialog = await screen.findByRole('dialog')
-    expect(within(dialog).getByText('ありす')).toBeInTheDocument() // 読み
-    expect(within(dialog).getByText('Alice')).toBeInTheDocument() // 別名
-    expect(within(dialog).getByText('主人公')).toBeInTheDocument() // 概要
-    expect(within(dialog).getByText('2話・5回 登場')).toBeInTheDocument()
-    expect(within(dialog).getByRole('button', { name: '編集' })).toBeInTheDocument()
-    expect(within(dialog).getByRole('button', { name: '削除' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: '新しく登録' }))
+    fireEvent.change(screen.getByLabelText('名前'), { target: { value: 'アリス' } })
+    fireEvent.click(screen.getByRole('button', { name: '作成' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('重複')
+    expect(screen.getByLabelText('名前')).toBeInTheDocument()
   })
 
-  it('閲覧→「編集」でフォームを開き、名前以外の変更は onUpdate のみ呼ぶ', async () => {
-    const { onUpdate, onRename } = setup()
-    fireEvent.click(screen.getByRole('button', { name: '「アリス」の詳細を開く' }))
-    fireEvent.click(await screen.findByRole('button', { name: '編集' }))
-    const nameInput = (await screen.findByLabelText('名前')) as HTMLInputElement
-    expect(nameInput.value).toBe('アリス')
-    expect(nameInput.readOnly).toBe(false)
-    fireEvent.change(screen.getByLabelText('概要（任意）'), { target: { value: '改訂概要' } })
-    fireEvent.click(screen.getByRole('button', { name: '保存する' }))
+  it('公開情報は旧データ（概要＋詳細）を結合して 1 欄で開く', () => {
+    setup()
+    openEntry('王都')
+    // 中身があるので既定はプレビュー＝結合された文が読める
+    expect(screen.getByText(/概要のみ/)).toBeInTheDocument()
+    expect(screen.getByText(/旧・詳細の文/)).toBeInTheDocument()
+  })
+
+  it('公開情報を書いて欄を離れると、結合済みの summary で onUpdate（body は畳む）', async () => {
+    const { onUpdate } = setup()
+    openEntry('ボブ') // 公開情報が空＝編集モードで開く
+    const box = screen.getByLabelText('公開情報')
+    fireEvent.change(box, { target: { value: '灯台守。' } })
+    fireEvent.blur(box)
     await waitFor(() =>
-      expect(onUpdate).toHaveBeenCalledWith('a', expect.objectContaining({ summary: '改訂概要' })),
+      expect(onUpdate).toHaveBeenCalledWith('b', expect.objectContaining({ summary: '灯台守。' })),
     )
-    expect(onRename).not.toHaveBeenCalled()
+    // GlossaryFormValues に body は無い＝旧・詳細は保存経路で畳まれる
+    expect(onUpdate.mock.calls[0]?.[1]).not.toHaveProperty('body')
   })
 
-  it('編集フォームで名前を変えると onRename（自動別名退避）→ onUpdate の順に呼ぶ', async () => {
-    const { onUpdate, onRename } = setup()
-    fireEvent.click(screen.getByRole('button', { name: '「アリス」の詳細を開く' }))
-    fireEvent.click(await screen.findByRole('button', { name: '編集' }))
-    fireEvent.change(await screen.findByLabelText('名前'), { target: { value: 'アリサ' } })
-    fireEvent.click(screen.getByRole('button', { name: '保存する' }))
+  it('作者メモも欄を離れるとその場で確定する', async () => {
+    const { onUpdate } = setup()
+    openEntry('ボブ')
+    const note = screen.getByLabelText('作者メモ')
+    fireEvent.change(note, { target: { value: '正体は管理AI' } })
+    fireEvent.blur(note)
+    await waitFor(() =>
+      expect(onUpdate).toHaveBeenCalledWith(
+        'b',
+        expect.objectContaining({ authorNote: '正体は管理AI' }),
+      ),
+    )
+  })
+
+  it('名前は blur で onRename され、一覧にも新名が出る', async () => {
+    const { onRename } = setup()
+    openEntry('アリス')
+    const name = screen.getByLabelText('名前')
+    fireEvent.change(name, { target: { value: 'アリサ' } })
+    fireEvent.blur(name)
     await waitFor(() =>
       expect(onRename).toHaveBeenCalledWith('a', 'アリサ', { rewriteBody: false }),
     )
-    await waitFor(() =>
-      expect(onUpdate).toHaveBeenCalledWith('a', expect.objectContaining({ name: 'アリサ' })),
-    )
+    expect(await screen.findByRole('button', { name: '「アリサ」を編集' })).toBeInTheDocument()
   })
 
-  it('カテゴリは固定リストのプルダウン（既存の自由入力値も選択肢に残る）', async () => {
+  it('改名が重複で reject されるとエラーを表示する', async () => {
     setup()
-    fireEvent.click(screen.getByRole('button', { name: '「王都」の詳細を開く' }))
-    fireEvent.click(await screen.findByRole('button', { name: '編集' }))
-    const select = (await screen.findByLabelText('カテゴリ')) as HTMLSelectElement
+    openEntry('アリス')
+    const name = screen.getByLabelText('名前')
+    fireEvent.change(name, { target: { value: '重複名' } })
+    fireEvent.blur(name)
+    expect(await screen.findByRole('alert')).toHaveTextContent('重複')
+  })
+
+  it('カテゴリは固定リストのプルダウン（既存の自由入力値も選択肢に残る）', () => {
+    setup()
+    openEntry('王都')
+    const select = screen.getByLabelText('カテゴリ') as HTMLSelectElement
     const labels = Array.from(select.options).map((o) => o.textContent)
     expect(labels).toEqual(['未分類', '人物', '場所', '組織', '用語', 'アイテム', '生物', '地名'])
     expect(select.value).toBe('地名') // 旧・自由入力値が保全される
   })
 
-  it('閲覧→「削除」は確認後に onDelete を呼ぶ', async () => {
+  it('削除は確認後に onDelete、一覧から消えて選択も解ける', async () => {
     const { onDelete } = setup()
-    fireEvent.click(screen.getByRole('button', { name: '「アリス」の詳細を開く' }))
-    fireEvent.click(await screen.findByRole('button', { name: '削除' }))
-    const confirm = await screen.findByRole('button', { name: '削除する' })
-    fireEvent.click(confirm)
+    openEntry('アリス')
+    fireEvent.click(screen.getByRole('button', { name: '「アリス」を削除' }))
+    fireEvent.click(await screen.findByRole('button', { name: '削除する' }))
     expect(onDelete).toHaveBeenCalledWith('a')
+    await waitFor(() =>
+      expect(screen.queryByRole('button', { name: '「アリス」を編集' })).toBeNull(),
+    )
+    expect(screen.queryByLabelText('名前')).toBeNull()
   })
 
-  it('作成が衝突で reject されるとエラーを表示しダイアログを保つ', async () => {
-    setup({
-      onCreate: vi.fn().mockRejectedValue(new Error('「アリス」は既存の項目と重複しています')),
-    })
-    fireEvent.click(screen.getByRole('button', { name: '新しく登録' }))
-    fireEvent.change(screen.getByLabelText('名前'), { target: { value: 'アリス' } })
-    fireEvent.click(screen.getByRole('button', { name: '作成' }))
-    expect(await screen.findByRole('alert')).toHaveTextContent('重複')
-    // ダイアログは閉じない（名前入力が残る）
-    expect(screen.getByLabelText('名前')).toBeInTheDocument()
+  it('プレビューの [[用語]] クリックでその項目へ切り替わる（事典の渡り歩き）', async () => {
+    setup()
+    openEntry('アリス') // 公開情報に [[ボブ]] が居る＝既定プレビューでリンクになる
+    const ref = await screen.findByRole('link', { name: 'ボブ' })
+    fireEvent.click(ref)
+    await waitFor(() => expect(screen.getByLabelText('名前')).toHaveValue('ボブ'))
   })
 
   it('項目が無い時は空状態を表示', () => {
-    setup({ entries: [] })
+    setup([])
     expect(screen.getByText(/まだ用語集がありません/)).toBeInTheDocument()
   })
 })

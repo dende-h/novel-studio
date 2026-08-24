@@ -223,15 +223,21 @@ export function upsertGlossaryEntry(
   return updateWork(works, workId, (w) => {
     const glossary = w.glossary ?? []
     const prev = glossary.find((g) => g.id === entryId)
+    // 公開情報は 1 欄（D-GLOS-PUBLIC-ONE）。旧クライアントが body（旧・詳細）を送ってきても
+    // summary へ結合して一本化する＝body キーはもう書かない。
+    const summary = [emptyToUndef(input.summary), emptyToUndef(input.body)]
+      .filter((s): s is string => s !== undefined)
+      .join('\n\n')
     const entry: GlossaryEntry = {
       id: entryId,
       name: input.name,
       aliases: input.aliases ?? [],
       ...(emptyToUndef(input.category) ? { category: input.category } : {}),
       ...(emptyToUndef(input.reading) ? { reading: input.reading } : {}),
-      ...(emptyToUndef(input.summary) ? { summary: input.summary } : {}),
-      ...(emptyToUndef(input.body) ? { body: input.body } : {}),
+      ...(summary !== '' ? { summary } : {}),
       ...(emptyToUndef(input.authorNote) ? { authorNote: input.authorNote } : {}),
+      // サムネは MCP から操作できない＝更新で既存の画像を落とさない。
+      ...(prev?.thumbnail ? { thumbnail: prev.thumbnail } : {}),
       createdAt: prev?.createdAt ?? now,
       updatedAt: now,
     }
