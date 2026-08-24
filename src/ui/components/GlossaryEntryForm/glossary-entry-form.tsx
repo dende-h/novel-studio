@@ -4,6 +4,7 @@ import { publicTextOf } from '@/core/glossary'
 import type { GlossaryEntry } from '@/core/schema'
 import { thumbnailToDataUrl } from '@/ui/_utils/imageResizer'
 import { CommitTextarea } from '@/ui/components/NotationField/commit-textarea'
+import { NotationHelpButton } from '@/ui/components/NotationField/notation-help'
 import { Button } from '@/ui/components/ui/button'
 import {
   Dialog,
@@ -231,13 +232,18 @@ export function GlossaryEntryForm({
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor={`${uid}-summary`} className="gap-2">
-                公開情報（任意）
-                <span className="inline-flex items-center gap-1 rounded-full bg-primary-container px-2 py-0.5 font-medium text-[10.5px] text-on-primary-container">
-                  <BookOpen className="size-2.5" />
-                  読者に見えます
-                </span>
-              </Label>
+              {/* ⓘはダイアログを開くボタンなので label の外に置く（label 内だと入力への
+                  フォーカス移譲とぶつかる）。 */}
+              <div className="flex items-center gap-2">
+                <Label htmlFor={`${uid}-summary`} className="gap-2">
+                  公開情報（任意）
+                  <span className="inline-flex items-center gap-1 rounded-full bg-primary-container px-2 py-0.5 font-medium text-[10.5px] text-on-primary-container">
+                    <BookOpen className="size-2.5" />
+                    読者に見えます
+                  </span>
+                </Label>
+                <NotationHelpButton />
+              </div>
               <CommitTextarea
                 id={`${uid}-summary`}
                 ariaLabel="公開情報（任意）"
@@ -255,13 +261,16 @@ export function GlossaryEntryForm({
               </p>
             </div>
             <div className="space-y-2">
-              <Label htmlFor={`${uid}-authorNote`} className="gap-2">
-                作者メモ（任意）
-                <span className="inline-flex items-center gap-1 rounded-full bg-secondary-container px-2 py-0.5 font-medium text-[10.5px] text-on-secondary-container">
-                  <Lock className="size-2.5" />
-                  公開されません
-                </span>
-              </Label>
+              <div className="flex items-center gap-2">
+                <Label htmlFor={`${uid}-authorNote`} className="gap-2">
+                  作者メモ（任意）
+                  <span className="inline-flex items-center gap-1 rounded-full bg-secondary-container px-2 py-0.5 font-medium text-[10.5px] text-on-secondary-container">
+                    <Lock className="size-2.5" />
+                    公開されません
+                  </span>
+                </Label>
+                <NotationHelpButton />
+              </div>
               <CommitTextarea
                 id={`${uid}-authorNote`}
                 ariaLabel="作者メモ（任意）"

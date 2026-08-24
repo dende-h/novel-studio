@@ -1,5 +1,6 @@
 import { Lock, Pencil, Tag } from 'lucide-react'
 import { type Appearances, publicTextOf } from '@/core/glossary'
+import { markdownToHtml } from '@/core/markdown'
 import type { GlossaryEntry } from '@/core/schema'
 import { Badge } from '@/ui/components/ui/badge'
 import { Button } from '@/ui/components/ui/button'
@@ -64,10 +65,14 @@ export function GlossaryEntryDetail({
           {entry.aliases.join('、')}
         </p>
       ) : null}
+      {/* 記法（[[用語]]・ルビ）とマークダウンを編集画面のプレビューと同じ見た目で描く。
+          チラ見は読み取り専用なので参照はリンク化しない（resolvedNames を渡さない＝プレーンへ degrade）。 */}
       {publicTextOf(entry) ? (
-        <p className="whitespace-pre-wrap text-[13px] text-on-surface leading-relaxed">
-          {publicTextOf(entry)}
-        </p>
+        <div
+          // biome-ignore lint/security/noDangerouslySetInnerHtml: core/markdown が全エスケープ済みの安全な HTML
+          dangerouslySetInnerHTML={{ __html: markdownToHtml(publicTextOf(entry)) }}
+          className="preview notation-preview text-[13px] text-on-surface leading-relaxed"
+        />
       ) : (
         <p className="text-[13px] text-on-surface-variant/60">説明はまだありません。</p>
       )}
@@ -78,9 +83,11 @@ export function GlossaryEntryDetail({
             <Lock className="size-2.5" aria-hidden />
             作者メモ（公開されません）
           </div>
-          <p className="whitespace-pre-wrap text-[12.5px] text-on-surface leading-relaxed">
-            {entry.authorNote}
-          </p>
+          <div
+            // biome-ignore lint/security/noDangerouslySetInnerHtml: core/markdown が全エスケープ済みの安全な HTML
+            dangerouslySetInnerHTML={{ __html: markdownToHtml(entry.authorNote) }}
+            className="preview notation-preview text-[12.5px] text-on-surface leading-relaxed"
+          />
         </div>
       ) : null}
       <Button variant="outline" size="sm" onClick={onEdit} className="w-full gap-2">

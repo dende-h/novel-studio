@@ -1,0 +1,17 @@
+{
+  "name": "novel-textlint",
+  "private": true,
+  "version": "0.0.0",
+  "description": "novel-studio: textlint による小説原稿・toC文言の機械検査（アプリ本体とは独立）",
+  "dependencies": {
+    "textlint": "^15.8.0",
+    "textlint-rule-general-novel-style-ja": "^1.3.0",
+    "textlint-rule-ja-no-successive-word": "^2.0.1",
+    "textlint-rule-no-ai-cliche": "link:textlint-rule-no-ai-cliche",
+    "textlint-rule-novel-punctuation-ja": "link:textlint-rule-novel-punctuation-ja"
+  },
+  "scripts": {
+    "lint:novel": "textlint --config .textlintrc.novel.json",
+    "check:fixtures": "bash check-fixtures.sh"
+  }
+}

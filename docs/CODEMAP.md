@@ -33,6 +33,7 @@ Cloudflare Pages Functions
 | やりたいこと | まず開くファイル |
 |---|---|
 | 記法（ルビ・傍点・`[[参照]]`）の解釈を変える | `src/core/parser/parseNotation.ts` + `src/core/schema/index.ts` |
+| プレビューのマークダウン（見出し・リスト・表・引用）を変える | `src/core/markdown/index.ts`（本文は非対応。効くのはプロット・世界観・用語集の記法つき欄） |
 | 書き出し（EPUB/なろう/カクヨム/HTML）の出力を変える | `src/core/exporter/` 配下（形式ごとに1ファイル） |
 | エディタの入力・ショートカット・サジェスト | `src/ui/components/EditorPane/` |
 | 保存・自動保存・undo・開いている作品の状態 | `src/ui/store/editorStore.ts` |
@@ -52,6 +53,10 @@ Cloudflare Pages Functions
 | 画面遷移・ルート追加 | `src/ui/Root.tsx` + `src/ui/hooks/use-hash-route.ts` |
 | DB スキーマ | `migrations/*.sql` + `wrangler.toml` |
 | ランディングページ（機能紹介・プラン表・スクリーンショット） | `public/lp/index.html` + `public/lp/shots/` |
+| ユーザー向け文言（LP・案内・ボタン・エラー等）を書く/直す | `.claude/skills/toc-copy/`（トーン・用語表・マイクロコピーの型） |
+| 小説本文の執筆・推敲（MCP/ローカル） | `.claude/skills/novel-writing/`（執筆制約・レビュー観点） |
+| 小説原稿の機械検査（textlint）のルール・AI臭辞書 | `tools/novel-textlint/`（アプリ本体とは独立。README 参照） |
+| note記事・設計文書・レポートなど仕事の文書を書く/直す | `.claude/skills/natural-japanese/`（coji/natural-japanese の同梱コピー。出自と更新手順は同 `UPSTREAM.md`） |
 
 ---
 
@@ -73,7 +78,8 @@ Cloudflare Pages Functions
 |---|---|
 | `src/core/parser/parseNotation.ts` | 記法テキスト → 正本 Block。`parseEpisodeBody` `parseInlines` |
 | `src/core/exporter/toEpub.ts` | 正本 → EPUB（`episodeToXhtml` + `zip/`） |
-| `src/core/exporter/toHtml.ts` | 正本 → 安全な HTML（プレビュー兼用・全エスケープ済み） |
+| `src/core/exporter/toHtml.ts` | 正本 → 安全な HTML（プレビュー兼用・全エスケープ済み。`inlinesToHtml` も公開） |
+| `src/core/markdown/index.ts` | 生テキスト → プレビュー HTML の軽量マークダウン（`markdownToHtml` `stripMarkdown`。行内は parseInlines へ委譲＝[[用語]]・ルビが生きる） |
 | `src/core/exporter/toNarou.ts` / `src/core/exporter/toKakuyomu.ts` | 各投稿サイト記法 |
 | `src/core/exporter/toPlainText.ts` / `plotToPlainText.ts` / `structureToPlainText.ts` | AI 投げ込み用の平文（`glossaryToPlainText` 含む） |
 | `src/core/exporter/blocksToNotation.ts` | 正本 → 記法（往復変換） |
@@ -171,7 +177,8 @@ Cloudflare Pages Functions
 | 文字列の入力を求める | `TitlePromptDialog`（`src/ui/components/TitlePromptDialog/title-prompt-dialog.tsx`） | `window.prompt()` |
 | 描画例外の受け止め | `ErrorBoundary`（`src/ui/components/ErrorBoundary/error-boundary.tsx`） | — |
 | `@`/`[[` の用語集サジェスト付き入力欄（blur 確定） | `CommitTextarea`（`src/ui/components/NotationField/commit-textarea.tsx`） | 生の `<textarea>` ＋ 自前サジェスト |
-| 記法つき入力（書く／プレビュー切替・`[[用語]]` クリック委譲） | `NotationField`（`src/ui/components/NotationField/notation-field.tsx`） | 画面ごとのプレビュー自作 |
+| 記法つき入力（書く／プレビュー切替・マークダウン描画・`[[用語]]` クリック委譲） | `NotationField`（`src/ui/components/NotationField/notation-field.tsx`） | 画面ごとのプレビュー自作 |
+| 記法つき欄の「使える記法」説明（ラベル横のⓘ＋ダイアログ） | `NotationHelpButton`（`src/ui/components/NotationField/notation-help.tsx`） | 画面ごとの説明文自作 |
 | 用語 1 項目のチラ見（読み取り専用の詳細表示） | `GlossaryEntryDetail`（`src/ui/components/GlossaryPeek/entry-detail.tsx`） | 画面ごとの項目詳細の自作 |
 | 作品/話のナビゲーション | `SideNav` / `TopAppBar` | — |
 | 軽量なケバブメニュー（Radix 不使用の作例） | `ProjectMenu`（`src/ui/components/Library/project-menu.tsx`） | — |
@@ -257,6 +264,8 @@ pnpm format         # biome format --write .
 pnpm build          # tsc -b && vite build
 pnpm test:e2e       # Playwright（e2e/smoke.spec.ts, e2e/mobile.spec.ts）
 pnpm d1:migrate:local / :remote
+pnpm --dir tools/novel-textlint lint:novel <file>   # 小説原稿の textlint（CI 対象外）
+uv run .claude/skills/natural-japanese/scripts/lint.py <file>   # 仕事の文書の AI 臭 lint（要 uv・CI 対象外）
 ```
 
 - CI（`.github/workflows/ci.yml`）は main / stg への push・PR で lint → typecheck → test → build → e2e。

@@ -32,6 +32,7 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'rea
 import { blocksToPlainText } from '@/core/exporter/toPlainText'
 import { resolvedNameSet } from '@/core/glossary'
 import type { IdeaNote } from '@/core/idea'
+import { stripMarkdown } from '@/core/markdown'
 import { parseEpisodeBody } from '@/core/parser/parseNotation'
 import {
   addBeat,
@@ -76,6 +77,7 @@ import type { StructureRepository } from '@/core/storage/structureRepository'
 import { pickPrimaryStructure, type StructureNode } from '@/core/structure'
 import { ConfirmDialog } from '@/ui/components/ConfirmDialog/confirm-dialog'
 import { NotationField } from '@/ui/components/NotationField/notation-field'
+import { NotationHelpButton } from '@/ui/components/NotationField/notation-help'
 import { subscribeSyncApplied } from '@/ui/sync/sync-touch'
 import { WorldView } from './world-view'
 
@@ -121,12 +123,12 @@ const PLACE_CATEGORY = /場所|舞台/
 const genId = () => crypto.randomUUID()
 
 /**
- * 記法（[[用語]]・ルビ・傍点）を剥がした表示用テキスト。
+ * 記法（[[用語]]・ルビ・傍点）とマークダウンの記号を剥がした表示用テキスト。
  * カードの要約 1 行など「読むだけ」の場所で、記号がそのまま出るのを防ぐ。
  */
 function plainOf(text: string | undefined): string {
   if (!text) return ''
-  return blocksToPlainText(parseEpisodeBody(text)).trim()
+  return blocksToPlainText(parseEpisodeBody(stripMarkdown(text))).trim()
 }
 const fmt = (n: number) => n.toLocaleString('ja-JP')
 /** 空文字は未設定(undefined)へ畳む（スキーマの任意項目を綺麗に保つ）。 */
@@ -402,6 +404,7 @@ export default function PlotView({
             onApply={(fn) => void apply(fn)}
             glossary={glossary}
             onCreateGlossaryEntry={onCreatePlainGlossaryEntry}
+            onRefClick={onRefClick}
           />
         </div>
       ) : view === 'foreshadow' ? (
@@ -1013,7 +1016,7 @@ function BeatDetailPanel({
             ))}
           </div>
         </Field>
-        <Field label="要約（何が起きるか）">
+        <Field label="要約（何が起きるか）" help={<NotationHelpButton />}>
           <NotationField
             value={beat.summary ?? ''}
             onCommit={(v) => patch({ summary: emptyToUndef(v) })}
@@ -1096,7 +1099,7 @@ function BeatDetailPanel({
               revealedHere.length > 0,
           )}
         >
-          <Field label="メモ">
+          <Field label="メモ" help={<NotationHelpButton />}>
             <NotationField
               value={beat.note ?? ''}
               onCommit={(v) => patch({ note: emptyToUndef(v) })}
@@ -1949,11 +1952,20 @@ function PanelGroup({
 }
 
 /** ラベル＋フィールドの縦組み。中の入力は aria-label で名前を持つ（label 要素にしない）。 */
-function Field({ label, children }: { label: string; children: ReactNode }) {
+function Field({
+  label,
+  help,
+  children,
+}: {
+  label: string
+  help?: ReactNode
+  children: ReactNode
+}) {
   return (
     <div className="flex flex-col gap-1">
-      <span className="font-medium text-[11px] text-on-surface-variant/70 tracking-wide">
+      <span className="flex items-center gap-1 font-medium text-[11px] text-on-surface-variant/70 tracking-wide">
         {label}
+        {help}
       </span>
       {children}
     </div>

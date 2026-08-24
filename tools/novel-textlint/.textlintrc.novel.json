@@ -1,0 +1,19 @@
+{
+  "rules": {
+    "general-novel-style-ja": {
+      "severity": "warning",
+      "chars_leading_paragraph": "　「『【〈《（(“\"‘'［[〔｛{—…―–＊｜"
+    },
+    "ja-no-successive-word": {
+      "severity": "warning",
+      "allow": ["《", "》"]
+    },
+    "novel-punctuation-ja": {
+      "severity": "warning"
+    },
+    "no-ai-cliche": {
+      "severity": "warning",
+      "dicts": ["ai-cliche-common.json", "ai-cliche-novel.json"]
+    }
+  }
+}
