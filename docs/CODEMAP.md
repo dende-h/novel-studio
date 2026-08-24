@@ -172,6 +172,7 @@ Cloudflare Pages Functions
 | 描画例外の受け止め | `ErrorBoundary`（`src/ui/components/ErrorBoundary/error-boundary.tsx`） | — |
 | `@`/`[[` の用語集サジェスト付き入力欄（blur 確定） | `CommitTextarea`（`src/ui/components/NotationField/commit-textarea.tsx`） | 生の `<textarea>` ＋ 自前サジェスト |
 | 記法つき入力（書く／プレビュー切替・`[[用語]]` クリック委譲） | `NotationField`（`src/ui/components/NotationField/notation-field.tsx`） | 画面ごとのプレビュー自作 |
+| 用語 1 項目のチラ見（読み取り専用の詳細表示） | `GlossaryEntryDetail`（`src/ui/components/GlossaryPeek/entry-detail.tsx`） | 画面ごとの項目詳細の自作 |
 | 作品/話のナビゲーション | `SideNav` / `TopAppBar` | — |
 | 軽量なケバブメニュー（Radix 不使用の作例） | `ProjectMenu`（`src/ui/components/Library/project-menu.tsx`） | — |
 

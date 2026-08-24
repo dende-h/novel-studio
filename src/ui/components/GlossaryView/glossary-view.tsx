@@ -1,4 +1,4 @@
-import { ArrowLeft, BookOpen, Lock, Plus, Search, Trash2 } from 'lucide-react'
+import { ArrowLeft, BookOpen, Lock, Plus, Search, Trash2, X } from 'lucide-react'
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import {
   type Appearances,
@@ -17,6 +17,7 @@ import {
   GLOSSARY_CATEGORIES,
   type GlossaryFormValues,
 } from '@/ui/components/GlossaryEntryForm/glossary-entry-form'
+import { GlossaryEntryDetail } from '@/ui/components/GlossaryPeek/entry-detail'
 import { NotationField } from '@/ui/components/NotationField/notation-field'
 import { Button } from '@/ui/components/ui/button'
 import {
@@ -38,8 +39,10 @@ import { ZoomableImage } from '@/ui/components/ui/zoomable-image'
  *
  * 以前はカード一覧＋閲覧・編集モーダルだったが、用語集は「読みながら直す・項目を渡り歩く」
  * 時間が長い画面なので、1 件ごとにダイアログを開閉するより、切り替えながらその場で書ける
- * 方が速い。公開情報・作者メモは記法つき（@ / [[ サジェスト・プレビュー）で、プレビューの
- * [[用語]] クリックでその項目へ飛べる＝事典の中を渡り歩ける。
+ * 方が速い。公開情報・作者メモは記法つき（@ / [[ サジェスト・プレビュー）。プレビューの
+ * [[用語]] クリックは**右のチラ見ドロワー**で開く（本文エディタの用語集パネルと同じ見方）。
+ * 編集対象は切り替えない＝書いている場所を失わない。切り替えたいときはチラ見の
+ * 「この項目を編集」か、左の一覧・検索から。
  *
  * 狭い画面（md 未満）では一覧と編集を切り替え式にする（選ぶと編集・← で一覧へ戻る）。
  */
@@ -73,6 +76,8 @@ export function GlossaryView({
   const [selectedId, setSelectedId] = useState<string | null>(null)
   // 新規作成ダイアログ。文字列は名前のプリフィル（プレビューの未解決 [[用語]] クリックから）。
   const [createOpen, setCreateOpen] = useState<string | null>(null)
+  // プレビューの [[用語]] クリックで開くチラ見ドロワーの対象。
+  const [peekId, setPeekId] = useState<string | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<GlossaryEntry | null>(null)
 
   const categories = useMemo(() => categoriesOf(entries), [entries])
@@ -84,15 +89,20 @@ export function GlossaryView({
   const resolvedNames = useMemo(() => resolvedNameSet(entries), [entries])
 
   const selected = selectedId ? (entries.find((e) => e.id === selectedId) ?? null) : null
-  // 選択していた項目が消えたら（削除・同期）一覧へ戻す＝右が空白のままにならない。
+  const peeked = peekId ? (entries.find((e) => e.id === peekId) ?? null) : null
+  // 選択・チラ見していた項目が消えたら（削除・同期）閉じる＝空の面が残らない。
   useEffect(() => {
     if (selectedId && !entries.some((e) => e.id === selectedId)) setSelectedId(null)
   }, [selectedId, entries])
+  useEffect(() => {
+    if (peekId && !entries.some((e) => e.id === peekId)) setPeekId(null)
+  }, [peekId, entries])
 
-  // プレビューの [[用語]] クリック：居る項目ならそこへ切り替え、無い語は名前入りで新規作成へ。
+  // プレビューの [[用語]] クリック：居る項目は右のチラ見で開く（編集対象は切り替えない＝
+  // 書いている場所を失わない）。無い語は名前入りで新規作成へ。
   const jumpToRef = (name: string) => {
     const target = resolveRef(name, entries)
-    if (target) setSelectedId(target.id)
+    if (target) setPeekId(target.id)
     else setCreateOpen(name)
   }
 
@@ -114,7 +124,7 @@ export function GlossaryView({
           </p>
         </header>
 
-        <div className="flex min-h-0 flex-1 items-stretch gap-6">
+        <div className="relative flex min-h-0 flex-1 items-stretch gap-6">
           {/* 左：検索・絞り込み・項目一覧。狭幅では選択中は隠して編集面に譲る。 */}
           <nav
             aria-label="用語集の項目"
@@ -210,6 +220,43 @@ export function GlossaryView({
               </div>
             )}
           </section>
+
+          {/* プレビューの [[用語]] クリックで開くチラ見ドロワー（本文エディタの用語集パネルと
+              同じ見方）。編集面はそのまま＝参照しながら書き続けられる。狭幅では編集面を
+              潰さないよう右からかぶせる（md 以上は 3 カラム目として並ぶ）。 */}
+          {peeked ? (
+            <aside
+              aria-label="用語のチラ見"
+              className="absolute inset-y-0 right-0 z-10 flex w-[min(300px,85vw)] shrink-0 flex-col border-outline-variant/30 border-l bg-surface-container-lowest font-sans shadow-xl md:static md:shadow-none"
+            >
+              <div className="flex shrink-0 items-center justify-between border-outline-variant/30 border-b px-4 py-3">
+                <span className="font-medium text-[12px] text-on-surface tracking-widest">
+                  用語のチラ見
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setPeekId(null)}
+                  aria-label="チラ見を閉じる"
+                  className="-mr-1.5 flex size-7 items-center justify-center rounded-md text-on-surface-variant transition-colors hover:text-on-surface"
+                >
+                  <X className="size-4" aria-hidden />
+                </button>
+              </div>
+              <div className="min-h-0 flex-1 overflow-y-auto">
+                <div className="flex flex-col gap-2.5 px-4 py-4">
+                  <GlossaryEntryDetail
+                    entry={peeked}
+                    appearances={getAppearances(peeked)}
+                    editLabel="この項目を編集"
+                    onEdit={() => {
+                      setSelectedId(peeked.id)
+                      setPeekId(null)
+                    }}
+                  />
+                </div>
+              </div>
+            </aside>
+          ) : null}
         </div>
       </div>
 
@@ -511,7 +558,7 @@ function EntryEditor({
         />
         <p className="text-[11px] text-on-surface-variant/60 leading-relaxed">
           公開サイトへ投稿すると読者にも見えます（その用語が出てくる話まで読んだ読者だけに開きます）。
-          @ または [[ で他の用語を呼び出せます。プレビューの緑の語はクリックでその項目へ。
+          @ または [[ で他の用語を呼び出せます。プレビューの緑の語はクリックで右にチラ見が開きます。
         </p>
       </section>
 

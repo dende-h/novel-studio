@@ -1,13 +1,12 @@
-import { Lock, Pencil, Plus, Tag, X } from 'lucide-react'
+import { Plus, X } from 'lucide-react'
 import { useMemo } from 'react'
-import { type Appearances, publicTextOf, resolveRef } from '@/core/glossary'
+import { type Appearances, resolveRef } from '@/core/glossary'
 import { parseEpisodeBody } from '@/core/parser/parseNotation'
 import type { GlossaryEntry } from '@/core/schema'
 import { cn } from '@/lib/utils'
-import { Badge } from '@/ui/components/ui/badge'
 import { Button } from '@/ui/components/ui/button'
 import { ScrollArea } from '@/ui/components/ui/scroll-area'
-import { ZoomableImage } from '@/ui/components/ui/zoomable-image'
+import { GlossaryEntryDetail } from './entry-detail'
 
 interface GlossaryPeekProps {
   /** 用語集の全 entry（用語チップの解決に使う）。 */
@@ -71,7 +70,6 @@ export function GlossaryPeek({
       return { raw, resolved }
     })
   }, [draft, entries])
-  const used = (appearances?.refCount ?? 0) > 0
 
   return (
     // 狭幅では 300px 固定だと画面の 8 割を覆うので、ビューポートに応じて詰める
@@ -130,68 +128,7 @@ export function GlossaryPeek({
         {/* 選択中 entry のチラ見 */}
         {entry ? (
           <div className="flex flex-col gap-2.5 border-outline-variant/30 border-t px-4 py-4">
-            <div className="flex items-start gap-3">
-              {entry.thumbnail ? (
-                <ZoomableImage
-                  src={entry.thumbnail}
-                  alt={entry.name}
-                  className="size-14 rounded-md border border-outline-variant/30 object-cover"
-                />
-              ) : null}
-              <div className="min-w-0">
-                <h3 className="break-words font-semibold font-serif text-[17px] text-on-surface">
-                  {entry.name}
-                </h3>
-                {entry.reading ? (
-                  <p className="mt-0.5 text-[11px] text-on-surface-variant/70">{entry.reading}</p>
-                ) : null}
-              </div>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              {entry.category ? (
-                <Badge
-                  variant="secondary"
-                  className="gap-1 bg-primary-container text-on-primary-container"
-                >
-                  <Tag className="size-3" />
-                  {entry.category}
-                </Badge>
-              ) : null}
-              <span className="text-[11px] text-on-surface-variant/70">
-                {used && appearances
-                  ? `${appearances.episodeIds.length}話・${appearances.refCount}回 登場`
-                  : '未使用'}
-              </span>
-            </div>
-            {entry.aliases.length > 0 ? (
-              <p className="text-[12px] text-on-surface-variant">
-                <span className="text-on-surface-variant/60">別名: </span>
-                {entry.aliases.join('、')}
-              </p>
-            ) : null}
-            {publicTextOf(entry) ? (
-              <p className="whitespace-pre-wrap text-[13px] text-on-surface leading-relaxed">
-                {publicTextOf(entry)}
-              </p>
-            ) : (
-              <p className="text-[13px] text-on-surface-variant/60">説明はまだありません。</p>
-            )}
-            {/* 作者メモは公開されない欄。執筆中も「内緒の情報だ」と分かる見た目にしておく。 */}
-            {entry.authorNote ? (
-              <div className="space-y-1 rounded-lg bg-surface-container-high px-2.5 py-2">
-                <div className="flex items-center gap-1.5 text-[10.5px] text-on-surface-variant/70">
-                  <Lock className="size-2.5" aria-hidden />
-                  作者メモ（公開されません）
-                </div>
-                <p className="whitespace-pre-wrap text-[12.5px] text-on-surface leading-relaxed">
-                  {entry.authorNote}
-                </p>
-              </div>
-            ) : null}
-            <Button variant="outline" size="sm" onClick={onEdit} className="w-full gap-2">
-              <Pencil className="size-3.5" aria-hidden />
-              編集
-            </Button>
+            <GlossaryEntryDetail entry={entry} appearances={appearances} onEdit={onEdit} />
           </div>
         ) : null}
       </ScrollArea>
