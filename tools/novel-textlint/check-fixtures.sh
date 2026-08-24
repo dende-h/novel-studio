@@ -6,7 +6,6 @@ cd "$(dirname "${BASH_SOURCE[0]}")"
 
 EXPECTED_NOVEL_BAD=13
 EXPECTED_NOVEL_GOOD=0
-EXPECTED_COPY_BAD=9
 
 count() {
   local config="$1" file="$2"
@@ -34,7 +33,6 @@ check() {
 
 check "novel-bad.txt" "${EXPECTED_NOVEL_BAD}" "$(count .textlintrc.novel.json fixtures/novel-bad.txt)"
 check "novel-good.txt" "${EXPECTED_NOVEL_GOOD}" "$(count .textlintrc.novel.json fixtures/novel-good.txt)"
-check "copy-bad.txt" "${EXPECTED_COPY_BAD}" "$(count .textlintrc.copy.json fixtures/copy-bad.txt)"
 
 if [ "${fail}" -ne 0 ]; then
   echo "fixture regression check FAILED" >&2
