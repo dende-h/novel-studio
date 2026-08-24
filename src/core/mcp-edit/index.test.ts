@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { resolveRef } from '../glossary'
 import type { Work } from '../schema'
 import { emptyStructure } from '../structure'
 import {
@@ -175,6 +176,53 @@ describe('mcp-edit（MCP 書き込みの純ロジック）', () => {
     const g2 = w2?.glossary?.find((e) => e.id === 'g1')
     expect(g2?.summary).toBe('新しい公開情報')
     expect(g2?.body).toBeUndefined()
+  })
+
+  it('upsertGlossaryEntry の改名は旧名を別名へ退避し、参照が解決され続ける', () => {
+    const [w] = upsertGlossaryEntry([work()], 'w1', { id: 'g1', name: 'アカリ・ホシノ' }, 'x', 100)
+    const g = w?.glossary?.find((e) => e.id === 'g1')
+    expect(g?.name).toBe('アカリ・ホシノ')
+    expect(g?.aliases).toContain('アカリ')
+    // 本文の [[アカリ]]（旧名）は別名経由で解決し続ける
+    expect(resolveRef('アカリ', w?.glossary ?? [])?.id).toBe('g1')
+  })
+
+  it('upsertGlossaryEntry の改名で新名が自分の別名に居れば昇格して重複を残さない', () => {
+    const base = work()
+    const withAlias: typeof base = {
+      ...base,
+      glossary: [{ id: 'g1', name: 'アカリ', aliases: ['燈'], createdAt: 1, updatedAt: 1 }],
+    }
+    const [w] = upsertGlossaryEntry([withAlias], 'w1', { id: 'g1', name: '燈' }, 'x', 100)
+    const g = w?.glossary?.find((e) => e.id === 'g1')
+    expect(g?.name).toBe('燈')
+    expect(g?.aliases).toEqual(['アカリ']) // 新名は別名から昇格・旧名が退避
+  })
+
+  it('upsertGlossaryEntry は他項目と同名の作成・改名・別名を拒否する（D-GLOS-UNIQUE）', () => {
+    // 新規作成の同名
+    expect(() => upsertGlossaryEntry([work()], 'w1', { name: 'アカリ' }, 'g9', 100)).toThrow(
+      McpEditError,
+    )
+    // 別項目への改名衝突
+    const base = work()
+    const two: typeof base = {
+      ...base,
+      glossary: [
+        ...(base.glossary ?? []),
+        { id: 'g2', name: 'カイ', aliases: [], createdAt: 1, updatedAt: 1 },
+      ],
+    }
+    expect(() => upsertGlossaryEntry([two], 'w1', { id: 'g2', name: 'アカリ' }, 'x', 100)).toThrow(
+      McpEditError,
+    )
+    // 別名の衝突
+    expect(() =>
+      upsertGlossaryEntry([two], 'w1', { id: 'g2', name: 'カイ', aliases: ['アカリ'] }, 'x', 100),
+    ).toThrow(McpEditError)
+    // 自分自身の現名と同じ name を送り直すのは衝突ではない（据え置き更新の常道）
+    const [w] = upsertGlossaryEntry([two], 'w1', { id: 'g1', name: 'アカリ' }, 'x', 100)
+    expect(w?.glossary?.find((e) => e.id === 'g1')?.name).toBe('アカリ')
   })
 
   it('upsertGlossaryEntry は新規作成で name が空なら McpEditError', () => {
