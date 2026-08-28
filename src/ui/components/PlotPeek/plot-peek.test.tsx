@@ -239,11 +239,13 @@ describe('PlotPeek（この話のプロット）', () => {
     expect(await within(a).findByText('改札の場面から始める')).toBeInTheDocument()
 
     // ideaRef を持つ別のビートへ：解決するまで前のメモを出さない
+    fireEvent.click(within(detail()).getByRole('button', { name: 'ビートの一覧へ戻る' }))
     fireEvent.click(screen.getByRole('button', { name: '「ビートB」の詳細' }))
     expect(within(detail()).queryByText('改札の場面から始める')).toBeNull()
     expect(await within(detail()).findByText('BBBのメモ')).toBeInTheDocument()
 
     // ideaRef を持たないビートへ：メモ欄ごと出ない
+    fireEvent.click(within(detail()).getByRole('button', { name: 'ビートの一覧へ戻る' }))
     fireEvent.click(screen.getByRole('button', { name: '「ビートC」の詳細' }))
     expect(within(detail()).queryByText('BBBのメモ')).toBeNull()
     expect(within(detail()).queryByText('ネタ帳のメモ')).toBeNull()
@@ -252,12 +254,24 @@ describe('PlotPeek（この話のプロット）', () => {
   // 2xl 未満では詳細を開くと一覧ごと隠れる＝押したカードが消えてフォーカスが body へ落ちる。
   it('詳細を開くと戻るボタンへフォーカスし、閉じると開いたカードへ返す', async () => {
     await setup()
-    const card = await screen.findByRole('button', { name: '「駅前の再会」の詳細' })
-    fireEvent.click(card)
+    fireEvent.click(await screen.findByRole('button', { name: '「駅前の再会」の詳細' }))
     const back = within(detail()).getByRole('button', { name: 'ビートの一覧へ戻る' })
     expect(document.activeElement).toBe(back)
     fireEvent.click(back)
-    expect(document.activeElement).toBe(card)
+    // 一覧は描き直されるので、同じ節点ではなく同じカードへ戻っていることを見る。
+    expect(document.activeElement).toBe(
+      screen.getByRole('button', { name: '「駅前の再会」の詳細' }),
+    )
+  })
+
+  // パネルは並べずに入れ替える（本文の幅を二枚で削らない）。
+  it('詳細を開いている間は一覧を出さず、戻ると一覧だけになる', async () => {
+    await setup()
+    fireEvent.click(await screen.findByRole('button', { name: '「駅前の再会」の詳細' }))
+    expect(screen.queryByRole('complementary', { name: 'この話のプロット' })).toBeNull()
+    fireEvent.click(within(detail()).getByRole('button', { name: 'ビートの一覧へ戻る' }))
+    expect(screen.queryByRole('complementary', { name: 'ビートの詳細' })).toBeNull()
+    expect(list()).toBeInTheDocument()
   })
 
   // 一覧のヘッダは狭い画面では隠れるので、詳細からもパネルを閉じられること。
