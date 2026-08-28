@@ -18,9 +18,11 @@ vi.mock('@clerk/backend', async () => {
   return clerkAuthMock(authState)
 })
 
-import type { PollResult } from '../../../src/core/board/types'
+import { BOARD_LIMITS, type PollResult } from '../../../src/core/board/types'
+import { BOARD_ACTIONS_PER_MINUTE } from './board-endpoint'
 import {
   type BoardDbFake,
+  fakePost,
   fakeProfile,
   fakeThread,
   makeBoardDb,
@@ -235,11 +237,11 @@ describe('POST /api/board/vote', () => {
 
   it('レート制限を超えたら 429。空振り（締切後・2 回目）では枠を食わない', async () => {
     const { store, env } = setup()
-    // 同じ分窓の枠を使い切っておく。
+    // 同じ分窓の枠（連打を止める安全弁）を使い切っておく。
     store.rates.set('board:user_1', {
       user_id: 'board:user_1',
       window_start: WINDOW,
-      count: 10, // BOARD_LIMITS.postsPerHour
+      count: BOARD_ACTIONS_PER_MINUTE,
     })
 
     const res = await post(env, { choices: [0] })
@@ -255,5 +257,23 @@ describe('POST /api/board/vote', () => {
     })
     expect((await post(closed.env, { choices: [0] })).status).toBe(409)
     expect(closed.store.rates.get('board:user_1')?.count).toBe(0)
+  })
+
+  it('投票は投稿の時間枠（10 件/時）を食わない', async () => {
+    const { store, env } = setup()
+    // 直近 1 時間に 10 件書いていても、1 票は入れられる（投票は投稿ではない）。
+    for (let i = 0; i < BOARD_LIMITS.postsPerHour; i++) {
+      store.posts.set(
+        `old${i}`,
+        fakePost({ id: `old${i}`, thread_id: 'other', seq: i + 1, created_at: NOW - 1000 }),
+      )
+    }
+    expect((await post(env, { choices: [0] })).status).toBe(200)
+  })
+
+  it('レスポンスに private, no-store が付く（票の見え方は閲覧者ごとに違う）', async () => {
+    const { env } = setup()
+    const res = await post(env, { choices: [0] })
+    expect(res.headers.get('cache-control')).toBe('private, no-store')
   })
 })

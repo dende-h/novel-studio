@@ -65,6 +65,9 @@ export async function purgeCloudData(
     env.DB.prepare('DELETE FROM works WHERE user_id = ?').bind(userId),
     env.DB.prepare('DELETE FROM sessions WHERE user_id = ?').bind(userId),
     env.DB.prepare('DELETE FROM rate_limits WHERE user_id = ?').bind(userId),
+    // 掲示板は同じ表を `board:${userId}` の鍵で使う（同期の枠と分けるため）。
+    // 素の userId だけ消すとこの行が残る。
+    env.DB.prepare('DELETE FROM rate_limits WHERE user_id = ?').bind(`board:${userId}`),
     env.DB.prepare('DELETE FROM mcp_tokens WHERE user_id = ?').bind(userId),
     env.DB.prepare('DELETE FROM activity WHERE user_id = ?').bind(userId),
     // 掲示板は「消さずに伏せる」。投稿を消すと、他の人の返信が虫食いの会話になる

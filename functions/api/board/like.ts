@@ -18,7 +18,8 @@
  * 「👍 が付くのは request / bug だけ」（D-BOARD-KIND / D-BOARD-STATUS）という規則が
  * 判定用の 1 箇所にだけ在る状態を保つ。規則を写し取ると、片方だけ緩んだときに気づけない。
  *
- * 判定順は **認証 → スレの存在 → 権限（種別・削除／非表示）→ レート制限 → 書き込み**。
+ * 判定順は **認証 → スレの存在 → 権限（投稿禁止・種別・削除／非表示・ロック）→
+ * レート制限 → 書き込み**。
  * 安い判定から先に済ませ、カウンタを進める判定を後ろに置く（弾かれるリクエストで
  * 流量の枠を食わない）。
  *
@@ -32,8 +33,7 @@ import {
   STATUS_OF_REASON,
   type ThreadLike,
 } from '../../../src/core/board/permission'
-import { BOARD_LIMITS } from '../../../src/core/board/types'
-import { type ClerkEnv, json, verifyUserId } from '../_lib/auth'
+import { type ClerkEnv, verifyUserId } from '../_lib/auth'
 import {
   type ProfileRow,
   readProfile,
@@ -41,7 +41,7 @@ import {
   type ThreadRow,
   toggleLike,
 } from '../_lib/board-store'
-import { checkRateLimit } from '../_lib/rate-limit'
+import { boardJson, rateLimitedResponse } from './board-endpoint'
 
 interface Env extends ClerkEnv {
   DB: D1Database
@@ -61,9 +61,8 @@ const threadLikeOf = (row: ThreadRow): ThreadLike => ({
 })
 
 /**
- * 判断の主体。`canLike` は今のところ立場も投稿禁止も見ないが、Actor を素の既定値で
- * でっち上げず実際のプロフィールから組む。判定側に条件が増えたとき、ここだけが
- * 嘘の Actor を渡していて静かに素通りする、という壊れ方をさせないため。
+ * 判断の主体。`canLike` は投稿禁止（`bannedUntil`）まで見るので、**プロフィールから
+ * 実際の値を組む**。既定値ででっち上げると、書き込みを止めた相手が 👍 だけ押せてしまう。
  */
 const actorOf = (userId: string, profile: ProfileRow | null): Actor => ({
   userId,
@@ -78,8 +77,8 @@ const actorOf = (userId: string, profile: ProfileRow | null): Actor => ({
  */
 const denied = (reason: PermissionDenyReason, actor: Actor): Response =>
   reason === 'banned'
-    ? json({ error: reason, bannedUntil: actor.bannedUntil }, STATUS_OF_REASON[reason])
-    : json({ error: reason }, STATUS_OF_REASON[reason])
+    ? boardJson({ error: reason, bannedUntil: actor.bannedUntil }, STATUS_OF_REASON[reason])
+    : boardJson({ error: reason }, STATUS_OF_REASON[reason])
 
 export const onRequestPost: PagesFunction<Env> = async (context) => {
   const now = Date.now()
@@ -88,28 +87,29 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
   // 記名式なので 👍 もログイン必須（D-BOARD-SIGNED・§7-1）。
   // 会員判定（verifyMember）は使わない＝無料アカウントで押せる。
   const userId = await verifyUserId(context.request, context.env)
-  if (!userId) return json({ error: 'unauthorized' }, 401)
+  if (!userId) return boardJson({ error: 'unauthorized' }, 401)
 
   const threadId = new URL(context.request.url).searchParams.get('thread')
-  if (!threadId) return json({ error: 'missing_thread' }, 400)
+  if (!threadId) return boardJson({ error: 'missing_thread' }, 400)
 
   const thread = await readThread(db, threadId)
-  if (!thread) return json({ error: 'not_found' }, 404)
+  if (!thread) return boardJson({ error: 'not_found' }, 404)
 
-  // 種別が request / bug 以外は `unsupported-kind`、削除済み・非表示のスレは `gone`（404）。
+  // 投稿禁止中は 403、ロック中は 409、種別が request / bug 以外は `unsupported-kind`、
+  // 削除済み・非表示のスレは `gone`（404）。判定順は `canPost` と揃えてある（permission.ts）。
   // 表示名（board_profiles）は要求しない — 👍 は記名で表に出るものではないので、
   // 投稿（§7-2 の profile_required）と同じ入口を通す必要がない。
+  // 投稿禁止の判定に `now` が要るので、入口で読んだ時刻をそのまま渡す。
   const actor = actorOf(userId, await readProfile(db, userId))
-  const allowed = canLike(actor, threadLikeOf(thread))
+  const allowed = canLike(actor, threadLikeOf(thread), now)
   if (!allowed.ok) return denied(allowed.reason, actor)
 
-  // 流量の安全弁（D-BOARD-RATE）。**キーは `board:` 接頭辞**＝rate_limits は user_id 1 行の
-  // 表なので、素の userId を渡すと同期の 60 req/min の枠を掲示板の操作が食う（§7-11）。
-  if (!(await checkRateLimit(db, `board:${userId}`, now, BOARD_LIMITS.postsPerHour))) {
-    return json({ error: 'rate_limited' }, 429)
-  }
+  // 分あたりの安全弁（D-BOARD-RATE）。👍 は投稿ではないので時間あたりの投稿枠は使わない。
+  // 鍵の `board:` 接頭辞と上限は board-endpoint.ts に 1 つだけ置いてある（§7-11）。
+  const limited = await rateLimitedResponse(db, userId, now)
+  if (limited) return limited
 
   // 付ける／外すの反転と `like_count` の数え直しは store の 1 本に閉じてある。
   const result = await toggleLike(db, threadId, userId, now)
-  return json(result)
+  return boardJson(result)
 }

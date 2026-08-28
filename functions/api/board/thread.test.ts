@@ -21,6 +21,7 @@ vi.mock('@clerk/backend', async () => {
 })
 
 import { DELETED_BODY_TEXT, HIDDEN_BODY_TEXT } from '../../../src/core/board/permission'
+import { BOARD_ACTIONS_PER_MINUTE } from './board-endpoint'
 import {
   type BoardDbFake,
   fakePost,
@@ -462,10 +463,60 @@ describe('DELETE /api/board/thread', () => {
     expect(store.threads.get('t1')?.deleted_at).toBe(NOW)
   })
 
+  it('運営が伏せた返信しか無くても head-only（他人の hidden を「本人が削除」に塗り替えない）', async () => {
+    const { store, env } = setup()
+    addReply(store)
+    // staff が調査中に返信を伏せる。生きている返信は 0 になり reply_count も 0 に戻る。
+    const p2 = store.posts.get('p2')
+    if (p2) store.posts.set('p2', { ...p2, hidden_at: NOW - 1000 })
+    const t = store.threads.get('t1')
+    if (t) store.threads.set('t1', { ...t, reply_count: 0 })
+
+    const res = await del(env)
+    expect(await res.json()).toEqual({ ok: true, mode: 'head-only' })
+
+    // 他人の投稿に deleted_at を刻まない＝`unhide_post` すれば元どおり読める（措置は可逆）。
+    expect(store.posts.get('p2')).toMatchObject({ hidden_at: NOW - 1000, deleted_at: 0 })
+    expect(store.threads.get('t1')?.deleted_at).toBe(0)
+    expect(store.posts.get('p1')?.deleted_at).toBe(NOW)
+  })
+
+  it('本人が消した返信しか無くても head-only（行が在れば巻き添えにしない）', async () => {
+    const { store, env } = setup()
+    addReply(store)
+    const p2 = store.posts.get('p2')
+    if (p2) store.posts.set('p2', { ...p2, deleted_at: NOW - 1000 })
+    const t = store.threads.get('t1')
+    if (t) store.threads.set('t1', { ...t, reply_count: 0 })
+
+    expect(await (await del(env)).json()).toEqual({ ok: true, mode: 'head-only' })
+    // 1 度目の削除時刻を上書きしない。
+    expect(store.posts.get('p2')?.deleted_at).toBe(NOW - 1000)
+  })
+
   it('レート制限のキーは `board:` 接頭辞（§7-11）', async () => {
     const { store, env } = setup()
     await del(env)
     expect(store.rates.has('board:user_1')).toBe(true)
     expect(store.rates.has('user_1')).toBe(false)
+  })
+
+  it('分窓の上限を超えたら 429（スレは消さない）', async () => {
+    const { store, env } = setup()
+    store.rates.set('board:user_1', {
+      user_id: 'board:user_1',
+      window_start: Math.floor(NOW / 60_000) * 60_000,
+      count: BOARD_ACTIONS_PER_MINUTE,
+    })
+
+    const res = await del(env)
+    expect(res.status).toBe(429)
+    expect(store.threads.get('t1')?.deleted_at).toBe(0)
+  })
+
+  it('レスポンスに private, no-store が付く', async () => {
+    const { env } = setup()
+    expect((await get(env)).headers.get('cache-control')).toBe('private, no-store')
+    expect((await del(env)).headers.get('cache-control')).toBe('private, no-store')
   })
 })

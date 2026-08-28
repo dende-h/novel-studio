@@ -69,6 +69,10 @@ describe('resolveLinkCards — 取りに行ってよい URL の判断（不変�
       'https://localhost/x', // 自オリジン
       'https://user@example.com/x', // ユーザー情報つき
       'https://box.internal/x', // 内部 TLD
+      'https://127.0.0.1.nip.io/x', // 名前解決で内側を指す（埋め込み IPv4）
+      'https://10-0-0-1.sslip.io/x', // 同上（ダッシュ表記）
+      'https://192.168.1.1.xip.io/x', // 同上
+      'https://7f000001.sslip.io/x', // 同上（16 進 1 ラベル・表で拒否）
     ]
     // 1 投稿で扱うのは 2 本までなので、1 本ずつ別の投稿として流す
     for (const url of denied) {
@@ -106,6 +110,15 @@ describe('resolveLinkCards — 取りに行ってよい URL の判断（不変�
 
     expect(await resolveLinkCards(env, 'https://example.com/a', NOW)).toEqual([])
     expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('リダイレクト先が名前解決で内側を指すホストでも止まる', async () => {
+    const { env } = makeEnv()
+    // IP リテラルへの 302 は止まるので、名前に IP を埋めて検査をすり抜けようとする経路
+    fetchMock.mockResolvedValueOnce(redirectRes('https://169.254.169.254.nip.io/latest/meta-data/'))
+
+    expect(await resolveLinkCards(env, 'https://example.com/a', NOW)).toEqual([])
+    expect(fetchedUrls()).toEqual(['https://example.com/a'])
   })
 
   it('リダイレクトは 3 回まで追い、4 回目であきらめる', async () => {
@@ -420,6 +433,26 @@ describe('resolveLinkCards — grove の作品カード（D-BOARD-WORKCARD）', 
   it('PLATFORM_ORIGIN が未設定なら本番 grove は自オリジンとして拒否される', async () => {
     const { env } = makeEnv()
     expect(await resolveLinkCards(env, `${grove}/works/1`, NOW)).toEqual([])
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('PLATFORM_ORIGIN に自オリジンそのものを入れても緩和は効かない（env の取り違え）', async () => {
+    // grove ではなく自分自身を入れてしまった状態。ここが緩むと自分の /api を叩ける
+    const { env } = makeEnv({ PLATFORM_ORIGIN: 'https://cotonoha-leaf.org' })
+
+    expect(await resolveLinkCards(env, 'https://cotonoha-leaf.org/api/board/threads', NOW)).toEqual(
+      [],
+    )
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('BOARD_SELF_HOSTS で足したホストを PLATFORM_ORIGIN に入れても緩和は効かない', async () => {
+    const { env } = makeEnv({
+      PLATFORM_ORIGIN: 'https://admin.example.com',
+      BOARD_SELF_HOSTS: 'admin.example.com',
+    })
+
+    expect(await resolveLinkCards(env, 'https://admin.example.com/x', NOW)).toEqual([])
     expect(fetchMock).not.toHaveBeenCalled()
   })
 

@@ -29,6 +29,7 @@ vi.mock('@clerk/backend', async () => {
 
 import { BOARD_LIMITS } from '../../../src/core/board/types'
 import type { ReportRow } from '../_lib/board-store'
+import { BOARD_ACTIONS_PER_MINUTE } from './board-endpoint'
 import {
   type BoardDbFake,
   fakePost,
@@ -315,12 +316,14 @@ describe('POST /api/board/reports — レート制限', () => {
     expect(store.rates.has('user_2')).toBe(false)
   })
 
+  // 上限は board-endpoint.ts の共通値。ここだけ postsPerHour(=10) を渡していたため、
+  // 他の操作で 10 を超えた分窓では通報だけが 429 になっていた（D-BOARD-RATE 違反）。
   it('分窓の上限を超えたら 429（超過ぶんは積まない）', async () => {
     const { store, env } = setup()
     store.rates.set('board:user_2', {
       user_id: 'board:user_2',
       window_start: Math.floor(NOW / 60_000) * 60_000,
-      count: BOARD_LIMITS.postsPerHour,
+      count: BOARD_ACTIONS_PER_MINUTE,
     })
 
     const res = await ok(env)

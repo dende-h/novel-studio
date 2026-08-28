@@ -121,12 +121,27 @@ describe('canDeletePost / canDeleteThread（§7-4）', () => {
 
 describe('threadDeleteMode（D-BOARD-DELETE / §7-5）', () => {
   it('返信が付いたスレは head-only にしかならない', () => {
-    expect(threadDeleteMode(thread({ replyCount: 1 }))).toBe('head-only')
-    expect(threadDeleteMode(thread({ replyCount: 42 }))).toBe('head-only')
+    expect(threadDeleteMode({ hasAnyReply: true })).toBe('head-only')
   })
 
-  it('返信 0 のスレだけ丸ごと消せる', () => {
-    expect(threadDeleteMode(thread({ replyCount: 0 }))).toBe('whole')
+  it('返信が 1 件も無いスレだけ丸ごと消せる', () => {
+    expect(threadDeleteMode({ hasAnyReply: false })).toBe('whole')
+  })
+
+  it('運営が伏せた返信・本人が消した返信しか無くても head-only（他人の投稿を巻き添えにしない）', () => {
+    // 一覧の replyCount は生きている返信しか数えないので、staff が 1 件 hide すると 0 に戻る。
+    // その 0 で whole を選ぶと、スレ主の削除が他人の hidden 投稿に deleted_at を刻み、
+    // unhide しても「本人が削除」の伏字のまま戻らなくなる。数えるのは行の有無だけ。
+    expect(threadDeleteMode({ hasAnyReply: true })).toBe('head-only')
+  })
+
+  it('生きている返信の数（ThreadLike）を渡すと落ちる — 黙って whole に倒れない', () => {
+    // functions/ は tsconfig の include 外で typecheck が効かないので、
+    // 旧シグネチャのままの呼び出しは実行時に止める（安全側は「消さない」ではなく「止める」）。
+    expect(() => {
+      // @ts-expect-error 生きている返信の数では判定しない
+      threadDeleteMode(thread({ replyCount: 0 }))
+    }).toThrow(TypeError)
   })
 })
 
@@ -142,10 +157,45 @@ describe('canSetStatus / canLike（D-BOARD-KIND）', () => {
   })
 
   it('👍 はログイン済みかつ request / bug のときだけ', () => {
-    expect(canLike(actor(), thread({ kind: 'request' }))).toEqual({ ok: true })
-    expect(reasonOf(canLike(anon, thread({ kind: 'request' })))).toBe('unauthorized')
-    expect(reasonOf(canLike(actor(), thread({ kind: 'promo' })))).toBe('unsupported-kind')
-    expect(reasonOf(canLike(actor(), thread({ kind: 'bug', hiddenAt: NOW })))).toBe('gone')
+    expect(canLike(actor(), thread({ kind: 'request' }), NOW)).toEqual({ ok: true })
+    expect(reasonOf(canLike(anon, thread({ kind: 'request' }), NOW))).toBe('unauthorized')
+    expect(reasonOf(canLike(actor(), thread({ kind: 'promo' }), NOW))).toBe('unsupported-kind')
+    expect(reasonOf(canLike(actor(), thread({ kind: 'bug', hiddenAt: NOW }), NOW))).toBe('gone')
+    expect(reasonOf(canLike(actor(), thread({ kind: 'bug', deletedAt: NOW }), NOW))).toBe('gone')
+  })
+
+  it('投稿禁止中は 👍 も押せない（書き込みを止めた相手に票だけ動かさせない）', () => {
+    const banned = actor({ bannedUntil: NOW + 1000 })
+    expect(canLike(banned, thread({ kind: 'request' }), NOW)).toEqual({
+      ok: false,
+      reason: 'banned',
+    })
+    // canPost と同じ判定・同じ理由に揃っていること（返信は 403 なのに 👍 は 200、を作らない）
+    expect(canPost(banned, thread({ kind: 'request' }), NOW)).toEqual({
+      ok: false,
+      reason: 'banned',
+    })
+    // 期限が切れたら押せる（isBanned と同じ「ちょうどは明け」の境界）
+    expect(canLike(actor({ bannedUntil: NOW }), thread({ kind: 'request' }), NOW)).toEqual({
+      ok: true,
+    })
+  })
+
+  it('ロック中のスレには 👍 を付けられない（staff でも足せない）', () => {
+    // ロックは「この話は終わり」の意思表示。締めたあとに票だけ動くと、
+    // 締めた時点の数字を順位付けの根拠にできなくなる。
+    expect(reasonOf(canLike(actor(), thread({ kind: 'request', locked: true }), NOW))).toBe(
+      'locked',
+    )
+    expect(reasonOf(canLike(actor(), thread({ kind: 'request', locked: 1 }), NOW))).toBe('locked')
+    expect(reasonOf(canLike(staff, thread({ kind: 'bug', locked: true }), NOW))).toBe('locked')
+  })
+
+  it('now を渡し忘れた canLike は落ちる（投稿禁止の判定が黙って無効化されない）', () => {
+    expect(() => {
+      // @ts-expect-error now は必須（bannedUntil > undefined は常に false になる）
+      canLike(actor({ bannedUntil: NOW + 1000 }), thread({ kind: 'request' }))
+    }).toThrow(TypeError)
   })
 })
 

@@ -385,6 +385,14 @@ export function makeBoardDb(
       const p = tables.polls.get(args[0] as string)
       return p ? [p] : []
     }
+    if (sql.includes('FROM board_reports WHERE handled_at = 0')) {
+      // 運営のキュー（listOpenReports）。古い順・同時刻は id 順で、LIMIT まで。
+      const limit = args[0] as number
+      return [...tables.reports.values()]
+        .filter((r) => r.handled_at === 0)
+        .sort((a, b) => a.created_at - b.created_at || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
+        .slice(0, limit)
+    }
     throw new Error(`makeBoardDb: all 未対応 SQL: ${sql}`)
   }
 
@@ -488,8 +496,11 @@ export function makeBoardDb(
     }
     if (sql.startsWith('UPDATE board_threads SET deleted_at')) {
       const [deleted_at, id] = args as [number, string]
+      // `AND user_id = ?`（スレ主の行だけ落とす）を SQL の文面どおりに再現する。
+      const owner = sql.includes('AND user_id = ?') ? (args[2] as string) : null
       const t = tables.threads.get(id)
       if (!t) return 0
+      if (owner !== null && t.user_id !== owner) return 0
       // WHERE ... AND deleted_at = 0（二重削除で時刻を上書きしない）を再現する。
       if (t.deleted_at !== 0) return 0
       tables.threads.set(id, { ...t, deleted_at })
@@ -538,9 +549,16 @@ export function makeBoardDb(
       const [deleted_at, key] = args as [number, string]
       const headOnly = sql.includes('AND seq = 1')
       const byThread = sql.includes('WHERE thread_id = ?')
+      // スレ削除は `AND user_id = ?` でスレ主の行だけを落とす（他人の投稿に手を触れない）。
+      // 条件を落とすとフェイクだけが全投稿を消して、テストが穴を見逃す。
+      const owner = sql.includes('AND user_id = ?') ? (args[2] as string) : null
       let changes = 0
       for (const p of [...tables.posts.values()]) {
-        const hit = byThread ? p.thread_id === key && (!headOnly || p.seq === 1) : p.id === key
+        const hit = byThread
+          ? p.thread_id === key &&
+            (owner === null || p.user_id === owner) &&
+            (!headOnly || p.seq === 1)
+          : p.id === key
         if (!hit || p.deleted_at !== 0) continue
         tables.posts.set(p.id, { ...p, deleted_at })
         changes++
@@ -608,6 +626,15 @@ export function makeBoardDb(
         number,
       ]
       tables.reports.set(id, { id, post_id, user_id, reason, created_at, handled_at: 0 })
+      return 1
+    }
+    if (sql.startsWith('UPDATE board_reports SET handled_at')) {
+      const [handled_at, id] = args as [number, string]
+      const r = tables.reports.get(id)
+      if (!r) return 0
+      // `AND handled_at = 0`＝2 回目の処理で「いつ見たか」を上書きしない、を再現する。
+      if (r.handled_at !== 0) return 0
+      tables.reports.set(id, { ...r, handled_at })
       return 1
     }
 

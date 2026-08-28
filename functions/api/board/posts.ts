@@ -17,8 +17,9 @@
  * 片方だけ緩んだときに気づけない。
  *
  * POST の判定順は **認証 → 入力 → 表示名 → スレの存在 → 権限（投稿禁止・削除・ロック）→
- * レート制限 → 書き込み**。安い判定（ネットワークも DB も要らないもの）から先に済ませ、
- * DB を叩く判定を後ろに置く。
+ * 投稿 10 件/時 → 分あたりの安全弁 → 書き込み**。安い判定（ネットワークも DB も要らない
+ * もの）から先に済ませ、DB を叩く判定を後ろに置く。**流量の上限は 2 枚ある**
+ *（設計の 10 件/時＝`countPostsSince` と、連打を止める分あたりの弁＝`checkRateLimit`）。
  *
  * `Date.now()` は入口で 1 回だけ読み、以降は引数で回す（同じリクエストの中で時刻がずれない・
  * テストから固定できる）。
@@ -34,12 +35,10 @@ import {
   STATUS_OF_REASON,
   type ThreadLike,
 } from '../../../src/core/board/permission'
-import { BOARD_LIMITS, CreatePostInputSchema } from '../../../src/core/board/types'
-import { type ClerkEnv, json, verifyUserId } from '../_lib/auth'
+import { CreatePostInputSchema } from '../../../src/core/board/types'
+import { type ClerkEnv, verifyUserId } from '../_lib/auth'
 import { type BoardLinkEnv, resolveLinkCards } from '../_lib/board-link-fetch'
 import {
-  bumpThread,
-  createPost,
   linkPost,
   type PostRow,
   type ProfileRow,
@@ -49,7 +48,13 @@ import {
   softDeletePost,
   type ThreadRow,
 } from '../_lib/board-store'
-import { checkRateLimit } from '../_lib/rate-limit'
+import {
+  boardJson,
+  conflictResponse,
+  createPostRetrying,
+  postQuotaExceeded,
+  rateLimitedResponse,
+} from './board-endpoint'
 
 /** `BoardLinkEnv` が `DB` と OGP 取得の設定（PLATFORM_ORIGIN ほか）を持つ。 */
 interface Env extends ClerkEnv, BoardLinkEnv {}
@@ -91,8 +96,8 @@ const actorOf = (userId: string, profile: ProfileRow | null): Actor => ({
  */
 const denied = (reason: PermissionDenyReason, actor: Actor): Response =>
   reason === 'banned'
-    ? json({ error: reason, bannedUntil: actor.bannedUntil }, STATUS_OF_REASON[reason])
-    : json({ error: reason }, STATUS_OF_REASON[reason])
+    ? boardJson({ error: reason, bannedUntil: actor.bannedUntil }, STATUS_OF_REASON[reason])
+    : boardJson({ error: reason }, STATUS_OF_REASON[reason])
 
 export const onRequestPost: PagesFunction<Env> = async (context) => {
   const now = Date.now()
@@ -101,29 +106,29 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
   // 記名式なので書き込みはログイン必須（D-BOARD-SIGNED・§7-1）。
   // 会員判定（verifyMember）は使わない＝無料アカウントで書ける。
   const userId = await verifyUserId(context.request, context.env)
-  if (!userId) return json({ error: 'unauthorized' }, 401)
+  if (!userId) return boardJson({ error: 'unauthorized' }, 401)
 
   const threadId = new URL(context.request.url).searchParams.get('thread')
-  if (!threadId) return json({ error: 'missing_thread' }, 400)
+  if (!threadId) return boardJson({ error: 'missing_thread' }, 400)
 
   let raw: unknown
   try {
     raw = await context.request.json()
   } catch {
-    return json({ error: 'bad_request' }, 400)
+    return boardJson({ error: 'bad_request' }, 400)
   }
   const parsed = CreatePostInputSchema.safeParse(raw)
-  if (!parsed.success) return json({ error: 'bad_request' }, 400)
+  if (!parsed.success) return boardJson({ error: 'bad_request' }, 400)
   const input = parsed.data
 
   // 表示名が無いと投稿できない（§7-2）。画面はこの 409 を受けて設定ダイアログを出す。
   // permission の deny 理由には無い＝「権限が足りない」ではなく「登録が済んでいない」なので、
   // スレ立て（threads.ts）と同じ形で先に断る。
   const profile = await readProfile(db, userId)
-  if (!profile) return json({ error: 'profile_required' }, 409)
+  if (!profile) return boardJson({ error: 'profile_required' }, 409)
 
   const thread = await readThread(db, threadId)
-  if (!thread) return json({ error: 'not_found' }, 404)
+  if (!thread) return boardJson({ error: 'not_found' }, 404)
 
   // 投稿禁止（403）・削除済み／非表示のスレ（404 gone）・ロック（409）は、この 1 本で判定する。
   // ロック中でも staff だけは書ける（運営が締めの一言を残せる）— その判断も permission 側。
@@ -131,14 +136,20 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
   const allowed = canPost(actor, threadLikeOf(thread), now)
   if (!allowed.ok) return denied(allowed.reason, actor)
 
-  // 流量の安全弁（D-BOARD-RATE）。**キーは `board:` 接頭辞**＝rate_limits は user_id 1 行の
-  // 表なので、素の userId を渡すと同期の 60 req/min の枠を掲示板の投稿が食う（§7-11）。
-  if (!(await checkRateLimit(db, `board:${userId}`, now, BOARD_LIMITS.postsPerHour))) {
-    return json({ error: 'rate_limited' }, 429)
-  }
+  // 投稿 10 件/時（D-BOARD-OPEN）。分窓の `checkRateLimit` に `postsPerHour` を渡すと
+  // 10 件/分＝600 件/時になり、設計の 60 倍緩む。時間の窓は `countPostsSince` で数える。
+  const overQuota = await postQuotaExceeded(db, userId, now)
+  if (overQuota) return overQuota
+
+  // 分あたりの安全弁（D-BOARD-RATE）。上の時間枠とは別物で、連打を止めるだけの役。
+  // 鍵の `board:` 接頭辞と上限は board-endpoint.ts に 1 つだけ置いてある（§7-11）。
+  const limited = await rateLimitedResponse(db, userId, now)
+  if (limited) return limited
 
   const postId = crypto.randomUUID()
-  const { seq } = await createPost(db, {
+  // 採番（`INSERT ... SELECT MAX(seq)+1`）が同時投稿で競合したら 1 回だけ取り直す。
+  // 例外のまま抜けると 500 になり、利用者からは書いた本文が消えたように見える。
+  const created = await createPostRetrying(db, {
     id: postId,
     threadId,
     userId,
@@ -146,11 +157,12 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     replyTo: input.replyTo,
     now,
   })
+  if (!created.ok) return conflictResponse()
+  const { seq } = created
 
-  // 一覧の既定の並びは最終書き込み順（§2）なので、返信のたびにスレを持ち上げる。
-  // 「返信したらスレが上がる」はこのエンドポイントの責務なので、store の内部実装
-  //（createPost が同じ更新を batch に含む）に依存させず、明示的に呼ぶ。
-  await bumpThread(db, threadId, now)
+  // **`bumpThread` はここで呼ばない。** 一覧の並び（§2）に使う bumped_at と reply_count は
+  // `createPost` が投稿の INSERT と同じ batch で更新する＝投稿と並びが必ず揃う。
+  // ここでもう一度打つと、同じ行への UPDATE が 2 回走るだけ（D1 の書き込み行数が倍になる）。
 
   // リンクカード（D-BOARD-LINK / D-BOARD-OGPCACHE）。取得は投稿時の 1 回だけで、
   // 閲覧では外に出ない。**投稿を保存したあとに走らせ、失敗しても 201 を返す**＝
@@ -163,7 +175,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     // カードが付かないだけ。本文は保存済みなので、ここで巻き戻さない。
   }
 
-  return json({ id: postId, threadId, seq }, 201)
+  return boardJson({ id: postId, threadId, seq }, 201)
 }
 
 export const onRequestDelete: PagesFunction<Env> = async (context) => {
@@ -171,13 +183,13 @@ export const onRequestDelete: PagesFunction<Env> = async (context) => {
   const db = context.env.DB
 
   const userId = await verifyUserId(context.request, context.env)
-  if (!userId) return json({ error: 'unauthorized' }, 401)
+  if (!userId) return boardJson({ error: 'unauthorized' }, 401)
 
   const postId = new URL(context.request.url).searchParams.get('id')
-  if (!postId) return json({ error: 'missing_id' }, 400)
+  if (!postId) return boardJson({ error: 'missing_id' }, 400)
 
   const post = await readPost(db, postId)
-  if (!post) return json({ error: 'not_found' }, 404)
+  if (!post) return boardJson({ error: 'not_found' }, 404)
 
   // **他人の投稿は消せない（403・§7-4）。** staff でも他人のは消さない（運営がやるのは
   // 非表示）。二重削除は `gone`（404）になる。
@@ -188,8 +200,8 @@ export const onRequestDelete: PagesFunction<Env> = async (context) => {
   // スレ本文（seq=1）だけは、この経路で消させない。ここで消せてしまうと、
   // 「返信 0 なら丸ごと・返信ありなら本文だけ」というスレ削除の規則（§7-5）を
   // 素通りして、本文の無いスレが一覧に残る。スレの DELETE を使わせる。
-  if (post.seq === 1) return json({ error: 'use_thread_delete' }, 409)
+  if (post.seq === 1) return boardJson({ error: 'use_thread_delete' }, 409)
 
   await softDeletePost(db, postId, now)
-  return json({ ok: true })
+  return boardJson({ ok: true })
 }

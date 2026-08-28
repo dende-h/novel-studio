@@ -33,6 +33,7 @@ vi.mock('../_lib/board-link-fetch', () => links)
 
 import { urlKeyOf } from '../../../src/core/board/link'
 import { BOARD_LIMITS } from '../../../src/core/board/types'
+import { BOARD_ACTIONS_PER_MINUTE } from './board-endpoint'
 import {
   type BoardDbFake,
   fakePost,
@@ -191,18 +192,124 @@ describe('POST /api/board/posts', () => {
     expect(store.rates.get('user_1')?.count).toBe(60)
   })
 
-  it('掲示板の枠を使い切っていたら 429', async () => {
+  it('分あたりの安全弁を使い切っていたら 429（連打を止める枠）', async () => {
     const { env, store } = setup()
     store.rates.set('board:user_1', {
       user_id: 'board:user_1',
       window_start: WINDOW,
-      count: BOARD_LIMITS.postsPerHour,
+      count: BOARD_ACTIONS_PER_MINUTE,
     })
 
     const res = await post(env, '?thread=t1', validInput)
     expect(res.status).toBe(429)
     expect(await res.json()).toEqual({ error: 'rate_limited' })
     expect(store.posts.size).toBe(1)
+  })
+
+  it('1 時間に書けるのは BOARD_LIMITS.postsPerHour 件まで。分窓をまたいでも増えない（D-BOARD-OPEN）', async () => {
+    const { env, store } = setup()
+    // 分窓の安全弁（60 秒）だけで守っていたころは、**61 秒ずつ進めれば何件でも書けた**。
+    // その手順をそのまま再現する: 1 分ずつずらしながら 12 回投げる。
+    const statuses: number[] = []
+    for (let i = 0; i < 12; i++) {
+      vi.setSystemTime(NOW + i * 61_000)
+      statuses.push((await post(env, '?thread=t1', validInput)).status)
+    }
+
+    // 通るのは 10 件目まで。11 件目からは時間枠で 429。
+    expect(statuses).toEqual([...Array(BOARD_LIMITS.postsPerHour).fill(201), 429, 429])
+    expect(store.posts.size).toBe(1 + BOARD_LIMITS.postsPerHour)
+
+    const last = await post(env, '?thread=t1', validInput)
+    expect(last.status).toBe(429)
+    expect(await last.json()).toEqual({ error: 'too_many_posts' })
+
+    // 1 時間ぶん進めば、また書ける（窓が滑るだけで、恒久的に止めるものではない）。
+    vi.setSystemTime(NOW + 11 * 61_000 + 60 * 60 * 1000)
+    expect((await post(env, '?thread=t1', validInput)).status).toBe(201)
+  })
+
+  it('時間枠で断ったリクエストは分窓のカウンタを進めない', async () => {
+    const { env, store } = setup()
+    for (let i = 0; i < BOARD_LIMITS.postsPerHour; i++) {
+      store.posts.set(
+        `old${i}`,
+        fakePost({ id: `old${i}`, thread_id: 'other', seq: i + 1, created_at: NOW - 1000 }),
+      )
+    }
+
+    expect((await post(env, '?thread=t1', validInput)).status).toBe(429)
+    expect(store.rates.has('board:user_1')).toBe(false)
+  })
+
+  it('削除済みの投稿も 1 時間の枠に数える（消して書き直す抜け道を作らない）', async () => {
+    const { env, store } = setup()
+    for (let i = 0; i < BOARD_LIMITS.postsPerHour; i++) {
+      store.posts.set(
+        `old${i}`,
+        fakePost({
+          id: `old${i}`,
+          thread_id: 'other',
+          seq: i + 1,
+          created_at: NOW - 1000,
+          deleted_at: NOW - 500,
+        }),
+      )
+    }
+    expect((await post(env, '?thread=t1', validInput)).status).toBe(429)
+  })
+
+  it('レスポンスに private, no-store が付く（閲覧者ごとに中身が違う）', async () => {
+    const { env } = setup()
+    const res = await post(env, '?thread=t1', validInput)
+    expect(res.headers.get('cache-control')).toBe('private, no-store')
+  })
+
+  it('bumped_at の更新は 1 回だけ（createPost の batch と二重に打たない）', async () => {
+    const { env, store } = setup()
+    const prepare = vi.spyOn(store.db, 'prepare')
+
+    expect((await post(env, '?thread=t1', validInput)).status).toBe(201)
+
+    const bumps = prepare.mock.calls
+      .map(([sql]) => sql)
+      .filter((sql) => sql.startsWith('UPDATE board_threads SET bumped_at'))
+    expect(bumps).toHaveLength(1)
+    expect(store.threads.get('t1')).toMatchObject({ bumped_at: NOW, reply_count: 1 })
+    prepare.mockRestore()
+  })
+
+  it('seq の採番が競合したら 1 回だけ取り直す。それでも駄目なら 409（500 にしない）', async () => {
+    const { env, store } = setup()
+    const real = store.db.prepare.bind(store.db)
+    let fail = 1
+    const prepare = vi.spyOn(store.db, 'prepare').mockImplementation((sql: string) => {
+      const stmt = real(sql)
+      if (!sql.startsWith('INSERT INTO board_posts') || fail-- <= 0) return stmt
+      // UNIQUE(thread_id, seq) の衝突を、同時投稿の 2 本目と同じ形で起こす。
+      return {
+        ...stmt,
+        bind: () => ({
+          ...stmt,
+          run: async () => {
+            throw new Error('UNIQUE constraint failed: board_posts.thread_id, board_posts.seq')
+          },
+        }),
+      } as unknown as ReturnType<typeof real>
+    })
+
+    // 1 回目は落ちるが、取り直して 201（書いた本文を捨てない）。
+    const res = await post(env, '?thread=t1', validInput)
+    expect(res.status).toBe(201)
+    expect(store.posts.size).toBe(2)
+
+    // 2 回続けて落ちたら 409。500 にすると、利用者は再送していいのかが分からない。
+    fail = 2
+    const conflict = await post(env, '?thread=t1', validInput)
+    expect(conflict.status).toBe(409)
+    expect(await conflict.json()).toEqual({ error: 'conflict' })
+    expect(store.posts.size).toBe(2)
+    prepare.mockRestore()
   })
 
   it('返信は seq=2 から積まれ、スレが最終書き込み順で持ち上がる', async () => {

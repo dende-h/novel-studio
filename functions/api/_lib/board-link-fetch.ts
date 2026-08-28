@@ -22,6 +22,7 @@
 
 import {
   canFetchUrl,
+  canonicalHost,
   DEFAULT_SELF_HOSTS,
   extractUrls,
   type FetchUrlResult,
@@ -85,10 +86,12 @@ export interface BoardLinkEnv {
 /** D1 は INTEGER を string で返すことがあるので、数値比較の前に必ず通す。 */
 const num = (v: number | string | null | undefined): number => Number(v ?? 0) || 0
 
-/** URL 文字列のホスト（小文字）。読めなければ空文字。 */
+/** URL 文字列のホスト（小文字・末尾ドット無し）。読めなければ空文字。 */
 function hostnameOf(url: string): string {
   try {
-    return new URL(url).hostname.toLowerCase()
+    // 末尾ドットまで落とすのは、env で渡る PLATFORM_ORIGIN を自オリジン表と
+    // 素の文字列比較で突き合わせるため（`cotonoha-leaf.org.` で照合を外させない）。
+    return canonicalHost(new URL(url).hostname)
   } catch {
     return ''
   }
@@ -111,10 +114,17 @@ function selfHostsOf(env: BoardLinkEnv): readonly string[] {
  * 緩めるのは `self-origin` の 1 理由だけで、しかも**ホストが完全一致するときだけ**。
  * https・ポート・IP リテラル・内部 TLD の検査は素通ししない。この形なので、
  * grove から `cotonoha-leaf.org`（自分自身）へ 302 で飛ばされても、次のホップで止まる。
+ *
+ * さらに、**自オリジン表に載っているホストそのものは緩和の対象にしない**。
+ * `PLATFORM_ORIGIN` に grove ではなく `https://cotonoha-leaf.org`（＝自分自身）を
+ * 取り違えて入れると、この 1 行が無いだけで**自分の /api を叩ける**ようになり、しかも
+ * env の設定ミスなので誰も気づかない。緩和が要るのは `grove.cotonoha-leaf.org` のように
+ * 「表の接尾辞に巻き込まれただけの別ホスト」であって、表そのものに載っている名前ではない。
  */
 function inspectUrl(url: string, selfHosts: readonly string[], groveHost: string): FetchUrlResult {
   const strict = canFetchUrl(url, { selfHosts })
   if (strict.ok || strict.reason !== 'self-origin' || groveHost === '') return strict
+  if (selfHosts.some((h) => canonicalHost(h) === groveHost)) return strict
   const relaxed = canFetchUrl(url, { selfHosts: [] })
   if (!relaxed.ok) return relaxed
   return hostnameOf(relaxed.url) === groveHost ? relaxed : strict

@@ -168,6 +168,8 @@ export const FETCH_DENY_REASONS = [
   'userinfo',
   /** ホストが IP リテラル（10 進・8/16 進・整数表記・IPv6 を含む） */
   'ip-literal',
+  /** 名前解決の先が IP を指す形（`127.0.0.1.nip.io` などの埋め込み IPv4・ワイルドカード DNS） */
+  'ip-hostname',
   /** 443 以外の明示ポート */
   'port',
   /** 自オリジン（自分自身を叩かせない） */
@@ -207,13 +209,34 @@ const INTERNAL_TLDS: readonly string[] = [
   'onion',
 ]
 
+/**
+ * ホスト名に IP を埋めて内側を指すワイルドカード DNS サービス（接尾辞一致で拒否）。
+ *
+ * **主の防御はあくまで下の `hasEmbeddedIpv4`**（この種のサービスは無数にあり、表では追えない）。
+ * ここに置くのは**パターンでは見えない形**だけ:
+ * - `7f000001.sslip.io` のような 16 進 1 ラベル表記（数字の並びに見えない）
+ * - `localtest.me` / `lvh.me` のように数字が 1 つも出ないのに 127.0.0.1 へ解決する名前
+ * 増やすときはここへ足す（規則を 2 箇所に散らさない）。
+ */
+const WILDCARD_DNS_HOSTS: readonly string[] = [
+  'nip.io',
+  'sslip.io',
+  'xip.io',
+  'traefik.me',
+  'localtest.me',
+  'lvh.me',
+  'vcap.me',
+  'local.gd',
+  'localho.st',
+]
+
 export type CanFetchOptions = {
   /** 自オリジンとして拒否するホスト（既定は DEFAULT_SELF_HOSTS）。 */
   selfHosts?: readonly string[]
 }
 
 /** 末尾ドットを落とした小文字ホスト（照合の共通前処理）。 */
-function canonicalHost(host: string): string {
+export function canonicalHost(host: string): string {
   const lower = host.trim().toLowerCase()
   return lower.endsWith('.') ? lower.slice(0, -1) : lower
 }
@@ -241,6 +264,41 @@ function isIpLiteralHost(host: string): boolean {
   const last = labels.at(-1)
   if (last === undefined || last === '') return false
   return /^\d+$/.test(last) || /^0[xX][0-9a-fA-F]*$/.test(last)
+}
+
+/**
+ * ホスト名の中に IPv4 が埋まっているか（`127.0.0.1.nip.io` / `10-0-0-1.sslip.io` /
+ * `192.168.1.1.xip.io`）。**IP リテラルではないので `isIpLiteralHost` には当たらない**が、
+ * 名前解決の結果は内部アドレスになる＝ SSRF としては同じもの。設計 §3.1 の狙いは
+ * 「内側へ行かせない」なので、リテラルかどうかではなく**内側を指すか**で拒否する。
+ *
+ * 判定は「`.` か `-` で割った断片に、オクテットに見えるものが 4 つ連続するか」。
+ * オクテットに見える＝1〜3 桁の数字で 0〜255 に収まるもの。
+ *
+ * 誤検知の線引き（安全側に倒すが、無闇には巻き込まない）:
+ * - `www.4chan.org` … `4chan` は数字だけではないので通る
+ * - `2024-01-01-1.example.com` … `2024` が 255 を超えるので通る（日付・バージョン名の救済）
+ * - `3-1-4-1.example.com` … **拒否する**。実在の IP（3.1.4.1）と区別が付かないので巻き込む。
+ *   ここを通すには「オクテットに見える 4 連続」を諦めるしかなく、それは穴のほうが大きい。
+ *   正当なホストが引っかかったら、許可ではなく**個別の申告で表に足す**運用にする。
+ */
+function hasEmbeddedIpv4(host: string): boolean {
+  let run = 0
+  for (const token of canonicalHost(host).split(/[.-]/)) {
+    if (token.length >= 1 && token.length <= 3 && /^\d+$/.test(token) && Number(token) <= 255) {
+      run++
+      if (run >= 4) return true
+    } else {
+      run = 0
+    }
+  }
+  return false
+}
+
+/** 名前解決の先が IP を指す形か（埋め込み IPv4 か、既知のワイルドカード DNS サービス）。 */
+function pointsToIpByName(host: string): boolean {
+  if (hasEmbeddedIpv4(host)) return true
+  return WILDCARD_DNS_HOSTS.some((p) => matchesHostSuffix(host, p))
 }
 
 /** 内部向けの名前か（内部 TLD・ドットを含まない単一ラベル・末尾ドット）。 */
@@ -273,6 +331,9 @@ export function canFetchUrl(url: string, opts: CanFetchOptions = {}): FetchUrlRe
 
   const host = u.hostname
   if (isIpLiteralHost(host)) return { ok: false, reason: 'ip-literal' }
+  // リテラルの次に「名前解決で内側を指す形」を見る。ここが無いと `127.0.0.1.nip.io` が
+  // 素通りして、取れた `<title>` がそのままカードとして掲示板に出る（盲目でない SSRF）。
+  if (pointsToIpByName(host)) return { ok: false, reason: 'ip-hostname' }
   if (isInternalHost(host)) return { ok: false, reason: 'internal-host' }
 
   const selfHosts = opts.selfHosts ?? DEFAULT_SELF_HOSTS

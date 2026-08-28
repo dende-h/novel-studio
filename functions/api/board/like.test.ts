@@ -6,6 +6,7 @@
  *   §7-1  未ログインの書き込み系は 401
  *   §7-11 レート制限のキーが `board:` 接頭辞で、同期のカウンタ（素の user_id）と混ざらない
  *  （D-BOARD-KIND）👍 が付くのは request / bug のスレだけ
+ *  （§7-4）投稿禁止中とロック中は押せない — 返信が 403 なのに 👍 は 200、を作らない
  *
  * いちばん効かせたいのは**連打で数がずれない**こと。`like_count` を差分加算にすると、
  * 二重送信や失敗した書き込みでずれ、ずれたまま誰も直せなくなる（store が毎回数え直す）。
@@ -21,7 +22,7 @@ vi.mock('@clerk/backend', async () => {
   return clerkAuthMock(authState)
 })
 
-import { BOARD_LIMITS } from '../../../src/core/board/types'
+import { BOARD_ACTIONS_PER_MINUTE } from './board-endpoint'
 import {
   type BoardDbFake,
   fakeProfile,
@@ -247,7 +248,7 @@ describe('POST /api/board/like — レート制限', () => {
     store.rates.set('board:user_2', {
       user_id: 'board:user_2',
       window_start: Math.floor(NOW / 60_000) * 60_000,
-      count: BOARD_LIMITS.postsPerHour,
+      count: BOARD_ACTIONS_PER_MINUTE,
     })
 
     const res = await like(env)
@@ -255,10 +256,69 @@ describe('POST /api/board/like — レート制限', () => {
     expect(store.likes.size).toBe(0)
   })
 
+  it('👍 は投稿の時間枠（10 件/時）を食わない — 押しただけで書けなくなることはない', async () => {
+    const { store, env } = setup()
+    // 押した回数はカウンタを 1 つずつ進めるだけで、上限は分あたりの安全弁のほうにある。
+    for (let i = 0; i < 12; i++) expect((await like(env)).status).toBe(200)
+    expect(store.rates.get('board:user_2')?.count).toBe(12)
+  })
+
   it('弾かれるリクエスト（種別違い）ではカウンタを進めない', async () => {
     const { store, env } = setup()
 
     expect((await like(env, 'chat1')).status).toBe(400)
     expect(store.rates.has('board:user_2')).toBe(false)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// 立場（投稿禁止・ロック）— 判定は canPost と同じ順で効く
+// ---------------------------------------------------------------------------
+
+describe('POST /api/board/like — 押せない立場', () => {
+  it('投稿禁止中は押せない（403 banned・期限を添える）', async () => {
+    const { store, env } = setup()
+    store.profiles.set(
+      'user_2',
+      fakeProfile({ user_id: 'user_2', name_key: 'とおりすがり', banned_until: NOW + 1000 }),
+    )
+
+    const res = await like(env)
+    expect(res.status).toBe(403)
+    expect(await res.json()).toEqual({ error: 'banned', bannedUntil: NOW + 1000 })
+    // 👍 は「次に何を作るか」を決める票そのもの。書き込みを止めた相手に数だけ動かされない。
+    expect(store.likes.size).toBe(0)
+    expect(store.threads.get('t1')?.like_count).toBe(0)
+
+    // 期限が切れていれば押せる（bannedUntil === now は明けたものとして扱う）。
+    store.profiles.set(
+      'user_2',
+      fakeProfile({ user_id: 'user_2', name_key: 'とおりすがり', banned_until: NOW }),
+    )
+    expect((await like(env)).status).toBe(200)
+  })
+
+  it('ロック中のスレには押せない（409 locked）。staff でも票は足せない', async () => {
+    const { store, env } = setup()
+    store.threads.set('t1', fakeThread({ id: 't1', kind: 'request', user_id: 'user_1', locked: 1 }))
+
+    const res = await like(env)
+    expect(res.status).toBe(409)
+    expect(await res.json()).toEqual({ error: 'locked' })
+
+    // ロックは「この話は終わり」という運営の意思表示。締めた時点の数字を根拠にできるよう、
+    // staff にも票は足させない（書き込みだけは staff に許す canPost とここが違う）。
+    store.profiles.set(
+      'user_2',
+      fakeProfile({ user_id: 'user_2', name_key: 'とおりすがり', role: 'staff' }),
+    )
+    expect((await like(env)).status).toBe(409)
+    expect(store.likes.size).toBe(0)
+  })
+
+  it('レスポンスに private, no-store が付く（liked は閲覧者ごとに違う）', async () => {
+    const { env } = setup()
+    const res = await like(env)
+    expect(res.headers.get('cache-control')).toBe('private, no-store')
   })
 })

@@ -30,11 +30,11 @@
  * `Date.now()` は入口で 1 回だけ読み、以降は引数で回す（テストから固定できる）。
  */
 
-import { BOARD_LIMITS, ReportInputSchema } from '../../../src/core/board/types'
-import { type ClerkEnv, json, verifyUserId } from '../_lib/auth'
+import { ReportInputSchema } from '../../../src/core/board/types'
+import { type ClerkEnv, verifyUserId } from '../_lib/auth'
 import { insertReport, readPost } from '../_lib/board-store'
 import { sha256Hex } from '../_lib/crypto'
-import { checkRateLimit } from '../_lib/rate-limit'
+import { boardJson, rateLimitedResponse } from './board-endpoint'
 
 interface Env extends ClerkEnv {
   DB: D1Database
@@ -65,23 +65,23 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
   // 使わない＝無料アカウントで通報できる。匿名の通報を受けると、誰が何件出したかを
   // 追えないまま運営が判断することになる。
   const userId = await verifyUserId(context.request, context.env)
-  if (!userId) return json({ error: 'unauthorized' }, 401)
+  if (!userId) return boardJson({ error: 'unauthorized' }, 401)
 
   let raw: unknown
   try {
     raw = await context.request.json()
   } catch {
-    return json({ error: 'bad_request' }, 400)
+    return boardJson({ error: 'bad_request' }, 400)
   }
   const parsed = ReportInputSchema.safeParse(raw)
-  if (!parsed.success) return json({ error: 'bad_request' }, 400)
+  if (!parsed.success) return boardJson({ error: 'bad_request' }, 400)
   const input = parsed.data
 
   // 表示名（board_profiles）は要求しない。通報は記名で表に出るものではないので、
   // 投稿（§7-2 の profile_required）と同じ入口を通す必要がない。設定ダイアログを
   // 挟むと、荒らしを見つけた通りすがりが通報をやめる。
   const post = await readPost(db, input.postId)
-  if (!post) return json({ error: 'not_found' }, 404)
+  if (!post) return boardJson({ error: 'not_found' }, 404)
 
   // 削除済み・運営が非表示にした投稿でも通報は受ける。伏せ字になっているだけで行は
   // 残っており（D-BOARD-DELETE）、投稿者への措置（投稿禁止）はまだ打てるため。
@@ -93,9 +93,10 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
   // 流量の安全弁（D-BOARD-RATE）。**キーは `board:` 接頭辞**＝rate_limits は user_id 1 行の
   // 表なので、素の userId を渡すと同期の 60 req/min の枠を掲示板の操作が食う（§7-11）。
   // 重複した通報も枠を使う（行は増えないが、連打の相手をする理由もない）。
-  if (!(await checkRateLimit(db, `board:${userId}`, now, BOARD_LIMITS.postsPerHour))) {
-    return json({ error: 'rate_limited' }, 429)
-  }
+  // 分あたりの安全弁。鍵と上限は board-endpoint.ts に 1 つだけ置く。ここだけ違う値を渡すと、
+  // 同じ `board:${userId}` の行を共有している他の操作の巻き添えで通報が 429 になる。
+  const limited = await rateLimitedResponse(db, userId, now)
+  if (limited) return limited
 
   try {
     await insertReport(db, {
@@ -111,5 +112,5 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
   }
 
   // 返すのはこれだけ。件数も通報者も、行 id すら返さない。
-  return json({ ok: true })
+  return boardJson({ ok: true })
 }

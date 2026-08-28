@@ -33,10 +33,11 @@ import { boardBodyToPlain } from '../../../src/core/board/render'
 import {
   BOARD_LIMITS,
   type BoardKind,
-  type BoardProfile,
+  type BoardMeResponse,
+  type MyBoardPost,
   ProfileInputSchema,
 } from '../../../src/core/board/types'
-import { type ClerkEnv, json, verifyUserId } from '../_lib/auth'
+import { type ClerkEnv, verifyUserId } from '../_lib/auth'
 import {
   listPostsByUser,
   type MyPostRow,
@@ -45,7 +46,7 @@ import {
   toProfile,
   upsertProfile,
 } from '../_lib/board-store'
-import { checkRateLimit } from '../_lib/rate-limit'
+import { boardJson, rateLimitedResponse } from './board-endpoint'
 
 interface Env extends ClerkEnv {
   DB: D1Database
@@ -58,35 +59,11 @@ interface Env extends ClerkEnv {
 const MY_POSTS_LIMIT = 50
 
 /**
- * 自分の書き込み 1 件。**本文は抜粋だけ返す**（一覧の 1 行に出すもので、読むのは
- * スレを開いてから）。50 件ぶんの全文を毎回返すと、画面に出ない文字でレスポンスが膨らむ。
- *
- * `src/core/board/types.ts` に Zod スキーマを置いていないのは、この形を返すのが
- * ここ 1 本だけだから。契約として共有する必要が出たら、あちらへ移す。
+ * 返す形（`MyBoardPost` / `BoardMeResponse`）は **`src/core/board/types.ts` の契約をそのまま
+ * 使う**。ここに interface を置き直すと、画面（`src/ui/_api/board.ts`）は `functions/` を
+ * import できない（workers-types が src に混ざる）ぶん同じ形を手で書き写すことになり、
+ * 片方だけ変わっても誰も気づかない。**本文は抜粋だけ**返すのも契約側に書いてある。
  */
-export interface MyBoardPost {
-  id: string
-  threadId: string
-  /** 置かれているスレの見出し（スレ行が引けなければ空） */
-  threadTitle: string
-  threadKind: BoardKind | ''
-  /** スレ内の連番。1 は自分が立てたスレの本文 */
-  seq: number
-  /** 本文の抜粋。削除・非表示のときは伏字（§7-6） */
-  excerpt: string
-  replyTo: number
-  deleted: boolean
-  hidden: boolean
-  createdAt: number
-}
-
-/** GET / PUT が返す形。プロフィール未登録なら `profile` は null（画面は設定ダイアログを出す）。 */
-export interface BoardMeResponse {
-  profile: BoardProfile | null
-  /** いま投稿禁止中か。期限（`profile.bannedUntil`）との比較を画面に再実装させない */
-  banned: boolean
-  posts: MyBoardPost[]
-}
 
 /**
  * 行 → 画面が見る形。**削除・非表示の本文はここで伏字に落とす**（§7-6）。
@@ -142,7 +119,7 @@ async function meResponse(
     banned: isBanned(actorOf(userId, profile), now),
     posts: posts.map(toMyPost),
   }
-  return json(body, status)
+  return boardJson(body, status)
 }
 
 export const onRequestGet: PagesFunction<Env> = async (context) => {
@@ -151,7 +128,7 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
   // 自分のプロフィールと自分の書き込みなので、読み取りでもログインは要る。
   // 会員判定（verifyMember）は使わない＝無料アカウントで掲示板を使える（D-BOARD-SIGNED）。
   const userId = await verifyUserId(context.request, context.env)
-  if (!userId) return json({ error: 'unauthorized' }, 401)
+  if (!userId) return boardJson({ error: 'unauthorized' }, 401)
 
   return await meResponse(context.env.DB, userId, now)
 }
@@ -169,16 +146,16 @@ export const onRequestPut: PagesFunction<Env> = async (context) => {
   const db = context.env.DB
 
   const userId = await verifyUserId(context.request, context.env)
-  if (!userId) return json({ error: 'unauthorized' }, 401)
+  if (!userId) return boardJson({ error: 'unauthorized' }, 401)
 
   let raw: unknown
   try {
     raw = await context.request.json()
   } catch {
-    return json({ error: 'bad_request' }, 400)
+    return boardJson({ error: 'bad_request' }, 400)
   }
   const parsed = ProfileInputSchema.safeParse(raw)
-  if (!parsed.success) return json({ error: 'bad_request' }, 400)
+  if (!parsed.success) return boardJson({ error: 'bad_request' }, 400)
 
   // Zod は「空でない 24 文字以内の文字列」までしか見ない。正規化（NFKC・ゼロ幅文字の除去）で
   // 中身が変わるので、**保存する形を決めるのは必ずこちら**（§7-3）。
@@ -186,7 +163,7 @@ export const onRequestPut: PagesFunction<Env> = async (context) => {
   //   reserved                   … 名前そのものが取れない → 409（duplicate と同じ扱い）
   const checked = validateDisplayName(parsed.data.displayName)
   if (!checked.ok) {
-    return json({ error: checked.reason }, checked.reason === 'reserved' ? 409 : 400)
+    return boardJson({ error: checked.reason }, checked.reason === 'reserved' ? 409 : 400)
   }
 
   const before = await readProfile(db, userId)
@@ -194,13 +171,14 @@ export const onRequestPut: PagesFunction<Env> = async (context) => {
   // 投稿禁止中は改名させない。表示名は過去の投稿すべてに出る（非正規化しない・D-BOARD-NAME）ので、
   // 書き込みを止めたはずの相手に「全投稿へ同時に文字を出す欄」を残すことになる。
   const actor = actorOf(userId, before)
-  if (isBanned(actor, now)) return json({ error: 'banned', bannedUntil: actor.bannedUntil }, 403)
+  if (isBanned(actor, now))
+    return boardJson({ error: 'banned', bannedUntil: actor.bannedUntil }, 403)
 
-  // 流量の安全弁（D-BOARD-RATE）。**キーは `board:` 接頭辞**＝rate_limits は user_id 1 行の
-  // 表なので、素の userId を渡すと同期の 60 req/min の枠を掲示板の操作が食う（§7-11）。
-  if (!(await checkRateLimit(db, `board:${userId}`, now, BOARD_LIMITS.postsPerHour))) {
-    return json({ error: 'rate_limited' }, 429)
-  }
+  // 分あたりの安全弁（D-BOARD-RATE）。改名は投稿ではないので時間あたりの投稿枠は使わない
+  //（改名を試した回数で返信が書けなくなる、という巻き添えを作らない）。
+  // 鍵の `board:` 接頭辞と上限は board-endpoint.ts に 1 つだけ置いてある（§7-11）。
+  const limited = await rateLimitedResponse(db, userId, now)
+  if (limited) return limited
 
   // `name_key` は `nameKeyOf(表示名)`。`validateDisplayName` が予約語の判定に使ったものと
   // 同じ鍵をそのまま保存する（作り直すと、判定に使った鍵と保存した鍵がずれうる）。
@@ -212,7 +190,7 @@ export const onRequestPut: PagesFunction<Env> = async (context) => {
   })
   // 事前 SELECT で見つかった重複も、UNIQUE(name_key) がすり抜けを弾いた場合も同じ 409。
   // 画面から見れば「その名前は取れなかった」で、原因の違いに意味はない。
-  if (!result.ok) return json({ error: result.reason }, 409)
+  if (!result.ok) return boardJson({ error: result.reason }, 409)
 
   // 初回登録は 201（画面が「登録できました」と「変更しました」を出し分けられる）。
   return await meResponse(db, userId, now, before ? 200 : 201)

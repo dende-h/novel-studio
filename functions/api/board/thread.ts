@@ -35,8 +35,8 @@ import {
   visiblePost,
 } from '../../../src/core/board/permission'
 import { pollResultFor } from '../../../src/core/board/poll'
-import { BOARD_LIMITS, ThreadPatchInputSchema } from '../../../src/core/board/types'
-import { type ClerkEnv, json, verifyUserId } from '../_lib/auth'
+import { ThreadPatchInputSchema } from '../../../src/core/board/types'
+import { type ClerkEnv, verifyUserId } from '../_lib/auth'
 import {
   type PostWithAuthorRow,
   type ProfileRow,
@@ -51,7 +51,7 @@ import {
   toThread,
   toVote,
 } from '../_lib/board-store'
-import { checkRateLimit } from '../_lib/rate-limit'
+import { boardJson, rateLimitedResponse } from './board-endpoint'
 
 interface Env extends ClerkEnv {
   DB: D1Database
@@ -95,7 +95,7 @@ const actorOf = (userId: string | null, profile: ProfileRow | null): Actor => ({
 
 /** 拒否理由を HTTP に写す。対応表は permission.ts の 1 つだけを引く。 */
 const denied = (result: PermissionResult & { ok: false }): Response =>
-  json({ error: result.reason }, STATUS_OF_REASON[result.reason])
+  boardJson({ error: result.reason }, STATUS_OF_REASON[result.reason])
 
 /**
  * 投稿 1 件を表示用へ。**先に `visiblePost` で本文を伏字へ落としてから** `toPost` に渡す。
@@ -116,15 +116,15 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
   const db = context.env.DB
 
   const threadId = threadIdOf(context.request)
-  if (!threadId) return json({ error: 'missing_id' }, 400)
+  if (!threadId) return boardJson({ error: 'missing_id' }, 400)
 
   const viewerId = await viewerIdOf(context.request, context.env)
   const detail = await readThreadDetail(db, threadId, viewerId)
-  if (!detail) return json({ error: 'not_found' }, 404)
+  if (!detail) return boardJson({ error: 'not_found' }, 404)
 
   // 削除済み・運営が非表示にしたスレは、見出しごと出さない（一覧の条件と揃える）。
   if (detail.thread.deleted_at !== 0 || detail.thread.hidden_at !== 0) {
-    return json({ error: 'not_found' }, 404)
+    return boardJson({ error: 'not_found' }, 404)
   }
 
   // 書き込めるかの判定にプロフィール（立場と投稿禁止）が要る。未ログインなら引かない。
@@ -145,7 +145,7 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
       )
     : null
 
-  return json({
+  return boardJson({
     thread: toThread(detail.thread, viewerId),
     posts,
     poll,
@@ -158,25 +158,25 @@ export const onRequestPatch: PagesFunction<Env> = async (context) => {
   const db = context.env.DB
 
   const userId = await verifyUserId(context.request, context.env)
-  if (!userId) return json({ error: 'unauthorized' }, 401)
+  if (!userId) return boardJson({ error: 'unauthorized' }, 401)
 
   const threadId = threadIdOf(context.request)
-  if (!threadId) return json({ error: 'missing_id' }, 400)
+  if (!threadId) return boardJson({ error: 'missing_id' }, 400)
 
   let raw: unknown
   try {
     raw = await context.request.json()
   } catch {
-    return json({ error: 'bad_request' }, 400)
+    return boardJson({ error: 'bad_request' }, 400)
   }
   const parsed = ThreadPatchInputSchema.safeParse(raw)
-  if (!parsed.success) return json({ error: 'bad_request' }, 400)
+  if (!parsed.success) return boardJson({ error: 'bad_request' }, 400)
   const patch = parsed.data
 
   const row = await readThread(db, threadId)
-  if (!row) return json({ error: 'not_found' }, 404)
+  if (!row) return boardJson({ error: 'not_found' }, 404)
   // 削除済みのスレには何も付けない（一覧にも詳細にも出ていないものを運営が触らない）。
-  if (row.deleted_at !== 0) return json({ error: 'not_found' }, 404)
+  if (row.deleted_at !== 0) return boardJson({ error: 'not_found' }, 404)
 
   const actor = actorOf(userId, await readProfile(db, userId))
   const thread = threadLikeOf(row)
@@ -190,16 +190,17 @@ export const onRequestPatch: PagesFunction<Env> = async (context) => {
   const allowed = touchesStatus ? canSetStatus(actor, thread) : canModerate(actor)
   if (!allowed.ok) return denied(allowed)
 
-  if (!(await checkRateLimit(db, `board:${userId}`, now, BOARD_LIMITS.postsPerHour))) {
-    return json({ error: 'rate_limited' }, 429)
-  }
+  // 分あたりの安全弁（D-BOARD-RATE）。運営操作は投稿ではないので時間あたりの投稿枠は
+  // 使わない。鍵の `board:` 接頭辞と上限は board-endpoint.ts に 1 つだけ置いてある（§7-11）。
+  const limited = await rateLimitedResponse(db, userId, now)
+  if (limited) return limited
 
   await patchThread(db, threadId, patch, now)
 
   // 運営操作は頻度が低いので、更新後の姿を読み直して返す（画面が推測で描かなくて済む）。
   const after = await readThreadDetail(db, threadId, userId)
-  if (!after) return json({ error: 'not_found' }, 404)
-  return json({ thread: toThread(after.thread, userId) })
+  if (!after) return boardJson({ error: 'not_found' }, 404)
+  return boardJson({ thread: toThread(after.thread, userId) })
 }
 
 export const onRequestDelete: PagesFunction<Env> = async (context) => {
@@ -207,28 +208,35 @@ export const onRequestDelete: PagesFunction<Env> = async (context) => {
   const db = context.env.DB
 
   const userId = await verifyUserId(context.request, context.env)
-  if (!userId) return json({ error: 'unauthorized' }, 401)
+  if (!userId) return boardJson({ error: 'unauthorized' }, 401)
 
   const threadId = threadIdOf(context.request)
-  if (!threadId) return json({ error: 'missing_id' }, 400)
+  if (!threadId) return boardJson({ error: 'missing_id' }, 400)
 
-  const row = await readThread(db, threadId)
-  if (!row) return json({ error: 'not_found' }, 404)
+  // 消し方の判断に「seq>1 の行が在るか」が要るので、スレ行だけでなく投稿まで読む
+  //（`readThreadDetail` は削除済み・非表示の投稿も返す）。
+  const detail = await readThreadDetail(db, threadId, userId)
+  if (!detail) return boardJson({ error: 'not_found' }, 404)
 
   const actor = actorOf(userId, await readProfile(db, userId))
-  const thread = threadLikeOf(row)
+  const thread = threadLikeOf(detail.thread)
 
   // 消せるのは自分のスレだけ。staff でも他人のスレは消さない（消すのは本人・運営は非表示）。
   const allowed = canDeleteThread(actor, thread)
   if (!allowed.ok) return denied(allowed)
 
-  if (!(await checkRateLimit(db, `board:${userId}`, now, BOARD_LIMITS.postsPerHour))) {
-    return json({ error: 'rate_limited' }, 429)
-  }
+  // 分あたりの安全弁（D-BOARD-RATE）。鍵と上限は board-endpoint.ts に 1 つだけ置いてある。
+  const limited = await rateLimitedResponse(db, userId, now)
+  if (limited) return limited
 
-  // 返信が 1 件でもあれば 'head-only'＝本文（seq=1）だけ伏せ、他人の返信は残す（§7-5）。
-  const mode = threadDeleteMode(thread)
-  await softDeleteThread(db, threadId, mode, now)
+  // 返信が 1 件でも**行として在れば** 'head-only'＝本文（seq=1）だけ伏せ、返信は残す（§7-5）。
+  // 数えるのは生きている返信（`reply_count`）ではない。運営が返信を伏せると reply_count は
+  // 0 に戻るので、それを見て 'whole' にすると、スレ主の削除が他人の hidden 投稿にまで
+  // deleted_at を刻む（`unhide_post` しても「本人が削除」の伏字のまま戻らなくなる）。
+  const hasAnyReply = detail.posts.some((post) => post.seq > 1)
+  const mode = threadDeleteMode({ hasAnyReply })
+  // 消せるのは本人の行だけ（他人の「運営が非表示」を「本人が削除」に塗り替えない）。
+  await softDeleteThread(db, threadId, mode, now, thread.userId)
 
-  return json({ ok: true, mode })
+  return boardJson({ ok: true, mode })
 }

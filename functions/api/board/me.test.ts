@@ -26,7 +26,8 @@ vi.mock('@clerk/backend', async () => {
 
 import { nameKeyOf } from '../../../src/core/board/name'
 import { DELETED_BODY_TEXT, HIDDEN_BODY_TEXT } from '../../../src/core/board/permission'
-import { BOARD_LIMITS } from '../../../src/core/board/types'
+import { BOARD_LIMITS, type BoardMeResponse } from '../../../src/core/board/types'
+import { BOARD_ACTIONS_PER_MINUTE } from './board-endpoint'
 import {
   type BoardDbFake,
   fakePost,
@@ -35,7 +36,6 @@ import {
   makeBoardDb,
   makeBoardEnv,
 } from './board-test-util'
-import type { BoardMeResponse } from './me'
 import { onRequestGet, onRequestPut } from './me'
 
 /** 固定時刻。分窓（60_000ms）の途中に置き、境界で揺れないようにする。 */
@@ -443,14 +443,35 @@ describe('PUT /api/board/me — レート制限', () => {
     expect(store.rates.has('user_1')).toBe(false)
   })
 
-  it('上限を超えたら 429。弾かれた回では名前を書き換えない', async () => {
+  it('分窓の上限を超えたら 429。弾かれた回では名前を書き換えない', async () => {
     const { store, env } = setup()
-    for (let i = 0; i < BOARD_LIMITS.postsPerHour; i++) {
+    for (let i = 0; i < BOARD_ACTIONS_PER_MINUTE; i++) {
       expect((await putName(env, `名前${i}`)).status).toBeLessThan(400)
     }
     const res = await putName(env, 'これは通らない')
     expect(res.status).toBe(429)
-    expect(store.profiles.get('user_1')?.display_name).toBe(`名前${BOARD_LIMITS.postsPerHour - 1}`)
+    expect(store.profiles.get('user_1')?.display_name).toBe(`名前${BOARD_ACTIONS_PER_MINUTE - 1}`)
+  })
+
+  it('改名は投稿の時間枠（10 件/時）を食わない', async () => {
+    const { store, env } = setup()
+    // 直近 1 時間に 10 件書いていても改名はできる（名前を直す道まで塞がない）。
+    for (let i = 0; i < BOARD_LIMITS.postsPerHour; i++) {
+      store.posts.set(
+        `old${i}`,
+        fakePost({ id: `old${i}`, thread_id: 't1', seq: i + 1, created_at: NOW - 1000 }),
+      )
+    }
+    // 初回登録なので 201（プロフィールが無い setup を使っている）。時間枠には触れない。
+    expect((await putName(env, 'あたらしい名前')).status).toBe(201)
+  })
+
+  it('レスポンスに private, no-store が付く（自分にしか意味がない中身）', async () => {
+    const { env } = setup()
+    expect((await get(env)).headers.get('cache-control')).toBe('private, no-store')
+    expect((await putName(env, 'あたらしい名前')).headers.get('cache-control')).toBe(
+      'private, no-store',
+    )
   })
 
   it('弾かれる入力（予約語）ではカウンタを進めない', async () => {

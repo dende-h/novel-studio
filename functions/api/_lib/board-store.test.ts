@@ -30,10 +30,12 @@ import {
   insertReport,
   insertVote,
   linkPost,
+  listOpenReports,
   listPostsByUser,
   listThreads,
   listVotes,
   markProfileDeleted,
+  markReportHandled,
   patchThread,
   readLinks,
   readPoll,
@@ -240,7 +242,7 @@ describe('削除と非表示', () => {
       now: 2000,
     })
 
-    await softDeleteThread(store.db, 't1', 'head-only', 5000)
+    await softDeleteThread(store.db, 't1', 'head-only', 5000, 'user_1')
 
     expect(store.posts.get('p1')?.deleted_at).toBe(5000)
     expect(store.posts.get('p2')?.deleted_at).toBe(0)
@@ -248,12 +250,56 @@ describe('削除と非表示', () => {
     expect(store.threads.get('t1')?.deleted_at).toBe(0)
   })
 
-  it('whole はスレ行と全投稿に deleted_at を入れる（行は消さない）', async () => {
+  it('whole はスレ行とスレ主の投稿に deleted_at を入れる（行は消さない）', async () => {
     const store = await seeded()
-    await softDeleteThread(store.db, 't1', 'whole', 5000)
+    await softDeleteThread(store.db, 't1', 'whole', 5000, 'user_1')
     expect(store.threads.get('t1')?.deleted_at).toBe(5000)
     expect(store.posts.get('p1')?.deleted_at).toBe(5000)
     expect(store.posts.size).toBe(1)
+  })
+
+  it('whole でも他人の投稿には deleted_at を刻まない（運営の非表示を塗り替えない）', async () => {
+    // 再現手順: staff が他人の返信を hide → スレ主がスレを削除。
+    // かつては reply_count が 0 に戻るせいで mode='whole' が選ばれ、
+    // `WHERE thread_id = ?` が他人の hidden 投稿にも deleted_at を刻んでいた。
+    // ここでは mode の判断（permission.ts）に頼らず、store が 'whole' を渡されても
+    // 他人の行に触れないことを直に固定する。
+    const store = await seeded()
+    await createPost(store.db, {
+      id: 'p2',
+      threadId: 't1',
+      userId: 'user_2',
+      body: '他人の返信',
+      now: 2000,
+    })
+    await setPostHidden(store.db, 'p2', 3000)
+
+    await softDeleteThread(store.db, 't1', 'whole', 5000, 'user_1')
+
+    // 他人の投稿は「運営が非表示」のまま。本人が消したことにしない。
+    expect(store.posts.get('p2')).toMatchObject({ hidden_at: 3000, deleted_at: 0 })
+    // staff が unhide すれば元通り読める＝運営の措置が可逆に保たれている。
+    await setPostHidden(store.db, 'p2', 0)
+    const detail = await readThreadDetail(store.db, 't1', 'user_2')
+    const p2 = (detail?.posts ?? []).find((p) => p.id === 'p2')
+    expect(toPost(p2 as NonNullable<typeof p2>).body).toBe('他人の返信')
+    // スレ主ぶん（スレ行と seq=1）はちゃんと落ちている。
+    expect(store.threads.get('t1')?.deleted_at).toBe(5000)
+    expect(store.posts.get('p1')?.deleted_at).toBe(5000)
+  })
+
+  it('head-only も本人の seq=1 だけ落とす。userId 無しの呼び出しは TypeError', async () => {
+    const store = await seeded()
+    // スレ主でない userId を渡しても、他人のスレの本文は落とせない。
+    await softDeleteThread(store.db, 't1', 'head-only', 5000, 'user_2')
+    expect(store.posts.get('p1')?.deleted_at).toBe(0)
+
+    // 旧シグネチャ（4 引数）のままの呼び出しは黙って全消しに倒れず、その場で止まる。
+    // functions/ は tsconfig の include に無く、pnpm typecheck が引数の欠落を見つけないため。
+    await expect(
+      softDeleteThread(store.db, 't1', 'whole', 5000, undefined as unknown as string),
+    ).rejects.toThrow(TypeError)
+    expect(store.threads.get('t1')?.deleted_at).toBe(0)
   })
 
   it('削除・非表示の投稿は本文を返さず伏字になる（§7-6）', async () => {
@@ -505,6 +551,30 @@ describe('通報', () => {
     expect(store.reports.get('r1')).toMatchObject({ post_id: 'p1', handled_at: 0 })
     expect(store.posts.get('p1')?.hidden_at).toBe(0)
   })
+
+  it('listOpenReports は未処理だけを古い順に返し、markReportHandled で消える', async () => {
+    const store = await seeded()
+    const add = (id: string, now: number) =>
+      insertReport(store.db, { id, postId: 'p1', userId: 'user_2', reason: `理由${id}`, now })
+    // わざと古い順と逆に積む（挿入順ではなく created_at 順で返ることを見る）。
+    await add('r3', 3000)
+    await add('r1', 1000)
+    await add('r2', 2000)
+
+    expect((await listOpenReports(store.db, 10)).map((r) => r.id)).toEqual(['r1', 'r2', 'r3'])
+    // limit は先頭（＝いちばん古い）から数える。
+    expect((await listOpenReports(store.db, 2)).map((r) => r.id)).toEqual(['r1', 'r2'])
+
+    expect(await markReportHandled(store.db, 'r1', 9000)).toBe(true)
+    expect(store.reports.get('r1')?.handled_at).toBe(9000)
+    expect((await listOpenReports(store.db, 10)).map((r) => r.id)).toEqual(['r2', 'r3'])
+
+    // 2 回目は false。「いつ運営が見たか」を後から書き換えない。
+    expect(await markReportHandled(store.db, 'r1', 9999)).toBe(false)
+    expect(store.reports.get('r1')?.handled_at).toBe(9000)
+    // 無い id も false（呼び出し側はこれで 404 を判断できる）。
+    expect(await markReportHandled(store.db, 'nope', 9999)).toBe(false)
+  })
 })
 
 describe('リンクカード', () => {
@@ -567,7 +637,7 @@ describe('レート制限の補助', () => {
     expect(await countThreadsSince(store.db, 'user_1', 2000)).toBe(1)
     expect(await countThreadsSince(store.db, 'user_2', 0)).toBe(0)
     // 削除しても数える（消して立て直せば上限を無視できる、を作らない）。
-    await softDeleteThread(store.db, 't2', 'whole', 7000)
+    await softDeleteThread(store.db, 't2', 'whole', 7000, 'user_1')
     expect(await countThreadsSince(store.db, 'user_1', 0)).toBe(2)
 
     expect(await countPostsSince(store.db, 'user_1', 0)).toBe(1)

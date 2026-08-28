@@ -26,7 +26,7 @@
 | **D-BOARD-KIND** | スレに**種別**を持たせる（`suggestion` 目安箱 / `request` 要望 / `bug` 不具合 / `chat` 雑談 / `intro` 自己紹介 / `promo` 作品紹介）。👍 と運営ステータスが付くのは `request` と `bug` だけ。 |
 | **D-BOARD-STATUS** | 要望・不具合スレに**運営ステータス**（受付 / 検討中 / 対応予定 / 実装済み / 今回は見送り）。**この機能が掲示板の心臓**で、「言えば直る」が目に見えることだけが次の投稿を呼ぶ。`実装済み` にはリリース版を添える＝掲示板がそのまま変更履歴のショーケースになる。 |
 | **D-BOARD-POLL** | アンケートはスレに 1 つまで（選択肢 8 まで・締切必須）。1 アカウント 1 票で、**投票するまで結果を見せない**（先に見せると票が引っ張られる）。運営が「次に作るならどれか」を聞く器。 |
-| **D-BOARD-DELETE** | 削除は論理削除（`deleted_at`）で、表示は「この投稿は削除されました」。**返信が付いたスレは本文だけ削除**し、返信は残す（スレ主の削除で他人の発言を巻き添えにしない）。返信 0 のスレだけ丸ごと消せる。完全削除は運営の purge に限る。 |
+| **D-BOARD-DELETE** | 削除は論理削除（`deleted_at`）で、表示は「この投稿は削除されました」。**返信が付いたスレは本文だけ削除**し、返信は残す（スレ主の削除で他人の発言を巻き添えにしない）。丸ごと消せるのは**返信が 1 件も「行として」無いスレだけ**で、削除済み・運営が非表示にした返信も「有る」に数える。生きている返信の数（`reply_count`）で判定してはいけない — 運営が返信を非表示にすると 0 に戻り、スレ主の削除が他人の投稿にまで `deleted_at` を刻んで、**運営の判断で伏せたものが本人の意思で消したものに化ける**（`unhide` しても戻らない）。完全削除は運営の purge に限る。 |
 | **D-BOARD-NOIMAGE** | **画像アップロードは作らない。R2 は使わない。** 無断転載・生成画像の権利・わいせつ物の判断を、個人事業の運営が即応で回すのは現実的でない。放置した 1 枚が刑事責任に触れうる点で、テキストとはリスクの質が違う。 |
 | **D-BOARD-LINK** | **外部リンクは貼れる。** 本文中の裸の URL を自動リンクにし、OGP カードで展開する。取得と表示の規則は §3。 |
 | **D-BOARD-OGPCACHE** | OGP は**投稿時に 1 回だけ取得**して D1 にキャッシュする（`board_links`）。閲覧のたびに外部へ取りにいかない＝閲覧者の数だけ相手サイトを叩く事故を構造的に防ぐ。失敗も negative cache に入れる。 |
@@ -34,8 +34,9 @@
 | **D-BOARD-WORKCARD** | grove の公開作品 URL は、汎用 OGP ではなく**専用の作品カード**（表紙・タイトル・あらすじ・作者）で展開する。自サイトの、作者登録とモデレーションを通った自分の作品なので、画像を出しても権利関係が最初から片付いている。宣伝スレで本当に欲しいのはこれ。 |
 | **D-BOARD-NODM** | **DM（個人間の直接連絡）は作らない。** 年齢確認できない利用者同士を 1 対 1 でつなぐと運営責任が跳ね上がる（利用規約 第3条・未成年者の利用と噛み合わない）。交流は公開の場だけに閉じる。 |
 | **D-BOARD-FORM** | Google フォームは**残す**。記名式にすると辛口の声が確実に減るので、非公開の受け皿を併存させる。ヘルプページは「みんなで話す＝掲示板／個別に伝える＝フォーム」の 2 択にする。 |
-| **D-BOARD-RATE** | レート制限は既存 `checkRateLimit`（`functions/api/_lib/rate-limit.ts`）を流用するが、**キーは `board:${userId}`** にする。あの表は `user_id` が主キーの 1 行で同期の 60 req/min を数えているので、素で渡すと掲示板の投稿が同期の枠を食う。スキーマ変更は要らない。 |
+| **D-BOARD-RATE** | レート制限は**二段構え**にする。(1) 設計の上限（投稿 10 件/時・スレ 3 本/日）は D1 の行を数えて判定する（`countPostsSince` / `countThreadsSince`。削除済みも数える＝消して書き直す抜け道を作らない）。(2) 連打と自動化を止める**分あたりの安全弁**は既存 `checkRateLimit`（`functions/api/_lib/rate-limit.ts`）を流用し、**キーは `board:${userId}`** にする。あの表は `user_id` が主キーの 1 行で同期の 60 req/min を数えているので、素で渡すと掲示板の投稿が同期の枠を食う。スキーマ変更は要らない。**`checkRateLimit` の窓は 60 秒なので、そこへ「10 件/時」の値を渡してはいけない**（10 件/分＝600 件/時になり、設計の 60 倍緩む）。安全弁は掲示板の全操作が同じ 1 行を共有するため、操作ごとに違う値を渡さず一律 60/分にする（👍 だけ 10 にすると、一覧で 10 回押した人がその 1 分間まったく書けなくなる）。**この数値を変えるときは `public/board-guidelines.html` も直す**。ガイドラインに「スレッドは1日に3本まで、書き込みは1時間に10件まで」と数字を書いて公表しているので、実装値だけ動かすと案内が嘘になる。 |
 | **D-BOARD-REPORT** | 通報は運営の作業キューに積むだけで、**件数による自動非表示はしない**（結託通報で正常な投稿を落とせてしまう）。運営は 1 日 1 回キューを見て、非表示・投稿禁止を手で打つ。 |
+| **D-BOARD-ACCOUNTDEL** | アカウント削除（purge）でも**掲示板の投稿は消さない**。`board_profiles` の行は残して `deleted_at` を立て、表示名を「退会したユーザー」（`board-store.ts` の `RETIRED_AUTHOR_NAME`）に伏せる。投稿まで消すと、返信の付いた会話が虫食いになって残った人の発言が読めなくなる。**`name_key` も残す**＝退会した人の名前を後から別人が名乗れない（なりすまし防止）。実装は `functions/api/_lib/purge.ts`。利用規約 第6条の2 と揃っている。 |
 
 ## 2. 画面と導線
 
@@ -103,7 +104,7 @@
 
 | テーブル | 中身 |
 |---|---|
-| `board_profiles` | `user_id`(PK) / `display_name` / `name_key`(UNIQUE・正規化名) / `role`(`member`\|`staff`) / `banned_until` / `created_at` / `updated_at` |
+| `board_profiles` | `user_id`(PK) / `display_name` / `name_key`(UNIQUE・正規化名) / `role`(`member`\|`staff`) / `banned_until` / `deleted_at`(退会＝D-BOARD-ACCOUNTDEL) / `created_at` / `updated_at` |
 | `board_threads` | `id`(PK) / `kind` / `title` / `user_id` / `status` / `status_note` / `shipped_version` / `pinned` / `locked` / `reply_count` / `like_count` / `created_at` / `bumped_at` / `deleted_at` / `hidden_at` |
 | `board_posts` | `id`(PK) / `thread_id` / `seq`(スレ内連番・**1 番がスレ本文**) / `user_id` / `body` / `reply_to`(返信先 seq・0 = なし) / `created_at` / `deleted_at` / `hidden_at` |
 | `board_likes` | `(thread_id, user_id)`(PK) / `created_at` |
@@ -111,10 +112,18 @@
 | `board_votes` | `(thread_id, user_id)`(PK) / `choices`(JSON 配列) / `created_at` |
 | `board_reports` | `id`(PK) / `post_id` / `user_id`(通報者) / `reason` / `created_at` / `handled_at` |
 | `board_links` | `url_key`(PK・正規化 URL の SHA-256 先頭 32 桁) / `url` / `host` / `kind`(`ogp`\|`work`\|`none`) / `title` / `description` / `image_url` / `image_ok` / `site_name` / `fetched_at` / `expires_at` / `blocked_at` |
+| `board_post_links` | `(post_id, url_key)`(PK) / `ord`(本文での出現順)。投稿とリンクカードの対応表。詳細の取得はこれを JOIN するだけで、閲覧時に本文を解析し直さない |
 
 索引は `board_threads (bumped_at DESC)` と `(kind, bumped_at DESC)`、
 `board_posts (thread_id, seq)` UNIQUE と `(user_id, created_at DESC)`、
-`board_reports (handled_at, created_at)`。
+`board_reports (handled_at, created_at)`、`board_post_links (post_id, ord)`。
+
+**`board_posts` に IP アドレスの列を作らない。** `public/privacy.html` で
+「掲示板の投稿について投稿時の IP アドレスは記録していません」と公表した時点で、これは
+利用者との契約になった。開示請求への回答（「通信の記録にあたる情報は保有していない」）も
+この一文に乗っている。荒らし対策で後から足したくなる欄だが、足した瞬間に公表内容が嘘になり、
+保有した以上は開示請求の対象にもなる。**足すならプライバシーポリシーの改定が先**で、
+順序を逆にしない。荒らしは `user_id`（記名式・D-BOARD-SIGNED）を鍵に投稿禁止で止める。
 
 **スレ本文を `board_posts` の `seq=1` に置く**のが要点。本文と返信で削除の意味づけが揃い、
 通報も投稿禁止も 1 つの経路で済む。
@@ -124,22 +133,45 @@
 
 ## 5. API（`functions/api/board/`）
 
+**対象はパスではなくクエリで指す。** Pages Functions のファイルルーティングに動的セグメント
+（`[id].ts`）を持ち込まず、`functions/api/board/` を 8 ファイル・1 階層に保つ。読む側の覚え方は
+**「対象そのものは `id`、親スレの指定は `thread`」** の 1 つだけで、エラーコードも
+`missing_id` / `missing_thread` がこれに対応する。
+
 | エンドポイント | 責務 |
 |---|---|
-| `GET /api/board/threads` | 一覧（`kind` / `cursor`）。未ログインでも読める |
-| `POST /api/board/threads` | スレ立て（本文＋任意で poll）。リンク取得もここで走る |
-| `GET /api/board/threads/:id` | スレ 1 本（投稿・poll・リンクカードを同梱） |
-| `PATCH /api/board/threads/:id` | ステータス／ピン／ロック（**staff のみ**） |
-| `DELETE /api/board/threads/:id` | 自分のスレ（返信 0 のときだけ丸ごと・それ以外は本文だけ） |
-| `POST /api/board/threads/:id/posts` | 返信 |
-| `DELETE /api/board/posts/:id` | 自分の投稿 |
-| `POST /api/board/threads/:id/like` | 👍 トグル（`request` / `bug` のみ） |
-| `POST /api/board/threads/:id/vote` | 投票（1 アカウント 1 票・締切後は 409） |
-| `POST /api/board/reports` | 通報 |
-| `GET /PUT /api/board/me` | 自分の表示名・自分の投稿一覧 |
-| `POST /api/board/moderate` | 非表示・投稿禁止（**staff のみ**） |
+| `GET /api/board/threads?kind=&cursor=` | 一覧。`{ threads, nextCursor }` を返す。未ログインでも読める |
+| `POST /api/board/threads` | スレ立て（本文＋任意で poll）。リンク取得もここで走る。**`pinned` は必ず 0**（ピン留めは staff の PATCH で後付け・§8.2） |
+| `GET /api/board/thread?id=` | スレ 1 本（`{ thread, posts, poll, canPost }`）。未ログインでも読める |
+| `PATCH /api/board/thread?id=` | ステータス／ピン／ロック（**staff のみ**）。更新後のスレを読み直して返す |
+| `DELETE /api/board/thread?id=` | 自分のスレ（返信が 1 件も無いときだけ丸ごと・それ以外は本文だけ） |
+| `POST /api/board/posts?thread=` | 返信 |
+| `DELETE /api/board/posts?id=` | 自分の投稿 |
+| `POST /api/board/like?thread=` | 👍 トグル（`request` / `bug` のみ） |
+| `POST /api/board/vote?thread=` | 投票（1 アカウント 1 票・締切後は 409） |
+| `POST /api/board/reports` | 通報（本文で `postId` を指す） |
+| `GET /PUT /api/board/me` | 自分の表示名・自分の投稿一覧（`BoardMeResponse`） |
+| `POST /api/board/moderate` | 投稿とスレの非表示・投稿禁止・リンク遮断（**staff のみ**） |
 
-`staff` は最初のうち `board_profiles.role` を SQL で 1 行更新して付ける（管理画面は作らない）。
+レスポンスの型は `src/core/board/types.ts` に置く（`ThreadListResponse` / `BoardMeResponse` /
+`MyBoardPost` ほか）。**画面から `functions/` を import しない**＝ workers-types が `src/` に混ざる。
+
+`POST /api/board/moderate` の `action` は `hide_post` / `unhide_post` / `hide_thread` /
+`unhide_thread` / `ban_user` / `unban_user` / `block_link`。**スレ単位の非表示が要る**のは、
+本文（seq=1）を伏せてもタイトルは `board_threads.title` に残り、一覧にも詳細にも出続けるため。
+タイトルは利用者が自由に書ける欄なので、ここを下ろせないと誹謗中傷や個人情報に対する
+運営の最後の手段が D1 への直接 UPDATE しか残らない。
+
+`ban_user` の対象は `userId` か `postId` のどちらかで指す。**どのレスポンスも `user_id` を
+返さない**（誰が書いたかを Clerk の ID で漏らさない）ので、画面から荒らしを止める導線は
+「その投稿の id を渡す」しか作れない。サーバが投稿から投稿者を引き、応答にも `user_id` は
+載せない。自分自身への ban は `postId` 経由でも拒否する。
+
+すべてのレスポンスに `Cache-Control: private, no-store` を付ける。`mine` / `liked` / `canPost` は
+閲覧者ごとに違うので、あとから CDN や `public/_headers` でキャッシュを足したときに
+他人の状態が配られてはいけない。
+
+`staff` は `board_profiles.role` を SQL で 1 行更新して付ける（管理画面は作らない。手順は §8）。
 
 ## 6. コードの置き場
 
@@ -150,7 +182,10 @@
 - `src/core/board/link.ts` — URL の正規化と取得可否の判定、OGP メタの抽出、`OGP_IMAGE_HOSTS`
 - `src/core/board/render.ts` — **掲示板用の描画**。`markdownToHtml` をそのまま使わない
   （あれは `parseInlines` へ委譲していて `[[用語]]`・ルビが生きるが、掲示板に用語の解決先はない）。
-  ブロック解釈は流用し、行内は「エスケープ＋強調＋自動リンク」だけに絞る
+  ブロック解釈は流用し、行内は「エスケープ＋強調＋自動リンク」だけに絞る。
+  **ブロック解釈を流用する以上、空行は空段落として残り、そのぶん行が空く。**
+  `public/board-guidelines.html` のネタバレ配慮（「そのあと一行あけておくと、読むかどうかを
+  相手が自分で選べます」）はこの挙動を前提に書いた案内なので、空行を畳む向きに変えない
 - `src/core/board/poll.ts` — 集計と開示判定
 - `src/core/board/permission.ts` — 誰が何を消せる／変えられるか
 - `functions/api/board/*.ts` ＋ `functions/api/_lib/board-*.ts`
@@ -164,6 +199,8 @@
 3. 予約語・正規化後に重複する表示名は 409。
 4. 自分以外の投稿・スレは削除できない（403）。staff は非表示にできるが削除はしない。
 5. **返信のあるスレを削除すると、本文だけ消えて返信は残る。**
+   運営が非表示にした返信・削除済みの返信しか無いスレも「返信あり」に数える
+   （スレ主の削除が他人の hidden 投稿に `deleted_at` を刻まない）。
 6. 削除・非表示の投稿は、一覧でも詳細でも本文を返さない（伏字を返す）。
 7. アンケートは投票前に票数を返さない。締切後の投票は 409。1 アカウント 1 票。
 8. OGP 取得は `https:` 以外・IP リテラル・非標準ポート・自オリジンを拒否し、
@@ -173,22 +210,94 @@
 10. 本文の描画で HTML は必ずエスケープされ、`[[用語]]`・ルビは効かず、裸の URL は
     `rel="nofollow ugc noopener noreferrer"` 付きのリンクになる。
 11. レート制限のキーが `board:` 接頭辞で、同期のカウンタと混ざらない。
+12. **1 時間に 10 件を超えて投稿できない**（`too_many_posts` で 429）。
+    削除した投稿も枠を使う＝消して書き直しても上限は戻らない。
+    分あたりの安全弁は別枠で、こちらは 60 秒の窓を数える（値の意味を取り違えない）。
+13. **投稿禁止中は 👍 も押せない**（403）。ロックされたスレには staff でも 👍 を足せない
+    （409）。ロックは「この話は終わり」の意思表示なので、票だけ動くのは筋が通らない。
+14. 退会した利用者の投稿は残り、投稿者名だけが「退会したユーザー」になる。
+    `name_key` は残るので、その名前を別人が名乗ろうとすると 409。
 
-## 8. コードの外の宿題（実装より先に片付ける）
+## 8. コードの外の宿題と運用手順
+
+### 8.0 公開前に片付ける文書（済）
 
 - **利用規約**（`public/terms.html`）に投稿コンテンツの条項が 1 つも無い。第6条（禁止事項）の
   あとに、投稿の権利は投稿者に残ること・運営がサービス上で利用できること・違反投稿を削除
-  および非表示にできること・発信者情報開示請求への対応、を足す。
+  および非表示にできること・発信者情報開示請求への対応、を足す。→ 第6条の2 として追加済み。
 - **プライバシーポリシー**（`public/privacy.html`）に、掲示板の投稿内容と `user_id` を保管する旨。
+  → 追加済み。あわせて**投稿時の IP アドレスは記録しないと公表した**（§4 の注記が契約になる）。
 - **掲示板ガイドライン**を 1 ページ（特定の作品・作者への評価はしない／個人情報と連絡先を
   書かない／宣伝は宣伝スレで）。文言は `toc-copy` スキルで書く。
-- 運営アカウントに `role='staff'` を入れる手順を `docs/requirement/05-sync-setup.md` と
-  同じ調子で残す。
+  → `public/board-guidelines.html`。**レート制限の数値と、空行が段落になる挙動を書いてある**
+  （D-BOARD-RATE・§6）。
 
 **順序を守る。規約を直してから機能を出す。**
 
+### 8.1 運営アカウントに `staff` を付ける
+
+管理画面は作らない。最初のうちは D1 に SQL を 1 行打つ。`board_profiles` の行は
+**初回の表示名設定でできる**ので、先に自分で掲示板に表示名を登録してから実行する
+（行が無いと `UPDATE` は 0 件で静かに終わる）。
+
+```
+wrangler d1 execute <DB名> --remote \
+  --command "UPDATE board_profiles SET role='staff', updated_at=<epoch ms> WHERE user_id='<Clerk の user_id>'"
+```
+
+`role` を戻すときは `'member'` を入れる。**`banned_until` や `deleted_at` を同じ文で触らない**
+（1 欄の更新で他の欄を落とさない）。付いたかどうかは `GET /api/board/me` の `profile.role` で確かめる。
+
+### 8.2 呼び水スレ 6 本を用意する
+
+§2 の 6 本は運営が普通に投稿して作る。**`POST /api/board/threads` は誰が呼んでも
+`pinned=0`** なので（スレ立てで自分を先頭に固定できてしまってはいけない）、
+目安箱の先頭固定は**立てたあとに staff で `PATCH /api/board/thread?id=` して付ける**。
+
+1. staff アカウントで表示名を登録する（8.1 より先）。
+2. 6 本を `POST /api/board/threads` で立てる。`request` の 1 本には `poll` を添える。
+3. 目安箱スレだけ `PATCH /api/board/thread?id=<id>` に `{"pinned":true}` を送る。
+4. 一覧の先頭に来ていること、種別の絞り込みで 6 本が散ることを画面で確認する。
+
+ステータス・ピン・ロックの staff 限定 UI は、この 6 本が無いと実機で確認できない。
+**リリース前にステージングでも同じ 6 本を作る。**
+
+### 8.3 非表示・投稿禁止・通報記録の purge
+
+利用規約とプライバシーポリシーで「必要がなくなったと判断した時点で完全に削除します」と
+約束しているので、**運営の判断で消す作業が定期的に要る**。当面は月 1 回、SQL で行う。
+
+- **通報記録**（`board_reports`）… 処理済み（`handled_at != 0`）で、対応から十分に時間が
+  経ったものを `DELETE`。未処理の行は残す。読む API はまだ無いので、キューを見るのも
+  `wrangler d1 execute` で `WHERE handled_at = 0 ORDER BY created_at` を引く（§9）。
+- **非表示にした投稿・スレ**（`hidden_at != 0`）… 争いが収まって復活の見込みが無いものを
+  `DELETE`。**`unhide` で戻せなくなる**ので、消す前に戻す判断を先に確定させる。
+- **投稿禁止**（`banned_until`）… 期限切れの行は放置してよい（過去の日時は判定に効かない）。
+  恒久的に消すのは `deleted_at`（退会）の経路だけ。
+
+**論理削除（`deleted_at`）の投稿を purge しない。** D-BOARD-DELETE のとおり本人の削除は
+「この投稿は削除されました」の表示までが仕様で、行を消すと返信の番号が飛ぶ。
+
 ## 9. 積み残し
 
+- **通報キューを読む API。** いまは書き込み専用で、運営は `wrangler d1 execute` で
+  `board_reports` を直に引く（§8.3）。索引（`handled_at, created_at`）は用意してある。
+  1 日 1 回の運用（D-BOARD-REPORT）が手で回らなくなったら、staff 限定の
+  `GET /api/board/reports` と「処理済みにする」操作を足す。
+- **レート制限の閾値が 2 か所に分かれている。** 時間あたりの上限（`postsPerHour` /
+  `threadsPerDay`）は `src/core/board/types.ts` の `BOARD_LIMITS` にあるが、分あたりの
+  安全弁（`BOARD_ACTIONS_PER_MINUTE`）は `functions/api/board/board-endpoint.ts` にある。
+  画面が「あと何件書けるか」を出すようになったら `BOARD_LIMITS` へ寄せる。
+  **どちらを動かすときも `public/board-guidelines.html` の数字と揃える**（D-BOARD-RATE）。
+- **投稿数の判定は原子的でない。** `countPostsSince` / `countThreadsSince` と INSERT の間に
+  隙間があるので、同時送信で 11 件目・4 本目が通りうる。「一晩で数千件」を止めるのが目的で、
+  分あたりの安全弁と 2 枚で受けている。厳密にするなら D1 のトランザクションが要る。
+- **名前解決で内部 IP を指すホスト**（`127.0.0.1.nip.io` のような形）は、IP リテラルにも
+  内部 TLD にも当たらず §3.1 の検査を通る。Cloudflare Workers の egress は private range へ
+  抜けにくいので実害は限定的だが、ホスト名のラベルに埋まった IPv4 パターンを拒否側へ足す。
+- **`OGP_IMAGE_HOSTS` にカクヨム・小説家になろう・pixiv がまだ無い。** §3.2 の「実際の
+  レスポンスを見て足す」運用どおりだが、宣伝スレ（`promo`）で真っ先に貼られる 3 サイトが
+  当面テキストカードに落ちる。
 - 全文検索。当面は `LIKE` で足りる。件数が増えたら考える。
 - 目安箱の一言を要望スレへ「昇格」させる運営操作。最初は手でスレを立て直せばよい。
 - 返信のメール通知。未読バッジで足りなかったら考える。

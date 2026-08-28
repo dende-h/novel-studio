@@ -662,31 +662,52 @@ export async function bumpThread(db: D1Database, threadId: string, now: number):
 
 /**
  * スレの論理削除（D-BOARD-DELETE）。**行は消さない。**
- *   'whole'     … 返信 0 のスレ。スレ行と全投稿に `deleted_at` を入れる
+ *   'whole'     … 返信 0 のスレ。スレ行とスレ主の投稿に `deleted_at` を入れる
  *   'head-only' … 返信があるスレ。**seq=1 の本文だけ**消し、他人の返信は残す（設計 §7-5）
+ *
+ * **触れるのは `ownerUserId` の行だけ**（3 本すべてに `AND user_id = ?` を付ける）。
+ * これは本人の削除であって運営の措置ではないので、他人の行に `deleted_at` を刻んではいけない。
+ * 以前は `WHERE thread_id = ? AND deleted_at = 0` で全投稿を落としていたため、
+ * staff が伏せた他人の返信（`hidden_at != 0`・`deleted_at = 0`）にも `deleted_at` が入り、
+ * `unhide_post` しても「この投稿は削除されました」のまま戻らなかった＝運営の措置が
+ * 不可逆になり、「消えたのが本人の意思か運営の判断か」を後から取り違えられた。
+ * どの mode でも規則は 1 つ「消していいのは本人の行だけ」に揃える。
  */
 export async function softDeleteThread(
   db: D1Database,
   threadId: string,
   mode: ThreadDeleteMode,
   now: number,
+  ownerUserId: string,
 ): Promise<void> {
+  // 呼び忘れの保険。`functions/` は tsconfig の include（`["src", ...]`）に入っていないので、
+  // 引数を増やしても `pnpm typecheck` は気づかない。undefined を黙って bind すると
+  // `user_id = NULL` で 1 行も当たらず、「削除したのに消えない」に化ける。止まるほうを選ぶ。
+  if (typeof ownerUserId !== 'string' || ownerUserId === '') {
+    throw new TypeError('softDeleteThread にはスレ主の userId を渡す（消せるのは本人の行だけ）')
+  }
   if (mode === 'head-only') {
     await db
       .prepare(
-        'UPDATE board_posts SET deleted_at = ? WHERE thread_id = ? AND seq = 1 AND deleted_at = 0',
+        `UPDATE board_posts SET deleted_at = ?
+         WHERE thread_id = ? AND user_id = ? AND seq = 1 AND deleted_at = 0`,
       )
-      .bind(now, threadId)
+      .bind(now, threadId, ownerUserId)
       .run()
     return
   }
   await db.batch([
     db
-      .prepare('UPDATE board_threads SET deleted_at = ? WHERE id = ? AND deleted_at = 0')
-      .bind(now, threadId),
+      .prepare(
+        'UPDATE board_threads SET deleted_at = ? WHERE id = ? AND user_id = ? AND deleted_at = 0',
+      )
+      .bind(now, threadId, ownerUserId),
     db
-      .prepare('UPDATE board_posts SET deleted_at = ? WHERE thread_id = ? AND deleted_at = 0')
-      .bind(now, threadId),
+      .prepare(
+        `UPDATE board_posts SET deleted_at = ?
+         WHERE thread_id = ? AND user_id = ? AND deleted_at = 0`,
+      )
+      .bind(now, threadId, ownerUserId),
   ])
 }
 
@@ -929,6 +950,8 @@ export async function insertVote(
 // 通報
 // ---------------------------------------------------------------------------
 
+const REPORT_COLS = 'id, post_id, user_id, reason, created_at, handled_at'
+
 /** 通報を運営のキューに積むだけ（件数による自動非表示はしない・D-BOARD-REPORT）。 */
 export async function insertReport(
   db: D1Database,
@@ -941,6 +964,46 @@ export async function insertReport(
     )
     .bind(input.id, input.postId, input.userId, input.reason, input.now)
     .run()
+}
+
+/**
+ * 未処理の通報を**古い順に**返す（D-BOARD-REPORT の「運営は 1 日 1 回キューを見る」）。
+ * 積むだけで読めないと運営作業が D1 への直クエリになるので、読み口をここに置く。
+ *
+ * 並びは `created_at ASC, id ASC`＝`idx_board_reports_open (handled_at, created_at)` に乗る形。
+ * 同時刻の通報でも順序が揺れないよう id を第 2 キーに入れる（キューを 2 回開いて
+ * 並びが変わると、上から順に片付ける運用が成り立たない）。
+ * **通報者（`user_id`）を含む生の行を返す**ので、公開レスポンスに素通しにしないこと
+ *（通報したことは相手にも第三者にも見せない・設計 §5）。
+ */
+export async function listOpenReports(db: D1Database, limit: number): Promise<ReportRow[]> {
+  const res = await db
+    .prepare(
+      `SELECT ${REPORT_COLS} FROM board_reports WHERE handled_at = 0
+       ORDER BY created_at ASC, id ASC
+       LIMIT ?`,
+    )
+    .bind(Math.max(1, Math.min(limit, 200)))
+    .all<ReportRow>()
+  return rowsOf<ReportRow>(res)
+}
+
+/**
+ * 通報を「見た」印を付けてキューから外す。処理できた（＝キューに在った）なら true。
+ * `AND handled_at = 0` を付けるのは、2 回目の処理で時刻を上書きしないため＝
+ * 「いつ運営が見たか」が後から書き換わらない（措置の記録を過去に遡って動かさない）。
+ * 存在しない id も false になるので、呼び出し側はこれで 404 を判断できる。
+ */
+export async function markReportHandled(
+  db: D1Database,
+  reportId: string,
+  now: number,
+): Promise<boolean> {
+  const res = await db
+    .prepare('UPDATE board_reports SET handled_at = ? WHERE id = ? AND handled_at = 0')
+    .bind(now, reportId)
+    .run()
+  return changesOf(res) > 0
 }
 
 // ---------------------------------------------------------------------------

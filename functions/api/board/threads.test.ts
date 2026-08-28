@@ -29,6 +29,7 @@ vi.mock('../_lib/board-link-fetch', () => links)
 import { urlKeyOf } from '../../../src/core/board/link'
 import { DELETED_BODY_TEXT } from '../../../src/core/board/permission'
 import { BOARD_LIMITS } from '../../../src/core/board/types'
+import { BOARD_ACTIONS_PER_MINUTE } from './board-endpoint'
 import {
   type BoardDbFake,
   fakePost,
@@ -43,6 +44,7 @@ import { onRequestGet, onRequestPost } from './threads'
 const NOW = 1_800_000_030_000
 const WINDOW = Math.floor(NOW / 60_000) * 60_000
 const DAY = 24 * 60 * 60 * 1000
+const HOUR = 60 * 60 * 1000
 
 type Handler = (c: { request: Request; env: unknown }) => Promise<Response>
 
@@ -114,6 +116,12 @@ describe('GET /api/board/threads', () => {
     const body = (await res.json()) as { threads: { id: string }[]; nextCursor: string | null }
     expect(body.threads.map((t) => t.id)).toEqual(['a', 'c', 'b'])
     expect(body.nextCursor).toBeNull()
+  })
+
+  it('レスポンスに private, no-store が付く（mine / liked は閲覧者ごとに違う）', async () => {
+    const res = await get(makeBoardEnv({ store: seeded() }))
+    // CDN や public/_headers でキャッシュを足したときに、他人の状態が配られないようにする。
+    expect(res.headers.get('cache-control')).toBe('private, no-store')
   })
 
   it('ピン留めが先頭、あとは最終書き込み順。抜粋と作者名が入る', async () => {
@@ -253,18 +261,46 @@ describe('POST /api/board/threads', () => {
     expect(store.rates.get('user_1')?.count).toBe(60)
   })
 
-  it('掲示板の枠を使い切っていたら 429', async () => {
+  it('分あたりの安全弁を使い切っていたら 429（連打を止める枠）', async () => {
     const { env, store } = setup()
     store.rates.set('board:user_1', {
       user_id: 'board:user_1',
       window_start: WINDOW,
-      count: BOARD_LIMITS.postsPerHour,
+      count: BOARD_ACTIONS_PER_MINUTE,
     })
 
     const res = await post(env, validInput)
     expect(res.status).toBe(429)
     expect(await res.json()).toEqual({ error: 'rate_limited' })
     expect(store.threads.size).toBe(0)
+  })
+
+  it('直近 1 時間の投稿が BOARD_LIMITS.postsPerHour 件あればスレも立てられない（D-BOARD-OPEN）', async () => {
+    const { env, store } = setup()
+    // スレ本文も返信も board_posts の 1 件。返信で枠を使い切った人は、続けてスレも立てられない
+    //（種類ごとに枠を分けると「スレなら書ける」抜け道になる）。
+    for (let i = 0; i < BOARD_LIMITS.postsPerHour; i++) {
+      store.posts.set(
+        `old${i}`,
+        fakePost({ id: `old${i}`, thread_id: 'other', seq: i + 1, created_at: NOW - 1000 }),
+      )
+    }
+
+    const res = await post(env, validInput)
+    expect(res.status).toBe(429)
+    expect(await res.json()).toEqual({ error: 'too_many_posts' })
+    expect(store.threads.size).toBe(0)
+    // 分窓の枠は消費しない（時間枠で断ったリクエストで連打の枠を食わない）。
+    expect(store.rates.has('board:user_1')).toBe(false)
+
+    // 1 時間より前の投稿は数えない。
+    for (let i = 0; i < BOARD_LIMITS.postsPerHour; i++) {
+      store.posts.set(
+        `old${i}`,
+        fakePost({ id: `old${i}`, thread_id: 'other', seq: i + 1, created_at: NOW - HOUR - 1 }),
+      )
+    }
+    expect((await post(env, validInput)).status).toBe(201)
   })
 
   it('スレ行と、seq=1 の本文を作る（§4）', async () => {

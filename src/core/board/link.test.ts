@@ -134,6 +134,54 @@ describe('canFetchUrl（不変条件 8）', () => {
     }
   })
 
+  it('ホスト名に IPv4 が埋まったワイルドカード DNS を拒否する', () => {
+    // どれも IP リテラルではないので「最後のラベルが数字」では捕まらないが、
+    // 名前解決の先は内部アドレス＝ SSRF としては IP リテラルと同じもの
+    for (const url of [
+      'https://127.0.0.1.nip.io/',
+      'https://10-0-0-1.sslip.io/',
+      'https://192.168.1.1.xip.io/',
+      'https://169.254.169.254.nip.io/latest/meta-data/',
+      // サービス名を知らなくてもパターンだけで止まる（表は追いつかない前提）
+      'https://127.0.0.1.example.com/',
+      'https://app-10-0-0-1.example.com/',
+    ]) {
+      expect(canFetchUrl(url), url).toEqual({ ok: false, reason: 'ip-hostname' })
+    }
+  })
+
+  it('数字が出ないワイルドカード DNS サービスも表で拒否する', () => {
+    // 7f000001 = 127.0.0.1 の 16 進表記。localtest.me は数字が 1 つも無い
+    for (const url of [
+      'https://7f000001.sslip.io/',
+      'https://app.localtest.me/',
+      'https://lvh.me/',
+    ]) {
+      expect(canFetchUrl(url), url).toEqual({ ok: false, reason: 'ip-hostname' })
+    }
+  })
+
+  it('正当なホストは巻き込まない（数字を含んでいても通す）', () => {
+    for (const url of [
+      'https://www.4chan.org/', // 数字始まりのラベルは数字だけではない
+      'https://2024-01-01-1.example.com/', // 2024 は 255 を超える＝オクテットに見えない
+      'https://1.2.3.example.com/', // オクテットに見えるのが 3 つまで
+      'https://v1-2-3-4.example.com/', // v1 は数字だけではない
+      'https://ja.wikipedia.org/wiki/1.2.3',
+    ]) {
+      expect(canFetchUrl(url).ok, url).toBe(true)
+    }
+  })
+
+  it('オクテットが 4 つ並ぶ正当なホストは、誤検知を承知で拒否する（安全側）', () => {
+    // 3.1.4.1 は実在の IP でもあり、名前として使われた場合と区別が付かない。
+    // 拒否側に倒し、必要なら申告で表に足す運用にする（link.ts のコメント参照）。
+    expect(canFetchUrl('https://3-1-4-1.example.com/')).toEqual({
+      ok: false,
+      reason: 'ip-hostname',
+    })
+  })
+
   it('443 以外の明示ポートを拒否する', () => {
     expect(canFetchUrl('https://example.com:8080/')).toEqual({ ok: false, reason: 'port' })
     expect(canFetchUrl('https://example.com:443/')).toEqual({

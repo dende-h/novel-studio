@@ -263,6 +263,63 @@ export const BoardThreadDetailSchema = z.object({
 export type BoardThreadDetail = z.infer<typeof BoardThreadDetailSchema>
 
 // ---------------------------------------------------------------------------
+// API のレスポンス（封筒）
+// ---------------------------------------------------------------------------
+
+/**
+ * `GET /api/board/threads` が返す封筒。
+ * `nextCursor` が null なら次のページは無い（空配列と「終わり」を取り違えないため、
+ * 続きの有無はカーソルの有無だけで表す）。
+ *
+ * 画面（`src/ui/`）は `functions/` を import できない（workers-types が src に混ざる）ので、
+ * レスポンスの形は必ずここに置く。
+ */
+export const ThreadListResponseSchema = z.object({
+  threads: z.array(BoardThreadSchema),
+  nextCursor: z.string().nullable().default(null),
+})
+export type ThreadListResponse = z.infer<typeof ThreadListResponseSchema>
+
+/**
+ * 「自分の書き込み」1 件（`GET/PUT /api/board/me`）。
+ * **本文は抜粋だけ**（一覧の 1 行に出すもので、読むのはスレを開いてから）。
+ * 削除・非表示のときは抜粋そのものが伏字に置き換わる（§7-6）。
+ *
+ * `threadKind` の `''` は「スレ行が引けなかった」＝種別が分からない状態。
+ * 種別の enum に空文字を混ぜず、ここでだけ union にしているのは、
+ * 「掲示板の種別」と「表示できる情報が欠けている」を別のものとして扱うため。
+ */
+export const MyBoardPostSchema = z.object({
+  id: z.string(),
+  threadId: z.string(),
+  /** 置かれているスレの見出し（スレ行が引けなければ空） */
+  threadTitle: z.string().default(''),
+  threadKind: z.union([kindSchema, z.literal('')]).default(''),
+  /** スレ内の連番。1 は自分が立てたスレの本文 */
+  seq: z.number(),
+  /** 本文の抜粋。削除・非表示のときは伏字（§7-6） */
+  excerpt: z.string().default(''),
+  replyTo: z.number().default(0),
+  deleted: z.boolean().default(false),
+  hidden: z.boolean().default(false),
+  createdAt: z.number(),
+})
+export type MyBoardPost = z.infer<typeof MyBoardPostSchema>
+
+/**
+ * `GET/PUT /api/board/me` が返す形。
+ * プロフィール未登録なら `profile` は null（画面は表示名の設定ダイアログを出す）。
+ * `banned` は `profile.bannedUntil` と現在時刻の比較を画面に再実装させないための結論。
+ */
+export const BoardMeResponseSchema = z.object({
+  profile: BoardProfileSchema.nullable().default(null),
+  /** いま投稿禁止中か */
+  banned: z.boolean().default(false),
+  posts: z.array(MyBoardPostSchema).default([]),
+})
+export type BoardMeResponse = z.infer<typeof BoardMeResponseSchema>
+
+// ---------------------------------------------------------------------------
 // API の入力（サーバがこれで parse して 400 を返す）
 // ---------------------------------------------------------------------------
 
@@ -319,13 +376,46 @@ export const ThreadPatchInputSchema = z.object({
 })
 export type ThreadPatchInput = z.infer<typeof ThreadPatchInputSchema>
 
-/** 運営の措置（非表示・投稿禁止）。 */
-export const ModerateInputSchema = z.object({
-  action: z.enum(['hide_post', 'unhide_post', 'ban_user', 'unban_user', 'block_link']),
-  postId: z.string().optional(),
-  userId: z.string().optional(),
-  url: z.string().optional(),
-  /** 投稿禁止の期限（epoch ms） */
-  bannedUntil: z.number().optional(),
-})
+/**
+ * 運営の措置（非表示・投稿禁止）。**削除系の action は置かない**（§7-4。
+ * 消えたのが本人の意思か運営の判断かを取り違えないため。詳しくは
+ * `functions/api/board/moderate.ts` の冒頭）。
+ *
+ * `hide_thread` / `unhide_thread` があるのは、**タイトルは投稿本文とは別の欄**だから。
+ * スレ本文（seq=1）を `hide_post` で伏せても、タイトルは `board_threads.title` に残り、
+ * 一覧にも詳細にも出続ける。タイトルは利用者が 80 字自由に書ける欄なので、
+ * 誹謗中傷や個人情報を書かれたときに一覧から下ろす手段が要る（`board_threads.hidden_at`）。
+ */
+export const ModerateInputSchema = z
+  .object({
+    action: z.enum([
+      'hide_post',
+      'unhide_post',
+      'hide_thread',
+      'unhide_thread',
+      'ban_user',
+      'unban_user',
+      'block_link',
+    ]),
+    postId: z.string().optional(),
+    /** `hide_thread` / `unhide_thread` の対象 */
+    threadId: z.string().optional(),
+    userId: z.string().optional(),
+    url: z.string().optional(),
+    /** 投稿禁止の期限（epoch ms） */
+    bannedUntil: z.number().optional(),
+  })
+  .refine(
+    (input) => input.action !== 'ban_user' || Boolean(input.userId?.trim() || input.postId?.trim()),
+    {
+      // 掲示板 API はどのレスポンスにも user_id を出さない（設計どおり・出すと記名式の
+      // 表示名と Clerk の ID が結びつく）。その結果、画面から荒らしを指す手段が無く、
+      // ban が SQL の直接実行でしか打てなくなっていた。そこで **投稿を指せば足りる**
+      // 形にする（サーバが postId → 投稿者を引く）。userId を直接渡す道は、
+      // 通報キューを SQL で見た運営がそのまま打てるように残す。
+      // どちらも無ければ「誰を止めるのか」が決まらないので入口で弾く。
+      message: 'ban_user には userId か postId のどちらかが要る',
+      path: ['userId'],
+    },
+  )
 export type ModerateInput = z.infer<typeof ModerateInputSchema>

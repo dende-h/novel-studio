@@ -160,12 +160,33 @@ export function canDeleteThread(actor: Actor, thread: ThreadLike): PermissionRes
 }
 
 /**
- * スレの消し方（D-BOARD-DELETE / §7-5）。
- * 返信が 1 件でも付いていたら `head-only` ＝ 本文（seq=1）だけ伏せ、返信は残す。
- * スレ主の削除で他人の発言を巻き添えにしないため、返信 0 のときだけ丸ごと消せる。
+ * スレの消し方を決めるのに要る事実。
+ *
+ * **「生きている返信の数」（`ThreadLike.replyCount`）ではなく「行として在るか」を渡す。**
+ * 一覧に出す `replyCount` は削除済み・非表示を除いた数なので、運営が返信を 1 件伏せると
+ * 0 に戻る。その 0 を見て `whole` を選ぶと、スレ主の削除が他人の hidden 投稿にまで
+ * `deleted_at` を刻み、`unhide_post` しても伏字が「本人が削除」のまま戻らなくなる
+ *（＝運営の措置の可逆性が壊れる）。数えるのは seq>1 の行の有無だけにする。
  */
-export function threadDeleteMode(thread: Pick<ThreadLike, 'replyCount'>): ThreadDeleteMode {
-  return thread.replyCount > 0 ? 'head-only' : 'whole'
+export type ThreadDeleteFacts = {
+  /** seq>1 の投稿が 1 件でも在るか。**削除済み・非表示も数に入れる** */
+  hasAnyReply: boolean
+}
+
+/**
+ * スレの消し方（D-BOARD-DELETE / §7-5）。
+ * 返信が 1 件でも「在った」なら `head-only` ＝ 本文（seq=1）だけ伏せ、返信は残す。
+ * スレ主の削除で他人の発言を巻き添えにしないため、返信が 1 件も無いときだけ丸ごと消せる。
+ */
+export function threadDeleteMode(facts: ThreadDeleteFacts): ThreadDeleteMode {
+  // 呼び忘れの保険。`functions/` は tsconfig の include に入っておらず（`include: ["src"]`）、
+  // 引数の形を変えても `pnpm typecheck` は気づかない。ここで黙って undefined を受けると
+  // 「返信あり」が `whole` に倒れ、**他人の投稿に deleted_at を刻む**ほうへ落ちる。
+  // 壊れるなら 500 で止まるほうを選ぶ。
+  if (typeof facts?.hasAnyReply !== 'boolean') {
+    throw new TypeError('threadDeleteMode には { hasAnyReply } を渡す（seq>1 の行の有無）')
+  }
+  return facts.hasAnyReply ? 'head-only' : 'whole'
 }
 
 /** 運営操作（非表示・投稿禁止）ができるか。staff だけ。 */
@@ -184,10 +205,31 @@ export function canSetStatus(actor: Actor, thread: ThreadLike): PermissionResult
   return ALLOW
 }
 
-/** 👍 を押せるか。ログイン済みかつ、種別が request / bug のときだけ。 */
-export function canLike(actor: Actor, thread: ThreadLike): PermissionResult {
+/**
+ * 👍 を押せるか。ログイン済みかつ、種別が request / bug のときだけ。
+ *
+ * **投稿禁止中は押せない**（`canPost` と同じ判定を通す）。👍 は D-BOARD-STATUS の
+ * 「次に何を作るか」を決める票そのものなので、書き込みを止めた相手に票だけ動かせると、
+ * 止めた意味が無いどころか順位付けが汚れる。
+ *
+ * **ロック中も押せない。** ロックは「この話は終わり」という運営の意思表示で、
+ * 締めたあとに票数だけ動くと、締めた時点の数字を根拠にできなくなる。
+ * ロック中に書けるのは staff だけ（`canPost`）だが、票は staff でも足さない
+ *（運営が自分で順位を動かせる形にしない）。
+ *
+ * 判定の順は `canPost` に揃える（unauthorized → banned → gone → locked → 種別）。
+ * 揃えておくと「返信は 403 なのに 👍 は 200」という食い違いが起きない。
+ */
+export function canLike(actor: Actor, thread: ThreadLike, now: number): PermissionResult {
+  // `now` の渡し忘れは投稿禁止の判定が丸ごと効かなくなる（`bannedUntil > undefined` は
+  // 常に false）。`functions/` は typecheck の対象外なので、ここで気づける形にしておく。
+  if (!Number.isFinite(now)) {
+    throw new TypeError('canLike には now（epoch ms）を渡す — 投稿禁止の期限を判定するため')
+  }
   if (actor.userId === null) return deny('unauthorized')
+  if (isBanned(actor, now)) return deny('banned')
   if (!isAlive(thread)) return deny('gone')
+  if (thread.locked) return deny('locked')
   if (!KINDS_WITH_STATUS.includes(thread.kind)) return deny('unsupported-kind')
   return ALLOW
 }
