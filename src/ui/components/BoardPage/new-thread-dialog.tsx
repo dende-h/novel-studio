@@ -62,10 +62,18 @@ const POLL_ERROR_TEXT: Record<PollInputError, string> = {
 const DAY = 24 * 60 * 60 * 1000
 
 /**
- * 文字数。`slice` や `.length` ではなくコードポイントで数える
- * （`BOARD_LIMITS` はコードポイント単位・絵文字を半分に割って数えない）。
+ * 文字数。**サーバと同じ数え方（`.length` ＝ UTF-16 の符号単位）で数える。**
+ *
+ * 上限を実際に判定するのは `CreateThreadInputSchema` の `z.string().max()` で、Zod は
+ * `String.prototype.length` を見る＝絵文字 1 つを 2 と数える（`'😀😀'` は `max(2)` で落ちる）。
+ * ここをコードポイントで数えると、カウンタが「4000/4000」と出ている本文が
+ * サーバに `bad_request` で弾かれ、**書いた人には理由の分からない失敗**になる。
+ * 数え方を緩いほうへずらさず、弾かれる側に揃える。
+ *
+ * 入力欄の `maxLength` も同じ単位（HTML の `maxlength` は符号単位）なので、
+ * 「打てる長さ」「カウンタ」「サーバの判定」の 3 つが一致する。
  */
-const charCount = (text: string): number => [...text].length
+const charCount = (text: string): number => text.length
 
 /** `<input type="datetime-local">` が読む形（ローカル時刻の `YYYY-MM-DDTHH:mm`）。 */
 function toLocalInputValue(ms: number): string {
@@ -271,6 +279,11 @@ export function NewThreadDialog({ open, onOpenChange, onSubmit }: NewThreadDialo
             e.preventDefault()
             void submit()
           }}
+          // ブラウザ標準の検証を切る。`maxLength` を付けた欄は、値が上限を超えていると
+          // 標準の検証が **submit イベントごと握りつぶす**（IME の確定などで上限超えの値が
+          // 入り込むと、押しても何も起きない画面になる）。理由の文言はこの画面が
+          // 自分の言葉で出すので、標準の吹き出しに割り込ませない。
+          noValidate
           className="flex min-h-0 flex-1 flex-col gap-4"
         >
           <DialogBody>
@@ -307,10 +320,13 @@ export function NewThreadDialog({ open, onOpenChange, onSubmit }: NewThreadDialo
                 <Label htmlFor={titleId}>タイトル</Label>
                 <FieldCount count={titleCount} max={BOARD_LIMITS.title} />
               </div>
+              {/* そもそも上限を超えて打てないようにする。数える単位は charCount と同じ
+                  （前後の空白は送信時に落ちるので、trim 後がここより長くなることはない）。 */}
               <Input
                 id={titleId}
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
+                maxLength={BOARD_LIMITS.title}
                 aria-invalid={showError(titleError) !== null}
               />
               <FieldError message={showError(titleError)} />
@@ -327,6 +343,7 @@ export function NewThreadDialog({ open, onOpenChange, onSubmit }: NewThreadDialo
                 value={body}
                 onChange={(e) => setBody(e.target.value)}
                 rows={8}
+                maxLength={BOARD_LIMITS.body}
                 aria-invalid={showError(bodyError) !== null}
               />
               <FieldError message={showError(bodyError)} />
@@ -360,6 +377,7 @@ export function NewThreadDialog({ open, onOpenChange, onSubmit }: NewThreadDialo
                       id={questionId}
                       value={question}
                       onChange={(e) => setQuestion(e.target.value)}
+                      maxLength={BOARD_LIMITS.pollQuestion}
                     />
                   </div>
 
@@ -370,9 +388,13 @@ export function NewThreadDialog({ open, onOpenChange, onSubmit }: NewThreadDialo
                     <ul className="space-y-2">
                       {options.map((option, index) => (
                         <li key={option.id} className="flex items-center gap-2">
+                          {/* 選択肢には文字数カウンタが無い＝超えたことに気づける場所が
+                              `maxLength` しかない。手元の `validatePollInput` も長さは見ないので、
+                              ここで止めないとサーバの `bad_poll` まで往復する。 */}
                           <Input
                             value={option.text}
                             onChange={(e) => setOptionText(option.id, e.target.value)}
+                            maxLength={BOARD_LIMITS.pollOption}
                             aria-label={`選択肢 ${index + 1}`}
                           />
                           <Button

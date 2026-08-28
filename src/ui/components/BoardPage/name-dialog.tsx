@@ -36,9 +36,12 @@ export interface NameDialogProps {
  *
  * この画面が背負っているのは 3 つ。
  *
- * 1. **記名式であることを、名前を決めるその場で伝える。** 掲示板はログイン必須の記名式
- *    （D-BOARD-SIGNED）で、ここで決めた名前が過去の投稿にも出る。あとから「実名のつもりは
+ * 1. **記名式であること、そして公開範囲を、名前を決めるその場で伝える。** 掲示板は
+ *    ログイン必須の記名式（D-BOARD-SIGNED）で、書いたものは**ログインしていない人を含め
+ *    誰でも読める**。ここで決めた名前は過去の投稿にも出る。あとから「実名のつもりは
  *    なかった」と気づく経路を作らないために、書き込む前の画面で言い切る。
+ *    利用規約・プライバシーポリシー・掲示板ガイドラインと**同じ強さの言い方に揃える**
+ *    （画面でだけ弱めると、同意したつもりの範囲が文書とずれる）。
  * 2. **入力のたびに `validateDisplayName` で確かめ、理由ごとに違う文言を出す。**
  *    送信して初めて弾かれると、予約語や長さの当たりを 1 往復ずつ試すことになる。
  * 3. **サーバの重複（409 `duplicate`）も同じ場所に出す。** 名前の衝突は手元では判定できず
@@ -112,7 +115,12 @@ export function NameDialog({ open, onOpenChange, initialName = '', onSubmit }: N
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle className="font-serif text-primary">表示名を決める</DialogTitle>
-          <DialogDescription>掲示板では、この名前で表示されます。</DialogDescription>
+          {/* 公開範囲は、名前を決めるこの場でいちばん強く言う。文言は
+              `public/board-guidelines.html` §1 と `public/privacy.html` の掲示板の項に揃える
+              （3 か所で言うことが違うと、どれが本当か読み手には確かめようがない）。 */}
+          <DialogDescription>
+            掲示板に書いたものは、ログインしていない人を含め、誰でも読めます。ここで決めた名前が、書き込みと一緒に表示されます。
+          </DialogDescription>
         </DialogHeader>
         <form
           onSubmit={(e) => {
@@ -148,7 +156,7 @@ export function NameDialog({ open, onOpenChange, initialName = '', onSubmit }: N
                 </p>
               ) : (
                 <p className="text-on-surface-variant text-sm">
-                  あとから変えられます。変えると、これまでの書き込みの名前も新しい名前になります。
+                  本名など、知られたくないものは使わないでください。あとから変えられます。変えると、これまでの書き込みの名前も新しい名前になります。
                 </p>
               )}
             </div>

@@ -1,4 +1,13 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import {
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from 'react'
 import { IdbStore } from '@/core/storage/idbStore'
 import { SyncLostRepository } from '@/core/sync/syncLostRepository'
 import { getMcpTokenStatus } from './_api/mcp'
@@ -35,6 +44,49 @@ import type { EditorStore } from './store/editorStore'
 import { createDefaultSyncService } from './sync/sync-service'
 import { announceSyncApplied, withSyncTouch } from './sync/sync-touch'
 
+/**
+ * 掲示板（一覧・スレッド詳細）は入口から遠く、初回描画には要らない画面なので、
+ * 構想の道具（App.tsx のマインドマップ等）と同じく遅延ロードして初期バンドルから外す。
+ * どちらも名前付き export なので、`default` に畳んでから `lazy` へ渡す。
+ */
+const BoardPage = lazy(() =>
+  import('./components/BoardPage/board-page').then((m) => ({ default: m.BoardPage })),
+)
+const ThreadView = lazy(() =>
+  import('./components/BoardPage/thread-view').then((m) => ({ default: m.ThreadView })),
+)
+
+/** 掲示板スレッド詳細のハッシュ接頭辞（`#/board/<id>`）。 */
+const BOARD_THREAD_PREFIX = '/board/'
+
+/**
+ * `/board/<id>` からスレッド id を取り出す。一覧（`/board`）と id が空の `/board/` は null。
+ * `decodeURIComponent` は壊れた `%` で例外を投げるので、そのときは素の文字列を id として扱う
+ *（サーバが知らない id なら「見つかりません」で済み、白画面にはしない）。
+ */
+function boardThreadId(route: string): string | null {
+  if (!route.startsWith(BOARD_THREAD_PREFIX)) return null
+  const raw = route.slice(BOARD_THREAD_PREFIX.length)
+  if (raw === '') return null
+  try {
+    return decodeURIComponent(raw)
+  } catch {
+    return raw
+  }
+}
+
+/**
+ * 遅延ロード中のつなぎ。掲示板はサイドバーごと遅延させるため、画面いっぱいの受け皿を出す。
+ * 部分的に置くと、読み込みの一瞬だけ左端に文字が貼りついて見える。
+ */
+function PageLoading() {
+  return (
+    <div className="flex min-h-dvh items-center justify-center bg-background text-on-surface-variant text-sm">
+      読み込み中…
+    </div>
+  )
+}
+
 interface RootProps {
   store: EditorStore
 }
@@ -54,6 +106,13 @@ export function Root({ store }: RootProps) {
     isSignedIn,
   } = useAuth()
   const { show } = useToast()
+  // 掲示板の表示名の初期候補に使うローカルのペンネーム（D-BOARD-NAME は「提案するだけ」）。
+  // **文字列 1 つだけを購読する**＝ペンネームが変わったときにしか Root は描き直さない。
+  // スナップショット全体を購読すると、執筆中の 1 文字ごとに Root からアプリ全体が再描画される。
+  const penName = useSyncExternalStore(
+    store.subscribe,
+    () => store.getSnapshot().profile.penName ?? '',
+  )
   // 初回のみ保存の仕組みを一度だけ説明する（思想の共有）。立てたら再表示しない。
   const [onboarded, markOnboarded] = useLocalFlag('ns-onboarded')
   const getTokenRef = useRef(getToken)
@@ -263,6 +322,7 @@ export function Root({ store }: RootProps) {
         repo={activityRepo}
         onNavigateCollection={() => navigate('/')}
         onNavigateIdeas={() => navigate('/ideas')}
+        onNavigateBoard={() => navigate('/board')}
         onNavigateSettings={() => navigate('/settings')}
         onNavigateHelp={() => navigate('/help')}
       />
@@ -288,9 +348,44 @@ export function Root({ store }: RootProps) {
         repo={ideaRepo}
         onNavigateCollection={() => navigate('/')}
         onNavigateActivity={() => navigate('/activity')}
+        onNavigateBoard={() => navigate('/board')}
         onNavigateSettings={() => navigate('/settings')}
         onNavigateHelp={() => navigate('/help')}
       />
+    )
+  }
+
+  // 掲示板（`#/board` 一覧・`#/board/<threadId>` 詳細）。**ログインなしでも読める**ので
+  // 認証のガードは置かない（書き込みの手前で画面側がログイン・表示名を要求する）。
+  if (route === '/board' || route.startsWith(BOARD_THREAD_PREFIX)) {
+    const threadId = boardThreadId(route)
+    return (
+      <Suspense fallback={<PageLoading />}>
+        {threadId === null ? (
+          <BoardPage
+            onNavigateCollection={() => navigate('/')}
+            onNavigateActivity={() => navigate('/activity')}
+            onNavigateIdeas={() => navigate('/ideas')}
+            onNavigateBoard={() => navigate('/board')}
+            onNavigateSettings={() => navigate('/settings')}
+            onNavigateHelp={() => navigate('/help')}
+            onOpenThread={(id) => navigate(`${BOARD_THREAD_PREFIX}${encodeURIComponent(id)}`)}
+            initialName={penName}
+          />
+        ) : (
+          <ThreadView
+            threadId={threadId}
+            onBack={() => navigate('/board')}
+            onNavigateCollection={() => navigate('/')}
+            onNavigateActivity={() => navigate('/activity')}
+            onNavigateIdeas={() => navigate('/ideas')}
+            onNavigateBoard={() => navigate('/board')}
+            onNavigateSettings={() => navigate('/settings')}
+            onNavigateHelp={() => navigate('/help')}
+            navActive="board"
+          />
+        )}
+      </Suspense>
     )
   }
 
@@ -302,6 +397,7 @@ export function Root({ store }: RootProps) {
           onExit={() => navigate('/')}
           onNavigatePublish={() => navigate('/publish')}
           onNavigateActivity={() => navigate('/activity')}
+          onNavigateBoard={() => navigate('/board')}
           onNavigateSettings={() => navigate('/settings')}
           onNavigateHelp={() => navigate('/help')}
           activityRepo={activityRepo}
@@ -323,6 +419,7 @@ export function Root({ store }: RootProps) {
           syncLostCount={syncLostCount}
           onOpenActivity={() => navigate('/activity')}
           onOpenIdeas={() => navigate('/ideas')}
+          onNavigateBoard={() => navigate('/board')}
           onOpenSettings={() => navigate('/settings')}
           onOpenHelp={() => navigate('/help')}
           localBackup={localBackup}

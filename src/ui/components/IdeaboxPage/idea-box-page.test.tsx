@@ -54,3 +54,23 @@ describe('IdeaboxPage（ネタ帳）', () => {
     await waitFor(() => expect(screen.queryByText('消すネタ')).not.toBeInTheDocument())
   })
 })
+
+describe('IdeaboxPage の掲示板導線', () => {
+  it('onNavigateBoard を渡すとサイドバーに「掲示板」が出て、押すと呼ばれる', async () => {
+    const onNavigateBoard = vi.fn()
+    render(
+      <IdeaboxPage
+        repo={makeRepo()}
+        onNavigateCollection={() => {}}
+        onNavigateBoard={onNavigateBoard}
+      />,
+    )
+    fireEvent.click(await screen.findByRole('button', { name: '掲示板' }))
+    expect(onNavigateBoard).toHaveBeenCalled()
+  })
+
+  it('onNavigateBoard を渡さなければ行を出さない（行き先の無い行を作らない）', () => {
+    render(<IdeaboxPage repo={makeRepo()} onNavigateCollection={() => {}} />)
+    expect(screen.queryByRole('button', { name: '掲示板' })).toBeNull()
+  })
+})

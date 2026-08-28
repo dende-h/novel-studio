@@ -217,3 +217,79 @@ describe('PollCard — 投票', () => {
     expect(onVote).not.toHaveBeenCalled()
   })
 })
+
+describe('PollCard — 投票できない理由を出す', () => {
+  it('未ログインなら、そう書いてログインへの導線を出す', () => {
+    const onSignIn = vi.fn()
+    render(
+      <PollCard
+        poll={pollOf()}
+        onVote={noop}
+        disabled
+        blockedReason="signed_out"
+        onSignIn={onSignIn}
+      />,
+    )
+    expect(screen.getByText(/投票するには、ログインが必要です/)).toBeInTheDocument()
+
+    // 導線は無効化の外側。理由と一緒に押せる形で出ていないと、次の一手が無い
+    const button = screen.getByRole('button', { name: 'ログイン' })
+    expect(button).toBeEnabled()
+    fireEvent.click(button)
+    expect(onSignIn).toHaveBeenCalledTimes(1)
+  })
+
+  it('投稿禁止なら、いつまで投票できないかを出す', () => {
+    const until = new Date(2026, 8, 3, 9, 5).getTime()
+    render(
+      <PollCard
+        poll={pollOf()}
+        onVote={noop}
+        disabled
+        blockedReason="banned"
+        bannedUntil={until}
+      />,
+    )
+    expect(
+      screen.getByText('運営の判断で、2026年9月3日 09:05 まで投票できません。'),
+    ).toBeInTheDocument()
+    // 投稿禁止にログインの導線を出さない（押しても行き先が無い）
+    expect(screen.queryByRole('button', { name: 'ログイン' })).toBeNull()
+  })
+
+  it('投稿禁止の期限が分からなければ、期限を作らずに理由だけ出す', () => {
+    render(<PollCard poll={pollOf()} onVote={noop} disabled blockedReason="banned" />)
+    expect(screen.getByText('運営の判断で、いまは投票できません。')).toBeInTheDocument()
+  })
+
+  it('理由を渡されなくても、黙って無効化しない', () => {
+    render(<PollCard poll={pollOf()} onVote={noop} disabled />)
+    expect(screen.getByText('いまは投票できません。')).toBeInTheDocument()
+  })
+
+  it('投票できるあいだは、理由を出さない', () => {
+    const { container } = render(<PollCard poll={pollOf()} onVote={noop} />)
+    expect(container.textContent ?? '').not.toContain('投票できません')
+    expect(screen.queryByRole('button', { name: 'ログイン' })).toBeNull()
+  })
+
+  it('送信中は理由を出さない（無効化の理由が投票そのものだから）', () => {
+    const onVote = vi.fn(() => new Promise<void>(() => {}))
+    const { container } = render(<PollCard poll={pollOf()} onVote={onVote} />)
+    fireEvent.click(container.querySelector('input') as HTMLInputElement)
+    fireEvent.click(screen.getByRole('button', { name: '投票する' }))
+    expect(container.textContent ?? '').not.toContain('投票できません')
+  })
+
+  it('理由は選択肢を読み上げたときにも届く（fieldset と aria で結ぶ）', () => {
+    const { container } = render(
+      <PollCard poll={pollOf()} onVote={noop} disabled blockedReason="signed_out" />,
+    )
+    const fieldset = container.querySelector('fieldset') as HTMLFieldSetElement
+    const describedBy = fieldset.getAttribute('aria-describedby')
+    expect(describedBy).not.toBeNull()
+    expect(document.getElementById(describedBy as string)?.textContent).toContain(
+      '投票するには、ログインが必要です',
+    )
+  })
+})

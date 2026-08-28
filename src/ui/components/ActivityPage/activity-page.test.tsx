@@ -52,3 +52,24 @@ describe('ActivityPage', () => {
     expect(await screen.findByRole('button', { name: /画像で共有/ })).toBeInTheDocument()
   })
 })
+
+describe('ActivityPage の掲示板導線', () => {
+  it('onNavigateBoard を渡すとサイドバーに「掲示板」が出て、押すと呼ばれる', async () => {
+    const onNavigateBoard = vi.fn()
+    render(
+      <ActivityPage
+        repo={fakeRepo([])}
+        onNavigateCollection={() => {}}
+        onNavigateBoard={onNavigateBoard}
+      />,
+    )
+    fireEvent.click(await screen.findByRole('button', { name: '掲示板' }))
+    expect(onNavigateBoard).toHaveBeenCalled()
+  })
+
+  it('onNavigateBoard を渡さなければ行を出さない（行き先の無い行を作らない）', async () => {
+    render(<ActivityPage repo={fakeRepo([])} onNavigateCollection={() => {}} />)
+    await screen.findByRole('button', { name: '執筆の記録' })
+    expect(screen.queryByRole('button', { name: '掲示板' })).toBeNull()
+  })
+})

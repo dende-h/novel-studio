@@ -1,4 +1,4 @@
-import { ChevronDown, ExternalLink } from 'lucide-react'
+import { ChevronDown, ExternalLink, MessagesSquare } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { PageLayout } from '@/ui/components/PageLayout/page-layout'
 
@@ -97,6 +97,15 @@ export function HelpPage() {
             </strong>
             。端末間の自動同期・クラウドバックアップ・AI 連携は有料会員向けの機能です。
           </Faq>
+          <Faq q="掲示板は誰が読めますか？　書くのに何が要りますか？">
+            掲示板は公開の場です。ログインしていない人も、検索から辿り着いた人も読めます。
+            書き込むには、無料のアカウント登録と、掲示板で使う表示名の設定が必要です（有料プランの契約は要りません）。
+            表示名はあとから変えられ、変えると過去の投稿の表示も新しい名前に切り替わります。書き方の目安は{' '}
+            <a href="/board-guidelines" className="text-primary hover:underline">
+              掲示板ガイドライン
+            </a>
+            にまとめました。
+          </Faq>
           <Faq q="退会・解約したいです">
             有料会員はアカウントメニューから解約できます。解約後も、この端末に保存された原稿はそのまま残ります。
           </Faq>
@@ -109,17 +118,44 @@ export function HelpPage() {
 
       <Section title="お問い合わせ">
         <p className="text-[14px] text-on-surface-variant leading-relaxed">
-          うまく動かない点や、こんな機能がほしいという要望があれば、下記のフォームからお気軽にお知らせください。
+          うまく動かないところや、ほしい機能があれば、掲示板かフォームからお知らせください。
         </p>
-        <a
-          href={CONTACT_FORM_URL}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="mt-4 inline-flex items-center gap-2 rounded-md bg-primary px-5 py-2.5 font-medium font-sans text-[14px] text-primary-foreground no-underline shadow-xs transition-colors hover:bg-primary/90"
-        >
-          お問い合わせフォームを開く
-          <ExternalLink className="size-4" aria-hidden />
-        </a>
+        <div className="mt-4 grid gap-3 sm:grid-cols-2">
+          {/* みんなで話す側。書いた声のその後（運営ステータス）が見えることが掲示板の価値なので、
+              「読まれて終わりではない」ことを先に言う。 */}
+          <div className="flex flex-col rounded-lg border border-outline-variant/30 bg-surface-container-lowest p-4">
+            <div className="font-medium text-[14px] text-on-surface">掲示板で話す</div>
+            <p className="mt-1.5 flex-1 text-[13px] text-on-surface-variant leading-relaxed">
+              要望と不具合のスレッドには、運営が「検討中」「実装済み」といった状況を付けていきます。
+              同じことで困っている人の書き込みが、すでにあるかもしれません。読むだけならログインは要りません。
+            </p>
+            <a
+              href="#/board"
+              className="mt-4 inline-flex items-center justify-center gap-2 rounded-md bg-primary px-5 py-2.5 font-medium font-sans text-[14px] text-primary-foreground no-underline shadow-xs transition-colors hover:bg-primary/90"
+            >
+              <MessagesSquare className="size-4" aria-hidden />
+              掲示板を開く
+            </a>
+          </div>
+
+          {/* 個別に伝える側。記名式にした以上、名前を出さずに言える口を残しておく（D-BOARD-FORM）。 */}
+          <div className="flex flex-col rounded-lg border border-outline-variant/30 bg-surface-container-lowest p-4">
+            <div className="font-medium text-[14px] text-on-surface">フォームで個別に伝える</div>
+            <p className="mt-1.5 flex-1 text-[13px] text-on-surface-variant leading-relaxed">
+              掲示板は記名式で、書いたものは誰からでも読めます。名前を出しては言いにくいことは、こちらへどうぞ。
+              フォームの内容は運営だけが読みます。
+            </p>
+            <a
+              href={CONTACT_FORM_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-4 inline-flex items-center justify-center gap-2 rounded-md border border-outline-variant/50 px-5 py-2.5 font-medium font-sans text-[14px] text-on-surface no-underline transition-colors hover:border-primary hover:text-primary"
+            >
+              お問い合わせフォームを開く
+              <ExternalLink className="size-4" aria-hidden />
+            </a>
+          </div>
+        </div>
       </Section>
     </PageLayout>
   )

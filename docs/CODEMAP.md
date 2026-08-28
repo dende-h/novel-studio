@@ -51,7 +51,7 @@ Cloudflare Pages Functions
 | AI/MCP 連携（外部から原稿を編集） | `src/core/mcp-edit/index.ts` + `functions/api/_lib/mcp-server.ts` |
 | MCP コネクタの接続（OAuth ディスカバリ・認可の窓口） | `functions/_middleware.ts` + `functions/api/oauth/[[path]].ts` |
 | **UI 部品・ヘルパを新規に作りたい** | まず §3「共通部品カタログ」で在庫を確認する（重複作成の防止） |
-| **掲示板**（記名式スレッド・目安箱・アンケート・通報）の挙動 | 判断は `src/core/board/`、SQL は `functions/api/_lib/board-store.ts`、窓口は `functions/api/board/` |
+| **掲示板**（記名式スレッド・目安箱・アンケート・通報）の挙動 | 画面は `src/ui/components/BoardPage/`、判断は `src/core/board/`、SQL は `functions/api/_lib/board-store.ts`、窓口は `functions/api/board/` |
 | 掲示板に貼られた外部リンクの OGP（取得可否・画像の許可表） | `src/core/board/link.ts`（判定）+ `functions/api/_lib/board-link-fetch.ts`（取得とキャッシュ） |
 | 未課金・解約アカウントの削除（reaper） | `src/core/billing/reap-policy.ts` + `functions/api/billing/reap.ts` + `functions/api/_lib/purge.ts` |
 | 画面遷移・ルート追加 | `src/ui/Root.tsx` + `src/ui/hooks/use-hash-route.ts` |
@@ -148,7 +148,7 @@ Cloudflare Pages Functions
 
 ### ルート（`src/ui/hooks/use-hash-route.ts`・`location.hash` が唯一の真実）
 `/` ライブラリ ・ `/write` 執筆 ・ `/publish` 公開 ・ `/activity` 執筆の記録 ・ `/ideas` ネタ帳
-・ `/settings` ・ `/help` ・ `/plan` 同期の案内
+・ `/settings` ・ `/help` ・ `/plan` 同期の案内 ・ `/board` 掲示板 ・ `/board/<threadId>` スレ詳細
 
 ### 画面（`components/` — PascalCase ディレクトリ + kebab ファイル・1ファイル1コンポーネント）
 - **執筆**: `EditorPane/`（textarea + 記法バー + `@` サジェスト + 置換パネル）, `PreviewPane/`, `HistoryPanel/`
@@ -158,6 +158,7 @@ Cloudflare Pages Functions
 - **執筆画面の右パネル（遅延ロードしない）**: `PlotPeek/`（この話のビート一覧 `plot-peek.tsx` ＋ 読み取り専用のビート詳細 `beat-detail.tsx`）
 - **入出力**: `ExportDialog/`, `ImportDialog/`, `BackupDialog/`, `CloudBackupDialog/`, `AiPullDialog/`
 - **同期/課金**: `SyncOnboarding/`, `SyncLostDialog/`, `RestoreGrace/`, `McpConnectDialog/`, `SaveStateIndicator/`, `BackupNudgeDialog/`
+- **掲示板（遅延ロード・未ログインでも読める）**: `BoardPage/`（`board-page.tsx` 一覧 ／ `thread-view.tsx` スレ詳細 ／ `thread-list.tsx` `board-body.tsx` `link-card.tsx` `poll-card.tsx` `name-dialog.tsx` `new-thread-dialog.tsx` `report-dialog.tsx` `staff-controls.tsx`）
 - **その他**: `ActivityPage/`, `IdeaboxPage/`, `PublishPage/`, `SettingsPage/`, `HelpPage/`, `ProfileDialog/`, `FirstRunDialog/`
 - **共通**: `AppShell/`, `PageLayout/`, `SideNav/`, `TopAppBar/`, `Toast/`, `ConfirmDialog/`, `ErrorBoundary/`
 - `components/ui/` = shadcn/ui コピー品（**biome の lint 対象外**・手を入れない）→ 中身は次節のカタログ参照
@@ -225,12 +226,13 @@ Cloudflare Pages Functions
 ### 補助
 | ディレクトリ | 責務 |
 |---|---|
-| `_api/` | サーバ呼び出しの薄いクライアント（`sync` `backup` `billing` `publish` `author` `mcp`） |
+| `_api/` | サーバ呼び出しの薄いクライアント（`sync` `backup` `billing` `publish` `author` `mcp` `board`） |
 | `_utils/` | 純関数（`caretCoordinates` `imageResizer` `exporters` `download` `format` `clipboard` `cover-tone`） |
 | `hooks/` | React ライフサイクル依存のみ（`use-autosave` `use-auto-sync` `use-auto-backup` `use-live-snapshot` `use-preferences` `use-narrow` `use-keyboard-inset` 等） |
 | `sync/` | 同期クライアント。`src/ui/sync/sync-service.ts` が本体（約800行）・`sync-gate` `sync-status` `sync-touch` |
 | `src/ui/backup/backup-service.ts` | クラウド全体バックアップの実行 |
 | `plot/` | プロットの表示ヘルパ（React 非依存・`beat-ui.ts` に `STATUS_UI` `LINE_PALETTE` `lineColorOf` `beatStripeColor` `plainOf` `fmtCount`）。プロット画面と執筆画面のパネルで色・表記を揃える |
+| `board/` | 掲示板の表示ヘルパ（React 非依存・`board-ui.ts` に種別/状態の色・並び・未読件数・抜粋） |
 | `structure/` | React Flow アダプタ（`flow-adapter` `tree-layout` `use-structure-flow` `ensure-structure`） |
 | `auth/` | Clerk 配線（`auth-provider` `clerk-gate` `derive-status` `cloud-pricing`） |
 
@@ -321,6 +323,7 @@ uv run .claude/skills/natural-japanese/scripts/lint.py <file>   # 仕事の文�
 | `docs/requirement/05-sync.md` / `docs/requirement/05-sync-setup.md` | 同期の設計と構築手順 |
 | `docs/requirement/06-release-prep.md` | リリース準備 |
 | `docs/requirement/07-analytics.md` | アクセス解析 |
-| `docs/requirement/09-board.md` | 掲示板（記名式スレッド・目安箱・アンケート・外部リンクの OGP）の設計と決定表。**UI は未実装** |
+| `docs/requirement/09-board.md` | 掲示板（記名式スレッド・目安箱・アンケート・外部リンクの OGP）の設計と決定表 |
+| `public/board-guidelines.html` | 掲示板ガイドライン（`/board-guidelines` で公開・通報や上限の文言はここと揃える） |
 | `docs/requirement/99-open-questions.md` | 未決事項 |
 | `design/stitch/*/index.html` | 画面のデザインカンプ（+ スクリーンショット） |
