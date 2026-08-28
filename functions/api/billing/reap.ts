@@ -1,18 +1,19 @@
 /// <reference types="@cloudflare/workers-types" />
 /**
- * POST /api/billing/reap — 「アカウント＝有料課金者（＋猶予中）」を保つ掃除ジョブ。
- * 会員でない Clerk アカウントのうち、
- *   - 解約者：猶予（grace_until）が切れたもの
- *   - 未課金：サインアップから NEVER_PAID_MS 経過したもの（Checkout 中断・未購読の離脱を含む）
- * を **データ＋Clerk ログインごと削除**（再開は再登録）。会員（active/trialing）は絶対に消さない。
+ * POST /api/billing/reap — 解約して猶予が切れたアカウントを片付ける掃除ジョブ。
+ * **解約者：猶予（grace_until）が切れたもの**だけを、データ＋Clerk ログインごと削除する
+ *（再開は再登録）。会員（active/trialing）は絶対に消さない。
+ *
+ * **一度も課金していないアカウントは削除しない。** 無料アカウントに期限は無い
+ *（理由は src/core/billing/reap-policy.ts のコメント）。以前は登録から 30 日で消していたが、
+ * 無料アカウントに開いている機能（構想の道具・掲示板）と案内に反していたため外した。
  *
  * 破壊的なので判定は純関数 shouldReap に集約。全 Clerk ユーザーを走査するため、
  * 削除しながらのページずれを避けて「走査で対象を集める→まとめて削除」の 2 パスにする。
  * Pages はネイティブ cron 非対応 → .github/workflows/reap.yml が REAP_SECRET 付きで日次に叩く。
- * ※ 本番切替直後は、既存アカウントが未課金・作成が古い＝即削除対象になりうる。運用注意（再課金を先に）。
  */
 import { createClerkClient } from '@clerk/backend'
-import { NEVER_PAID_MS, shouldReap } from '../../../src/core/billing/reap-policy'
+import { shouldReap } from '../../../src/core/billing/reap-policy'
 import { json } from '../_lib/auth'
 import { readSubscription } from '../_lib/membership'
 import { deleteClerkUser, purgeCloudData } from '../_lib/purge'
@@ -59,7 +60,6 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
         shouldReap({
           isMember,
           graceUntil: sub?.grace_until ?? 0,
-          accountCreatedAt: u.createdAt,
           now,
         })
       ) {
@@ -85,5 +85,5 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
 
   if (capped)
     console.warn(`reap: user scan capped at ${MAX_PAGES * PAGE}; some accounts not checked`)
-  return json({ ok: true, scanned, purged, neverPaidDays: NEVER_PAID_MS / 86_400_000, capped })
+  return json({ ok: true, scanned, purged, capped })
 }
