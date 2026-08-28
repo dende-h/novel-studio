@@ -29,11 +29,8 @@ import {
 } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { blocksToPlainText } from '@/core/exporter/toPlainText'
 import { resolvedNameSet } from '@/core/glossary'
 import type { IdeaNote } from '@/core/idea'
-import { stripMarkdown } from '@/core/markdown'
-import { parseEpisodeBody } from '@/core/parser/parseNotation'
 import {
   addBeat,
   addLine,
@@ -44,6 +41,7 @@ import {
   type Foreshadow,
   type ForeshadowStatus,
   foreshadowStatus,
+  foreshadowsOfBeat,
   moveBeat,
   nextBeatStatus,
   PLOT_TEMPLATES,
@@ -78,6 +76,16 @@ import { pickPrimaryStructure, type StructureNode } from '@/core/structure'
 import { ConfirmDialog } from '@/ui/components/ConfirmDialog/confirm-dialog'
 import { NotationField } from '@/ui/components/NotationField/notation-field'
 import { NotationHelpButton } from '@/ui/components/NotationField/notation-help'
+import {
+  beatStripeColor,
+  fmtCount as fmt,
+  LINE_PALETTE,
+  lineColorOf,
+  PERSON_CATEGORY,
+  PLACE_CATEGORY,
+  plainOf,
+  STATUS_UI,
+} from '@/ui/plot/beat-ui'
 import { subscribeSyncApplied } from '@/ui/sync/sync-touch'
 import { WorldView } from './world-view'
 
@@ -116,60 +124,10 @@ interface PlotViewProps {
   onCreateGlossaryEntry?: (name: string, category: '人物' | '場所') => Promise<string | null>
 }
 
-/** 用語集カテゴリの絞り込み（固定5種＋旧データの自由入力に緩く一致させる）。 */
-const PERSON_CATEGORY = /人物|キャラ/
-const PLACE_CATEGORY = /場所|舞台/
-
 const genId = () => crypto.randomUUID()
 
-/**
- * 記法（[[用語]]・ルビ・傍点）とマークダウンの記号を剥がした表示用テキスト。
- * カードの要約 1 行など「読むだけ」の場所で、記号がそのまま出るのを防ぐ。
- */
-function plainOf(text: string | undefined): string {
-  if (!text) return ''
-  return blocksToPlainText(parseEpisodeBody(stripMarkdown(text))).trim()
-}
-const fmt = (n: number) => n.toLocaleString('ja-JP')
 /** 空文字は未設定(undefined)へ畳む（スキーマの任意項目を綺麗に保つ）。 */
 const emptyToUndef = (s: string): string | undefined => (s.trim() === '' ? undefined : s.trim())
-
-/** 状態チップ（画面設計の「✓ 済／✎ 執筆中／？ 検討中／確定」表記）。 */
-const STATUS_UI: Record<PlotBeatStatus, { label: string; className: string }> = {
-  idea: { label: '？ 検討中', className: 'bg-surface-container-high text-on-surface-variant' },
-  fixed: { label: '確定', className: 'bg-secondary-container text-on-secondary-container' },
-  writing: { label: '✎ 執筆中', className: 'bg-primary/12 text-primary' },
-  done: { label: '✓ 済', className: 'bg-primary text-primary-foreground' },
-}
-
-/** プロットラインの色パレット（作成順に循環割当。stripe とグリッドの行ラベルで使う）。 */
-const LINE_PALETTE = [
-  'var(--forest-400)',
-  'var(--wheat-500)',
-  'var(--forest-700)',
-  'var(--wheat-700)',
-  'var(--forest-900)',
-]
-
-/** ラインの表示色。保存された color が無い旧データはパレットを index で引く。 */
-function lineColorOf(plot: Plot, lineId: string): string {
-  const index = plot.lines.findIndex((l) => l.id === lineId)
-  const line = index >= 0 ? plot.lines[index] : undefined
-  return (
-    line?.color ?? LINE_PALETTE[Math.max(0, index) % LINE_PALETTE.length] ?? 'var(--forest-400)'
-  )
-}
-
-/** ビートの左端ストライプ色＝先頭のプロットライン色（未割当は控えめなグレー）。 */
-function beatStripeColor(plot: Plot, beat: PlotBeat): string {
-  const first = beat.lineRefs[0]
-  return first !== undefined ? lineColorOf(plot, first) : 'var(--outline-variant)'
-}
-
-/** このビートを参照する伏線（張る側・回収側の両方）。 */
-function foreshadowsOfBeat(plot: Plot, beatId: string): Foreshadow[] {
-  return plot.foreshadows.filter((f) => f.plantBeatId === beatId || f.payoffBeatId === beatId)
-}
 
 /**
  * プロット（幕×ビートの物語設計）。ビートシート＝カード一覧（左）＋選択ビートの
