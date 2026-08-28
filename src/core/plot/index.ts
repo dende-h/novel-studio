@@ -765,6 +765,34 @@ export function countOpenForeshadows(plot: Plot): number {
   }).length
 }
 
+/** このビートを参照する伏線（張る側・回収側の両方）。 */
+export function foreshadowsOfBeat(plot: Plot, beatId: string): Foreshadow[] {
+  return plot.foreshadows.filter((f) => f.plantBeatId === beatId || f.payoffBeatId === beatId)
+}
+
+/** ビートが属する幕（beatIds に無いビートは undefined）。 */
+export function sectionOfBeat(plot: Plot, beatId: string): PlotSection | undefined {
+  return plot.sections.find((s) => s.beatIds.includes(beatId))
+}
+
+/**
+ * ビートが属するプロットライン（lineRefs の順・削除済み参照は落とす）。
+ * 画面は 1 ビート＝1 ライン運用だが、MCP は配列をそのまま書けるので複数ありうる。
+ */
+export function linesOfBeat(plot: Plot, beat: PlotBeat): PlotLine[] {
+  return beat.lineRefs
+    .map((id) => plot.lines.find((l) => l.id === id))
+    .filter((l): l is PlotLine => l !== undefined)
+}
+
+/**
+ * 物語順（幕の並び → 幕内の並び）の全ビート。どの幕にも属さないビートは含めない
+ * （secretsHiddenAt の位置比較と同じ順序＝画面ごとに並べ方がぶれない）。
+ */
+export function beatsInStoryOrder(plot: Plot): PlotBeat[] {
+  return plot.sections.flatMap((s) => beatsOfSection(plot, s.id))
+}
+
 /** 幕内のビートを並び順で返す（beatIds に無い/重複 id は無視）。 */
 export function beatsOfSection(plot: Plot, sectionId: string): PlotBeat[] {
   const section = plot.sections.find((s) => s.id === sectionId)

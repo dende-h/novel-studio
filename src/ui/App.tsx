@@ -401,6 +401,11 @@ export function App({
             workId={work.id}
             episodeId={state.currentEpisodeId}
             actualChars={draftChars}
+            glossary={work.glossary ?? []}
+            episodes={work.episodes}
+            resolvedNames={resolvedNames}
+            ideaRepo={ideaRepo}
+            onRefClick={onRefClick}
             onJumpBeat={(beatId) => {
               setPlotFocusBeatId(beatId)
               setActiveScreen('plot')

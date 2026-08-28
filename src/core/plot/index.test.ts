@@ -2,13 +2,16 @@ import { describe, expect, it } from 'vitest'
 import {
   addBeat,
   addSection,
+  beatsInStoryOrder,
   beatsOfSection,
   countOpenForeshadows,
   countUnrevealedSecrets,
   createPlotFromTemplate,
   emptyPlot,
   foreshadowStatus,
+  foreshadowsOfBeat,
   isTrivialPlot,
+  linesOfBeat,
   moveBeat,
   nextBeatStatus,
   normalizePlot,
@@ -23,6 +26,7 @@ import {
   removeWorldNote,
   secretStatus,
   secretsHiddenAt,
+  sectionOfBeat,
   sectionTargetTotal,
   setWorldNote,
   singletonPlotId,
@@ -152,6 +156,53 @@ describe('plot（スキーマと純関数）', () => {
     p = updateBeat(p, 'b1', { targetLength: 8000 })
     p = updateBeat(p, 'b2', { targetLength: 4000 })
     expect(sectionTargetTotal(p, 'sec1')).toBe(12000)
+  })
+
+  it('beatsInStoryOrder は幕の順→幕内の順で並べ、どの幕にも載っていないビートは出さない', () => {
+    let p = fixture()
+    p = addSection(p, { id: 'sec2', title: '第二幕', beatIds: [] })
+    p = addBeat(p, 'sec2', beat('b3'))
+    // 幕の beatIds に載らない「浮いたビート」（同期の取りこぼし等）は並びに入れない。
+    p = { ...p, beats: [...p.beats, beat('floating')] }
+    expect(beatsInStoryOrder(p).map((b) => b.id)).toEqual(['b1', 'b2', 'b3'])
+  })
+
+  it('sectionOfBeat はビートの属する幕を引く（浮いたビートは undefined）', () => {
+    let p = fixture()
+    p = addSection(p, { id: 'sec2', title: '第二幕', beatIds: [] })
+    p = moveBeat(p, 'b2', 'sec2', 0)
+    expect(sectionOfBeat(p, 'b1')?.title).toBe('第一幕')
+    expect(sectionOfBeat(p, 'b2')?.title).toBe('第二幕')
+    expect(sectionOfBeat(p, 'nope')).toBeUndefined()
+  })
+
+  it('foreshadowsOfBeat は張る側・回収側の両方を返す', () => {
+    let p = fixture()
+    p = upsertForeshadow(p, { id: 'f1', title: '手紙', plantBeatId: 'b1', payoffBeatId: 'b2' })
+    p = upsertForeshadow(p, { id: 'f2', title: '傷跡', plantBeatId: 'b2' })
+    expect(foreshadowsOfBeat(p, 'b1').map((f) => f.id)).toEqual(['f1'])
+    expect(foreshadowsOfBeat(p, 'b2').map((f) => f.id)).toEqual(['f1', 'f2'])
+    expect(foreshadowsOfBeat(p, 'nope')).toEqual([])
+  })
+
+  // MCP は lineRefs を配列のまま書けるので、画面が 1 件しか出さないと 2 件目が読めなくなる。
+  it('linesOfBeat は lineRefs の順に解決し、消えたラインは落とす', () => {
+    let p = fixture()
+    p = {
+      ...p,
+      lines: [
+        { id: 'l1', title: 'メイン' },
+        { id: 'l2', title: 'ユキ編' },
+      ],
+    }
+    p = updateBeat(p, 'b1', { lineRefs: ['l2', 'l1', 'gone'] })
+    const pick = (id: string) => {
+      const found = p.beats.find((b) => b.id === id)
+      if (!found) throw new Error(`${id} が無い`)
+      return found
+    }
+    expect(linesOfBeat(p, pick('b1')).map((l) => l.title)).toEqual(['ユキ編', 'メイン'])
+    expect(linesOfBeat(p, pick('b2'))).toEqual([])
   })
 
   it('nextBeatStatus は 検討中→確定→執筆中→済→検討中 と循環する', () => {
