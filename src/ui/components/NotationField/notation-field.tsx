@@ -1,9 +1,9 @@
 import type { ReactNode } from 'react'
-import { useEffect, useMemo, useRef, useState } from 'react'
-import { markdownToHtml } from '@/core/markdown'
+import { useState } from 'react'
 import type { GlossaryEntry } from '@/core/schema'
 import { cn } from '@/lib/utils'
 import { CommitTextarea } from './commit-textarea'
+import { NotationText } from './notation-text'
 
 /**
  * 記法つきの複数行入力（プロットの要約・メモ、世界観設定、用語集の公開情報・作者メモ）。
@@ -59,39 +59,6 @@ export function NotationField({
   const [mode, setMode] = useState<'edit' | 'preview'>(
     defaultMode === 'edit' || value.trim() === '' ? 'edit' : 'preview',
   )
-  const html = useMemo(
-    () => (mode === 'preview' ? markdownToHtml(value, resolvedNames) : ''),
-    [mode, value, resolvedNames],
-  )
-  const previewRef = useRef<HTMLDivElement>(null)
-
-  // dangerouslySetInnerHTML で描いた .ref をリンク化してクリックを委譲する（PreviewPane と同じ作法）。
-  // biome-ignore lint/correctness/useExhaustiveDependencies: html は innerHTML 再描画の検知に必要
-  useEffect(() => {
-    const el = previewRef.current
-    if (!el || !onRefClick) return
-    for (const ref of el.querySelectorAll<HTMLElement>('.ref[data-ref-name]')) {
-      ref.setAttribute('role', 'link')
-      ref.tabIndex = 0
-    }
-    const handle = (e: Event) => {
-      const target = (e.target as HTMLElement | null)?.closest<HTMLElement>('[data-ref-name]')
-      if (!target) return
-      if (e.type === 'keydown') {
-        const key = (e as KeyboardEvent).key
-        if (key !== 'Enter' && key !== ' ') return
-        e.preventDefault()
-      }
-      onRefClick(target.getAttribute('data-ref-name') ?? '')
-    }
-    el.addEventListener('click', handle)
-    el.addEventListener('keydown', handle)
-    return () => {
-      el.removeEventListener('click', handle)
-      el.removeEventListener('keydown', handle)
-    }
-  }, [html, onRefClick])
-
   return (
     <div className={cn('flex flex-col gap-1', fill && 'min-h-0 flex-1')}>
       <div className="flex items-center gap-1 self-end">
@@ -127,12 +94,12 @@ export function NotationField({
           （まだ書かれていません）クリックで書く
         </button>
       ) : (
-        <div
-          ref={previewRef}
-          // biome-ignore lint/security/noDangerouslySetInnerHtml: core/markdown が全エスケープ済みの安全な HTML
-          dangerouslySetInnerHTML={{ __html: html }}
+        <NotationText
+          text={value}
+          resolvedNames={resolvedNames}
+          onRefClick={onRefClick}
           className={cn(
-            'preview notation-preview rounded-md border border-outline-variant/30 bg-surface-variant px-2.5 py-1.5 text-on-surface',
+            'rounded-md border border-outline-variant/30 bg-surface-variant px-2.5 py-1.5 text-on-surface',
             fill && 'min-h-0 flex-1 overflow-y-auto [scrollbar-gutter:stable]',
           )}
         />
