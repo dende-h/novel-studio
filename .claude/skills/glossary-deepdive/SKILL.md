@@ -78,12 +78,15 @@ description: コトノハ-leaf- のコネクタ（MCP）で、用語集の 1 項
 |---|---|
 | 読者が引いて役に立つ説明 | `upsert_glossary_entry` の `summary`（**公開される**） |
 | この項目に閉じた内緒（正体・後の展開） | 同 `author_note`（公開時に落ちる） |
-| 作品全体のルール・仕組み・執筆の決め事 | `set_world_note`（用語集へ書かない） |
+| 作品全体のルール・仕組み・執筆の決め事 | `set_world_note`（用語集へ書かない。**`body` は全置換**） |
 | 読者にいつ明かすか | `upsert_secret` |
 | 布石と回収 | `upsert_foreshadow` |
 | 出来事として起きること | ビート → `beat-rework` スキルへ |
 
 `upsert_glossary_entry` はパッチ方式。触らない欄は渡さない。`aliases` は配列なので渡すと丸ごと置換になる。
+
+`set_world_note` だけはパッチではなく **`body` の全置換**。`get_world` でその枠の現在の本文を読み、
+既存＋追加を組み立てた全文を渡す。追記のつもりで一段落だけ渡すと、その枠の既存の記述が消える。
 
 文面は `natural-japanese` の作法で書く。数行を超えるものはスキルを通す。
 

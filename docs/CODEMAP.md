@@ -55,9 +55,11 @@ Cloudflare Pages Functions
 | ランディングページ（機能紹介・プラン表・スクリーンショット） | `public/lp/index.html` + `public/lp/shots/` |
 | ユーザー向け文言（LP・案内・ボタン・エラー等）を書く/直す | `.claude/skills/toc-copy/`（トーン・用語表・マイクロコピーの型） |
 | 小説本文の執筆・推敲（MCP/ローカル） | `.claude/skills/novel-writing/`（執筆制約・レビュー観点） |
+| **MCP で作者と設定を詰める**（編集者として一論点ずつ掘る） | 用語集 1 項目＝`.claude/skills/glossary-deepdive/`、世界観設定の枠＝`.claude/skills/world-deepdive/`、ビート再構成＝`.claude/skills/beat-rework/` |
+| **MCP で作品全体を点検する**（矛盾・改善点を洗い出す） | `.claude/skills/story-audit/` |
+| 上の 4 スキルが共有する規約（器の分かれ方・書き込みの事故・編集者の立ち方） | `.claude/skills/kotonaha-editing-common/`（スキルではない。`references/kotonaha-mcp.md` と `references/editor-stance.md`） |
 | 小説原稿の機械検査（textlint）のルール・AI臭辞書 | `tools/novel-textlint/`（アプリ本体とは独立。README 参照） |
 | note記事・設計文書・レポートなど仕事の文書を書く/直す | `.claude/skills/natural-japanese/`（coji/natural-japanese の同梱コピー。出自と更新手順は同 `UPSTREAM.md`） |
-| **MCP で作者と設定を詰める・作品を点検する**（編集者として掘り下げる） | `.claude/skills/glossary-deepdive/`（用語集 1 項目）／`world-deepdive/`（世界観設定の枠）／`beat-rework/`（ビート再構成）／`story-audit/`（全体点検）。4 つの共有規約は `.claude/skills/kotonaha-editing-common/` |
 
 ---
 
