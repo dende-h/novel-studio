@@ -69,6 +69,10 @@ export function PageLayout({
             <a href="/terms" className="text-on-surface-variant hover:text-primary">
               利用規約
             </a>
+            {/* 法務ページのフッター（public/terms.html）と同じ並び順に揃える。 */}
+            <a href="/board-guidelines" className="text-on-surface-variant hover:text-primary">
+              掲示板ガイドライン
+            </a>
             <a href="/privacy" className="text-on-surface-variant hover:text-primary">
               プライバシーポリシー
             </a>

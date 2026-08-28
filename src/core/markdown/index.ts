@@ -97,6 +97,15 @@ function inlineHtml(text: string, resolvedNames?: Set<string>): string {
   return html
 }
 
+/**
+ * 行内の描画を差し替えるための口。ブロック層（見出し・箇条書き・引用・表・区切り線）は
+ * 使い回したいが、行の中身の解釈だけは呼び出し側で変えたい場面がある（掲示板の本文＝
+ * `src/core/board/render.ts`。あそこは [[用語]]・ルビ・縦中横が邪魔で、代わりに自動リンクが要る）。
+ * ブロック解釈をもう 1 本書くと記法が 2 箇所に分かれて必ずずれるので、行内だけを注入する。
+ * 受け取るのは記法つきの生テキスト 1 行、返すのは**エスケープ済みの HTML 断片**。
+ */
+export type InlineRenderer = (text: string) => string
+
 interface ListItem {
   level: number
   ordered: boolean
@@ -112,7 +121,7 @@ function renderListAt(
   items: ListItem[],
   pos: { i: number },
   level: number,
-  resolvedNames?: Set<string>,
+  inline: InlineRenderer,
 ): string {
   const first = items[pos.i] as ListItem
   const ordered = first.ordered
@@ -122,19 +131,19 @@ function renderListAt(
     if (item.level < level) break
     if (item.level === level && item.ordered !== ordered) break
     if (item.level > level) {
-      const child = renderListAt(items, pos, level + 1, resolvedNames)
+      const child = renderListAt(items, pos, level + 1, inline)
       html = html.endsWith('</li>')
         ? `${html.slice(0, -'</li>'.length)}${child}</li>`
         : `${html}<li>${child}</li>`
       continue
     }
-    html += `<li>${inlineHtml(item.text, resolvedNames)}</li>`
+    html += `<li>${inline(item.text)}</li>`
     pos.i++
   }
   return html + (ordered ? '</ol>' : '</ul>')
 }
 
-function renderTable(rows: string[][], resolvedNames?: Set<string>): string {
+function renderTable(rows: string[][], inline: InlineRenderer): string {
   const hasHeader = rows.length >= 2 && isSeparatorRow(rows[1] as string[])
   const aligns = hasHeader ? (rows[1] as string[]).map(alignOf) : []
   const bodyRows = hasHeader ? rows.slice(2) : rows
@@ -144,7 +153,7 @@ function renderTable(rows: string[][], resolvedNames?: Set<string>): string {
         const a = aligns[idx]
         // align は固定 3 値からしか作らないので属性値として安全。
         const style = a ? ` style="text-align:${a}"` : ''
-        return `<${tag}${style}>${inlineHtml(c, resolvedNames)}</${tag}>`
+        return `<${tag}${style}>${inline(c)}</${tag}>`
       })
       .join('')}</tr>`
   const head = hasHeader ? `<thead>${rowHtml('th', rows[0] as string[])}</thead>` : ''
@@ -154,11 +163,7 @@ function renderTable(rows: string[][], resolvedNames?: Set<string>): string {
   return `<div class="md-table"><table>${head}${body}</table></div>`
 }
 
-function renderBlocks(
-  lines: string[],
-  resolvedNames: Set<string> | undefined,
-  depth: number,
-): string {
+function renderBlocks(lines: string[], inline: InlineRenderer, depth: number): string {
   const out: string[] = []
   let i = 0
   while (i < lines.length) {
@@ -173,7 +178,7 @@ function renderBlocks(
     const h = HEADING_RE.exec(line)
     if (h) {
       const level = (h[1] as string).length
-      out.push(`<h${level}>${inlineHtml(h[2] ?? '', resolvedNames)}</h${level}>`)
+      out.push(`<h${level}>${inline(h[2] ?? '')}</h${level}>`)
       i++
       continue
     }
@@ -185,7 +190,7 @@ function renderBlocks(
         inner.push((lines[i] as string).replace(QUOTE_STRIP_RE, ''))
         i++
       }
-      out.push(`<blockquote>${renderBlocks(inner, resolvedNames, depth + 1)}</blockquote>`)
+      out.push(`<blockquote>${renderBlocks(inner, inline, depth + 1)}</blockquote>`)
       continue
     }
 
@@ -205,7 +210,7 @@ function renderBlocks(
       const pos = { i: 0 }
       let html = ''
       while (pos.i < items.length) {
-        html += renderListAt(items, pos, (items[pos.i] as ListItem).level, resolvedNames)
+        html += renderListAt(items, pos, (items[pos.i] as ListItem).level, inline)
       }
       out.push(html)
       continue
@@ -218,7 +223,7 @@ function renderBlocks(
         rows.push(splitRow(lines[i] as string))
         i++
       }
-      out.push(renderTable(rows, resolvedNames))
+      out.push(renderTable(rows, inline))
       continue
     }
 
@@ -228,7 +233,7 @@ function renderBlocks(
       i++
       continue
     }
-    out.push(`<p>${inlineHtml(line, resolvedNames)}</p>`)
+    out.push(`<p>${inline(line)}</p>`)
     i++
   }
   return out.join('')
@@ -237,9 +242,19 @@ function renderBlocks(
 /**
  * 生テキスト → プレビュー HTML。resolvedNames の意味は blocksToHtml と同じ
  * （指定あり＝ [[用語]] をリンク描画、未指定＝プレーンへ degrade）。
+ *
+ * 第 3 引数 inline を渡すと**行内の描画だけ**が差し替わり、ブロック解釈はそのまま使える
+ * （掲示板の `boardBodyToHtml` 用）。渡さなければ従来どおり parseInlines へ委譲するので、
+ * 既存の呼び出し（プロット・世界観・用語集のプレビュー）の出力は 1 文字も変わらない。
+ * 差し替えたときは resolvedNames を見る主体がいなくなる＝両方渡しても inline が勝つ。
  */
-export function markdownToHtml(text: string, resolvedNames?: Set<string>): string {
-  return renderBlocks(text.split('\n'), resolvedNames, 0)
+export function markdownToHtml(
+  text: string,
+  resolvedNames?: Set<string>,
+  inline?: InlineRenderer,
+): string {
+  const renderInline: InlineRenderer = inline ?? ((line) => inlineHtml(line, resolvedNames))
+  return renderBlocks(text.split('\n'), renderInline, 0)
 }
 
 const BOLD_PAIR_RE = /\*\*([^*]+?)\*\*/g

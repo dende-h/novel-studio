@@ -6,6 +6,7 @@ import {
   FileText,
   Library,
   ListTree,
+  MessagesSquare,
   Milestone,
   Network,
   Pencil,
@@ -31,6 +32,7 @@ export type NavKey =
   | 'collection'
   | 'activity'
   | 'ideas'
+  | 'board'
   | 'episodes'
   | 'glossary'
   | 'plot'
@@ -51,6 +53,8 @@ interface SideNavProps {
   onNavigateActivity?: () => void
   /** ネタ帳（アイデアの受け皿）へ。指定時のみ表示。 */
   onNavigateIdeas?: () => void
+  /** 掲示板へ。指定時のみ表示。 */
+  onNavigateBoard?: () => void
   /** ゴミ箱を開く。指定時のみ表示（ライブラリがダイアログをホストする）。 */
   onNavigateTrash?: () => void
   /** 設定ページへ。指定時のみフッターの「設定」を有効化。 */
@@ -135,6 +139,7 @@ export function SideNav({
   onNavigateCollection,
   onNavigateActivity,
   onNavigateIdeas,
+  onNavigateBoard,
   onNavigateTrash,
   onNavigateSettings,
   onNavigateHelp,
@@ -412,6 +417,14 @@ export function SideNav({
                 label="ネタ帳"
                 active={active === 'ideas'}
                 onClick={onNavigateIdeas}
+              />
+            ) : null}
+            {onNavigateBoard ? (
+              <NavRow
+                icon={MessagesSquare}
+                label="掲示板"
+                active={active === 'board'}
+                onClick={onNavigateBoard}
               />
             ) : null}
             {onNavigateTrash ? (

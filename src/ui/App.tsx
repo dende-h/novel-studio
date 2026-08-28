@@ -67,6 +67,8 @@ interface AppProps {
   onNavigatePublish?: () => void
   /** 執筆の記録（草・ストリーク）へ */
   onNavigateActivity?: () => void
+  /** 掲示板へ（サイドバー）。渡されたときだけ行が出る。 */
+  onNavigateBoard?: () => void
   /** 設定ページへ */
   onNavigateSettings?: () => void
   /** ヘルプページへ */
@@ -143,6 +145,7 @@ export function App({
   onExit,
   onNavigatePublish,
   onNavigateActivity,
+  onNavigateBoard,
   onNavigateSettings,
   onNavigateHelp,
   activityRepo,
@@ -361,6 +364,7 @@ export function App({
           active={activeScreen}
           onNavigateCollection={() => onExit?.()}
           onNavigateActivity={onNavigateActivity}
+          onNavigateBoard={onNavigateBoard}
           onNavigateSettings={onNavigateSettings}
           onNavigateHelp={onNavigateHelp}
           onNavigateEpisodes={work ? () => setActiveScreen('episodes') : undefined}

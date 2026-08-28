@@ -357,3 +357,39 @@ describe('Library 公開サイトへの投稿導線', () => {
     await waitFor(() => expect(screen.queryByText('公開中')).toBeNull())
   })
 })
+
+describe('Library の掲示板導線', () => {
+  it('onNavigateBoard を渡すとサイドバーに「掲示板」が出て、押すと呼ばれる', async () => {
+    const onNavigateBoard = vi.fn()
+    render(
+      <Library
+        store={makeStore()}
+        onEnterPublish={() => {}}
+        onEnterEditor={() => {}}
+        localBackup={fakeLocalBackup}
+        isMember={false}
+        onboarded={false}
+        activityRepo={fakeActivityRepo}
+        onNavigateBoard={onNavigateBoard}
+      />,
+    )
+    fireEvent.click(await screen.findByRole('button', { name: '掲示板' }))
+    expect(onNavigateBoard).toHaveBeenCalled()
+  })
+
+  it('onNavigateBoard を渡さなければ行を出さない（行き先の無い行を作らない）', async () => {
+    render(
+      <Library
+        store={makeStore()}
+        onEnterPublish={() => {}}
+        onEnterEditor={() => {}}
+        localBackup={fakeLocalBackup}
+        isMember={false}
+        onboarded={false}
+        activityRepo={fakeActivityRepo}
+      />,
+    )
+    await screen.findByRole('button', { name: 'マイライブラリ' })
+    expect(screen.queryByRole('button', { name: '掲示板' })).toBeNull()
+  })
+})

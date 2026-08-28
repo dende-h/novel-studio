@@ -1,5 +1,5 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ProfileRepository } from '../core/profile'
 import { SnapshotRepository } from '../core/snapshot/snapshotRepository'
 import { ActivityRepository } from '../core/storage/activityRepository'
@@ -403,5 +403,20 @@ describe('App（執筆中に開く編集モーダル）', () => {
     fireEvent.click(await screen.findByRole('button', { name: '作品情報を編集' }))
     const dialog = await screen.findByRole('dialog')
     expect(within(dialog).getByLabelText('タイトル')).toHaveValue('作品ワン')
+  })
+})
+
+describe('App の掲示板導線', () => {
+  it('onNavigateBoard を渡すとサイドバーに「掲示板」が出て、押すと呼ばれる', async () => {
+    const onNavigateBoard = vi.fn()
+    // 作品を開いていない状態のサイドバーはライブラリと同じメインナビ（掲示板の行はここに出る）。
+    render(<App store={makeStore()} onNavigateBoard={onNavigateBoard} />)
+    fireEvent.click(await screen.findByRole('button', { name: '掲示板' }))
+    expect(onNavigateBoard).toHaveBeenCalled()
+  })
+
+  it('onNavigateBoard を渡さなければ行を出さない（行き先の無い行を作らない）', () => {
+    render(<App store={makeStore()} />)
+    expect(screen.queryByRole('button', { name: '掲示板' })).toBeNull()
   })
 })

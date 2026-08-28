@@ -165,6 +165,27 @@ describe('SideNav（サイドバー）', () => {
     expect(onEditProfile).toHaveBeenCalledTimes(1)
   })
 
+  it('掲示板行: onNavigateBoard 指定時に出て、押下で発火する（ライブラリ状態）', () => {
+    const onNavigateBoard = vi.fn()
+    render(
+      <SideNav active="board" onNavigateCollection={() => {}} onNavigateBoard={onNavigateBoard} />,
+    )
+    const b = screen.getByRole('button', { name: '掲示板' })
+    expect(b).toHaveAttribute('aria-current', 'page')
+    fireEvent.click(b)
+    expect(onNavigateBoard).toHaveBeenCalledTimes(1)
+  })
+
+  it('onNavigateBoard 未指定なら掲示板行を出さない（指定時のみ表示）', () => {
+    render(<SideNav active="collection" onNavigateCollection={() => {}} />)
+    expect(screen.queryByRole('button', { name: '掲示板' })).toBeNull()
+  })
+
+  it('作品モード（workTitle 指定）では掲示板行を出さない', () => {
+    render(<SideNav {...baseProps} onNavigateBoard={() => {}} />)
+    expect(screen.queryByRole('button', { name: '掲示板' })).toBeNull()
+  })
+
   it('設定・ヘルプは disabled で押せない', () => {
     render(<SideNav active="collection" onNavigateCollection={() => {}} />)
     expect(screen.getByRole('button', { name: '設定' })).toBeDisabled()

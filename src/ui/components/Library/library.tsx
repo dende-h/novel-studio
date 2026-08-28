@@ -74,6 +74,12 @@ interface LibraryProps {
   onOpenActivity?: () => void
   /** ネタ帳ページを開く。 */
   onOpenIdeas?: () => void
+  /**
+   * 掲示板ページを開く。渡されたときだけサイドバーに行が出る。
+   * ここだけ onOpen* ではなく onNavigateBoard なのは、掲示板の導線を持つ5画面で
+   * props 名を揃え、SideNav へそのまま素通しできるようにするため。
+   */
+  onNavigateBoard?: () => void
   /** 設定ページを開く。 */
   onOpenSettings?: () => void
   /** ヘルプページを開く。 */
@@ -137,6 +143,7 @@ export function Library({
   syncLostCount = 0,
   onOpenActivity,
   onOpenIdeas,
+  onNavigateBoard,
   onOpenSettings,
   onOpenHelp,
   localBackup,
@@ -312,6 +319,7 @@ export function Library({
           onNavigateCollection={() => {}}
           onNavigateActivity={onOpenActivity}
           onNavigateIdeas={onOpenIdeas}
+          onNavigateBoard={onNavigateBoard}
           onNavigateTrash={state.trashList.length > 0 ? () => setTrashOpen(true) : undefined}
           onNavigateSettings={onOpenSettings}
           onNavigateHelp={onOpenHelp}
