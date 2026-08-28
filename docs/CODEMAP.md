@@ -57,6 +57,7 @@ Cloudflare Pages Functions
 | 小説本文の執筆・推敲（MCP/ローカル） | `.claude/skills/novel-writing/`（執筆制約・レビュー観点） |
 | 小説原稿の機械検査（textlint）のルール・AI臭辞書 | `tools/novel-textlint/`（アプリ本体とは独立。README 参照） |
 | note記事・設計文書・レポートなど仕事の文書を書く/直す | `.claude/skills/natural-japanese/`（coji/natural-japanese の同梱コピー。出自と更新手順は同 `UPSTREAM.md`） |
+| **MCP で作者と設定を詰める・作品を点検する**（編集者として掘り下げる） | `.claude/skills/glossary-deepdive/`（用語集 1 項目）／`world-deepdive/`（世界観設定の枠）／`beat-rework/`（ビート再構成）／`story-audit/`（全体点検）。4 つの共有規約は `.claude/skills/kotonaha-editing-common/` |
 
 ---
 
