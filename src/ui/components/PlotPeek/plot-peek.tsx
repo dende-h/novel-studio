@@ -47,8 +47,10 @@ interface PlotPeekProps {
  * 一覧（この話に紐づくビートを物語順に）と、選んだ 1 件の詳細の二段になっている。
  * 一覧では状態切替と進捗（実字数／予定字数）を、詳細では要約・人物と舞台・メモ・伏線・秘密・
  * ネタ帳まで、そのビートに紐づくものを全部読める＝プロット画面へ行かずに書き進められる。
- * 詳細は幅の広い 2xl 以上でだけ一覧の隣に並べ、それより狭い画面では一覧と入れ替える
- * （本文の幅を二枚のパネルで削らない）。
+ *
+ * 二段は**並べずに入れ替える**。幅も一覧と揃えてあるので、開いても閉じても本文の幅は変わらない
+ * （パネルを二枚並べると、いちばん要る本文の場所がそのぶん削られる）。
+ * 出入りは 一覧を開く → ビートを選ぶ → 詳細 →（戻る）→ 一覧 →（閉じる）→ 全部閉じる。
  */
 export function PlotPeek({
   repo,
@@ -133,11 +135,11 @@ export function PlotPeek({
 
   return (
     <>
-      {/* ビート詳細。一覧の左に開く＝一覧は画面の端に留まり、開閉で位置がずれない。 */}
+      {/* ビート詳細。一覧と同じ場所・同じ幅に出して入れ替える（並べない）。 */}
       {plot && openBeat ? (
         <aside
           aria-label="ビートの詳細"
-          className="flex w-[min(360px,92vw)] shrink-0 flex-col border-outline-variant/30 border-l bg-surface-container-lowest font-sans"
+          className="flex w-[min(300px,85vw)] shrink-0 flex-col border-outline-variant/30 border-l bg-surface-container-lowest font-sans"
         >
           <div className="flex shrink-0 items-center gap-1 border-outline-variant/30 border-b px-2 py-3">
             <Button
@@ -151,7 +153,8 @@ export function PlotPeek({
               <ArrowLeft className="size-4" aria-hidden />
             </Button>
             <span className="flex-1 font-medium text-[13px] text-on-surface">ビートの詳細</span>
-            {/* 一覧のヘッダは 2xl 未満では隠れる。閉じ道がこのパネルから消えないよう、ここにも置く。 */}
+            {/* ← は一覧へ戻る、× はパネルごと閉じる。詳細の間は一覧のヘッダが出ないので、
+                閉じ道をここにも置く（戻ってから閉じる、の 2 手を踏ませない）。 */}
             <Button
               variant="ghost"
               size="icon"
@@ -178,125 +181,122 @@ export function PlotPeek({
         </aside>
       ) : null}
 
-      <aside
-        aria-label="この話のプロット"
-        className={`flex w-[min(300px,85vw)] shrink-0 flex-col border-outline-variant/30 border-l bg-surface-container-lowest font-sans ${
-          openBeat ? 'max-2xl:hidden' : ''
-        }`}
-      >
-        <div className="flex items-center justify-between border-outline-variant/30 border-b px-4 py-3">
-          <span className="flex items-center gap-1.5 font-medium text-[13px] text-on-surface">
-            <Milestone className="size-4 text-primary" aria-hidden />
-            この話のプロット
-          </span>
-          <Button
-            variant="ghost"
-            size="icon"
-            aria-label="パネルを閉じる"
-            onClick={onClose}
-            className="size-7 text-on-surface-variant hover:text-on-surface"
-          >
-            <X className="size-4" />
-          </Button>
-        </div>
-
-        <ScrollArea className="min-h-0 flex-1">
-          <div className="flex flex-col gap-3 px-4 py-3">
-            {!loaded ? null : plot === null ? (
-              <Hint text="この作品のプロットはまだありません。">
-                <OpenPlotButton onClick={onOpenPlot} label="プロットを作る" />
-              </Hint>
-            ) : beats.length === 0 ? (
-              <Hint text="この話に紐づくビートはありません。プロットのビート詳細「対応する話」で紐付けます。">
-                <OpenPlotButton onClick={onOpenPlot} label="プロットを開く" />
-              </Hint>
-            ) : (
-              <>
-                {targetTotal > 0 ? (
-                  <div>
-                    <div className="flex items-baseline justify-between text-[11.5px] text-on-surface-variant tabular-nums">
-                      <span>
-                        実績 {fmtCount(actualChars)}字 ／ 予定 {fmtCount(targetTotal)}字
-                      </span>
-                      <span>{percent}%</span>
-                    </div>
-                    <div className="mt-1 h-1.5 rounded-full bg-surface-container-high">
-                      <div
-                        className="h-1.5 rounded-full bg-[var(--forest-400)]"
-                        style={{ width: `${percent}%` }}
-                      />
-                    </div>
-                  </div>
-                ) : null}
-                <ul className="flex flex-col gap-2">
-                  {beats.map((beat) => {
-                    // 記法だけの要約は plainOf で空になる。色分けも表示テキストも
-                    // 同じ値で決める＝ガイド文が要約の濃さで出てしまうのを防ぐ。
-                    const preview = plainOf(beat.summary)
-                    return (
-                      <li
-                        key={beat.id}
-                        className={`rounded-lg border bg-surface p-2.5 transition-colors hover:border-primary/40 ${
-                          openBeat?.id === beat.id
-                            ? 'border-primary/60 ring-1 ring-primary/30'
-                            : 'border-outline-variant/30'
-                        }`}
-                      >
-                        <div className="flex items-start gap-1.5">
-                          <button
-                            type="button"
-                            onClick={() => cycleStatus(beat)}
-                            title="クリックで状態を切替（検討中→確定→執筆中→済）"
-                            className={`inline-flex shrink-0 items-center rounded-full px-2 py-0.5 font-medium text-[10.5px] transition-colors ${STATUS_UI[beat.status].className}`}
-                          >
-                            {STATUS_UI[beat.status].label}
-                          </button>
-                          {/* カードの本体そのものが詳細への入口（狭い画面でも押し外しにくい）。 */}
-                          <button
-                            type="button"
-                            ref={(el) => {
-                              cardRefs.current.set(beat.id, el)
-                            }}
-                            aria-label={`「${beat.title || '無題のビート'}」の詳細`}
-                            aria-pressed={openBeat?.id === beat.id}
-                            title="ビートの詳細を開く"
-                            onClick={() => setOpenBeatId((id) => (id === beat.id ? null : beat.id))}
-                            className="group min-w-0 flex-1 cursor-pointer text-left"
-                          >
-                            <span className="block truncate font-medium text-[12.5px] text-on-surface transition-colors group-hover:text-primary">
-                              {beat.title || '無題のビート'}
-                            </span>
-                            {/* line-clamp は display:-webkit-box を敷くので block を重ねない
-                                （あとに出る .block が勝って刈り込みが効かなくなる）。 */}
-                            {preview || beat.guide ? (
-                              <span
-                                className={`mt-1 line-clamp-2 text-[11.5px] leading-relaxed ${
-                                  preview ? 'text-on-surface-variant' : 'text-on-surface-variant/50'
-                                }`}
-                              >
-                                {preview || beat.guide}
-                              </span>
-                            ) : null}
-                          </button>
-                          <button
-                            type="button"
-                            aria-label={`「${beat.title || '無題のビート'}」をプロット画面で開く`}
-                            title="プロット画面で開く"
-                            onClick={() => onJumpBeat(beat.id)}
-                            className="shrink-0 rounded p-0.5 text-on-surface-variant/50 transition-colors hover:bg-surface-container-high hover:text-primary"
-                          >
-                            <ArrowRight className="size-3.5" />
-                          </button>
-                        </div>
-                      </li>
-                    )
-                  })}
-                </ul>
-              </>
-            )}
+      {openBeat ? null : (
+        <aside
+          aria-label="この話のプロット"
+          className="flex w-[min(300px,85vw)] shrink-0 flex-col border-outline-variant/30 border-l bg-surface-container-lowest font-sans"
+        >
+          <div className="flex items-center justify-between border-outline-variant/30 border-b px-4 py-3">
+            <span className="flex items-center gap-1.5 font-medium text-[13px] text-on-surface">
+              <Milestone className="size-4 text-primary" aria-hidden />
+              この話のプロット
+            </span>
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label="パネルを閉じる"
+              onClick={onClose}
+              className="size-7 text-on-surface-variant hover:text-on-surface"
+            >
+              <X className="size-4" />
+            </Button>
           </div>
-        </ScrollArea>
-      </aside>
+
+          <ScrollArea className="min-h-0 flex-1">
+            <div className="flex flex-col gap-3 px-4 py-3">
+              {!loaded ? null : plot === null ? (
+                <Hint text="この作品のプロットはまだありません。">
+                  <OpenPlotButton onClick={onOpenPlot} label="プロットを作る" />
+                </Hint>
+              ) : beats.length === 0 ? (
+                <Hint text="この話に紐づくビートはありません。プロットのビート詳細「対応する話」で紐付けます。">
+                  <OpenPlotButton onClick={onOpenPlot} label="プロットを開く" />
+                </Hint>
+              ) : (
+                <>
+                  {targetTotal > 0 ? (
+                    <div>
+                      <div className="flex items-baseline justify-between text-[11.5px] text-on-surface-variant tabular-nums">
+                        <span>
+                          実績 {fmtCount(actualChars)}字 ／ 予定 {fmtCount(targetTotal)}字
+                        </span>
+                        <span>{percent}%</span>
+                      </div>
+                      <div className="mt-1 h-1.5 rounded-full bg-surface-container-high">
+                        <div
+                          className="h-1.5 rounded-full bg-[var(--forest-400)]"
+                          style={{ width: `${percent}%` }}
+                        />
+                      </div>
+                    </div>
+                  ) : null}
+                  <ul className="flex flex-col gap-2">
+                    {beats.map((beat) => {
+                      // 記法だけの要約は plainOf で空になる。色分けも表示テキストも
+                      // 同じ値で決める＝ガイド文が要約の濃さで出てしまうのを防ぐ。
+                      const preview = plainOf(beat.summary)
+                      return (
+                        <li
+                          key={beat.id}
+                          className="rounded-lg border border-outline-variant/30 bg-surface p-2.5 transition-colors hover:border-primary/40"
+                        >
+                          <div className="flex items-start gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => cycleStatus(beat)}
+                              title="クリックで状態を切替（検討中→確定→執筆中→済）"
+                              className={`inline-flex shrink-0 items-center rounded-full px-2 py-0.5 font-medium text-[10.5px] transition-colors ${STATUS_UI[beat.status].className}`}
+                            >
+                              {STATUS_UI[beat.status].label}
+                            </button>
+                            {/* カードの本体そのものが詳細への入口（狭い画面でも押し外しにくい）。 */}
+                            <button
+                              type="button"
+                              ref={(el) => {
+                                cardRefs.current.set(beat.id, el)
+                              }}
+                              aria-label={`「${beat.title || '無題のビート'}」の詳細`}
+                              title="ビートの詳細を開く"
+                              onClick={() => setOpenBeatId(beat.id)}
+                              className="group min-w-0 flex-1 cursor-pointer text-left"
+                            >
+                              <span className="block truncate font-medium text-[12.5px] text-on-surface transition-colors group-hover:text-primary">
+                                {beat.title || '無題のビート'}
+                              </span>
+                              {/* line-clamp は display:-webkit-box を敷くので block を重ねない
+                                （あとに出る .block が勝って刈り込みが効かなくなる）。 */}
+                              {preview || beat.guide ? (
+                                <span
+                                  className={`mt-1 line-clamp-2 text-[11.5px] leading-relaxed ${
+                                    preview
+                                      ? 'text-on-surface-variant'
+                                      : 'text-on-surface-variant/50'
+                                  }`}
+                                >
+                                  {preview || beat.guide}
+                                </span>
+                              ) : null}
+                            </button>
+                            <button
+                              type="button"
+                              aria-label={`「${beat.title || '無題のビート'}」をプロット画面で開く`}
+                              title="プロット画面で開く"
+                              onClick={() => onJumpBeat(beat.id)}
+                              className="shrink-0 rounded p-0.5 text-on-surface-variant/50 transition-colors hover:bg-surface-container-high hover:text-primary"
+                            >
+                              <ArrowRight className="size-3.5" />
+                            </button>
+                          </div>
+                        </li>
+                      )
+                    })}
+                  </ul>
+                </>
+              )}
+            </div>
+          </ScrollArea>
+        </aside>
+      )}
     </>
   )
 }
