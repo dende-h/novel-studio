@@ -1,5 +1,5 @@
 import { ArrowLeft, ArrowRight, Milestone, X } from 'lucide-react'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   beatsInStoryOrder,
   nextBeatStatus,
@@ -92,21 +92,39 @@ export function PlotPeek({
   const openBeat = beats.find((b) => b.id === openBeatId) ?? null
 
   // 種になったネタ帳メモは詳細を開いたときだけ引く（一覧では要らない）。
-  const [ideaText, setIdeaText] = useState<string | null>(null)
+  // 読み出しは非同期なので「どのビートのメモか」を一緒に持つ。裸の文字列で持つと、
+  // 別のビートへ切り替えた直後の描画に、前のビートのメモがそのビートのものとして出る。
+  const [idea, setIdea] = useState<{ beatId: string; text: string | null } | null>(null)
+  const openId = openBeat?.id
   const ideaRef = openBeat?.ideaRef
   useEffect(() => {
-    if (!ideaRepo || ideaRef === undefined) {
-      setIdeaText(null)
-      return
-    }
+    if (!ideaRepo || openId === undefined || ideaRef === undefined) return
     let alive = true
     void ideaRepo.get(ideaRef).then((note) => {
-      if (alive) setIdeaText(note?.text ?? null)
+      if (alive) setIdea({ beatId: openId, text: note?.text ?? null })
     })
     return () => {
       alive = false
     }
-  }, [ideaRepo, ideaRef])
+  }, [ideaRepo, openId, ideaRef])
+  const ideaText = idea !== null && idea.beatId === openId ? idea.text : null
+
+  // 開閉でフォーカスを迷子にしない。2xl 未満では詳細を開くと一覧ごと display:none になり、
+  // いま押したカードのボタンが消える＝フォーカスが body へ落ちて、文書の先頭から辿り直しになる。
+  const backRef = useRef<HTMLButtonElement>(null)
+  const cardRefs = useRef(new Map<string, HTMLButtonElement | null>())
+  const focusReturn = useRef<string | null>(null)
+  useEffect(() => {
+    if (openId !== undefined) {
+      backRef.current?.focus()
+      focusReturn.current = openId
+      return
+    }
+    // 閉じたら開いたカードへ戻す（話の切替などでカードごと消えていれば何も起きない）。
+    const id = focusReturn.current
+    focusReturn.current = null
+    if (id !== null) cardRefs.current.get(id)?.focus()
+  }, [openId])
 
   const cycleStatus = (beat: PlotBeat) => {
     if (!plot) return
@@ -123,6 +141,7 @@ export function PlotPeek({
         >
           <div className="flex shrink-0 items-center gap-1 border-outline-variant/30 border-b px-2 py-3">
             <Button
+              ref={backRef}
               variant="ghost"
               size="icon"
               aria-label="ビートの一覧へ戻る"
@@ -131,7 +150,17 @@ export function PlotPeek({
             >
               <ArrowLeft className="size-4" aria-hidden />
             </Button>
-            <span className="font-medium text-[13px] text-on-surface">ビートの詳細</span>
+            <span className="flex-1 font-medium text-[13px] text-on-surface">ビートの詳細</span>
+            {/* 一覧のヘッダは 2xl 未満では隠れる。閉じ道がこのパネルから消えないよう、ここにも置く。 */}
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label="パネルを閉じる"
+              onClick={onClose}
+              className="size-8 text-on-surface-variant hover:text-on-surface"
+            >
+              <X className="size-4" aria-hidden />
+            </Button>
           </div>
           <ScrollArea className="min-h-0 flex-1">
             <BeatDetail
@@ -207,7 +236,7 @@ export function PlotPeek({
                     return (
                       <li
                         key={beat.id}
-                        className={`rounded-lg border bg-surface p-2.5 ${
+                        className={`rounded-lg border bg-surface p-2.5 transition-colors hover:border-primary/40 ${
                           openBeat?.id === beat.id
                             ? 'border-primary/60 ring-1 ring-primary/30'
                             : 'border-outline-variant/30'
@@ -225,17 +254,23 @@ export function PlotPeek({
                           {/* カードの本体そのものが詳細への入口（狭い画面でも押し外しにくい）。 */}
                           <button
                             type="button"
+                            ref={(el) => {
+                              cardRefs.current.set(beat.id, el)
+                            }}
                             aria-label={`「${beat.title || '無題のビート'}」の詳細`}
                             aria-pressed={openBeat?.id === beat.id}
+                            title="ビートの詳細を開く"
                             onClick={() => setOpenBeatId((id) => (id === beat.id ? null : beat.id))}
-                            className="min-w-0 flex-1 text-left"
+                            className="group min-w-0 flex-1 cursor-pointer text-left"
                           >
-                            <span className="block truncate font-medium text-[12.5px] text-on-surface">
+                            <span className="block truncate font-medium text-[12.5px] text-on-surface transition-colors group-hover:text-primary">
                               {beat.title || '無題のビート'}
                             </span>
+                            {/* line-clamp は display:-webkit-box を敷くので block を重ねない
+                                （あとに出る .block が勝って刈り込みが効かなくなる）。 */}
                             {preview || beat.guide ? (
                               <span
-                                className={`mt-1 line-clamp-2 block text-[11.5px] leading-relaxed ${
+                                className={`mt-1 line-clamp-2 text-[11.5px] leading-relaxed ${
                                   preview ? 'text-on-surface-variant' : 'text-on-surface-variant/50'
                                 }`}
                               >

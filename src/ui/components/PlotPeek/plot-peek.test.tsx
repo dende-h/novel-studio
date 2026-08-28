@@ -137,7 +137,7 @@ async function setup(
       onClose={onClose}
     />,
   )
-  return { repo, view, onRefClick, onJumpBeat, onOpenPlot, onClose }
+  return { repo, ideaRepo, view, onRefClick, onJumpBeat, onOpenPlot, onClose }
 }
 
 const list = () => screen.getByRole('complementary', { name: 'この話のプロット' })
@@ -211,15 +211,61 @@ describe('PlotPeek（この話のプロット）', () => {
     expect(within(panel).getByText('（削除済み）')).toBeInTheDocument()
   })
 
-  it('中身がタイトルだけのビートはその旨を伝える', async () => {
+  // 空の案内が二重に出る／並んでいる欄と矛盾する（「対応する話」が出ているのに
+  // 「タイトルだけです」と言う）ことがないようにする。
+  it('中身の無いビートでも空の案内は要約の 1 か所だけ', async () => {
     let bare = emptyPlot('p1', 'w1', 100)
     bare = addSection(bare, { id: 'sec1', title: '第一幕', beatIds: [] })
     bare = addBeat(bare, 'sec1', beat('b9', { title: 'まだ空のビート', episodeRef: 'ep1' }))
     await setup({ plot: bare })
     const panel = await openDetail('まだ空のビート')
-    expect(
-      within(panel).getByText('このビートに書かれているのはタイトルだけです。'),
-    ).toBeInTheDocument()
+    expect(within(panel).getAllByText('まだ書かれていません。')).toHaveLength(1)
+    expect(within(panel).getByText('第一話')).toBeInTheDocument()
+    expect(within(panel).queryByText(/タイトルだけ/)).toBeNull()
+  })
+
+  // 非同期に引くネタ帳メモがビートに紐づいていないと、切り替えた先のビートの下に
+  // 前のビートのメモが「そのビートのもの」として出る。
+  it('ビートを切り替えると、前のビートのネタ帳メモは持ち越さない', async () => {
+    let p = emptyPlot('p1', 'w1', 100)
+    p = addSection(p, { id: 'sec1', title: '第一幕', beatIds: [] })
+    p = addBeat(p, 'sec1', beat('bA', { title: 'ビートA', episodeRef: 'ep1', ideaRef: 'idea-1' }))
+    p = addBeat(p, 'sec1', beat('bB', { title: 'ビートB', episodeRef: 'ep1', ideaRef: 'idea-2' }))
+    p = addBeat(p, 'sec1', beat('bC', { title: 'ビートC', episodeRef: 'ep1' }))
+    const { ideaRepo } = await setup({ plot: p })
+    await ideaRepo.put({ id: 'idea-2', text: 'BBBのメモ', createdAt: 0, updatedAt: 0 })
+
+    const a = await openDetail('ビートA')
+    expect(await within(a).findByText('改札の場面から始める')).toBeInTheDocument()
+
+    // ideaRef を持つ別のビートへ：解決するまで前のメモを出さない
+    fireEvent.click(screen.getByRole('button', { name: '「ビートB」の詳細' }))
+    expect(within(detail()).queryByText('改札の場面から始める')).toBeNull()
+    expect(await within(detail()).findByText('BBBのメモ')).toBeInTheDocument()
+
+    // ideaRef を持たないビートへ：メモ欄ごと出ない
+    fireEvent.click(screen.getByRole('button', { name: '「ビートC」の詳細' }))
+    expect(within(detail()).queryByText('BBBのメモ')).toBeNull()
+    expect(within(detail()).queryByText('ネタ帳のメモ')).toBeNull()
+  })
+
+  // 2xl 未満では詳細を開くと一覧ごと隠れる＝押したカードが消えてフォーカスが body へ落ちる。
+  it('詳細を開くと戻るボタンへフォーカスし、閉じると開いたカードへ返す', async () => {
+    await setup()
+    const card = await screen.findByRole('button', { name: '「駅前の再会」の詳細' })
+    fireEvent.click(card)
+    const back = within(detail()).getByRole('button', { name: 'ビートの一覧へ戻る' })
+    expect(document.activeElement).toBe(back)
+    fireEvent.click(back)
+    expect(document.activeElement).toBe(card)
+  })
+
+  // 一覧のヘッダは狭い画面では隠れるので、詳細からもパネルを閉じられること。
+  it('詳細からもパネルを閉じられる', async () => {
+    const { onClose } = await setup()
+    const panel = await openDetail('駅前の再会')
+    fireEvent.click(within(panel).getByRole('button', { name: 'パネルを閉じる' }))
+    expect(onClose).toHaveBeenCalledTimes(1)
   })
 
   it('人物チップを押すと用語集パネルへ渡す（本文の [[用語]] と同じ導線）', async () => {

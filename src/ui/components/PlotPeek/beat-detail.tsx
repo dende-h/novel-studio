@@ -38,7 +38,8 @@ interface BeatDetailProps {
  * プロット画面の詳細パネルが編集用に持っている欄を、書く手を止めずに読める形へ並べ替えたもの。
  * 幕・要約・人物と舞台・メモ・プロットライン・伏線・秘密・進捗・ネタ帳まで、そのビートに
  * 紐づくものを一度に見せる（プロット画面へ往復しないための器なので、欠けがあると意味がない）。
- * 空の欄は出さない。書き足すときはフッターからプロット画面へ渡す。
+ * 空の欄は出さない（「まだ書かれていません。」を出すのは要約の 1 か所だけにして、
+ * 同じ意味の空案内が画面に重ならないようにする）。書き足すときはフッターからプロット画面へ渡す。
  */
 export function BeatDetail({
   plot,
@@ -65,18 +66,6 @@ export function BeatDetail({
   const revealedHere = plot.secrets.filter((s) => s.revealBeatId === beat.id)
   const stillHidden = secretsHiddenAt(plot, beat.id)
   const status = STATUS_UI[beat.status]
-
-  // タイトルと状態しかないビートは、下に何も出ないと「開き損ね」に見える。そのときだけ案内を出す。
-  const hasBody =
-    Boolean(beat.summary || beat.guide || beat.note || beat.timeLabel || beat.targetLength) ||
-    pov !== undefined ||
-    cast.length > 0 ||
-    places.length > 0 ||
-    lines.length > 0 ||
-    foreshadows.length > 0 ||
-    revealedHere.length > 0 ||
-    stillHidden.length > 0 ||
-    ideaText !== null
 
   return (
     <div className="flex flex-col gap-4 px-4 py-3.5">
@@ -277,12 +266,6 @@ export function BeatDetail({
             <span>{ideaText}</span>
           </p>
         </Block>
-      ) : null}
-
-      {!hasBody ? (
-        <p className="text-[11.5px] text-on-surface-variant/70 leading-relaxed">
-          このビートに書かれているのはタイトルだけです。
-        </p>
       ) : null}
 
       <div className="border-outline-variant/30 border-t pt-2.5">
