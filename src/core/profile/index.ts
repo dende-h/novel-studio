@@ -3,7 +3,8 @@ import type { KeyValueStore } from '../storage/types'
 
 /**
  * 作者プロフィール（ペンネーム・アバター）。端末ローカルに1件だけ持つ。
- * 新規作品作成時の著者デフォルトとサイドバー表示に使う。Work とは独立した永続化。
+ * 新規作品作成時の著者デフォルト・ヘッダとサイドバーの表示・掲示板の表示名に使う。
+ * Work とは独立した永続化。
  */
 export const ProfileSchema = z.object({
   penName: z.string().optional(),
@@ -12,6 +13,16 @@ export const ProfileSchema = z.object({
     .string()
     .refine((s) => s.startsWith('data:image/'), 'data URL が必要')
     .optional(),
+  /**
+   * このペンネームが属するアカウント（Clerk userId）。**未設定は「まだどの
+   * アカウントのものでもない」**（サインイン前に決めた名前・旧バージョンで保存された行）。
+   *
+   * ローカル 1 件しか持たない器にアカウントの印を足すのは、**アカウントを切り替えても
+   * 名前が変わらない**問題を直すため。端末の値が誰のものかを覚えていないと、別の
+   * アカウントでサインインしても前の人のペンネームが出たままになる（`penNameForAccount`）。
+   * 判定にしか使わないので、あとから足しても既存の行は optional のまま読める。
+   */
+  accountId: z.string().optional(),
   // 端末間 LWW 用の最終更新時刻（epoch ms）。クラウド同期で勝者を決めるのに使う。
   updatedAt: z.number().optional(),
 })

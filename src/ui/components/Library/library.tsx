@@ -32,7 +32,6 @@ import { BackupNudgeDialog } from '@/ui/components/BackupNudgeDialog/backup-nudg
 import { ConfirmDialog } from '@/ui/components/ConfirmDialog/confirm-dialog'
 import { ExportDialog } from '@/ui/components/ExportDialog/export-dialog'
 import { ImportDialog } from '@/ui/components/ImportDialog/import-dialog'
-import { ProfileDialog } from '@/ui/components/ProfileDialog/profile-dialog'
 import { SaveStateIndicator } from '@/ui/components/SaveStateIndicator/save-state-indicator'
 import { SideNav } from '@/ui/components/SideNav/side-nav'
 import { TitlePromptDialog } from '@/ui/components/TitlePromptDialog/title-prompt-dialog'
@@ -43,6 +42,7 @@ import { WorkMetaDialog } from '@/ui/components/WorkMetaDialog/work-meta-dialog'
 import { markLocalBackup, readBackupMarks } from '@/ui/hooks/use-backup-marks'
 import { acknowledgeNudge, readNudgeAck } from '@/ui/hooks/use-backup-nudge'
 import { useEditorStore } from '@/ui/hooks/use-editor-store'
+import { useOpenProfile } from '@/ui/hooks/use-pen-name'
 import { TRASH_TTL_MS } from '@/ui/store/createDefaultStore'
 import type { EditorStore } from '@/ui/store/editorStore'
 import { ProjectCard } from './project-card'
@@ -155,6 +155,8 @@ export function Library({
   const state = useEditorStore(store)
   // 公開サイトへの投稿は Clerk JWT で認証する（執筆アカウント＝公開アカウント）。
   const { getToken } = useAuth()
+  // プロフィールの編集はアプリに 1 つ（Root が持つ）。ここは開く口を叩くだけ。
+  const openProfile = useOpenProfile()
   const { show } = useToast()
   const [newOpen, setNewOpen] = useState(false)
   const [exportOpen, setExportOpen] = useState(false)
@@ -162,7 +164,6 @@ export function Library({
   const [publishBusyId, setPublishBusyId] = useState<string | null>(null)
   const [importOpen, setImportOpen] = useState(false)
   const [backupOpen, setBackupOpen] = useState(false)
-  const [profileOpen, setProfileOpen] = useState(false)
   const [trashOpen, setTrashOpen] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<WorkSummary | null>(null)
   const [metaTarget, setMetaTarget] = useState<WorkSummary | null>(null)
@@ -325,7 +326,7 @@ export function Library({
           onNavigateHelp={onOpenHelp}
           cta={{ label: '新しい作品', onClick: () => setNewOpen(true) }}
           profile={state.profile}
-          onEditProfile={() => setProfileOpen(true)}
+          onEditProfile={openProfile}
         />
       }
     >
@@ -574,12 +575,6 @@ export function Library({
         onOpenChange={setImportOpen}
         onImport={(works) => store.importWorks(works)}
         onRestoreAll={(json) => localBackup.restorePlaintext(json)}
-      />
-      <ProfileDialog
-        open={profileOpen}
-        onOpenChange={setProfileOpen}
-        initial={{ penName: state.profile.penName ?? '', avatar: state.profile.avatar ?? '' }}
-        onSubmit={(values) => void store.updateProfile(values)}
       />
       <WorkMetaDialog
         open={metaTarget !== null}

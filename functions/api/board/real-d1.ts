@@ -6,8 +6,9 @@
  * SQL を解釈しない。だから構文エラー・曖昧な列名・型の不一致は**永久に検出できない**。
  * 実際、`readThreadDetail` の `ambiguous column name: url_key`（board_post_links と
  * board_links の両方に url_key がある）はフェイクを素通りして STG で 500 になった。
- * このハーネスは `migrations/0008_board.sql` をそのまま流し込んだ実 SQLite に対して
- * store の SQL を発行する＝**SQL が本当に通るか**を機械が確かめる。
+ * このハーネスは `migrations/` の掲示板 DDL（0008・0009）をそのまま順に流し込んだ実 SQLite
+ * に対して store の SQL を発行する＝**SQL が本当に通るか**を機械が確かめる。
+ * マイグレーションを足したら `BOARD_MIGRATIONS` に**必ず足す**（ここが本番の順序の写し）。
  *
  * D1 との差分で気をつけること:
  *   * `batch()` は実 D1 と同じく **SELECT でも `results` を返す**（`run()` の結果ではない）。
@@ -21,9 +22,9 @@
 import { readFileSync } from 'node:fs'
 import { DatabaseSync } from 'node:sqlite'
 import type {
-  LikeRow,
   LinkRow,
   PollRow,
+  PostLikeRow,
   PostLinkRow,
   PostRow,
   ProfileRow,
@@ -58,8 +59,11 @@ export interface RealD1Result<T = unknown> {
   meta: { changes: number }
 }
 
-/** 掲示板のマイグレーション（このハーネスが唯一読み込む DDL）。 */
-const BOARD_MIGRATION = new URL('../../../migrations/0008_board.sql', import.meta.url)
+/** 掲示板のマイグレーション（このハーネスが読み込む DDL。本番と同じ順に流す）。 */
+const BOARD_MIGRATIONS = [
+  new URL('../../../migrations/0008_board.sql', import.meta.url),
+  new URL('../../../migrations/0009_board_post_likes.sql', import.meta.url),
+]
 
 // ---------------------------------------------------------------------------
 // シード用の既定値（board-test-util の fake* に無いテーブルの分だけ足す）
@@ -87,8 +91,8 @@ export function realVote(over: Partial<VoteRow> = {}): VoteRow {
   }
 }
 
-export function realLike(over: Partial<LikeRow> = {}): LikeRow {
-  return { thread_id: 't1', user_id: 'user_1', created_at: 1000, ...over }
+export function realPostLike(over: Partial<PostLikeRow> = {}): PostLikeRow {
+  return { post_id: 'p1', user_id: 'user_1', created_at: 1000, ...over }
 }
 
 export function realReport(over: Partial<ReportRow> = {}): ReportRow {
@@ -126,7 +130,7 @@ export interface RealD1 {
     profile(over?: Partial<ProfileRow>): ProfileRow
     thread(over?: Partial<ThreadRow>): ThreadRow
     post(over?: Partial<PostRow>): PostRow
-    like(over?: Partial<LikeRow>): LikeRow
+    like(over?: Partial<PostLikeRow>): PostLikeRow
     poll(over?: Partial<PollRow>): PollRow
     vote(over?: Partial<VoteRow>): VoteRow
     report(over?: Partial<ReportRow>): ReportRow
@@ -142,7 +146,7 @@ export interface RealD1 {
  */
 export function makeRealD1(): RealD1 {
   const sqlite = new DatabaseSync(':memory:') as unknown as RawDatabase
-  sqlite.exec(readFileSync(BOARD_MIGRATION, 'utf8'))
+  for (const file of BOARD_MIGRATIONS) sqlite.exec(readFileSync(file, 'utf8'))
 
   // SELECT / WITH は結果を返す文。batch() の出し分けに使う（実 D1 と同じ振る舞い）。
   const isRead = (sql: string): boolean => /^\s*(SELECT|WITH)/i.test(sql)
@@ -210,7 +214,7 @@ export function makeRealD1(): RealD1 {
       profile: (over = {}) => insert('board_profiles', fakeProfile(over)),
       thread: (over = {}) => insert('board_threads', fakeThread(over)),
       post: (over = {}) => insert('board_posts', fakePost(over)),
-      like: (over = {}) => insert('board_likes', realLike(over)),
+      like: (over = {}) => insert('board_post_likes', realPostLike(over)),
       poll: (over = {}) => insert('board_polls', realPoll(over)),
       vote: (over = {}) => insert('board_votes', realVote(over)),
       report: (over = {}) => insert('board_reports', realReport(over)),

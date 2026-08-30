@@ -256,6 +256,13 @@ export const BoardPostSchema = z.object({
   /** 運営が非表示にしたか（本文は伏せ字） */
   hidden: z.boolean().default(false),
   createdAt: z.number(),
+  /**
+   * この投稿に付いた 👍 の数（migrations/0009_board_post_likes.sql）。
+   * 👍 はスレッドではなく**投稿ごと**に付く＝どの書き込みに賛同が集まったかが分かる。
+   */
+  likeCount: z.number().default(0),
+  /** 自分が 👍 しているか（未ログインは false） */
+  liked: z.boolean().default(false),
   /** この投稿に貼られたリンクのカード（無ければ空配列） */
   links: z.array(z.lazy(() => LinkCardSchema)).default([]),
 })
@@ -275,8 +282,13 @@ export const BoardThreadSchema = z.object({
   pinned: z.boolean().default(false),
   locked: z.boolean().default(false),
   replyCount: z.number().default(0),
+  /**
+   * スレ本文（seq=1）に付いた 👍 の数。👍 は投稿ごとに付くので、一覧に出す 1 つの数字は
+   * 「スレを立てた人の言い分に何人が賛同したか」＝本文の数にする
+   *（migrations/0009_board_post_likes.sql）。
+   */
   likeCount: z.number().default(0),
-  /** 自分が 👍 しているか */
+  /** 自分がスレ本文に 👍 しているか */
   liked: z.boolean().default(false),
   /** アンケートが付いているか（一覧では中身を返さない） */
   hasPoll: z.boolean().default(false),

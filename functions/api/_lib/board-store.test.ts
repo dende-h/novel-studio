@@ -81,6 +81,13 @@ async function seeded() {
   return store
 }
 
+/** シードしたスレの本文（seq=1）。👍 は投稿の行に対して押す（0009）。 */
+function headPost(store: ReturnType<typeof makeBoardDb>) {
+  const head = store.posts.get('p1')
+  if (!head) throw new Error('seed: p1 が無い')
+  return head
+}
+
 describe('プロフィール', () => {
   it('登録して読み戻せる。role は member 既定', async () => {
     const store = makeBoardDb()
@@ -393,9 +400,9 @@ describe('listThreads', () => {
     expect(page2.nextCursor).toBeNull()
   })
 
-  it('👍 の有無は閲覧者ごとに変わる', async () => {
+  it('👍 の有無は閲覧者ごとに変わる（一覧に出るのはスレ本文への 👍）', async () => {
     const store = await seeded()
-    await toggleLike(store.db, 't1', 'user_2', 100)
+    await toggleLike(store.db, headPost(store), 'user_2', 100)
     expect((await listThreads(store.db, { viewerId: 'user_2' })).rows[0]?.liked).toBe(1)
     expect((await listThreads(store.db, { viewerId: 'user_1' })).rows[0]?.liked).toBe(0)
     expect((await listThreads(store.db, {})).rows[0]?.liked).toBe(0)
@@ -486,22 +493,50 @@ describe('patchThread', () => {
 })
 
 describe('toggleLike', () => {
-  it('2 回で元に戻り、like_count が board_likes と一致する', async () => {
+  it('2 回で元に戻り、like_count が board_post_likes と一致する', async () => {
     const store = await seeded()
+    const head = headPost(store)
 
-    const on = await toggleLike(store.db, 't1', 'user_2', 100)
+    const on = await toggleLike(store.db, head, 'user_2', 100)
     expect(on).toEqual({ liked: true, likeCount: 1 })
+    expect(store.posts.get('p1')?.like_count).toBe(1)
+    // 本文（seq=1）への 👍 はスレ行にも写る＝一覧の賛同数がそのまま使える。
     expect(store.threads.get('t1')?.like_count).toBe(1)
 
-    const off = await toggleLike(store.db, 't1', 'user_2', 200)
+    const off = await toggleLike(store.db, head, 'user_2', 200)
     expect(off).toEqual({ liked: false, likeCount: 0 })
     expect(store.threads.get('t1')?.like_count).toBe(0)
-    expect(store.likes.size).toBe(0)
+    expect(store.postLikes.size).toBe(0)
 
     // 別の人が押しても数え直しで一致する。
-    await toggleLike(store.db, 't1', 'user_2', 300)
-    await toggleLike(store.db, 't1', 'user_3', 400)
+    await toggleLike(store.db, head, 'user_2', 300)
+    await toggleLike(store.db, head, 'user_3', 400)
     expect(store.threads.get('t1')?.like_count).toBe(2)
+  })
+
+  it('返信への 👍 は投稿だけを数え、スレ行の賛同数は動かさない', async () => {
+    const store = await seeded()
+    await createPost(store.db, {
+      id: 'p2',
+      threadId: 't1',
+      userId: 'user_2',
+      body: '返信',
+      now: 2000,
+    })
+    const reply = store.posts.get('p2')
+    if (!reply) throw new Error('seed: p2 が無い')
+
+    expect(await toggleLike(store.db, reply, 'user_3', 100)).toEqual({ liked: true, likeCount: 1 })
+    expect(store.posts.get('p2')?.like_count).toBe(1)
+    expect(store.threads.get('t1')?.like_count).toBe(0)
+  })
+
+  it('投稿の行ではなくスレ id を渡したら止まる（typecheck の外なので実行時に落とす）', async () => {
+    const store = await seeded()
+    await expect(
+      // @ts-expect-error 0009 以前の呼び方。取り違えたまま動かすと数が増えない 👍 になる
+      toggleLike(store.db, 't1', 'user_2', 100),
+    ).rejects.toThrow(TypeError)
   })
 })
 

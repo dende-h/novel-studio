@@ -87,18 +87,15 @@ function formatBanUntil(ms: number): string {
 const replyLabel = (seq: number): string => `>>${seq}`
 
 /**
- * 👍 を押せない理由（押せるなら空文字）。
+ * 👍 を押せない理由（押せるなら空文字）。**押す相手は書き込み 1 件**（0009）。
  *
- * **サーバの `canLike`（`src/core/board/permission.ts` §7-13）と同じ順・同じ判定**で組む
+ * **サーバの `canLike`（`src/core/board/permission.ts`）と同じ順・同じ判定**で組む
  *（投稿禁止 → 削除済み → ロック）。ここを画面に持たないと、締め切ったスレに
  * 「押すたびに 403/409 のトーストが出るだけのボタン」が残る。判定が 2 か所に散るのは
  * 承知のうえで、**緩めるほうへはずれない並び**にして揃える。
  *
  * **未ログインは理由にしない。** サーバは 401 で弾くが、画面はそれを受けてログインの
  * ダイアログを出す＝押した先に次の一手がある。押せなくすると、その導線ごと消える。
- *
- * 種別（👍 が付くのは要望・不具合だけ）は呼び出し側の `hasStatusUi` が先に見ているので、
- * ここでは見ない。
  */
 function likeBlockedReason(thread: BoardThread, banned: boolean): string {
   if (banned) return '運営の判断で、いまは賛同を付けられません'
@@ -154,7 +151,6 @@ export function ThreadView({
   // 投稿へ飛ぶためのアンカー。`useId` を混ぜて、同じ文書に 2 つ描かれても id が衝突しない形にする。
   const anchorPrefix = useId()
   const replyFieldId = useId()
-  const likeReasonId = useId()
   const replyRef = useRef<HTMLTextAreaElement>(null)
 
   // Clerk の `getToken` は毎レンダー別の関数になりうる。そのまま依存に置くと読み込みが
@@ -325,10 +321,14 @@ export function ThreadView({
     await load()
   }
 
-  const like = async () => {
+  /**
+   * 書き込み 1 件への 👍。スレ全体ではなく**押した投稿だけ**を描き直す
+   *（スレを読み直すと、読んでいた位置と入力途中の返信が飛ぶ）。
+   */
+  const like = async (post: BoardPost) => {
     if (busy || !thread) return
     setBusy(true)
-    const res = await toggleLike(threadId, getToken)
+    const res = await toggleLike(post.id, getToken)
     setBusy(false)
     if (!res.ok) {
       handleFailure(res.code, res.message, 'toast')
@@ -336,7 +336,16 @@ export function ThreadView({
     }
     // 押した結果はサーバが返す（どちらにするかは送っていない）。返ってきた値で描き直す。
     const { liked, likeCount } = res.data
-    setDetail((prev) => (prev ? { ...prev, thread: { ...prev.thread, liked, likeCount } } : prev))
+    setDetail((prev) =>
+      prev === null
+        ? prev
+        : {
+            ...prev,
+            posts: prev.posts.map((p) => (p.id === post.id ? { ...p, liked, likeCount } : p)),
+            // 一覧に出る賛同数はスレ本文（seq=1）の 👍（0009）。押した先が本文なら揃える。
+            thread: post.seq === 1 ? { ...prev.thread, liked, likeCount } : prev.thread,
+          },
+    )
   }
 
   const castVote = async (choices: number[]) => {
@@ -461,29 +470,9 @@ export function ThreadView({
                   </p>
                 )}
 
-                {hasStatusUi(thread.kind) && (
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant={thread.liked ? 'default' : 'outline'}
-                      disabled={busy || likeBlocked !== ''}
-                      onClick={() => void like()}
-                      aria-pressed={thread.liked}
-                      aria-describedby={likeBlocked === '' ? undefined : likeReasonId}
-                    >
-                      <ThumbsUp className="size-4" aria-hidden="true" />
-                      賛同 {formatCount(thread.likeCount)}
-                    </Button>
-                    {/* **ボタンは消さずに理由を添える。** 消すと、賛同の数（締めた時点の根拠）まで
-                        画面から無くなり、押せなくなったことにも気づけない。 */}
-                    {likeBlocked !== '' && (
-                      <span id={likeReasonId} className="text-on-surface-variant text-xs">
-                        {likeBlocked}
-                      </span>
-                    )}
-                  </div>
-                )}
+                {/* 賛同（👍）はスレッドの見出しには置かない。押したいのは「このスレッド」
+                    ではなく中の 1 つの書き込みで、見出しに 1 つだけ置くと、どの意見に
+                    票が入ったのか誰にも分からない。ボタンは投稿カードの中にある。 */}
               </header>
 
               {detail.poll && (
@@ -516,6 +505,8 @@ export function ThreadView({
                       canPost={canPost}
                       signedIn={auth.isSignedIn}
                       busy={busy}
+                      likeBlocked={likeBlocked}
+                      onLike={() => void like(post)}
                       onJump={jumpTo}
                       onReply={replyToSeq}
                       onDelete={() => {
@@ -679,6 +670,9 @@ interface PostCardProps {
   canPost: boolean
   signedIn: boolean
   busy: boolean
+  /** 👍 を押せない理由（押せるなら空文字）。スレの状態から決まるので上から降ってくる */
+  likeBlocked: string
+  onLike: () => void
   onJump: (seq: number) => void
   onReply: (seq: number) => void
   onDelete: () => void
@@ -700,15 +694,22 @@ function PostCard({
   canPost,
   signedIn,
   busy,
+  likeBlocked,
+  onLike,
   onJump,
   onReply,
   onDelete,
   onReport,
   onModerate,
 }: PostCardProps) {
+  const likeReasonId = useId()
   const masked = post.deleted || post.hidden
   const time = formatBoardTime(post.createdAt, now)
   const head = post.seq === 1
+  // 押せない理由は 1 枚めのカードにだけ出す（同じ文が投稿の数だけ並ぶと読み飛ばされる）。
+  // **`aria-describedby` は出している時だけ**指す。描いていない id を指すと、読み上げが
+  // 空の説明を拾って「賛同」以外なにも読まれないボタンになる。
+  const showLikeReason = likeBlocked !== '' && head
 
   return (
     // `tabIndex={-1}` は `>>N` で飛んできたときのフォーカス先。読み上げでも位置が分かる。
@@ -758,6 +759,36 @@ function PostCard({
 
       {!masked && (
         <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1">
+          {/* 賛同（👍）。**書き込み 1 件ごとに小さく置く**（0009）。未ログインでも出す
+              ＝押すと 401 を受けてログインのダイアログが開く（押せなくすると導線が消える）。
+              数は 0 のとき出さない。「賛同 0」は、まだ誰も押していないことより
+              「誰にも賛同されていない」と読めてしまう。 */}
+          <button
+            type="button"
+            onClick={onLike}
+            disabled={busy || likeBlocked !== ''}
+            aria-pressed={post.liked}
+            aria-describedby={showLikeReason ? likeReasonId : undefined}
+            className={cn(
+              'inline-flex items-center gap-1 rounded text-xs disabled:opacity-50',
+              post.liked
+                ? 'font-medium text-primary'
+                : 'text-on-surface-variant hover:text-on-surface',
+            )}
+          >
+            <ThumbsUp className="size-3.5" aria-hidden="true" />
+            賛同
+            {post.likeCount > 0 && (
+              <span className="tabular-nums">{formatCount(post.likeCount)}</span>
+            )}
+          </button>
+          {/* **ボタンは消さずに理由を添える。** 消すと、賛同の数（締めた時点の根拠）まで
+              画面から無くなり、押せなくなったことにも気づけない。 */}
+          {showLikeReason && (
+            <span id={likeReasonId} className="text-on-surface-variant text-xs">
+              {likeBlocked}
+            </span>
+          )}
           {canPost && (
             <button
               type="button"

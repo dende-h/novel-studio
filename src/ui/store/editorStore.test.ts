@@ -118,6 +118,38 @@ describe('editorStore（自前ストア・useSyncExternalStore 用）', () => {
       await store.createWork('新作')
       expect(store.getSnapshot().work?.author).toBeUndefined()
     })
+
+    it('updateProfile は accountId を据え置く（1 欄の更新で他の欄を落とさない）', async () => {
+      await store.updateProfile({ penName: '夜半', avatar: '', accountId: 'user_1' })
+      expect(store.getSnapshot().profile.accountId).toBe('user_1')
+
+      // アバターだけ差し替えても、どのアカウントの名前かは残る。
+      await store.updateProfile({ penName: '夜半', avatar: 'data:image/jpeg;base64,AA' })
+      expect(store.getSnapshot().profile.accountId).toBe('user_1')
+
+      // 名前を消したら印も残さない（次のサインインで拾い直す）。
+      await store.updateProfile({ penName: '', avatar: '' })
+      expect(store.getSnapshot().profile.accountId).toBeUndefined()
+    })
+
+    it('adoptPenName は名前だけ入れ替え、アバターは端末に残す', async () => {
+      await store.updateProfile({ penName: '前の人', avatar: 'data:image/jpeg;base64,AA' })
+
+      await store.adoptPenName('夜半', 'user_2')
+      expect(store.getSnapshot().profile).toEqual({
+        penName: '夜半',
+        accountId: 'user_2',
+        avatar: 'data:image/jpeg;base64,AA',
+        updatedAt: expect.any(Number),
+      })
+
+      // 別アカウントの名前を伏せるとき（clear）。アバターは触らない。
+      await store.adoptPenName('', null)
+      expect(store.getSnapshot().profile).toEqual({
+        avatar: 'data:image/jpeg;base64,AA',
+        updatedAt: expect.any(Number),
+      })
+    })
   })
 
   it('createEpisode は話を追加して開き、draft を空にする', async () => {

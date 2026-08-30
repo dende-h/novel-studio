@@ -23,6 +23,7 @@ import { HelpPage } from './components/HelpPage/help-page'
 import { IdeaboxPage } from './components/IdeaboxPage/idea-box-page'
 import { Library } from './components/Library/library'
 import { McpConnectDialog } from './components/McpConnectDialog/mcp-connect-dialog'
+import { ProfileDialog } from './components/ProfileDialog/profile-dialog'
 import { PublishRoute } from './components/PublishPage/publish-route'
 import { RestoreGrace } from './components/RestoreGrace/restore-grace'
 import { SettingsPage } from './components/SettingsPage/settings-page'
@@ -34,6 +35,13 @@ import { useAutoSync } from './hooks/use-auto-sync'
 import { useHashRoute } from './hooks/use-hash-route'
 import { useLiveSnapshot } from './hooks/use-live-snapshot'
 import { useLocalFlag } from './hooks/use-local-flag'
+import {
+  PenNameContext,
+  ProfileEditContext,
+  useAccountPenNameSync,
+  usePenName,
+  useSaveProfile,
+} from './hooks/use-pen-name'
 import {
   createDefaultActivityRepository,
   createDefaultIdeaRepository,
@@ -92,7 +100,7 @@ interface RootProps {
 }
 
 /** 入口（ライブラリ）とエディタをハッシュで切り替えるトップレベル Container。 */
-export function Root({ store }: RootProps) {
+function RootRoutes({ store }: RootProps) {
   const { route, navigate } = useHashRoute()
   const {
     status,
@@ -106,13 +114,9 @@ export function Root({ store }: RootProps) {
     isSignedIn,
   } = useAuth()
   const { show } = useToast()
-  // 掲示板の表示名の初期候補に使うローカルのペンネーム（D-BOARD-NAME は「提案するだけ」）。
-  // **文字列 1 つだけを購読する**＝ペンネームが変わったときにしか Root は描き直さない。
-  // スナップショット全体を購読すると、執筆中の 1 文字ごとに Root からアプリ全体が再描画される。
-  const penName = useSyncExternalStore(
-    store.subscribe,
-    () => store.getSnapshot().profile.penName ?? '',
-  )
+  // 掲示板の表示名の初期候補に使うペンネーム（D-BOARD-NAME は「提案するだけ」）。
+  // 購読は外側の `Root` が 1 回だけ行い、ここは配られた値を読む。
+  const penName = usePenName()
   // 初回のみ保存の仕組みを一度だけ説明する（思想の共有）。立てたら再表示しない。
   const [onboarded, markOnboarded] = useLocalFlag('ns-onboarded')
   const getTokenRef = useRef(getToken)
@@ -470,5 +474,51 @@ export function Root({ store }: RootProps) {
         />
       )}
     </>
+  )
+}
+
+/**
+ * アプリの入口。**ペンネームを配る器**をルーティングの外側に置く。
+ *
+ * ヘッダのように store を持たない部品にも名前が要る一方、ルーティング（`RootRoutes`）は
+ * 画面ごとに早期 return するので、その中で Provider を張ると設定・ヘルプ・料金の画面だけ
+ * 名前が届かない。**外側に 1 枚かぶせて、全部の画面に同じ値が流れる形**にする。
+ *
+ * アカウントとの突き合わせ（`useAccountPenNameSync`）も**ここ 1 か所だけ**で走らせる。
+ * 画面ごとに呼ぶと、行き来のたびに同じ問い合わせが飛ぶ。
+ */
+export function Root({ store }: RootProps) {
+  // **文字列 1 つずつ購読する**＝ペンネーム／アバターが変わったときにしか描き直さない
+  // （スナップショット全体を購読すると、執筆中の 1 文字ごとにアプリ全体が再描画される。
+  //  オブジェクトを返す getSnapshot は毎回別参照になって無限ループにもなる）。
+  const penName = useSyncExternalStore(
+    store.subscribe,
+    () => store.getSnapshot().profile.penName ?? '',
+  )
+  const avatar = useSyncExternalStore(
+    store.subscribe,
+    () => store.getSnapshot().profile.avatar ?? '',
+  )
+  useAccountPenNameSync(store)
+
+  const [profileOpen, setProfileOpen] = useState(false)
+  const openProfile = useCallback(() => setProfileOpen(true), [])
+  const saveProfile = useSaveProfile(store)
+  const { isSignedIn } = useAuth()
+
+  return (
+    <PenNameContext.Provider value={penName}>
+      <ProfileEditContext.Provider value={openProfile}>
+        <RootRoutes store={store} />
+        {/* プロフィールはアプリに 1 つだけ。どの画面からでも同じ口で開く。 */}
+        <ProfileDialog
+          open={profileOpen}
+          onOpenChange={setProfileOpen}
+          initial={{ penName, avatar }}
+          signedIn={isSignedIn}
+          onSubmit={saveProfile}
+        />
+      </ProfileEditContext.Provider>
+    </PenNameContext.Provider>
   )
 }

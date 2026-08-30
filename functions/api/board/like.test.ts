@@ -5,12 +5,15 @@
  * このエンドポイントが担うぶんを固定する。
  *   §7-1  未ログインの書き込み系は 401
  *   §7-11 レート制限のキーが `board:` 接頭辞で、同期のカウンタ（素の user_id）と混ざらない
- *  （D-BOARD-KIND）👍 が付くのは request / bug のスレだけ
  *  （§7-4）投稿禁止中とロック中は押せない — 返信が 403 なのに 👍 は 200、を作らない
  *
- * いちばん効かせたいのは**連打で数がずれない**こと。`like_count` を差分加算にすると、
- * 二重送信や失敗した書き込みでずれ、ずれたまま誰も直せなくなる（store が毎回数え直す）。
- * 同じ userId で 2 回叩けば元に戻り、別の userId は独立して数えられることを固定する。
+ * 👍 が付く相手は**スレッドではなく投稿 1 件**（migrations/0009_board_post_likes.sql）。
+ * 種別では絞らない＝雑談の書き込みにも押せる。ここで固定したいのは 3 つ。
+ *   1. **連打で数がずれない。** `like_count` を差分加算にすると、二重送信や失敗した
+ *      書き込みでずれ、ずれたまま誰も直せなくなる（store が毎回数え直す）。
+ *   2. **投稿をまたいで混ざらない。** 返信への 👍 でスレの賛同数が動かない。
+ *   3. **古い呼び方（`?thread=`）がスレ本文への 👍 に落ちる。** 端末に残った古い JS から
+ *      当分飛んでくるので、弾かずに同じ意味へ写す。
  *
  * D1 は `board-test-util.ts` の in-memory フェイク。時刻は fake timers で固定する
  *（レート制限の分窓が実行時刻に依存して揺れないように）。
@@ -25,6 +28,7 @@ vi.mock('@clerk/backend', async () => {
 import { BOARD_ACTIONS_PER_MINUTE } from './board-endpoint'
 import {
   type BoardDbFake,
+  fakePost,
   fakeProfile,
   fakeThread,
   makeBoardDb,
@@ -37,29 +41,34 @@ const NOW = 1_800_000_030_000
 
 type Handler = (c: { request: Request; env: unknown }) => Promise<Response>
 
-const url = (threadId: string | null) =>
-  threadId === null
-    ? 'https://x/api/board/like'
-    : `https://x/api/board/like?thread=${encodeURIComponent(threadId)}`
+/** `?post=` が本筋。`?thread=` は古い呼び方（本文への 👍 に写る）。 */
+const url = (query: { post?: string; thread?: string }) => {
+  const params = new URLSearchParams()
+  if (query.post !== undefined) params.set('post', query.post)
+  if (query.thread !== undefined) params.set('thread', query.thread)
+  const qs = params.toString()
+  return qs === '' ? 'https://x/api/board/like' : `https://x/api/board/like?${qs}`
+}
 
-const like = (env: unknown, threadId: string | null = 't1') =>
+const like = (env: unknown, query: { post?: string; thread?: string } = { post: 'p1' }) =>
   (onRequestPost as unknown as Handler)({
-    request: new Request(url(threadId), {
-      method: 'POST',
-      headers: { authorization: 'Bearer x' },
-    }),
+    request: new Request(url(query), { method: 'POST', headers: { authorization: 'Bearer x' } }),
     env,
   })
 
 /** レスポンス本文（成功時）。 */
-type LikeBody = { liked: boolean; likeCount: number }
+type LikeBody = { liked: boolean; likeCount: number; postId: string }
 
-const likeBody = async (env: unknown, threadId: string | null = 't1'): Promise<LikeBody> =>
-  (await (await like(env, threadId)).json()) as LikeBody
+const likeBody = async (
+  env: unknown,
+  query: { post?: string; thread?: string } = { post: 'p1' },
+): Promise<LikeBody> => (await (await like(env, query)).json()) as LikeBody
 
 /**
- * user_1（スレ主）・user_2（押す人）・user_3 が居て、`t1` は種別 `request`（👍 が付く）。
- * 種別が違うスレの比較用に `chat1`（雑談）も置く。
+ * user_1（スレ主）・user_2（押す人）・user_3 が居る。
+ *   t1（要望）  … p1 = 本文（user_1）／ p2 = 返信（user_3）
+ *   chat1（雑談）… c1 = 本文（user_1）
+ * 種別で押せる・押せないを分けないので、雑談のスレも同じ形で置く。
  */
 function setup(): { store: BoardDbFake; env: unknown } {
   const store = makeBoardDb({
@@ -71,6 +80,11 @@ function setup(): { store: BoardDbFake; env: unknown } {
     threads: [
       fakeThread({ id: 't1', kind: 'request', user_id: 'user_1' }),
       fakeThread({ id: 'chat1', kind: 'chat', user_id: 'user_1' }),
+    ],
+    posts: [
+      fakePost({ id: 'p1', thread_id: 't1', seq: 1, user_id: 'user_1' }),
+      fakePost({ id: 'p2', thread_id: 't1', seq: 2, user_id: 'user_3' }),
+      fakePost({ id: 'c1', thread_id: 'chat1', seq: 1, user_id: 'user_1' }),
     ],
   })
   return { store, env: makeBoardEnv({ store }) }
@@ -97,14 +111,15 @@ describe('POST /api/board/like — 入口', () => {
 
     const res = await like(env)
     expect(res.status).toBe(401)
-    expect(store.likes.size).toBe(0)
-    expect(store.threads.get('t1')?.like_count).toBe(0)
+    expect(store.postLikes.size).toBe(0)
+    expect(store.posts.get('p1')?.like_count).toBe(0)
   })
 
-  it('thread が無ければ 400・存在しないスレは 404', async () => {
+  it('対象の指定が無ければ 400・存在しない投稿は 404', async () => {
     const { env } = setup()
-    expect((await like(env, null)).status).toBe(400)
-    expect((await like(env, 'nope')).status).toBe(404)
+    expect((await like(env, {})).status).toBe(400)
+    expect((await like(env, { post: 'nope' })).status).toBe(404)
+    expect((await like(env, { thread: 'nope' })).status).toBe(404)
   })
 
   it('表示名（board_profiles）が無くても押せる — 👍 は記名で表に出ない', async () => {
@@ -113,43 +128,82 @@ describe('POST /api/board/like — 入口', () => {
 
     const res = await like(env)
     expect(res.status).toBe(200)
-    expect((await res.json()) as LikeBody).toEqual({ liked: true, likeCount: 1 })
-    expect(store.likes.size).toBe(1)
+    expect((await res.json()) as LikeBody).toEqual({ liked: true, likeCount: 1, postId: 'p1' })
+    expect(store.postLikes.size).toBe(1)
+  })
+
+  it('古い `?thread=` はスレ本文（seq=1）への 👍 に写る（端末に残る古い JS のため）', async () => {
+    const { store, env } = setup()
+
+    expect(await likeBody(env, { thread: 't1' })).toEqual({
+      liked: true,
+      likeCount: 1,
+      postId: 'p1',
+    })
+    expect(store.postLikes.has('p1:user_2')).toBe(true)
+    // 同じ相手を指しているので、`?post=` で押し直すと外れる（二重に積まれない）。
+    expect(await likeBody(env, { post: 'p1' })).toEqual({
+      liked: false,
+      likeCount: 0,
+      postId: 'p1',
+    })
   })
 })
 
 // ---------------------------------------------------------------------------
-// 種別（D-BOARD-KIND）と、触れないスレ
+// どの投稿に押せるか
 // ---------------------------------------------------------------------------
 
-describe('POST /api/board/like — 押せるスレの種別', () => {
-  it('request と bug には押せる', async () => {
-    const { store, env } = setup()
-    store.threads.set('bug1', fakeThread({ id: 'bug1', kind: 'bug', user_id: 'user_1' }))
-
-    expect(await likeBody(env, 't1')).toEqual({ liked: true, likeCount: 1 })
-    expect(await likeBody(env, 'bug1')).toEqual({ liked: true, likeCount: 1 })
-  })
-
-  // `suggestion` はここに入れない。要望へ統合したあとも旧目安箱スレの賛同と
-  // 対応状況を画面に残すため、KINDS_WITH_STATUS に残してある（D-BOARD-KIND）。
-  // `notice`（お知らせ）は運営からの連絡なので賛同を付けない。
+describe('POST /api/board/like — 押せる相手', () => {
+  // 0009 以前は request / bug のスレだけだった。押したいのは「このスレッド」ではなく
+  // 中の 1 つの書き込みで、それは雑談でも作品紹介でも変わらない。
   it.each([
     'notice',
     'chat',
     'intro',
     'promo',
-  ])('%s のスレには押せない（unsupported-kind・行も作らない）', async (kind) => {
+    'bug',
+  ])('%s のスレの書き込みにも押せる（種別では絞らない）', async (kind) => {
     const { store, env } = setup()
     store.threads.set('k1', fakeThread({ id: 'k1', kind, user_id: 'user_1' }))
+    store.posts.set('kp1', fakePost({ id: 'kp1', thread_id: 'k1', seq: 1, user_id: 'user_1' }))
 
-    const res = await like(env, 'k1')
-    // ステータスは permission.ts の STATUS_OF_REASON をそのまま写す
-    //（対応表をエンドポイント側で書き直さない）。
-    expect(res.status).toBe(400)
-    expect((await res.json()) as { error: string }).toEqual({ error: 'unsupported-kind' })
-    expect(store.likes.size).toBe(0)
-    expect(store.threads.get('k1')?.like_count).toBe(0)
+    expect(await likeBody(env, { post: 'kp1' })).toEqual({
+      liked: true,
+      likeCount: 1,
+      postId: 'kp1',
+    })
+  })
+
+  it('返信（seq>=2）にも押せる。スレの賛同数は動かない（一覧に出るのは本文の数）', async () => {
+    const { store, env } = setup()
+
+    expect(await likeBody(env, { post: 'p2' })).toEqual({
+      liked: true,
+      likeCount: 1,
+      postId: 'p2',
+    })
+    expect(store.posts.get('p2')?.like_count).toBe(1)
+    expect(store.threads.get('t1')?.like_count).toBe(0)
+  })
+
+  it('本文（seq=1）への 👍 はスレ行の like_count にも写る（一覧の賛同数）', async () => {
+    const { store, env } = setup()
+
+    await like(env, { post: 'p1' })
+    expect(store.threads.get('t1')?.like_count).toBe(1)
+  })
+
+  it('削除済み・運営が非表示にした投稿には押せない（gone・404）', async () => {
+    const { store, env } = setup()
+
+    store.posts.set('p1', fakePost({ id: 'p1', user_id: 'user_1', deleted_at: NOW - 1 }))
+    expect((await like(env)).status).toBe(404)
+
+    store.posts.set('p1', fakePost({ id: 'p1', user_id: 'user_1', hidden_at: NOW - 1 }))
+    expect((await like(env)).status).toBe(404)
+
+    expect(store.postLikes.size).toBe(0)
   })
 
   it('削除済み・運営が非表示にしたスレには押せない（gone・404）', async () => {
@@ -161,13 +215,13 @@ describe('POST /api/board/like — 押せるスレの種別', () => {
     store.threads.set('t1', fakeThread({ id: 't1', user_id: 'user_1', hidden_at: NOW - 1 }))
     expect((await like(env)).status).toBe(404)
 
-    expect(store.likes.size).toBe(0)
+    expect(store.postLikes.size).toBe(0)
   })
 
-  it('自分のスレにも押せる（自演を止めるのはここの仕事ではない）', async () => {
+  it('自分の書き込みにも押せる（自演を止めるのはここの仕事ではない）', async () => {
     const { env } = setup()
     authState.userId = 'user_1'
-    expect(await likeBody(env)).toEqual({ liked: true, likeCount: 1 })
+    expect(await likeBody(env)).toEqual({ liked: true, likeCount: 1, postId: 'p1' })
   })
 })
 
@@ -179,11 +233,12 @@ describe('POST /api/board/like — トグル', () => {
   it('同じ userId で 2 回叩くと元に戻る（連打で数がずれない）', async () => {
     const { store, env } = setup()
 
-    expect(await likeBody(env)).toEqual({ liked: true, likeCount: 1 })
-    expect(store.likes.size).toBe(1)
+    expect(await likeBody(env)).toEqual({ liked: true, likeCount: 1, postId: 'p1' })
+    expect(store.postLikes.size).toBe(1)
 
-    expect(await likeBody(env)).toEqual({ liked: false, likeCount: 0 })
-    expect(store.likes.size).toBe(0)
+    expect(await likeBody(env)).toEqual({ liked: false, likeCount: 0, postId: 'p1' })
+    expect(store.postLikes.size).toBe(0)
+    expect(store.posts.get('p1')?.like_count).toBe(0)
     expect(store.threads.get('t1')?.like_count).toBe(0)
   })
 
@@ -194,8 +249,9 @@ describe('POST /api/board/like — トグル', () => {
       const body = await likeBody(env)
       expect(body.liked).toBe(expected)
       // 行の数と like_count は常に一致する（差分加算ではなく毎回数え直すため）。
-      expect(body.likeCount).toBe(store.likes.size)
-      expect(store.threads.get('t1')?.like_count).toBe(store.likes.size)
+      expect(body.likeCount).toBe(store.postLikes.size)
+      expect(store.posts.get('p1')?.like_count).toBe(store.postLikes.size)
+      expect(store.threads.get('t1')?.like_count).toBe(store.postLikes.size)
     }
   })
 
@@ -203,24 +259,27 @@ describe('POST /api/board/like — トグル', () => {
     const { store, env } = setup()
 
     authState.userId = 'user_2'
-    expect(await likeBody(env)).toEqual({ liked: true, likeCount: 1 })
+    expect(await likeBody(env)).toEqual({ liked: true, likeCount: 1, postId: 'p1' })
 
     authState.userId = 'user_3'
-    expect(await likeBody(env)).toEqual({ liked: true, likeCount: 2 })
+    expect(await likeBody(env)).toEqual({ liked: true, likeCount: 2, postId: 'p1' })
 
     // user_2 が外しても user_3 のぶんは残る。
     authState.userId = 'user_2'
-    expect(await likeBody(env)).toEqual({ liked: false, likeCount: 1 })
-    expect(store.likes.has('t1:user_3')).toBe(true)
+    expect(await likeBody(env)).toEqual({ liked: false, likeCount: 1, postId: 'p1' })
+    expect(store.postLikes.has('p1:user_3')).toBe(true)
   })
 
-  it('スレをまたいでも混ざらない', async () => {
+  it('投稿をまたいでも混ざらない', async () => {
     const { store, env } = setup()
-    store.threads.set('bug1', fakeThread({ id: 'bug1', kind: 'bug', user_id: 'user_1' }))
 
-    await like(env, 't1')
-    expect(await likeBody(env, 'bug1')).toEqual({ liked: true, likeCount: 1 })
-    expect(store.threads.get('t1')?.like_count).toBe(1)
+    await like(env, { post: 'p1' })
+    expect(await likeBody(env, { post: 'p2' })).toEqual({
+      liked: true,
+      likeCount: 1,
+      postId: 'p2',
+    })
+    expect(store.posts.get('p1')?.like_count).toBe(1)
   })
 
   it('👍 ではスレを持ち上げない（一覧の並びは最終書き込み順・§2）', async () => {
@@ -256,7 +315,7 @@ describe('POST /api/board/like — レート制限', () => {
 
     const res = await like(env)
     expect(res.status).toBe(429)
-    expect(store.likes.size).toBe(0)
+    expect(store.postLikes.size).toBe(0)
   })
 
   it('👍 は投稿の時間枠（10 件/時）を食わない — 押しただけで書けなくなることはない', async () => {
@@ -266,10 +325,11 @@ describe('POST /api/board/like — レート制限', () => {
     expect(store.rates.get('board:user_2')?.count).toBe(12)
   })
 
-  it('弾かれるリクエスト（種別違い）ではカウンタを進めない', async () => {
+  it('弾かれるリクエスト（伏せた投稿）ではカウンタを進めない', async () => {
     const { store, env } = setup()
+    store.posts.set('p1', fakePost({ id: 'p1', user_id: 'user_1', hidden_at: NOW - 1 }))
 
-    expect((await like(env, 'chat1')).status).toBe(400)
+    expect((await like(env)).status).toBe(404)
     expect(store.rates.has('board:user_2')).toBe(false)
   })
 })
@@ -290,8 +350,8 @@ describe('POST /api/board/like — 押せない立場', () => {
     expect(res.status).toBe(403)
     expect(await res.json()).toEqual({ error: 'banned', bannedUntil: NOW + 1000 })
     // 👍 は「次に何を作るか」を決める票そのもの。書き込みを止めた相手に数だけ動かされない。
-    expect(store.likes.size).toBe(0)
-    expect(store.threads.get('t1')?.like_count).toBe(0)
+    expect(store.postLikes.size).toBe(0)
+    expect(store.posts.get('p1')?.like_count).toBe(0)
 
     // 期限が切れていれば押せる（bannedUntil === now は明けたものとして扱う）。
     store.profiles.set(
@@ -316,7 +376,7 @@ describe('POST /api/board/like — 押せない立場', () => {
       fakeProfile({ user_id: 'user_2', name_key: 'とおりすがり', role: 'staff' }),
     )
     expect((await like(env)).status).toBe(409)
-    expect(store.likes.size).toBe(0)
+    expect(store.postLikes.size).toBe(0)
   })
 
   it('レスポンスに private, no-store が付く（liked は閲覧者ごとに違う）', async () => {

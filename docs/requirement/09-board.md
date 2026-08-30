@@ -21,10 +21,12 @@
 | ID | 決定 |
 |---|---|
 | **D-BOARD-SIGNED** | **記名式・ログイン必須**（Clerk）。匿名投稿は作らない。表示名で書くぶん荒れにくく、レート制限・投稿禁止のキー（`user_id`）も自然に手に入る。認証は既存 `functions/api/_lib/auth.ts` の `verifyUserId` をそのまま使う（会員判定は不要＝**無料アカウントで書ける**）。 |
-| **D-BOARD-NAME** | 表示名は**掲示板専用のプロフィール**（D1 `board_profiles`）に持つ。初期値は grove の作者ペンネーム（`/api/authors/me`）→ ローカルの `Profile.penName`（`src/core/profile/index.ts`）の順に**提案するだけ**で、grove の作者登録は投稿の条件にしない。正規化後に重複する名前と予約語（運営・公式・admin・コトノハ 等）は拒否。過去の投稿にも**現在の表示名**を出す（非正規化しない＝改名が全投稿に反映される）。 |
+| **D-BOARD-NAME** | 表示名は D1 `board_profiles` に持ち、**これがアカウントのペンネームの正本**（D-BOARD-PENNAME）。正規化後に重複する名前と予約語（運営・公式・admin・コトノハ 等）は拒否。過去の投稿にも**現在の表示名**を出す（非正規化しない＝改名が全投稿に反映される）。grove の作者登録は投稿の条件にしない。 |
+| **D-BOARD-PENNAME** | **ペンネームはアカウント 1 つにつき 1 つ**にする。以前は同じ言葉で 3 つの値が動いていた——端末ローカルの `Profile.penName`（サイドバー・新しい作品の著者）、Clerk のフルネーム／メール（ヘッダに出ていた「サインアップで入れた名前」）、`board_profiles.display_name`（掲示板）。ローカルの値は端末に貼り付いているので**アカウントを切り替えても変わらず**、ヘッダには名乗るつもりのない本名やメールが出ていた。**サーバの表示名を正本**とし、ローカルはその写しにする（`Profile.accountId` に「誰の名前か」を持ち、サインインのたびに `penNameForAccount`（`src/core/profile/account.ts`）で突き合わせる）。読む側（ヘッダ・サイドバー・`createWork` の著者既定）は今までどおり `Profile.penName` を読むだけでよい。**勝手にサーバへ登録はしない**＝表示名は全体で一意（`name_key` の UNIQUE）なので、黙って登録すると同じ名前の別の人が先着で弾かれる。登録・改名は**プロフィールのダイアログ 1 か所だけ**（`ProfileDialog`・Root が 1 つ持ち、ヘッダの名前とサイドバーのプロフィール欄がどちらもそこを開く）。掲示板の `NameDialog` は「まだ決めていない人」への入口として残す。**grove（公開サイト）は別サービスなので改名までは揃わない**＝作者登録の初期値に同じ名前を入れるところまでにする（改名の口が platform 側に無い）。 |
 | **D-BOARD-OPEN** | スレ立ては**最初から全員に開放**。空の一覧を見せないよう、運営が呼び水スレを先に立てておく（§2）。摩擦を足す代わりに、レート制限（スレ 3 本/日・投稿 10 件/時）で守る。 |
-| **D-BOARD-KIND** | スレに**種別**を持たせる（`request` 要望 / `bug` 不具合 / `chat` 雑談 / `intro` 自己紹介 / `promo` 作品紹介 / `notice` お知らせ）。**旧 `suggestion`（目安箱）は `request` へ統合した**。「ひとことの受け皿＝目安箱／まとまった起票＝要望」と書き分けたが、画面ではどちらも「運営に伝える」で、どちらへ書くかの判断が利用者の負担にしかなっていなかった。**ただし `BOARD_KINDS` からは消さない。** 本番と STG の `board_threads.kind` には `suggestion` の行がそのまま残っており、enum から外すと `BoardThreadSchema.parse` が落ちて**その 1 件どころか一覧ごと読めなくなる**（CLAUDE.md「後方互換性」）。残したうえで、表示は `boardKindLabel`（＝「要望」）、絞り込みは `kindsForFilter` で `request` に合流させ、新規作成は `CREATABLE_KINDS` から外す（`src/core/board/types.ts`）。**`KINDS_WITH_STATUS` にも `suggestion` を残す**＝統合前の目安箱スレに運営が付けたステータスと 👍 を画面から消さない。不具合は要望と分けたまま（再現手順という要望には無い情報が要り、優先度の付け方も「実装済み」の意味も違う）。代わりに種別ごとの一言（`boardKindHint`）を選ぶ画面に添えて、どちらへ書くかで迷わせない。 |
-| **D-BOARD-NOTICE** | **`notice`（お知らせ）は運営だけが書ける。スレ立ても返信も。** 判定は `canCreateThread` と `canPost`（`src/core/board/permission.ts`・`STAFF_ONLY_KINDS`）が両方見て、member は 403。返信を許すと、運営の告知にぶら下がった会話が本文と同じ場所に並び、**読めば分かる連絡だったものが読み解く対象になる**。話したいことには要望・不具合・雑談の器がある。画面は運営以外に**返信欄そのものを出さない**（「書き込めません」の断りも出さない＝押せないボタンや断り書きが並ぶより、最初から無いほうが読みやすい）。👍 と運営ステータスも付けない（`KINDS_WITH_STATUS` に入れない）。一覧では塗りつぶしのチップと行の色（`KIND_UI.notice.rowClassName`）で目立たせる。スレを立てる画面には**選択肢そのものを立場で出し分ける**（`creatableKindOrder(role)`）＝押させてから 403 で断らない。 |
+| **D-BOARD-KIND** | スレに**種別**を持たせる（`request` 要望 / `bug` 不具合 / `chat` 雑談 / `intro` 自己紹介 / `promo` 作品紹介 / `notice` お知らせ）。**旧 `suggestion`（目安箱）は `request` へ統合した**。「ひとことの受け皿＝目安箱／まとまった起票＝要望」と書き分けたが、画面ではどちらも「運営に伝える」で、どちらへ書くかの判断が利用者の負担にしかなっていなかった。**ただし `BOARD_KINDS` からは消さない。** 本番と STG の `board_threads.kind` には `suggestion` の行がそのまま残っており、enum から外すと `BoardThreadSchema.parse` が落ちて**その 1 件どころか一覧ごと読めなくなる**（CLAUDE.md「後方互換性」）。残したうえで、表示は `boardKindLabel`（＝「要望」）、絞り込みは `kindsForFilter` で `request` に合流させ、新規作成は `CREATABLE_KINDS` から外す（`src/core/board/types.ts`）。**`KINDS_WITH_STATUS` にも `suggestion` を残す**＝統合前の目安箱スレに運営が付けたステータスと、一覧に出る賛同数を画面から消さない。不具合は要望と分けたまま（再現手順という要望には無い情報が要り、優先度の付け方も「実装済み」の意味も違う）。代わりに種別ごとの一言（`boardKindHint`）を選ぶ画面に添えて、どちらへ書くかで迷わせない。 |
+| **D-BOARD-LIKEPOST** | **👍 はスレッドではなく書き込み 1 件ごとに付く**（`board_post_likes`・migrations/0009）。当初はスレッドに 1 アカウント 1 回で、画面でも見出しに大きなボタンが 1 つ乗っていた。実際に読み返すと、賛同したいのは「このスレッド」ではなく**その中の 1 つの書き込み**（「これに困っている」「この案がいい」）で、見出しのボタンではどの意見に票が入ったのか誰にも分からない。**種別でも絞らない**（0009 以前は `request` / `bug` だけ）＝雑談や作品紹介の書き込みにも押せる。種別で押せる・押せないを分けると「なぜこのスレでは押せないのか」を画面で説明し続けることになる。**`board_threads.like_count` は残し、意味を「スレ本文（seq=1）に付いた 👍」に読み替える**＝一覧の賛同数（要望・不具合）はそのまま使え、旧 `board_likes` の行も本文への 👍 として引き継げる（表示先が消えない・CLAUDE.md「後方互換性」）。**旧 `board_likes` テーブルは消さない**（退避と突き合わせのため）。API は `POST /api/board/like?post=` だが、端末に残った古い JS のために `?thread=` も受け、本文への 👍 に写す。 |
+| **D-BOARD-NOTICE** | **`notice`（お知らせ）は運営だけが書ける。スレ立ても返信も。** 判定は `canCreateThread` と `canPost`（`src/core/board/permission.ts`・`STAFF_ONLY_KINDS`）が両方見て、member は 403。返信を許すと、運営の告知にぶら下がった会話が本文と同じ場所に並び、**読めば分かる連絡だったものが読み解く対象になる**。話したいことには要望・不具合・雑談の器がある。画面は運営以外に**返信欄そのものを出さない**（「書き込めません」の断りも出さない＝押せないボタンや断り書きが並ぶより、最初から無いほうが読みやすい）。運営ステータスも付けない（`KINDS_WITH_STATUS` に入れない）。書き込みへの 👍 だけは付く（D-BOARD-LIKEPOST）。一覧では塗りつぶしのチップと行の色（`KIND_UI.notice.rowClassName`）で目立たせる。スレを立てる画面には**選択肢そのものを立場で出し分ける**（`creatableKindOrder(role)`）＝押させてから 403 で断らない。 |
 | **D-BOARD-STATUS** | 要望・不具合スレに**運営ステータス**（受付 / 検討中 / 対応予定 / 実装済み / 今回は見送り）。**この機能が掲示板の心臓**で、「言えば直る」が目に見えることだけが次の投稿を呼ぶ。`実装済み` にはリリース版を添える＝掲示板がそのまま変更履歴のショーケースになる。 |
 | **D-BOARD-POLL** | アンケートはスレに 1 つまで（選択肢 8 まで・締切必須）。1 アカウント 1 票で、**投票するまで結果を見せない**（先に見せると票が引っ張られる）。運営が「次に作るならどれか」を聞く器。 |
 | **D-BOARD-DELETE** | 削除は論理削除（`deleted_at`）で、表示は「この投稿は削除されました」。**返信が付いたスレは本文だけ削除**し、返信は残す（スレ主の削除で他人の発言を巻き添えにしない）。丸ごと消せるのは**返信が 1 件も「行として」無いスレだけ**で、削除済み・運営が非表示にした返信も「有る」に数える。生きている返信の数（`reply_count`）で判定してはいけない — 運営が返信を非表示にすると 0 に戻り、スレ主の削除が他人の投稿にまで `deleted_at` を刻んで、**運営の判断で伏せたものが本人の意思で消したものに化ける**（`unhide` しても戻らない）。完全削除は運営の purge に限る。 |
@@ -99,7 +101,7 @@
 > いま `public/` に CSP は置いていない。後で入れるなら、許可表のホストを `img-src` にも
 > 反映する必要がある（2 箇所に同じ表が散らないよう、生成元は定数 1 つに保つ）。
 
-## 4. スキーマ（`migrations/0008_board.sql`）
+## 4. スキーマ（`migrations/0008_board.sql` ＋ `0009_board_post_likes.sql`）
 
 **すべて新規テーブル。既存の同期・課金・訪問者データには一切触らない**（後方互換性の観点では
 もっとも安全な追加）。時刻はすべて epoch ms。論理削除は `0 = 生きている`。
@@ -108,8 +110,9 @@
 |---|---|
 | `board_profiles` | `user_id`(PK) / `display_name` / `name_key`(UNIQUE・正規化名) / `role`(`member`\|`staff`) / `banned_until` / `deleted_at`(退会＝D-BOARD-ACCOUNTDEL) / `created_at` / `updated_at` |
 | `board_threads` | `id`(PK) / `kind` / `title` / `user_id` / `status` / `status_note` / `shipped_version` / `pinned` / `locked` / `reply_count` / `like_count` / `created_at` / `bumped_at` / `deleted_at` / `hidden_at` |
-| `board_posts` | `id`(PK) / `thread_id` / `seq`(スレ内連番・**1 番がスレ本文**) / `user_id` / `body` / `reply_to`(返信先 seq・0 = なし) / `created_at` / `deleted_at` / `hidden_at` |
-| `board_likes` | `(thread_id, user_id)`(PK) / `created_at` |
+| `board_posts` | `id`(PK) / `thread_id` / `seq`(スレ内連番・**1 番がスレ本文**) / `user_id` / `body` / `reply_to`(返信先 seq・0 = なし) / `created_at` / `deleted_at` / `hidden_at` / `like_count`(0009) |
+| `board_post_likes` | `(post_id, user_id)`(PK) / `created_at`。**👍 は書き込みごと**（0009・D-BOARD-LIKEPOST） |
+| `board_likes` | `(thread_id, user_id)`(PK) / `created_at`。**0009 で用済み**（本文への 👍 に引き継ぎ済み）。読み書きはもう無いが、退避のため行は残す |
 | `board_polls` | `thread_id`(PK) / `question` / `options`(JSON 配列) / `multiple` / `closes_at` / `created_at` |
 | `board_votes` | `(thread_id, user_id)`(PK) / `choices`(JSON 配列) / `created_at` |
 | `board_reports` | `id`(PK) / `post_id` / `user_id`(通報者) / `reason` / `created_at` / `handled_at` |
@@ -149,7 +152,7 @@
 | `DELETE /api/board/thread?id=` | 自分のスレ（返信が 1 件も無いときだけ丸ごと・それ以外は本文だけ） |
 | `POST /api/board/posts?thread=` | 返信 |
 | `DELETE /api/board/posts?id=` | 自分の投稿 |
-| `POST /api/board/like?thread=` | 👍 トグル（`request` / `bug` と、要望へ統合した旧 `suggestion` のみ） |
+| `POST /api/board/like?post=` | 👍 トグル（書き込み 1 件ごと・種別は問わない）。古い `?thread=` はスレ本文への 👍 に写す |
 | `POST /api/board/vote?thread=` | 投票（1 アカウント 1 票・締切後は 409） |
 | `POST /api/board/reports` | 通報（本文で `postId` を指す） |
 | `GET /PUT /api/board/me` | 自分の表示名・自分の投稿一覧（`BoardMeResponse`） |
@@ -217,6 +220,8 @@
     分あたりの安全弁は別枠で、こちらは 60 秒の窓を数える（値の意味を取り違えない）。
 13. **投稿禁止中は 👍 も押せない**（403）。ロックされたスレには staff でも 👍 を足せない
     （409）。ロックは「この話は終わり」の意思表示なので、票だけ動くのは筋が通らない。
+    伏せた書き込み（削除・非表示）にも押せない（404 `gone`）＝本文が読めないものに
+    票だけ残らない。`like_count` は差分加算せず、押すたびに行を数え直して入れる。
 14. 退会した利用者の投稿は残り、投稿者名だけが「退会したユーザー」になる。
     `name_key` は残るので、その名前を別人が名乗ろうとすると 409。
 

@@ -16,6 +16,7 @@ import { cn } from '@/lib/utils'
 import { openBillingPortal } from '@/ui/_api/billing'
 import { useAuth } from '@/ui/auth/auth-context'
 import { Button } from '@/ui/components/ui/button'
+import { useOpenProfile, usePenName } from '@/ui/hooks/use-pen-name'
 import { useSyncStatus } from '@/ui/hooks/use-sync-status'
 import type { SaveStatus } from '@/ui/store/editorStore'
 
@@ -83,6 +84,29 @@ function SaveIndicator({ dirty, status }: SaveState) {
   )
 }
 
+/**
+ * ヘッダに出す自分の名前。**ペンネーム**（アカウントのもの）を出す。
+ *
+ * ここには Clerk のフルネーム／メールが出ていた＝サインアップに入れた本名やメールアドレスが、
+ * 名乗るつもりのないまま画面に出ていた。名前はペンネームに一本化してあるので
+ *（`src/ui/hooks/use-pen-name.ts`）、それを読む。未設定のときは設定への誘い文句を出す
+ *（サイドバーのプロフィール欄と同じ文言）。
+ */
+function AccountName() {
+  const penName = usePenName()
+  const openProfile = useOpenProfile()
+  return (
+    <button
+      type="button"
+      onClick={openProfile}
+      title="ペンネームとアバターを変える"
+      className="max-w-[10rem] truncate rounded font-sans text-on-surface-variant text-xs hover:text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+    >
+      {penName === '' ? 'ペンネーム未設定' : penName}
+    </button>
+  )
+}
+
 /** アカウント（クラウドバックアップ・認証）。Clerk 構成時（publishable key あり）のみ表示。 */
 function AccountControl() {
   const auth = useAuth()
@@ -102,13 +126,8 @@ function AccountControl() {
           <CreditCard className="size-4" aria-hidden />
           <span className="hidden sm:inline">プラン</span>
         </Button>
-        <Suspense
-          fallback={
-            <span className="max-w-[10rem] truncate font-sans text-on-surface-variant text-xs">
-              {auth.displayName ?? 'サインイン中'}
-            </span>
-          }
-        >
+        <AccountName />
+        <Suspense fallback={null}>
           <ClerkUserButton />
         </Suspense>
       </div>
@@ -131,13 +150,8 @@ function AccountControl() {
           <CloudOff className="size-4" aria-hidden />
           <span className="hidden sm:inline">同期は未設定</span>
         </Button>
-        <Suspense
-          fallback={
-            <span className="max-w-[10rem] truncate font-sans text-on-surface-variant text-xs">
-              {auth.displayName ?? 'サインイン中'}
-            </span>
-          }
-        >
+        <AccountName />
+        <Suspense fallback={null}>
           <ClerkUserButton />
         </Suspense>
       </div>

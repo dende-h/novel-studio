@@ -169,10 +169,11 @@ describe('クエリの組み立て', () => {
     expect(init.method).toBe('DELETE')
   })
 
-  it('👍 と投票は ?thread=、スレの PATCH / DELETE は ?id=', async () => {
+  it('👍 は ?post=、投票は ?thread=、スレの PATCH / DELETE は ?id=', async () => {
+    // 👍 が付く相手は投稿 1 件（0009）。スレッドを指す ?thread= には戻さない。
     const liked = mockFetch({ liked: true, likeCount: 5 })
-    await toggleLike('t1', jwt)
-    expect(lastCall(liked)[0]).toBe('/api/board/like?thread=t1')
+    await toggleLike('p1', jwt)
+    expect(lastCall(liked)[0]).toBe('/api/board/like?post=p1')
 
     const voted = mockFetch({ poll })
     await vote('t1', [0], jwt)

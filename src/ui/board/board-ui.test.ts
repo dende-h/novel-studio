@@ -212,6 +212,8 @@ describe('unreadCount', () => {
       mine: false,
       body: '返信です',
       replyTo: 1,
+      likeCount: 0,
+      liked: false,
       deleted: false,
       hidden: false,
       createdAt: 200,

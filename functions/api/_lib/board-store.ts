@@ -80,10 +80,24 @@ export interface PostRow {
   created_at: number
   deleted_at: number
   hidden_at: number
+  /** 付いた 👍 の数（0009 で追加。差分加算せず数え直して入れる） */
+  like_count: number
 }
 
+/**
+ * 旧「スレッドへの 👍」（0008）。**0009 で投稿ごとの `board_post_likes` に移した**が、
+ * 行は消していない（退避と突き合わせのため）。新しい読み書きはこの型を使わない。
+ * @deprecated `PostLikeRow` を使う
+ */
 export interface LikeRow {
   thread_id: string
+  user_id: string
+  created_at: number
+}
+
+/** 投稿ごとの 👍（0009）。1 アカウント 1 回。 */
+export interface PostLikeRow {
+  post_id: string
   user_id: string
   created_at: number
 }
@@ -158,8 +172,11 @@ export interface ThreadListRow extends ThreadRow, AuthorCols {
   liked: number
 }
 
-/** 詳細で返す投稿 1 行（投稿 ＋ 現在の表示名）。 */
-export interface PostWithAuthorRow extends PostRow, AuthorCols {}
+/** 詳細で返す投稿 1 行（投稿 ＋ 現在の表示名 ＋ 閲覧者が 👍 しているか）。 */
+export interface PostWithAuthorRow extends PostRow, AuthorCols {
+  /** 閲覧者が 👍 しているか（0/1・未ログインは 0） */
+  liked: number
+}
 
 /** 「自分の書き込み」タブ用（投稿 ＋ 置かれているスレの見出し）。 */
 export interface MyPostRow extends PostRow {
@@ -282,6 +299,8 @@ export function toPost(
     deleted,
     hidden,
     createdAt: row.created_at,
+    likeCount: num(row.like_count),
+    liked: bool(row.liked),
     // 伏せた投稿にカードを残すと、消したはずの中身がカードから読める。
     links: deleted || hidden ? [] : toLinkCards(opts.links ?? []),
   }
@@ -337,7 +356,8 @@ const PROFILE_COLS = `user_id, display_name, name_key, role, banned_until, delet
 const THREAD_COLS = `id, kind, title, user_id, status, status_note, shipped_version, pinned,
        locked, reply_count, like_count, created_at, bumped_at, deleted_at, hidden_at`
 
-const POST_COLS = `id, thread_id, seq, user_id, body, reply_to, created_at, deleted_at, hidden_at`
+const POST_COLS = `id, thread_id, seq, user_id, body, reply_to, created_at, deleted_at,
+       hidden_at, like_count`
 
 const LINK_COLS = `url_key, url, host, kind, title, description, image_url, image_ok,
        site_name, fetched_at, expires_at, blocked_at`
@@ -361,7 +381,8 @@ const THREAD_LIST_SELECT = `SELECT t.id, t.kind, t.title, t.user_id, t.status, t
        hp.body AS head_body, hp.deleted_at AS head_deleted_at, hp.hidden_at AS head_hidden_at,
        pr.display_name AS author_name, pr.role AS author_role, pr.deleted_at AS author_deleted,
        (SELECT COUNT(*) FROM board_polls po WHERE po.thread_id = t.id) AS has_poll,
-       (SELECT COUNT(*) FROM board_likes lk WHERE lk.thread_id = t.id AND lk.user_id = ?) AS liked
+       (SELECT COUNT(*) FROM board_post_likes lk
+          WHERE lk.post_id = hp.id AND lk.user_id = ?) AS liked
 FROM board_threads t
 LEFT JOIN board_posts hp ON hp.thread_id = t.id AND hp.seq = 1
 LEFT JOIN board_profiles pr ON pr.user_id = t.user_id`
@@ -370,7 +391,15 @@ LEFT JOIN board_profiles pr ON pr.user_id = t.user_id`
 const REPLY_COUNT_EXPR = `(SELECT COUNT(*) FROM board_posts rc
      WHERE rc.thread_id = ? AND rc.seq > 1 AND rc.deleted_at = 0 AND rc.hidden_at = 0)`
 
-const LIKE_COUNT_EXPR = `(SELECT COUNT(*) FROM board_likes lc WHERE lc.thread_id = ?)`
+/** 投稿 1 件に付いた 👍 を数え直す式（引数は post_id）。 */
+const POST_LIKE_COUNT_EXPR = `(SELECT COUNT(*) FROM board_post_likes lc WHERE lc.post_id = ?)`
+
+/**
+ * スレ行に持つ `like_count` を数え直す式（引数は thread_id）。
+ * **スレ本文（seq=1）に付いた 👍 の数**で、一覧の賛同数はこれを出す（0009）。
+ */
+const THREAD_LIKE_COUNT_EXPR = `(SELECT COALESCE(MAX(hp.like_count), 0) FROM board_posts hp
+     WHERE hp.thread_id = ? AND hp.seq = 1)`
 
 const placeholders = (n: number): string => new Array(n).fill('?').join(', ')
 
@@ -562,15 +591,17 @@ export async function readThreadDetail(
     db
       .prepare(
         `SELECT p.id, p.thread_id, p.seq, p.user_id, p.body, p.reply_to, p.created_at,
-                p.deleted_at, p.hidden_at,
+                p.deleted_at, p.hidden_at, p.like_count,
                 pr.display_name AS author_name, pr.role AS author_role,
-                pr.deleted_at AS author_deleted
+                pr.deleted_at AS author_deleted,
+                (SELECT COUNT(*) FROM board_post_likes lk
+                   WHERE lk.post_id = p.id AND lk.user_id = ?) AS liked
          FROM board_posts p
          LEFT JOIN board_profiles pr ON pr.user_id = p.user_id
          WHERE p.thread_id = ?
          ORDER BY p.seq ASC`,
       )
-      .bind(threadId),
+      .bind(viewer, threadId),
     db
       .prepare(
         'SELECT thread_id, question, options, multiple, closes_at, created_at FROM board_polls WHERE thread_id = ?',
@@ -745,6 +776,18 @@ export async function readPost(db: D1Database, postId: string): Promise<PostRow 
 }
 
 /**
+ * スレ本文（seq=1）の投稿。👍 が投稿ごとになった今も、外から来る古い呼び方
+ *（`POST /api/board/like?thread=`）は「スレに賛同する」＝本文への 👍 として受ける。
+ * その写し替えをこの 1 本に閉じる。
+ */
+export async function readHeadPost(db: D1Database, threadId: string): Promise<PostRow | null> {
+  return await db
+    .prepare(`SELECT ${POST_COLS} FROM board_posts WHERE thread_id = ? AND seq = 1`)
+    .bind(threadId)
+    .first<PostRow>()
+}
+
+/**
  * 投稿を 1 件足す。**seq の採番は `INSERT ... SELECT COALESCE(MAX(seq),0)+1` の 1 文**で行う。
  * 読んでから書くと同時投稿で同じ番号を取り合う。すり抜けても
  * `idx_board_posts_seq`（thread_id, seq の UNIQUE）が最後の砦になり、
@@ -831,7 +874,7 @@ export async function listPostsByUser(
   const res = await db
     .prepare(
       `SELECT p.id, p.thread_id, p.seq, p.user_id, p.body, p.reply_to, p.created_at,
-              p.deleted_at, p.hidden_at,
+              p.deleted_at, p.hidden_at, p.like_count,
               t.title AS thread_title, t.kind AS thread_kind
        FROM board_posts p
        LEFT JOIN board_threads t ON t.id = p.thread_id
@@ -849,40 +892,59 @@ export async function listPostsByUser(
 // ---------------------------------------------------------------------------
 
 /**
- * 👍 のトグル。`board_likes` の有無で分岐し、**同じ batch で `like_count` を数え直す**。
- * 加算・減算にすると、二重送信や失敗した書き込みでずれて誰も直せなくなる。
+ * 👍 のトグル（**投稿ごと**・0009）。`board_post_likes` の有無で分岐し、
+ * **同じ batch で `like_count` を数え直す**。加算・減算にすると、二重送信や失敗した
+ * 書き込みでずれて誰も直せなくなる。
+ *
+ * 数え直すのは 2 つ。投稿の `like_count` と、その投稿がスレ本文（seq=1）だったときの
+ * スレ行の `like_count`（一覧に出す賛同数）。本文以外への 👍 ではスレ行は動かない。
  */
 export async function toggleLike(
   db: D1Database,
-  threadId: string,
+  post: Pick<PostRow, 'id' | 'thread_id' | 'seq'>,
   userId: string,
   now: number,
 ): Promise<{ liked: boolean; likeCount: number }> {
+  // 呼び忘れの保険。`functions/` は tsconfig の include に入っていない＝引数の形を変えても
+  // `pnpm typecheck` は気づかない。post_id のつもりでスレ id を渡すと、当たらない行を
+  // 数え続けて「押しても増えない 👍」になる。止まるほうを選ぶ。
+  if (typeof post !== 'object' || post === null || typeof post.id !== 'string') {
+    throw new TypeError('toggleLike には投稿の行を渡す（👍 が付く相手はスレッドではなく投稿）')
+  }
   const existing = await db
-    .prepare('SELECT thread_id FROM board_likes WHERE thread_id = ? AND user_id = ?')
-    .bind(threadId, userId)
-    .first<{ thread_id: string }>()
+    .prepare('SELECT post_id FROM board_post_likes WHERE post_id = ? AND user_id = ?')
+    .bind(post.id, userId)
+    .first<{ post_id: string }>()
   const liked = !existing
 
-  await db.batch([
+  const statements = [
     liked
       ? db
           .prepare(
-            `INSERT INTO board_likes (thread_id, user_id, created_at) VALUES (?, ?, ?)
-             ON CONFLICT(thread_id, user_id) DO NOTHING`,
+            `INSERT INTO board_post_likes (post_id, user_id, created_at) VALUES (?, ?, ?)
+             ON CONFLICT(post_id, user_id) DO NOTHING`,
           )
-          .bind(threadId, userId, now)
+          .bind(post.id, userId, now)
       : db
-          .prepare('DELETE FROM board_likes WHERE thread_id = ? AND user_id = ?')
-          .bind(threadId, userId),
+          .prepare('DELETE FROM board_post_likes WHERE post_id = ? AND user_id = ?')
+          .bind(post.id, userId),
     db
-      .prepare(`UPDATE board_threads SET like_count = ${LIKE_COUNT_EXPR} WHERE id = ?`)
-      .bind(threadId, threadId),
-  ])
+      .prepare(`UPDATE board_posts SET like_count = ${POST_LIKE_COUNT_EXPR} WHERE id = ?`)
+      .bind(post.id, post.id),
+  ]
+  // 本文への 👍 だけスレ行へ写す（一覧の賛同数はスレ行から読む）。
+  if (post.seq === 1) {
+    statements.push(
+      db
+        .prepare(`UPDATE board_threads SET like_count = ${THREAD_LIKE_COUNT_EXPR} WHERE id = ?`)
+        .bind(post.thread_id, post.thread_id),
+    )
+  }
+  await db.batch(statements)
 
   const row = await db
-    .prepare('SELECT like_count FROM board_threads WHERE id = ?')
-    .bind(threadId)
+    .prepare('SELECT like_count FROM board_posts WHERE id = ?')
+    .bind(post.id)
     .first<{ like_count: number }>()
   return { liked, likeCount: row?.like_count ?? 0 }
 }

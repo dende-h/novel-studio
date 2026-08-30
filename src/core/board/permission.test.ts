@@ -154,34 +154,43 @@ describe('threadDeleteMode（D-BOARD-DELETE / §7-5）', () => {
   })
 })
 
-describe('canSetStatus / canLike（D-BOARD-KIND）', () => {
+describe('canSetStatus（D-BOARD-KIND）', () => {
   it('運営ステータスは staff かつ 要望（旧・目安箱）／不具合のときだけ', () => {
     for (const kind of KINDS_WITH_STATUS) {
       expect(canSetStatus(staff, thread({ kind }))).toEqual({ ok: true })
     }
     // 統合前の目安箱スレにも運営ステータスを付けたまま（既存のステータスが消えない）
     expect(canSetStatus(staff, thread({ kind: 'suggestion' }))).toEqual({ ok: true })
-    expect(canLike(actor(), thread({ kind: 'suggestion' }), NOW)).toEqual({ ok: true })
-    // お知らせには 👍 も運営ステータスも付けない
+    // お知らせには運営ステータスを付けない
     expect(reasonOf(canSetStatus(staff, thread({ kind: 'notice' })))).toBe('unsupported-kind')
-    expect(reasonOf(canLike(actor(), thread({ kind: 'notice' }), NOW))).toBe('unsupported-kind')
     expect(reasonOf(canSetStatus(staff, thread({ kind: 'chat' })))).toBe('unsupported-kind')
     expect(reasonOf(canSetStatus(actor(), thread({ kind: 'bug' })))).toBe('forbidden')
     expect(reasonOf(canSetStatus(anon, thread({ kind: 'bug' })))).toBe('unauthorized')
     expect(reasonOf(canSetStatus(staff, thread({ kind: 'bug', deletedAt: NOW })))).toBe('gone')
   })
+})
 
-  it('👍 はログイン済みかつ 要望（旧・目安箱）／不具合のときだけ', () => {
-    expect(canLike(actor(), thread({ kind: 'request' }), NOW)).toEqual({ ok: true })
-    expect(reasonOf(canLike(anon, thread({ kind: 'request' }), NOW))).toBe('unauthorized')
-    expect(reasonOf(canLike(actor(), thread({ kind: 'promo' }), NOW))).toBe('unsupported-kind')
-    expect(reasonOf(canLike(actor(), thread({ kind: 'bug', hiddenAt: NOW }), NOW))).toBe('gone')
-    expect(reasonOf(canLike(actor(), thread({ kind: 'bug', deletedAt: NOW }), NOW))).toBe('gone')
+describe('canLike（👍 は投稿ごと・0009）', () => {
+  it('ログインしていれば、どの種別の書き込みにも押せる', () => {
+    // 0009 以前は request / bug のスレだけだった。押したいのは「このスレッド」ではなく
+    // 中の 1 つの書き込みで、それは雑談でも作品紹介でもお知らせでも変わらない。
+    for (const kind of ['request', 'bug', 'suggestion', 'chat', 'intro', 'promo', 'notice']) {
+      expect(canLike(actor(), thread({ kind }), post(), NOW)).toEqual({ ok: true })
+    }
+    expect(reasonOf(canLike(anon, thread({ kind: 'request' }), post(), NOW))).toBe('unauthorized')
+  })
+
+  it('伏せた投稿・伏せたスレには押せない（gone）', () => {
+    // 本文が読めないものに票だけ入ると、何に賛同されたのか誰にも分からない数字が残る。
+    expect(reasonOf(canLike(actor(), thread(), post({ deletedAt: NOW }), NOW))).toBe('gone')
+    expect(reasonOf(canLike(actor(), thread(), post({ hiddenAt: NOW }), NOW))).toBe('gone')
+    expect(reasonOf(canLike(actor(), thread({ hiddenAt: NOW }), post(), NOW))).toBe('gone')
+    expect(reasonOf(canLike(actor(), thread({ deletedAt: NOW }), post(), NOW))).toBe('gone')
   })
 
   it('投稿禁止中は 👍 も押せない（書き込みを止めた相手に票だけ動かさせない）', () => {
     const banned = actor({ bannedUntil: NOW + 1000 })
-    expect(canLike(banned, thread({ kind: 'request' }), NOW)).toEqual({
+    expect(canLike(banned, thread({ kind: 'request' }), post(), NOW)).toEqual({
       ok: false,
       reason: 'banned',
     })
@@ -191,7 +200,7 @@ describe('canSetStatus / canLike（D-BOARD-KIND）', () => {
       reason: 'banned',
     })
     // 期限が切れたら押せる（isBanned と同じ「ちょうどは明け」の境界）
-    expect(canLike(actor({ bannedUntil: NOW }), thread({ kind: 'request' }), NOW)).toEqual({
+    expect(canLike(actor({ bannedUntil: NOW }), thread({ kind: 'request' }), post(), NOW)).toEqual({
       ok: true,
     })
   })
@@ -199,17 +208,17 @@ describe('canSetStatus / canLike（D-BOARD-KIND）', () => {
   it('ロック中のスレには 👍 を付けられない（staff でも足せない）', () => {
     // ロックは「この話は終わり」の意思表示。締めたあとに票だけ動くと、
     // 締めた時点の数字を順位付けの根拠にできなくなる。
-    expect(reasonOf(canLike(actor(), thread({ kind: 'request', locked: true }), NOW))).toBe(
+    expect(reasonOf(canLike(actor(), thread({ locked: true }), post(), NOW))).toBe('locked')
+    expect(reasonOf(canLike(actor(), thread({ locked: 1 }), post(), NOW))).toBe('locked')
+    expect(reasonOf(canLike(staff, thread({ kind: 'bug', locked: true }), post(), NOW))).toBe(
       'locked',
     )
-    expect(reasonOf(canLike(actor(), thread({ kind: 'request', locked: 1 }), NOW))).toBe('locked')
-    expect(reasonOf(canLike(staff, thread({ kind: 'bug', locked: true }), NOW))).toBe('locked')
   })
 
   it('now を渡し忘れた canLike は落ちる（投稿禁止の判定が黙って無効化されない）', () => {
     expect(() => {
       // @ts-expect-error now は必須（bannedUntil > undefined は常に false になる）
-      canLike(actor({ bannedUntil: NOW + 1000 }), thread({ kind: 'request' }))
+      canLike(actor({ bannedUntil: NOW + 1000 }), thread({ kind: 'request' }), post())
     }).toThrow(TypeError)
   })
 })
