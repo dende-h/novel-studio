@@ -29,10 +29,16 @@ function open(
 }
 
 describe('ProfileDialog', () => {
-  it('サインイン中は、掲示板の表示名にもなることと、過去の書き込みも変わることを言う', () => {
+  it('サインイン中は、名前がどこに出るか・どこには出ないかを言う', () => {
     open(ok, { signedIn: true })
-    expect(screen.getByText(/掲示板に書き込むときの表示名になります/)).toBeInTheDocument()
-    expect(screen.getByText(/これまでの書き込みの名前も新しい名前になります/)).toBeInTheDocument()
+    // 出る場所（作品の著者・掲示板）と、変えたときの及ぶ範囲（過去の書き込みも）。
+    expect(screen.getByText(/掲示板の表示名になります/)).toBeInTheDocument()
+    expect(screen.getByText(/これまでの書き込みも新しい名前で表示されます/)).toBeInTheDocument()
+    // **出ない場所**も言う。公開サイトの作者名は別に持っているので、ここを変えても動かない。
+    // これを書かないと「知らないうちに公開済みの作品の著者名が変わった」と読まれる。
+    expect(
+      screen.getByText(/公開サイトの作者名は別の設定なので、ここでは変わりません/),
+    ).toBeInTheDocument()
   })
 
   it('未サインインでは掲示板の話をしない（まだ関係がない）', () => {

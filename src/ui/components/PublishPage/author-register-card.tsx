@@ -26,8 +26,9 @@ interface AuthorRegisterCardProps {
 export function AuthorRegisterCard({ status, getToken, onRegistered }: AuthorRegisterCardProps) {
   const uid = useId()
   // このアプリのペンネーム（アカウントのもの・`src/ui/hooks/use-pen-name.ts`）。
-  // 公開サイトは別のサービスで作者名を自前に持つので、こちらから改名はできない。
-  // **登録のときだけは同じ名前を初期値に入れて**、書く場所と読まれる場所で名前がずれにくくする。
+  // 公開サイトの作者名は別に持つので、ここでの用途は**初期値の候補**だけ。
+  // 公開サイトの表示名が取れなかったとき（通信断・未構成）に空欄を出さないための受け皿で、
+  // 入れたあとの改名は公開サイトの設定でする（`AuthorNameCard` がその導線を出す）。
   const appPenName = usePenName()
   // 状態が先に分かっていれば初期値から入れる（あとから届いたときは下の effect が拾う）
   const [penName, setPenName] = useState(() => status?.penName ?? appPenName)
@@ -71,8 +72,11 @@ export function AuthorRegisterCard({ status, getToken, onRegistered }: AuthorReg
 
       <div className="mt-4 space-y-4">
         <div className="space-y-2">
+          {/* **「ペンネーム」と呼ばない。** コトノハのペンネーム（`ProfileDialog`）と
+              公開サイトの作者名は別々に持っているので、同じ語を当てると
+              「片方を変えたらもう片方も変わる」と読まれる。語を分けて器も分ける。 */}
           <Label htmlFor={`${uid}-pen`}>
-            ペンネーム <span className="text-destructive">*</span>
+            作者名 <span className="text-destructive">*</span>
           </Label>
           <Input
             id={`${uid}-pen`}
@@ -82,7 +86,8 @@ export function AuthorRegisterCard({ status, getToken, onRegistered }: AuthorReg
             placeholder="霜月 夜半"
           />
           <p className="text-[11px] text-on-surface-variant/70">
-            公開サイトでの表示名になります。あとからいつでも変更できます（{PEN_NAME_MAX}字まで）。
+            公開サイトで作者として表示されます。コトノハのペンネームとは別で、あとからいつでも変えられます（
+            {PEN_NAME_MAX}字まで）。
           </p>
         </div>
 

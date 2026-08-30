@@ -54,6 +54,7 @@ Cloudflare Pages Functions
 | **掲示板**（記名式スレッド・お知らせ・アンケート・通報）の挙動 | 画面は `src/ui/components/BoardPage/`、判断は `src/core/board/`、SQL は `functions/api/_lib/board-store.ts`、窓口は `functions/api/board/` |
 | 掲示板に貼られた外部リンクの OGP（取得可否・画像の許可表） | `src/core/board/link.ts`（判定）+ `functions/api/_lib/board-link-fetch.ts`（取得とキャッシュ） |
 | **ペンネーム（表示名）**の扱い — ヘッダ・サイドバー・新しい作品の著者・掲示板の表示名は同じ 1 つ | 判定は `src/core/profile/account.ts`、配線は `src/ui/hooks/use-pen-name.ts`、編集は `src/ui/components/ProfileDialog/`（Root が 1 つだけ持つ）、正本はサーバの `board_profiles.display_name` |
+| **公開サイト（grove）の作者名** — コトノハのペンネームとは**別物**（D-PENNAME-GROVE）。語も分ける（ペンネーム／作者名） | `src/ui/components/PublishPage/publish-page.tsx` の `AuthorNameCard`（投稿前に名前を見せる）＋ `author-register-card.tsx`（登録）。取得は `src/ui/_api/author.ts`。変更の口は公開サイトの `/settings` |
 | 未課金・解約アカウントの削除（reaper） | `src/core/billing/reap-policy.ts` + `functions/api/billing/reap.ts` + `functions/api/_lib/purge.ts` |
 | 画面遷移・ルート追加 | `src/ui/Root.tsx` + `src/ui/hooks/use-hash-route.ts` |
 | DB スキーマ | `migrations/*.sql` + `wrangler.toml` |
