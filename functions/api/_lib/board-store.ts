@@ -343,6 +343,15 @@ const LINK_COLS = `url_key, url, host, kind, title, description, image_url, imag
        site_name, fetched_at, expires_at, blocked_at`
 
 /**
+ * 結合したときの `board_links` の列。**`board_post_links` にも `url_key` があるので、
+ * 修飾しないと SQLite が `ambiguous column name: url_key` で落ちる。**
+ * INSERT の列並び（`upsertLink`）には修飾を付けられないので、一覧を1つに保ったまま導出する。
+ */
+const LINK_COLS_JOINED = LINK_COLS.split(',')
+  .map((col) => `l.${col.trim()}`)
+  .join(', ')
+
+/**
  * 一覧・詳細で使うスレの読み出し。**先頭の `?` は閲覧者の userId**（👍 の有無）。
  * 表示名はスレ主のプロフィールから毎回引く（非正規化しない・D-BOARD-NAME）。
  */
@@ -571,7 +580,7 @@ export async function readThreadDetail(
       .bind(threadId),
     db
       .prepare(
-        `SELECT pl.post_id AS post_id, ${LINK_COLS}
+        `SELECT pl.post_id AS post_id, ${LINK_COLS_JOINED}
          FROM board_post_links pl
          JOIN board_links l ON l.url_key = pl.url_key
          JOIN board_posts p ON p.id = pl.post_id
