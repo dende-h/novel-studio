@@ -7,6 +7,13 @@ import type { GlossaryEntry, Inline, Work } from '../schema'
  */
 
 /**
+ * 用語集カテゴリの絞り込み（固定カテゴリ＋旧データの自由入力に緩く一致させる）。
+ * 表示（プロット画面のフィルタ）と推論（ノベルゲームの話者候補）で同じ判定を使う。
+ */
+export const PERSON_CATEGORY = /人物|キャラ/
+export const PLACE_CATEGORY = /場所|舞台/
+
+/**
  * ref.name を辞書 entries の name ＋ aliases（前後 trim 後の完全一致）で解決する。
  * - 大小区別あり（alice ≠ Alice）。内部空白は別物（「アリス スミス」≠「アリススミス」）。
  * - name が空（trim 後）は常に未解決。reading は解決対象外（サジェスト/ソート専用）。

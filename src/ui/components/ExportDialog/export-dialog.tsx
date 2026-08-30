@@ -1,6 +1,12 @@
-import { BookText, Copy, Download, Folder, Globe, Pencil, Sparkles } from 'lucide-react'
+import { BookText, Copy, Download, Folder, Gamepad2, Globe, Pencil, Sparkles } from 'lucide-react'
 import { type ComponentType, useId, useState } from 'react'
 import { glossaryToPlainText, workToPlainText } from '@/core/exporter/toPlainText'
+import {
+  DEFAULT_BG_KEY,
+  PRESET_BACKGROUNDS,
+  presetBackground,
+  presetBgSvg,
+} from '@/core/game/presets'
 import type { Work } from '@/core/schema'
 import { cn } from '@/lib/utils'
 import { copyText } from '@/ui/_utils/clipboard'
@@ -8,10 +14,13 @@ import { triggerDownload } from '@/ui/_utils/download'
 import {
   episodeKakuyomuExport,
   episodeNarouExport,
+  episodeNovelGameExport,
   workAiTextExport,
   workEpubExport,
   workFolderZipExport,
 } from '@/ui/_utils/exporters'
+import { loadGameFont } from '@/ui/_utils/game-font'
+import { useAuth } from '@/ui/auth/auth-context'
 import { Button } from '@/ui/components/ui/button'
 import {
   Dialog,
@@ -24,7 +33,7 @@ import {
 import { Label } from '@/ui/components/ui/label'
 import { Switch } from '@/ui/components/ui/switch'
 
-type Format = 'epub' | 'web' | 'folder' | 'ai'
+type Format = 'epub' | 'web' | 'game' | 'folder' | 'ai'
 type Platform = 'narou' | 'kakuyomu'
 
 interface ExportDialogProps {
@@ -57,6 +66,12 @@ const FORMATS: FormatDef[] = [
     desc: '「小説家になろう」「カクヨム」などの投稿用記法',
   },
   {
+    key: 'game',
+    icon: Gamepad2,
+    title: 'サウンドノベル',
+    desc: 'ブラウザでそのまま遊べるゲーム形式（ZIP）',
+  },
+  {
     key: 'folder',
     icon: Folder,
     title: 'フォルダ(ZIP)',
@@ -77,14 +92,27 @@ export function ExportDialog({ open, onOpenChange, work, onEditMeta }: ExportDia
   const [episodeId, setEpisodeId] = useState<string | null>(null)
   const [copied, setCopied] = useState<'ok' | 'err' | null>(null)
   const [includeGlossary, setIncludeGlossary] = useState(false)
+  const [gameBg, setGameBg] = useState(DEFAULT_BG_KEY)
+  const [busy, setBusy] = useState(false)
   const glossaryToggleId = useId()
   const glossaryCount = work?.glossary?.length ?? 0
 
   const episodes = work?.episodes ?? []
   const selectedEpisode = episodes.find((e) => e.id === episodeId) ?? episodes[0] ?? null
 
+  // サウンドノベルは無料枠でもアカウント必須（D-GAME-ACCOUNT）——
+  // 運営素材を同梱した zip の配布には、ライセンスに同意した主体の特定が要る。
+  // 判定は「構想の道具」と同じ形（loading 中に誤って解禁しない）。
+  const auth = useAuth()
+  const gameUnlocked = auth.status === 'free' || auth.status === 'member'
+  const gamePreset = presetBackground(gameBg) ?? PRESET_BACKGROUNDS[0]!
+
   const canExport =
-    format === 'web' || format === 'ai' ? Boolean(work) && episodes.length > 0 : Boolean(work)
+    format === 'web' || format === 'ai'
+      ? Boolean(work) && episodes.length > 0
+      : format === 'game'
+        ? Boolean(work) && episodes.length > 0 && gameUnlocked
+        : Boolean(work)
 
   // ダイアログを閉じるときはコピー結果メッセージをリセット
   const handleOpenChange = (next: boolean) => {
@@ -108,6 +136,22 @@ export function ExportDialog({ open, onOpenChange, work, onEditMeta }: ExportDia
         setCopied((await copyText(text)) ? 'ok' : 'err')
       }
       return // コピーはダイアログを閉じず、結果メッセージを見せる
+    }
+    if (format === 'game') {
+      if (work && selectedEpisode && gameUnlocked) {
+        setBusy(true)
+        try {
+          // フォントが取れなくても書き出しは止めない（システムの明朝で動く zip になる）
+          const font = await loadGameFont()
+          triggerDownload(
+            episodeNovelGameExport(work, selectedEpisode, { defaultBg: gameBg, font }),
+          )
+        } finally {
+          setBusy(false)
+        }
+        onOpenChange(false)
+      }
+      return
     }
     if (work) {
       if (format === 'epub') triggerDownload(workEpubExport(work))
@@ -248,6 +292,98 @@ export function ExportDialog({ open, onOpenChange, work, onEditMeta }: ExportDia
               </Section>
             )}
 
+            {format === 'game' &&
+              (gameUnlocked ? (
+                <Section title="サウンドノベル 設定">
+                  <div className="space-y-5">
+                    <Note>
+                      選んだ1話を、ブラウザで遊べるサウンドノベルにして ZIP で書き出します。
+                      文字送りとオート・スキップ・ログ・セーブ、読んだ一文を画像で共有できる「一行カード」つき。
+                      ZIP を展開して index.html をひらけば、そのまま読み始められます。
+                    </Note>
+                    <div>
+                      <label
+                        htmlFor="export-game-episode"
+                        className="mb-2 block text-on-surface-variant text-xs uppercase tracking-wider"
+                      >
+                        話を選択
+                      </label>
+                      <select
+                        id="export-game-episode"
+                        value={selectedEpisode?.id ?? ''}
+                        onChange={(e) => setEpisodeId(e.target.value)}
+                        className="w-full rounded-md border border-outline-variant bg-surface-container-lowest px-3 py-2 text-base text-on-surface outline-none focus:border-primary md:text-sm"
+                      >
+                        {episodes.length === 0 ? (
+                          <option value="">（話がありません）</option>
+                        ) : (
+                          episodes.map((e) => (
+                            <option key={e.id} value={e.id}>
+                              {e.title}
+                            </option>
+                          ))
+                        )}
+                      </select>
+                    </div>
+                    <div>
+                      <label
+                        htmlFor="export-game-bg"
+                        className="mb-2 block text-on-surface-variant text-xs uppercase tracking-wider"
+                      >
+                        背景
+                      </label>
+                      <select
+                        id="export-game-bg"
+                        value={gamePreset.key}
+                        onChange={(e) => setGameBg(e.target.value)}
+                        className="w-full rounded-md border border-outline-variant bg-surface-container-lowest px-3 py-2 text-base text-on-surface outline-none focus:border-primary md:text-sm"
+                      >
+                        {PRESET_BACKGROUNDS.map((p) => (
+                          <option key={p.key} value={p.key}>
+                            {p.label}
+                          </option>
+                        ))}
+                      </select>
+                      <img
+                        src={`data:image/svg+xml;utf8,${encodeURIComponent(presetBgSvg(gamePreset))}`}
+                        alt={`背景プレビュー: ${gamePreset.label}`}
+                        className="mt-3 aspect-video w-full rounded-md border border-outline-variant/30 object-cover"
+                      />
+                    </div>
+                    <p className="rounded-md border border-outline-variant/30 p-3 text-on-surface-variant text-xs leading-relaxed">
+                      背景とフォントはコトノハの標準素材です。クレジット表記はゲーム内に自動で入り、ZIP
+                      は素材ごと配布できます。
+                    </p>
+                  </div>
+                </Section>
+              ) : (
+                <Section title="サウンドノベル 設定">
+                  {auth.status === 'loading' ? (
+                    <Note>アカウントの状態を確認しています…</Note>
+                  ) : (
+                    <div className="space-y-4">
+                      <Note>
+                        サウンドノベルの書き出しには、無料のアカウント登録が必要です。書き出す ZIP
+                        にはコトノハの背景素材とフォントが同梱され、そのまま配布できます。素材のライセンスに同意した方を特定するため、サインインをお願いしています。
+                      </Note>
+                      {auth.available && (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={auth.openSignIn}
+                          className="gap-2 text-primary"
+                        >
+                          サインイン
+                        </Button>
+                      )}
+                      <p className="text-on-surface-variant text-xs">
+                        EPUB・Web投稿形式・フォルダ・AI のコピーは、サインインなしで使えます。
+                      </p>
+                    </div>
+                  )}
+                </Section>
+              ))}
+
             {format === 'folder' && (
               <Section title="フォルダ(ZIP) 設定">
                 <Note>
@@ -325,9 +461,9 @@ export function ExportDialog({ open, onOpenChange, work, onEditMeta }: ExportDia
           >
             キャンセル
           </Button>
-          <Button onClick={handleExport} disabled={!canExport} className="gap-2">
+          <Button onClick={handleExport} disabled={!canExport || busy} className="gap-2">
             {format === 'ai' ? <Copy className="size-4" /> : <Download className="size-4" />}
-            {format === 'ai' ? 'コピー' : '書き出し'}
+            {format === 'ai' ? 'コピー' : busy ? '書き出し中…' : '書き出し'}
           </Button>
         </DialogFooter>
       </DialogContent>

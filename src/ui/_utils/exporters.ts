@@ -2,6 +2,7 @@ import { exportBundle } from '../../core/bundle'
 import { buildEpubFiles } from '../../core/exporter/toEpub'
 import { blocksToKakuyomu } from '../../core/exporter/toKakuyomu'
 import { blocksToNarou } from '../../core/exporter/toNarou'
+import { buildNovelGameFiles, type NovelGameOptions } from '../../core/exporter/toNovelGame'
 import { glossaryToPlainText, workToPlainText } from '../../core/exporter/toPlainText'
 import { workToFolder } from '../../core/folder'
 import type { Episode, Work } from '../../core/schema'
@@ -37,6 +38,23 @@ export function episodeKakuyomuExport(workTitle: string, ep: Episode): ExportFil
     filename: `${safeName(workTitle)}_${safeName(ep.title)}_kakuyomu.txt`,
     mime: 'text/plain;charset=utf-8',
     data: blocksToKakuyomu(ep.blocks),
+  }
+}
+
+/**
+ * 1話 → ブラウザで遊べるサウンドノベル zip（index.html ＋ assets/）。
+ * Staging（演出譜）は G1 で配線する——G0 は演出ゼロの完全自動書き出し。
+ */
+export function episodeNovelGameExport(
+  work: Work,
+  ep: Episode,
+  opts: NovelGameOptions,
+): ExportFile {
+  const bytes = zipStore(buildNovelGameFiles(work, ep, undefined, opts))
+  return {
+    filename: `${safeName(work.title)}_${safeName(ep.title)}_novelgame.zip`,
+    mime: 'application/zip',
+    data: bytes,
   }
 }
 
