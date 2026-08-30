@@ -5,6 +5,7 @@ import { Button } from '@/ui/components/ui/button'
 import { Input } from '@/ui/components/ui/input'
 import { Label } from '@/ui/components/ui/label'
 import { Textarea } from '@/ui/components/ui/textarea'
+import { usePenName } from '@/ui/hooks/use-pen-name'
 
 interface AuthorRegisterCardProps {
   /** 公開サイト側の現在の状態（初期ペンネームに使う）。取れていなければ null。 */
@@ -24,8 +25,12 @@ interface AuthorRegisterCardProps {
  */
 export function AuthorRegisterCard({ status, getToken, onRegistered }: AuthorRegisterCardProps) {
   const uid = useId()
+  // このアプリのペンネーム（アカウントのもの・`src/ui/hooks/use-pen-name.ts`）。
+  // 公開サイトは別のサービスで作者名を自前に持つので、こちらから改名はできない。
+  // **登録のときだけは同じ名前を初期値に入れて**、書く場所と読まれる場所で名前がずれにくくする。
+  const appPenName = usePenName()
   // 状態が先に分かっていれば初期値から入れる（あとから届いたときは下の effect が拾う）
-  const [penName, setPenName] = useState(() => status?.penName ?? '')
+  const [penName, setPenName] = useState(() => status?.penName ?? appPenName)
   const [bio, setBio] = useState('')
   const [agreed, setAgreed] = useState(false)
   const [pending, setPending] = useState(false)
