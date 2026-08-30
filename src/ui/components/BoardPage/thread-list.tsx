@@ -11,12 +11,15 @@ import { Button } from '@/ui/components/ui/button'
  * 掲示板の一覧（設計 09-board §2）。**表示だけ**を担う部品で、
  * 取得・絞り込みの状態・スレ立ての導線は画面本体（`board-page.tsx`）が持つ。
  *
- * 置いている決めごとは 3 つ。
+ * 置いている決めごとは 4 つ。
  * 1. 色は `@/ui/board/board-ui` の `KIND_UI` / `STATUS_UI` からしか取らない。
  *    ここで色を決めると、同じスレが一覧と詳細で違う色になる。
- * 2. **👍 と運営ステータスは `request` / `bug` だけ**（`hasStatusUi`）。
+ * 2. **👍 と運営ステータスは要望・不具合だけ**（`hasStatusUi`）。統合前の目安箱
+ *    （`suggestion`）もこの仲間で、運営が付けたステータスと 👍 は残したまま出す。
  *    雑談スレに「受付」と 0 件の 👍 が並ぶと、器の意味が薄れる。
- * 3. 行は `<a>`。div に onClick を付けると Tab で辿れず、中クリックでも開けない。
+ * 3. **お知らせ（`notice`）は行ごと目立たせる**。チップだけだと、流し読みしている目には
+ *    ほかの 1 行と同じ重さで通り過ぎる。強調の仕方は `KIND_UI[kind].rowClassName`。
+ * 4. 行は `<a>`。div に onClick を付けると Tab で辿れず、中クリックでも開けない。
  */
 
 /** スレ詳細のハッシュ。一覧と画面本体で同じ形を使うため export する。 */
@@ -57,6 +60,9 @@ export function ThreadRow({ thread, now = Date.now(), href }: ThreadRowProps) {
         'block rounded-xl border border-outline-variant/30 bg-surface-container-lowest p-3.5',
         'no-underline transition-colors hover:bg-surface-container-low',
         'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring',
+        // 目立たせる種別（お知らせ）だけ、枠と下地を上書きする。どの種別をどう出すかは
+        // `KIND_UI` が決める＝ここで色を選ばない（種別ごとの分岐を画面に持ち込まない）。
+        kindUi.rowClassName,
       )}
     >
       <div className="flex flex-wrap items-center gap-1.5">
@@ -229,7 +235,10 @@ export interface KindFilterProps {
 }
 
 /**
- * 種別の絞り込み。並びは `kindOrder`（目安箱・要望・不具合・雑談・自己紹介・作品紹介）に従う。
+ * 種別の絞り込み。並びは `kindOrder`（お知らせ・要望・不具合・雑談・自己紹介・作品紹介）に従う。
+ * **廃止した「目安箱」は出さない**（`kindOrder` が落としている）。出すと「要望」のタブが
+ * 2 つ並び、押すたびに別の一覧が出る画面になる。旧目安箱のスレは要望のタブに合流する
+ *（どの種別を引くかはサーバの一覧 API が `kindsForFilter` で決める）。
  *
  * `aria-pressed` のトグルボタンにしてある。タブ（role="tablist"）にすると
  * 「押した瞬間に対応するパネルが現れる」約束になるが、実際は同じ一覧が絞られるだけ。

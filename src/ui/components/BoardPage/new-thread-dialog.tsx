@@ -2,11 +2,11 @@ import { Plus, X } from 'lucide-react'
 import { useEffect, useId, useRef, useState } from 'react'
 import type { PollInputError } from '@/core/board/poll'
 import { validatePollInput } from '@/core/board/poll'
-import type { BoardKind, CreateThreadInput } from '@/core/board/types'
-import { BOARD_LIMITS } from '@/core/board/types'
+import type { BoardKind, BoardRole, CreateThreadInput } from '@/core/board/types'
+import { BOARD_LIMITS, boardKindHint } from '@/core/board/types'
 import { cn } from '@/lib/utils'
 import { type BoardResult, boardErrorMessage } from '@/ui/_api/board'
-import { KIND_UI, kindOrder } from '@/ui/board/board-ui'
+import { creatableKindOrder, KIND_UI } from '@/ui/board/board-ui'
 import { Button } from '@/ui/components/ui/button'
 import {
   Dialog,
@@ -21,25 +21,6 @@ import { Input } from '@/ui/components/ui/input'
 import { Label } from '@/ui/components/ui/label'
 import { Switch } from '@/ui/components/ui/switch'
 import { Textarea } from '@/ui/components/ui/textarea'
-
-/**
- * 種別を選ぶと何が変わるか、1 行で言う（D-BOARD-KIND / D-BOARD-STATUS）。
- *
- * 立てる前に効くのは「👍 と運営の対応状況が付くか」の一点なので、**`hasStatusUi` が真の種別の
- * 文にだけ 👍 を書く**。表の中身と `src/core/board/types.ts` の判定がずれないことは
- * 同階層のテストで固定してある。
- *
- * 表を `@/ui/board/board-ui` の `KIND_UI` へ足さないのは、あちらが一覧・詳細・自分の書き込みで
- * 共有する「色と並び」の表で、ここの文はスレを立てる画面でしか読まれないため。
- */
-const KIND_HINT: Record<BoardKind, string> = {
-  suggestion: 'ひとことだけでも大丈夫です。運営が読みます',
-  request: '👍 が付き、運営の対応状況（受付・検討中・実装済み）も出ます',
-  bug: '👍 が付き、運営の対応状況も出ます。再現する手順があれば添えてください',
-  chat: 'いま書いている話のことでも、雑談でも。運営の対応状況は付きません',
-  intro: 'どんなものを書いているか、ひとことどうぞ。運営の対応状況は付きません',
-  promo: '作品の URL を貼ると、表紙つきのカードで並びます',
-}
 
 /**
  * `validatePollInput` の失敗理由 → 画面に出す文。
@@ -62,11 +43,20 @@ const POLL_ERROR_TEXT: Record<PollInputError, string> = {
 const DAY = 24 * 60 * 60 * 1000
 
 /**
+ * 開いたときに選ばれている種別。
+ *
+ * 旧「目安箱」（`suggestion`）から要望へ移した。目安箱は要望へ統合済みで、そもそも
+ * 選択肢に出ない（`CREATABLE_KINDS`）。staff でも既定は要望のまま——お知らせは
+ * 意図して選ぶもので、書き出しの既定にすると運営の雑談まで通知の器に載る。
+ */
+const DEFAULT_KIND: BoardKind = 'request'
+
+/**
  * 文字数。**サーバと同じ数え方（`.length` ＝ UTF-16 の符号単位）で数える。**
  *
  * 上限を実際に判定するのは `CreateThreadInputSchema` の `z.string().max()` で、Zod は
  * `String.prototype.length` を見る＝絵文字 1 つを 2 と数える（`'😀😀'` は `max(2)` で落ちる）。
- * ここをコードポイントで数えると、カウンタが「4000/4000」と出ている本文が
+ * ここをコードポイントで数えると、カウンタが上限ちょうどに見えている本文が
  * サーバに `bad_request` で弾かれ、**書いた人には理由の分からない失敗**になる。
  * 数え方を緩いほうへずらさず、弾かれる側に揃える。
  *
@@ -99,28 +89,44 @@ export interface NewThreadDialogProps {
    * 成功なら閉じる。失敗は `message` を出し、**入力はそのまま残す**。
    */
   onSubmit: (input: CreateThreadInput) => Promise<BoardResult<unknown>>
+  /**
+   * 掲示板での立場。**任意**（省略＝`member`）。
+   *
+   * 立場で変わるのは「お知らせ」を選べるかだけで、渡さない呼び出し側は
+   * これまでどおり member の選択肢を出す＝渡し忘れが**多い側へ倒れない**。
+   * 判定そのものは `creatableKindOrder`（→ `core/board/permission`）が持つ。
+   */
+  role?: BoardRole
 }
 
 /**
  * スレッドを立てるダイアログ（設計 09-board §2 / §5 `POST /api/board/threads`）。
  *
- * この画面が守るのは 4 つ。
+ * この画面が守るのは 5 つ。
  *
- * 1. **種別を選ぶと何が変わるかを、選ぶその場に出す。** 要望・不具合だけ 👍 と運営ステータスが
- *    付く（D-BOARD-KIND）。掲示板の心臓は「言えば直る」が見えることなので、その器に載るか
- *    どうかは立てる前に分かっていないといけない。
- * 2. **アンケートは任意。** 開くまで欄を出さない（毎回アンケートの入力欄が並ぶと、
+ * 1. **種別を選ぶと何が変わるかを、選ぶその場に出す。** 文は `boardKindHint`（契約側）から引く。
+ *    要望・不具合だけ 👍 と運営ステータスが付く（D-BOARD-KIND）。掲示板の心臓は
+ *    「言えば直る」が見えることなので、その器に載るかどうかは立てる前に分かっていないといけない。
+ * 2. **選べない種別は最初から出さない。** 廃止した「目安箱」（`suggestion`・要望へ統合）と、
+ *    member にとっての「お知らせ」（運営だけが立てられる）は選択肢そのものを出さない。
+ *    押させてから 403 で断るのは、断り方として高くつく。
+ * 3. **アンケートは任意。** 開くまで欄を出さない（毎回アンケートの入力欄が並ぶと、
  *    ひとことの要望を書く人の前に無関係な 5 つの欄が立ちはだかる）。
- * 3. **送信前に `validatePollInput` を通す。** 選択肢が 2 未満・空・重複のまま送ると
+ * 4. **送信前に `validatePollInput` を通す。** 選択肢が 2 未満・空・重複のまま送ると
  *    サーバに `bad_poll` で弾かれる＝往復してから「アンケートを保存できませんでした」しか
  *    返らない。手元で弾けば、どの欄をどう直すかまで言える。
- * 4. **失敗しても入力を消さない。** 4000 字書いた本文が通信の失敗で消えるのが、この画面で
- *    いちばん高くつく事故。送信中は二重送信を止め、返ってきた失敗はダイアログの中に出す。
+ * 5. **失敗しても入力を消さない。** 上限いっぱいまで書いた本文が通信の失敗で消えるのが、
+ *    この画面でいちばん高くつく事故。送信中は二重送信を止め、返ってきた失敗はダイアログの中に出す。
  *
  * 検証の結果を出すのは**一度送信を試みてから**。開いた直後から空欄を赤くしても、
  * これから書く人には何の情報にもならない。
  */
-export function NewThreadDialog({ open, onOpenChange, onSubmit }: NewThreadDialogProps) {
+export function NewThreadDialog({
+  open,
+  onOpenChange,
+  onSubmit,
+  role = 'member',
+}: NewThreadDialogProps) {
   const titleId = useId()
   const bodyId = useId()
   const questionId = useId()
@@ -136,7 +142,10 @@ export function NewThreadDialog({ open, onOpenChange, onSubmit }: NewThreadDialo
     return `opt-${optionSeq.current}`
   }
 
-  const [kind, setKind] = useState<BoardKind>('suggestion')
+  // 立場で変わるのは「お知らせ」を出すかだけ。判定は board-ui（→ permission）に任せる。
+  const kinds = creatableKindOrder(role)
+
+  const [kind, setKind] = useState<BoardKind>(DEFAULT_KIND)
   const [title, setTitle] = useState('')
   const [body, setBody] = useState('')
   const [pollOn, setPollOn] = useState(false)
@@ -151,7 +160,7 @@ export function NewThreadDialog({ open, onOpenChange, onSubmit }: NewThreadDialo
   // 開いた瞬間（閉→開の遷移）だけ空に戻す。表示中は触らない。
   useEffect(() => {
     if (!open) return
-    setKind('suggestion')
+    setKind(DEFAULT_KIND)
     setTitle('')
     setBody('')
     setPollOn(false)
@@ -291,7 +300,7 @@ export function NewThreadDialog({ open, onOpenChange, onSubmit }: NewThreadDialo
             <fieldset className="min-w-0 space-y-2">
               <legend className="font-medium text-on-surface text-sm">種別</legend>
               <div className="flex flex-wrap items-center gap-1.5">
-                {kindOrder.map((k) => {
+                {kinds.map((k) => {
                   const active = kind === k
                   return (
                     <button
@@ -311,7 +320,8 @@ export function NewThreadDialog({ open, onOpenChange, onSubmit }: NewThreadDialo
                   )
                 })}
               </div>
-              <p className="text-on-surface-variant text-xs">{KIND_HINT[kind]}</p>
+              {/* 一言の説明は契約側（`boardKindHint`）が正本。画面ごとに言い回しを作らない */}
+              <p className="text-on-surface-variant text-xs">{boardKindHint[kind]}</p>
             </fieldset>
 
             {/* --- タイトル --- */}

@@ -300,7 +300,18 @@ export function makeBoardDb(
       // [viewerId, (kind), (cursor×6), (threadId), (limit)] で、SQL の見た目と一致する。
       let i = 0
       const viewerId = (args[i++] as string | null) ?? null
-      const kind = sql.includes('AND t.kind = ?') ? (args[i++] as string) : null
+      // 種別の絞り込みは `t.kind IN (?, ?, ...)`（要望タブが旧 suggestion も拾うため
+      // 複数を渡す）。プレースホルダの数だけ bind を進めないと、以降の cursor/limit が
+      // 1 つずつずれて「空の一覧」に化ける。
+      const inClause = /AND t\.kind IN \(([?,\s]+)\)/.exec(sql)
+      const kinds = inClause
+        ? ((): string[] => {
+            const n = (inClause[1] ?? '').split(',').length
+            const picked = args.slice(i, i + n) as string[]
+            i += n
+            return picked
+          })()
+        : null
       let cursor: { pinned: number; bumpedAt: number; id: string } | null = null
       if (sql.includes('t.pinned < ?')) {
         const pinned = args[i] as number
@@ -316,7 +327,7 @@ export function makeBoardDb(
       const limit = sql.includes('LIMIT ?') ? (args[i] as number) : Number.POSITIVE_INFINITY
       return [...tables.threads.values()]
         .filter((t) => t.deleted_at === 0 && t.hidden_at === 0)
-        .filter((t) => !kind || t.kind === kind)
+        .filter((t) => !kinds || kinds.includes(t.kind))
         .filter((t) => {
           if (!cursor) return true
           if (t.pinned !== cursor.pinned) return t.pinned < cursor.pinned

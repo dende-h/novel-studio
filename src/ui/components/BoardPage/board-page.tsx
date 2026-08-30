@@ -438,7 +438,14 @@ export function BoardPage({
         initialName={me?.profile?.displayName ?? initialName}
         onSubmit={handleSetName}
       />
-      <NewThreadDialog open={newOpen} onOpenChange={setNewOpen} onSubmit={handleCreateThread} />
+      {/* 立場を渡さないと creatableKindOrder が「お知らせ」を落とすので、
+          staff でも画面から notice スレを立てられなくなる（D-BOARD-NOTICE）。 */}
+      <NewThreadDialog
+        open={newOpen}
+        onOpenChange={setNewOpen}
+        onSubmit={handleCreateThread}
+        role={me?.profile?.role}
+      />
     </AppShell>
   )
 }

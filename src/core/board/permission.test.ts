@@ -1,5 +1,7 @@
 import {
   type Actor,
+  CREATABLE_KINDS,
+  canCreateThread,
   canDeletePost,
   canDeleteThread,
   canLike,
@@ -9,13 +11,20 @@ import {
   DELETED_BODY_TEXT,
   HIDDEN_BODY_TEXT,
   isBanned,
+  isStaffOnlyKind,
   KINDS_WITH_STATUS,
   type PostLike,
+  STAFF_ONLY_KINDS,
   STATUS_OF_REASON,
   type ThreadLike,
   threadDeleteMode,
   visiblePost,
 } from './permission'
+import {
+  CREATABLE_KINDS as CONTRACT_CREATABLE_KINDS,
+  KINDS_WITH_STATUS as CONTRACT_KINDS_WITH_STATUS,
+  STAFF_ONLY_KINDS as CONTRACT_STAFF_ONLY_KINDS,
+} from './types'
 
 const NOW = 1_700_000_000_000
 
@@ -146,17 +155,23 @@ describe('threadDeleteMode（D-BOARD-DELETE / §7-5）', () => {
 })
 
 describe('canSetStatus / canLike（D-BOARD-KIND）', () => {
-  it('運営ステータスは staff かつ request / bug のときだけ', () => {
+  it('運営ステータスは staff かつ 要望（旧・目安箱）／不具合のときだけ', () => {
     for (const kind of KINDS_WITH_STATUS) {
       expect(canSetStatus(staff, thread({ kind }))).toEqual({ ok: true })
     }
+    // 統合前の目安箱スレにも運営ステータスを付けたまま（既存のステータスが消えない）
+    expect(canSetStatus(staff, thread({ kind: 'suggestion' }))).toEqual({ ok: true })
+    expect(canLike(actor(), thread({ kind: 'suggestion' }), NOW)).toEqual({ ok: true })
+    // お知らせには 👍 も運営ステータスも付けない
+    expect(reasonOf(canSetStatus(staff, thread({ kind: 'notice' })))).toBe('unsupported-kind')
+    expect(reasonOf(canLike(actor(), thread({ kind: 'notice' }), NOW))).toBe('unsupported-kind')
     expect(reasonOf(canSetStatus(staff, thread({ kind: 'chat' })))).toBe('unsupported-kind')
     expect(reasonOf(canSetStatus(actor(), thread({ kind: 'bug' })))).toBe('forbidden')
     expect(reasonOf(canSetStatus(anon, thread({ kind: 'bug' })))).toBe('unauthorized')
     expect(reasonOf(canSetStatus(staff, thread({ kind: 'bug', deletedAt: NOW })))).toBe('gone')
   })
 
-  it('👍 はログイン済みかつ request / bug のときだけ', () => {
+  it('👍 はログイン済みかつ 要望（旧・目安箱）／不具合のときだけ', () => {
     expect(canLike(actor(), thread({ kind: 'request' }), NOW)).toEqual({ ok: true })
     expect(reasonOf(canLike(anon, thread({ kind: 'request' }), NOW))).toBe('unauthorized')
     expect(reasonOf(canLike(actor(), thread({ kind: 'promo' }), NOW))).toBe('unsupported-kind')
@@ -196,6 +211,76 @@ describe('canSetStatus / canLike（D-BOARD-KIND）', () => {
       // @ts-expect-error now は必須（bannedUntil > undefined は常に false になる）
       canLike(actor({ bannedUntil: NOW + 1000 }), thread({ kind: 'request' }))
     }).toThrow(TypeError)
+  })
+})
+
+describe('canCreateThread（指摘1・指摘3）', () => {
+  it('ふつうの種別は誰でも立てられる', () => {
+    expect(canCreateThread(actor(), 'request', NOW)).toEqual({ ok: true })
+    expect(canCreateThread(actor(), 'bug', NOW)).toEqual({ ok: true })
+    expect(canCreateThread(actor(), 'chat', NOW)).toEqual({ ok: true })
+  })
+
+  it('お知らせを立てられるのは staff だけ（member は 403）', () => {
+    expect(canCreateThread(staff, 'notice', NOW)).toEqual({ ok: true })
+    expect(canCreateThread(actor(), 'notice', NOW)).toEqual({ ok: false, reason: 'forbidden' })
+    expect(STATUS_OF_REASON.forbidden).toBe(403)
+  })
+
+  it('お知らせにも誰でも返信できる（返信はこの判定を通らない）', () => {
+    // 「反応できないお知らせ」を作らない。書き込みの可否は canPost だけが決める。
+    expect(canPost(actor(), thread({ kind: 'notice', userId: 'staff1' }), NOW)).toEqual({
+      ok: true,
+    })
+  })
+
+  it('統合済みの suggestion では新しく立てられない（400）', () => {
+    // 画面の選択肢には出ないので、ここへ来るのは API を直に叩いた場合だけ。
+    expect(canCreateThread(actor(), 'suggestion', NOW)).toEqual({
+      ok: false,
+      reason: 'unsupported-kind',
+    })
+    expect(canCreateThread(staff, 'suggestion', NOW)).toEqual({
+      ok: false,
+      reason: 'unsupported-kind',
+    })
+    // 知らない種別も同じ扱い
+    expect(reasonOf(canCreateThread(actor(), 'unknown', NOW))).toBe('unsupported-kind')
+  })
+
+  it('未ログイン・投稿禁止中は種別より先に断る（canPost と同じ順・同じ理由）', () => {
+    expect(canCreateThread(anon, 'request', NOW)).toEqual({ ok: false, reason: 'unauthorized' })
+    const banned = actor({ bannedUntil: NOW + 1000 })
+    expect(canCreateThread(banned, 'request', NOW)).toEqual({ ok: false, reason: 'banned' })
+    // 立場より先に投稿禁止を見る（禁止中の staff がお知らせを立てられない）
+    expect(reasonOf(canCreateThread({ ...staff, bannedUntil: NOW + 1000 }, 'notice', NOW))).toBe(
+      'banned',
+    )
+    // 期限ちょうどは明け
+    expect(canCreateThread(actor({ bannedUntil: NOW }), 'request', NOW)).toEqual({ ok: true })
+  })
+
+  it('now を渡し忘れた canCreateThread は落ちる（投稿禁止が黙って無効化されない）', () => {
+    expect(() => {
+      // @ts-expect-error now は必須（bannedUntil > undefined は常に false になる）
+      canCreateThread(actor({ bannedUntil: NOW + 1000 }), 'request')
+    }).toThrow(TypeError)
+  })
+})
+
+describe('種別の表は契約（types.ts）と 1 つ', () => {
+  // 書き写すと片方だけ増えて、「一覧には出るのにステータスが付けられない」
+  // 「画面には出るのにサーバが 400 を返す」という食い違いになる。
+  it('👍/ステータス・staff 限定・新規作成の 3 つとも types.ts と同じ中身', () => {
+    expect(KINDS_WITH_STATUS).toEqual([...CONTRACT_KINDS_WITH_STATUS])
+    expect(STAFF_ONLY_KINDS).toEqual([...CONTRACT_STAFF_ONLY_KINDS])
+    expect(CREATABLE_KINDS).toEqual([...CONTRACT_CREATABLE_KINDS])
+  })
+
+  it('isStaffOnlyKind はお知らせにだけ真', () => {
+    expect(isStaffOnlyKind('notice')).toBe(true)
+    expect(isStaffOnlyKind('request')).toBe(false)
+    expect(isStaffOnlyKind('unknown')).toBe(false)
   })
 })
 

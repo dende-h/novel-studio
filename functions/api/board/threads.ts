@@ -3,14 +3,16 @@
  * /api/board/threads — スレッドの一覧とスレ立て（設計 docs/requirement/09-board.md §5）。
  *   GET  = 一覧（`?kind=` / `?cursor=`）。**未ログインでも 200**（§2）。
  *          ログインしていれば各行の `mine` / `liked` が埋まる。
+ *          `?kind=` が拾う種別は `kindsForFilter`（要望のタブには旧「目安箱」も並ぶ）。
  *   POST = スレ立て。**本文は board_posts の seq=1 として入れる**（§4）＝本文と返信で
  *          削除・通報・非表示の経路が 1 本に揃う。任意でアンケートを 1 つ添えられる。
  *
  * ここで SQL は書かない。掲示板の読み書きは `functions/api/_lib/board-store.ts` に集約し、
  * 「削除・非表示を除く条件」の書き忘れから本文が漏れる経路（§7-6）を作らない。
  *
- * POST の判定順は **認証 → 入力 → 表示名 → 投稿禁止 → スレ 3 本/日 → 投稿 10 件/時 →
- * 分あたりの安全弁 → 書き込み**。先に安い判定（ネットワークも DB も要らないもの）を済ませ、
+ * POST の判定順は **認証 → 入力 → 表示名 → 投稿禁止・種別（`canCreateThread`）→
+ * スレ 3 本/日 → 投稿 10 件/時 → 分あたりの安全弁 → 書き込み**。
+ * 先に安い判定（ネットワークも DB も要らないもの）を済ませ、
  * DB を叩く判定を後ろに置く。**流量の上限は 2 枚ある**（設計の 10 件/時と、連打を止める
  * 分あたりの弁）。前者を分窓の `checkRateLimit` に任せると 10 件/分＝60 倍緩くなる。
  *
@@ -19,13 +21,14 @@
  */
 
 import { urlKeyOf } from '../../../src/core/board/link'
-import { type Actor, isBanned } from '../../../src/core/board/permission'
+import { type Actor, canCreateThread, STATUS_OF_REASON } from '../../../src/core/board/permission'
 import { validatePollInput } from '../../../src/core/board/poll'
 import {
   BOARD_KINDS,
   BOARD_LIMITS,
   type BoardKind,
   CreateThreadInputSchema,
+  kindsForFilter,
 } from '../../../src/core/board/types'
 import { type ClerkEnv, verifyUserId } from '../_lib/auth'
 import { type BoardLinkEnv, resolveLinkCards } from '../_lib/board-link-fetch'
@@ -80,9 +83,17 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
   // エラー画面を見せない。
   const kind = isBoardKind(kindParam) ? kindParam : null
 
+  // タブ 1 つが拾う種別（`kindsForFilter`）。「要望」は**旧 `suggestion` のスレも一緒に**出す。
+  // 統合した以上、片方だけタブから漏れると利用者には「目安箱に書いたスレが消えた」に見える。
+  // `?kind=suggestion` の古いブックマークも同じ集合に寄る。
+  const wanted = kind ? kindsForFilter(kind) : null
+
+  // **絞り込みは必ず SQL 側で行う。** 引いた 20 件を JS で捨てる作りにすると、
+  // ほかの種別が多いときに「1 ページ目が空なのに nextCursor だけ返る」＝
+  // 画面が『要望タブが空＋もっと読む』になる（雑談 25 件・要望 1 件で再現した）。
   const viewerId = await viewerIdOf(context.request, context.env)
   const { rows, nextCursor } = await listThreads(context.env.DB, {
-    kind,
+    kinds: wanted,
     cursor: url.searchParams.get('cursor'),
     limit: PAGE_SIZE,
     viewerId,
@@ -119,8 +130,23 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     role: profile.role === 'staff' ? 'staff' : 'member',
     bannedUntil: profile.banned_until,
   }
-  if (isBanned(actor, now)) {
-    return boardJson({ error: 'banned', bannedUntil: profile.banned_until }, 403)
+  // スレを立てられるか（判定は permission.ts の `canCreateThread` 1 本だけを引く。
+  // 種別の表をここに書き写すと、契約が増えたときに片方だけ古くなる）。
+  // ここで落ちるのは 3 つ。投稿禁止中（403）／廃止した `suggestion` での新規作成
+  //（400 unsupported-kind。画面の選択肢には出ないが、API を直に叩けば届く）／
+  // member による `notice`（お知らせ）のスレ立て（403 forbidden）。
+  // **返信はこの判定を通らない**（`canPost`）＝お知らせにも旧目安箱のスレにも誰でも書ける。
+  const allowed = canCreateThread(actor, input.kind, now)
+  if (!allowed.ok) {
+    // 投稿禁止のときだけ期限を添える（画面が「いつまで書けないか」を出せる）。
+    // それ以外は理由 → ステータスの対応表をそのまま写す。
+    if (allowed.reason === 'banned') {
+      return boardJson(
+        { error: 'banned', bannedUntil: profile.banned_until },
+        STATUS_OF_REASON.banned,
+      )
+    }
+    return boardJson({ error: allowed.reason }, STATUS_OF_REASON[allowed.reason])
   }
 
   // アンケートの検証は書き込みの前（締切が過去のスレを作ってから poll だけ弾く、を避ける）。

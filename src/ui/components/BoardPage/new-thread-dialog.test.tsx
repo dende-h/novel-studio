@@ -1,7 +1,7 @@
 import { fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
-import type { CreateThreadInput } from '@/core/board/types'
-import { BOARD_LIMITS, boardKindLabel } from '@/core/board/types'
+import type { BoardRole, CreateThreadInput } from '@/core/board/types'
+import { BOARD_LIMITS, boardKindHint, boardKindLabel } from '@/core/board/types'
 import type { BoardResult } from '@/ui/_api/board'
 import { NewThreadDialog } from './new-thread-dialog'
 
@@ -14,8 +14,10 @@ const okSubmit = () => vi.fn(async (): Promise<BoardResult<unknown>> => ({ ok: t
 const failSubmit = (code: string, message: string, status: number) =>
   vi.fn(async (): Promise<BoardResult<unknown>> => ({ ok: false, code, message, status }))
 
-const renderDialog = (onSubmit: (input: CreateThreadInput) => Promise<BoardResult<unknown>>) =>
-  render(<NewThreadDialog open onOpenChange={() => {}} onSubmit={onSubmit} />)
+const renderDialog = (
+  onSubmit: (input: CreateThreadInput) => Promise<BoardResult<unknown>>,
+  role?: BoardRole,
+) => render(<NewThreadDialog open onOpenChange={() => {}} onSubmit={onSubmit} role={role} />)
 
 const titleBox = () => screen.getByLabelText('タイトル')
 const bodyBox = () => screen.getByLabelText('本文')
@@ -42,17 +44,17 @@ const localValue = (ms: number): string => {
 const DAY = 24 * 60 * 60 * 1000
 
 describe('NewThreadDialog — 種別（D-BOARD-KIND）', () => {
-  it('種別を選べる（既定は目安箱で、押した種別に切り替わる）', () => {
+  it('種別を選べる（既定は要望で、押した種別に切り替わる）', () => {
     renderDialog(okSubmit())
-    const suggestion = screen.getByRole('button', { name: boardKindLabel.suggestion })
+    const request = screen.getByRole('button', { name: boardKindLabel.request })
     const bug = screen.getByRole('button', { name: boardKindLabel.bug })
 
-    expect(suggestion).toHaveAttribute('aria-pressed', 'true')
+    expect(request).toHaveAttribute('aria-pressed', 'true')
     expect(bug).toHaveAttribute('aria-pressed', 'false')
 
     fireEvent.click(bug)
     expect(bug).toHaveAttribute('aria-pressed', 'true')
-    expect(suggestion).toHaveAttribute('aria-pressed', 'false')
+    expect(request).toHaveAttribute('aria-pressed', 'false')
   })
 
   it('選んだ種別が、そのまま送信の kind になる', () => {
@@ -66,24 +68,73 @@ describe('NewThreadDialog — 種別（D-BOARD-KIND）', () => {
     expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ kind: 'promo' }))
   })
 
-  it('要望を選ぶと、👍 と運営の対応状況が付くと分かる', () => {
+  it('種別ごとに、何を書く場所かの一言を出す（文言は契約側の boardKindHint）', () => {
     renderDialog(okSubmit())
-    fireEvent.click(screen.getByRole('button', { name: boardKindLabel.request }))
-    const hint = screen.getByText(/👍/)
-    expect(hint).toHaveTextContent('👍 が付き、運営の対応状況（受付・検討中・実装済み）も出ます')
-  })
+    // 開いた直後＝要望
+    expect(screen.getByText(boardKindHint.request)).toBeInTheDocument()
 
-  it('不具合を選んでも、👍 と運営の対応状況が付くと分かる', () => {
-    renderDialog(okSubmit())
     fireEvent.click(screen.getByRole('button', { name: boardKindLabel.bug }))
-    expect(screen.getByText(/👍/)).toHaveTextContent('👍 が付き、運営の対応状況も出ます')
+    expect(screen.getByText(boardKindHint.bug)).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: boardKindLabel.promo }))
+    expect(screen.getByText(boardKindHint.promo)).toBeInTheDocument()
   })
 
-  it('雑談・自己紹介では、対応状況が付かないと書く（👍 も言わない）', () => {
+  it('要望と不具合は、書くことの違いが一言で分かる', () => {
+    renderDialog(okSubmit())
+    // 「機能改善要望」「不具合報告」のような窓口語ではなく、利用者の言葉で言い切る
+    expect(screen.getByText(/こうなったら嬉しい/)).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: boardKindLabel.bug }))
+    expect(screen.getByText(/おかしな動きをした/)).toBeInTheDocument()
+    // 不具合は再現手順が要る＝要望には無い情報。分けたままにした理由をここで固定する
+    expect(screen.getByText(/再現する手順/)).toBeInTheDocument()
+  })
+
+  it('要望・不具合では 👍 と対応状況が付くと言い、雑談では言わない', () => {
     const { container } = renderDialog(okSubmit())
+    expect(screen.getByText(/👍/)).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: boardKindLabel.bug }))
+    expect(screen.getByText(/👍/)).toBeInTheDocument()
+
     fireEvent.click(screen.getByRole('button', { name: boardKindLabel.chat }))
     expect(screen.getByText(/運営の対応状況は付きません/)).toBeInTheDocument()
     expect(container.textContent ?? '').not.toContain('👍')
+  })
+})
+
+describe('NewThreadDialog — 選べない種別は出さない', () => {
+  it('「目安箱」は選択肢に無い（要望へ統合した）', () => {
+    renderDialog(okSubmit())
+    expect(screen.queryByRole('button', { name: '目安箱' })).toBeNull()
+    // 統合したので「要望」のボタンは 1 つだけ（同じラベルが 2 つ並ばない）
+    expect(screen.getAllByRole('button', { name: boardKindLabel.request })).toHaveLength(1)
+  })
+
+  it('member には「お知らせ」を出さない（押させてから 403 で断らない）', () => {
+    renderDialog(okSubmit(), 'member')
+    expect(screen.queryByRole('button', { name: boardKindLabel.notice })).toBeNull()
+  })
+
+  it('role を渡さない呼び出しも member 扱いにする（後方互換）', () => {
+    render(<NewThreadDialog open onOpenChange={() => {}} onSubmit={okSubmit()} />)
+    expect(screen.queryByRole('button', { name: boardKindLabel.notice })).toBeNull()
+    expect(screen.getByRole('button', { name: boardKindLabel.request })).toBeInTheDocument()
+  })
+
+  it('staff なら「お知らせ」を選んで立てられる', () => {
+    const onSubmit = okSubmit()
+    renderDialog(onSubmit, 'staff')
+
+    const notice = screen.getByRole('button', { name: boardKindLabel.notice })
+    fireEvent.click(notice)
+    expect(notice).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByText(boardKindHint.notice)).toBeInTheDocument()
+
+    fillRequired()
+    fireEvent.click(createButton())
+    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ kind: 'notice' }))
   })
 })
 
@@ -121,7 +172,7 @@ describe('NewThreadDialog — タイトルと本文', () => {
     fireEvent.change(bodyBox(), { target: { value: '  本文  ' } })
     fireEvent.click(createButton())
 
-    expect(onSubmit).toHaveBeenCalledWith({ kind: 'suggestion', title: '題名', body: '本文' })
+    expect(onSubmit).toHaveBeenCalledWith({ kind: 'request', title: '題名', body: '本文' })
   })
 })
 
@@ -139,7 +190,8 @@ describe('NewThreadDialog — 文字数の数え方がサーバと一致する',
 
   it('絵文字だけで上限に達した本文は、上限に達したと表示される', () => {
     renderDialog(okSubmit())
-    // 絵文字 2000 個＝サーバ換算 4000。コードポイントで数えると 2000（＝上限の半分）に見える
+    // 絵文字を上限の半分の数だけ＝サーバ換算でちょうど上限。
+    // コードポイントで数えると上限の半分に見える
     const value = EMOJI.repeat(BOARD_LIMITS.body / 2)
     fireEvent.change(bodyBox(), { target: { value } })
     expect(screen.getByText(`${BOARD_LIMITS.body}/${BOARD_LIMITS.body}`)).toBeInTheDocument()
@@ -169,6 +221,32 @@ describe('NewThreadDialog — そもそも上限を超えて打てない（maxLe
     renderDialog(okSubmit())
     expect(titleBox()).toHaveAttribute('maxlength', String(BOARD_LIMITS.title))
     expect(bodyBox()).toHaveAttribute('maxlength', String(BOARD_LIMITS.body))
+  })
+
+  it('本文の上限は 1500 字（下げた上限にカウンタと maxLength が追従している）', () => {
+    // 4000 字（原稿用紙 10 枚）から下げた。掲示板は拾い読みする器で、1 投稿がそこまで
+    // 長いと読む側が先に疲れる。書き切れない話は返信で足せる。
+    // 数字をここに直接書くのは、**上限を下げたことそのもの**を固定するため
+    //（BOARD_LIMITS.body を写すだけだと、値が元に戻っても気づけない）。
+    expect(BOARD_LIMITS.body).toBe(1500)
+
+    renderDialog(okSubmit())
+    expect(bodyBox()).toHaveAttribute('maxlength', '1500')
+
+    fireEvent.change(bodyBox(), { target: { value: 'あ'.repeat(1500) } })
+    expect(screen.getByText('1500/1500')).toBeInTheDocument()
+  })
+
+  it('かつて通った 4000 字の本文は、いまは手元で弾く', () => {
+    const onSubmit = okSubmit()
+    renderDialog(onSubmit)
+
+    fireEvent.change(titleBox(), { target: { value: '題名' } })
+    fireEvent.change(bodyBox(), { target: { value: 'あ'.repeat(4000) } })
+    fireEvent.click(createButton())
+
+    expect(screen.getByText(`本文は${BOARD_LIMITS.body}文字までです`)).toBeInTheDocument()
+    expect(onSubmit).not.toHaveBeenCalled()
   })
 
   it('アンケートの質問と選択肢にも上限が付いている', () => {
@@ -329,7 +407,7 @@ describe('NewThreadDialog — アンケート（送信前に手元で弾く）',
     fireEvent.click(createButton())
 
     expect(onSubmit).toHaveBeenCalledWith({
-      kind: 'suggestion',
+      kind: 'request',
       title: '章ごとの文字数を出してほしい',
       body: '話ごとではなく章ごとに知りたいです',
       poll: {
@@ -352,7 +430,7 @@ describe('NewThreadDialog — アンケート（送信前に手元で弾く）',
     fireEvent.click(createButton())
 
     expect(onSubmit).toHaveBeenCalledWith({
-      kind: 'suggestion',
+      kind: 'request',
       title: '章ごとの文字数を出してほしい',
       body: '話ごとではなく章ごとに知りたいです',
     })
