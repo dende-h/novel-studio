@@ -76,8 +76,10 @@ export function useAccountPenNameSync(store: EditorStore): void {
     let cancelled = false
     void fetchMe(getToken).then((res) => {
       if (cancelled || !res.ok) return
+      const snapshot = store.getSnapshot()
       const decision = penNameForAccount({
-        local: store.getSnapshot().profile,
+        penName: snapshot.profile.penName,
+        accountId: snapshot.profileAccountId,
         userId,
         serverName: res.data.profile?.displayName ?? null,
       })

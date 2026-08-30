@@ -13,16 +13,6 @@ export const ProfileSchema = z.object({
     .string()
     .refine((s) => s.startsWith('data:image/'), 'data URL が必要')
     .optional(),
-  /**
-   * このペンネームが属するアカウント（Clerk userId）。**未設定は「まだどの
-   * アカウントのものでもない」**（サインイン前に決めた名前・旧バージョンで保存された行）。
-   *
-   * ローカル 1 件しか持たない器にアカウントの印を足すのは、**アカウントを切り替えても
-   * 名前が変わらない**問題を直すため。端末の値が誰のものかを覚えていないと、別の
-   * アカウントでサインインしても前の人のペンネームが出たままになる（`penNameForAccount`）。
-   * 判定にしか使わないので、あとから足しても既存の行は optional のまま読める。
-   */
-  accountId: z.string().optional(),
   // 端末間 LWW 用の最終更新時刻（epoch ms）。クラウド同期で勝者を決めるのに使う。
   updatedAt: z.number().optional(),
 })
@@ -30,6 +20,19 @@ export type Profile = z.infer<typeof ProfileSchema>
 
 /** プロフィールの保存キー（KeyValueStore の単一キー）。work:/snap:/trash: と衝突しない。 */
 const KEY = 'profile'
+
+/**
+ * 「いまのペンネームが誰のものか」の印の保存キー。**`profile` とは別のキーにする**。
+ *
+ * `Profile` は端末間で同期され（`profile:me`・LWW）、クラウドバックアップにも入る。
+ * そこへ欄を足すと canonical JSON が変わってハッシュがずれ、**まだ更新していない端末**が
+ * 知らない欄を落として押し返す（Zod は未知のキーを捨てる）＝更新済みの端末と押し合いになる。
+ * この印は「この端末の写しがどのアカウントのものか」という**端末の帳簿**で、
+ * 同期にもバックアップにも乗せる理由がない。だから器ごと分ける。
+ */
+const ACCOUNT_KEY = 'profile-account'
+
+const ProfileAccountSchema = z.object({ accountId: z.string().optional() })
 
 /** プロフィールの永続化リポジトリ（KeyValueStore の単一キー `profile`）。 */
 export class ProfileRepository {
@@ -43,5 +46,19 @@ export class ProfileRepository {
 
   async save(profile: Profile): Promise<void> {
     await this.store.set(KEY, ProfileSchema.parse(profile))
+  }
+
+  /**
+   * いまのペンネームが属するアカウント（Clerk userId）。**未設定は「まだどの
+   * アカウントのものでもない」**（サインイン前に決めた名前・この印より前に保存された行）。
+   * 判定は `penNameForAccount`（`./account.ts`）。
+   */
+  async getAccountId(): Promise<string | undefined> {
+    const raw = await this.store.get(ACCOUNT_KEY)
+    return raw === undefined ? undefined : ProfileAccountSchema.parse(raw).accountId
+  }
+
+  async saveAccountId(accountId: string | undefined): Promise<void> {
+    await this.store.set(ACCOUNT_KEY, ProfileAccountSchema.parse({ accountId }))
   }
 }

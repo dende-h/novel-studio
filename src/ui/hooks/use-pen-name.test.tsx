@@ -23,13 +23,16 @@ type StoreCalls = {
 }
 
 /** `EditorStore` のうち、この配線が触る 3 つだけを持つ最小の代役。 */
-function fakeStore(profile: { penName?: string; accountId?: string }): {
+function fakeStore(local: { penName?: string; accountId?: string }): {
   store: EditorStore
   calls: StoreCalls
 } {
   const calls: StoreCalls = { adopt: [], update: [] }
   const store = {
-    getSnapshot: () => ({ profile }),
+    getSnapshot: () => ({
+      profile: { penName: local.penName },
+      profileAccountId: local.accountId,
+    }),
     adoptPenName: async (penName: string, accountId: string | null) => {
       calls.adopt.push([penName, accountId])
     },

@@ -1,5 +1,3 @@
-import type { Profile } from './index'
-
 /**
  * ペンネームを「アカウントのもの」にするための判定（純ロジック・React も fetch も持たない）。
  *
@@ -12,8 +10,8 @@ import type { Profile } from './index'
  * という言葉で 2 つの違う値が動いていた。
  *
  * そこで**サーバに持っている表示名をアカウントの正本**とし、ローカルはその写しにする。
- * ローカルの行には「どのアカウントのものか」（`Profile.accountId`）を書いておき、
- * サインインのたびにこの関数で突き合わせる。
+ * 端末には「どのアカウントのものか」の印を別のキーで置き（`ProfileRepository.getAccountId`・
+ * 同期にもバックアップにも乗せない）、サインインのたびにこの関数で突き合わせる。
  *
  * ## 決めていること
  *
@@ -39,25 +37,27 @@ export type PenNameSync =
   | { action: 'clear' }
 
 export function penNameForAccount(input: {
-  /** 端末に保存されているプロフィール */
-  local: Pick<Profile, 'penName' | 'accountId'>
+  /** 端末に保存されているペンネーム（未設定は undefined／空文字） */
+  penName: string | undefined
+  /** そのペンネームが属するアカウント（印が無ければ undefined） */
+  accountId: string | undefined
   /** サインイン中の Clerk userId（未サインインは null） */
   userId: string | null
   /** サーバが持っているこのアカウントの表示名（未登録は null／空文字） */
   serverName: string | null
 }): PenNameSync {
-  const { local, userId, serverName } = input
+  const { penName, accountId, userId, serverName } = input
   if (userId === null) return { action: 'keep' }
 
   const server = (serverName ?? '').trim()
   if (server !== '') {
     // 既に同じ名前を同じアカウントで持っているなら書き込まない
     //（毎回の起動で updatedAt だけ進めると、端末間 LWW が無意味に揺れる）。
-    if (local.penName === server && local.accountId === userId) return { action: 'keep' }
+    if (penName === server && accountId === userId) return { action: 'keep' }
     return { action: 'adopt', penName: server }
   }
 
   // サーバに名前が無い。ローカルの名前が「別のアカウントのもの」なら伏せる。
-  if (local.accountId !== undefined && local.accountId !== userId) return { action: 'clear' }
+  if (accountId !== undefined && accountId !== userId) return { action: 'clear' }
   return { action: 'keep' }
 }
