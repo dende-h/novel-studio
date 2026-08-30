@@ -1,5 +1,6 @@
 import { ArrowLeft, CornerDownRight, Lock, Pin, ThumbsUp } from 'lucide-react'
 import { type ReactNode, useCallback, useEffect, useId, useRef, useState } from 'react'
+import { isStaffOnlyKind } from '@/core/board/permission'
 import type {
   BoardMeResponse,
   BoardPost,
@@ -219,6 +220,9 @@ export function ThreadView({
   const thread = detail?.thread ?? null
   const posts = detail?.posts ?? []
   const staff = me?.profile?.role === 'staff'
+  // 運営以外にはお知らせの返信欄そのものを出さない（断り書きも出さない）。
+  const replySectionHidden = thread !== null && isStaffOnlyKind(thread.kind) && !staff
+
   const canPost = detail?.canPost ?? false
   // 返信が「行として」在るか。**削除済み・非表示も数える**（D-BOARD-DELETE）。
   // 生きている返信の数（`replyCount`）で判定すると、運営が返信を伏せた瞬間に
@@ -527,7 +531,10 @@ export function ThreadView({
                 ))}
               </ol>
 
-              <section className="mt-6">
+              {/* お知らせは運営からの連絡で、返信の器を持たない（D-BOARD-NOTICE）。
+                  読む人には「書き込めません」の断りすら出さない——押せないボタンや
+                  断り書きが並ぶより、最初から無いほうが読みやすい。運営には出す（追記できる）。 */}
+              <section className={cn('mt-6', replySectionHidden && 'hidden')}>
                 {canPost ? (
                   <form
                     onSubmit={(e) => {

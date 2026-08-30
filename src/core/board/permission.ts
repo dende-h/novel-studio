@@ -161,6 +161,13 @@ export function canPost(actor: Actor, thread: ThreadLike, now: number): Permissi
   if (isBanned(actor, now)) return deny('banned')
   if (!isAlive(thread)) return deny('gone')
   if (thread.locked && actor.role !== 'staff') return deny('locked')
+  // お知らせは運営からの連絡で、掲示板ではない（D-BOARD-NOTICE）。
+  // 返信を許すと、運営の告知にぶら下がった会話が本文と同じ場所に並び、
+  // 「読めば分かる連絡」だったものが読み解く対象になる。要望・不具合・雑談は
+  // それぞれ器があるので、話したい人はそちらへ行ける。
+  if (isStaffOnlyKind(thread.kind) && actor.role !== 'staff') {
+    return deny('forbidden')
+  }
   return ALLOW
 }
 

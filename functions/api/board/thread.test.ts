@@ -246,16 +246,20 @@ describe('GET /api/board/thread', () => {
     expect((await detailOf(env)).canPost).toBe(true)
   })
 
-  it('お知らせ（notice）のスレには、立てられない member でも返信できる', async () => {
+  it('お知らせ（notice）には運営しか書けない（返信も運営だけ・D-BOARD-NOTICE）', async () => {
+    // お知らせは運営からの連絡で、掲示板ではない。話したいことは要望・不具合・雑談へ。
     const { store, env } = setup()
-    // 立てられるのは staff だけ（`threads.ts` の canCreateThread）。返信はその判定を通らない
-    //＝運営の連絡に「それ、うちでも起きます」と足せる。
     store.threads.set('t1', fakeThread({ id: 't1', kind: 'notice', user_id: 'staff_1' }))
 
     authState.userId = 'user_2'
     const body = await detailOf(env)
     expect(body.thread.id).toBe('t1')
-    expect(body.canPost).toBe(true)
+    expect(body.canPost).toBe(false)
+
+    // 運営自身は追記できる
+    store.profiles.set('staff_1', fakeProfile({ user_id: 'staff_1', role: 'staff' }))
+    authState.userId = 'staff_1'
+    expect((await detailOf(env)).canPost).toBe(true)
   })
 })
 
