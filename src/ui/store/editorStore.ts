@@ -32,6 +32,11 @@ export interface EditorState {
   trashList: TrashSummary[]
   /** 作者プロフィール（ペンネーム・アバター）。未設定なら空オブジェクト。 */
   profile: Profile
+  /**
+   * いまのペンネームが属するアカウント（Clerk userId）。**`Profile` とは別に持つ**
+   * ＝端末間で同期もバックアップもしない印（`src/core/profile/index.ts` の `profile-account`）。
+   */
+  profileAccountId: string | undefined
 }
 
 export interface EditorStore {
@@ -169,6 +174,7 @@ const INITIAL: EditorState = {
   snapshots: [],
   trashList: [],
   profile: {},
+  profileAccountId: undefined,
 }
 
 const currentEpisode = (s: EditorState): Episode | undefined =>
@@ -261,7 +267,7 @@ export function createEditorStore({
       for (const id of purged) await purgeWorkArtifacts(id)
       await refreshList()
       await refreshTrash()
-      set({ profile: await profileRepo.get() })
+      set({ profile: await profileRepo.get(), profileAccountId: await profileRepo.getAccountId() })
     },
 
     async createWork(title) {
@@ -631,12 +637,13 @@ export function createEditorStore({
       if (penName) profile.penName = penName
       if (input.avatar) profile.avatar = input.avatar
       // ダイアログに無い欄（どのアカウントの名前か）は据え置く＝1 欄の更新で他を落とさない。
-      const accountId =
-        input.accountId === undefined ? state.profile.accountId : (input.accountId ?? undefined)
+      const kept =
+        input.accountId === undefined ? state.profileAccountId : (input.accountId ?? undefined)
       // 名前を消したら、誰の名前かの印も残さない（次のサインインで拾い直す）。
-      if (penName && accountId) profile.accountId = accountId
+      const profileAccountId = penName ? kept : undefined
       await profileRepo.save(profile)
-      set({ profile })
+      await profileRepo.saveAccountId(profileAccountId)
+      set({ profile, profileAccountId })
     },
 
     async adoptPenName(penName, accountId) {
@@ -644,10 +651,10 @@ export function createEditorStore({
       const name = penName.trim()
       if (name) next.penName = name
       else delete next.penName
-      if (name && accountId) next.accountId = accountId
-      else delete next.accountId
+      const profileAccountId = name && accountId ? accountId : undefined
       await profileRepo.save(next)
-      set({ profile: next })
+      await profileRepo.saveAccountId(profileAccountId)
+      set({ profile: next, profileAccountId })
     },
   }
 }

@@ -76,7 +76,7 @@ Cloudflare Pages Functions
 | `plot/` | プロット（幕/ライン/ビート/伏線/秘密）＋**世界観設定**（`Plot.world`・作者専用） | `PlotSection` `PlotLine` `PlotBeat` `Foreshadow` `Secret` / `beatsInStoryOrder` `sectionOfBeat` `linesOfBeat` `foreshadowsOfBeat` `secretsHiddenAt` / `WorldNote` `WORLD_SLOTS` `WORLD_CUSTOM_SLOT` `worldNoteLabel` `worldNotesInOrder` `setWorldNote` `removeWorldNote` |
 | `structure/` | 構造レイヤー（outline/chart/mindmap）のノード・辺 | `StructureNode` `StructureEdge` `StructureKind` `emptyStructure` `addNode` `pickPrimaryStructure` |
 | `idea/` | ネタ帳のメモ | `IdeaNote` `normalizeIdeaText` |
-| `profile/` | 作者プロフィール（ペンネーム・アバター）と、**アカウントとの突き合わせ**（`account.ts`） | `Profile`（`penName` `avatar` `accountId`） `ProfileRepository` / `penNameForAccount` `PenNameSync` |
+| `profile/` | 作者プロフィール（ペンネーム・アバター）と、**アカウントとの突き合わせ**（`account.ts`）。どのアカウントの名前かの印は `profile` とは**別キー**（同期・バックアップに乗せない） | `Profile`（`penName` `avatar` `updatedAt`） `ProfileRepository`（+ `getAccountId` `saveAccountId`） / `penNameForAccount` `PenNameSync` |
 | `board/` | **掲示板の共有契約**（Zod）と純ロジック。詳細は下表 | `BOARD_KINDS` `BOARD_LIMITS` `BoardThread` `BoardPost` `PollResult` `LinkCard` `BoardThreadDetail` `ThreadListResponse` `BoardMeResponse` `ModerateInputSchema` ほか（`types.ts`） |
 
 ### 変換
