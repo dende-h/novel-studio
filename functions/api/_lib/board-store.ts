@@ -343,6 +343,15 @@ const LINK_COLS = `url_key, url, host, kind, title, description, image_url, imag
        site_name, fetched_at, expires_at, blocked_at`
 
 /**
+ * 結合したときの `board_links` の列。**`board_post_links` にも `url_key` があるので、
+ * 修飾しないと SQLite が `ambiguous column name: url_key` で落ちる。**
+ * INSERT の列並び（`upsertLink`）には修飾を付けられないので、一覧を1つに保ったまま導出する。
+ */
+const LINK_COLS_JOINED = LINK_COLS.split(',')
+  .map((col) => `l.${col.trim()}`)
+  .join(', ')
+
+/**
  * 一覧・詳細で使うスレの読み出し。**先頭の `?` は閲覧者の userId**（👍 の有無）。
  * 表示名はスレ主のプロフィールから毎回引く（非正規化しない・D-BOARD-NAME）。
  */
@@ -472,7 +481,14 @@ function decodeCursor(raw: string | null | undefined): ThreadCursor | null {
 export async function listThreads(
   db: D1Database,
   opts: {
+    /** 1 種別だけ絞る。`kinds` と併用しない */
     kind?: BoardKind | null
+    /**
+     * 複数種別を絞る（要望タブが旧 `suggestion` も拾うため）。
+     * **JS 側で引いた行を後から捨てない**——捨てると 1 ページが空になっても
+     * `nextCursor` だけ返り、画面が「空なのに『もっと読む』」になる。
+     */
+    kinds?: readonly BoardKind[] | null
     cursor?: string | null
     limit?: number
     viewerId?: string | null
@@ -483,9 +499,10 @@ export async function listThreads(
   const args: unknown[] = [opts.viewerId ?? null]
 
   let sql = `${THREAD_LIST_SELECT}\nWHERE t.deleted_at = 0 AND t.hidden_at = 0`
-  if (opts.kind) {
-    sql += '\n  AND t.kind = ?'
-    args.push(opts.kind)
+  const kinds = opts.kinds && opts.kinds.length > 0 ? opts.kinds : opts.kind ? [opts.kind] : null
+  if (kinds) {
+    sql += `\n  AND t.kind IN (${placeholders(kinds.length)})`
+    args.push(...kinds)
   }
   if (cursor) {
     sql += `\n  AND (t.pinned < ?
@@ -571,7 +588,7 @@ export async function readThreadDetail(
       .bind(threadId),
     db
       .prepare(
-        `SELECT pl.post_id AS post_id, ${LINK_COLS}
+        `SELECT pl.post_id AS post_id, ${LINK_COLS_JOINED}
          FROM board_post_links pl
          JOIN board_links l ON l.url_key = pl.url_key
          JOIN board_posts p ON p.id = pl.post_id
@@ -1089,7 +1106,11 @@ export async function readPostLinks(
   if (postIds.length === 0) return out
   const res = await db
     .prepare(
-      `SELECT pl.post_id AS post_id, ${LINK_COLS}
+      // 列は必ず `l.` で修飾する（`LINK_COLS_JOINED`）。board_post_links にも url_key があり、
+      // 素の `LINK_COLS` に戻すと SQLite が `ambiguous column name: url_key` で落ちる
+      // ＝スレを開くと 500。readThreadDetail の同じ結合で実際に起きた事故なので、
+      // 修飾を外さないこと（functions/api/_lib/board-store.real.test.ts が実 SQLite で見張る）。
+      `SELECT pl.post_id AS post_id, ${LINK_COLS_JOINED}
        FROM board_post_links pl
        JOIN board_links l ON l.url_key = pl.url_key
        WHERE pl.post_id IN (${placeholders(postIds.length)})

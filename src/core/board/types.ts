@@ -18,25 +18,108 @@ import { z } from 'zod'
 
 /**
  * スレッドの種別（D-BOARD-KIND）。
- * `suggestion`（目安箱）と `bug` は運営が常設スレを置き、`request` は誰でも起票できる。
+ *
+ * **`suggestion`（旧・目安箱）は `request`（要望）へ統合した**（廃止・新規作成では選べない）。
+ * 「ひとことの受け皿＝目安箱／まとまった起票＝要望」と書き分けたが、画面上はどちらも
+ * 「運営に伝える」で、どちらへ書くかの判断が利用者の負担にしかなっていなかった。
+ *
+ * **enum からは消さない。** STG・本番の `board_threads.kind` には `suggestion` の行が
+ * そのまま残っており、enum から外すと `BoardThreadSchema.parse` が落ちて
+ * **その 1 件どころか一覧ごと読めなくなる**（CLAUDE.md「後方互換性」）。
+ * 残したうえで、表示は `boardKindLabel`（＝「要望」）、絞り込みは `kindsForFilter` で
+ * `request` に合流させ、新規作成は `CREATABLE_KINDS` から外す。
+ *
+ * `notice`（お知らせ）は**運営だけが立てられる**種別（立てられるかの判定は
+ * `src/core/board/permission.ts` の `canCreateThread`）。返信は誰でもできる。
  */
-export const BOARD_KINDS = ['suggestion', 'request', 'bug', 'chat', 'intro', 'promo'] as const
+export const BOARD_KINDS = [
+  'suggestion',
+  'request',
+  'bug',
+  'chat',
+  'intro',
+  'promo',
+  'notice',
+] as const
 export type BoardKind = (typeof BOARD_KINDS)[number]
 
+/**
+ * 画面に出す表記。**`suggestion` は「要望」と読み替える**（統合したので、
+ * 既存の目安箱スレも要望として並ぶ）。ラベルの正本はこの表 1 つだけにする。
+ */
 export const boardKindLabel: Record<BoardKind, string> = {
-  suggestion: '目安箱',
+  suggestion: '要望',
   request: '要望',
   bug: '不具合',
   chat: '雑談',
   intro: '自己紹介',
   promo: '作品紹介',
+  notice: 'お知らせ',
+}
+
+/**
+ * 廃止した種別 → 合流先。表示・絞り込み・新規作成の 3 か所が同じ表を見る。
+ * 新しく足すときは、**保存済みの値は消さず**にここへ 1 行足す。
+ */
+export const KIND_ALIASES: Partial<Record<BoardKind, BoardKind>> = {
+  suggestion: 'request',
+}
+
+/** 廃止された種別を合流先へ寄せた「いま生きている種別」。合流先が無ければそのまま。 */
+export const canonicalKind = (kind: BoardKind): BoardKind => KIND_ALIASES[kind] ?? kind
+
+/**
+ * 一覧の絞り込みタブ 1 つが拾う種別。
+ * 「要望」のタブは**旧 `suggestion` のスレも一緒に**出す（合流させた以上、
+ * 片方だけタブから漏れると利用者には消えたように見える）。
+ */
+export const kindsForFilter = (kind: BoardKind): readonly BoardKind[] => {
+  // 引数のほうも合流させる。旧クライアントや古いブックマークの `?kind=suggestion` が
+  // 「該当なし」になって、要望の一覧を空で見せてしまうのを防ぐ。
+  const target = canonicalKind(kind)
+  return BOARD_KINDS.filter((k) => canonicalKind(k) === target)
+}
+
+/**
+ * 新規作成で選べる種別。**廃止した種別（`suggestion`）は出さない**。
+ * `notice` はここに居るが、選べるのは staff だけ（`canCreateThread` が 403 で弾く）。
+ */
+export const CREATABLE_KINDS: readonly BoardKind[] = BOARD_KINDS.filter(
+  (kind) => canonicalKind(kind) === kind,
+)
+
+/** 運営（staff）だけが立てられる種別。返信の可否には効かない（お知らせにも誰でも返信できる）。 */
+export const STAFF_ONLY_KINDS: readonly BoardKind[] = ['notice']
+
+/**
+ * 種別を選ぶ画面に添える一言（指摘2）。**要望と不具合を分けたままにする代わり**に、
+ * どちらへ書けばよいかを 1 行で言う＝分かれていること自体で迷わせない。
+ *
+ * 「こうなったら嬉しい」「おかしな動きをした」と利用者の言葉で書く。
+ * 「機能改善要望」「不具合報告」のような窓口語にすると、書く前に身構えさせてしまう。
+ */
+const REQUEST_HINT = '「こうなったら嬉しい」を書く場所です。👍 と運営の対応状況が付きます'
+
+export const boardKindHint: Record<BoardKind, string> = {
+  // 廃止済み。新規作成には出ないが、表を引き当てられない種別を作らないために持っておく
+  suggestion: REQUEST_HINT,
+  request: REQUEST_HINT,
+  bug: '「おかしな動きをした」を書く場所です。再現する手順があれば添えてください。👍 と対応状況が付きます',
+  chat: 'いま書いている話のことでも、雑談でも。運営の対応状況は付きません',
+  intro: 'どんなものを書いているか、ひとことどうぞ。運営の対応状況は付きません',
+  promo: '作品の URL を貼ると、表紙つきのカードで並びます',
+  notice: '運営からのお知らせです。立てられるのは運営だけで、返信は誰でもできます',
 }
 
 /**
  * 👍 と運営ステータスが付く種別（D-BOARD-STATUS）。
  * 雑談や自己紹介にステータスを付けても意味がないので、器のほうを絞る。
+ *
+ * **`suggestion` を含める。** 統合前の目安箱スレには運営が付けたステータスが残っている。
+ * ここから外すと、そのステータスが画面から消えて「対応してもらえたはずの記録」が失われる。
+ * `notice` は入れない（運営からの連絡に 👍 と対応状況を付けても意味がない）。
  */
-export const KINDS_WITH_STATUS: readonly BoardKind[] = ['request', 'bug']
+export const KINDS_WITH_STATUS: readonly BoardKind[] = ['suggestion', 'request', 'bug']
 
 export const hasStatusUi = (kind: BoardKind): boolean => KINDS_WITH_STATUS.includes(kind)
 
@@ -83,8 +166,19 @@ export type LinkKind = (typeof LINK_KINDS)[number]
 export const BOARD_LIMITS = {
   /** スレッドのタイトル（文字数・コードポイント単位） */
   title: 80,
-  /** 投稿本文 */
-  body: 4000,
+  /**
+   * 投稿本文（スレ立て・返信の**入力**の上限）。
+   *
+   * 4000 字（原稿用紙 10 枚）から 1500 字へ下げた。掲示板は一覧とスレを行き来しながら
+   * 拾い読みする器で、1 投稿がそこまで長いと読む側が先に疲れる。1500 字なら
+   * 原稿用紙 4 枚弱・スマホで数回スクロールすれば読み切れる。書き切れない話は
+   * 返信で足せばよく、上限は「1 回の書き込みの長さ」を決めるためだけにある。
+   *
+   * **効かせるのは入力スキーマ（`CreateThreadInputSchema` / `CreatePostInputSchema`）だけ。**
+   * 保存済みを読む `BoardPostSchema.body` に max を付けると、4000 字時代に書かれた投稿が
+   * parse で落ち、そのスレが丸ごと開けなくなる（CLAUDE.md「後方互換性」）。
+   */
+  body: 1500,
   /** 表示名 */
   displayName: 24,
   /** アンケートの質問 */
@@ -150,7 +244,10 @@ export const BoardPostSchema = z.object({
   author: BoardAuthorSchema,
   /** 自分の投稿か（削除ボタンを出すかの判断に使う） */
   mine: z.boolean().default(false),
-  /** 本文。削除・非表示のときは伏せ字が入る */
+  /**
+   * 本文。削除・非表示のときは伏せ字が入る。
+   * **`max` を付けない**（上限を下げる前に書かれた長い投稿を読めなくしないため・`BOARD_LIMITS.body`）。
+   */
   body: z.string(),
   /** 返信先の seq（0 はなし） */
   replyTo: z.number().default(0),

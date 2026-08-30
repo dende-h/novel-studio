@@ -51,7 +51,7 @@ Cloudflare Pages Functions
 | AI/MCP 連携（外部から原稿を編集） | `src/core/mcp-edit/index.ts` + `functions/api/_lib/mcp-server.ts` |
 | MCP コネクタの接続（OAuth ディスカバリ・認可の窓口） | `functions/_middleware.ts` + `functions/api/oauth/[[path]].ts` |
 | **UI 部品・ヘルパを新規に作りたい** | まず §3「共通部品カタログ」で在庫を確認する（重複作成の防止） |
-| **掲示板**（記名式スレッド・目安箱・アンケート・通報）の挙動 | 画面は `src/ui/components/BoardPage/`、判断は `src/core/board/`、SQL は `functions/api/_lib/board-store.ts`、窓口は `functions/api/board/` |
+| **掲示板**（記名式スレッド・お知らせ・アンケート・通報）の挙動 | 画面は `src/ui/components/BoardPage/`、判断は `src/core/board/`、SQL は `functions/api/_lib/board-store.ts`、窓口は `functions/api/board/` |
 | 掲示板に貼られた外部リンクの OGP（取得可否・画像の許可表） | `src/core/board/link.ts`（判定）+ `functions/api/_lib/board-link-fetch.ts`（取得とキャッシュ） |
 | 未課金・解約アカウントの削除（reaper） | `src/core/billing/reap-policy.ts` + `functions/api/billing/reap.ts` + `functions/api/_lib/purge.ts` |
 | 画面遷移・ルート追加 | `src/ui/Root.tsx` + `src/ui/hooks/use-hash-route.ts` |
@@ -125,12 +125,12 @@ Cloudflare Pages Functions
 ### 掲示板（`board/`）— 判断はすべてここ。サーバは呼ぶだけ
 | ファイル | 責務 | 主な export |
 |---|---|---|
-| `src/core/board/types.ts` | **サーバ・クライアント共通の契約**（Zod）と上限 | `BOARD_KINDS` `BOARD_STATUSES` `BOARD_LIMITS` `BoardThread` `BoardPost` `PollResult` `LinkCard` `BoardThreadDetail` `ThreadListResponse` `BoardMeResponse` `ModerateInputSchema` |
+| `src/core/board/types.ts` | **サーバ・クライアント共通の契約**（Zod）と上限。種別は request/bug/chat/intro/promo/notice（旧 `suggestion` は request へ統合・enum には残す） | `BOARD_KINDS` `BOARD_STATUSES` `BOARD_LIMITS`（本文 1500 字） `KIND_ALIASES` `canonicalKind` `kindsForFilter` `CREATABLE_KINDS` `STAFF_ONLY_KINDS` `KINDS_WITH_STATUS` `boardKindLabel` `boardKindHint` `BoardThread` `BoardPost` `PollResult` `LinkCard` `BoardThreadDetail` `ThreadListResponse` `BoardMeResponse` `ModerateInputSchema` |
 | `src/core/board/name.ts` | 表示名の正規化・予約語。**見た目が同じ文字を畳んでから**重複判定（なりすまし防止） | `normalizeDisplayName` `nameKeyOf` `RESERVED_NAME_KEYS` `validateDisplayName` |
 | `src/core/board/link.ts` | **URL を取りに行ってよいかの判定（SSRF）**と OGP の抽出。og:image はホストの許可表を通す | `extractUrls` `normalizeUrl` `urlKeyOf` `canFetchUrl` `parseOgp` `OGP_IMAGE_HOSTS` `isAllowedImageHost` `resolveImageUrl` |
 | `src/core/board/render.ts` | 掲示板本文の描画。**`markdownToHtml` は本文向けで使えない**（数字に縦中横、`[[用語]]` 素通し、URL がリンクにならない）ためブロック層だけ再利用 | `escapeHtml` `boardInlineHtml` `boardBodyToHtml` `boardBodyToPlain` |
 | `src/core/board/poll.ts` | アンケートの検証・集計と**開示判定**（未投票かつ締切前は票数を返さない） | `validatePollInput` `tallyVotes` `pollResultFor` `canVote` `normalizeChoices` |
-| `src/core/board/permission.ts` | 誰が何をできるか。理由を HTTP ステータスへ写す表つき | `canPost` `canDeletePost` `canDeleteThread` `threadDeleteMode` `canModerate` `canSetStatus` `canLike` `visiblePost` `STATUS_OF_REASON` |
+| `src/core/board/permission.ts` | 誰が何をできるか。理由を HTTP ステータスへ写す表つき。種別の表は `types.ts` から import | `canPost` `canCreateThread`（notice は staff のみ） `isStaffOnlyKind` `canDeletePost` `canDeleteThread` `threadDeleteMode` `canModerate` `canSetStatus` `canLike` `visiblePost` `STATUS_OF_REASON` |
 
 ---
 
@@ -232,7 +232,7 @@ Cloudflare Pages Functions
 | `sync/` | 同期クライアント。`src/ui/sync/sync-service.ts` が本体（約800行）・`sync-gate` `sync-status` `sync-touch` |
 | `src/ui/backup/backup-service.ts` | クラウド全体バックアップの実行 |
 | `plot/` | プロットの表示ヘルパ（React 非依存・`beat-ui.ts` に `STATUS_UI` `LINE_PALETTE` `lineColorOf` `beatStripeColor` `plainOf` `fmtCount`）。プロット画面と執筆画面のパネルで色・表記を揃える |
-| `board/` | 掲示板の表示ヘルパ（React 非依存・`board-ui.ts` に種別/状態の色・並び・未読件数・抜粋） |
+| `board/` | 掲示板の表示ヘルパ（React 非依存・`board-ui.ts` に `KIND_UI`／`STATUS_UI` の色・`kindOrder`・`creatableKindOrder(role)`・未読件数・抜粋） |
 | `structure/` | React Flow アダプタ（`flow-adapter` `tree-layout` `use-structure-flow` `ensure-structure`） |
 | `auth/` | Clerk 配線（`auth-provider` `clerk-gate` `derive-status` `cloud-pricing`） |
 
@@ -279,6 +279,7 @@ Cloudflare Pages Functions
 `rateLimitedResponse`＝分あたりの安全弁、`postQuotaExceeded`＝10件/時、`createPostRetrying`、`conflictResponse`）。
 **新しいエンドポイントを足すときはここから使う**（片方だけ緩むと誰も気づけない）。
 テスト用の D1 フェイクは `functions/api/board/board-test-util.ts`（`makeBoardDb` `makeBoardEnv` `clerkAuthMock`）。
+**SQL そのものを確かめるのは `functions/api/board/real-d1.ts`**（`migrations/0008_board.sql` を流した実 SQLite＝`node:sqlite`。フェイクは SQL を解釈しないので構文エラー・曖昧な列名を拾えない）。
 
 **バインディング**（`wrangler.toml`）: `DB` = D1 `novel-studio`、`MEDIA` = R2 `novel-studio-media`
 （preview 環境は `-stg` サフィックス）。
@@ -323,7 +324,7 @@ uv run .claude/skills/natural-japanese/scripts/lint.py <file>   # 仕事の文�
 | `docs/requirement/05-sync.md` / `docs/requirement/05-sync-setup.md` | 同期の設計と構築手順 |
 | `docs/requirement/06-release-prep.md` | リリース準備 |
 | `docs/requirement/07-analytics.md` | アクセス解析 |
-| `docs/requirement/09-board.md` | 掲示板（記名式スレッド・目安箱・アンケート・外部リンクの OGP）の設計と決定表 |
+| `docs/requirement/09-board.md` | 掲示板（記名式スレッド・お知らせ・アンケート・外部リンクの OGP）の設計と決定表 |
 | `public/board-guidelines.html` | 掲示板ガイドライン（`/board-guidelines` で公開・通報や上限の文言はここと揃える） |
 | `docs/requirement/99-open-questions.md` | 未決事項 |
 | `design/stitch/*/index.html` | 画面のデザインカンプ（+ スクリーンショット） |

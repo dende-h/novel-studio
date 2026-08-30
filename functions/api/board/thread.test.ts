@@ -10,6 +10,12 @@
  *   §7-7 アンケートは投票前に票数を返さない（締切後は未投票でも開示）
  *  （§5）ステータス／ピン／ロックは staff だけ
  *
+ * 種別の変更（指摘1・指摘3）で、ここが受け持つぶんも固定する。
+ *   * 要望へ統合した旧「目安箱」のスレは、今までどおり読めて返信でき、
+ *     運営ステータスも付けられる（新規作成だけを止めた・`threads.ts`）
+ *   * お知らせ（`notice`）は立てられるのが staff だけでも、返信は誰でもできる。
+ *     ただし運営ステータスは付かない
+ *
  * D1 は `board-test-util.ts` の in-memory フェイク。時刻は fake timers で固定する
  *（レート制限の分窓が実行時刻に依存して揺れないように）。
  */
@@ -223,6 +229,34 @@ describe('GET /api/board/thread', () => {
     )
     expect((await detailOf(env)).canPost).toBe(false)
   })
+
+  it('要望へ統合した旧「目安箱」のスレも、今までどおり読めて返信もできる', async () => {
+    const { store, env } = setup()
+    // STG・本番には `kind: 'suggestion'` の行がそのまま残っている。新規作成は止めたが、
+    // 既存のスレを読めなく・書けなくすると、利用者には「スレが消えた」のと同じになる。
+    store.threads.set('t1', fakeThread({ id: 't1', kind: 'suggestion', user_id: 'user_1' }))
+
+    const body = await detailOf(env)
+    expect(body.thread.id).toBe('t1')
+    expect(body.posts.map((p) => p.body)).toEqual(['本文です'])
+
+    // 返信できるかは種別を見ない（canPost の判断）。別人でも書ける。
+    expect(body.canPost).toBe(true)
+    authState.userId = 'user_2'
+    expect((await detailOf(env)).canPost).toBe(true)
+  })
+
+  it('お知らせ（notice）のスレには、立てられない member でも返信できる', async () => {
+    const { store, env } = setup()
+    // 立てられるのは staff だけ（`threads.ts` の canCreateThread）。返信はその判定を通らない
+    //＝運営の連絡に「それ、うちでも起きます」と足せる。
+    store.threads.set('t1', fakeThread({ id: 't1', kind: 'notice', user_id: 'staff_1' }))
+
+    authState.userId = 'user_2'
+    const body = await detailOf(env)
+    expect(body.thread.id).toBe('t1')
+    expect(body.canPost).toBe(true)
+  })
 })
 
 // ---------------------------------------------------------------------------
@@ -363,15 +397,36 @@ describe('PATCH /api/board/thread', () => {
     expect(row?.locked).toBe(1)
   })
 
-  it('ステータスが付くのは request / bug だけ（雑談スレは 400）', async () => {
+  it('ステータスが付くのは要望・不具合だけ（雑談スレとお知らせは 400）', async () => {
     const { store, env } = setup()
     store.threads.set('t1', fakeThread({ id: 't1', kind: 'chat', user_id: 'user_1' }))
     authState.userId = 'staff_1'
 
     expect((await patch(env, { status: 'planned' })).status).toBe(400)
-    // ピン・ロックは種別を問わない（目安箱以外も先頭に固定できる）。
+    // ピン・ロックは種別を問わない（どの種別でも先頭に固定できる）。
     expect((await patch(env, { pinned: true })).status).toBe(200)
     expect(store.threads.get('t1')?.pinned).toBe(1)
+
+    // お知らせは運営からの連絡なので、対応状況を付けても意味がない（KINDS_WITH_STATUS 外）。
+    store.threads.set('t1', fakeThread({ id: 't1', kind: 'notice', user_id: 'staff_1' }))
+    expect((await patch(env, { status: 'planned' })).status).toBe(400)
+    // ピン留めはできる（お知らせこそ先頭に置きたい）。
+    expect((await patch(env, { pinned: true })).status).toBe(200)
+  })
+
+  it('旧「目安箱」のスレにも運営ステータスを付けられる（付いていた記録を捨てない）', async () => {
+    const { store, env } = setup()
+    store.threads.set('t1', fakeThread({ id: 't1', kind: 'suggestion', user_id: 'user_1' }))
+    authState.userId = 'staff_1'
+
+    // 統合前の目安箱スレには、運営が付けたステータスが残っている。ここを 400 にすると
+    // 「受付」のまま直せない・👍 も止まる＝利用者から見れば記録が失われる。
+    const res = await patch(env, { status: 'shipped', shippedVersion: 'v1.4.0' })
+    expect(res.status).toBe(200)
+    expect(store.threads.get('t1')).toMatchObject({
+      status: 'shipped',
+      shipped_version: 'v1.4.0',
+    })
   })
 
   it('無いスレ・削除済みのスレは 404', async () => {

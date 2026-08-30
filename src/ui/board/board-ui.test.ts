@@ -1,9 +1,16 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { BoardPost } from '@/core/board/types'
-import { BOARD_KINDS, BOARD_STATUSES, boardKindLabel, boardStatusLabel } from '@/core/board/types'
+import {
+  BOARD_KINDS,
+  BOARD_STATUSES,
+  boardKindLabel,
+  boardStatusLabel,
+  canonicalKind,
+} from '@/core/board/types'
 import { formatRelative } from '@/ui/_utils/format'
 import {
   BOARD_SEEN_KEY,
+  creatableKindOrder,
   excerptOf,
   formatBoardTime,
   KIND_UI,
@@ -35,10 +42,50 @@ describe('KIND_UI / kindOrder', () => {
     expect(Object.keys(KIND_UI).sort()).toEqual([...BOARD_KINDS].sort())
   })
 
-  it('並びは 目安箱・要望・不具合・雑談・自己紹介・作品紹介', () => {
-    expect(kindOrder).toEqual(['suggestion', 'request', 'bug', 'chat', 'intro', 'promo'])
-    // 絞り込みタブは全種別を 1 度ずつ出す（落ちた種別はどうやっても開けなくなる）
-    expect([...kindOrder].sort()).toEqual([...BOARD_KINDS].sort())
+  it('並びは お知らせ・要望・不具合・雑談・自己紹介・作品紹介', () => {
+    expect(kindOrder).toEqual(['notice', 'request', 'bug', 'chat', 'intro', 'promo'])
+  })
+
+  it('絞り込みタブに廃止した種別を出さない（「要望」のタブが 2 つ並ばない）', () => {
+    expect(kindOrder).not.toContain('suggestion')
+    // 出すのは「いま生きている種別」の全部。1 つでも落ちるとその種別が開けなくなる。
+    expect([...kindOrder].sort()).toEqual(
+      BOARD_KINDS.filter((kind) => canonicalKind(kind) === kind).sort(),
+    )
+    // ラベルは重複しない（同じ表記のタブが並ぶと、どちらを押せばよいか分からない）
+    const labels = kindOrder.map((kind) => KIND_UI[kind].label)
+    expect(new Set(labels).size).toBe(labels.length)
+  })
+
+  it('統合した目安箱は要望と同じ見た目・同じラベル', () => {
+    // 見た目が割れていると、統合したのに 2 種類が並んで見える。
+    expect(KIND_UI.suggestion.label).toBe(KIND_UI.request.label)
+    expect(KIND_UI.suggestion.className).toBe(KIND_UI.request.className)
+  })
+
+  it('お知らせだけ一覧の行を目立たせる（運営からの連絡なので）', () => {
+    expect(KIND_UI.notice.rowClassName).not.toBe('')
+    for (const kind of BOARD_KINDS) {
+      if (kind === 'notice') continue
+      expect(KIND_UI[kind].rowClassName).toBe('')
+    }
+    // チップの塗りつぶしも掲示板で 2 つだけ（お知らせと、実装済みのステータス）
+    expect(KIND_UI.notice.className).toContain('bg-primary ')
+  })
+})
+
+describe('creatableKindOrder', () => {
+  it('member にはお知らせを出さない（押してから 403 で断らない）', () => {
+    expect(creatableKindOrder('member')).toEqual(['request', 'bug', 'chat', 'intro', 'promo'])
+  })
+
+  it('staff にはお知らせも出す。並びは kindOrder のまま', () => {
+    expect(creatableKindOrder('staff')).toEqual(kindOrder)
+  })
+
+  it('廃止した種別はどちらの立場でも選べない', () => {
+    expect(creatableKindOrder('member')).not.toContain('suggestion')
+    expect(creatableKindOrder('staff')).not.toContain('suggestion')
   })
 })
 

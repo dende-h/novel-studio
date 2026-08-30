@@ -6,6 +6,11 @@
  *   PATCH  = 運営ステータス／ピン／ロック（**staff のみ**・§5）。省略した項目は据え置き。
  *   DELETE = 自分のスレ。**返信があれば本文だけ消して返信は残す**（§7-5）。
  *
+ * **種別は読み書きの可否に効かない。** スレを立てられる種別かどうかを見るのは
+ * `canCreateThread`（スレ立ての入口＝`threads.ts`）だけで、ここが使う `canPost` は種別を見ない。
+ * だから運営だけが立てられる「お知らせ」にも、要望へ統合した旧「目安箱」のスレにも、
+ * 誰でも変わらず返信できる（統合で既存のスレが読めなく・書けなくなるのを避ける）。
+ *
  * ここで SQL は書かない。読み書きは `functions/api/_lib/board-store.ts`、
  * 権限は `src/core/board/permission.ts`、開示判定は `src/core/board/poll.ts` に閉じてある。
  * このファイルの仕事は**判断を HTTP に写すことだけ**で、判断そのものは持たない。
@@ -181,7 +186,9 @@ export const onRequestPatch: PagesFunction<Env> = async (context) => {
   const actor = actorOf(userId, await readProfile(db, userId))
   const thread = threadLikeOf(row)
 
-  // ステータス系は種別が request / bug のときだけ（canSetStatus が種別まで見る）。
+  // ステータス系が付く種別は `KINDS_WITH_STATUS`（要望・不具合と、要望へ統合した旧「目安箱」）。
+  // 判断は canSetStatus に任せる＝種別の表をここへ書き写さない。**旧 `suggestion` を外さない**のは、
+  // 統合前に運営が付けたステータスを、あとから直せなくしないため（お知らせには付かない）。
   // ピン・ロックはどの種別にも付くので canModerate で足りる。どちらも staff だけ（§5）。
   const touchesStatus =
     patch.status !== undefined ||

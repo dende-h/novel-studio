@@ -1,8 +1,22 @@
 import {
+  BOARD_KINDS,
+  BOARD_LIMITS,
   BoardMeResponseSchema,
+  BoardPostSchema,
+  BoardThreadSchema,
+  boardKindHint,
+  boardKindLabel,
+  CREATABLE_KINDS,
+  CreatePostInputSchema,
+  CreateThreadInputSchema,
+  canonicalKind,
+  hasStatusUi,
+  KINDS_WITH_STATUS,
+  kindsForFilter,
   type ModerateInput,
   ModerateInputSchema,
   MyBoardPostSchema,
+  STAFF_ONLY_KINDS,
   ThreadListResponseSchema,
 } from './types'
 
@@ -115,5 +129,131 @@ describe('レスポンスの封筒（UI が持つ契約）', () => {
     })
     expect(parsed.profile?.role).toBe('staff')
     expect(parsed.banned).toBe(true)
+  })
+})
+
+describe('種別の統合（指摘1）と お知らせ（指摘3）', () => {
+  it('suggestion は enum に残す（STG の既存レコードを読めなくしない）', () => {
+    // 消すと board_threads.kind = 'suggestion' の行が parse で落ち、
+    // その 1 件どころか一覧ごと読めなくなる。
+    expect(BOARD_KINDS).toContain('suggestion')
+    const thread = {
+      id: 't1',
+      kind: 'suggestion',
+      title: '目安箱に書いた要望',
+      author: { displayName: 'だれか' },
+      createdAt: 1,
+      bumpedAt: 2,
+    }
+    expect(BoardThreadSchema.parse(thread).kind).toBe('suggestion')
+    expect(
+      MyBoardPostSchema.parse({
+        id: 'p1',
+        threadId: 't1',
+        threadKind: 'suggestion',
+        seq: 1,
+        createdAt: 1,
+      }).threadKind,
+    ).toBe('suggestion')
+  })
+
+  it('既存の目安箱スレは「要望」として表示する', () => {
+    expect(boardKindLabel.suggestion).toBe('要望')
+    expect(boardKindLabel.suggestion).toBe(boardKindLabel.request)
+    expect(canonicalKind('suggestion')).toBe('request')
+    expect(canonicalKind('request')).toBe('request')
+    expect(canonicalKind('bug')).toBe('bug')
+  })
+
+  it('「要望」の絞り込みは目安箱のスレも拾う', () => {
+    // 合流させた以上、片方だけタブから漏れると利用者には消えたように見える。
+    expect([...kindsForFilter('request')].sort()).toEqual(['request', 'suggestion'])
+    expect(kindsForFilter('bug')).toEqual(['bug'])
+    expect(kindsForFilter('notice')).toEqual(['notice'])
+    // 廃止した種別で引かれても空にしない（旧クライアントや古いブックマークの
+    // ?kind=suggestion が「該当なし」で空の一覧を出さないように、合流先と同じ結果を返す）
+    expect([...kindsForFilter('suggestion')].sort()).toEqual(['request', 'suggestion'])
+  })
+
+  it('新規作成の選択肢から suggestion を外す。notice は残す（立てられるのは staff だけ）', () => {
+    expect(CREATABLE_KINDS).not.toContain('suggestion')
+    expect(CREATABLE_KINDS).toContain('request')
+    expect(CREATABLE_KINDS).toContain('notice')
+    expect(STAFF_ONLY_KINDS).toEqual(['notice'])
+  })
+
+  it('👍 と運営ステータスは suggestion にも付いたまま（既存スレのステータスを保つ）', () => {
+    expect(hasStatusUi('suggestion')).toBe(true)
+    expect(hasStatusUi('request')).toBe(true)
+    expect(hasStatusUi('bug')).toBe(true)
+    // お知らせは運営からの連絡。👍 も対応状況も付けない
+    expect(hasStatusUi('notice')).toBe(false)
+    expect(KINDS_WITH_STATUS).not.toContain('notice')
+  })
+
+  it('お知らせの種別が保存・表示できる', () => {
+    expect(BOARD_KINDS).toContain('notice')
+    expect(boardKindLabel.notice).toBe('お知らせ')
+    expect(
+      BoardThreadSchema.parse({
+        id: 't2',
+        kind: 'notice',
+        title: 'メンテナンスのお知らせ',
+        author: { displayName: '運営', staff: true },
+        createdAt: 1,
+        bumpedAt: 1,
+      }).kind,
+    ).toBe('notice')
+  })
+
+  it('種別を選ぶときの一言が全種別にある（指摘2 — 要望と不具合を分けたまま迷わせない）', () => {
+    for (const kind of BOARD_KINDS) expect(boardKindHint[kind].length).toBeGreaterThan(0)
+    expect(boardKindHint.request).toContain('こうなったら嬉しい')
+    expect(boardKindHint.bug).toContain('おかしな動きをした')
+    // 統合した目安箱は要望と同じ説明（別の言い回しを 2 つ持たない）
+    expect(boardKindHint.suggestion).toBe(boardKindHint.request)
+  })
+})
+
+describe('本文の上限（指摘4）', () => {
+  it('スレ立て・返信の入力は上限で弾く', () => {
+    expect(BOARD_LIMITS.body).toBeLessThanOrEqual(2000)
+    expect(BOARD_LIMITS.body).toBeGreaterThanOrEqual(1200)
+    const ok = 'あ'.repeat(BOARD_LIMITS.body)
+    const over = 'あ'.repeat(BOARD_LIMITS.body + 1)
+    expect(
+      CreateThreadInputSchema.safeParse({ kind: 'request', title: 't', body: ok }).success,
+    ).toBe(true)
+    expect(
+      CreateThreadInputSchema.safeParse({ kind: 'request', title: 't', body: over }).success,
+    ).toBe(false)
+    expect(CreatePostInputSchema.safeParse({ body: ok }).success).toBe(true)
+    expect(CreatePostInputSchema.safeParse({ body: over }).success).toBe(false)
+  })
+
+  it('上限を下げる前に書かれた長い投稿は読めたまま（保存済みには max を効かせない）', () => {
+    // ここが max 付きだと、4000 字時代の投稿が parse で落ちてスレごと開けなくなる。
+    const old = 'あ'.repeat(4000)
+    const parsed = BoardPostSchema.parse({
+      id: 'p9',
+      threadId: 't9',
+      seq: 1,
+      author: { displayName: '昔の人' },
+      body: old,
+      createdAt: 1,
+    })
+    expect(parsed.body).toHaveLength(4000)
+    // 一覧の抜粋（サーバが詰める欄）も同じ理由で丸めない
+    expect(
+      BoardThreadSchema.parse({
+        id: 't9',
+        kind: 'request',
+        title: '長い要望',
+        author: { displayName: '昔の人' },
+        excerpt: old,
+        createdAt: 1,
+        bumpedAt: 1,
+      }).excerpt,
+    ).toHaveLength(4000)
   })
 })

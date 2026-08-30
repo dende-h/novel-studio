@@ -131,8 +131,11 @@ describe('POST /api/board/like — 押せるスレの種別', () => {
     expect(await likeBody(env, 'bug1')).toEqual({ liked: true, likeCount: 1 })
   })
 
+  // `suggestion` はここに入れない。要望へ統合したあとも旧目安箱スレの賛同と
+  // 対応状況を画面に残すため、KINDS_WITH_STATUS に残してある（D-BOARD-KIND）。
+  // `notice`（お知らせ）は運営からの連絡なので賛同を付けない。
   it.each([
-    'suggestion',
+    'notice',
     'chat',
     'intro',
     'promo',

@@ -16,6 +16,12 @@
  * 設計書: docs/requirement/09-board.md（D-BOARD-DELETE / §7-4・§7-5・§7-6）
  */
 
+import {
+  CREATABLE_KINDS as CONTRACT_CREATABLE_KINDS,
+  KINDS_WITH_STATUS as CONTRACT_KINDS_WITH_STATUS,
+  STAFF_ONLY_KINDS as CONTRACT_STAFF_ONLY_KINDS,
+} from './types'
+
 // ---------------------------------------------------------------------------
 // 受け取る形（Zod の BoardThread / BoardPost の必要な部分だけを構造的に受ける）
 // ---------------------------------------------------------------------------
@@ -80,7 +86,10 @@ export const PERMISSION_DENY_REASONS = [
   'locked',
   /** 削除済み・非表示で、もう触れない（404） */
   'gone',
-  /** その種別では使えない操作（400。👍 と運営ステータスは request / bug だけ） */
+  /**
+   * その種別では使えない操作（400）。👍 と運営ステータスは要望・不具合だけ、
+   * 廃止した種別（`suggestion`）でのスレ立てもここへ落ちる
+   */
   'unsupported-kind',
 ] as const
 
@@ -99,8 +108,24 @@ export const STATUS_OF_REASON: Record<PermissionDenyReason, number> = {
   'unsupported-kind': 400,
 }
 
-/** 👍 と運営ステータスが付く種別（D-BOARD-KIND / D-BOARD-STATUS）。 */
-export const KINDS_WITH_STATUS: readonly string[] = ['request', 'bug']
+/**
+ * 👍 と運営ステータスが付く種別（D-BOARD-KIND / D-BOARD-STATUS）。
+ *
+ * **表そのものは契約（`./types`）が正本。**ここは `ThreadLike.kind` が素の string
+ * （D1 の行をそのまま受ける）なので、`readonly string[]` に広げて持ち替えるだけにする。
+ * 書き写すと片方にだけ種別が増えて、「一覧には出るのにステータスが付けられない」
+ * という食い違いが起きる。
+ */
+export const KINDS_WITH_STATUS: readonly string[] = CONTRACT_KINDS_WITH_STATUS
+
+/** 運営（staff）だけが立てられる種別。同じ理由で契約から持ち替える。 */
+export const STAFF_ONLY_KINDS: readonly string[] = CONTRACT_STAFF_ONLY_KINDS
+
+/** 新規作成で選べる種別（廃止した種別を除いたもの）。 */
+export const CREATABLE_KINDS: readonly string[] = CONTRACT_CREATABLE_KINDS
+
+/** その種別のスレを立てられるのは運営だけか。 */
+export const isStaffOnlyKind = (kind: string): boolean => STAFF_ONLY_KINDS.includes(kind)
 
 /** スレ削除のやり方。返信があるスレは本文だけ消す（D-BOARD-DELETE）。 */
 export type ThreadDeleteMode = 'whole' | 'head-only'
@@ -187,6 +212,33 @@ export function threadDeleteMode(facts: ThreadDeleteFacts): ThreadDeleteMode {
     throw new TypeError('threadDeleteMode には { hasAnyReply } を渡す（seq>1 の行の有無）')
   }
   return facts.hasAnyReply ? 'head-only' : 'whole'
+}
+
+/**
+ * この種別でスレを立てられるか（指摘1・指摘3）。
+ *
+ * 判定の順は `canPost` に揃える（unauthorized → banned → 種別）。揃えておくと
+ * 「返信は 403 なのにスレ立ては 200」という食い違いが起きない。
+ *
+ * 断る理由は 2 つ。
+ * - **廃止した種別**（`suggestion`）で立てようとした → `unsupported-kind`（400）。
+ *   統合済みで、画面の選択肢にも出ない。API を直に叩いた場合だけここへ来る。
+ * - **運営だけの種別**（`notice`）を member が立てようとした → `forbidden`（403）。
+ *   返信はこの関数を通らない（`canPost`）ので、**お知らせにも誰でも返信できる**。
+ *
+ * `now` を受けるのは投稿禁止の判定に要るため（`canLike` と同じく渡し忘れを実行時に止める）。
+ */
+export function canCreateThread(actor: Actor, kind: string, now: number): PermissionResult {
+  // `bannedUntil > undefined` は常に false ＝ 投稿禁止が黙って無効化される。
+  // `functions/` は typecheck の対象外なので、渡し忘れはここで落とす。
+  if (!Number.isFinite(now)) {
+    throw new TypeError('canCreateThread には now（epoch ms）を渡す — 投稿禁止の期限を判定するため')
+  }
+  if (actor.userId === null) return deny('unauthorized')
+  if (isBanned(actor, now)) return deny('banned')
+  if (!CREATABLE_KINDS.includes(kind)) return deny('unsupported-kind')
+  if (isStaffOnlyKind(kind) && actor.role !== 'staff') return deny('forbidden')
+  return ALLOW
 }
 
 /** 運営操作（非表示・投稿禁止）ができるか。staff だけ。 */

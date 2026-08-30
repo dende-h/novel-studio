@@ -1,7 +1,8 @@
 import { fireEvent, render, screen, within } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import type { BoardKind, BoardThread } from '@/core/board/types'
-import { BOARD_KINDS, boardKindLabel, boardStatusLabel } from '@/core/board/types'
+import { boardKindLabel, boardStatusLabel } from '@/core/board/types'
+import { KIND_UI, kindOrder } from '@/ui/board/board-ui'
 import { KindFilter, ThreadList, ThreadRow, threadHref } from './thread-list'
 
 const NOW = Date.UTC(2026, 7, 28, 12, 0, 0)
@@ -75,8 +76,9 @@ describe('ThreadRow — 👍 と運営ステータスは要望・不具合だけ
     expect(screen.getByText('5')).toBeInTheDocument()
   })
 
-  it('自己紹介・作品紹介・目安箱にも出ない', () => {
-    for (const kind of ['intro', 'promo', 'suggestion'] as const) {
+  it('自己紹介・作品紹介・お知らせには出ない', () => {
+    // お知らせは運営からの連絡で、👍 も対応状況も付かない（KINDS_WITH_STATUS に入れていない）
+    for (const kind of ['intro', 'promo', 'notice'] as const) {
       const { unmount } = render(
         <ThreadRow thread={threadOf({ kind, status: 'planned', likeCount: 7 })} now={NOW} />,
       )
@@ -84,6 +86,20 @@ describe('ThreadRow — 👍 と運営ステータスは要望・不具合だけ
       expect(screen.queryByText('賛同')).toBeNull()
       unmount()
     }
+  })
+
+  it('統合前の目安箱スレでも、運営が付けたステータスと 👍 は消えない', () => {
+    // `suggestion` は要望へ統合したが、STG・本番には運営がステータスを付けた行が残っている。
+    // ここで落とすと「対応してもらえたはずの記録」が画面から消える（KINDS_WITH_STATUS）。
+    render(
+      <ThreadRow
+        thread={threadOf({ kind: 'suggestion', status: 'shipped', likeCount: 12 })}
+        now={NOW}
+      />,
+    )
+    expect(screen.getByText(/実装済み/)).toBeInTheDocument()
+    expect(screen.getByText('賛同')).toBeInTheDocument()
+    expect(screen.getByText('12')).toBeInTheDocument()
   })
 
   it('要望スレには 👍 とステータスが出る', () => {
@@ -118,6 +134,42 @@ describe('ThreadRow — 👍 と運営ステータスは要望・不具合だけ
     )
     expect(screen.getByText(/実装済み/)).toBeInTheDocument()
     expect(screen.getByText('v1.4.0')).toBeInTheDocument()
+  })
+})
+
+describe('ThreadRow — 統合した種別と、お知らせの目立たせ方', () => {
+  it('既存の目安箱スレは「要望」として並ぶ（一覧から消えない）', () => {
+    render(
+      <ThreadRow thread={threadOf({ kind: 'suggestion', title: '目安箱に書いた話' })} now={NOW} />,
+    )
+    expect(screen.getByText('目安箱に書いた話')).toBeInTheDocument()
+    // ラベルは boardKindLabel の読み替えどおり「要望」。「目安箱」の名前はもう出さない
+    expect(screen.getByText(boardKindLabel.request)).toBeInTheDocument()
+    expect(screen.queryByText('目安箱')).toBeNull()
+  })
+
+  it('目安箱スレの見た目は、要望スレとまったく同じチップになる', () => {
+    // 統合したのに 2 通りの見た目が並ぶと、統合していないのと変わらない
+    expect(KIND_UI.suggestion.className).toBe(KIND_UI.request.className)
+    expect(KIND_UI.suggestion.label).toBe(KIND_UI.request.label)
+  })
+
+  it('お知らせの行は、行そのものを目立たせる（色は KIND_UI から取る）', () => {
+    render(<ThreadRow thread={threadOf({ kind: 'notice', title: '同期の停止時間' })} now={NOW} />)
+    const link = screen.getByRole('link')
+    expect(KIND_UI.notice.rowClassName).not.toBe('')
+    for (const token of KIND_UI.notice.rowClassName.split(' ')) {
+      expect(link.className).toContain(token)
+    }
+    expect(screen.getByText(boardKindLabel.notice)).toBeInTheDocument()
+  })
+
+  it('お知らせ以外の行の見た目は変わらない', () => {
+    render(<ThreadRow thread={threadOf({ kind: 'request' })} now={NOW} />)
+    const link = screen.getByRole('link')
+    for (const token of KIND_UI.notice.rowClassName.split(' ')) {
+      expect(link.className).not.toContain(token)
+    }
   })
 })
 
@@ -233,13 +285,27 @@ describe('ThreadList — 空のときの案内（設計 §2 の過疎対策）',
 })
 
 describe('KindFilter', () => {
-  it('すべて＋全種別を 1 度ずつ出す', () => {
+  it('すべて＋いま生きている種別を 1 度ずつ出す', () => {
     render(<KindFilter kind={null} onChange={() => {}} />)
     expect(screen.getByRole('button', { name: 'すべて' })).toBeInTheDocument()
-    for (const kind of BOARD_KINDS) {
+    for (const kind of kindOrder) {
       expect(screen.getByRole('button', { name: boardKindLabel[kind] })).toBeInTheDocument()
     }
-    expect(screen.getAllByRole('button')).toHaveLength(BOARD_KINDS.length + 1)
+    expect(screen.getAllByRole('button')).toHaveLength(kindOrder.length + 1)
+  })
+
+  it('「要望」のタブは 1 つだけ（廃止した目安箱が別に並ばない）', () => {
+    render(<KindFilter kind={null} onChange={() => {}} />)
+    // 同じラベルのタブが 2 つ並ぶと、押すたびに別の一覧が出る画面になる
+    expect(screen.getAllByRole('button', { name: boardKindLabel.request })).toHaveLength(1)
+    expect(kindOrder).not.toContain('suggestion')
+  })
+
+  it('お知らせも絞り込める（運営からの連絡だけを追える）', () => {
+    const onChange = vi.fn<(kind: BoardKind | null) => void>()
+    render(<KindFilter kind={null} onChange={onChange} />)
+    fireEvent.click(screen.getByRole('button', { name: boardKindLabel.notice }))
+    expect(onChange).toHaveBeenCalledWith('notice')
   })
 
   it('選んでいるものだけ aria-pressed が立つ', () => {

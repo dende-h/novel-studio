@@ -1,11 +1,15 @@
+import { isStaffOnlyKind } from '@/core/board/permission'
 import { boardBodyToPlain } from '@/core/board/render'
 import {
   BOARD_KINDS,
   BOARD_LIMITS,
   type BoardKind,
+  type BoardRole,
   type BoardStatus,
   boardKindLabel,
   boardStatusLabel,
+  CREATABLE_KINDS,
+  canonicalKind,
 } from '@/core/board/types'
 import { formatRelative } from '@/ui/_utils/format'
 
@@ -31,58 +35,102 @@ export type BoardKindUi = {
   className: string
   /** 一覧の絞り込みタブでの並び（小さいほど左） */
   order: number
+  /**
+   * 一覧の行そのものを目立たせるクラス（既定の枠と背景に重ねる）。
+   * 目立たせない種別は空文字＝行の見た目は今までどおり。
+   */
+  rowClassName: string
 }
 
 /**
  * 種別ごとの見た目（D-BOARD-KIND）。
  *
- * 色は 2 群に分けている。**運営に届ける 3 種（目安箱・要望・不具合）は色で見分けられる**ように
- * ブランド緑・麦・赤の淡色を当て、**交流の 3 種（雑談・自己紹介・作品紹介）は一段控えめ**にする。
- * 6 種すべてを強い色にすると、一覧がチップの色見本になって肝心のタイトルが読めなくなる。
+ * 色は 3 群に分けている。**お知らせ（運営からの連絡）だけ塗りつぶし**で、
+ * **運営に届ける 2 種（要望・不具合）は色で見分けられる**ように麦・赤の淡色を当て、
+ * **交流の 3 種（雑談・自己紹介・作品紹介）は一段控えめ**にする。
+ * 全部を強い色にすると、一覧がチップの色見本になって肝心のタイトルが読めなくなる。
+ *
+ * 塗りつぶしは掲示板全体で 2 つだけ（お知らせのチップと、実装済みのステータス）。
+ * 増やすほど 1 つあたりの効きが薄れる。
+ *
+ * 旧 `suggestion`（目安箱）は `request` と**同じ見た目・同じラベル**にする。
+ * 統合したのに一覧で 2 種類の見た目が並ぶと、統合していないのと変わらない。
  *
  * 使うトークンはすべてライト／ダークで反転が定義済みのもの（`src/ui/index.css`）に限る。
  * 生の 16 進色を書くと片方のテーマで沈む。
  */
+const REQUEST_CHIP = 'bg-secondary-container text-on-secondary-container'
+
 export const KIND_UI: Record<BoardKind, BoardKindUi> = {
+  notice: {
+    label: boardKindLabel.notice,
+    className: 'bg-primary text-primary-foreground',
+    order: 0,
+    // 運営からの連絡は、一覧を流し読みしていても目に留まる必要がある。
+    // 枠と下地だけ変え、文字色は行のまま（読みやすさを塗りで殺さない）。
+    rowClassName: 'border-primary/40 bg-primary-container/30',
+  },
   suggestion: {
     label: boardKindLabel.suggestion,
-    className: 'bg-primary-container text-on-primary-container',
-    order: 0,
+    className: REQUEST_CHIP,
+    order: 1,
+    rowClassName: '',
   },
   request: {
     label: boardKindLabel.request,
-    className: 'bg-secondary-container text-on-secondary-container',
+    className: REQUEST_CHIP,
     order: 1,
+    rowClassName: '',
   },
   bug: {
     label: boardKindLabel.bug,
     className: 'bg-error-container text-on-error-container',
     order: 2,
+    rowClassName: '',
   },
   chat: {
     label: boardKindLabel.chat,
     className: 'bg-surface-container-high text-on-surface-variant',
     order: 3,
+    rowClassName: '',
   },
   intro: {
     label: boardKindLabel.intro,
     className: 'bg-forest-50 text-forest-600',
     order: 4,
+    rowClassName: '',
   },
   promo: {
     label: boardKindLabel.promo,
     className: 'bg-surface-container text-secondary-foreground',
     order: 5,
+    rowClassName: '',
   },
 }
 
 /**
- * 一覧の種別フィルタの並び（目安箱・要望・不具合・雑談・自己紹介・作品紹介）。
+ * 一覧の種別フィルタの並び（お知らせ・要望・不具合・雑談・自己紹介・作品紹介）。
  * `KIND_UI` の `order` から導出する＝表と並びが食い違うことがない。
+ *
+ * **廃止した種別（`suggestion`）はタブに出さない。** 出すと「要望」のタブが 2 つ並ぶ。
+ * 既存の目安箱スレは「要望」のタブに合流させる（どの種別を引くかは
+ * `kindsForFilter`・サーバの一覧 API が使う）。
  */
-export const kindOrder: readonly BoardKind[] = [...BOARD_KINDS].sort(
-  (a, b) => KIND_UI[a].order - KIND_UI[b].order,
-)
+export const kindOrder: readonly BoardKind[] = BOARD_KINDS.filter(
+  (kind) => canonicalKind(kind) === kind,
+).sort((a, b) => KIND_UI[a].order - KIND_UI[b].order)
+
+/**
+ * スレを立てる画面に出す種別の並び。**立場で変わるのはお知らせだけ**
+ *（member には選択肢そのものを出さない＝押してから 403 で断らない）。
+ *
+ * 判定は `@/core/board/permission` の表から引く。画面側で `role === 'staff'` と
+ * 書くと、サーバの許可と画面の選択肢が別々に育つ。
+ */
+export const creatableKindOrder = (role: BoardRole): readonly BoardKind[] =>
+  kindOrder.filter(
+    (kind) => CREATABLE_KINDS.includes(kind) && (role === 'staff' || !isStaffOnlyKind(kind)),
+  )
 
 // ---------------------------------------------------------------------------
 // 運営ステータス
