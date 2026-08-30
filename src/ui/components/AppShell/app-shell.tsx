@@ -9,7 +9,7 @@ interface AppShellProps {
   saveStatus?: SaveState
   onExport?: () => void
   exportDisabled?: boolean
-  /** 公開サイトへの投稿ダイアログを開く（任意） */
+  /** コトノハ-grove- への投稿ダイアログを開く（任意） */
   onPublish?: () => void
   /** 履歴ドロワーの開閉トグル（任意） */
   onToggleHistory?: () => void

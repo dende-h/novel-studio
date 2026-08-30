@@ -138,7 +138,7 @@ describe('どの名前で公開されるか', () => {
 
     expect(
       await screen.findByText(
-        /コトノハのペンネームとは別の設定なので、ペンネームを変えてもここは変わりません/,
+        /コトノハ-leaf- のペンネームとは別の設定なので、ペンネームを変えてもここは変わりません/,
       ),
     ).toBeInTheDocument()
     expect(
@@ -166,7 +166,7 @@ describe('どの名前で公開されるか', () => {
 })
 
 describe('作者登録', () => {
-  it('未登録なら、公開サイトへ飛ばさずこの場で登録できる', async () => {
+  it('未登録なら、コトノハ-grove- へ飛ばさずこの場で登録できる', async () => {
     fetchAuthorStatus.mockResolvedValue({
       ok: true,
       status: { isAuthor: false, suspended: false, penName: '結' },
@@ -177,7 +177,7 @@ describe('作者登録', () => {
     expect(penName).toHaveValue('結')
     fireEvent.change(penName, { target: { value: '夜半' } })
 
-    // 同意しないと登録できない（公開サイトのモーダルと同じ条件）
+    // 同意しないと登録できない（コトノハ-grove- のモーダルと同じ条件）
     const register = screen.getByRole('button', { name: '作者登録する' })
     expect(register).toBeDisabled()
 

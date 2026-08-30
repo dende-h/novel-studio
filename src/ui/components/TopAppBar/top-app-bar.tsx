@@ -40,7 +40,7 @@ interface TopAppBarProps {
   /** 書き出しダイアログを開く。未指定なら非表示 */
   onExport?: () => void
   exportDisabled?: boolean
-  /** 公開サイトへの投稿ダイアログを開く。未指定なら非表示（投稿先が未設定のビルドなど） */
+  /** コトノハ-grove- への投稿ダイアログを開く。未指定なら非表示（投稿先が未設定のビルドなど） */
   onPublish?: () => void
   /** 履歴ドロワーの開閉トグル。未指定なら非表示 */
   onToggleHistory?: () => void
@@ -303,7 +303,7 @@ export function TopAppBar({
             variant="outline"
             size="sm"
             onClick={onPublish}
-            title="公開サイトへ投稿"
+            title="コトノハ-grove- へ投稿"
             className="gap-2"
           >
             <CloudUpload className="size-4" aria-hidden />

@@ -194,7 +194,7 @@ describe('Library ゴミ箱導線', () => {
 })
 
 /**
- * 公開サイトへの投稿導線。投稿先（VITE_PLATFORM_ORIGIN）は取り込み時に読まれるので、
+ * コトノハ-grove- への投稿導線。投稿先（VITE_PLATFORM_ORIGIN）は取り込み時に読まれるので、
  * stub してからモジュールを読み直す。
  */
 const PLATFORM_ORIGIN = 'https://platform.example'
@@ -226,7 +226,7 @@ async function seedPublishedWork(store: EditorStore, visibility: 'draft' | 'publ
   return created.id
 }
 
-describe('Library 公開サイトへの投稿導線', () => {
+describe('Library コトノハ-grove- への投稿導線', () => {
   afterEach(() => {
     vi.unstubAllEnvs()
     vi.unstubAllGlobals()
@@ -248,7 +248,7 @@ describe('Library 公開サイトへの投稿導線', () => {
     )
 
     fireEvent.click(await screen.findByRole('button', { name: '「投稿済み作」のメニュー' }))
-    expect(screen.queryByRole('menuitem', { name: '公開サイトへ投稿' })).toBeNull()
+    expect(screen.queryByRole('menuitem', { name: 'コトノハ-grove- へ投稿' })).toBeNull()
     expect(screen.queryByRole('menuitem', { name: '公開する' })).toBeNull()
   })
 
@@ -269,7 +269,7 @@ describe('Library 公開サイトへの投稿導線', () => {
     )
 
     fireEvent.click(await screen.findByRole('button', { name: '「未投稿作」のメニュー' }))
-    expect(screen.getByRole('menuitem', { name: '公開サイトへ投稿' })).toBeInTheDocument()
+    expect(screen.getByRole('menuitem', { name: 'コトノハ-grove- へ投稿' })).toBeInTheDocument()
     expect(screen.queryByRole('menuitem', { name: '公開する' })).toBeNull()
   })
 

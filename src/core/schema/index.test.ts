@@ -97,7 +97,7 @@ describe('GlossaryEntrySchema（P1）', () => {
   })
 })
 
-describe('WorkPlatformSchema（公開サイトへの投稿設定）', () => {
+describe('WorkPlatformSchema（コトノハ-grove- への投稿設定）', () => {
   const base = { id: 'w1', title: '作', episodes: [] }
 
   it('platform 省略の旧 Work を許容（後方互換）', () => {
@@ -126,7 +126,7 @@ describe('WorkPlatformSchema（公開サイトへの投稿設定）', () => {
     expect(WorkPlatformSchema.safeParse({ kind: 'novel' }).success).toBe(false)
   })
 
-  it('ジャンルは固定6種の外でも保存はできる（採否は公開サイト側の判断）', () => {
+  it('ジャンルは固定6種の外でも保存はできる（採否は コトノハ-grove- 側の判断）', () => {
     expect(WorkPlatformSchema.safeParse({ genre: 'ホラー' }).success).toBe(true)
   })
 
@@ -144,7 +144,7 @@ describe('WorkPlatformSchema（公開サイトへの投稿設定）', () => {
     if (res.success) expect(res.data.platform?.lastPublishedAt).toBe(1_700_000_000_000)
   })
 
-  it('固定ジャンルは公開サイト（grove）の GENRES と同一・同順', () => {
+  it('固定ジャンルは コトノハ-grove- （grove）の GENRES と同一・同順', () => {
     expect(PLATFORM_GENRES).toEqual([
       'ファンタジー',
       'ミステリー',

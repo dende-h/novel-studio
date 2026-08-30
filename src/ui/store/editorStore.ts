@@ -136,7 +136,7 @@ export interface WorkMeta {
   author?: string
   description?: string
   /**
-   * 公開サイトへの投稿設定。部分更新はせず丸ごと差し替える（投稿ダイアログが全項目を持つため）。
+   * コトノハ-grove- への投稿設定。部分更新はせず丸ごと差し替える（投稿ダイアログが全項目を持つため）。
    * undefined は据え置き。
    */
   platform?: WorkPlatform

@@ -34,10 +34,10 @@ describe('ProfileDialog', () => {
     // 出る場所（作品の著者・掲示板）と、変えたときの及ぶ範囲（過去の書き込みも）。
     expect(screen.getByText(/掲示板の表示名になります/)).toBeInTheDocument()
     expect(screen.getByText(/これまでの書き込みも新しい名前で表示されます/)).toBeInTheDocument()
-    // **出ない場所**も言う。公開サイトの作者名は別に持っているので、ここを変えても動かない。
+    // **出ない場所**も言う。コトノハ-grove- の作者名は別に持っているので、ここを変えても動かない。
     // これを書かないと「知らないうちに公開済みの作品の著者名が変わった」と読まれる。
     expect(
-      screen.getByText(/公開サイトの作者名は別の設定なので、ここでは変わりません/),
+      screen.getByText(/コトノハ-grove- の作者名は別の設定なので、ここでは変わりません/),
     ).toBeInTheDocument()
   })
 

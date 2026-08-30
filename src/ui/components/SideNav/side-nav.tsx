@@ -62,7 +62,7 @@ interface SideNavProps {
   /** ヘルプページへ。指定時のみフッターの「ヘルプ」を有効化。 */
   onNavigateHelp?: () => void
   /**
-   * 公開サイト（コトノハ-grove-）のURL。省略時はビルド設定（VITE_PLATFORM_ORIGIN）。
+   * コトノハ-grove-のURL。省略時はビルド設定（VITE_PLATFORM_ORIGIN）。
    * 空のビルド（投稿先未設定）ではリンク自体を出さない。
    */
   platformHref?: string
@@ -438,7 +438,7 @@ export function SideNav({
 
       {/* フッター */}
       <div className="space-y-0.5">
-        {/* 公開サイト（コトノハ-grove-）へ。読みに行く導線なので新しいタブで開き、執筆を離れない。 */}
+        {/* コトノハ-grove-へ。読みに行く導線なので新しいタブで開き、執筆を離れない。 */}
         {groveHref ? (
           <a
             href={groveHref}

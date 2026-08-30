@@ -31,7 +31,7 @@ export interface WorkSummary {
   updatedAt?: number
   /** 表紙画像の data URL（ライブラリカード表示用。未設定なら undefined） */
   coverImage?: string
-  /** 公開サイトへの投稿設定（ライブラリから公開／下書きを切り替える導線の出し分けに使う） */
+  /** コトノハ-grove- への投稿設定（ライブラリから公開／下書きを切り替える導線の出し分けに使う） */
   platform?: WorkPlatform
 }
 

@@ -5,7 +5,7 @@ export interface ProjectActionHandlers {
   /** 作品メタ（タイトル・著者・あらすじ・表紙）を編集 */
   onEditMeta: () => void
   onDelete: () => void
-  /** 公開サイトへ投稿。投稿先が未設定なら undefined＝メニューに出さない。 */
+  /** コトノハ-grove- へ投稿。投稿先が未設定なら undefined＝メニューに出さない。 */
   onPublish?: () => void
   /** 投稿済み作品の公開／下書きを切り替える。未投稿なら undefined＝メニューに出さない。 */
   onTogglePublish?: () => void
