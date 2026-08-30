@@ -43,6 +43,8 @@ const postOf = (over: Partial<BoardPost> = {}): BoardPost => ({
   deleted: false,
   hidden: false,
   createdAt: NOW - DAY,
+  likeCount: 0,
+  liked: false,
   links: [],
   ...over,
 })

@@ -265,21 +265,30 @@ export function canSetStatus(actor: Actor, thread: ThreadLike): PermissionResult
 }
 
 /**
- * 👍 を押せるか。ログイン済みかつ、種別が request / bug のときだけ。
+ * 👍 を押せるか。ログイン済みなら、生きている**投稿 1 件ずつ**に押せる。
  *
- * **投稿禁止中は押せない**（`canPost` と同じ判定を通す）。👍 は D-BOARD-STATUS の
- * 「次に何を作るか」を決める票そのものなので、書き込みを止めた相手に票だけ動かせると、
- * 止めた意味が無いどころか順位付けが汚れる。
+ * **押す相手はスレッドではなく投稿**（migrations/0009_board_post_likes.sql）。
+ * 賛同したいのは「このスレッド」ではなく、その中の 1 つの書き込みで、それは要望でも
+ * 雑談でも変わらない。種別で押せる・押せないを分けると、「なぜこのスレでは押せないのか」を
+ * 画面で説明し続けることになるので、種別は見ない。
+ *
+ * **投稿禁止中は押せない**（`canPost` と同じ判定を通す）。要望・不具合の 👍 は
+ * D-BOARD-STATUS の「次に何を作るか」を決める票そのもので、書き込みを止めた相手に
+ * 票だけ動かせると、止めた意味が無いどころか順位付けが汚れる。
  *
  * **ロック中も押せない。** ロックは「この話は終わり」という運営の意思表示で、
- * 締めたあとに票数だけ動くと、締めた時点の数字を根拠にできなくなる。
- * ロック中に書けるのは staff だけ（`canPost`）だが、票は staff でも足さない
- *（運営が自分で順位を動かせる形にしない）。
+ * 締めたあとに票数だけ動くと、締めた時点の数字を根拠にできなくなる。ロック中に
+ * 書けるのは staff だけ（`canPost`）だが、票は staff でも足さない。
  *
- * 判定の順は `canPost` に揃える（unauthorized → banned → gone → locked → 種別）。
- * 揃えておくと「返信は 403 なのに 👍 は 200」という食い違いが起きない。
+ * **伏せた投稿には押せない**（`gone`）。本文が読めないものに票だけ入ると、
+ * 何に賛同されたのか誰にも分からない数字が残る。スレごと削除・非表示のときも同じ。
  */
-export function canLike(actor: Actor, thread: ThreadLike, now: number): PermissionResult {
+export function canLike(
+  actor: Actor,
+  thread: ThreadLike,
+  post: PostLike,
+  now: number,
+): PermissionResult {
   // `now` の渡し忘れは投稿禁止の判定が丸ごと効かなくなる（`bannedUntil > undefined` は
   // 常に false）。`functions/` は typecheck の対象外なので、ここで気づける形にしておく。
   if (!Number.isFinite(now)) {
@@ -288,8 +297,8 @@ export function canLike(actor: Actor, thread: ThreadLike, now: number): Permissi
   if (actor.userId === null) return deny('unauthorized')
   if (isBanned(actor, now)) return deny('banned')
   if (!isAlive(thread)) return deny('gone')
+  if (!isAlive(post)) return deny('gone')
   if (thread.locked) return deny('locked')
-  if (!KINDS_WITH_STATUS.includes(thread.kind)) return deny('unsupported-kind')
   return ALLOW
 }
 

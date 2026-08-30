@@ -115,8 +115,8 @@ export const BOARD_ERROR_MESSAGES: Readonly<Record<string, string>> = {
   not_found: '見つかりませんでした。削除されたか、リンクが古いのかもしれません',
   gone: 'この書き込みは、すでに削除されています。画面を読み込み直すと最新の状態になります',
   locked: 'このスレッドは書き込みを終了しています',
-  // 👍 が付くのは request / bug だけ（D-BOARD-KIND）。
-  'unsupported-kind': '👍 を付けられるのは、要望と不具合のスレッドだけです',
+  // スレ立ての種別が不正なとき（画面からは起きない）。0009 以降、👍 では返らない。
+  'unsupported-kind': 'この種別では、その操作はできません',
   use_thread_delete: 'スレッドの本文は、ここからは消せません。スレッドの削除をお使いください',
 
   // --- 上限（数値は public/board-guidelines.html と揃える・D-BOARD-RATE） ---
@@ -442,16 +442,16 @@ export async function deletePost(postId: string, getToken: GetToken): Promise<Bo
 // ---------------------------------------------------------------------------
 
 /**
- * 👍 のトグル（`POST /api/board/like?thread=`）。**どちらにするかは送らない**＝
+ * 👍 のトグル（`POST /api/board/like?post=`）。**どちらにするかは送らない**＝
  * サーバが現在の状態を見て反転し、押した結果を返す。画面は返ってきた値で描き直す。
- * 付けられるのは要望・不具合だけ（それ以外は `unsupported-kind`）。
+ * 押す相手はスレッドではなく**投稿 1 件**（migrations/0009_board_post_likes.sql）。
  */
 export async function toggleLike(
-  threadId: string,
+  postId: string,
   getToken: GetToken,
 ): Promise<BoardResult<{ liked: boolean; likeCount: number }>> {
   return await boardFetch(
-    withQuery('/api/board/like', { thread: threadId }),
+    withQuery('/api/board/like', { post: postId }),
     { method: 'POST', auth: 'required', getToken },
     (raw) => {
       if (!isRecord(raw) || typeof raw.liked !== 'boolean') return DECODE_FAILED

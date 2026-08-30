@@ -140,7 +140,8 @@ describe('listThreads', () => {
     d.seed.thread({ id: 't4', kind: 'chat', bumped_at: 9000, deleted_at: 8000 })
     d.seed.thread({ id: 't5', kind: 'chat', bumped_at: 9000, hidden_at: 8000 })
     d.seed.poll({ thread_id: 't1' })
-    d.seed.like({ thread_id: 't1', user_id: 'user_1' })
+    // 一覧の `liked` は**スレ本文（seq=1）への 👍**（0009）。押す相手は投稿。
+    d.seed.like({ post_id: 'p1', user_id: 'user_1' })
   })
 
   it('絞り込みなし（ピン留め → 最終書き込みの新しい順）', async () => {
@@ -474,14 +475,28 @@ describe('投稿', () => {
 describe('👍 とアンケート', () => {
   beforeEach(() => {
     d.seed.thread({ id: 't1', user_id: 'user_1', kind: 'request' })
+    d.seed.post({ id: 'p1', thread_id: 't1', seq: 1, user_id: 'user_1' })
+    d.seed.post({ id: 'p2', thread_id: 't1', seq: 2, user_id: 'user_2' })
   })
 
   it('toggleLike は付ける・外すの往復で like_count を数え直す', async () => {
-    expect(await S.toggleLike(d.db, 't1', 'user_1', 1000)).toEqual({ liked: true, likeCount: 1 })
-    expect(await S.toggleLike(d.db, 't1', 'user_2', 2000)).toEqual({ liked: true, likeCount: 2 })
-    expect(await S.toggleLike(d.db, 't1', 'user_1', 3000)).toEqual({ liked: false, likeCount: 1 })
-    expect(await S.toggleLike(d.db, 't1', 'user_1', 4000)).toEqual({ liked: true, likeCount: 2 })
+    const head = must(await S.readHeadPost(d.db, 't1'), 'スレ本文')
+    expect(head.id).toBe('p1')
+
+    expect(await S.toggleLike(d.db, head, 'user_1', 1000)).toEqual({ liked: true, likeCount: 1 })
+    expect(await S.toggleLike(d.db, head, 'user_2', 2000)).toEqual({ liked: true, likeCount: 2 })
+    expect(await S.toggleLike(d.db, head, 'user_1', 3000)).toEqual({ liked: false, likeCount: 1 })
+    expect(await S.toggleLike(d.db, head, 'user_1', 4000)).toEqual({ liked: true, likeCount: 2 })
+    expect(must(await S.readPost(d.db, 'p1'), '本文').like_count).toBe(2)
+    // 本文への 👍 はスレ行にも写る（一覧の賛同数）。
     expect(must(await S.readThread(d.db, 't1'), 'スレ').like_count).toBe(2)
+  })
+
+  it('返信への 👍 は投稿だけを数え、スレ行の賛同数は動かさない', async () => {
+    const reply = must(await S.readPost(d.db, 'p2'), '返信')
+    expect(await S.toggleLike(d.db, reply, 'user_1', 1000)).toEqual({ liked: true, likeCount: 1 })
+    expect(must(await S.readPost(d.db, 'p2'), '返信').like_count).toBe(1)
+    expect(must(await S.readThread(d.db, 't1'), 'スレ').like_count).toBe(0)
   })
 
   it('createPoll / readPoll / insertVote / readVote / listVotes', async () => {

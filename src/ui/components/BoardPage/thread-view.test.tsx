@@ -44,6 +44,8 @@ const postOf = (over: Partial<BoardPost> = {}): BoardPost => ({
   deleted: false,
   hidden: false,
   createdAt: NOW - 86_400_000,
+  likeCount: 0,
+  liked: false,
   links: [],
   ...over,
 })
@@ -294,20 +296,66 @@ describe('ThreadView — 投稿者の見え方', () => {
   })
 })
 
-describe('ThreadView — 👍 は要望・不具合だけ（D-BOARD-KIND）', () => {
-  it('雑談スレには 👍 が出ない', async () => {
-    stubFetch(detailOf({ thread: threadOf({ kind: 'chat', likeCount: 34 }) }))
+describe('ThreadView — 👍 は書き込みごと（0009）', () => {
+  it('スレッドの見出しには置かず、書き込みカードの中だけに出す', async () => {
+    stubFetch(
+      detailOf({
+        thread: threadOf({ kind: 'request', likeCount: 34 }),
+        posts: [postOf({ likeCount: 34 }), postOf({ id: 'p2', seq: 2, body: '私も欲しい' })],
+      }),
+    )
     renderView(signedInAuth)
 
     expect(await screen.findByText('章ごとの文字数を出してほしい')).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /賛同/ })).toBeNull()
+    const buttons = screen.getAllByRole('button', { name: /賛同/ })
+    // 書き込みの数だけ在る＝見出しの 1 つ（スレ全体への賛同）は消えている。
+    expect(buttons).toHaveLength(2)
+    for (const button of buttons) expect(button.closest('article')).not.toBeNull()
+    // 数は 0 のとき出さない（「賛同 0」は「誰にも賛同されていない」と読める）。
+    expect(buttons[0]).toHaveTextContent('34')
+    expect(buttons[1]?.textContent).toBe('賛同')
   })
 
-  it('要望スレには 👍 が出る', async () => {
-    stubFetch(detailOf({ thread: threadOf({ kind: 'request', likeCount: 34 }) }))
+  it('雑談スレの書き込みにも出す（種別では絞らない）', async () => {
+    stubFetch(detailOf({ thread: threadOf({ kind: 'chat' }) }))
     renderView(signedInAuth)
 
-    expect(await screen.findByRole('button', { name: /賛同/ })).toHaveTextContent('34')
+    expect(await screen.findByRole('button', { name: /賛同/ })).toBeInTheDocument()
+  })
+
+  it('押した書き込みだけを描き直す（?post= に送り、他のカードは動かさない）', async () => {
+    const fetchMock = stubFetch(
+      detailOf({
+        posts: [postOf({ likeCount: 3 }), postOf({ id: 'p2', seq: 2, body: '私も欲しい' })],
+      }),
+      meOf(),
+    )
+    fetchMock.mockImplementation(async (path: string) => {
+      if (path.startsWith('/api/board/like')) {
+        return respond({ liked: true, likeCount: 1, postId: 'p2' })
+      }
+      if (path.startsWith('/api/board/thread')) {
+        return respond(
+          detailOf({
+            posts: [postOf({ likeCount: 3 }), postOf({ id: 'p2', seq: 2, body: '私も欲しい' })],
+          }),
+        )
+      }
+      return respond(meOf())
+    })
+    renderView(signedInAuth)
+
+    const buttons = await screen.findAllByRole('button', { name: /賛同/ })
+    const second = buttons[1]
+    if (!second) throw new Error('2 件めの賛同ボタンが無い')
+    fireEvent.click(second)
+
+    await screen.findByText('私も欲しい')
+    expect(fetchMock.mock.calls.some(([path]) => path === '/api/board/like?post=p2')).toBe(true)
+    const after = screen.getAllByRole('button', { name: /賛同/ })
+    expect(after[1]).toHaveTextContent('1')
+    // 1 件めは押していないので数が変わらない。
+    expect(after[0]).toHaveTextContent('3')
   })
 })
 
@@ -324,7 +372,7 @@ describe('ThreadView — 返信番号', () => {
   })
 })
 
-describe('ThreadView — 👍 を押せる条件（canLike と揃える・§7-13）', () => {
+describe('ThreadView — 👍 を押せる条件（canLike と揃える）', () => {
   /** 投稿禁止中の自分。期限は未来（`isBanned` は `bannedUntil > now`）。 */
   const bannedMe = (): BoardMeResponse =>
     meOf({
@@ -341,7 +389,14 @@ describe('ThreadView — 👍 を押せる条件（canLike と揃える・§7-13
     })
 
   it('ロック中のスレでは押せない。理由を添えて残す', async () => {
-    stubFetch(detailOf({ thread: threadOf({ locked: true }), canPost: false }), meOf())
+    stubFetch(
+      detailOf({
+        thread: threadOf({ locked: true }),
+        posts: [postOf({ likeCount: 3 })],
+        canPost: false,
+      }),
+      meOf(),
+    )
     renderView(signedInAuth)
 
     expect(await screen.findByRole('button', { name: /賛同/ })).toBeDisabled()

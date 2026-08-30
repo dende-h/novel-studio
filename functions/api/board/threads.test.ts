@@ -147,7 +147,8 @@ describe('GET /api/board/threads', () => {
 
   it('未ログインは mine / liked が false。ログインしていれば埋まる', async () => {
     const store = seeded()
-    store.likes.set('c:user_1', { thread_id: 'c', user_id: 'user_1', created_at: 1 })
+    // 一覧の `liked` は**スレ本文（seq=1）への 👍**（0009）。押す相手は投稿の行。
+    store.postLikes.set('pc:user_1', { post_id: 'pc', user_id: 'user_1', created_at: 1 })
     const env = makeBoardEnv({ store })
 
     authState.userId = null

@@ -1,6 +1,6 @@
 /// <reference types="@cloudflare/workers-types" />
 /**
- * 掲示板 API テスト用の in-memory D1 フェイク（board_* 9 テーブル ＋ rate_limits）。
+ * 掲示板 API テスト用の in-memory D1 フェイク（board_* 10 テーブル ＋ rate_limits）。
  * `functions/api/sync/sync-test-util.ts` の流儀＝**SQL 文字列の部分一致で分岐する**簡易実装。
  *
  * 相手にするのは `functions/api/_lib/board-store.ts` が出す SQL だけでよい
@@ -19,9 +19,9 @@
 // ---------------------------------------------------------------------------
 
 import type {
-  LikeRow,
   LinkRow,
   PollRow,
+  PostLikeRow,
   PostLinkRow,
   PostRow,
   ProfileRow,
@@ -30,8 +30,12 @@ import type {
   VoteRow,
 } from '../_lib/board-store'
 
-/** `board_likes` の 1 行（store の LikeRow と同じ。テストから import しやすいよう別名で出す）。 */
-export type FakeLikeRow = LikeRow
+/**
+ * `board_post_likes` の 1 行（store の PostLikeRow と同じ。テストから import しやすいよう
+ * 別名で出す）。0009 で 👍 がスレッド単位から投稿単位に変わったので、旧 `board_likes` は
+ * store が読み書きしなくなった＝このフェイクも持たない。
+ */
+export type FakeLikeRow = PostLikeRow
 
 export interface FakeRateRow {
   user_id: string
@@ -39,12 +43,13 @@ export interface FakeRateRow {
   count: number
 }
 
-/** テストが直接いじれる 9 テーブル ＋ rate_limits。 */
+/** テストが直接いじれるテーブル ＋ rate_limits（旧 `board_likes` は 0009 で用済み）。 */
 export interface BoardTables {
   profiles: Map<string, ProfileRow>
   threads: Map<string, ThreadRow>
   posts: Map<string, PostRow>
-  likes: Map<string, FakeLikeRow>
+  /** 投稿ごとの 👍。キーは `post_id:user_id` */
+  postLikes: Map<string, FakeLikeRow>
   polls: Map<string, PollRow>
   votes: Map<string, VoteRow>
   reports: Map<string, ReportRow>
@@ -110,6 +115,7 @@ export function fakePost(over: Partial<PostRow> = {}): PostRow {
     created_at: 1000,
     deleted_at: 0,
     hidden_at: 0,
+    like_count: 0,
     ...over,
   }
 }
@@ -186,18 +192,20 @@ function listRowOf(t: ThreadRow, tables: BoardTables, viewerId: string | null) {
     author_role: author?.role ?? null,
     author_deleted: author?.deleted_at ?? null,
     has_poll: tables.polls.has(t.id) ? 1 : 0,
-    liked: viewerId && tables.likes.has(pairKey(t.id, viewerId)) ? 1 : 0,
+    // 一覧の `liked` は**スレ本文（seq=1）への 👍**（0009）。
+    liked: viewerId && head && tables.postLikes.has(pairKey(head.id, viewerId)) ? 1 : 0,
   }
 }
 
-/** 投稿 ＋ 現在の表示名（board-store の PostWithAuthorRow と同形）。 */
-function postRowOf(p: PostRow, tables: BoardTables) {
+/** 投稿 ＋ 現在の表示名 ＋ 閲覧者の 👍（board-store の PostWithAuthorRow と同形）。 */
+function postRowOf(p: PostRow, tables: BoardTables, viewerId: string | null = null) {
   const author = tables.profiles.get(p.user_id) ?? null
   return {
     ...p,
     author_name: author?.display_name ?? null,
     author_role: author?.role ?? null,
     author_deleted: author?.deleted_at ?? null,
+    liked: viewerId && tables.postLikes.has(pairKey(p.id, viewerId)) ? 1 : 0,
   }
 }
 
@@ -207,11 +215,16 @@ const replyCountOf = (tables: BoardTables, threadId: string): number =>
     (p) => p.thread_id === threadId && p.seq > 1 && p.deleted_at === 0 && p.hidden_at === 0,
   ).length
 
-const likeCountOf = (tables: BoardTables, threadId: string): number =>
-  [...tables.likes.values()].filter((l) => l.thread_id === threadId).length
+/** 投稿 1 件に付いた 👍 の数。 */
+const postLikeCountOf = (tables: BoardTables, postId: string): number =>
+  [...tables.postLikes.values()].filter((l) => l.post_id === postId).length
+
+/** スレ行に持つ賛同数＝スレ本文（seq=1）の `like_count`（0009）。 */
+const headLikeCountOf = (tables: BoardTables, threadId: string): number =>
+  [...tables.posts.values()].find((p) => p.thread_id === threadId && p.seq === 1)?.like_count ?? 0
 
 /**
- * board_* 9 テーブル ＋ rate_limits を Map で持つ D1 フェイク。
+ * board_* のテーブル ＋ rate_limits を Map で持つ D1 フェイク。
  * `prepare().bind().first()/.all()/.run()` と `batch()` を実装する。
  * `batch()` は実 D1 と同じく **SELECT でも結果を返す**（board-store の readThreadDetail が
  * 1 回の batch で 6 本読むため）。
@@ -223,7 +236,7 @@ export function makeBoardDb(
     profiles: new Map(),
     threads: new Map(),
     posts: new Map(),
-    likes: new Map(),
+    postLikes: new Map(),
     polls: new Map(),
     votes: new Map(),
     reports: new Map(),
@@ -260,9 +273,9 @@ export function makeBoardDb(
       ).length
       return { n }
     }
-    if (sql.includes('SELECT like_count FROM board_threads')) {
-      const t = tables.threads.get(args[0] as string)
-      return t ? { like_count: t.like_count } : null
+    if (sql.includes('SELECT like_count FROM board_posts')) {
+      const p = tables.posts.get(args[0] as string)
+      return p ? { like_count: p.like_count } : null
     }
     if (sql.includes('FROM board_threads WHERE id = ?')) {
       return tables.threads.get(args[0] as string) ?? null
@@ -274,9 +287,14 @@ export function makeBoardDb(
     if (sql.includes('FROM board_posts WHERE id = ?')) {
       return tables.posts.get(args[0] as string) ?? null
     }
-    if (sql.includes('FROM board_likes WHERE thread_id = ? AND user_id = ?')) {
-      const [threadId, userId] = args as [string, string]
-      return tables.likes.get(pairKey(threadId, userId)) ?? null
+    if (sql.includes('FROM board_posts WHERE thread_id = ? AND seq = 1')) {
+      // readHeadPost（`?thread=` で来た 👍 をスレ本文へ写すため）。
+      const threadId = args[0] as string
+      return [...tables.posts.values()].find((p) => p.thread_id === threadId && p.seq === 1) ?? null
+    }
+    if (sql.includes('FROM board_post_likes WHERE post_id = ? AND user_id = ?')) {
+      const [postId, userId] = args as [string, string]
+      return tables.postLikes.get(pairKey(postId, userId)) ?? null
     }
     if (sql.includes('FROM board_polls WHERE thread_id = ?')) {
       return tables.polls.get(args[0] as string) ?? null
@@ -344,12 +362,12 @@ export function makeBoardDb(
         .map((t) => listRowOf(t, tables, viewerId))
     }
     if (sql.includes('FROM board_posts p') && sql.includes('LEFT JOIN board_profiles pr')) {
-      // 詳細の投稿一覧（seq 昇順）。
-      const threadId = args[0] as string
+      // 詳細の投稿一覧（seq 昇順）。bind は [viewerId, threadId]＝先頭は 👍 の有無を引く鍵。
+      const [viewerId, threadId] = args as [string | null, string]
       return [...tables.posts.values()]
         .filter((p) => p.thread_id === threadId)
         .sort((a, b) => a.seq - b.seq)
-        .map((p) => postRowOf(p, tables))
+        .map((p) => postRowOf(p, tables, viewerId ?? null))
     }
     if (sql.includes('FROM board_posts p') && sql.includes('LEFT JOIN board_threads t')) {
       // 「自分の書き込み」タブ（新しい順・スレの見出し付き）。
@@ -502,7 +520,7 @@ export function makeBoardDb(
       const id = args[1] as string
       const t = tables.threads.get(id)
       if (!t) return 0
-      tables.threads.set(id, { ...t, like_count: likeCountOf(tables, id) })
+      tables.threads.set(id, { ...t, like_count: headLikeCountOf(tables, id) })
       return 1
     }
     if (sql.startsWith('UPDATE board_threads SET deleted_at')) {
@@ -576,6 +594,13 @@ export function makeBoardDb(
       }
       return changes
     }
+    if (sql.startsWith('UPDATE board_posts SET like_count')) {
+      const id = args[1] as string
+      const p = tables.posts.get(id)
+      if (!p) return 0
+      tables.posts.set(id, { ...p, like_count: postLikeCountOf(tables, id) })
+      return 1
+    }
     if (sql.startsWith('UPDATE board_posts SET hidden_at')) {
       const [hidden_at, id] = args as [number, string]
       const p = tables.posts.get(id)
@@ -585,16 +610,16 @@ export function makeBoardDb(
     }
 
     // --- likes / polls / votes -------------------------------------------
-    if (sql.startsWith('INSERT INTO board_likes')) {
-      const [thread_id, user_id, created_at] = args as [string, string, number]
-      const key = pairKey(thread_id, user_id)
-      if (tables.likes.has(key)) return 0
-      tables.likes.set(key, { thread_id, user_id, created_at })
+    if (sql.startsWith('INSERT INTO board_post_likes')) {
+      const [post_id, user_id, created_at] = args as [string, string, number]
+      const key = pairKey(post_id, user_id)
+      if (tables.postLikes.has(key)) return 0
+      tables.postLikes.set(key, { post_id, user_id, created_at })
       return 1
     }
-    if (sql.startsWith('DELETE FROM board_likes')) {
-      const [thread_id, user_id] = args as [string, string]
-      return tables.likes.delete(pairKey(thread_id, user_id)) ? 1 : 0
+    if (sql.startsWith('DELETE FROM board_post_likes')) {
+      const [post_id, user_id] = args as [string, string]
+      return tables.postLikes.delete(pairKey(post_id, user_id)) ? 1 : 0
     }
     if (sql.startsWith('INSERT INTO board_polls')) {
       const [thread_id, question, options, multiple, closes_at, created_at] = args as [
