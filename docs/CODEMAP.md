@@ -53,6 +53,7 @@ Cloudflare Pages Functions
 | **UI 部品・ヘルパを新規に作りたい** | まず §3「共通部品カタログ」で在庫を確認する（重複作成の防止） |
 | **掲示板**（記名式スレッド・お知らせ・アンケート・通報）の挙動 | 画面は `src/ui/components/BoardPage/`、判断は `src/core/board/`、SQL は `functions/api/_lib/board-store.ts`、窓口は `functions/api/board/` |
 | 掲示板に貼られた外部リンクの OGP（取得可否・画像の許可表） | `src/core/board/link.ts`（判定）+ `functions/api/_lib/board-link-fetch.ts`（取得とキャッシュ） |
+| **ペンネーム（表示名）**の扱い — ヘッダ・サイドバー・新しい作品の著者・掲示板の表示名は同じ 1 つ | 判定は `src/core/profile/account.ts`、配線は `src/ui/hooks/use-pen-name.ts`、編集は `src/ui/components/ProfileDialog/`（Root が 1 つだけ持つ）、正本はサーバの `board_profiles.display_name` |
 | 未課金・解約アカウントの削除（reaper） | `src/core/billing/reap-policy.ts` + `functions/api/billing/reap.ts` + `functions/api/_lib/purge.ts` |
 | 画面遷移・ルート追加 | `src/ui/Root.tsx` + `src/ui/hooks/use-hash-route.ts` |
 | DB スキーマ | `migrations/*.sql` + `wrangler.toml` |
@@ -75,7 +76,7 @@ Cloudflare Pages Functions
 | `plot/` | プロット（幕/ライン/ビート/伏線/秘密）＋**世界観設定**（`Plot.world`・作者専用） | `PlotSection` `PlotLine` `PlotBeat` `Foreshadow` `Secret` / `beatsInStoryOrder` `sectionOfBeat` `linesOfBeat` `foreshadowsOfBeat` `secretsHiddenAt` / `WorldNote` `WORLD_SLOTS` `WORLD_CUSTOM_SLOT` `worldNoteLabel` `worldNotesInOrder` `setWorldNote` `removeWorldNote` |
 | `structure/` | 構造レイヤー（outline/chart/mindmap）のノード・辺 | `StructureNode` `StructureEdge` `StructureKind` `emptyStructure` `addNode` `pickPrimaryStructure` |
 | `idea/` | ネタ帳のメモ | `IdeaNote` `normalizeIdeaText` |
-| `profile/` | 作者プロフィール | `Profile` `ProfileRepository` |
+| `profile/` | 作者プロフィール（ペンネーム・アバター）と、**アカウントとの突き合わせ**（`account.ts`） | `Profile`（`penName` `avatar` `accountId`） `ProfileRepository` / `penNameForAccount` `PenNameSync` |
 | `board/` | **掲示板の共有契約**（Zod）と純ロジック。詳細は下表 | `BOARD_KINDS` `BOARD_LIMITS` `BoardThread` `BoardPost` `PollResult` `LinkCard` `BoardThreadDetail` `ThreadListResponse` `BoardMeResponse` `ModerateInputSchema` ほか（`types.ts`） |
 
 ### 変換
@@ -130,7 +131,7 @@ Cloudflare Pages Functions
 | `src/core/board/link.ts` | **URL を取りに行ってよいかの判定（SSRF）**と OGP の抽出。og:image はホストの許可表を通す | `extractUrls` `normalizeUrl` `urlKeyOf` `canFetchUrl` `parseOgp` `OGP_IMAGE_HOSTS` `isAllowedImageHost` `resolveImageUrl` |
 | `src/core/board/render.ts` | 掲示板本文の描画。**`markdownToHtml` は本文向けで使えない**（数字に縦中横、`[[用語]]` 素通し、URL がリンクにならない）ためブロック層だけ再利用 | `escapeHtml` `boardInlineHtml` `boardBodyToHtml` `boardBodyToPlain` |
 | `src/core/board/poll.ts` | アンケートの検証・集計と**開示判定**（未投票かつ締切前は票数を返さない） | `validatePollInput` `tallyVotes` `pollResultFor` `canVote` `normalizeChoices` |
-| `src/core/board/permission.ts` | 誰が何をできるか。理由を HTTP ステータスへ写す表つき。種別の表は `types.ts` から import | `canPost` `canCreateThread`（notice は staff のみ） `isStaffOnlyKind` `canDeletePost` `canDeleteThread` `threadDeleteMode` `canModerate` `canSetStatus` `canLike` `visiblePost` `STATUS_OF_REASON` |
+| `src/core/board/permission.ts` | 誰が何をできるか。理由を HTTP ステータスへ写す表つき。種別の表は `types.ts` から import | `canPost` `canCreateThread`（notice は staff のみ） `isStaffOnlyKind` `canDeletePost` `canDeleteThread` `threadDeleteMode` `canModerate` `canSetStatus` `canLike`（**投稿 1 件ごと**・種別は問わない） `visiblePost` `STATUS_OF_REASON` |
 
 ---
 
@@ -206,6 +207,7 @@ Cloudflare Pages Functions
 `useEditorStore` / `useAutosave` / `useAutoSync` / `useAutoBackup` / `useLiveSnapshot` / `useSyncStatus`
 / `useHashRoute` / `useIsNarrow`（+ `NARROW_MAX_PX` `NARROW_QUERY`） / `useKeyboardInset`
 / `useLocalFlag`（localStorage 永続の真偽フラグ） / `usePreferences`（+ `setTheme` `setReadingSize`）
+/ `usePenName` `useOpenProfile` `useAccountPenNameSync` `useSaveProfile`（+ `PenNameContext` `ProfileEditContext`・`use-pen-name.ts`）
 / `useBackupMarks`（+ `markLocalBackup` `markCloudBackup` `readBackupMarks`） / `readNudgeAck` `acknowledgeNudge`
 
 **純関数 `src/ui/_utils/`**（React 非依存のヘルパ。ここに無いものだけ新規作成する）
@@ -228,7 +230,7 @@ Cloudflare Pages Functions
 |---|---|
 | `_api/` | サーバ呼び出しの薄いクライアント（`sync` `backup` `billing` `publish` `author` `mcp` `board`） |
 | `_utils/` | 純関数（`caretCoordinates` `imageResizer` `exporters` `download` `format` `clipboard` `cover-tone`） |
-| `hooks/` | React ライフサイクル依存のみ（`use-autosave` `use-auto-sync` `use-auto-backup` `use-live-snapshot` `use-preferences` `use-narrow` `use-keyboard-inset` 等） |
+| `hooks/` | React ライフサイクル依存のみ（`use-autosave` `use-auto-sync` `use-auto-backup` `use-live-snapshot` `use-preferences` `use-narrow` `use-keyboard-inset` `use-pen-name` 等） |
 | `sync/` | 同期クライアント。`src/ui/sync/sync-service.ts` が本体（約800行）・`sync-gate` `sync-status` `sync-touch` |
 | `src/ui/backup/backup-service.ts` | クラウド全体バックアップの実行 |
 | `plot/` | プロットの表示ヘルパ（React 非依存・`beat-ui.ts` に `STATUS_UI` `LINE_PALETTE` `lineColorOf` `beatStripeColor` `plainOf` `fmtCount`）。プロット画面と執筆画面のパネルで色・表記を揃える |
@@ -260,10 +262,10 @@ Cloudflare Pages Functions
 | `POST /api/board/threads` | スレ立て（本文＋任意でアンケート）。リンクカードの取得もここ |
 | `/api/board/thread` | スレ1本（`?id=`）。GET=詳細 / PATCH=ステータス・ピン・ロック（staff）/ DELETE=自分のスレ |
 | `/api/board/posts` | POST=返信（`?thread=`）/ DELETE=自分の投稿（`?id=`） |
-| `POST /api/board/like` | 👍 のトグル（`?thread=`・要望と不具合スレのみ） |
+| `POST /api/board/like` | 👍 のトグル（`?post=`・**投稿 1 件ごと**。古い `?thread=` はスレ本文への 👍 に写す） |
 | `POST /api/board/vote` | アンケートの投票（`?thread=`・1アカウント1票） |
 | `POST /api/board/reports` | 通報（作業キューに積むだけ・自動非表示はしない） |
-| `/api/board/me` | GET=自分の表示名と投稿 / PUT=表示名の設定・変更 |
+| `/api/board/me` | GET=自分の表示名と投稿 / PUT=表示名の設定・変更（**アカウントのペンネームの正本**） |
 | `POST /api/board/moderate` | 運営の措置（非表示・投稿禁止・カードの停止）。**staff のみ** |
 | `/api/mcp` | リモート MCP（Streamable HTTP・JSON-RPC 2.0） |
 | `/api/mcp/token` | MCP アクセストークン発行（会員のみ） |
@@ -279,13 +281,14 @@ Cloudflare Pages Functions
 `rateLimitedResponse`＝分あたりの安全弁、`postQuotaExceeded`＝10件/時、`createPostRetrying`、`conflictResponse`）。
 **新しいエンドポイントを足すときはここから使う**（片方だけ緩むと誰も気づけない）。
 テスト用の D1 フェイクは `functions/api/board/board-test-util.ts`（`makeBoardDb` `makeBoardEnv` `clerkAuthMock`）。
-**SQL そのものを確かめるのは `functions/api/board/real-d1.ts`**（`migrations/0008_board.sql` を流した実 SQLite＝`node:sqlite`。フェイクは SQL を解釈しないので構文エラー・曖昧な列名を拾えない）。
+**SQL そのものを確かめるのは `functions/api/board/real-d1.ts`**（`migrations/` の掲示板 DDL（0008・0009）を順に流した実 SQLite＝`node:sqlite`。フェイクは SQL を解釈しないので構文エラー・曖昧な列名を拾えない。**マイグレーションを足したらここにも足す**）。
 
 **バインディング**（`wrangler.toml`）: `DB` = D1 `novel-studio`、`MEDIA` = R2 `novel-studio-media`
 （preview 環境は `-stg` サフィックス）。
 
 **マイグレーション**（`migrations/`）: `0001_init` → `0002_sync_works` → `0003_trash_sync` →
 `0004_mcp_tokens` → `0005_subscriptions` → `0006_activity_sync` → `0007_visitor_days` → `0008_board`（掲示板9テーブル）
+→ `0009_board_post_likes`（👍 を投稿単位へ。`board_post_likes` ＋ `board_posts.like_count`・旧 `board_likes` は残す）
 
 ---
 
