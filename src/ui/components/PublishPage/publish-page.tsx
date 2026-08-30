@@ -22,6 +22,7 @@ import { type AuthorStatus, fetchAuthorStatus } from '@/ui/_api/author'
 import {
   canPublishPublicly,
   describePublishBlocked,
+  PLATFORM_ORIGIN,
   type PublishResult,
   publishWorkToPlatform,
 } from '@/ui/_api/publish'
@@ -173,6 +174,10 @@ export function PublishPage({
   /** 公開に倒したいのに誓約が足りない。押させずに理由を出す。 */
   const blockedByDeclarations = visibility === 'public' && !declarationsOk
   const needsAuthor = isSignedIn && author !== null && !author.isAuthor
+  // 公開サイトに出る作者名。**投稿バンドルの著者名は使われない**——公開サイトは
+  // 登録済みのペンネーム（platform の profiles.display_name）を常に優先する。
+  // 取れていないとき（未サインイン・通信断）は空文字＝名前の話をしない。
+  const authorName = isSignedIn && author?.isAuthor ? author.penName : ''
   const canSubmit =
     work !== null && isSignedIn && !pending && tagError === null && !blockedByDeclarations
 
@@ -280,6 +285,9 @@ export function PublishPage({
             }}
           />
         ) : null}
+
+        {/* 0. どの名前で公開されるか。押してから知る作りにしない */}
+        {!needsAuthor && authorName !== '' ? <AuthorNameCard penName={authorName} /> : null}
 
         {/* 1. 作品の公開状態。ここが「単話ではなく作品の話」だと分かる場所になる */}
         <section className="rounded-xl border border-outline-variant/40 bg-surface-container-lowest p-5">
@@ -598,7 +606,9 @@ export function PublishPage({
         title={visibility === 'public' ? 'この内容で公開しますか？' : '下書きに戻しますか？'}
         description={
           visibility === 'public'
-            ? `「${work.title}」を公開します。${publicCount}話が読者に見えるようになります${
+            ? `「${work.title}」を${
+                authorName === '' ? '' : `、作者名「${authorName}」で`
+              }公開します。${publicCount}話が読者に見えるようになります${
                 episodes.length - publicCount > 0
                   ? `（${episodes.length - publicCount}話は非公開のまま）`
                   : ''
@@ -657,6 +667,39 @@ function PublishResultPanel({ result }: { result: PublishResult }) {
         <PlatformLink href={result.manageUrl}>公開サイトの管理画面を開く</PlatformLink>
       </div>
     </div>
+  )
+}
+
+/**
+ * この作品がどの名前で公開されるか。**押す前に見えるところへ出す**。
+ *
+ * 公開サイトの作者名とコトノハのペンネームは別々に持っている。投稿バンドルにも著者名は
+ * 入っているが、公開サイトはそれを無視して登録済みのペンネームを常に優先する
+ *（platform の `import-work.ts`）。画面のどこにも出していなかったので、
+ * 「どちらの名前で出るのか」「片方を変えたらもう片方も変わるのか」を確かめようがなかった。
+ *
+ * 名前そのものを大きく出し、説明は 2 つに分ける——いまどうなっているか（1 つめ）と、
+ * 変えたいときどうなるか（2 つめ）。変更の口は公開サイト側にしかないので、リンクで渡す。
+ */
+function AuthorNameCard({ penName }: { penName: string }) {
+  return (
+    <section className="rounded-xl border border-outline-variant/40 bg-surface-container-lowest p-5">
+      <h2 className="font-semibold font-serif text-[17px] text-on-surface">作者名</h2>
+      <p className="mt-2 font-medium text-[15px] text-on-surface [overflow-wrap:anywhere]">
+        {penName}
+      </p>
+      <p className="mt-2 text-[13px] text-on-surface-variant leading-relaxed">
+        公開サイトでは、この名前で作者として表示されます。コトノハのペンネームとは別の設定なので、ペンネームを変えてもここは変わりません。
+      </p>
+      <p className="mt-1.5 text-[13px] text-on-surface-variant leading-relaxed">
+        名前は公開サイトの設定で変えられます。変えると、これまでに公開した作品の作者名も一緒に変わります。
+      </p>
+      {PLATFORM_ORIGIN ? (
+        <div className="mt-4">
+          <PlatformLink href={`${PLATFORM_ORIGIN}/settings`}>公開サイトの設定を開く</PlatformLink>
+        </div>
+      ) : null}
+    </section>
   )
 }
 
