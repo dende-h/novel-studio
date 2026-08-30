@@ -53,23 +53,27 @@ export function ThreadRow({ thread, now = Date.now(), href }: ThreadRowProps) {
   const author = thread.author.displayName
 
   return (
+    // **1 行 1 スレ。** 掲示板は「どれを開くか」を選ぶ画面なので、1 画面に入る本数が
+    // そのまま使い勝手になる。左に印と種別、中央にタイトル（伸びて省略）、右に人と数。
+    // 高さを揃えるため、折り返さない（`flex-nowrap` ＋ タイトルだけ `min-w-0` で縮む）。
     <a
       href={href ?? threadHref(thread.id)}
       className={cn(
-        'block border-outline-variant/25 border-b px-3 py-2.5',
+        'flex items-center gap-2 border-outline-variant/25 border-b px-1 py-2',
         'no-underline transition-colors hover:bg-surface-container-low',
         'focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring',
-        // 目立たせる種別（お知らせ）だけ、枠と下地を上書きする。どの種別をどう出すかは
+        // 目立たせる種別（お知らせ）だけ下地を上書きする。どの種別をどう出すかは
         // `KIND_UI` が決める＝ここで色を選ばない（種別ごとの分岐を画面に持ち込まない）。
         kindUi.rowClassName,
       )}
     >
-      <div className="flex flex-wrap items-center gap-1.5">
+      {/* 左: 印と種別。行の頭が揃うので、目で種別を追える */}
+      <span className="flex shrink-0 items-center gap-1.5">
         {thread.pinned && (
-          <span className="inline-flex items-center gap-1 text-primary text-xs">
-            <Pin className="size-3.5" aria-hidden="true" />
+          <>
+            <Pin className="size-3.5 text-primary" aria-hidden="true" />
             <span className="sr-only">先頭に固定</span>
-          </span>
+          </>
         )}
         <Badge className={kindUi.className}>{kindUi.label}</Badge>
         {showStatus && (
@@ -81,39 +85,42 @@ export function ThreadRow({ thread, now = Date.now(), href }: ThreadRowProps) {
             )}
           </Badge>
         )}
-        {thread.hasPoll && (
-          <Badge className="bg-surface-container-high text-on-surface-variant">
-            <Vote className="size-3" aria-hidden="true" />
-            アンケート
-          </Badge>
-        )}
-        {thread.locked && (
-          <span className="inline-flex items-center gap-1 text-on-surface-variant text-xs">
-            <Lock className="size-3.5" aria-hidden="true" />
-            書き込み終了
-          </span>
-        )}
-      </div>
+      </span>
 
-      {/* 本文の抜粋は出さない。1 行あたりの高さが倍になり、一覧で見渡せる本数が半分以下になる。
-          何が書いてあるかはタイトルで見当をつけ、開いて読む。抜粋そのものは API が返し続ける
-          （`BoardThread.excerpt`）ので、必要になったら戻せる。 */}
-      <h3 className="mt-1 truncate font-semibold text-[15px] text-on-surface leading-6">
+      {/* 中: タイトル。**ここだけが伸び縮みする**（`min-w-0` が無いと flex 子は縮まない）。
+          本文の抜粋は出さない。何が書いてあるかはタイトルで見当をつけ、開いて読む。
+          抜粋そのものは API が返し続ける（`BoardThread.excerpt`）ので、必要になれば戻せる。 */}
+      <h3 className="min-w-0 flex-1 truncate font-medium text-[14px] text-on-surface">
         {thread.title}
       </h3>
 
-      <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-on-surface-variant text-xs">
-        <span className="truncate">{author}</span>
-        {thread.author.staff && <Badge className="bg-primary text-primary-foreground">運営</Badge>}
-        {bumped !== '' && <span>{bumped}</span>}
-        <span className="inline-flex items-center gap-1">
+      {/* 右: 印と数。狭い画面では落とす順に並べる（アンケート → 作者 → 時刻） */}
+      <span className="flex shrink-0 items-center gap-2 text-on-surface-variant text-xs">
+        {thread.hasPoll && (
+          <>
+            <Vote className="hidden size-3.5 sm:inline" aria-hidden="true" />
+            <span className="sr-only">アンケート</span>
+          </>
+        )}
+        {thread.locked && (
+          <>
+            <Lock className="size-3.5" aria-hidden="true" />
+            <span className="sr-only">書き込み終了</span>
+          </>
+        )}
+        <span className="hidden max-w-[8rem] truncate md:inline">{author}</span>
+        {thread.author.staff && (
+          <Badge className="hidden bg-primary text-primary-foreground md:inline-flex">運営</Badge>
+        )}
+        {bumped !== '' && <span className="hidden sm:inline">{bumped}</span>}
+        <span className="inline-flex items-center gap-1 tabular-nums">
           <MessageSquare className="size-3.5" aria-hidden="true" />
           <span className="sr-only">返信</span>
           {formatCount(thread.replyCount)}
         </span>
-        {/* 👍 は要望・不具合だけ（D-BOARD-KIND）。雑談に票を出しても意味がない */}
+        {/* 賛同は要望・不具合だけ（D-BOARD-KIND）。雑談に票を出しても意味がない */}
         {withStatus && (
-          <span className="inline-flex items-center gap-1">
+          <span className="inline-flex items-center gap-1 tabular-nums">
             <ThumbsUp
               className={cn('size-3.5', thread.liked && 'text-primary')}
               aria-hidden="true"
@@ -122,7 +129,7 @@ export function ThreadRow({ thread, now = Date.now(), href }: ThreadRowProps) {
             {formatCount(thread.likeCount)}
           </span>
         )}
-      </div>
+      </span>
     </a>
   )
 }
@@ -170,15 +177,9 @@ export function ThreadList({
   }
 
   return (
-    // 隙間を空けたカードでなく、罫線で区切った 1 枚のリストにする。
-    // 掲示板は「どれを開くか」を選ぶ画面なので、1 画面に入る本数がそのまま使い勝手になる。
-    <ul
-      className={cn(
-        'overflow-hidden rounded-xl border border-outline-variant/30 bg-surface-container-lowest',
-        '[&>li:last-child>a]:border-b-0',
-        className,
-      )}
-    >
+    // カードにしない。枠も角丸も下地も持たせず、**罫線だけで区切る**。
+    // 1 本ごとに枠を描くと、枠と余白のぶんだけ 1 画面に入る本数が減る。
+    <ul className={cn('border-outline-variant/25 border-t', className)}>
       {ordered.map((thread) => (
         <li key={thread.id}>
           <ThreadRow thread={thread} now={now} href={hrefOf?.(thread)} />
