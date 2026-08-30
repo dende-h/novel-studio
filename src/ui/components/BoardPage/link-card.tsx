@@ -16,7 +16,7 @@ import { Card } from '@/ui/components/ui/card'
  * 3. **枠の大きさを先に決める。** 縦横比を固定した箱に入れ、読み込みに失敗したら箱ごと畳む。
  *    画像の実寸で高さが決まると、遅れて届いた 1 枚で読んでいた行が飛ぶ。
  *
- * `kind === 'work'` は grove（公開サイト）の作品カード。表紙の縦長比と「作品」バッジで、
+ * `kind === 'work'` は grove（コトノハ-grove-）の作品カード。表紙の縦長比と「作品」バッジで、
  * ただのリンクではなく作品だと分かるようにする（D-BOARD-WORKCARD）。
  */
 export function BoardLinkCard({ card }: { card: LinkCard }) {

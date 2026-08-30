@@ -36,7 +36,8 @@ export function FirstRunDialog({ open, onClose }: FirstRunDialogProps) {
         </DialogHeader>
         <DialogBody className="space-y-4 font-sans text-on-surface-variant text-sm leading-relaxed">
           <p>
-            コトノハは、書いたものを<strong className="text-on-surface">この端末の保管庫</strong>
+            コトノハ-leaf- は、書いたものを
+            <strong className="text-on-surface">この端末の保管庫</strong>
             に保存します。サーバーには送られません。だから速く、だから静かです。
           </p>
           <p>

@@ -165,7 +165,7 @@ export function describePublishBlocked(reason: PublishBlockedReason): string {
   if (reason === 'declarations-missing') {
     return '投稿は保存できましたが、まだ公開されていません。「全年齢向け」と「一次創作」の2つの誓約にチェックを入れて、もう一度「公開して投稿」してください。'
   }
-  return '投稿は保存できましたが、この作品は公開サイトの運営が非表示にしているため公開できません。公開サイトの管理画面をご確認ください。'
+  return '投稿は保存できましたが、この作品は コトノハ-grove- の運営が非表示にしているため公開できません。コトノハ-grove- の管理画面をご確認ください。'
 }
 
 /** 作品を platform へ送る（work.platform に投稿設定を載せて渡す） */

@@ -1,7 +1,7 @@
 import { PLATFORM_ORIGIN } from '@/ui/_api/publish'
 
 /**
- * 公開サイト（novel platform）の作者登録クライアント。
+ * コトノハ-grove- （novel platform）の作者登録クライアント。
  *
  * 投稿には作者登録が要る。それを知るのが「書き終えて公開ボタンを押した瞬間」で、
  * しかも直し方が「別サイトを開いて登録し直す」だと、いちばんまずいところで手が止まる。
@@ -21,7 +21,7 @@ export type AuthorStatus = {
   isAuthor: boolean
   /** 停止中のアカウントか（投稿も登録もできない） */
   suspended: boolean
-  /** 登録フォームの初期値（公開サイトの表示名） */
+  /** 登録フォームの初期値（コトノハ-grove- の表示名） */
   penName: string
 }
 
@@ -103,7 +103,7 @@ async function requireToken(getToken: GetToken): Promise<string | { ok: false; m
   }
   const jwt = await getToken()
   if (!jwt) {
-    return { ok: false, message: '公開サイトを使うにはサインインが必要です' }
+    return { ok: false, message: 'コトノハ-grove- を使うにはサインインが必要です' }
   }
   return jwt
 }

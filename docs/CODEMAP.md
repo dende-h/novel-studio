@@ -10,7 +10,7 @@
 ## 0. 30秒でわかる全体像
 
 ローカルファーストの小説執筆ツール。原稿は既定で端末内（IndexedDB）にのみ置き、
-クラウド同期・バックアップは有料オプトイン（at-rest 暗号化）。書き出し先は EPUB / なろう / カクヨム / 自前公開サイト。
+クラウド同期・バックアップは有料オプトイン（at-rest 暗号化）。書き出し先は EPUB / なろう / カクヨム / 自前 コトノハ-grove-。
 
 ```
 ブラウザ (Vite + React 19 + Tailwind4 + PWA)
@@ -38,7 +38,7 @@ Cloudflare Pages Functions
 | エディタの入力・ショートカット・サジェスト | `src/ui/components/EditorPane/` |
 | 保存・自動保存・undo・開いている作品の状態 | `src/ui/store/editorStore.ts` |
 | データの永続化・スキーマ移行 | `src/core/storage/*Repository.ts` |
-| 用語集（`@`参照の解決先・**公開サイトへ送られる**）の挙動 | `src/core/glossary/index.ts` + `src/ui/components/GlossaryView/` |
+| 用語集（`@`参照の解決先・**コトノハ-grove- へ送られる**）の挙動 | `src/core/glossary/index.ts` + `src/ui/components/GlossaryView/` |
 | 世界観設定（作者専用・**公開されない**）の挙動 | `src/core/plot/index.ts`（`WORLD_SLOTS` ほか）+ `src/ui/components/PlotView/world-view.tsx` |
 | `@`/`[[` サジェストの挙動 | 判定・候補は `src/core/glossary/index.ts`、見た目は `src/ui/components/EditorPane/ref-suggest.tsx`、本文以外の入力欄は `src/ui/components/NotationField/` |
 | プロット（幕×ビート・伏線・秘密） | `src/core/plot/index.ts` + `src/ui/components/PlotView/plot-view.tsx` |
@@ -54,7 +54,7 @@ Cloudflare Pages Functions
 | **掲示板**（記名式スレッド・お知らせ・アンケート・通報）の挙動 | 画面は `src/ui/components/BoardPage/`、判断は `src/core/board/`、SQL は `functions/api/_lib/board-store.ts`、窓口は `functions/api/board/` |
 | 掲示板に貼られた外部リンクの OGP（取得可否・画像の許可表） | `src/core/board/link.ts`（判定）+ `functions/api/_lib/board-link-fetch.ts`（取得とキャッシュ） |
 | **ペンネーム（表示名）**の扱い — ヘッダ・サイドバー・新しい作品の著者・掲示板の表示名は同じ 1 つ | 判定は `src/core/profile/account.ts`、配線は `src/ui/hooks/use-pen-name.ts`、編集は `src/ui/components/ProfileDialog/`（Root が 1 つだけ持つ）、正本はサーバの `board_profiles.display_name` |
-| **公開サイト（grove）の作者名** — コトノハのペンネームとは**別物**（D-PENNAME-GROVE）。語も分ける（ペンネーム／作者名） | `src/ui/components/PublishPage/publish-page.tsx` の `AuthorNameCard`（投稿前に名前を見せる）＋ `author-register-card.tsx`（登録）。取得は `src/ui/_api/author.ts`。変更の口は公開サイトの `/settings` |
+| **コトノハ-grove- （grove）の作者名** — コトノハ-leaf- のペンネームとは**別物**（D-PENNAME-GROVE）。語も分ける（ペンネーム／作者名） | `src/ui/components/PublishPage/publish-page.tsx` の `AuthorNameCard`（投稿前に名前を見せる）＋ `author-register-card.tsx`（登録）。取得は `src/ui/_api/author.ts`。変更の口は コトノハ-grove- の `/settings` |
 | 未課金・解約アカウントの削除（reaper） | `src/core/billing/reap-policy.ts` + `functions/api/billing/reap.ts` + `functions/api/_lib/purge.ts` |
 | 画面遷移・ルート追加 | `src/ui/Root.tsx` + `src/ui/hooks/use-hash-route.ts` |
 | DB スキーマ | `migrations/*.sql` + `wrangler.toml` |

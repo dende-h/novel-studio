@@ -134,7 +134,7 @@ export function ProfileDialog({
           <DialogTitle className="font-serif text-primary">プロフィール</DialogTitle>
           <DialogDescription>
             {signedIn
-              ? 'ペンネームは、これから作る作品の著者と、掲示板の表示名になります。変えると、これまでの書き込みも新しい名前で表示されます。公開サイトの作者名は別の設定なので、ここでは変わりません。'
+              ? 'ペンネームは、これから作る作品の著者と、掲示板の表示名になります。変えると、これまでの書き込みも新しい名前で表示されます。コトノハ-grove- の作者名は別の設定なので、ここでは変わりません。'
               : 'ペンネームとアバターを登録します。ペンネームは新しい作品の著者に既定で入ります。'}
           </DialogDescription>
         </DialogHeader>

@@ -153,7 +153,7 @@ export function Library({
   onOpenCloudPlan,
 }: LibraryProps) {
   const state = useEditorStore(store)
-  // 公開サイトへの投稿は Clerk JWT で認証する（執筆アカウント＝公開アカウント）。
+  // コトノハ-grove- への投稿は Clerk JWT で認証する（執筆アカウント＝公開アカウント）。
   const { getToken } = useAuth()
   // プロフィールの編集はアプリに 1 つ（Root が持つ）。ここは開く口を叩くだけ。
   const openProfile = useOpenProfile()
@@ -251,7 +251,7 @@ export function Library({
 
   /**
    * 投稿済み作品の公開／下書きを、ライブラリから切り替える。
-   * 公開サイトは「作品まるごとの再送」で更新する仕様で、再送しても読者の反応は保持されるため、
+   * コトノハ-grove- は「作品まるごとの再送」で更新する仕様で、再送しても読者の反応は保持されるため、
    * 現在の内容のまま visibility だけ差し替えて送り直す（別の API を用意しない）。
    */
   const handleTogglePublish = async (summary: WorkSummary) => {

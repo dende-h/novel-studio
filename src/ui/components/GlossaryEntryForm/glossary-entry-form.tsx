@@ -256,8 +256,9 @@ export function GlossaryEntryForm({
                 className="min-h-24 max-h-48 text-[13px]"
               />
               <p className="text-[11.5px] text-on-surface-variant/70 leading-relaxed">
-                公開サイトへ投稿すると読者にも見えます（その用語が出てくる話まで読んだ読者だけに
-                開きます）。@ または [[ で用語集を呼び出せます。
+                コトノハ-grove-
+                へ投稿すると読者にも見えます（その用語が出てくる話まで読んだ読者だけに 開きます）。@
+                または [[ で用語集を呼び出せます。
               </p>
             </div>
             <div className="space-y-2">

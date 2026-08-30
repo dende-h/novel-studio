@@ -69,7 +69,7 @@ export type Episode = z.infer<typeof EpisodeSchema>
  * 用語集の1項目（@参照の解決先）。P1。作品ごと（Work 相乗り）。
  * name + aliases が解決キー（trim 後の完全一致）。reading はサジェスト/ソート用で解決対象外。
  *
- * **この器は公開サイトへ送られる**（読者は初出の話まで読むと項目が開く＝段階公開）。
+ * **この器は コトノハ-grove- へ送られる**（読者は初出の話まで読むと項目が開く＝段階公開）。
  * よって summary / body は「いずれ読者が読む文」であり、まだ伏せている真相や執筆の決め事は
  * ここへ書かない。項目ごとの内緒話は `authorNote`（公開時に落とす）、作品全体の決め事は
  * プロットの世界観設定（`Plot.world`）が受け持つ。
@@ -103,7 +103,7 @@ export const GlossaryEntrySchema = z.object({
 export type GlossaryEntry = z.infer<typeof GlossaryEntrySchema>
 
 /**
- * 公開サイト（コトノハ-grove-）の運営固定ジャンル。先方の GENRES
+ * コトノハ-grove-の運営固定ジャンル。先方の GENRES
  * （novel-platform: apps/novel/src/server/import/kotonoha-bundle.ts）と同一・同順に保つ。
  * ここに無い言葉を genre で送っても先方で自由タグへ格下げされるため、選択肢も先方と揃える。
  * 一覧に収まらない言葉は自由タグ（tags）へ回す、という住み分け。
@@ -122,7 +122,7 @@ export const PLATFORM_GENRES = [
   'その他',
 ] as const
 
-/** 公開サイトへ投稿するときの自由タグの上限（先方の受け入れ条件と同じ）。 */
+/** コトノハ-grove- へ投稿するときの自由タグの上限（先方の受け入れ条件と同じ）。 */
 export const PLATFORM_MAX_TAGS = 5
 export const PLATFORM_MAX_TAG_LENGTH = 30
 
@@ -131,14 +131,14 @@ export const PLATFORM_MAX_TAG_LENGTH = 30
  *
  * 作品情報の編集と公開の管理は**同じ1つの項目**を書いているので、上限も1つにする
  * （かつて 250 と 2000 で食い違っていて、片方で書いた文がもう片方で足せなくなっていた）。
- * 公開サイトは 2000 字まで受けるが、あらすじは読者が最初に読む数行という位置づけなので、
+ * コトノハ-grove- は 2000 字まで受けるが、あらすじは読者が最初に読む数行という位置づけなので、
  * 短いほう（EPUB の dc:description と同じ 250 字）に合わせる。
  */
 export const MAX_DESCRIPTION_LENGTH = 250
 
 /**
- * 公開サイト（novel platform）へ投稿するときだけ意味を持つ設定。
- * コトノハの本質は執筆なので、公開先固有の項目は Work 直下に散らさずここへまとめる。
+ * コトノハ-grove- （novel platform）へ投稿するときだけ意味を持つ設定。
+ * コトノハ-leaf- の本質は執筆なので、公開先固有の項目は Work 直下に散らさずここへまとめる。
  * すべて任意＝未投稿の作品・旧データはキーごと持たない。
  */
 export const WorkPlatformSchema = z.object({
@@ -157,16 +157,16 @@ export const WorkPlatformSchema = z.object({
   /**
    * 話ごとの公開状態（話ID → 公開状態）。記録の無い話は作品の公開状態に従う。
    *
-   * 公開サイトへは `platform` の中ではなく **episodes[].visibility として送る**（契約 v3）。
+   * コトノハ-grove- へは `platform` の中ではなく **episodes[].visibility として送る**（契約 v3）。
    * こちらでまとめて持つのは、公開先固有の設定を Work 直下・Episode 直下へ散らさないため。
    */
   episodeVisibility: z.record(z.string(), z.enum(['draft', 'public'])).optional(),
 
-  // ---- ここから下は公開サイトとの取り決めに無い＝コトノハのローカル専用。
+  // ---- ここから下は コトノハ-grove- との取り決めに無い＝コトノハ-leaf- のローカル専用。
   //      送信時に落とす（src/ui/_api/publish.ts の toBundleWork）。 ----
   /** 最後に投稿できた時刻。ライブラリで「投稿済みか」を判定して公開切替を出すのに使う。 */
   lastPublishedAt: z.number().optional(),
-  /** 前回の投稿で返ってきた読者ページ／管理画面（公開サイトの絶対URL）。 */
+  /** 前回の投稿で返ってきた読者ページ／管理画面（コトノハ-grove- の絶対URL）。 */
   workUrl: z.string().optional(),
   manageUrl: z.string().optional(),
 })
@@ -188,7 +188,7 @@ export const WorkSchema = z.object({
     .string()
     .refine((s) => s.startsWith('data:image/'), 'data URL が必要')
     .optional(),
-  // 公開サイト（novel platform）への投稿設定。投稿しない作品は持たない・旧データ互換のため任意。
+  // コトノハ-grove- （novel platform）への投稿設定。投稿しない作品は持たない・旧データ互換のため任意。
   platform: WorkPlatformSchema.optional(),
 })
 export type Work = z.infer<typeof WorkSchema>

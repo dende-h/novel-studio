@@ -5,7 +5,7 @@ interface ImportMetaEnv {
   readonly VITE_CLERK_PUBLISHABLE_KEY?: string
   /** 実行環境（development / staging / production）。 */
   readonly VITE_APP_ENV?: string
-  /** 公開サイト（novel platform）のオリジン。未設定なら投稿の導線を出さない。 */
+  /** コトノハ-grove- （novel platform）のオリジン。未設定なら投稿の導線を出さない。 */
   readonly VITE_PLATFORM_ORIGIN?: string
 }
 
