@@ -3,7 +3,7 @@ import type { BoardKind, BoardThread } from '@/core/board/types'
 import { hasStatusUi } from '@/core/board/types'
 import { cn } from '@/lib/utils'
 import { formatCount } from '@/ui/_utils/format'
-import { excerptOf, formatBoardTime, KIND_UI, kindOrder, STATUS_UI } from '@/ui/board/board-ui'
+import { formatBoardTime, KIND_UI, kindOrder, STATUS_UI } from '@/ui/board/board-ui'
 import { Badge } from '@/ui/components/ui/badge'
 import { Button } from '@/ui/components/ui/button'
 
@@ -49,7 +49,6 @@ export function ThreadRow({ thread, now = Date.now(), href }: ThreadRowProps) {
   const statusUi = STATUS_UI[thread.status]
   // ステータスチップは「種別が対象」かつ「付いている」ときだけ。未設定は label が空。
   const showStatus = withStatus && statusUi.label !== ''
-  const excerpt = excerptOf(thread.excerpt)
   const bumped = formatBoardTime(thread.bumpedAt, now)
   const author = thread.author.displayName
 
@@ -57,9 +56,9 @@ export function ThreadRow({ thread, now = Date.now(), href }: ThreadRowProps) {
     <a
       href={href ?? threadHref(thread.id)}
       className={cn(
-        'block rounded-xl border border-outline-variant/30 bg-surface-container-lowest p-3.5',
+        'block border-outline-variant/25 border-b px-3 py-2.5',
         'no-underline transition-colors hover:bg-surface-container-low',
-        'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring',
+        'focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring',
         // 目立たせる種別（お知らせ）だけ、枠と下地を上書きする。どの種別をどう出すかは
         // `KIND_UI` が決める＝ここで色を選ばない（種別ごとの分岐を画面に持ち込まない）。
         kindUi.rowClassName,
@@ -96,17 +95,14 @@ export function ThreadRow({ thread, now = Date.now(), href }: ThreadRowProps) {
         )}
       </div>
 
-      <h3 className="mt-1.5 font-semibold text-[15px] text-on-surface leading-6 [overflow-wrap:anywhere]">
+      {/* 本文の抜粋は出さない。1 行あたりの高さが倍になり、一覧で見渡せる本数が半分以下になる。
+          何が書いてあるかはタイトルで見当をつけ、開いて読む。抜粋そのものは API が返し続ける
+          （`BoardThread.excerpt`）ので、必要になったら戻せる。 */}
+      <h3 className="mt-1 truncate font-semibold text-[15px] text-on-surface leading-6">
         {thread.title}
       </h3>
 
-      {excerpt !== '' && (
-        <p className="mt-1 line-clamp-2 text-on-surface-variant text-sm leading-6 [overflow-wrap:anywhere]">
-          {excerpt}
-        </p>
-      )}
-
-      <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-on-surface-variant text-xs">
+      <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-on-surface-variant text-xs">
         <span className="truncate">{author}</span>
         {thread.author.staff && <Badge className="bg-primary text-primary-foreground">運営</Badge>}
         {bumped !== '' && <span>{bumped}</span>}
@@ -174,7 +170,15 @@ export function ThreadList({
   }
 
   return (
-    <ul className={cn('flex flex-col gap-2.5', className)}>
+    // 隙間を空けたカードでなく、罫線で区切った 1 枚のリストにする。
+    // 掲示板は「どれを開くか」を選ぶ画面なので、1 画面に入る本数がそのまま使い勝手になる。
+    <ul
+      className={cn(
+        'overflow-hidden rounded-xl border border-outline-variant/30 bg-surface-container-lowest',
+        '[&>li:last-child>a]:border-b-0',
+        className,
+      )}
+    >
       {ordered.map((thread) => (
         <li key={thread.id}>
           <ThreadRow thread={thread} now={now} href={hrefOf?.(thread)} />

@@ -227,11 +227,22 @@ describe('canCreateThread（指摘1・指摘3）', () => {
     expect(STATUS_OF_REASON.forbidden).toBe(403)
   })
 
-  it('お知らせにも誰でも返信できる（返信はこの判定を通らない）', () => {
-    // 「反応できないお知らせ」を作らない。書き込みの可否は canPost だけが決める。
+  it('お知らせには運営しか書けない（返信も運営だけ）', () => {
+    // お知らせは運営からの連絡で、掲示板ではない（D-BOARD-NOTICE）。
+    // 話したいことは要望・不具合・雑談の器がある。
     expect(canPost(actor(), thread({ kind: 'notice', userId: 'staff1' }), NOW)).toEqual({
-      ok: true,
+      ok: false,
+      reason: 'forbidden',
     })
+    expect(
+      canPost(actor({ role: 'staff' }), thread({ kind: 'notice', userId: 'staff1' }), NOW),
+    ).toEqual({ ok: true })
+  })
+
+  it('お知らせ以外は今までどおり誰でも書ける', () => {
+    for (const kind of ['request', 'bug', 'chat', 'intro', 'promo', 'suggestion'] as const) {
+      expect(canPost(actor(), thread({ kind }), NOW)).toEqual({ ok: true })
+    }
   })
 
   it('統合済みの suggestion では新しく立てられない（400）', () => {

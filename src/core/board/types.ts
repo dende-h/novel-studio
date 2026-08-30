@@ -30,7 +30,7 @@ import { z } from 'zod'
  * `request` に合流させ、新規作成は `CREATABLE_KINDS` から外す。
  *
  * `notice`（お知らせ）は**運営だけが立てられる**種別（立てられるかの判定は
- * `src/core/board/permission.ts` の `canCreateThread`）。返信は誰でもできる。
+ * `src/core/board/permission.ts` の `canCreateThread`）。**返信も運営だけ**（`canPost` が同じ表を見る）。
  */
 export const BOARD_KINDS = [
   'suggestion',
@@ -108,7 +108,7 @@ export const boardKindHint: Record<BoardKind, string> = {
   chat: 'いま書いている話のことでも、雑談でも。運営の対応状況は付きません',
   intro: 'どんなものを書いているか、ひとことどうぞ。運営の対応状況は付きません',
   promo: '作品の URL を貼ると、表紙つきのカードで並びます',
-  notice: '運営からのお知らせです。立てられるのは運営だけで、返信は誰でもできます',
+  notice: '運営からのお知らせです。書けるのは運営だけで、返信は付きません',
 }
 
 /**

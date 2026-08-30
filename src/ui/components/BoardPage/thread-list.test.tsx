@@ -30,7 +30,7 @@ const threadOf = (over: Partial<BoardThread> = {}): BoardThread => ({
 })
 
 describe('ThreadRow — 行に出るもの', () => {
-  it('タイトル・種別・投稿者・最終書き込み・返信数・抜粋を出す', () => {
+  it('タイトル・種別・投稿者・最終書き込み・返信数を出す', () => {
     render(
       <ThreadRow
         thread={threadOf({
@@ -45,8 +45,15 @@ describe('ThreadRow — 行に出るもの', () => {
     expect(screen.getByText('青井')).toBeInTheDocument()
     expect(screen.getByText('1分前')).toBeInTheDocument()
     expect(screen.getByText('12')).toBeInTheDocument()
-    // 抜粋は記法の記号を落として 1 行に畳んだもの（excerptOf に委ねている）
-    expect(screen.getByText('見出し 話ごとではなく章ごとに知りたいです')).toBeInTheDocument()
+  })
+
+  it('本文の抜粋は出さない（一覧で見渡せる本数を優先する）', () => {
+    // 抜粋を出すと 1 行の高さが倍になり、1 画面に入るスレが半分以下になる。
+    // 何が書いてあるかはタイトルで見当をつけ、開いて読む。
+    render(
+      <ThreadRow thread={threadOf({ excerpt: '話ごとではなく章ごとに知りたいです' })} now={NOW} />,
+    )
+    expect(screen.queryByText(/話ごとではなく章ごとに/)).toBeNull()
   })
 
   it('時刻が入っていないスレで 1970 年を出さない', () => {
