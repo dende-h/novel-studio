@@ -162,6 +162,24 @@ export default function StagingView({ repo, work, currentEpisodeId, assetRepo }:
     }
   }, [repo, work.id, episode])
 
+  // この作品の演出（全話）で使った話者名。自由記述した名前を、別の行・別の話でも
+  // 選び直せるようにする（本文からの抽出は**しない**——出所は常に演出譜だけ）。
+  const [workSpeakers, setWorkSpeakers] = useState<string[]>([])
+  useEffect(() => {
+    let cancelled = false
+    void repo.listByWork(work.id).then((all) => {
+      if (cancelled) return
+      const names = new Set<string>()
+      for (const s of all) {
+        for (const c of s.cues) if (c.speaker) names.add(c.speaker)
+      }
+      setWorkSpeakers([...names])
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [repo, work.id])
+
   const pages = useMemo(() => (episode ? toPages(episode.blocks) : []), [episode])
   const staged = useMemo(() => applyCues(pages, staging ?? undefined), [pages, staging])
   const suggestions = useMemo(
@@ -178,6 +196,14 @@ export default function StagingView({ repo, work, currentEpisodeId, assetRepo }:
   )
   // 背景の選択肢に立ち絵を混ぜない
   const bgAssets = useMemo(() => assets.filter((a) => a.kind === 'bg'), [assets])
+  // 話者の選択肢：用語集の人物とは別に、この作品の演出で使った名前（編集中の話は保存前の分も拾う）
+  const usedSpeakers = useMemo(() => {
+    const names = new Set(workSpeakers)
+    for (const c of staging?.cues ?? []) if (c.speaker) names.add(c.speaker)
+    return [...names]
+      .filter((n) => n !== MASKED_SPEAKER && !persons.some((p) => p.name === n))
+      .sort((a, b) => a.localeCompare(b, 'ja'))
+  }, [workSpeakers, staging, persons])
   const blockTextById = useMemo(() => {
     const m = new Map<string, string>()
     for (const b of episode?.blocks ?? []) m.set(b.id, plainTextOfBlock(b))
@@ -508,17 +534,25 @@ export default function StagingView({ repo, work, currentEpisodeId, assetRepo }:
                   >
                     <option value="">（名前を出さない）</option>
                     <option value={MASKED_SPEAKER}>？？？（名前を伏せる）</option>
-                    {/* 用語集の人物に無い既存の話者名も選択肢として残す（勝手に消さない） */}
-                    {selected.speaker &&
-                    selected.speaker !== MASKED_SPEAKER &&
-                    !persons.some((p) => p.name === selected.speaker) ? (
-                      <option value={selected.speaker}>{selected.speaker}</option>
+                    {persons.length > 0 ? (
+                      <optgroup label="用語集の人物">
+                        {persons.map((p) => (
+                          <option key={p.id} value={p.name}>
+                            {p.name}
+                          </option>
+                        ))}
+                      </optgroup>
                     ) : null}
-                    {persons.map((p) => (
-                      <option key={p.id} value={p.name}>
-                        {p.name}
-                      </option>
-                    ))}
+                    {/* 自由記述で付けた名前の再利用（用語集の人物と重なる分は上のグループへ） */}
+                    {usedSpeakers.length > 0 ? (
+                      <optgroup label="この作品の演出で使った名前">
+                        {usedSpeakers.map((n) => (
+                          <option key={n} value={n}>
+                            {n}
+                          </option>
+                        ))}
+                      </optgroup>
+                    ) : null}
                     <option value={CUSTOM_SPEAKER}>（自由に入力…）</option>
                   </select>
                   {customSpeaker ? (

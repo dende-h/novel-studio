@@ -229,12 +229,14 @@ describe('持ち込み背景（user:* の同梱）', () => {
   })
 })
 
-describe('立ち絵（話者に自動で紐づく）', () => {
-  // b1=セリフ / b2=地の文 / b3=セリフ / b4=地の文
+describe('立ち絵（話者に自動で紐づく舞台・最大2人）', () => {
+  // b1=セリフ / b2=地の文 / b3=セリフ / b4=セリフ / b5=地の文
   const spriteEpisode: Episode = {
     id: 'e9',
     title: '立ち絵の話',
-    blocks: parseEpisodeBody('「おはよう」\n　朝だった。\n「……行こうか」\n　二人は歩き出した。'),
+    blocks: parseEpisodeBody(
+      '「おはよう」\n　朝だった。\n「……行こうか」\n「はい」\n　二人は歩き出した。',
+    ),
   }
   const tone = ['#111111', '#222222', '#333333'] as [string, string, string]
   const sprite = (id: string, character: string, expression: string, createdAt: number) => ({
@@ -251,9 +253,11 @@ describe('立ち絵（話者に自動で紐づく）', () => {
   })
   const akariNormal = sprite('ak-n', '灯', '通常', 1)
   const akariSmile = sprite('ak-s', '灯', '笑顔', 2)
-  const opts = { userAssets: [akariNormal, akariSmile] }
+  const beni = sprite('be-n', 'ベニ', '通常', 3)
+  const saku = sprite('sa-n', 'サク', '通常', 4)
+  const opts = { userAssets: [akariNormal, akariSmile, beni, saku] }
 
-  it('話者の付いたセリフで立ち絵が出て、使った分だけ zip に同梱される', () => {
+  it('1人目は中央でアクティブ。地の文・話者未設定のセリフは据え置き（マーカー無し）', () => {
     const files = buildNovelGameFiles(
       work,
       spriteEpisode,
@@ -261,22 +265,22 @@ describe('立ち絵（話者に自動で紐づく）', () => {
       opts,
     )
     const s = scenarioOf(files)
-    expect(s.pages[0]?.sprite).toBe('user:ak-n')
-    expect(s.pages[1]?.sprite).toBeUndefined() // 地の文は据え置き（マーカー無し）
-    expect(s.pages[2]?.sprite).toBeUndefined() // 話者未設定のセリフも据え置き（ちらつかせない）
+    expect(s.pages[0]?.stage).toEqual([{ k: 'user:ak-n', p: 'c', a: 1 }])
+    expect(s.pages[1]?.stage).toBeUndefined()
+    expect(s.pages[2]?.stage).toBeUndefined()
     expect(s.sprites?.['user:ak-n']).toEqual({
       src: 'assets/sprite/user-ak-n.webp',
       label: '灯（通常）',
     })
     const paths = files.map((f) => f.path)
     expect(paths).toContain('assets/sprite/user-ak-n.webp')
-    expect(paths).not.toContain('assets/sprite/user-ak-s.webp') // 未使用は同梱しない
-    // プレイヤーに立ち絵レイヤがある
+    expect(paths).not.toContain('assets/sprite/user-be-n.webp') // 未使用は同梱しない
+    // プレイヤーに立ち絵の舞台がある
     const html = files.find((f) => f.path === 'index.html')?.data as string
-    expect(html).toContain('id="spA"')
+    expect(html).toContain('id="sprites"')
   })
 
-  it('表情（cue.expression）で同じ話者の別の立ち絵に替わる', () => {
+  it('表情（cue.expression）はその場で差し替え（席はそのまま）', () => {
     const s = scenarioOf(
       buildNovelGameFiles(
         work,
@@ -288,47 +292,87 @@ describe('立ち絵（話者に自動で紐づく）', () => {
         opts,
       ),
     )
-    expect(s.pages[0]?.sprite).toBe('user:ak-n')
-    expect(s.pages[2]?.sprite).toBe('user:ak-s')
+    expect(s.pages[0]?.stage).toEqual([{ k: 'user:ak-n', p: 'c', a: 1 }])
+    expect(s.pages[2]?.stage).toEqual([{ k: 'user:ak-s', p: 'c', a: 1 }])
   })
 
-  it('立ち絵の無い話者・？？？のセリフでは立ち絵が消える', () => {
+  it('2人目が来ると先客が左へ寄り、右に入る（話している方だけアクティブ）', () => {
     const s = scenarioOf(
       buildNovelGameFiles(
         work,
         spriteEpisode,
         staging([
           { blockId: 'b1', speaker: '灯' },
-          { blockId: 'b3', speaker: '？？？' },
+          { blockId: 'b3', speaker: 'ベニ' },
         ]),
         opts,
       ),
     )
-    expect(s.pages[0]?.sprite).toBe('user:ak-n')
-    expect(s.pages[2]?.sprite).toBe('') // '' ＝ 消す
+    expect(s.pages[2]?.stage).toEqual([
+      { k: 'user:ak-n', p: 'l' },
+      { k: 'user:be-n', p: 'r', a: 1 },
+    ])
   })
 
-  it('場面の切れ目（sceneBreak）で立ち絵が消える', () => {
+  it('3人目は「最近話していない方」と交代し、席（左右）を引き継ぐ', () => {
     const s = scenarioOf(
       buildNovelGameFiles(
         work,
         spriteEpisode,
         staging([
           { blockId: 'b1', speaker: '灯' },
-          { blockId: 'b4', sceneBreak: true },
+          { blockId: 'b3', speaker: 'ベニ' },
+          { blockId: 'b4', speaker: 'サク' },
         ]),
         opts,
       ),
     )
-    expect(s.pages[3]?.sprite).toBe('')
+    expect(s.pages[3]?.stage).toEqual([
+      { k: 'user:sa-n', p: 'l', a: 1 }, // 灯（最近話していない）と交代して左席へ
+      { k: 'user:be-n', p: 'r' },
+    ])
   })
 
-  it('立ち絵が無ければシナリオは従来のまま（sprites も sprite マーカーも出ない）', () => {
+  it('立ち絵の無い話者・？？？のセリフでは退場させず、全員が減光する', () => {
+    const base = [
+      { blockId: 'b1', speaker: '灯' },
+      { blockId: 'b3', speaker: 'ベニ' },
+    ]
+    for (const third of [
+      { blockId: 'b4', speaker: '？？？' },
+      { blockId: 'b4', speaker: 'モブ' },
+    ]) {
+      const s = scenarioOf(
+        buildNovelGameFiles(work, spriteEpisode, staging([...base, third]), opts),
+      )
+      expect(s.pages[3]?.stage).toEqual([
+        { k: 'user:ak-n', p: 'l' },
+        { k: 'user:be-n', p: 'r' },
+      ])
+    }
+  })
+
+  it('場面の切れ目（sceneBreak）で全員退場する', () => {
+    const s = scenarioOf(
+      buildNovelGameFiles(
+        work,
+        spriteEpisode,
+        staging([
+          { blockId: 'b1', speaker: '灯' },
+          { blockId: 'b5', sceneBreak: true },
+        ]),
+        opts,
+      ),
+    )
+    expect(s.pages[4]?.stage).toEqual([])
+  })
+
+  it('立ち絵が無ければシナリオは従来のまま（sprites も stage マーカーも出ない）', () => {
     const s = scenarioOf(
       buildNovelGameFiles(work, spriteEpisode, staging([{ blockId: 'b1', speaker: '灯' }])),
     )
     expect(s.sprites).toBeUndefined()
-    expect(s.pages.every((p) => p.sprite === undefined)).toBe(true)
+    expect(s.pages.every((p) => p.stage === undefined)).toBe(true)
   })
 
   it('立ち絵のキーは背景として解決されない（cue.bg が指しても無視）', () => {

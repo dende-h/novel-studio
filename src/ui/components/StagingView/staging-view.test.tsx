@@ -37,8 +37,8 @@ beforeEach(() => {
   hostApi.deleteHostedAsset.mockReset().mockResolvedValue(true)
 })
 
-/** メモリ実装の疑似リポジトリ（get/save だけ本物と同じ形）。 */
-function fakeRepo(initial?: Staging) {
+/** メモリ実装の疑似リポジトリ（get/save/listByWork だけ本物と同じ形）。others は別の話の演出譜。 */
+function fakeRepo(initial?: Staging, others: Staging[] = []) {
   const saved: Staging[] = []
   let current = initial
   return {
@@ -49,6 +49,7 @@ function fakeRepo(initial?: Staging) {
         current = s
         saved.push(s)
       },
+      listByWork: async () => [...others, ...(current ? [current] : [])],
     } as unknown as StagingRepository,
   }
 }
@@ -122,6 +123,41 @@ describe('StagingView（演出エディタ）', () => {
     fireEvent.keyDown(input, { key: 'Enter' })
     await waitFor(() => expect(saved).toHaveLength(1))
     expect(saved[0]?.cues[0]).toEqual({ blockId: 'b2', speaker: '謎の声' })
+  })
+
+  it('自由記述した名前は「この作品の演出で使った名前」として別の行でも選び直せる', async () => {
+    const twoLines: Work = {
+      ...makeWork(),
+      episodes: [{ id: 'e1', title: '第一話', blocks: parseEpisodeBody('「一つ」\n「二つ」') }],
+    }
+    const { repo, saved } = fakeRepo()
+    render(<StagingView repo={repo} work={twoLines} currentEpisodeId="e1" />)
+    // 1行目に自由記述で「謎の声」を付ける
+    fireEvent.click(await screen.findByText('「一つ」'))
+    fireEvent.change(screen.getByLabelText('話者'), { target: { value: '__custom__' } })
+    const input = screen.getByLabelText('話者名を入力')
+    fireEvent.change(input, { target: { value: '謎の声' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+    await waitFor(() => expect(saved).toHaveLength(1))
+    // 2行目では入力し直さず、プルダウンから選べる
+    fireEvent.click(screen.getByText('「二つ」'))
+    fireEvent.change(screen.getByLabelText('話者'), { target: { value: '謎の声' } })
+    await waitFor(() => expect(saved).toHaveLength(2))
+    expect(saved[1]?.cues).toContainEqual({ blockId: 'b2', speaker: '謎の声' })
+  })
+
+  it('別の話の演出で使った名前もプルダウンに並ぶ（本文からの抽出はしない）', async () => {
+    const { repo } = fakeRepo(undefined, [
+      { workId: 'w1', episodeId: 'e0', cues: [{ blockId: 'x1', speaker: 'おばあ' }], updatedAt: 1 },
+    ])
+    render(<StagingView repo={repo} work={makeWork()} currentEpisodeId="e1" />)
+    fireEvent.click(await screen.findByText('「——まだ、書いてるんだね」'))
+    const option = await screen.findByRole('option', { name: 'おばあ' })
+    // 出所がわかるよう「この作品の演出で使った名前」のグループに入る（用語集の人物とは別）
+    expect(option.closest('optgroup')?.getAttribute('label')).toBe('この作品の演出で使った名前')
+    expect(
+      screen.getByRole('option', { name: '灯' }).closest('optgroup')?.getAttribute('label'),
+    ).toBe('用語集の人物')
   })
 
   it('話者候補（直前の地の文の参照）がボタンで出て、1クリックで適用できる', async () => {

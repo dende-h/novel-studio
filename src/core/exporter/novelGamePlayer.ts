@@ -11,6 +11,16 @@ import type { CreditLine } from '../game/presets'
  * ＞ Ken Burns/クロスフェード。この4つをここで全部持つ。縦書きは G0 では持たない。
  */
 
+/**
+ * 立ち絵の舞台の1人ぶん。k=立ち絵キー、p=位置（1人なら c、2人なら l / r）、
+ * a=いま話している（明るく表示。無い人物は減光）。
+ */
+export interface ScenarioStageEntry {
+  k: string
+  p: 'l' | 'c' | 'r'
+  a?: 1
+}
+
 /** プレイヤーの1メッセージ。units は文字送りの1コマ（HTML 断片、または [HTML, 純文字] の組）。 */
 export interface ScenarioPage {
   id: string
@@ -23,8 +33,8 @@ export interface ScenarioPage {
   transition?: 'cut' | 'fade' | 'flash'
   /** 背景が切り替わるページにだけ載る（先頭ページには必ず載る） */
   bg?: string
-  /** 立ち絵が替わるページにだけ載る（'' ＝ 立ち絵を消す）。exporter が話者から解決済み */
-  sprite?: string
+  /** 立ち絵の舞台が変わるページにだけ載る（その時点の**全景**。空配列 ＝ 全員退場） */
+  stage?: ScenarioStageEntry[]
   units: (string | [string, string])[]
   /** 純本文（共有カード・オート送りの読み時間に使う） */
   text: string
@@ -86,9 +96,16 @@ html,body{height:100%;margin:0;background:#05060A}
   transition:opacity .9s ease}
 .bg.kb{animation:kb 38s ease-in-out infinite alternate}
 @keyframes kb{from{transform:scale(1) translate(0,0)}to{transform:scale(1.08) translate(-1.2%,.8%)}}
-.sp{position:absolute;bottom:0;left:50%;transform:translateX(-50%);height:min(82vh,900px);
-  max-width:min(92vw,720px);object-fit:contain;object-position:bottom center;opacity:0;
-  transition:opacity .45s ease;pointer-events:none}
+#sprites{position:absolute;inset:0;pointer-events:none}
+#sprites img{position:absolute;bottom:0;transform:translateX(-50%);height:min(78vh,860px);
+  max-width:min(58vw,560px);object-fit:contain;object-position:bottom center;opacity:1;
+  transition:opacity .45s ease,left .5s ease,filter .35s ease}
+#sprites img.p-c{left:50%}
+#sprites img.p-l{left:26%}
+#sprites img.p-r{left:74%}
+#sprites img.dim{filter:brightness(.55) saturate(.85)}
+#sprites img.in,#sprites img.out{opacity:0}
+@media (prefers-reduced-motion:reduce){#sprites img{transition:opacity .45s ease}}
 #flash{position:absolute;inset:0;background:#fff;opacity:0;pointer-events:none}
 #flash.on{animation:fl .5s ease-out}
 @keyframes fl{0%{opacity:.9}100%{opacity:0}}
@@ -142,8 +159,7 @@ html,body{height:100%;margin:0;background:#05060A}
 <div id="stage">
   <div id="bgA" class="bg"></div>
   <div id="bgB" class="bg"></div>
-  <img id="spA" class="sp" alt="">
-  <img id="spB" class="sp" alt="">
+  <div id="sprites"></div>
   <div id="shade"></div>
   <div id="flash"></div>
   <div id="hud" hidden>
@@ -200,14 +216,14 @@ html,body{height:100%;margin:0;background:#05060A}
   var S = JSON.parse(document.getElementById('scenario').textContent)
   function $(id) { return document.getElementById(id) }
   var bgA = $('bgA'), bgB = $('bgB'), flashEl = $('flash'), hud = $('hud')
-  var spA = $('spA'), spB = $('spB')
+  var spritesEl = $('sprites')
   var box = $('box'), nameEl = $('name'), lineEl = $('line'), nextEl = $('next')
   var overlays = { title: $('ovTitle'), log: $('ovLog'), menu: $('ovMenu'), credits: $('ovCredits'), end: $('ovEnd') }
   var SETTINGS_KEY = 'kotonoha:novel-game:settings'
   var SPEEDS = [72, 50, 34, 22, 13] // ゆっくり → はやい（1コマの ms）
   var settings = { speed: 3 }
   var state = { i: -1, maxSeen: -1, typing: false, timer: 0, unitIdx: 0,
-    auto: false, skip: false, front: 'A', bgKey: '', spFront: 'A', spKey: '', started: false }
+    auto: false, skip: false, front: 'A', bgKey: '', started: false }
 
   function esc(s) {
     return String(s).replace(/[&<>"]/g, function (c) {
@@ -265,37 +281,59 @@ html,body{height:100%;margin:0;background:#05060A}
     state.front = state.front === 'A' ? 'B' : 'A'
   }
 
-  // ---- 立ち絵（話者に自動で紐づく。exporter が sprite マーカーへ解決済み） ----
-  function spriteAt(i) {
-    var key = ''
+  // ---- 立ち絵の舞台（最大2人。exporter が話者から stage マーカーへ解決済み） ----
+  function stageAt(i) {
+    var st = []
     for (var j = 0; j <= i && j < S.pages.length; j++) {
-      if (typeof S.pages[j].sprite === 'string') key = S.pages[j].sprite
+      if (S.pages[j].stage) st = S.pages[j].stage
     }
-    return key
+    return st
   }
-  function setSprite(key, instant) {
-    if (key === state.spKey) return
-    if (key && !(S.sprites && S.sprites[key])) return
-    state.spKey = key
-    var front = state.spFront === 'A' ? spA : spB
-    var back = state.spFront === 'A' ? spB : spA
-    if (!key) {
-      if (instant) {
-        front.style.transition = 'none'; front.style.opacity = '0'
-        requestAnimationFrame(function () { front.style.transition = '' })
-      } else front.style.opacity = '0'
-      return
+  function noTrans(el) {
+    el.style.transition = 'none'
+    requestAnimationFrame(function () { el.style.transition = '' })
+  }
+  function applyStage(list, instant) {
+    var want = {}
+    for (var i = 0; i < list.length; i++) want[list[i].k] = list[i]
+    // 既存の立ち絵を更新（位置・明暗）、要らなくなった分は退場
+    var imgs = spritesEl.querySelectorAll('img')
+    for (var j = 0; j < imgs.length; j++) {
+      var img = imgs[j]
+      // 退場アニメ中の分は「もういない」扱い（再入場は新しい img で来る＝すれ違いのクロスフェード）
+      if (img.classList.contains('out')) continue
+      var entry = want[img.getAttribute('data-k')]
+      if (!entry) {
+        if (instant) { img.remove() }
+        else {
+          img.classList.add('out')
+          ;(function (el) { setTimeout(function () { el.remove() }, 500) })(img)
+        }
+      } else {
+        img.className = 'p-' + entry.p + (entry.a ? '' : ' dim')
+        if (instant) noTrans(img)
+        delete want[img.getAttribute('data-k')]
+      }
     }
-    back.src = S.sprites[key].src
-    back.alt = S.sprites[key].label
-    if (instant) {
-      back.style.transition = 'none'; front.style.transition = 'none'
-      back.style.opacity = '1'; front.style.opacity = '0'
-      requestAnimationFrame(function () { back.style.transition = ''; front.style.transition = '' })
-    } else {
-      back.style.opacity = '1'; front.style.opacity = '0'
+    // 新しく入場する分
+    for (var k in want) {
+      if (!(S.sprites && S.sprites[k])) continue
+      var e = want[k]
+      var el = document.createElement('img')
+      el.setAttribute('data-k', k)
+      el.src = S.sprites[k].src
+      el.alt = S.sprites[k].label
+      el.className = 'p-' + e.p + (e.a ? '' : ' dim') + (instant ? '' : ' in')
+      spritesEl.appendChild(el)
+      if (instant) noTrans(el)
+      else {
+        ;(function (node) {
+          requestAnimationFrame(function () {
+            requestAnimationFrame(function () { node.classList.remove('in') })
+          })
+        })(el)
+      }
     }
-    state.spFront = state.spFront === 'A' ? 'B' : 'A'
   }
 
   // ---- セーブ（進んだ分だけ自動で） ----
@@ -321,7 +359,7 @@ html,body{height:100%;margin:0;background:#05060A}
     save()
     clearTimeout(state.timer)
     setBg(bgAt(i), p.bg ? p.transition : undefined, instant)
-    setSprite(spriteAt(i), instant)
+    applyStage(stageAt(i), instant)
     box.hidden = false
     if (p.kind === 'dialogue' && p.speaker) { nameEl.textContent = p.speaker; nameEl.hidden = false }
     else { nameEl.hidden = true }
