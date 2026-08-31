@@ -356,6 +356,17 @@ describe('POST /api/board/threads', () => {
     expect((await post(env, validInput)).status).toBe(201)
   })
 
+  it('運営は 1 日の上限に数えない（呼び水スレとお知らせを画面から並べられる）', async () => {
+    // この上限が守るのは「一人が一覧を埋めない」こと。運営はその心配の相手ではない。
+    const { env, store } = setup()
+    store.profiles.set('user_1', fakeProfile({ user_id: 'user_1', role: 'staff' }))
+    for (let i = 0; i < BOARD_LIMITS.threadsPerDay; i++) {
+      store.threads.set(`old${i}`, fakeThread({ id: `old${i}`, created_at: NOW - 1000 }))
+    }
+
+    expect((await post(env, validInput)).status).toBe(201)
+  })
+
   it('レート制限のキーは `board:` 接頭辞で、同期のカウンタと混ざらない（§7-11）', async () => {
     const { env, store } = setup()
     // 同期の枠（素の user_id）が使い切られていても、掲示板には書ける。

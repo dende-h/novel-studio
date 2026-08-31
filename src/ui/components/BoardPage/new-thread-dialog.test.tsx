@@ -439,7 +439,7 @@ describe('NewThreadDialog — アンケート（送信前に手元で弾く）',
 
 describe('NewThreadDialog — 送信', () => {
   it('失敗したら理由を出し、閉じず、書いたものを残す', async () => {
-    const message = 'スレッドは1日に3本までです。時間をおいてから、もう一度お試しください'
+    const message = 'スレッドは1日に10本までです。時間をおいてから、もう一度お試しください'
     const onSubmit = failSubmit('too_many_threads', message, 429)
     const onOpenChange = vi.fn()
     render(<NewThreadDialog open onOpenChange={onOpenChange} onSubmit={onSubmit} />)
