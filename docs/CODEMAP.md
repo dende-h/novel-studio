@@ -35,7 +35,7 @@ Cloudflare Pages Functions
 | 記法（ルビ・傍点・`[[参照]]`）の解釈を変える | `src/core/parser/parseNotation.ts` + `src/core/schema/index.ts` |
 | プレビューのマークダウン（見出し・リスト・表・引用）を変える | `src/core/markdown/index.ts`（本文は非対応。効くのはプロット・世界観・用語集の記法つき欄） |
 | 書き出し（EPUB/なろう/カクヨム/HTML）の出力を変える | `src/core/exporter/` 配下（形式ごとに1ファイル） |
-| サウンドノベル書き出し（ゲーム化・演出譜）を変える | `src/core/game/`（判別・演出譜・テンプレ背景）+ `src/core/exporter/toNovelGame.ts`（プレイヤー本体は `novelGamePlayer.ts`） |
+| サウンドノベル書き出し（ゲーム化・演出譜）を変える | `src/core/game/`（判別・演出譜・テンプレ背景）+ `src/core/exporter/toNovelGame.ts`（プレイヤー本体は `novelGamePlayer.ts`）。演出エディタは `src/ui/components/StagingView/`、永続化は `src/core/storage/stagingRepository.ts` |
 | エディタの入力・ショートカット・サジェスト | `src/ui/components/EditorPane/` |
 | 保存・自動保存・undo・開いている作品の状態 | `src/ui/store/editorStore.ts` |
 | データの永続化・スキーマ移行 | `src/core/storage/*Repository.ts` |
@@ -102,7 +102,8 @@ Cloudflare Pages Functions
 ### 永続化（`storage/`）
 `KeyValueStore`（`src/core/storage/types.ts`）を `IdbStore`（本番）と `MemoryStore`（テスト）が実装。
 その上に薄いリポジトリ: `WorkRepository`（作品・ゴミ箱・`WorkSummary`）、`StructureRepository`、
-`PlotRepository`、`IdeaRepository`、`ActivityRepository`。スナップショットは `snapshot/`。
+`PlotRepository`、`StagingRepository`（演出譜・`staging:<workId>:<episodeId>` の決定的 id）、
+`IdeaRepository`、`ActivityRepository`。スナップショットは `snapshot/`。
 
 > **罠**: IndexedDB からの直読みは Zod を通らないので、スキーマの `.default([])` が効かない
 > （効くのはバックアップ・同期など Zod を通る経路だけ）。既存レコードに実体が無い項目を足したら、
@@ -160,7 +161,7 @@ Cloudflare Pages Functions
 - **執筆**: `EditorPane/`（textarea + 記法バー + `@` サジェスト + 置換パネル）, `PreviewPane/`, `HistoryPanel/`
 - **作品管理**: `Library/`（カード/リスト・作品メニュー）, `TrashDialog/`, `WorkMetaDialog/`, `TitlePromptDialog/`
 - **用語集**: `GlossaryView/`（左：一覧／右：その場編集の二枚看板）, `GlossaryEntryForm/`（本文からのクイック作成・パネル編集用モーダル）, `GlossaryPeek/`
-- **構想の道具（無料アカウント登録で解禁・遅延ロード）**: `MindmapView/`, `CorrelationChartView/`, `OutlineView/`, `PlotView/`（`plot-view.tsx` ＋ 世界観設定タブ `world-view.tsx`）, `StructureCanvas/`
+- **構想の道具（無料アカウント登録で解禁・遅延ロード）**: `MindmapView/`, `CorrelationChartView/`, `OutlineView/`, `PlotView/`（`plot-view.tsx` ＋ 世界観設定タブ `world-view.tsx`）, `StructureCanvas/`, `StagingView/`（サウンドノベルの演出エディタ：行一覧＋話者/背景/場面の切れ目）
 - **執筆画面の右パネル（遅延ロードしない）**: `PlotPeek/`（この話のビート一覧 `plot-peek.tsx` ＋ 読み取り専用のビート詳細 `beat-detail.tsx`）
 - **入出力**: `ExportDialog/`, `ImportDialog/`, `BackupDialog/`, `CloudBackupDialog/`, `AiPullDialog/`
 - **同期/課金**: `SyncOnboarding/`, `SyncLostDialog/`, `RestoreGrace/`, `McpConnectDialog/`, `SaveStateIndicator/`, `BackupNudgeDialog/`

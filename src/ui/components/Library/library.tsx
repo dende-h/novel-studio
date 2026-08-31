@@ -16,6 +16,7 @@ import { localDateKey, summarize } from '@/core/activity'
 import { decideBackupNudge, type NudgeDecision } from '@/core/nudge/backup-nudge'
 import type { WorkPlatform } from '@/core/schema'
 import type { ActivityRepository } from '@/core/storage/activityRepository'
+import type { StagingRepository } from '@/core/storage/stagingRepository'
 import type { WorkSummary } from '@/core/storage/workRepository'
 import { cn } from '@/lib/utils'
 import {
@@ -94,6 +95,8 @@ interface LibraryProps {
   activityRepo: ActivityRepository
   /** 案内モーダルの「クラウドバックアップを利用する場合はこちら」導線（無料の人向け・未指定なら非表示）。 */
   onOpenCloudPlan?: () => void
+  /** 保存済みの演出譜（サウンドノベル書き出しに載せる）。 */
+  stagingRepo?: Pick<StagingRepository, 'get'>
 }
 
 /** データ管理メニューの 1 項目。 */
@@ -151,6 +154,7 @@ export function Library({
   onboarded,
   activityRepo,
   onOpenCloudPlan,
+  stagingRepo,
 }: LibraryProps) {
   const state = useEditorStore(store)
   // コトノハ-grove- への投稿は Clerk JWT で認証する（執筆アカウント＝公開アカウント）。
@@ -551,7 +555,12 @@ export function Library({
         submitLabel="作成"
         onSubmit={(title) => handleCreate(title)}
       />
-      <ExportDialog open={exportOpen} onOpenChange={setExportOpen} work={state.work} />
+      <ExportDialog
+        open={exportOpen}
+        onOpenChange={setExportOpen}
+        work={state.work}
+        stagingRepo={stagingRepo}
+      />
       <BackupDialog
         open={backupOpen}
         onOpenChange={setBackupOpen}

@@ -8,6 +8,7 @@ import {
   presetBgSvg,
 } from '@/core/game/presets'
 import type { Work } from '@/core/schema'
+import type { StagingRepository } from '@/core/storage/stagingRepository'
 import { cn } from '@/lib/utils'
 import { copyText } from '@/ui/_utils/clipboard'
 import { triggerDownload } from '@/ui/_utils/download'
@@ -43,6 +44,10 @@ interface ExportDialogProps {
   work: Work | null
   /** EPUB メタ情報を編集（指定時のみ「作品情報を編集」を表示） */
   onEditMeta?: () => void
+  /** 保存済みの演出譜（サウンドノベル用）。渡されたときだけ書き出しに演出が載る。 */
+  stagingRepo?: Pick<StagingRepository, 'get'>
+  /** 演出エディタへ（指定時のみ「演出を編集」を表示。ホスト側がこのダイアログを閉じてから開く） */
+  onEditStaging?: () => void
 }
 
 interface FormatDef {
@@ -86,7 +91,14 @@ const FORMATS: FormatDef[] = [
 ]
 
 /** 書き出しモーダル。左に形式、右に設定。core の各 exporter を配線する。 */
-export function ExportDialog({ open, onOpenChange, work, onEditMeta }: ExportDialogProps) {
+export function ExportDialog({
+  open,
+  onOpenChange,
+  work,
+  onEditMeta,
+  stagingRepo,
+  onEditStaging,
+}: ExportDialogProps) {
   const [format, setFormat] = useState<Format>('epub')
   const [platform, setPlatform] = useState<Platform>('narou')
   const [episodeId, setEpisodeId] = useState<string | null>(null)
@@ -145,8 +157,10 @@ export function ExportDialog({ open, onOpenChange, work, onEditMeta }: ExportDia
         try {
           // フォントが取れなくても書き出しは止めない（システムの明朝で動く zip になる）
           const font = await loadGameFont()
+          // 保存済みの演出譜（話者・背景・場面の切れ目）があれば載せる
+          const staging = await stagingRepo?.get(work.id, selectedEpisode.id)
           triggerDownload(
-            episodeNovelGameExport(work, selectedEpisode, { defaultBg: gameBg, font }),
+            episodeNovelGameExport(work, selectedEpisode, { defaultBg: gameBg, font }, staging),
           )
         } catch {
           // 原稿は失われていない。ダイアログを開いたままメッセージを見せる
@@ -357,6 +371,23 @@ export function ExportDialog({ open, onOpenChange, work, onEditMeta }: ExportDia
                         className="mt-3 aspect-video w-full rounded-md border border-outline-variant/30 object-cover"
                       />
                     </div>
+                    {onEditStaging ? (
+                      <div className="flex items-center justify-between gap-3 rounded-md border border-outline-variant/30 p-3">
+                        <p className="text-on-surface-variant text-xs leading-relaxed">
+                          話者・背景・場面の切れ目を付けてあれば、その演出で書き出します。
+                        </p>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={onEditStaging}
+                          className="shrink-0 gap-2 text-primary"
+                        >
+                          <Pencil className="size-4" />
+                          演出を編集
+                        </Button>
+                      </div>
+                    ) : null}
                     <p className="rounded-md border border-outline-variant/30 p-3 text-on-surface-variant text-xs leading-relaxed">
                       背景とフォントはコトノハの標準素材です。クレジット表記はゲーム内に自動で入り、ZIP
                       は素材ごと配布できます。

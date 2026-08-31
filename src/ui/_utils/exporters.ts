@@ -5,6 +5,7 @@ import { blocksToNarou } from '../../core/exporter/toNarou'
 import { buildNovelGameFiles, type NovelGameOptions } from '../../core/exporter/toNovelGame'
 import { glossaryToPlainText, workToPlainText } from '../../core/exporter/toPlainText'
 import { workToFolder } from '../../core/folder'
+import type { Staging } from '../../core/game'
 import type { Episode, Work } from '../../core/schema'
 import { zipStore } from '../../core/zip'
 
@@ -43,14 +44,15 @@ export function episodeKakuyomuExport(workTitle: string, ep: Episode): ExportFil
 
 /**
  * 1話 → ブラウザで遊べるサウンドノベル zip（index.html ＋ assets/）。
- * Staging（演出譜）は G1 で配線する——G0 は演出ゼロの完全自動書き出し。
+ * staging（演出譜）を渡すと話者・背景・場面の切れ目が載る。無ければ演出ゼロの完全自動。
  */
 export function episodeNovelGameExport(
   work: Work,
   ep: Episode,
   opts: NovelGameOptions,
+  staging?: Staging,
 ): ExportFile {
-  const bytes = zipStore(buildNovelGameFiles(work, ep, undefined, opts))
+  const bytes = zipStore(buildNovelGameFiles(work, ep, staging, opts))
   return {
     filename: `${safeName(work.title)}_${safeName(ep.title)}_novelgame.zip`,
     mime: 'application/zip',
