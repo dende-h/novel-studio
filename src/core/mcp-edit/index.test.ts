@@ -46,6 +46,20 @@ describe('mcp-edit（MCP 書き込みの純ロジック）', () => {
     expect(w?.episodes[0]?.blocks.length).toBeGreaterThan(0)
   })
 
+  it('setEpisode で本文を直しても、変わらない行の block id は引き継がれる', () => {
+    const [w1] = setEpisode([work()], 'w1', 'e1', { body: '一行目。\n「二行目」' }, 100)
+    const before = w1?.episodes[0]?.blocks.map((b) => b.id)
+    const [w2] = setEpisode(
+      w1 ? [w1] : [],
+      'w1',
+      'e1',
+      { body: '前置き。\n一行目。\n「二行目」' },
+      200,
+    )
+    const after = w2?.episodes[0]?.blocks.map((b) => b.id)
+    expect(after?.slice(1)).toEqual(before)
+  })
+
   it('addEpisode は末尾に話を追加', () => {
     const [w] = addEpisode([work()], 'w1', { title: '第二話', body: 'あ' }, 'e2', 100)
     expect(w?.episodes.map((e) => e.id)).toEqual(['e1', 'e2'])

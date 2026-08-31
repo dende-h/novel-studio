@@ -1,6 +1,7 @@
 import { blocksToNotation } from '../../core/exporter/blocksToNotation'
 import { renameEntry, resolveRef } from '../../core/glossary'
 import { parseEpisodeBody } from '../../core/parser/parseNotation'
+import { reconcileBlockIds } from '../../core/parser/reconcileBlockIds'
 import type { Profile, ProfileRepository } from '../../core/profile'
 import type { Episode, GlossaryEntry, Work, WorkPlatform } from '../../core/schema'
 import type { Snapshot } from '../../core/snapshot'
@@ -359,7 +360,8 @@ export function createEditorStore({
     async save() {
       const ep = currentEpisode(state)
       if (!state.work || !ep) return
-      const blocks = parseEpisodeBody(state.draft)
+      // 再パースで振り直された id を旧 blocks から引き継ぐ（演出譜 Staging のアンカー安定化）
+      const blocks = reconcileBlockIds(ep.blocks, parseEpisodeBody(state.draft))
       // 本文に変化が無ければ永続化もスナップショットも行わない（保存の氾濫を防ぐ）
       if (JSON.stringify(ep.blocks) === JSON.stringify(blocks)) {
         set({ dirty: false, status: 'saved' })

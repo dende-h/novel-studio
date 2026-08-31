@@ -8,9 +8,9 @@ import type { Block, Episode, GlossaryEntry, Inline } from '../schema'
  * 演出（Staging）は正本 `Work` の**外**に置き、`Block.id` をアンカーに本文へ張り付く
  * （D-GAME-STAGING）。正本はゲーム化によって一切変更されない。
  *
- * **アンカーの寿命に注意**: Block.id は保存時の再パースで振り直される（parseNotation の
- * `b${i+1}`）ため、同一スナップショット内でのみ有効。エクスポート時の突き合わせ（G0）は
- * これで足りるが、Staging を永続化する段（G1）では id の安定化が先に要る（07 §14 未決）。
+ * **アンカーの寿命**: 保存経路（editorStore の save・MCP の set_episode）は
+ * `reconcileBlockIds`（src/core/parser/）で旧 blocks から id を引き継ぐため、
+ * 内容が変わらない段落の id は編集をまたいで安定する。詳細は 07 §2.3。
  */
 
 // ---------------------------------------------------------------------------
