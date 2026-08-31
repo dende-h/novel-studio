@@ -232,6 +232,114 @@ describe('BoardPage（掲示板の一覧）', () => {
     ).toBeInTheDocument()
   })
 
+  it('立てたスレッドが、読み込み直さなくても一覧に出る', async () => {
+    // 立てた直後に一覧へ出ないと、成功したのか分からず同じスレを二度立てる。
+    let created = false
+    stubFetch((url, init) => {
+      if (url === '/api/board/me') return jsonRes(meOf())
+      if (url.startsWith('/api/board/threads') && init?.method === 'POST') {
+        created = true
+        return jsonRes({ id: 't2', postId: 'p2', seq: 1 }, 201)
+      }
+      if (url.startsWith('/api/board/threads')) {
+        const threads = created
+          ? [threadOf({ id: 't2', title: '新しく立てたスレ' }), threadOf()]
+          : [threadOf()]
+        return jsonRes({ threads, nextCursor: null })
+      }
+      throw new Error(`想定外の取得: ${url}`)
+    })
+
+    renderPage(signedInAuth())
+    await screen.findByText('章ごとの文字数を出してほしい')
+    await settle()
+
+    fireEvent.click(screen.getByRole('button', { name: 'スレッドを立てる' }))
+    fireEvent.change(await screen.findByLabelText('タイトル'), {
+      target: { value: '新しく立てたスレ' },
+    })
+    fireEvent.change(screen.getByLabelText('本文'), { target: { value: '本文です' } })
+    fireEvent.click(screen.getByRole('button', { name: '立てる' }))
+
+    expect(await screen.findByText('新しく立てたスレ')).toBeInTheDocument()
+  })
+
+  it('絞り込み中に立てても、立てたスレッドが見える（絞り込みは解除する）', async () => {
+    // 立てた直後に「絞り込みに合わない一覧」を読み直すと、書けたのに何も出ない。
+    // 読み込み直すと絞り込みが消えて出てくる＝「リロードすると表示される」の正体。
+    let created = false
+    const fetchMock = stubFetch((url, init) => {
+      if (url === '/api/board/me') return jsonRes(meOf())
+      if (url.startsWith('/api/board/threads') && init?.method === 'POST') {
+        created = true
+        return jsonRes({ id: 't2', postId: 'p2', seq: 1 }, 201)
+      }
+      if (url.startsWith('/api/board/threads')) {
+        // 雑談で絞ったら、要望のスレッドは返らない（サーバは種別で絞る）。
+        if (url.includes('kind=chat')) return jsonRes({ threads: [], nextCursor: null })
+        const threads = created
+          ? [threadOf({ id: 't2', title: '新しく立てたスレ' }), threadOf()]
+          : [threadOf()]
+        return jsonRes({ threads, nextCursor: null })
+      }
+      throw new Error(`想定外の取得: ${url}`)
+    })
+
+    renderPage(signedInAuth())
+    await screen.findByText('章ごとの文字数を出してほしい')
+    await settle()
+
+    // 雑談で絞り込む（この状態で要望のスレッドを立てる）。
+    fireEvent.click(screen.getByRole('button', { name: '雑談' }))
+    await settle()
+
+    // 0 件の空状態にも同じ導線が出るので、見出し側（先頭）を押す。
+    fireEvent.click(screen.getAllByRole('button', { name: 'スレッドを立てる' })[0] as HTMLElement)
+    fireEvent.change(await screen.findByLabelText('タイトル'), {
+      target: { value: '新しく立てたスレ' },
+    })
+    fireEvent.change(screen.getByLabelText('本文'), { target: { value: '本文です' } })
+    fireEvent.click(screen.getByRole('button', { name: '立てる' }))
+
+    expect(await screen.findByText('新しく立てたスレ')).toBeInTheDocument()
+    // 読み直しは絞り込み無しで投げている。
+    expect(fetchMock.mock.calls.some(([url], i) => i > 0 && url === '/api/board/threads')).toBe(
+      true,
+    )
+  })
+
+  it('「自分の書き込み」を見ているときに立てても、スレッド一覧へ戻して見せる', async () => {
+    let created = false
+    stubFetch((url, init) => {
+      if (url === '/api/board/me') return jsonRes(meOf())
+      if (url.startsWith('/api/board/threads') && init?.method === 'POST') {
+        created = true
+        return jsonRes({ id: 't2', postId: 'p2', seq: 1 }, 201)
+      }
+      if (url.startsWith('/api/board/threads')) {
+        const threads = created
+          ? [threadOf({ id: 't2', title: '新しく立てたスレ' }), threadOf()]
+          : [threadOf()]
+        return jsonRes({ threads, nextCursor: null })
+      }
+      throw new Error(`想定外の取得: ${url}`)
+    })
+
+    renderPage(signedInAuth())
+    await screen.findByText('章ごとの文字数を出してほしい')
+    await settle()
+
+    fireEvent.click(screen.getByRole('button', { name: /自分の書き込み/ }))
+    fireEvent.click(screen.getByRole('button', { name: 'スレッドを立てる' }))
+    fireEvent.change(await screen.findByLabelText('タイトル'), {
+      target: { value: '新しく立てたスレ' },
+    })
+    fireEvent.change(screen.getByLabelText('本文'), { target: { value: '本文です' } })
+    fireEvent.click(screen.getByRole('button', { name: '立てる' }))
+
+    expect(await screen.findByText('新しく立てたスレ')).toBeInTheDocument()
+  })
+
   it('自分が書いたスレッドが最後に見た時刻より後に動いていたら、タブに未読バッジを出す', async () => {
     localStorage.setItem(BOARD_SEEN_KEY, String(NOW - 2 * HOUR))
     stubFetch((url) => {
