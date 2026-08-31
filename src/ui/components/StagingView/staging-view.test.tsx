@@ -270,14 +270,81 @@ describe('StagingView（演出エディタ）', () => {
     expect(await screen.findByText('表情 笑顔')).toBeInTheDocument()
   })
 
-  it('素材の管理を開くと、非会員にはクラウド保管が有料である案内が出る', async () => {
+  it('地の文の行で「立ち絵の登場」を選ぶと cue（appear）に保存される', async () => {
+    const { repo, saved } = fakeRepo()
+    const { repo: assetRepo } = memoryAssetRepo([
+      { ...memoryAsset('sp1', '灯（通常）'), kind: 'sprite', character: '灯', expression: '通常' },
+    ])
+    render(
+      <StagingView repo={repo} work={makeWork()} currentEpisodeId="e1" assetRepo={assetRepo} />,
+    )
+    fireEvent.click(await screen.findByText('灯が振り返った。'))
+    const select = await screen.findByLabelText('立ち絵の登場')
+    fireEvent.change(select, { target: { value: '灯' } })
+    await waitFor(() => expect(saved).toHaveLength(1))
+    expect(saved[0]?.cues[0]).toEqual({ blockId: 'b1', appear: '灯' })
+    expect(await screen.findByText('登場 灯')).toBeInTheDocument()
+  })
+
+  it('テンプレから選ぶ…でシルエット立ち絵が話者に割り当てられる（tpl- id・枚数に数えない）', async () => {
+    const { repo } = fakeRepo({
+      workId: 'w1',
+      episodeId: 'e1',
+      cues: [{ blockId: 'b2', speaker: '灯' }],
+      updatedAt: 1,
+    })
+    const { repo: assetRepo, map } = memoryAssetRepo()
+    render(
+      <StagingView repo={repo} work={makeWork()} currentEpisodeId="e1" assetRepo={assetRepo} />,
+    )
+    fireEvent.click(await screen.findByText('「——まだ、書いてるんだね」'))
+    fireEvent.click(await screen.findByRole('button', { name: 'テンプレから選ぶ…' }))
+    fireEvent.click(await screen.findByRole('button', { name: /（女性）/ }))
+    await waitFor(() => expect(map.size).toBe(1))
+    const saved = [...map.values()][0]
+    expect(saved).toMatchObject({
+      kind: 'sprite',
+      character: '灯',
+      expression: '通常',
+      preset: 'preset:sprite/silhouette-woman',
+      name: '灯（シルエット（女性））',
+    })
+    expect(saved?.id.startsWith('tpl-')).toBe(true)
+    // もう一度別のテンプレを選ぶと差し替え（増えない）
+    fireEvent.click(screen.getByRole('button', { name: 'テンプレから選ぶ…' }))
+    fireEvent.click(await screen.findByRole('button', { name: /（フードの人）/ }))
+    await waitFor(() => expect([...map.values()][0]?.preset).toBe('preset:sprite/silhouette-hood'))
+    expect(map.size).toBe(1)
+  })
+
+  it('無料プランは持ち込み5枚まで（テンプレは数えない・案内を出してファイル選択を開かない）', async () => {
+    const { repo } = fakeRepo()
+    const five = Array.from({ length: 5 }, (_, i) => memoryAsset(`bg-${i}`, `背景${i}`))
+    const tpl: UserGameAsset = {
+      ...memoryAsset('tpl-x', '灯（シルエット）'),
+      kind: 'sprite',
+      character: '灯',
+      preset: 'preset:sprite/silhouette-woman',
+    }
+    const { repo: assetRepo, map } = memoryAssetRepo([...five, tpl])
+    render(
+      <StagingView repo={repo} work={makeWork()} currentEpisodeId="e1" assetRepo={assetRepo} />,
+    )
+    fireEvent.click(await screen.findByText('「——まだ、書いてるんだね」'))
+    fireEvent.change(screen.getByLabelText('背景'), { target: { value: '__add_image__' } })
+    expect(await screen.findByText(/無料プランでは 5 枚までです/)).toBeInTheDocument()
+    expect(map.size).toBe(6) // 何も追加されていない
+  })
+
+  it('素材の管理を開くと、非会員には無料枠の枚数とクラウド版の案内が出る', async () => {
     const { repo } = fakeRepo()
     const { repo: assetRepo } = memoryAssetRepo([memoryAsset('a1', '海辺')])
     render(
       <StagingView repo={repo} work={makeWork()} currentEpisodeId="e1" assetRepo={assetRepo} />,
     )
     fireEvent.click(await screen.findByRole('button', { name: '素材の管理' }))
-    expect(await screen.findByText(/有料のクラウド版の機能です/)).toBeInTheDocument()
+    expect(await screen.findByText(/持ち込み 1 \/ 5 枚（無料プラン/)).toBeInTheDocument()
+    expect(screen.getByText(/クラウド版では 30 枚まで/)).toBeInTheDocument()
     expect(screen.getByText('海辺')).toBeInTheDocument()
     // 非会員はクラウド操作もバッジも出ない
     expect(screen.queryByRole('button', { name: 'クラウドへ上げる' })).not.toBeInTheDocument()

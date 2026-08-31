@@ -27,6 +27,8 @@ export const CueSchema = z.object({
   speaker: z.string().optional(),
   /** 表情名。話者に立ち絵があるときだけ意味を持つ（無ければ「通常」→最初の1枚に倒す） */
   expression: z.string().optional(),
+  /** 立ち絵の登場（人物名）。この行からその人物の立ち絵が舞台に入る（名前枠は出さない・地の文でも可） */
+  appear: z.string().optional(),
   /** ここで場面が変わる（背景・BGM の切り替え点）。正本に区切りは復活させない（D-GAME-SCENE-MANUAL） */
   sceneBreak: z.boolean().optional(),
   /** アセットキー（'preset:bg/room-day' 等）。実体は持たない（D-GAME-ASSET-STORE） */
@@ -84,6 +86,7 @@ export function patchCue(
   for (const key of [
     'speaker',
     'expression',
+    'appear',
     'sceneBreak',
     'bg',
     'bgm',
@@ -194,6 +197,7 @@ export function toPages(blocks: Block[]): GamePage[] {
 export interface StagedPage extends GamePage {
   speaker?: string
   expression?: string
+  appear?: string
   sceneBreak?: boolean
   bg?: string
   bgm?: string

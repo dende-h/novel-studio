@@ -16,12 +16,21 @@ import {
 } from '@/core/game'
 import {
   DEFAULT_EXPRESSION,
+  FREE_IMPORT_LIMIT,
+  HOSTED_ASSET_LIMIT,
+  importVerdict,
   pickSprite,
   spriteExpressionsOf,
   type UserGameAsset,
   userAssetKey,
 } from '@/core/game/assets'
 import { PRESET_BACKGROUNDS, presetBackground, presetBgSvg } from '@/core/game/presets'
+import {
+  PRESET_SPRITE_TONE,
+  PRESET_SPRITES,
+  type PresetSprite,
+  presetSpriteDataUrl,
+} from '@/core/game/spritePresets'
 import { PERSON_CATEGORY } from '@/core/glossary'
 import type { Work } from '@/core/schema'
 import type { GameAssetRepository } from '@/core/storage/gameAssetRepository'
@@ -103,6 +112,8 @@ export default function StagingView({ repo, work, currentEpisodeId, assetRepo }:
   } | null>(null)
   const [spriteExprDraft, setSpriteExprDraft] = useState(DEFAULT_EXPRESSION)
   const spriteInputRef = useRef<HTMLInputElement>(null)
+  // テンプレ立ち絵のピッカー（選択中の行にだけ効く。行を替えたら閉じる）
+  const [spritePickerOpen, setSpritePickerOpen] = useState(false)
   // 持ち込み背景（この端末のローカル資産）
   const [assets, setAssets] = useState<UserGameAsset[]>([])
   const [assetError, setAssetError] = useState<string | null>(null)
@@ -196,6 +207,26 @@ export default function StagingView({ repo, work, currentEpisodeId, assetRepo }:
   )
   // 背景の選択肢に立ち絵を混ぜない
   const bgAssets = useMemo(() => assets.filter((a) => a.kind === 'bg'), [assets])
+  // 立ち絵のある人物（登場セレクトの選択肢）
+  const spriteCharacters = useMemo(() => {
+    const names = new Set<string>()
+    for (const a of assets) if (a.kind === 'sprite' && a.character) names.add(a.character)
+    return [...names].sort((a, b) => a.localeCompare(b, 'ja'))
+  }, [assets])
+  // 持ち込み枚数（テンプレ由来は数えない）。無料プランは FREE_IMPORT_LIMIT まで。
+  const importedCount = useMemo(() => assets.filter((a) => !a.preset).length, [assets])
+
+  /** 画像の持ち込みを始める（無料枠の判定に通ったらファイル選択を開く）。 */
+  const beginImport = (input: HTMLInputElement | null) => {
+    setHostNotice(null)
+    if (importVerdict(importedCount, member) === 'free_limit') {
+      setHostNotice(
+        `画像の持ち込みは、無料プランでは ${FREE_IMPORT_LIMIT} 枚までです。テンプレの背景と立ち絵は枚数に入りません。枠を空けるには、素材の管理から削除します。クラウド版では ${HOSTED_ASSET_LIMIT} 枚まで持ち込め、ほかの端末とも共有できます。`,
+      )
+      return
+    }
+    input?.click()
+  }
   // 話者の選択肢：用語集の人物とは別に、この作品の演出で使った名前（編集中の話は保存前の分も拾う）
   const usedSpeakers = useMemo(() => {
     const names = new Set(workSpeakers)
@@ -251,6 +282,7 @@ export default function StagingView({ repo, work, currentEpisodeId, assetRepo }:
     setSelectedId(blockId)
     setCustomSpeaker(false)
     setPendingSprite(null)
+    setSpritePickerOpen(false)
   }
   const commitCustomSpeaker = (blockId: string) => {
     const name = customDraft.trim()
@@ -301,6 +333,40 @@ export default function StagingView({ repo, work, currentEpisodeId, assetRepo }:
     } catch {
       setAssetError('この画像は読み込めませんでした。別のファイルでお試しください。')
     }
+  }
+
+  /**
+   * テンプレ立ち絵を話者へ割り当てる（無料でも使える・枚数に数えない）。
+   * 同じ話者のテンプレ割り当てが既にあれば差し替える（持ち込んだ絵には触れない）。
+   */
+  const pickTemplateSprite = async (speaker: string, preset: PresetSprite) => {
+    if (!assetRepo) return
+    setHostNotice(null)
+    setSpritePickerOpen(false)
+    const existing = assets.find((a) => a.kind === 'sprite' && a.character === speaker && a.preset)
+    const asset: UserGameAsset = existing
+      ? {
+          ...existing,
+          name: `${speaker}（${preset.label}）`,
+          dataUrl: presetSpriteDataUrl(preset),
+          preset: preset.key,
+        }
+      : {
+          id: `tpl-${crypto.randomUUID()}`,
+          kind: 'sprite',
+          name: `${speaker}（${preset.label}）`,
+          dataUrl: presetSpriteDataUrl(preset),
+          tone: PRESET_SPRITE_TONE,
+          character: speaker,
+          expression: DEFAULT_EXPRESSION,
+          preset: preset.key,
+          createdAt: Date.now(),
+        }
+    await assetRepo.save(asset)
+    setAssets((prev) =>
+      existing ? prev.map((a) => (a.id === asset.id ? asset : a)) : [asset, ...prev],
+    )
+    if (hostingApi) void uploadAsset(asset).then((r) => setHostNotice(uploadNoticeOf(r)))
   }
 
   /** 立ち絵を確定保存する（話者に自動で紐づく。会員はクラウドにも控えを置く）。 */
@@ -480,6 +546,7 @@ export default function StagingView({ repo, work, currentEpisodeId, assetRepo }:
                           {page.kind === 'dialogue' && page.expression ? (
                             <span>表情 {page.expression}</span>
                           ) : null}
+                          {page.appear ? <span>登場 {page.appear}</span> : null}
                           {!page.sceneBreak && bgLabel ? <span>背景 {bgLabel}</span> : null}
                         </span>
                       </span>
@@ -507,6 +574,10 @@ export default function StagingView({ repo, work, currentEpisodeId, assetRepo }:
               <p className="rounded-md bg-surface-container-low p-3 font-serif text-on-surface text-sm leading-relaxed">
                 {blockTextById.get(selected.blockId) ?? ''}
               </p>
+
+              {hostNotice ? (
+                <p className="text-on-surface-variant text-xs leading-relaxed">{hostNotice}</p>
+              ) : null}
 
               {selected.kind === 'dialogue' ? (
                 <div>
@@ -669,16 +740,51 @@ export default function StagingView({ repo, work, currentEpisodeId, assetRepo }:
                           </div>
                         </div>
                       ) : (
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          className="mt-2 text-primary"
-                          onClick={() => spriteInputRef.current?.click()}
-                        >
-                          立ち絵を追加…
-                        </Button>
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="text-primary"
+                            onClick={() => beginImport(spriteInputRef.current)}
+                          >
+                            立ち絵を追加…
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="text-primary"
+                            onClick={() => setSpritePickerOpen((v) => !v)}
+                          >
+                            テンプレから選ぶ…
+                          </Button>
+                        </div>
                       )}
+                      {spritePickerOpen && !pendingSprite ? (
+                        <div className="mt-2 grid grid-cols-3 gap-2 rounded-md border border-outline-variant/30 p-2">
+                          {PRESET_SPRITES.map((p) => (
+                            <button
+                              key={p.key}
+                              type="button"
+                              className="rounded-md border border-outline-variant/30 p-1 hover:bg-surface-container-high"
+                              onClick={() => void pickTemplateSprite(selected.speaker ?? '', p)}
+                            >
+                              <img
+                                src={presetSpriteDataUrl(p)}
+                                alt=""
+                                className="mx-auto h-20 object-contain"
+                              />
+                              <span className="mt-1 block text-center text-[10px] text-on-surface-variant leading-tight">
+                                {p.label.replace('シルエット', '')}
+                              </span>
+                            </button>
+                          ))}
+                          <p className="col-span-3 text-[11px] text-on-surface-variant">
+                            テンプレの立ち絵は枚数に数えません。
+                          </p>
+                        </div>
+                      ) : null}
                       <input
                         ref={spriteInputRef}
                         type="file"
@@ -693,6 +799,41 @@ export default function StagingView({ repo, work, currentEpisodeId, assetRepo }:
                       />
                     </div>
                   ) : null}
+                </div>
+              ) : null}
+
+              {selected.kind === 'narration' &&
+              assetRepo &&
+              (spriteCharacters.length > 0 || selected.appear) ? (
+                <div>
+                  <label
+                    htmlFor="staging-appear"
+                    className="mb-2 block text-on-surface-variant text-xs uppercase tracking-wider"
+                  >
+                    立ち絵の登場
+                  </label>
+                  <select
+                    id="staging-appear"
+                    value={selected.appear ?? ''}
+                    onChange={(e) =>
+                      apply(selected.blockId, { appear: e.target.value || undefined })
+                    }
+                    className={SELECT_CLASS}
+                  >
+                    <option value="">（なし）</option>
+                    {/* 立ち絵が無くなった人物の既存 cue も選択状態は保つ（勝手に外さない） */}
+                    {selected.appear && !spriteCharacters.includes(selected.appear) ? (
+                      <option value={selected.appear}>{selected.appear}（立ち絵なし）</option>
+                    ) : null}
+                    {spriteCharacters.map((n) => (
+                      <option key={n} value={n}>
+                        {n}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="mt-2 text-[11px] text-on-surface-variant leading-relaxed">
+                    この行から立ち絵を出します。名前枠は出ません。
+                  </p>
                 </div>
               ) : null}
 
@@ -725,7 +866,7 @@ export default function StagingView({ repo, work, currentEpisodeId, assetRepo }:
                   onChange={(e) => {
                     const value = e.target.value
                     if (value === ADD_IMAGE) {
-                      fileInputRef.current?.click()
+                      beginImport(fileInputRef.current)
                       return
                     }
                     apply(selected.blockId, { bg: value || undefined })
@@ -770,9 +911,6 @@ export default function StagingView({ repo, work, currentEpisodeId, assetRepo }:
                   />
                 ) : null}
                 {assetError ? <p className="mt-2 text-destructive text-xs">{assetError}</p> : null}
-                {hostNotice ? (
-                  <p className="mt-2 text-on-surface-variant text-xs">{hostNotice}</p>
-                ) : null}
                 {bgPreviewSrc(selected.bg, assets) ? (
                   <img
                     src={bgPreviewSrc(selected.bg, assets)}
@@ -844,6 +982,7 @@ function describeCue(cue: Cue, assets: UserGameAsset[]): string {
   const parts: string[] = []
   if (cue.speaker) parts.push(`話者 ${cue.speaker}`)
   if (cue.expression) parts.push(`表情 ${cue.expression}`)
+  if (cue.appear) parts.push(`登場 ${cue.appear}`)
   if (cue.sceneBreak) parts.push('場面の切れ目')
   if (cue.bg) parts.push(`背景 ${bgLabelOf(cue.bg, assets) ?? cue.bg}`)
   if (cue.bgm) parts.push('BGM')

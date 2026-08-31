@@ -381,4 +381,83 @@ describe('立ち絵（話者に自動で紐づく舞台・最大2人）', () => 
     )
     expect(s.pages[1]?.bg).toBeUndefined()
   })
+
+  it('登場（appear）：地の文からセリフの前に立ち絵を出せる（明るくはしない）', () => {
+    const s = scenarioOf(
+      buildNovelGameFiles(
+        work,
+        spriteEpisode,
+        staging([
+          { blockId: 'b2', appear: '灯' }, // 地の文で登場
+          { blockId: 'b3', speaker: '灯' }, // ここで初めて話す
+        ]),
+        opts,
+      ),
+    )
+    expect(s.pages[1]?.stage).toEqual([{ k: 'user:ak-n', p: 'c' }]) // 立つが a 無し
+    expect(s.pages[2]?.stage).toEqual([{ k: 'user:ak-n', p: 'c', a: 1 }]) // 話して明るく
+  })
+
+  it('登場は席の割り当てに従い、既に立っている人物・立ち絵の無い人物・？？？は無視', () => {
+    const s = scenarioOf(
+      buildNovelGameFiles(
+        work,
+        spriteEpisode,
+        staging([
+          { blockId: 'b1', speaker: '灯' },
+          { blockId: 'b2', appear: 'ベニ' }, // 2人目＝左右へ
+          { blockId: 'b5', appear: 'モブ' }, // 立ち絵なし＝据え置き
+        ]),
+        opts,
+      ),
+    )
+    expect(s.pages[1]?.stage).toEqual([
+      { k: 'user:ak-n', p: 'l', a: 1 }, // 灯は話者のまま明るい
+      { k: 'user:be-n', p: 'r' },
+    ])
+    expect(s.pages[4]?.stage).toBeUndefined()
+  })
+})
+
+describe('テンプレ立ち絵（シルエット・preset）', () => {
+  const tplAsset = {
+    key: 'user:tpl-1',
+    id: 'tpl-1',
+    label: '灯（シルエット（女性））',
+    tone: ['#2E3850', '#222A3E', '#161C2B'] as [string, string, string],
+    mime: 'image/svg+xml',
+    data: new Uint8Array([60, 115, 118, 103]),
+    kind: 'sprite' as const,
+    character: '灯',
+    expression: '通常',
+    preset: 'preset:sprite/silhouette-woman',
+    createdAt: 1,
+  }
+  const ep: Episode = {
+    id: 'e9',
+    title: 'テンプレの話',
+    blocks: parseEpisodeBody('「おはよう」'),
+  }
+
+  it('svg のまま同梱され、クレジットに運営素材として載る', () => {
+    const files = buildNovelGameFiles(work, ep, staging([{ blockId: 'b1', speaker: '灯' }]), {
+      userAssets: [tplAsset],
+    })
+    const s = scenarioOf(files)
+    expect(s.pages[0]?.stage).toEqual([{ k: 'user:tpl-1', p: 'c', a: 1 }])
+    expect(s.sprites?.['user:tpl-1']?.src).toBe('assets/sprite/user-tpl-1.svg')
+    expect(files.some((f) => f.path === 'assets/sprite/user-tpl-1.svg')).toBe(true)
+    const credit = s.credits.find((c) => c.label === '立ち絵')
+    expect(credit?.body).toContain('シルエット（女性）')
+  })
+
+  it('持ち込みの立ち絵はクレジットに載らない', () => {
+    const own = { ...tplAsset, key: 'user:own-1', id: 'own-1', preset: undefined }
+    const s = scenarioOf(
+      buildNovelGameFiles(work, ep, staging([{ blockId: 'b1', speaker: '灯' }]), {
+        userAssets: [own],
+      }),
+    )
+    expect(s.credits.some((c) => c.label === '立ち絵')).toBe(false)
+  })
 })

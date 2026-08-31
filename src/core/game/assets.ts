@@ -22,6 +22,11 @@ export const UserGameAssetSchema = z.object({
   character: z.string().optional(),
   /** 立ち絵のみ：表情名（省略は DEFAULT_EXPRESSION 扱い） */
   expression: z.string().optional(),
+  /**
+   * テンプレ由来ならそのキー（'preset:sprite/…'）。id は `tpl-` 前置で作り、
+   * 持ち込み枚数・クラウド保管の枚数どちらにも数えない（無料でも使える）。
+   */
+  preset: z.string().optional(),
   createdAt: z.number(),
 })
 export type UserGameAsset = z.infer<typeof UserGameAssetSchema>
@@ -104,15 +109,39 @@ export const HOSTED_ASSET_MAX_BYTES = 1_500_000
 export type HostedAssetVerdict = 'ok' | 'too_large' | 'limit_reached'
 
 /**
+ * テンプレ由来の割り当てレコードか（id の形で判定＝サーバは中身を復号せずに数えられる）。
+ * 実体が数 KB の SVG なので、持ち込み・クラウド保管どちらの枚数にも数えない。
+ */
+export const isTemplateAssetId = (id: string) => id.startsWith('tpl-')
+
+/**
  * クラウドへ保存できるかの判定（サーバ・クライアント共通の単一の真実）。
- * 同じ id の置き換え（上書き）は枚数に数えない。
+ * 同じ id の置き換え（上書き）とテンプレ由来（tpl-）は枚数に数えない。
  */
 export function hostedAssetVerdict(
   asset: Pick<UserGameAsset, 'id' | 'dataUrl'>,
   existingIds: Iterable<string>,
 ): HostedAssetVerdict {
   if (asset.dataUrl.length > HOSTED_ASSET_MAX_BYTES) return 'too_large'
-  const ids = new Set(existingIds)
+  if (isTemplateAssetId(asset.id)) return 'ok'
+  const ids = new Set([...existingIds].filter((id) => !isTemplateAssetId(id)))
   if (!ids.has(asset.id) && ids.size >= HOSTED_ASSET_LIMIT) return 'limit_reached'
   return 'ok'
+}
+
+// ---------------------------------------------------------------------------
+// 持ち込みの無料枠（D-GAME-PRICE v2：持ち込み自体は有料・無料は枠つき）
+// ---------------------------------------------------------------------------
+
+/** 無料アカウントの持ち込み枚数（背景＋立ち絵の合算・テンプレ由来は数えない）。 */
+export const FREE_IMPORT_LIMIT = 5
+
+export type ImportVerdict = 'ok' | 'free_limit'
+
+/**
+ * 新しく画像を持ち込めるか。importedCount はテンプレ由来を除いた手元の枚数
+ * （素材はこの端末に保存されるだけなので、判定もクライアントで行う）。
+ */
+export function importVerdict(importedCount: number, isMember: boolean): ImportVerdict {
+  return !isMember && importedCount >= FREE_IMPORT_LIMIT ? 'free_limit' : 'ok'
 }

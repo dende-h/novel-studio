@@ -1,6 +1,11 @@
 import { CloudUpload, Trash2 } from 'lucide-react'
 import { useState } from 'react'
-import { HOSTED_ASSET_LIMIT, type UserGameAsset } from '@/core/game/assets'
+import {
+  FREE_IMPORT_LIMIT,
+  HOSTED_ASSET_LIMIT,
+  isTemplateAssetId,
+  type UserGameAsset,
+} from '@/core/game/assets'
 import type { HostedPutResult } from '@/ui/_api/game-assets'
 import { ConfirmDialog } from '@/ui/components/ConfirmDialog/confirm-dialog'
 import { Button } from '@/ui/components/ui/button'
@@ -97,9 +102,9 @@ export function AssetManager({
             <DialogDescription>
               {member
                 ? hostedIds
-                  ? `クラウド保管 ${hostedIds.size} / ${HOSTED_ASSET_LIMIT} 枚。クラウドに保管した素材は、ほかの端末の演出エディタでも使えます。`
+                  ? `クラウド保管 ${[...hostedIds].filter((id) => !isTemplateAssetId(id)).length} / ${HOSTED_ASSET_LIMIT} 枚（テンプレは数えません）。クラウドに保管した素材は、ほかの端末の演出エディタでも使えます。`
                   : 'クラウドの保管状況を取得できませんでした。素材はこの端末に保存されています。'
-                : '素材はこの端末に保存されています。ほかの端末と共有するクラウド保管は、有料のクラウド版の機能です。'}
+                : `持ち込み ${assets.filter((a) => !a.preset).length} / ${FREE_IMPORT_LIMIT} 枚（無料プラン・テンプレは数えません）。素材はこの端末に保存されています。クラウド版では ${HOSTED_ASSET_LIMIT} 枚まで持ち込め、ほかの端末とも共有できます。`}
             </DialogDescription>
           </DialogHeader>
 
@@ -125,6 +130,7 @@ export function AssetManager({
                       <p className="truncate text-on-surface text-sm">{asset.name}</p>
                       <p className="mt-0.5 text-[11px] text-on-surface-variant">
                         {KIND_LABELS[asset.kind] ?? asset.kind}
+                        {asset.preset ? '・テンプレ' : ''}
                         {member ? `・${hosted ? 'クラウド保管済み' : 'この端末のみ'}` : ''}
                       </p>
                     </div>

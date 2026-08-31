@@ -1,6 +1,7 @@
 import { applyCues, MASKED_SPEAKER, plainTextOfBlock, type Staging, toPages } from '../game'
 import { pickSprite } from '../game/assets'
 import { buildGameCredits, DEFAULT_BG_KEY, presetBackground, presetBgSvg } from '../game/presets'
+import { presetSprite } from '../game/spritePresets'
 import type { Episode, Inline, Work } from '../schema'
 import type { ZipInput } from '../zip'
 import {
@@ -42,6 +43,8 @@ export interface NovelGameUserAsset {
   character?: string
   /** 立ち絵のみ：表情名（省略は「通常」扱い） */
   expression?: string
+  /** テンプレ立ち絵由来ならそのキー（クレジットに運営素材として載せる） */
+  preset?: string
   /** 立ち絵の既定（同じ人物の最初の1枚）を決める登録時刻 */
   createdAt?: number
 }
@@ -70,6 +73,7 @@ const IMAGE_EXT: Record<string, string> = {
   'image/webp': 'webp',
   'image/jpeg': 'jpg',
   'image/png': 'png',
+  'image/svg+xml': 'svg',
 }
 
 function escapeHtml(s: string): string {
@@ -206,6 +210,27 @@ export function buildNovelGameFiles(
   let standing: Standing[] = []
   let activeChar: string | null = null
   let lastStageMark = '[]'
+  /** 舞台へ入れる（席の割り当て共通則）。既に立っている人物は表情（key）だけ差し替える。 */
+  const enterStage = (key: string, char: string, at: number): void => {
+    const already = standing.find((s) => s.char === char)
+    if (already) {
+      already.key = key
+      already.lastSpoke = at
+      return
+    }
+    if (standing.length === 0) {
+      standing.push({ key, char, pos: 'c', lastSpoke: at })
+    } else if (standing.length === 1) {
+      const first = standing[0]
+      if (first) first.pos = 'l'
+      standing.push({ key, char, pos: 'r', lastSpoke: at })
+    } else {
+      const out = standing.reduce((a, b) => (a.lastSpoke <= b.lastSpoke ? a : b))
+      out.key = key
+      out.char = char
+      out.lastSpoke = at
+    }
+  }
   const scenarioPages = pages.map((page, index): ScenarioPage => {
     const block = blockById.get(page.blockId)
     const cueEntry = page.bg ? resolveBg(page.bg) : undefined
@@ -222,6 +247,17 @@ export function buildNovelGameFiles(
         standing = []
         activeChar = null
       }
+      // 登場（appear）：セリフの前から立ち絵を出す。名前枠は出さず、明るくもしない。
+      // 既に立っている人物への appear は据え置き（表情は speaker+expression の領分）。
+      if (page.appear && page.appear !== MASKED_SPEAKER) {
+        if (!standing.some((s) => s.char === page.appear)) {
+          const chosen = pickSprite(spriteAssets, page.appear)
+          if (chosen) {
+            usedSprites.set(chosen.key, chosen)
+            enterStage(chosen.key, page.appear, index)
+          }
+        }
+      }
       if (page.kind === 'dialogue' && page.speaker) {
         const chosen =
           page.speaker !== MASKED_SPEAKER
@@ -231,22 +267,7 @@ export function buildNovelGameFiles(
           activeChar = null
         } else {
           usedSprites.set(chosen.key, chosen)
-          const already = standing.find((s) => s.char === page.speaker)
-          if (already) {
-            already.key = chosen.key // 表情替え（席はそのまま）
-            already.lastSpoke = index
-          } else if (standing.length === 0) {
-            standing.push({ key: chosen.key, char: page.speaker, pos: 'c', lastSpoke: index })
-          } else if (standing.length === 1) {
-            const first = standing[0]
-            if (first) first.pos = 'l'
-            standing.push({ key: chosen.key, char: page.speaker, pos: 'r', lastSpoke: index })
-          } else {
-            const out = standing.reduce((a, b) => (a.lastSpoke <= b.lastSpoke ? a : b))
-            out.key = chosen.key
-            out.char = page.speaker
-            out.lastSpoke = index
-          }
+          enterStage(chosen.key, page.speaker, index)
           activeChar = page.speaker
         }
       }
@@ -299,6 +320,14 @@ export function buildNovelGameFiles(
     ...(opts.font ? { fontSrc: FONT_PATH } : {}),
     credits: buildGameCredits({
       bgLabels: usedList.filter((e) => e.credit).map((e) => e.label),
+      // テンプレ立ち絵だけ運営素材としてクレジットに載せる（重複は畳む）
+      spriteLabels: [
+        ...new Set(
+          usedSpriteList
+            .filter((a) => a.preset)
+            .map((a) => (a.preset ? (presetSprite(a.preset)?.label ?? 'シルエット') : '')),
+        ),
+      ].filter(Boolean),
       fontEmbedded: Boolean(opts.font),
     }),
     pages: scenarioPages,

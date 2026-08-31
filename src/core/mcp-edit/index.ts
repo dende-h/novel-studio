@@ -804,6 +804,7 @@ export interface StagingCueInput {
   blockId: string
   speaker?: string
   expression?: string
+  appear?: string
   sceneBreak?: boolean
   bg?: string
   transition?: string
@@ -843,6 +844,7 @@ export function parseStagingCueInputs(raw: unknown): StagingCueInput[] {
       blockId,
       speaker: field('speaker'),
       expression: field('expression'),
+      appear: field('appear'),
       sceneBreak: flag('scene_break'),
       bg: field('bg'),
       transition: field('transition'),
@@ -889,6 +891,7 @@ export function setStagingCues(
       if (
         item.speaker !== undefined ||
         item.expression !== undefined ||
+        item.appear !== undefined ||
         item.sceneBreak !== undefined ||
         item.bg !== undefined ||
         item.transition !== undefined
@@ -938,6 +941,9 @@ export function setStagingCues(
       }
       patch.expression = expression
     }
+    if (item.appear !== undefined) {
+      patch.appear = emptyToUndef(item.appear)
+    }
     if (item.sceneBreak !== undefined) patch.sceneBreak = item.sceneBreak ? true : undefined
     if (item.bg !== undefined) {
       const bg = emptyToUndef(item.bg)
@@ -957,7 +963,7 @@ export function setStagingCues(
     }
     if (Object.keys(patch).length === 0) {
       throw new McpEditError(
-        `block_id "${item.blockId}": 変更する項目がありません（speaker / expression / scene_break / bg / transition / clear のいずれかを渡す）`,
+        `block_id "${item.blockId}": 変更する項目がありません（speaker / expression / appear / scene_break / bg / transition / clear のいずれかを渡す）`,
       )
     }
     staging = patchCue(staging, item.blockId, patch, now)
@@ -990,6 +996,19 @@ export function setStagingCues(
       if (!choices.includes(merged.expression)) {
         throw new McpEditError(
           `表情 "${merged.expression}" は「${speaker}」の立ち絵にありません（使える表情: ${choices.join('・')}）`,
+        )
+      }
+    }
+    // 登場（appear）は立ち絵のある人物にだけ意味を持つ（無意味な指定を保存しない）。
+    if (merged?.appear) {
+      if (merged.appear === MASKED_SPEAKER) {
+        throw new McpEditError(
+          `block_id "${item.blockId}": ${MASKED_SPEAKER} は登場（appear）に使えません（正体を伏せた声には立ち絵を出さない）`,
+        )
+      }
+      if (spriteExpressionsOf(gameAssets, merged.appear).length === 0) {
+        throw new McpEditError(
+          `「${merged.appear}」の立ち絵がまだありません（アプリの「演出」画面で追加できます）`,
         )
       }
     }
