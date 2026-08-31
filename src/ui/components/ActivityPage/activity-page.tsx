@@ -46,6 +46,8 @@ interface ActivityPageProps {
   onNavigateCollection: () => void
   /** ネタ帳へ（サイドバー）。 */
   onNavigateIdeas?: () => void
+  /** 掲示板へ（サイドバー）。渡されたときだけ行が出る。 */
+  onNavigateBoard?: () => void
   /** 設定ページへ（サイドバーフッター）。 */
   onNavigateSettings?: () => void
   /** ヘルプページへ（サイドバーフッター）。 */
@@ -60,6 +62,7 @@ export function ActivityPage({
   repo,
   onNavigateCollection,
   onNavigateIdeas,
+  onNavigateBoard,
   onNavigateSettings,
   onNavigateHelp,
 }: ActivityPageProps) {
@@ -133,6 +136,7 @@ export function ActivityPage({
           onNavigateCollection={onNavigateCollection}
           onNavigateActivity={() => {}}
           onNavigateIdeas={onNavigateIdeas}
+          onNavigateBoard={onNavigateBoard}
           onNavigateSettings={onNavigateSettings}
           onNavigateHelp={onNavigateHelp}
         />

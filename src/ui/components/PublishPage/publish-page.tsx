@@ -22,6 +22,7 @@ import { type AuthorStatus, fetchAuthorStatus } from '@/ui/_api/author'
 import {
   canPublishPublicly,
   describePublishBlocked,
+  PLATFORM_ORIGIN,
   type PublishResult,
   publishWorkToPlatform,
 } from '@/ui/_api/publish'
@@ -35,7 +36,7 @@ import { Label } from '@/ui/components/ui/label'
 import { Switch } from '@/ui/components/ui/switch'
 import { Textarea } from '@/ui/components/ui/textarea'
 
-/** 公開サイト上での見え方。契約の `visibility` と同じ 2 値。 */
+/** コトノハ-grove- 上での見え方。契約の `visibility` と同じ 2 値。 */
 type Visibility = 'draft' | 'public'
 
 /** 公開設定の保存内容（作品へ書き戻して、次に開いたときと再送に引き継ぐ）。 */
@@ -68,7 +69,7 @@ export function parseTags(raw: string): string[] {
   return out
 }
 
-/** タグが公開サイトの受け入れ条件に収まっているか。収まらなければ理由を返す。 */
+/** タグが コトノハ-grove- の受け入れ条件に収まっているか。収まらなければ理由を返す。 */
 export function validateTags(tags: string[]): string | null {
   if (tags.length > PLATFORM_MAX_TAGS) {
     return `タグは${PLATFORM_MAX_TAGS}件までです（いま${tags.length}件）`
@@ -125,7 +126,7 @@ export function PublishPage({
   const [pending, setPending] = useState(false)
   const [result, setResult] = useState<PublishResult | null>(null)
 
-  /** 公開サイト側の作者登録の状態。null＝まだ分からない（取得中・未サインイン等）。 */
+  /** コトノハ-grove- 側の作者登録の状態。null＝まだ分からない（取得中・未サインイン等）。 */
   const [author, setAuthor] = useState<AuthorStatus | null>(null)
 
   // 同期済みの作品ID。開いた作品が変わったときだけ入力を作り直すための目印
@@ -173,6 +174,10 @@ export function PublishPage({
   /** 公開に倒したいのに誓約が足りない。押させずに理由を出す。 */
   const blockedByDeclarations = visibility === 'public' && !declarationsOk
   const needsAuthor = isSignedIn && author !== null && !author.isAuthor
+  // コトノハ-grove- に出る作者名。**投稿バンドルの著者名は使われない**——コトノハ-grove- は
+  // 登録済みのペンネーム（platform の profiles.display_name）を常に優先する。
+  // 取れていないとき（未サインイン・通信断）は空文字＝名前の話をしない。
+  const authorName = isSignedIn && author?.isAuthor ? author.penName : ''
   const canSubmit =
     work !== null && isSignedIn && !pending && tagError === null && !blockedByDeclarations
 
@@ -247,7 +252,7 @@ export function PublishPage({
   return (
     <PageLayout
       title="公開の管理"
-      description={`${work.title} を読者向けサイト（公開サイト）へ出すための設定です。`}
+      description={`${work.title} を コトノハ-grove-（読者向けサイト）へ出すための設定です。`}
       backHref={backHref}
       backLabel={backLabel}
       wide
@@ -281,6 +286,9 @@ export function PublishPage({
           />
         ) : null}
 
+        {/* 0. どの名前で公開されるか。押してから知る作りにしない */}
+        {!needsAuthor && authorName !== '' ? <AuthorNameCard penName={authorName} /> : null}
+
         {/* 1. 作品の公開状態。ここが「単話ではなく作品の話」だと分かる場所になる */}
         <section className="rounded-xl border border-outline-variant/40 bg-surface-container-lowest p-5">
           <h2 className="font-semibold font-serif text-[17px] text-on-surface">作品の公開状態</h2>
@@ -312,12 +320,13 @@ export function PublishPage({
           </div>
           {work.platform?.lastPublishedAt !== undefined ? (
             <p className="mt-3 text-[12px] text-on-surface-variant/70">
-              いま公開サイトに反映されているのは「
+              いま コトノハ-grove- に反映されているのは「
               {work.platform.visibility === 'public' ? '公開' : '下書き'}」です。
             </p>
           ) : (
             <p className="mt-3 text-[12px] text-on-surface-variant/70">
-              この作品はまだ公開サイトへ送られていません。下の「公開状態を更新」で送られます。
+              この作品はまだ コトノハ-grove-
+              へ送られていません。下の「公開状態を更新」で送られます。
             </p>
           )}
         </section>
@@ -364,7 +373,7 @@ export function PublishPage({
                       </span>
                     </div>
 
-                    {/* 書き出しは話ごと。公開サイトに出さない話でも、外部サイトへは出せる */}
+                    {/* 書き出しは話ごと。コトノハ-grove- に出さない話でも、外部サイトへは出せる */}
                     <div className="flex shrink-0 items-center gap-1">
                       <ExportButton
                         label="カクヨム"
@@ -403,10 +412,10 @@ export function PublishPage({
           )}
         </section>
 
-        {/* 3. 公開サイトへ渡す情報 */}
+        {/* 3. コトノハ-grove- へ渡す情報 */}
         <section className="space-y-5 rounded-xl border border-outline-variant/40 bg-surface-container-lowest p-5">
           <h2 className="font-semibold font-serif text-[17px] text-on-surface">
-            公開サイトへ渡す情報
+            コトノハ-grove- へ渡す情報
           </h2>
 
           <div className="space-y-2">
@@ -598,7 +607,9 @@ export function PublishPage({
         title={visibility === 'public' ? 'この内容で公開しますか？' : '下書きに戻しますか？'}
         description={
           visibility === 'public'
-            ? `「${work.title}」を公開します。${publicCount}話が読者に見えるようになります${
+            ? `「${work.title}」を${
+                authorName === '' ? '' : `、作者名「${authorName}」で`
+              }公開します。${publicCount}話が読者に見えるようになります${
                 episodes.length - publicCount > 0
                   ? `（${episodes.length - publicCount}話は非公開のまま）`
                   : ''
@@ -635,7 +646,7 @@ function PublishResultPanel({ result }: { result: PublishResult }) {
       <div role="alert" className="space-y-2 rounded-xl border border-destructive/40 p-4">
         <p className="font-sans text-destructive text-sm leading-relaxed">{result.message}</p>
         {result.registerUrl && !result.needsAuthor ? (
-          <PlatformLink href={result.registerUrl}>公開サイトを開く</PlatformLink>
+          <PlatformLink href={result.registerUrl}>コトノハ-grove- を開く</PlatformLink>
         ) : null}
       </div>
     )
@@ -654,13 +665,50 @@ function PublishResultPanel({ result }: { result: PublishResult }) {
         {result.published && result.workUrl ? (
           <PlatformLink href={result.workUrl}>公開ページを開く</PlatformLink>
         ) : null}
-        <PlatformLink href={result.manageUrl}>公開サイトの管理画面を開く</PlatformLink>
+        <PlatformLink href={result.manageUrl}>コトノハ-grove- の管理画面を開く</PlatformLink>
       </div>
     </div>
   )
 }
 
-/** 公開サイトへの外部リンク（別タブ）。 */
+/**
+ * この作品がどの名前で公開されるか。**押す前に見えるところへ出す**。
+ *
+ * コトノハ-grove- の作者名とコトノハ-leaf- のペンネームは別々に持っている。投稿バンドルにも著者名は
+ * 入っているが、コトノハ-grove- はそれを無視して登録済みのペンネームを常に優先する
+ *（platform の `import-work.ts`）。画面のどこにも出していなかったので、
+ * 「どちらの名前で出るのか」「片方を変えたらもう片方も変わるのか」を確かめようがなかった。
+ *
+ * 名前そのものを大きく出し、説明は 2 つに分ける——いまどうなっているか（1 つめ）と、
+ * 変えたいときどうなるか（2 つめ）。変更の口は コトノハ-grove- 側にしかないので、リンクで渡す。
+ */
+function AuthorNameCard({ penName }: { penName: string }) {
+  return (
+    <section className="rounded-xl border border-outline-variant/40 bg-surface-container-lowest p-5">
+      <h2 className="font-semibold font-serif text-[17px] text-on-surface">作者名</h2>
+      <p className="mt-2 font-medium text-[15px] text-on-surface [overflow-wrap:anywhere]">
+        {penName}
+      </p>
+      <p className="mt-2 text-[13px] text-on-surface-variant leading-relaxed">
+        コトノハ-grove- では、この名前で作者として表示されます。コトノハ-leaf-
+        のペンネームとは別の設定なので、ペンネームを変えてもここは変わりません。
+      </p>
+      <p className="mt-1.5 text-[13px] text-on-surface-variant leading-relaxed">
+        名前は コトノハ-grove-
+        の設定で変えられます。変えると、これまでに公開した作品の作者名も一緒に変わります。
+      </p>
+      {PLATFORM_ORIGIN ? (
+        <div className="mt-4">
+          <PlatformLink href={`${PLATFORM_ORIGIN}/settings`}>
+            コトノハ-grove- の設定を開く
+          </PlatformLink>
+        </div>
+      ) : null}
+    </section>
+  )
+}
+
+/** コトノハ-grove- への外部リンク（別タブ）。 */
 function PlatformLink({ href, children }: { href: string; children: React.ReactNode }) {
   return (
     <a

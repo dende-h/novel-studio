@@ -8,7 +8,7 @@ type ProjectMenuProps = Pick<
 > & {
   /** 作品タイトル（aria-label 用） */
   title: string
-  /** 公開サイトでいま公開中か（切り替え項目の文言に使う） */
+  /** コトノハ-grove- でいま公開中か（切り替え項目の文言に使う） */
   published?: boolean
 }
 
@@ -70,7 +70,7 @@ export function ProjectMenu({
                 className="flex items-center gap-2.5 rounded-md px-3 py-2 text-left text-[13px] text-on-surface transition-colors hover:bg-surface-container-low"
               >
                 <CloudUpload className="size-3.5 shrink-0" />
-                公開サイトへ投稿
+                コトノハ-grove- へ投稿
               </button>
             ) : null}
             {onTogglePublish ? (

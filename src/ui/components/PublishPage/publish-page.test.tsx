@@ -123,19 +123,61 @@ describe('公開状態の更新', () => {
   })
 })
 
-describe('作者登録', () => {
-  it('未登録なら、公開サイトへ飛ばさずこの場で登録できる', async () => {
+describe('どの名前で公開されるか', () => {
+  it('登録済みの作者名を、押す前に画面へ出す', async () => {
+    renderPage(makeWork(publishable))
+
+    expect(await screen.findByRole('heading', { name: '作者名' })).toBeInTheDocument()
+    expect(screen.getByText('結')).toBeInTheDocument()
+  })
+
+  it('ペンネームとは別の設定であること・変えると公開済みの作品にも及ぶことを言う', async () => {
+    // 利用者の不安は 2 つある。「どちらの名前で出るのか」と「片方を変えたらもう片方も
+    // 変わるのか」。どちらも画面に書いていなければ確かめようがないので、文言を固定する。
+    renderPage(makeWork(publishable))
+
+    expect(
+      await screen.findByText(
+        /コトノハ-leaf- のペンネームとは別の設定なので、ペンネームを変えてもここは変わりません/,
+      ),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByText(/変えると、これまでに公開した作品の作者名も一緒に変わります/),
+    ).toBeInTheDocument()
+  })
+
+  it('公開の確認ダイアログにも作者名を出す（押す直前の最後の一言）', async () => {
+    renderPage(makeWork(publishable))
+
+    fireEvent.click(await screen.findByRole('button', { name: /公開状態を更新/ }))
+    expect(await screen.findByText(/作者名「結」で公開します/)).toBeInTheDocument()
+  })
+
+  it('作者登録がまだなら作者名は出さない（登録カードが名前の話をしている）', async () => {
     fetchAuthorStatus.mockResolvedValue({
       ok: true,
       status: { isAuthor: false, suspended: false, penName: '結' },
     })
     renderPage(makeWork(publishable))
 
-    const penName = await screen.findByLabelText(/ペンネーム/)
+    await screen.findByRole('button', { name: '作者登録する' })
+    expect(screen.queryByRole('heading', { name: '作者名' })).toBeNull()
+  })
+})
+
+describe('作者登録', () => {
+  it('未登録なら、コトノハ-grove- へ飛ばさずこの場で登録できる', async () => {
+    fetchAuthorStatus.mockResolvedValue({
+      ok: true,
+      status: { isAuthor: false, suspended: false, penName: '結' },
+    })
+    renderPage(makeWork(publishable))
+
+    const penName = await screen.findByLabelText(/作者名/)
     expect(penName).toHaveValue('結')
     fireEvent.change(penName, { target: { value: '夜半' } })
 
-    // 同意しないと登録できない（公開サイトのモーダルと同じ条件）
+    // 同意しないと登録できない（コトノハ-grove- のモーダルと同じ条件）
     const register = screen.getByRole('button', { name: '作者登録する' })
     expect(register).toBeDisabled()
 

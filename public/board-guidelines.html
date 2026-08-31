@@ -1,0 +1,282 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- テーマ先読み（描画前に localStorage のテーマを反映してちらつきを防ぐ。キーは src/ui/hooks/use-preferences.ts と一致）。 -->
+<script>
+  (function () {
+    try {
+      var t = localStorage.getItem('ns-theme') || 'system'
+      var dark = t === 'dark' || (t === 'system' && matchMedia('(prefers-color-scheme: dark)').matches)
+      if (dark) document.documentElement.classList.add('dark')
+    } catch (e) {}
+  })()
+</script>
+<title>掲示板ガイドライン — コトノハ-leaf-</title>
+<meta name="description" content="コトノハ-leaf- の掲示板を気持ちよく使うためのガイドライン。お願いしたいこと、してはいけないこと、画像を貼れない理由、通報と運営の対応について。">
+<meta name="robots" content="index,follow">
+<meta name="theme-color" content="#2c5b27">
+<link rel="canonical" href="https://cotonoha-leaf.org/board-guidelines">
+<link rel="icon" href="/favicon-clean.png" type="image/png" sizes="any">
+
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="コトノハ-leaf-">
+<meta property="og:title" content="掲示板ガイドライン — コトノハ-leaf-">
+<meta property="og:description" content="コトノハ-leaf- の掲示板を気持ちよく使うためのガイドライン。お願いしたいこと、してはいけないこと、画像を貼れない理由、通報と運営の対応について。">
+<meta property="og:url" content="https://cotonoha-leaf.org/board-guidelines">
+<meta property="og:image" content="https://cotonoha-leaf.org/lp/ogp.png">
+<meta property="og:locale" content="ja_JP">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Shippori+Mincho+B1:wght@500;600;700&family=Zen+Kaku+Gothic+New:wght@400;500;700&display=swap" rel="stylesheet">
+
+<style>
+  /* アプリ（src/ui/index.css）のトークンから必要分のみ採録。legal-layout.tsx の体裁を静的HTMLへ移植。 */
+  :root {
+    color-scheme: light;
+    --background: #fdfcfb; --foreground: #4b5160;
+    --on-surface: #1f2430; --on-surface-variant: #6b7381;
+    --surface-lowest: #fefeff; --outline: rgba(157,163,174,0.3);
+    --link: #2c5b27; --link-hover: #1a3014; --wheat: #92703f;
+  }
+  .dark {
+    color-scheme: dark;
+    --background: #181611; --foreground: #d7d2c8;
+    --on-surface: #ece8e1; --on-surface-variant: #a49e92;
+    --surface-lowest: #1f1c16; --outline: rgba(100,94,83,0.5);
+    --link: #8bc47e; --link-hover: #c6e8bb; --wheat: #d8bd8e;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    background: var(--background); color: var(--foreground);
+    font-family: "Zen Kaku Gothic New", "Hiragino Sans", "Yu Gothic", sans-serif;
+    line-height: 1.85; -webkit-font-smoothing: antialiased;
+  }
+  a { color: var(--link); text-underline-offset: 2px; }
+  a:hover { color: var(--link-hover); }
+  .site-header {
+    display: flex; align-items: center; height: 56px;
+    border-bottom: 1px solid var(--outline);
+    background: var(--surface-lowest); padding: 0 20px;
+  }
+  .brand {
+    font-family: "Shippori Mincho B1", "Hiragino Mincho ProN", "Yu Mincho", serif;
+    font-weight: 700; font-size: 19px; color: var(--on-surface);
+    text-decoration: none; letter-spacing: 0.01em;
+  }
+  .brand .leaf { margin-left: 2px; font-weight: 500; font-size: 13px; color: var(--wheat); letter-spacing: 0.06em; }
+  main { max-width: 720px; margin: 0 auto; padding: 48px 24px 80px; }
+  .back {
+    display: inline-flex; align-items: center; gap: 6px; margin-bottom: 32px;
+    font-size: 13px; color: var(--on-surface-variant); text-decoration: none;
+  }
+  .back:hover { color: var(--link); }
+  h1 { margin: 0; font-family: "Shippori Mincho B1", serif; font-weight: 600; font-size: 28px; line-height: 1.4; color: var(--on-surface); }
+  .date { margin-top: 8px; font-size: 12px; color: var(--on-surface-variant); }
+  .doc { margin-top: 32px; }
+  .doc h2 { margin: 36px 0 10px; font-family: "Shippori Mincho B1", serif; font-weight: 600; font-size: 17px; color: var(--on-surface); }
+  .doc p { margin: 10px 0 0; font-size: 14px; color: var(--foreground); }
+  .doc ul { margin: 10px 0 0; padding-left: 24px; list-style: disc; }
+  .doc ol { margin: 10px 0 0; padding-left: 24px; list-style: decimal; }
+  .doc li { margin-top: 6px; font-size: 14px; }
+  .doc strong { font-weight: 700; color: var(--on-surface); }
+  footer { margin-top: 56px; padding-top: 24px; border-top: 1px solid var(--outline); font-size: 12px; color: var(--on-surface-variant); }
+  footer .row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 16px; }
+  footer a { color: var(--on-surface-variant); text-decoration: none; }
+  footer a:hover { color: var(--link); }
+  footer .brand-mini { margin-left: auto; font-family: "Shippori Mincho B1", serif; }
+  footer .brand-mini .leaf { margin-left: 2px; font-size: 0.72em; color: var(--wheat); letter-spacing: 0.06em; }
+</style>
+</head>
+<body>
+  <header class="site-header">
+    <a class="brand" href="/">コトノハ<span class="leaf">-leaf-</span></a>
+  </header>
+
+  <main>
+    <a class="back" href="/">← アプリへ戻る</a>
+
+    <h1>掲示板ガイドライン</h1>
+    <p class="date">2026年8月28日 掲載</p>
+
+    <div class="doc">
+      <p>
+        掲示板は、コトノハ-leaf- を使っている人どうしが話す場所です。ほしい機能のこと、うまく動かないところ、
+        いま書いている作品の進み具合、読み合いの誘い。書くことのまわりにあるあれこれを持ち寄る場として用意しました。
+        このページには、ここで気持ちよく書くためのお願いをまとめました。
+        守ってほしい決まりの正式な文面は<a href="/terms">利用規約</a>にあります。
+      </p>
+
+      <h2>1. この場所について</h2>
+      <p>
+        掲示板は記名式です。読むだけならログインは要りませんが、書き込むにはログインと表示名の設定が必要になります
+        （アカウントの登録は無料で、有料プランの契約は要りません）。匿名では書けません。
+      </p>
+      <p>
+        書いたものは、ログインしていない人からも読めます。検索から辿り着いた人の目にも触れます。
+        表示名には、本名など知られたくないものを使わないでください。表示名はあとから変えられ、
+        変えると過去の投稿の表示も新しい名前に切り替わります。
+        すでに誰かが使っている名前と、「運営」「公式」など運営と紛らわしい名前は設定できません。
+      </p>
+      <p>
+        スレッドには種別があります。要望、不具合、雑談、自己紹介、作品紹介、それに運営からのお知らせの6つ。
+        運営に伝えたいことなら要望へ、そうでなければ雑談へどうぞ。決めきれないまま書かずに終わるより、そのほうが早く届きます。
+        お知らせは運営からの連絡なので、書けるのは運営だけです。返信はできません。思うところがあれば、要望や不具合、雑談のスレッドへどうぞ。
+      </p>
+      <p>
+        短いあいだに続けて書くと、しばらく投稿できなくなることがあります。
+        スレッドは1日に3本まで、書き込みは1時間に10件までです。ひとつの書き込みは1500文字まで。
+        入りきらなかったぶんは、続きを返信で書き足してください。
+      </p>
+      <p>
+        運営も読んでいます。要望と不具合のスレッドには「検討中」「対応予定」「実装済み」といった状況を付けていきます。
+        書いた声がそのあとどうなったのかを、見える場所に置いておきたいからです。読むだけの参加でもかまいません。
+      </p>
+
+      <h2>2. お願いしたいこと</h2>
+      <p>
+        ここに並べるのは、決まりというより書き方の目安です。
+        消す対象は、次の「3. してはいけないこと」にまとめました。
+      </p>
+      <ul>
+        <li>
+          <strong>特定の作品や作者の評価はしない。</strong>
+          掲示板は、作品に点数を付ける場ではありません。名指しの批評や作者どうしの比較は、書いている本人の手を止めます。
+          頼まれていない指摘はなおさらです。感想を伝えたいときは、よかったところを具体的に。
+          直してほしい点を挙げるのは、本人が「読んで指摘してほしい」と書いているスレッドの中だけにしてください。
+        </li>
+        <li>
+          <strong>個人情報と連絡先は書かない。</strong>
+          自分のものも、他人のものもです。本名・住所・電話番号・メールアドレス・通っている学校や勤め先が分かる話は、
+          公開の場に残ると取り消せません。掲示板の外で個別に連絡を取ろうと持ちかけるのも控えてください。
+          コトノハ-leaf- に個人間のメッセージ機能がないのも同じ理由です。年齢の分からない相手どうしを1対1でつなぐと、
+          運営が目を配れる範囲を超えます。
+        </li>
+        <li>
+          <strong>ネタバレには一言添える。</strong>
+          自分の作品でも、他人の作品でも、市販の小説や映画でも同じです。「◯◯の結末に触れます」と先に断ってから本題へ。
+          そのあと一行あけておくと、読むかどうかを相手が自分で選べます。
+        </li>
+        <li>
+          <strong>宣伝は宣伝のスレッドで。</strong>
+          自分の作品を紹介するのは歓迎です。ただ、告知が雑談や不具合のスレッドに混ざると、そこでの話が続かなくなります。
+          「作品を紹介する・読み合う」のスレッドへどうぞ。コトノハ-grove-（コトノハ-leaf- の作品を公開するサイト）で
+          公開している作品なら、URL を貼るだけで表紙とあらすじの付いた作品カードになります。
+          同じ告知を貼り直すときは、日を空けてください。
+        </li>
+        <li>
+          <strong>立てる前に一覧を見る。</strong>
+          同じ話題のスレッドがすでにあれば、そこに書き足すほうが話が集まります。
+          要望も、ひとつのスレッドに声が並ぶほど運営に届きます。
+        </li>
+      </ul>
+
+      <h2>3. してはいけないこと</h2>
+      <p>
+        次のような投稿は、運営が気づいた時点で非表示にします（投稿そのものは残りますが、ほかの人からは読めなくなります）。
+        繰り返し見つかったときは、一定の期間、書き込めないようにすることがあります。
+        正式な定めは<a href="/terms">利用規約</a>の第6条・第6条の2にあり、ここはその要点です。
+      </p>
+      <ul>
+        <li>誹謗中傷、侮辱、特定の相手への執拗な攻撃</li>
+        <li>人種・国籍・信条・性別・障害などに基づく差別的な表現</li>
+        <li>わいせつな表現、露骨な性的描写</li>
+        <li>他人の文章・作品・翻訳の無断転載</li>
+        <li>本人の同意なく個人情報を書き込む行為</li>
+        <li>他人になりすます行為、運営や公式の立場を装う行為</li>
+        <li>宣伝を目的とした投稿の連投、同じ内容の繰り返し</li>
+        <li>他人の作品を貶める投稿、頼まれていない攻撃的な批評</li>
+        <li>掲示板の外で個別に連絡を取ろうとする呼びかけ、連絡先の交換</li>
+        <li>法令に違反する行為、犯罪や自傷他害を助長する投稿</li>
+      </ul>
+      <p>
+        作品の中で何を書くかは自由です。暴力も、性も、差別の描写も、小説が扱ってきた題材です。
+        線を引いているのは、掲示板に直接書く文章のほう。作中の表現と、公開の場へ向けて投げる言葉は、
+        別のものとして考えてください。
+      </p>
+
+      <h2>4. 画像を貼れないこと</h2>
+      <p>
+        掲示板に画像をアップロードする機能はありません。作らないと決めています。
+      </p>
+      <p>
+        画像は、それが誰のものなのかを見ただけでは判断できません。無断転載、生成物の権利、年齢制限に触れるもの。
+        1枚ずつ確かめる作業が要ります。運営は一人です。上がってくる画像すべてに目を通しきれません。
+        判断を引き受けられないなら、置き場所そのものを作らないほうが正直だと考えました。
+      </p>
+      <p>
+        そのかわり、外部サイトへのリンクは貼れます。本文に URL を書けば、タイトルと説明の付いたカードで開きます
+        （カードになるのは、ひとつの投稿につき先頭のふたつまで。リンク先によっては画像が出ず、文字だけのカードになります）。
+        コトノハ-grove- で公開している作品の URL なら、表紙・あらすじ・作者名の入った作品カードになります。
+        自分の作品を見せたいときは、これがいちばん近道です。
+      </p>
+      <p>
+        リンク先の中身を運営が確かめているわけではありません。カードに出るのは、リンク先が公開している情報をそのまま写したものです。
+        開くかどうかは、カードに出るリンク先のアドレス（ドメイン）を見て決めてください。
+      </p>
+
+      <h2>5. 困ったときは</h2>
+      <p>
+        気になる投稿を見つけたら、その投稿の「通報」から知らせてください。
+        誰が通報したかは、書いた本人にも、ほかの人にも見えません。
+        法令に基づいて求められた場合を除き、運営から明かすこともありません。
+      </p>
+      <p>
+        通報の数で自動的に消える仕組みにはしていません。示し合わせれば、問題のない投稿まで落とせてしまうからです。
+        機械に任せず、運営が読んで決めます。
+      </p>
+      <p>
+        自分の投稿は、いつでも自分で消せます。ただし、返信の付いたスレッドを消した場合、
+        消えるのは本文だけで、ほかの人の返信は残ります。会話を虫食いにしないための扱いです。
+        同じ理由で、アカウントを消しても投稿は掲示板に残ります（表示名だけ「削除済み」に変わります）。
+        消しておきたいものがあれば、アカウントを消す前に自分で消してください。
+      </p>
+      <p>
+        掲示板に書くようなことではないとき、名前を出しては書きにくいときは、
+        <a href="/#/help">ヘルプのお問い合わせフォーム</a>へどうぞ。運営だけが読みます。
+      </p>
+      <p>
+        掲示板の投稿で自分の権利を侵害されたという方は、コトノハ-leaf- のアカウントがなくてもお申し出を受け付けます。
+        <a href="/tokushoho">特定商取引法に基づく表記</a>に記載の連絡先へ、その投稿の URL と、
+        侵害されたとする権利の内容、そう考える理由を書き添えてお知らせください。
+      </p>
+
+      <h2>6. 運営がすること</h2>
+      <p>
+        通報は運営が確認します。必要と判断すれば投稿を非表示にし、繰り返す人には書き込みを止めてもらいます。
+        ただし、なぜそうしたのかを一件ずつお伝えできるとは限りません。
+      </p>
+      <p>
+        そのうえで正直に書いておくと、掲示板のすべてを常に見てはいません。
+        コトノハ-leaf- は個人で運営していて、24時間の監視体制はありません。目の届かない時間帯が必ずあるので、
+        気づいたことを通報で教えてもらえると助かります。
+      </p>
+      <p>
+        要望と不具合のスレッドには、受け取ったあとの状況を付けていきます。作ったものには、入ったバージョンを添えます。
+        追いつかない時期もありますが、何が届いて何を見送ったのかは、書いた人があとから確かめられるようにしておきます。
+      </p>
+
+      <h2>さいごに</h2>
+      <p>
+        ここは、書いている人が集まる場所です。うまくまとまっていない話でかまいません。
+        進まない日のこと、詰まっている場面のこと、直してほしい機能のひとこと。置いていってください。読む人がいます。
+      </p>
+    </div>
+
+    <footer>
+      <div class="row">
+        <a href="/terms">利用規約</a>
+        <a href="/board-guidelines">掲示板ガイドライン</a>
+        <a href="/privacy">プライバシーポリシー</a>
+        <a href="/tokushoho">特定商取引法に基づく表記</a>
+        <span class="brand-mini">コトノハ<span class="leaf">-leaf-</span></span>
+      </div>
+    </footer>
+  </main>
+<!-- 訪問者カウント（Cookie なし・自前集計）。?noanalytics=1 で自分の端末を除外できる。 -->
+<script src="/hit.js" defer></script>
+</body>
+</html>

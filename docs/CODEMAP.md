@@ -10,7 +10,7 @@
 ## 0. 30秒でわかる全体像
 
 ローカルファーストの小説執筆ツール。原稿は既定で端末内（IndexedDB）にのみ置き、
-クラウド同期・バックアップは有料オプトイン（at-rest 暗号化）。書き出し先は EPUB / なろう / カクヨム / 自前公開サイト。
+クラウド同期・バックアップは有料オプトイン（at-rest 暗号化）。書き出し先は EPUB / なろう / カクヨム / 自前 コトノハ-grove-。
 
 ```
 ブラウザ (Vite + React 19 + Tailwind4 + PWA)
@@ -38,7 +38,7 @@ Cloudflare Pages Functions
 | エディタの入力・ショートカット・サジェスト | `src/ui/components/EditorPane/` |
 | 保存・自動保存・undo・開いている作品の状態 | `src/ui/store/editorStore.ts` |
 | データの永続化・スキーマ移行 | `src/core/storage/*Repository.ts` |
-| 用語集（`@`参照の解決先・**公開サイトへ送られる**）の挙動 | `src/core/glossary/index.ts` + `src/ui/components/GlossaryView/` |
+| 用語集（`@`参照の解決先・**コトノハ-grove- へ送られる**）の挙動 | `src/core/glossary/index.ts` + `src/ui/components/GlossaryView/` |
 | 世界観設定（作者専用・**公開されない**）の挙動 | `src/core/plot/index.ts`（`WORLD_SLOTS` ほか）+ `src/ui/components/PlotView/world-view.tsx` |
 | `@`/`[[` サジェストの挙動 | 判定・候補は `src/core/glossary/index.ts`、見た目は `src/ui/components/EditorPane/ref-suggest.tsx`、本文以外の入力欄は `src/ui/components/NotationField/` |
 | プロット（幕×ビート・伏線・秘密） | `src/core/plot/index.ts` + `src/ui/components/PlotView/plot-view.tsx` |
@@ -51,6 +51,11 @@ Cloudflare Pages Functions
 | AI/MCP 連携（外部から原稿を編集） | `src/core/mcp-edit/index.ts` + `functions/api/_lib/mcp-server.ts` |
 | MCP コネクタの接続（OAuth ディスカバリ・認可の窓口） | `functions/_middleware.ts` + `functions/api/oauth/[[path]].ts` |
 | **UI 部品・ヘルパを新規に作りたい** | まず §3「共通部品カタログ」で在庫を確認する（重複作成の防止） |
+| **掲示板**（記名式スレッド・お知らせ・アンケート・通報）の挙動 | 画面は `src/ui/components/BoardPage/`、判断は `src/core/board/`、SQL は `functions/api/_lib/board-store.ts`、窓口は `functions/api/board/` |
+| 掲示板に貼られた外部リンクの OGP（取得可否・画像の許可表） | `src/core/board/link.ts`（判定）+ `functions/api/_lib/board-link-fetch.ts`（取得とキャッシュ） |
+| **ペンネーム（表示名）**の扱い — ヘッダ・サイドバー・新しい作品の著者・掲示板の表示名は同じ 1 つ | 判定は `src/core/profile/account.ts`、配線は `src/ui/hooks/use-pen-name.ts`、編集は `src/ui/components/ProfileDialog/`（Root が 1 つだけ持つ）、正本はサーバの `board_profiles.display_name` |
+| **コトノハ-grove- （grove）の作者名** — コトノハ-leaf- のペンネームとは**別物**（D-PENNAME-GROVE）。語も分ける（ペンネーム／作者名） | `src/ui/components/PublishPage/publish-page.tsx` の `AuthorNameCard`（投稿前に名前を見せる）＋ `author-register-card.tsx`（登録）。取得は `src/ui/_api/author.ts`。変更の口は コトノハ-grove- の `/settings` |
+| 未課金・解約アカウントの削除（reaper） | `src/core/billing/reap-policy.ts` + `functions/api/billing/reap.ts` + `functions/api/_lib/purge.ts` |
 | 画面遷移・ルート追加 | `src/ui/Root.tsx` + `src/ui/hooks/use-hash-route.ts` |
 | DB スキーマ | `migrations/*.sql` + `wrangler.toml` |
 | ランディングページ（機能紹介・プラン表・スクリーンショット） | `public/lp/index.html` + `public/lp/shots/` |
@@ -72,7 +77,8 @@ Cloudflare Pages Functions
 | `plot/` | プロット（幕/ライン/ビート/伏線/秘密）＋**世界観設定**（`Plot.world`・作者専用） | `PlotSection` `PlotLine` `PlotBeat` `Foreshadow` `Secret` / `beatsInStoryOrder` `sectionOfBeat` `linesOfBeat` `foreshadowsOfBeat` `secretsHiddenAt` / `WorldNote` `WORLD_SLOTS` `WORLD_CUSTOM_SLOT` `worldNoteLabel` `worldNotesInOrder` `setWorldNote` `removeWorldNote` |
 | `structure/` | 構造レイヤー（outline/chart/mindmap）のノード・辺 | `StructureNode` `StructureEdge` `StructureKind` `emptyStructure` `addNode` `pickPrimaryStructure` |
 | `idea/` | ネタ帳のメモ | `IdeaNote` `normalizeIdeaText` |
-| `profile/` | 作者プロフィール | `Profile` `ProfileRepository` |
+| `profile/` | 作者プロフィール（ペンネーム・アバター）と、**アカウントとの突き合わせ**（`account.ts`）。どのアカウントの名前かの印は `profile` とは**別キー**（同期・バックアップに乗せない） | `Profile`（`penName` `avatar` `updatedAt`） `ProfileRepository`（+ `getAccountId` `saveAccountId`） / `penNameForAccount` `PenNameSync` |
+| `board/` | **掲示板の共有契約**（Zod）と純ロジック。詳細は下表 | `BOARD_KINDS` `BOARD_LIMITS` `BoardThread` `BoardPost` `PollResult` `LinkCard` `BoardThreadDetail` `ThreadListResponse` `BoardMeResponse` `ModerateInputSchema` ほか（`types.ts`） |
 
 ### 変換
 | モジュール | 責務 |
@@ -80,7 +86,7 @@ Cloudflare Pages Functions
 | `src/core/parser/parseNotation.ts` | 記法テキスト → 正本 Block。`parseEpisodeBody` `parseInlines` |
 | `src/core/exporter/toEpub.ts` | 正本 → EPUB（`episodeToXhtml` + `zip/`） |
 | `src/core/exporter/toHtml.ts` | 正本 → 安全な HTML（プレビュー兼用・全エスケープ済み。`inlinesToHtml` も公開） |
-| `src/core/markdown/index.ts` | 生テキスト → プレビュー HTML の軽量マークダウン（`markdownToHtml` `stripMarkdown`。行内は parseInlines へ委譲＝[[用語]]・ルビが生きる） |
+| `src/core/markdown/index.ts` | 生テキスト → プレビュー HTML の軽量マークダウン（`markdownToHtml` `stripMarkdown` `InlineRenderer`。行内は既定で parseInlines へ委譲＝[[用語]]・ルビが生きるが、**第3引数で差し替えられる**＝掲示板はここを使う） |
 | `src/core/exporter/toNarou.ts` / `src/core/exporter/toKakuyomu.ts` | 各投稿サイト記法 |
 | `src/core/exporter/toPlainText.ts` / `plotToPlainText.ts` / `structureToPlainText.ts` | AI 投げ込み用の平文（`glossaryToPlainText` 含む） |
 | `src/core/exporter/blocksToNotation.ts` | 正本 → 記法（往復変換） |
@@ -111,12 +117,22 @@ Cloudflare Pages Functions
 | `backup/` | クラウド全体バックアップの直列化（`CloudBackup` v1） |
 | `src/core/nudge/backup-nudge.ts` | バックアップ促しの判定（節目・クールダウン） |
 | `src/core/billing/stripe-event.ts` | Stripe イベント → `StripeAction` 解釈 |
-| `src/core/billing/reap-policy.ts` | 未課金アカウントの回収判定（`shouldReap`） |
+| `src/core/billing/reap-policy.ts` | アカウント削除の判定（`shouldReap`）。**解約後の猶予切れだけ**が対象＝無料アカウントに期限は無い |
 | `src/core/mcp-edit/index.ts` | **MCP 経由の編集操作の純ロジック**（`createWork` `setEpisode` `upsertGlossaryEntry` `setPlotMeta` `setPlotWorldNote` `deletePlotWorldNote` 等）。サーバの MCP ツールはこれを呼ぶ |
 | `activity/` | 執筆記録（`localDateKey` `currentStreak` `buildHeatmap`） |
 | `stats/` | 文字数カウント |
 | `outline/` | アウトラインのメモ木操作（`indentNote` `moveNote` 等） |
 | `glossary/` | 参照解決・出現検索・改名・サジェスト・公開情報の結合（`resolveRef` `renameEntry` `suggestRefs` `publicTextOf`） |
+
+### 掲示板（`board/`）— 判断はすべてここ。サーバは呼ぶだけ
+| ファイル | 責務 | 主な export |
+|---|---|---|
+| `src/core/board/types.ts` | **サーバ・クライアント共通の契約**（Zod）と上限。種別は request/bug/chat/intro/promo/notice（旧 `suggestion` は request へ統合・enum には残す） | `BOARD_KINDS` `BOARD_STATUSES` `BOARD_LIMITS`（本文 1500 字） `KIND_ALIASES` `canonicalKind` `kindsForFilter` `CREATABLE_KINDS` `STAFF_ONLY_KINDS` `KINDS_WITH_STATUS` `boardKindLabel` `boardKindHint` `BoardThread` `BoardPost` `PollResult` `LinkCard` `BoardThreadDetail` `ThreadListResponse` `BoardMeResponse` `ModerateInputSchema` |
+| `src/core/board/name.ts` | 表示名の正規化・予約語。**見た目が同じ文字を畳んでから**重複判定（なりすまし防止） | `normalizeDisplayName` `nameKeyOf` `RESERVED_NAME_KEYS` `validateDisplayName` |
+| `src/core/board/link.ts` | **URL を取りに行ってよいかの判定（SSRF）**と OGP の抽出。og:image はホストの許可表を通す | `extractUrls` `normalizeUrl` `urlKeyOf` `canFetchUrl` `parseOgp` `OGP_IMAGE_HOSTS` `isAllowedImageHost` `resolveImageUrl` |
+| `src/core/board/render.ts` | 掲示板本文の描画。**`markdownToHtml` は本文向けで使えない**（数字に縦中横、`[[用語]]` 素通し、URL がリンクにならない）ためブロック層だけ再利用 | `escapeHtml` `boardInlineHtml` `boardBodyToHtml` `boardBodyToPlain` |
+| `src/core/board/poll.ts` | アンケートの検証・集計と**開示判定**（未投票かつ締切前は票数を返さない） | `validatePollInput` `tallyVotes` `pollResultFor` `canVote` `normalizeChoices` |
+| `src/core/board/permission.ts` | 誰が何をできるか。理由を HTTP ステータスへ写す表つき。種別の表は `types.ts` から import | `canPost` `canCreateThread`（notice は staff のみ） `isStaffOnlyKind` `canDeletePost` `canDeleteThread` `threadDeleteMode` `canModerate` `canSetStatus` `canLike`（**投稿 1 件ごと**・種別は問わない） `visiblePost` `STATUS_OF_REASON` |
 
 ---
 
@@ -134,7 +150,7 @@ Cloudflare Pages Functions
 
 ### ルート（`src/ui/hooks/use-hash-route.ts`・`location.hash` が唯一の真実）
 `/` ライブラリ ・ `/write` 執筆 ・ `/publish` 公開 ・ `/activity` 執筆の記録 ・ `/ideas` ネタ帳
-・ `/settings` ・ `/help` ・ `/plan` 同期の案内
+・ `/settings` ・ `/help` ・ `/plan` 同期の案内 ・ `/board` 掲示板 ・ `/board/<threadId>` スレ詳細
 
 ### 画面（`components/` — PascalCase ディレクトリ + kebab ファイル・1ファイル1コンポーネント）
 - **執筆**: `EditorPane/`（textarea + 記法バー + `@` サジェスト + 置換パネル）, `PreviewPane/`, `HistoryPanel/`
@@ -144,6 +160,7 @@ Cloudflare Pages Functions
 - **執筆画面の右パネル（遅延ロードしない）**: `PlotPeek/`（この話のビート一覧 `plot-peek.tsx` ＋ 読み取り専用のビート詳細 `beat-detail.tsx`）
 - **入出力**: `ExportDialog/`, `ImportDialog/`, `BackupDialog/`, `CloudBackupDialog/`, `AiPullDialog/`
 - **同期/課金**: `SyncOnboarding/`, `SyncLostDialog/`, `RestoreGrace/`, `McpConnectDialog/`, `SaveStateIndicator/`, `BackupNudgeDialog/`
+- **掲示板（遅延ロード・未ログインでも読める）**: `BoardPage/`（`board-page.tsx` 一覧 ／ `thread-view.tsx` スレ詳細 ／ `thread-list.tsx` `board-body.tsx` `link-card.tsx` `poll-card.tsx` `name-dialog.tsx` `new-thread-dialog.tsx` `report-dialog.tsx` `staff-controls.tsx`）
 - **その他**: `ActivityPage/`, `IdeaboxPage/`, `PublishPage/`, `SettingsPage/`, `HelpPage/`, `ProfileDialog/`, `FirstRunDialog/`
 - **共通**: `AppShell/`, `PageLayout/`, `SideNav/`, `TopAppBar/`, `Toast/`, `ConfirmDialog/`, `ErrorBoundary/`
 - `components/ui/` = shadcn/ui コピー品（**biome の lint 対象外**・手を入れない）→ 中身は次節のカタログ参照
@@ -191,6 +208,7 @@ Cloudflare Pages Functions
 `useEditorStore` / `useAutosave` / `useAutoSync` / `useAutoBackup` / `useLiveSnapshot` / `useSyncStatus`
 / `useHashRoute` / `useIsNarrow`（+ `NARROW_MAX_PX` `NARROW_QUERY`） / `useKeyboardInset`
 / `useLocalFlag`（localStorage 永続の真偽フラグ） / `usePreferences`（+ `setTheme` `setReadingSize`）
+/ `usePenName` `useOpenProfile` `useAccountPenNameSync` `useSaveProfile`（+ `PenNameContext` `ProfileEditContext`・`use-pen-name.ts`）
 / `useBackupMarks`（+ `markLocalBackup` `markCloudBackup` `readBackupMarks`） / `readNudgeAck` `acknowledgeNudge`
 
 **純関数 `src/ui/_utils/`**（React 非依存のヘルパ。ここに無いものだけ新規作成する）
@@ -211,12 +229,13 @@ Cloudflare Pages Functions
 ### 補助
 | ディレクトリ | 責務 |
 |---|---|
-| `_api/` | サーバ呼び出しの薄いクライアント（`sync` `backup` `billing` `publish` `author` `mcp`） |
+| `_api/` | サーバ呼び出しの薄いクライアント（`sync` `backup` `billing` `publish` `author` `mcp` `board`） |
 | `_utils/` | 純関数（`caretCoordinates` `imageResizer` `exporters` `download` `format` `clipboard` `cover-tone`） |
-| `hooks/` | React ライフサイクル依存のみ（`use-autosave` `use-auto-sync` `use-auto-backup` `use-live-snapshot` `use-preferences` `use-narrow` `use-keyboard-inset` 等） |
+| `hooks/` | React ライフサイクル依存のみ（`use-autosave` `use-auto-sync` `use-auto-backup` `use-live-snapshot` `use-preferences` `use-narrow` `use-keyboard-inset` `use-pen-name` 等） |
 | `sync/` | 同期クライアント。`src/ui/sync/sync-service.ts` が本体（約800行）・`sync-gate` `sync-status` `sync-touch` |
 | `src/ui/backup/backup-service.ts` | クラウド全体バックアップの実行 |
 | `plot/` | プロットの表示ヘルパ（React 非依存・`beat-ui.ts` に `STATUS_UI` `LINE_PALETTE` `lineColorOf` `beatStripeColor` `plainOf` `fmtCount`）。プロット画面と執筆画面のパネルで色・表記を揃える |
+| `board/` | 掲示板の表示ヘルパ（React 非依存・`board-ui.ts` に `KIND_UI`／`STATUS_UI` の色・`kindOrder`・`creatableKindOrder(role)`・未読件数・抜粋） |
 | `structure/` | React Flow アダプタ（`flow-adapter` `tree-layout` `use-structure-flow` `ensure-structure`） |
 | `auth/` | Clerk 配線（`auth-provider` `clerk-gate` `derive-status` `cloud-pricing`） |
 
@@ -240,6 +259,15 @@ Cloudflare Pages Functions
 | `POST /api/hit` | 訪問者集計（Cookie なし） |
 | `/api/billing/{checkout,portal,status,reap}` | Stripe Checkout / Portal / 会員状態 / 未課金回収ジョブ |
 | `POST /api/webhooks/stripe` | Stripe webhook → D1 `subscriptions` にミラー |
+| `GET /api/board/threads` | 掲示板の一覧（`?kind=` `?cursor=`）。**未ログインでも読める** |
+| `POST /api/board/threads` | スレ立て（本文＋任意でアンケート）。リンクカードの取得もここ |
+| `/api/board/thread` | スレ1本（`?id=`）。GET=詳細 / PATCH=ステータス・ピン・ロック（staff）/ DELETE=自分のスレ |
+| `/api/board/posts` | POST=返信（`?thread=`）/ DELETE=自分の投稿（`?id=`） |
+| `POST /api/board/like` | 👍 のトグル（`?post=`・**投稿 1 件ごと**。古い `?thread=` はスレ本文への 👍 に写す） |
+| `POST /api/board/vote` | アンケートの投票（`?thread=`・1アカウント1票） |
+| `POST /api/board/reports` | 通報（作業キューに積むだけ・自動非表示はしない） |
+| `/api/board/me` | GET=自分の表示名と投稿 / PUT=表示名の設定・変更（**アカウントのペンネームの正本**） |
+| `POST /api/board/moderate` | 運営の措置（非表示・投稿禁止・カードの停止）。**staff のみ** |
 | `/api/mcp` | リモート MCP（Streamable HTTP・JSON-RPC 2.0） |
 | `/api/mcp/token` | MCP アクセストークン発行（会員のみ） |
 | `/api/mcp/oauth-protected-resource` | RFC 9728 メタデータ |
@@ -247,13 +275,21 @@ Cloudflare Pages Functions
 
 `api/_lib/`: `auth`（Clerk 検証・`verifyMember`）, `membership`（**会員判定の単一の真実 = D1 `subscriptions`**）,
 `crypto`（at-rest 暗号化）, `mcp-server`（MCP プロトコル核・約960行）, `mcp-auth`, `mcp-token`,
-`oauth-metadata`, `oauth-upstream`（中継先 Clerk の取得）, `stripe`, `rate-limit`, `purge`, `visitor`。
+`oauth-metadata`, `oauth-upstream`（中継先 Clerk の取得）, `stripe`, `rate-limit`, `purge`, `visitor`,
+`board-store`（**掲示板の SQL はすべてここ**・行 ⇄ camelCase の変換も）, `board-link-fetch`（OGP の取得とキャッシュ）。
+
+掲示板の共通部品は `functions/api/board/board-endpoint.ts`（`boardJson`＝`private, no-store` 付きの応答、
+`rateLimitedResponse`＝分あたりの安全弁、`postQuotaExceeded`＝10件/時、`createPostRetrying`、`conflictResponse`）。
+**新しいエンドポイントを足すときはここから使う**（片方だけ緩むと誰も気づけない）。
+テスト用の D1 フェイクは `functions/api/board/board-test-util.ts`（`makeBoardDb` `makeBoardEnv` `clerkAuthMock`）。
+**SQL そのものを確かめるのは `functions/api/board/real-d1.ts`**（`migrations/` の掲示板 DDL（0008・0009）を順に流した実 SQLite＝`node:sqlite`。フェイクは SQL を解釈しないので構文エラー・曖昧な列名を拾えない。**マイグレーションを足したらここにも足す**）。
 
 **バインディング**（`wrangler.toml`）: `DB` = D1 `novel-studio`、`MEDIA` = R2 `novel-studio-media`
 （preview 環境は `-stg` サフィックス）。
 
 **マイグレーション**（`migrations/`）: `0001_init` → `0002_sync_works` → `0003_trash_sync` →
-`0004_mcp_tokens` → `0005_subscriptions` → `0006_activity_sync` → `0007_visitor_days`
+`0004_mcp_tokens` → `0005_subscriptions` → `0006_activity_sync` → `0007_visitor_days` → `0008_board`（掲示板9テーブル）
+→ `0009_board_post_likes`（👍 を投稿単位へ。`board_post_likes` ＋ `board_posts.like_count`・旧 `board_likes` は残す）
 
 ---
 
@@ -292,5 +328,7 @@ uv run .claude/skills/natural-japanese/scripts/lint.py <file>   # 仕事の文�
 | `docs/requirement/05-sync.md` / `docs/requirement/05-sync-setup.md` | 同期の設計と構築手順 |
 | `docs/requirement/06-release-prep.md` | リリース準備 |
 | `docs/requirement/07-analytics.md` | アクセス解析 |
+| `docs/requirement/09-board.md` | 掲示板（記名式スレッド・お知らせ・アンケート・外部リンクの OGP）の設計と決定表 |
+| `public/board-guidelines.html` | 掲示板ガイドライン（`/board-guidelines` で公開・通報や上限の文言はここと揃える） |
 | `docs/requirement/99-open-questions.md` | 未決事項 |
 | `design/stitch/*/index.html` | 画面のデザインカンプ（+ スクリーンショット） |

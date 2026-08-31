@@ -32,7 +32,6 @@ import { BackupNudgeDialog } from '@/ui/components/BackupNudgeDialog/backup-nudg
 import { ConfirmDialog } from '@/ui/components/ConfirmDialog/confirm-dialog'
 import { ExportDialog } from '@/ui/components/ExportDialog/export-dialog'
 import { ImportDialog } from '@/ui/components/ImportDialog/import-dialog'
-import { ProfileDialog } from '@/ui/components/ProfileDialog/profile-dialog'
 import { SaveStateIndicator } from '@/ui/components/SaveStateIndicator/save-state-indicator'
 import { SideNav } from '@/ui/components/SideNav/side-nav'
 import { TitlePromptDialog } from '@/ui/components/TitlePromptDialog/title-prompt-dialog'
@@ -43,6 +42,7 @@ import { WorkMetaDialog } from '@/ui/components/WorkMetaDialog/work-meta-dialog'
 import { markLocalBackup, readBackupMarks } from '@/ui/hooks/use-backup-marks'
 import { acknowledgeNudge, readNudgeAck } from '@/ui/hooks/use-backup-nudge'
 import { useEditorStore } from '@/ui/hooks/use-editor-store'
+import { useOpenProfile } from '@/ui/hooks/use-pen-name'
 import { TRASH_TTL_MS } from '@/ui/store/createDefaultStore'
 import type { EditorStore } from '@/ui/store/editorStore'
 import { ProjectCard } from './project-card'
@@ -74,6 +74,12 @@ interface LibraryProps {
   onOpenActivity?: () => void
   /** ネタ帳ページを開く。 */
   onOpenIdeas?: () => void
+  /**
+   * 掲示板ページを開く。渡されたときだけサイドバーに行が出る。
+   * ここだけ onOpen* ではなく onNavigateBoard なのは、掲示板の導線を持つ5画面で
+   * props 名を揃え、SideNav へそのまま素通しできるようにするため。
+   */
+  onNavigateBoard?: () => void
   /** 設定ページを開く。 */
   onOpenSettings?: () => void
   /** ヘルプページを開く。 */
@@ -137,6 +143,7 @@ export function Library({
   syncLostCount = 0,
   onOpenActivity,
   onOpenIdeas,
+  onNavigateBoard,
   onOpenSettings,
   onOpenHelp,
   localBackup,
@@ -146,8 +153,10 @@ export function Library({
   onOpenCloudPlan,
 }: LibraryProps) {
   const state = useEditorStore(store)
-  // 公開サイトへの投稿は Clerk JWT で認証する（執筆アカウント＝公開アカウント）。
+  // コトノハ-grove- への投稿は Clerk JWT で認証する（執筆アカウント＝公開アカウント）。
   const { getToken } = useAuth()
+  // プロフィールの編集はアプリに 1 つ（Root が持つ）。ここは開く口を叩くだけ。
+  const openProfile = useOpenProfile()
   const { show } = useToast()
   const [newOpen, setNewOpen] = useState(false)
   const [exportOpen, setExportOpen] = useState(false)
@@ -155,7 +164,6 @@ export function Library({
   const [publishBusyId, setPublishBusyId] = useState<string | null>(null)
   const [importOpen, setImportOpen] = useState(false)
   const [backupOpen, setBackupOpen] = useState(false)
-  const [profileOpen, setProfileOpen] = useState(false)
   const [trashOpen, setTrashOpen] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<WorkSummary | null>(null)
   const [metaTarget, setMetaTarget] = useState<WorkSummary | null>(null)
@@ -243,7 +251,7 @@ export function Library({
 
   /**
    * 投稿済み作品の公開／下書きを、ライブラリから切り替える。
-   * 公開サイトは「作品まるごとの再送」で更新する仕様で、再送しても読者の反応は保持されるため、
+   * コトノハ-grove- は「作品まるごとの再送」で更新する仕様で、再送しても読者の反応は保持されるため、
    * 現在の内容のまま visibility だけ差し替えて送り直す（別の API を用意しない）。
    */
   const handleTogglePublish = async (summary: WorkSummary) => {
@@ -312,12 +320,13 @@ export function Library({
           onNavigateCollection={() => {}}
           onNavigateActivity={onOpenActivity}
           onNavigateIdeas={onOpenIdeas}
+          onNavigateBoard={onNavigateBoard}
           onNavigateTrash={state.trashList.length > 0 ? () => setTrashOpen(true) : undefined}
           onNavigateSettings={onOpenSettings}
           onNavigateHelp={onOpenHelp}
           cta={{ label: '新しい作品', onClick: () => setNewOpen(true) }}
           profile={state.profile}
-          onEditProfile={() => setProfileOpen(true)}
+          onEditProfile={openProfile}
         />
       }
     >
@@ -566,12 +575,6 @@ export function Library({
         onOpenChange={setImportOpen}
         onImport={(works) => store.importWorks(works)}
         onRestoreAll={(json) => localBackup.restorePlaintext(json)}
-      />
-      <ProfileDialog
-        open={profileOpen}
-        onOpenChange={setProfileOpen}
-        initial={{ penName: state.profile.penName ?? '', avatar: state.profile.avatar ?? '' }}
-        onSubmit={(values) => void store.updateProfile(values)}
       />
       <WorkMetaDialog
         open={metaTarget !== null}

@@ -6,6 +6,7 @@ import {
   FileText,
   Library,
   ListTree,
+  MessagesSquare,
   Milestone,
   Network,
   Pencil,
@@ -31,6 +32,7 @@ export type NavKey =
   | 'collection'
   | 'activity'
   | 'ideas'
+  | 'board'
   | 'episodes'
   | 'glossary'
   | 'plot'
@@ -51,6 +53,8 @@ interface SideNavProps {
   onNavigateActivity?: () => void
   /** ネタ帳（アイデアの受け皿）へ。指定時のみ表示。 */
   onNavigateIdeas?: () => void
+  /** 掲示板へ。指定時のみ表示。 */
+  onNavigateBoard?: () => void
   /** ゴミ箱を開く。指定時のみ表示（ライブラリがダイアログをホストする）。 */
   onNavigateTrash?: () => void
   /** 設定ページへ。指定時のみフッターの「設定」を有効化。 */
@@ -58,7 +62,7 @@ interface SideNavProps {
   /** ヘルプページへ。指定時のみフッターの「ヘルプ」を有効化。 */
   onNavigateHelp?: () => void
   /**
-   * 公開サイト（コトノハ-grove-）のURL。省略時はビルド設定（VITE_PLATFORM_ORIGIN）。
+   * コトノハ-grove-のURL。省略時はビルド設定（VITE_PLATFORM_ORIGIN）。
    * 空のビルド（投稿先未設定）ではリンク自体を出さない。
    */
   platformHref?: string
@@ -135,6 +139,7 @@ export function SideNav({
   onNavigateCollection,
   onNavigateActivity,
   onNavigateIdeas,
+  onNavigateBoard,
   onNavigateTrash,
   onNavigateSettings,
   onNavigateHelp,
@@ -414,6 +419,14 @@ export function SideNav({
                 onClick={onNavigateIdeas}
               />
             ) : null}
+            {onNavigateBoard ? (
+              <NavRow
+                icon={MessagesSquare}
+                label="掲示板"
+                active={active === 'board'}
+                onClick={onNavigateBoard}
+              />
+            ) : null}
             {onNavigateTrash ? (
               <NavRow icon={Trash2} label="ゴミ箱" onClick={onNavigateTrash} />
             ) : null}
@@ -425,7 +438,7 @@ export function SideNav({
 
       {/* フッター */}
       <div className="space-y-0.5">
-        {/* 公開サイト（コトノハ-grove-）へ。読みに行く導線なので新しいタブで開き、執筆を離れない。 */}
+        {/* コトノハ-grove-へ。読みに行く導線なので新しいタブで開き、執筆を離れない。 */}
         {groveHref ? (
           <a
             href={groveHref}

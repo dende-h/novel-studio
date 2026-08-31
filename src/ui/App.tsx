@@ -31,7 +31,6 @@ import { GlossaryView } from '@/ui/components/GlossaryView/glossary-view'
 import { HistoryPanel } from '@/ui/components/HistoryPanel/history-panel'
 import { PlotPeek } from '@/ui/components/PlotPeek/plot-peek'
 import { PreviewPane } from '@/ui/components/PreviewPane/preview-pane'
-import { ProfileDialog } from '@/ui/components/ProfileDialog/profile-dialog'
 import { SideNav } from '@/ui/components/SideNav/side-nav'
 import { TitlePromptDialog } from '@/ui/components/TitlePromptDialog/title-prompt-dialog'
 import { useToast } from '@/ui/components/Toast/toast'
@@ -40,6 +39,7 @@ import { WorkMetaDialog } from '@/ui/components/WorkMetaDialog/work-meta-dialog'
 import { useAutosave } from '@/ui/hooks/use-autosave'
 import { useEditorStore } from '@/ui/hooks/use-editor-store'
 import { useIsNarrow } from '@/ui/hooks/use-narrow'
+import { useOpenProfile } from '@/ui/hooks/use-pen-name'
 import type { EditorStore } from '@/ui/store/editorStore'
 
 /** フォーム値の空文字は未設定(undefined)へ畳んでスキーマの任意項目を綺麗に保つ。 */
@@ -67,6 +67,8 @@ interface AppProps {
   onNavigatePublish?: () => void
   /** 執筆の記録（草・ストリーク）へ */
   onNavigateActivity?: () => void
+  /** 掲示板へ（サイドバー）。渡されたときだけ行が出る。 */
+  onNavigateBoard?: () => void
   /** 設定ページへ */
   onNavigateSettings?: () => void
   /** ヘルプページへ */
@@ -143,6 +145,7 @@ export function App({
   onExit,
   onNavigatePublish,
   onNavigateActivity,
+  onNavigateBoard,
   onNavigateSettings,
   onNavigateHelp,
   activityRepo,
@@ -153,10 +156,11 @@ export function App({
 }: AppProps) {
   const state = useEditorStore(store)
   const { show } = useToast()
+  // プロフィールの編集はアプリに 1 つ（Root が持つ）。ここは開く口を叩くだけ。
+  const openProfile = useOpenProfile()
   const [newEpisodeOpen, setNewEpisodeOpen] = useState(false)
   const [exportOpen, setExportOpen] = useState(false)
   const [metaOpen, setMetaOpen] = useState(false)
-  const [profileOpen, setProfileOpen] = useState(false)
   const [historyOpen, setHistoryOpen] = useState(false)
   const [activeScreen, setActiveScreen] = useState<
     'episodes' | 'glossary' | 'outline' | 'mindmap' | 'chart' | 'plot'
@@ -361,6 +365,7 @@ export function App({
           active={activeScreen}
           onNavigateCollection={() => onExit?.()}
           onNavigateActivity={onNavigateActivity}
+          onNavigateBoard={onNavigateBoard}
           onNavigateSettings={onNavigateSettings}
           onNavigateHelp={onNavigateHelp}
           onNavigateEpisodes={work ? () => setActiveScreen('episodes') : undefined}
@@ -375,7 +380,7 @@ export function App({
             disabled: !work,
           }}
           profile={state.profile}
-          onEditProfile={() => setProfileOpen(true)}
+          onEditProfile={openProfile}
           // 執筆中に作品情報（あらすじ・表紙）を直せるようにする。ダイアログは既存のものをそのまま開く。
           onEditWorkMeta={work ? () => setMetaOpen(true) : undefined}
           episodes={work?.episodes.map((e) => ({ id: e.id, title: e.title })) ?? []}
@@ -823,12 +828,6 @@ export function App({
           onSubmit={(values) => void store.updateWorkMeta(work.id, values)}
         />
       ) : null}
-      <ProfileDialog
-        open={profileOpen}
-        onOpenChange={setProfileOpen}
-        initial={{ penName: state.profile.penName ?? '', avatar: state.profile.avatar ?? '' }}
-        onSubmit={(values) => void store.updateProfile(values)}
-      />
       <ConfirmDialog
         open={deleteEpisodeTarget !== null}
         onOpenChange={(o) => {

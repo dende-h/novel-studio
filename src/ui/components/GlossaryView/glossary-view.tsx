@@ -559,8 +559,9 @@ function EntryEditor({
           textareaClassName="min-h-36 text-[13.5px]"
         />
         <p className="text-[11px] text-on-surface-variant/60 leading-relaxed">
-          公開サイトへ投稿すると読者にも見えます（その用語が出てくる話まで読んだ読者だけに開きます）。
-          @ または [[ で他の用語を呼び出せます。プレビューの緑の語はクリックで右にチラ見が開きます。
+          コトノハ-grove-
+          へ投稿すると読者にも見えます（その用語が出てくる話まで読んだ読者だけに開きます）。 @
+          または [[ で他の用語を呼び出せます。プレビューの緑の語はクリックで右にチラ見が開きます。
         </p>
       </section>
 

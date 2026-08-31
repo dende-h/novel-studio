@@ -15,6 +15,8 @@ interface IdeaboxPageProps {
   onNavigateCollection: () => void
   /** 執筆の記録へ（サイドバー）。 */
   onNavigateActivity?: () => void
+  /** 掲示板へ（サイドバー）。渡されたときだけ行が出る。 */
+  onNavigateBoard?: () => void
   /** 設定ページへ（サイドバーフッター）。 */
   onNavigateSettings?: () => void
   /** ヘルプページへ（サイドバーフッター）。 */
@@ -29,6 +31,7 @@ export function IdeaboxPage({
   repo,
   onNavigateCollection,
   onNavigateActivity,
+  onNavigateBoard,
   onNavigateSettings,
   onNavigateHelp,
 }: IdeaboxPageProps) {
@@ -67,6 +70,7 @@ export function IdeaboxPage({
           onNavigateCollection={onNavigateCollection}
           onNavigateActivity={onNavigateActivity}
           onNavigateIdeas={() => {}}
+          onNavigateBoard={onNavigateBoard}
           onNavigateSettings={onNavigateSettings}
           onNavigateHelp={onNavigateHelp}
         />

@@ -194,7 +194,7 @@ describe('Library ゴミ箱導線', () => {
 })
 
 /**
- * 公開サイトへの投稿導線。投稿先（VITE_PLATFORM_ORIGIN）は取り込み時に読まれるので、
+ * コトノハ-grove- への投稿導線。投稿先（VITE_PLATFORM_ORIGIN）は取り込み時に読まれるので、
  * stub してからモジュールを読み直す。
  */
 const PLATFORM_ORIGIN = 'https://platform.example'
@@ -226,7 +226,7 @@ async function seedPublishedWork(store: EditorStore, visibility: 'draft' | 'publ
   return created.id
 }
 
-describe('Library 公開サイトへの投稿導線', () => {
+describe('Library コトノハ-grove- への投稿導線', () => {
   afterEach(() => {
     vi.unstubAllEnvs()
     vi.unstubAllGlobals()
@@ -248,7 +248,7 @@ describe('Library 公開サイトへの投稿導線', () => {
     )
 
     fireEvent.click(await screen.findByRole('button', { name: '「投稿済み作」のメニュー' }))
-    expect(screen.queryByRole('menuitem', { name: '公開サイトへ投稿' })).toBeNull()
+    expect(screen.queryByRole('menuitem', { name: 'コトノハ-grove- へ投稿' })).toBeNull()
     expect(screen.queryByRole('menuitem', { name: '公開する' })).toBeNull()
   })
 
@@ -269,7 +269,7 @@ describe('Library 公開サイトへの投稿導線', () => {
     )
 
     fireEvent.click(await screen.findByRole('button', { name: '「未投稿作」のメニュー' }))
-    expect(screen.getByRole('menuitem', { name: '公開サイトへ投稿' })).toBeInTheDocument()
+    expect(screen.getByRole('menuitem', { name: 'コトノハ-grove- へ投稿' })).toBeInTheDocument()
     expect(screen.queryByRole('menuitem', { name: '公開する' })).toBeNull()
   })
 
@@ -355,5 +355,41 @@ describe('Library 公開サイトへの投稿導線', () => {
     const sent = JSON.parse(init.body as string) as { work: { platform?: Record<string, unknown> } }
     expect(sent.work.platform).toMatchObject({ visibility: 'draft' })
     await waitFor(() => expect(screen.queryByText('公開中')).toBeNull())
+  })
+})
+
+describe('Library の掲示板導線', () => {
+  it('onNavigateBoard を渡すとサイドバーに「掲示板」が出て、押すと呼ばれる', async () => {
+    const onNavigateBoard = vi.fn()
+    render(
+      <Library
+        store={makeStore()}
+        onEnterPublish={() => {}}
+        onEnterEditor={() => {}}
+        localBackup={fakeLocalBackup}
+        isMember={false}
+        onboarded={false}
+        activityRepo={fakeActivityRepo}
+        onNavigateBoard={onNavigateBoard}
+      />,
+    )
+    fireEvent.click(await screen.findByRole('button', { name: '掲示板' }))
+    expect(onNavigateBoard).toHaveBeenCalled()
+  })
+
+  it('onNavigateBoard を渡さなければ行を出さない（行き先の無い行を作らない）', async () => {
+    render(
+      <Library
+        store={makeStore()}
+        onEnterPublish={() => {}}
+        onEnterEditor={() => {}}
+        localBackup={fakeLocalBackup}
+        isMember={false}
+        onboarded={false}
+        activityRepo={fakeActivityRepo}
+      />,
+    )
+    await screen.findByRole('button', { name: 'マイライブラリ' })
+    expect(screen.queryByRole('button', { name: '掲示板' })).toBeNull()
   })
 })

@@ -5,9 +5,10 @@ import { Button } from '@/ui/components/ui/button'
 import { Input } from '@/ui/components/ui/input'
 import { Label } from '@/ui/components/ui/label'
 import { Textarea } from '@/ui/components/ui/textarea'
+import { usePenName } from '@/ui/hooks/use-pen-name'
 
 interface AuthorRegisterCardProps {
-  /** 公開サイト側の現在の状態（初期ペンネームに使う）。取れていなければ null。 */
+  /** コトノハ-grove- 側の現在の状態（初期ペンネームに使う）。取れていなければ null。 */
   status: AuthorStatus | null
   getToken: () => Promise<string | null>
   /** 登録できたら、公開ページ側の状態を更新して投稿へ進めるようにする。 */
@@ -17,21 +18,26 @@ interface AuthorRegisterCardProps {
 /**
  * 作者登録カード。
  *
- * 公開サイトへの投稿には作者登録が要る。それを「公開ボタンを押した瞬間に別サイトへ飛ばされる」
+ * コトノハ-grove- への投稿には作者登録が要る。それを「公開ボタンを押した瞬間に別サイトへ飛ばされる」
  * 形で知らせると、書き終えたところで手が止まる。ここで名前を決めて、そのまま公開まで進める。
  *
- * ガイドライン同意は公開サイトのモーダルと同じ条件（既定オフ・チェックしないと押せない）。
+ * ガイドライン同意は コトノハ-grove- のモーダルと同じ条件（既定オフ・チェックしないと押せない）。
  */
 export function AuthorRegisterCard({ status, getToken, onRegistered }: AuthorRegisterCardProps) {
   const uid = useId()
+  // このアプリのペンネーム（アカウントのもの・`src/ui/hooks/use-pen-name.ts`）。
+  // コトノハ-grove- の作者名は別に持つので、ここでの用途は**初期値の候補**だけ。
+  // コトノハ-grove- の表示名が取れなかったとき（通信断・未構成）に空欄を出さないための受け皿で、
+  // 入れたあとの改名は コトノハ-grove- の設定でする（`AuthorNameCard` がその導線を出す）。
+  const appPenName = usePenName()
   // 状態が先に分かっていれば初期値から入れる（あとから届いたときは下の effect が拾う）
-  const [penName, setPenName] = useState(() => status?.penName ?? '')
+  const [penName, setPenName] = useState(() => status?.penName ?? appPenName)
   const [bio, setBio] = useState('')
   const [agreed, setAgreed] = useState(false)
   const [pending, setPending] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  // 公開サイトの表示名を初期値にする（読者としての名前をそのまま使う人が多いため）。
+  // コトノハ-grove- の表示名を初期値にする（読者としての名前をそのまま使う人が多いため）。
   // 作者が手を入れたあとは上書きしない。
   useEffect(() => {
     if (status?.penName) setPenName((prev) => (prev === '' ? status.penName : prev))
@@ -60,14 +66,17 @@ export function AuthorRegisterCard({ status, getToken, onRegistered }: AuthorReg
         公開の前に、作者登録
       </h2>
       <p className="mt-1.5 text-[13px] text-on-surface-variant leading-relaxed">
-        公開サイトへ出すのは初めてですね。最初の1回だけ、作者としてのお名前を決めてください。
+        コトノハ-grove- へ出すのは初めてですね。最初の1回だけ、作者としてのお名前を決めてください。
         ここで登録すれば、そのままこのページから公開できます。
       </p>
 
       <div className="mt-4 space-y-4">
         <div className="space-y-2">
+          {/* **「ペンネーム」と呼ばない。** コトノハ-leaf- のペンネーム（`ProfileDialog`）と
+              コトノハ-grove- の作者名は別々に持っているので、同じ語を当てると
+              「片方を変えたらもう片方も変わる」と読まれる。語を分けて器も分ける。 */}
           <Label htmlFor={`${uid}-pen`}>
-            ペンネーム <span className="text-destructive">*</span>
+            作者名 <span className="text-destructive">*</span>
           </Label>
           <Input
             id={`${uid}-pen`}
@@ -77,7 +86,9 @@ export function AuthorRegisterCard({ status, getToken, onRegistered }: AuthorReg
             placeholder="霜月 夜半"
           />
           <p className="text-[11px] text-on-surface-variant/70">
-            公開サイトでの表示名になります。あとからいつでも変更できます（{PEN_NAME_MAX}字まで）。
+            コトノハ-grove- で作者として表示されます。コトノハ-leaf-
+            のペンネームとは別で、あとからいつでも変えられます（
+            {PEN_NAME_MAX}字まで）。
           </p>
         </div>
 
@@ -104,7 +115,7 @@ export function AuthorRegisterCard({ status, getToken, onRegistered }: AuthorReg
           />
           {/* 文は1つの要素にまとめる。flex 直下にテキストを置くと語ごとに項目化して折り返しが崩れる */}
           <span>
-            公開サイトの<strong>投稿ガイドライン</strong>
+            コトノハ-grove- の<strong>投稿ガイドライン</strong>
             に同意します。要点は「全年齢向けであること」「自分自身の一次創作であること」の2つです。
           </span>
         </label>
