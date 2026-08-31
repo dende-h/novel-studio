@@ -36,6 +36,7 @@ import {
 } from '@/ui/components/ui/dialog'
 import { Label } from '@/ui/components/ui/label'
 import { Switch } from '@/ui/components/ui/switch'
+import { useIsNarrow } from '@/ui/hooks/use-narrow'
 
 type Format = 'epub' | 'web' | 'game' | 'folder' | 'ai'
 type Platform = 'narou' | 'kakuyomu'
@@ -125,12 +126,15 @@ export function ExportDialog({
   const auth = useAuth()
   const gameUnlocked = auth.status === 'free' || auth.status === 'member'
   const gamePreset = presetBackground(gameBg) ?? PRESET_BACKGROUNDS[0]!
+  // 作る作業（演出付け・書き出し）は PC など広い画面に限定する（D-GAME-PC）。
+  // 演出エディタの入口ゲート（App.tsx の stagingAvailable）と同じ閾値。プレイは端末を問わない。
+  const narrow = useIsNarrow()
 
   const canExport =
     format === 'web' || format === 'ai'
       ? Boolean(work) && episodes.length > 0
       : format === 'game'
-        ? Boolean(work) && episodes.length > 0 && gameUnlocked
+        ? Boolean(work) && episodes.length > 0 && gameUnlocked && !narrow
         : Boolean(work)
 
   // ダイアログを閉じるときはコピー結果メッセージをリセット
@@ -333,7 +337,17 @@ export function ExportDialog({
               </Section>
             )}
 
+            {format === 'game' && narrow && (
+              <Section title="サウンドノベル 設定">
+                <Note>
+                  サウンドノベルづくり（演出付けと書き出し）は、PC などの広い画面での機能です。
+                  書き出したゲームは、スマートフォンでも遊べます。
+                </Note>
+              </Section>
+            )}
+
             {format === 'game' &&
+              !narrow &&
               (gameUnlocked ? (
                 <Section title="サウンドノベル 設定">
                   <div className="space-y-5">

@@ -130,6 +130,25 @@ describe('ExportDialog（サウンドノベル）', () => {
     expect(screen.getByRole('button', { name: '書き出し' })).toBeDisabled()
   })
 
+  it('狭い画面では案内を出し、書き出しは無効（作る作業は PC 限定＝D-GAME-PC）', () => {
+    // happy-dom はビューポート幅で matchMedia を実評価する（use-narrow.test.ts と同じ手法）
+    const { happyDOM } = window as unknown as {
+      happyDOM: { setViewport: (v: { width: number }) => void }
+    }
+    happyDOM.setViewport({ width: 390 })
+    try {
+      renderWithAuth(authState({ status: 'member', isSignedIn: true }))
+      fireEvent.click(screen.getByText('サウンドノベル'))
+      expect(screen.getByText(/PC などの広い画面での機能です/)).toBeInTheDocument()
+      expect(screen.getByText(/スマートフォンでも遊べます/)).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: '書き出し' })).toBeDisabled()
+      // サインイン済みでも作成側の UI（話・背景の選択）は出さない
+      expect(screen.queryByLabelText('話を選択')).not.toBeInTheDocument()
+    } finally {
+      happyDOM.setViewport({ width: 1280 })
+    }
+  })
+
   it('無料アカウント（free）なら話と背景を選んで zip を書き出せる', async () => {
     renderWithAuth(authState({ status: 'free', isSignedIn: true }))
     fireEvent.click(screen.getByText('サウンドノベル'))
