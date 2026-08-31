@@ -215,7 +215,7 @@ export function App({
   const narrow = useIsNarrow()
   const structureAvailable = Boolean(work && canUseStructure && structureRepo && !narrow)
   const plotAvailable = Boolean(work && canUseStructure && plotRepo && !narrow)
-  // 演出（サウンドノベル）も同じ条件（アカウント登録＝D-GAME-ACCOUNT と同じ線・PC 専用）。
+  // 演出（サウンドノベル）も同じ条件（アカウント登録＝D-GAME-ACCOUNT と同じ線・PC 専用＝D-GAME-PC）。
   const stagingAvailable = Boolean(work && canUseStructure && stagingRepo && !narrow)
   // 広い画面で構造ツールを開いたまま縮める／回転すると、入口が消えても activeScreen が
   // 残って操作不能な画面に閉じ込められる。CSS では state を戻せないので JS で戻す。
