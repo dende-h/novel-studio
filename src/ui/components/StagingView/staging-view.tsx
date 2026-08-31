@@ -19,6 +19,7 @@ import type { Work } from '@/core/schema'
 import type { StagingRepository } from '@/core/storage/stagingRepository'
 import { cn } from '@/lib/utils'
 import { Button } from '@/ui/components/ui/button'
+import { Input } from '@/ui/components/ui/input'
 import { Switch } from '@/ui/components/ui/switch'
 
 /**
@@ -46,6 +47,11 @@ const TRANSITIONS: { value: NonNullable<Cue['transition']>; label: string }[] = 
   { value: 'flash', label: '白いフラッシュ' },
 ]
 
+/** 正体を伏せた話者の表示名（名前枠に ？？？ と出す）。 */
+const MASKED_SPEAKER = '？？？'
+/** 話者セレクトの「自由に入力…」の目印（cue には入らない）。 */
+const CUSTOM_SPEAKER = '__custom__'
+
 export default function StagingView({ repo, work, currentEpisodeId }: StagingViewProps) {
   const episodes = work.episodes
   const [episodeId, setEpisodeId] = useState(currentEpisodeId ?? episodes[0]?.id ?? '')
@@ -53,6 +59,9 @@ export default function StagingView({ repo, work, currentEpisodeId }: StagingVie
   // null ＝ 読込中。話を切り替えるたびに引き直す。
   const [staging, setStaging] = useState<Staging | null>(null)
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  // 話者の自由記述モード（選択中の行にだけ効く。行を替えたら閉じる）
+  const [customSpeaker, setCustomSpeaker] = useState(false)
+  const [customDraft, setCustomDraft] = useState('')
 
   useEffect(() => {
     let cancelled = false
@@ -111,6 +120,15 @@ export default function StagingView({ repo, work, currentEpisodeId }: StagingVie
     const next = removeCue(staging, blockId, Date.now())
     setStaging(next)
     void repo.save(next)
+  }
+  const selectRow = (blockId: string) => {
+    setSelectedId(blockId)
+    setCustomSpeaker(false)
+  }
+  const commitCustomSpeaker = (blockId: string) => {
+    const name = customDraft.trim()
+    setCustomSpeaker(false)
+    apply(blockId, { speaker: name || undefined })
   }
 
   return (
@@ -204,7 +222,7 @@ export default function StagingView({ repo, work, currentEpisodeId }: StagingVie
                     ) : null}
                     <button
                       type="button"
-                      onClick={() => setSelectedId(page.blockId)}
+                      onClick={() => selectRow(page.blockId)}
                       className={cn(
                         'flex w-full items-start gap-2 rounded-md border p-2 text-left transition-colors',
                         active
@@ -268,15 +286,26 @@ export default function StagingView({ repo, work, currentEpisodeId }: StagingVie
                   </label>
                   <select
                     id="staging-speaker"
-                    value={selected.speaker ?? ''}
-                    onChange={(e) =>
-                      apply(selected.blockId, { speaker: e.target.value || undefined })
-                    }
+                    value={customSpeaker ? CUSTOM_SPEAKER : (selected.speaker ?? '')}
+                    onChange={(e) => {
+                      const value = e.target.value
+                      if (value === CUSTOM_SPEAKER) {
+                        // まだ保存しない。下の入力欄で名前を書いたときに保存する
+                        setCustomDraft(selected.speaker ?? '')
+                        setCustomSpeaker(true)
+                        return
+                      }
+                      setCustomSpeaker(false)
+                      apply(selected.blockId, { speaker: value || undefined })
+                    }}
                     className={SELECT_CLASS}
                   >
                     <option value="">（名前を出さない）</option>
+                    <option value={MASKED_SPEAKER}>？？？（名前を伏せる）</option>
                     {/* 用語集の人物に無い既存の話者名も選択肢として残す（勝手に消さない） */}
-                    {selected.speaker && !persons.some((p) => p.name === selected.speaker) ? (
+                    {selected.speaker &&
+                    selected.speaker !== MASKED_SPEAKER &&
+                    !persons.some((p) => p.name === selected.speaker) ? (
                       <option value={selected.speaker}>{selected.speaker}</option>
                     ) : null}
                     {persons.map((p) => (
@@ -284,10 +313,25 @@ export default function StagingView({ repo, work, currentEpisodeId }: StagingVie
                         {p.name}
                       </option>
                     ))}
+                    <option value={CUSTOM_SPEAKER}>（自由に入力…）</option>
                   </select>
+                  {customSpeaker ? (
+                    <Input
+                      aria-label="話者名を入力"
+                      value={customDraft}
+                      placeholder="表示する名前"
+                      autoFocus
+                      onChange={(e) => setCustomDraft(e.target.value)}
+                      onBlur={() => commitCustomSpeaker(selected.blockId)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') commitCustomSpeaker(selected.blockId)
+                      }}
+                      className="mt-2"
+                    />
+                  ) : null}
                   {persons.length === 0 ? (
                     <p className="mt-2 text-[11px] text-on-surface-variant leading-relaxed">
-                      候補は用語集の「人物」から出ます。人物を登録すると選べるようになります。
+                      用語集に「人物」を登録すると、ここの候補に並びます。
                     </p>
                   ) : null}
                   {speakerCandidate && speakerCandidate !== selected.speaker ? (
@@ -296,7 +340,10 @@ export default function StagingView({ repo, work, currentEpisodeId }: StagingVie
                       variant="outline"
                       size="sm"
                       className="mt-2 text-primary"
-                      onClick={() => apply(selected.blockId, { speaker: speakerCandidate })}
+                      onClick={() => {
+                        setCustomSpeaker(false)
+                        apply(selected.blockId, { speaker: speakerCandidate })
+                      }}
                     >
                       候補「{speakerCandidate}」を使う
                     </Button>

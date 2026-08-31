@@ -70,6 +70,29 @@ describe('StagingView（演出エディタ）', () => {
     expect(await screen.findByText('話者：灯')).toBeInTheDocument()
   })
 
+  it('話者は ？？？（名前を伏せる）を選べる', async () => {
+    const { repo, saved } = fakeRepo()
+    render(<StagingView repo={repo} work={makeWork()} currentEpisodeId="e1" />)
+    fireEvent.click(await screen.findByText('「——まだ、書いてるんだね」'))
+    fireEvent.change(screen.getByLabelText('話者'), { target: { value: '？？？' } })
+    await waitFor(() => expect(saved).toHaveLength(1))
+    expect(saved[0]?.cues[0]).toEqual({ blockId: 'b2', speaker: '？？？' })
+  })
+
+  it('話者は自由記述できる（入力欄で確定して保存）', async () => {
+    const { repo, saved } = fakeRepo()
+    render(<StagingView repo={repo} work={makeWork()} currentEpisodeId="e1" />)
+    fireEvent.click(await screen.findByText('「——まだ、書いてるんだね」'))
+    fireEvent.change(screen.getByLabelText('話者'), { target: { value: '__custom__' } })
+    // 選んだだけでは保存されない（入力の確定で保存）
+    expect(saved).toHaveLength(0)
+    const input = screen.getByLabelText('話者名を入力')
+    fireEvent.change(input, { target: { value: '謎の声' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+    await waitFor(() => expect(saved).toHaveLength(1))
+    expect(saved[0]?.cues[0]).toEqual({ blockId: 'b2', speaker: '謎の声' })
+  })
+
   it('話者候補（直前の地の文の参照）がボタンで出て、1クリックで適用できる', async () => {
     const { repo, saved } = fakeRepo()
     render(<StagingView repo={repo} work={makeWork()} currentEpisodeId="e1" />)
