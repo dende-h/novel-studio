@@ -3,7 +3,12 @@ import { pickSprite } from '../game/assets'
 import { buildGameCredits, DEFAULT_BG_KEY, presetBackground, presetBgSvg } from '../game/presets'
 import type { Episode, Inline, Work } from '../schema'
 import type { ZipInput } from '../zip'
-import { buildPlayerHtml, type GameScenario, type ScenarioPage } from './novelGamePlayer'
+import {
+  buildPlayerHtml,
+  type GameScenario,
+  type ScenarioPage,
+  type ScenarioStageEntry,
+} from './novelGamePlayer'
 
 /**
  * 正本 → ブラウザで遊べるサウンドノベル（zip の中身）。設計は docs/requirement/07-novel-game.md。
@@ -178,9 +183,12 @@ export function buildNovelGameFiles(
   if (!fallback) throw new Error('既定背景プリセットが見つからない')
   const defaultEntry = resolveBg(opts.defaultBg ?? '') ?? fallback
 
-  // 立ち絵：話者に自動で紐づく（cue.expression は表情の指定だけ）。sceneBreak で消え、
-  // **話者が明示された**セリフで交代する——立ち絵の無い話者・？？？なら消える（名前枠と
-  // 立っている人物の食い違いを作らない）。話者未設定のセリフ・地の文は据え置き（ちらつかせない）。
+  // 立ち絵：話者に自動で紐づく舞台（最大2人・1人=中央/2人=左右。cue.expression は表情の指定だけ）。
+  //  - 初登場は中央。2人目が来たら先客が左へ寄り、右に入る。3人目は「最近話していない方」と
+  //    交代し、席（左右）を引き継ぐ。同じ話者の表情替えはその場で差し替え。
+  //  - いま話している人物だけ明るい（a=1）。立ち絵の無い話者・？？？のセリフは**退場させず**
+  //    全員減光（画面外の声として扱う）。話者未設定のセリフ・地の文は据え置き（ちらつかせない）。
+  //  - 場面の切れ目（sceneBreak）で全員退場。
   const spriteAssets = (opts.userAssets ?? []).filter((a) => a.kind === 'sprite')
   const spritePathOf = (a: NovelGameUserAsset) =>
     `assets/sprite/user-${a.id}.${IMAGE_EXT[a.mime] ?? 'img'}`
@@ -189,7 +197,15 @@ export function buildNovelGameFiles(
   const used = new Map<string, BgEntry>([[defaultEntry.key, defaultEntry]])
   const usedSprites = new Map<string, NovelGameUserAsset>()
   let current = ''
-  let currentSprite = ''
+  interface Standing {
+    key: string
+    char: string
+    pos: 'l' | 'c' | 'r'
+    lastSpoke: number
+  }
+  let standing: Standing[] = []
+  let activeChar: string | null = null
+  let lastStageMark = '[]'
   const scenarioPages = pages.map((page, index): ScenarioPage => {
     const block = blockById.get(page.blockId)
     const cueEntry = page.bg ? resolveBg(page.bg) : undefined
@@ -200,20 +216,51 @@ export function buildNovelGameFiles(
       current = target
       if (cueEntry) used.set(cueEntry.key, cueEntry)
     }
-    let sprite: string | undefined // '' ＝ 立ち絵を消す
+    let stage: ScenarioStageEntry[] | undefined
     if (spriteAssets.length > 0) {
-      let desired = page.sceneBreak ? '' : currentSprite
+      if (page.sceneBreak) {
+        standing = []
+        activeChar = null
+      }
       if (page.kind === 'dialogue' && page.speaker) {
         const chosen =
           page.speaker !== MASKED_SPEAKER
             ? pickSprite(spriteAssets, page.speaker, page.expression)
             : undefined
-        desired = chosen?.key ?? ''
-        if (chosen) usedSprites.set(chosen.key, chosen)
+        if (!chosen) {
+          activeChar = null
+        } else {
+          usedSprites.set(chosen.key, chosen)
+          const already = standing.find((s) => s.char === page.speaker)
+          if (already) {
+            already.key = chosen.key // 表情替え（席はそのまま）
+            already.lastSpoke = index
+          } else if (standing.length === 0) {
+            standing.push({ key: chosen.key, char: page.speaker, pos: 'c', lastSpoke: index })
+          } else if (standing.length === 1) {
+            const first = standing[0]
+            if (first) first.pos = 'l'
+            standing.push({ key: chosen.key, char: page.speaker, pos: 'r', lastSpoke: index })
+          } else {
+            const out = standing.reduce((a, b) => (a.lastSpoke <= b.lastSpoke ? a : b))
+            out.key = chosen.key
+            out.char = page.speaker
+            out.lastSpoke = index
+          }
+          activeChar = page.speaker
+        }
       }
-      if (desired !== currentSprite) {
-        sprite = desired
-        currentSprite = desired
+      const mark = standing.map(
+        (s): ScenarioStageEntry => ({
+          k: s.key,
+          p: s.pos,
+          ...(s.char === activeChar ? { a: 1 as const } : {}),
+        }),
+      )
+      const serialized = JSON.stringify(mark)
+      if (serialized !== lastStageMark) {
+        stage = mark
+        lastStageMark = serialized
       }
     }
     return {
@@ -224,7 +271,7 @@ export function buildNovelGameFiles(
       ...(page.sceneBreak ? { sceneBreak: true } : {}),
       ...(page.transition ? { transition: page.transition } : {}),
       ...(bg ? { bg } : {}),
-      ...(sprite !== undefined ? { sprite } : {}),
+      ...(stage !== undefined ? { stage } : {}),
       units: unitsOfInlines(block?.inlines ?? []),
       text: block ? plainTextOfBlock(block) : '',
     }
