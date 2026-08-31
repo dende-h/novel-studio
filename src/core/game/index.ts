@@ -56,6 +56,56 @@ export const AssetRefSchema = z.object({
 export type AssetRef = z.infer<typeof AssetRefSchema>
 
 // ---------------------------------------------------------------------------
+// 演出譜の編集（純関数。UI・MCP が使う）
+// ---------------------------------------------------------------------------
+
+export function emptyStaging(workId: string, episodeId: string, now: number): Staging {
+  return { workId, episodeId, cues: [], updatedAt: now }
+}
+
+/**
+ * 1つの block の演出を部分更新する。パッチ方式（MCP の upsert と同じ流儀）:
+ * 渡した項目だけ書き換える・省略＝据え置き・`undefined` を明示的に渡すと削除。
+ * 全項目が空になった cue は cues から落とす（ゴミを残さない）。
+ */
+export function patchCue(
+  staging: Staging,
+  blockId: string,
+  patch: Partial<Omit<Cue, 'blockId'>>,
+  now: number,
+): Staging {
+  const current = staging.cues.find((c) => c.blockId === blockId) ?? { blockId }
+  const merged: Cue = { ...current }
+  for (const key of ['speaker', 'sceneBreak', 'bg', 'bgm', 'se', 'transition'] as const) {
+    if (!(key in patch)) continue
+    const value = patch[key]
+    if (value === undefined) delete merged[key]
+    else (merged as Record<string, unknown>)[key] = value
+  }
+  const isEmpty = Object.keys(merged).length === 1 // blockId だけ
+  const cues = isEmpty
+    ? staging.cues.filter((c) => c.blockId !== blockId)
+    : insertCue(staging.cues, merged)
+  return { ...staging, cues, updatedAt: now }
+}
+
+/** cue を元の位置（同じ blockId があればそこ）へ置き換え、無ければ末尾に足す。 */
+function insertCue(cues: Cue[], cue: Cue): Cue[] {
+  const index = cues.findIndex((c) => c.blockId === cue.blockId)
+  if (index === -1) return [...cues, cue]
+  return cues.map((c, i) => (i === index ? cue : c))
+}
+
+/** 1つの block の演出を丸ごと外す。 */
+export function removeCue(staging: Staging, blockId: string, now: number): Staging {
+  return {
+    ...staging,
+    cues: staging.cues.filter((c) => c.blockId !== blockId),
+    updatedAt: now,
+  }
+}
+
+// ---------------------------------------------------------------------------
 // 判別（セリフ・地の文・間）
 // ---------------------------------------------------------------------------
 
