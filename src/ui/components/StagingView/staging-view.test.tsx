@@ -1,11 +1,12 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Staging } from '@/core/game'
-import type { UserGameAsset } from '@/core/game/assets'
+import { HOSTED_ASSET_LIMIT, type UserGameAsset } from '@/core/game/assets'
 import { parseEpisodeBody } from '@/core/parser/parseNotation'
 import type { Work } from '@/core/schema'
 import type { GameAssetRepository } from '@/core/storage/gameAssetRepository'
 import type { StagingRepository } from '@/core/storage/stagingRepository'
+import { AuthContext, type AuthState, GUEST_AUTH_STATE } from '@/ui/auth/auth-context'
 import StagingView from './staging-view'
 
 // happy-dom は canvas 非対応のため、リサイズは固定値を返す疑似実装に差し替える
@@ -15,6 +16,22 @@ vi.mock('@/ui/_utils/imageResizer', () => ({
     tone: ['#111111', '#222222', '#333333'],
   }),
 }))
+
+// クラウド保管の API（fetch 層）だけ差し替え、配線（asset-hosting）は本物を通す
+const hostApi = vi.hoisted(() => ({
+  listHostedAssets: vi.fn(),
+  getHostedAsset: vi.fn(),
+  putHostedAsset: vi.fn(),
+  deleteHostedAsset: vi.fn(),
+}))
+vi.mock('@/ui/_api/game-assets', () => hostApi)
+
+beforeEach(() => {
+  hostApi.listHostedAssets.mockReset().mockResolvedValue([])
+  hostApi.getHostedAsset.mockReset().mockResolvedValue(null)
+  hostApi.putHostedAsset.mockReset().mockResolvedValue('ok')
+  hostApi.deleteHostedAsset.mockReset().mockResolvedValue(true)
+})
 
 /** メモリ実装の疑似リポジトリ（get/save だけ本物と同じ形）。 */
 function fakeRepo(initial?: Staging) {
@@ -159,6 +176,20 @@ describe('StagingView（演出エディタ）', () => {
     expect(screen.getByRole('option', { name: '海辺の夕暮れ' })).toBeInTheDocument()
   })
 
+  it('素材の管理を開くと、非会員にはクラウド保管が有料である案内が出る', async () => {
+    const { repo } = fakeRepo()
+    const { repo: assetRepo } = memoryAssetRepo([memoryAsset('a1', '海辺')])
+    render(
+      <StagingView repo={repo} work={makeWork()} currentEpisodeId="e1" assetRepo={assetRepo} />,
+    )
+    fireEvent.click(await screen.findByRole('button', { name: '素材の管理' }))
+    expect(await screen.findByText(/有料のクラウド版の機能です/)).toBeInTheDocument()
+    expect(screen.getByText('海辺')).toBeInTheDocument()
+    // 非会員はクラウド操作もバッジも出ない
+    expect(screen.queryByRole('button', { name: 'クラウドへ上げる' })).not.toBeInTheDocument()
+    expect(hostApi.listHostedAssets).not.toHaveBeenCalled()
+  })
+
   it('行き先を失った演出（orphan）が列挙され、外せる', async () => {
     const { repo, saved } = fakeRepo({
       workId: 'w1',
@@ -171,5 +202,123 @@ describe('StagingView（演出エディタ）', () => {
     fireEvent.click(screen.getByRole('button', { name: /外す/ }))
     await waitFor(() => expect(saved).toHaveLength(1))
     expect(saved[0]?.cues).toHaveLength(0)
+  })
+})
+
+/** 素材の保存状態を持つメモリ実装（list/save/remove が本物と同じ形）。 */
+function memoryAssetRepo(initial: UserGameAsset[] = []) {
+  const map = new Map(initial.map((a) => [a.id, a]))
+  return {
+    map,
+    repo: {
+      list: async () => [...map.values()].sort((a, b) => b.createdAt - a.createdAt),
+      save: async (a: UserGameAsset) => {
+        map.set(a.id, a)
+      },
+      remove: async (id: string) => {
+        map.delete(id)
+      },
+      get: async (id: string) => map.get(id),
+    } as unknown as GameAssetRepository,
+  }
+}
+
+function memoryAsset(id: string, name: string): UserGameAsset {
+  return {
+    id,
+    kind: 'bg',
+    name,
+    dataUrl: 'data:image/webp;base64,SGk=',
+    tone: ['#111111', '#222222', '#333333'],
+    createdAt: 1,
+  }
+}
+
+const MEMBER_AUTH: AuthState = {
+  ...GUEST_AUTH_STATE,
+  available: true,
+  status: 'member',
+  isSignedIn: true,
+  userId: 'user_1',
+  getToken: async () => 'jwt',
+}
+
+function renderAsMember(props: Parameters<typeof StagingView>[0]) {
+  return render(
+    <AuthContext.Provider value={MEMBER_AUTH}>
+      <StagingView {...props} />
+    </AuthContext.Provider>,
+  )
+}
+
+describe('StagingView（クラウド保管・会員）', () => {
+  it('開いたときに、クラウドにあってこの端末に無い素材が取り込まれ選択肢に並ぶ', async () => {
+    const { repo } = fakeRepo()
+    const { repo: assetRepo, map } = memoryAssetRepo()
+    hostApi.listHostedAssets.mockResolvedValue([{ id: 'cloud-1', size: 10 }])
+    hostApi.getHostedAsset.mockResolvedValue(memoryAsset('cloud-1', '街の夕方'))
+    renderAsMember({ repo, work: makeWork(), currentEpisodeId: 'e1', assetRepo })
+    fireEvent.click(await screen.findByText('「——まだ、書いてるんだね」'))
+    expect(await screen.findByRole('option', { name: '街の夕方' })).toBeInTheDocument()
+    expect(map.has('cloud-1')).toBe(true)
+  })
+
+  it('画像を追加すると、この端末への保存に加えてクラウドにも保存される', async () => {
+    const { repo } = fakeRepo()
+    const { repo: assetRepo } = memoryAssetRepo()
+    renderAsMember({ repo, work: makeWork(), currentEpisodeId: 'e1', assetRepo })
+    fireEvent.click(await screen.findByText('「——まだ、書いてるんだね」'))
+    fireEvent.change(screen.getByLabelText('背景'), { target: { value: '__add_image__' } })
+    const file = new File(['x'], '海辺の夕暮れ.png', { type: 'image/png' })
+    fireEvent.change(screen.getByLabelText('背景画像を選ぶ'), { target: { files: [file] } })
+    await waitFor(() => expect(hostApi.putHostedAsset).toHaveBeenCalledTimes(1))
+    expect(hostApi.putHostedAsset.mock.calls[0]?.[1]).toMatchObject({
+      kind: 'bg',
+      name: '海辺の夕暮れ',
+    })
+  })
+
+  it('クラウドが上限だと、端末には保存しつつ上限の案内を出す', async () => {
+    const { repo } = fakeRepo()
+    const { repo: assetRepo, map } = memoryAssetRepo()
+    hostApi.putHostedAsset.mockResolvedValue('limit_reached')
+    renderAsMember({ repo, work: makeWork(), currentEpisodeId: 'e1', assetRepo })
+    fireEvent.click(await screen.findByText('「——まだ、書いてるんだね」'))
+    fireEvent.change(screen.getByLabelText('背景'), { target: { value: '__add_image__' } })
+    const file = new File(['x'], '海辺.png', { type: 'image/png' })
+    fireEvent.change(screen.getByLabelText('背景画像を選ぶ'), { target: { files: [file] } })
+    expect(
+      await screen.findByText(new RegExp(`クラウドが上限（${HOSTED_ASSET_LIMIT} 枚）です`)),
+    ).toBeInTheDocument()
+    expect(map.size).toBe(1) // ローカルには保存済み
+  })
+
+  it('素材の管理に保管状況（枚数・バッジ）が出て、この端末だけの素材をクラウドへ上げられる', async () => {
+    const { repo } = fakeRepo()
+    const { repo: assetRepo } = memoryAssetRepo([memoryAsset('a1', '海辺')])
+    hostApi.listHostedAssets.mockResolvedValue([]) // クラウドは空＝a1 はこの端末のみ
+    renderAsMember({ repo, work: makeWork(), currentEpisodeId: 'e1', assetRepo })
+    fireEvent.click(await screen.findByRole('button', { name: '素材の管理' }))
+    expect(await screen.findByText(new RegExp(`0 / ${HOSTED_ASSET_LIMIT} 枚`))).toBeInTheDocument()
+    expect(screen.getByText(/この端末のみ/)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'クラウドへ上げる' }))
+    await waitFor(() => expect(hostApi.putHostedAsset).toHaveBeenCalledTimes(1))
+    expect(await screen.findByText(/クラウド保管済み/)).toBeInTheDocument()
+  })
+
+  it('素材の削除は、クラウド → この端末の順で消える', async () => {
+    const { repo } = fakeRepo()
+    const { repo: assetRepo, map } = memoryAssetRepo([memoryAsset('a1', '海辺')])
+    hostApi.listHostedAssets.mockResolvedValue([{ id: 'a1', size: 10 }])
+    renderAsMember({ repo, work: makeWork(), currentEpisodeId: 'e1', assetRepo })
+    fireEvent.click(await screen.findByRole('button', { name: '素材の管理' }))
+    expect(await screen.findByText(/クラウド保管済み/)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: '削除' }))
+    // 確認ダイアログの「削除」で確定
+    expect(await screen.findByText('素材を削除しますか？')).toBeInTheDocument()
+    const confirms = screen.getAllByRole('button', { name: '削除' })
+    fireEvent.click(confirms[confirms.length - 1]!)
+    await waitFor(() => expect(hostApi.deleteHostedAsset).toHaveBeenCalledTimes(1))
+    await waitFor(() => expect(map.size).toBe(0))
   })
 })

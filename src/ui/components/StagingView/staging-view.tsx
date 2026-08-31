@@ -1,4 +1,4 @@
-import { Trash2 } from 'lucide-react'
+import { Images, Trash2 } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   applyCues,
@@ -21,9 +21,16 @@ import type { GameAssetRepository } from '@/core/storage/gameAssetRepository'
 import type { StagingRepository } from '@/core/storage/stagingRepository'
 import { cn } from '@/lib/utils'
 import { gameBgToDataUrl } from '@/ui/_utils/imageResizer'
+import { useAuth } from '@/ui/auth/auth-context'
 import { Button } from '@/ui/components/ui/button'
 import { Input } from '@/ui/components/ui/input'
 import { Switch } from '@/ui/components/ui/switch'
+import {
+  type AssetHostingApi,
+  createAssetHostingApi,
+  pullHostedAssets,
+} from '@/ui/game/asset-hosting'
+import { AssetManager, uploadNoticeOf } from './asset-manager'
 
 /**
  * 演出エディタ（サウンドノベルの Staging・G1）。設計は docs/requirement/07-novel-game.md §3。
@@ -88,6 +95,18 @@ export default function StagingView({ repo, work, currentEpisodeId, assetRepo }:
   const [assets, setAssets] = useState<UserGameAsset[]>([])
   const [assetError, setAssetError] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  // クラウド保管（R2 ホスティング・会員のみ）。ローカルが正で、クラウドは端末間で運ぶ控え。
+  const auth = useAuth()
+  const member = auth.status === 'member'
+  const getToken = auth.getToken
+  const hostingApi = useMemo<AssetHostingApi | null>(
+    () => (assetRepo && member ? createAssetHostingApi(getToken) : null),
+    [assetRepo, member, getToken],
+  )
+  // クラウドに保管中の素材 id。null ＝ 非会員／一覧が取れていない（バッジと枚数を出さない）。
+  const [hostedIds, setHostedIds] = useState<Set<string> | null>(null)
+  const [hostNotice, setHostNotice] = useState<string | null>(null)
+  const [managerOpen, setManagerOpen] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -99,6 +118,24 @@ export default function StagingView({ repo, work, currentEpisodeId, assetRepo }:
       cancelled = true
     }
   }, [assetRepo])
+
+  // 下り取り込み：クラウドにあってこの端末に無い素材を、演出エディタを開いたときに引き込む。
+  useEffect(() => {
+    let cancelled = false
+    setHostedIds(null)
+    if (!assetRepo || !hostingApi) return
+    void pullHostedAssets(assetRepo, hostingApi).then(async (res) => {
+      if (cancelled || !res) return
+      setHostedIds(res.hostedIds)
+      if (res.added.length > 0) {
+        const list = await assetRepo.list()
+        if (!cancelled) setAssets(list)
+      }
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [assetRepo, hostingApi])
 
   useEffect(() => {
     let cancelled = false
@@ -167,10 +204,11 @@ export default function StagingView({ repo, work, currentEpisodeId, assetRepo }:
     setCustomSpeaker(false)
     apply(blockId, { speaker: name || undefined })
   }
-  /** 画像ファイル → リサイズして保存 → その行の背景に設定。 */
+  /** 画像ファイル → リサイズして保存 → その行の背景に設定。会員はクラウドにも控えを置く。 */
   const addImage = async (file: File, blockId: string) => {
     if (!assetRepo) return
     setAssetError(null)
+    setHostNotice(null)
     try {
       const { dataUrl, tone } = await gameBgToDataUrl(file)
       const asset: UserGameAsset = {
@@ -184,9 +222,40 @@ export default function StagingView({ repo, work, currentEpisodeId, assetRepo }:
       await assetRepo.save(asset)
       setAssets((prev) => [asset, ...prev])
       apply(blockId, { bg: userAssetKey(asset.id) })
+      if (hostingApi) void uploadAsset(asset).then((r) => setHostNotice(uploadNoticeOf(r)))
     } catch {
       setAssetError('この画像は読み込めませんでした。別のファイルでお試しください。')
     }
+  }
+
+  /** 1 件をクラウドへ保存し、成功なら保管中バッジを更新する（追加時と管理画面の共通経路）。 */
+  const uploadAsset = async (asset: UserGameAsset) => {
+    if (!hostingApi) return 'failed' as const
+    const result = await hostingApi.put(asset)
+    if (result === 'ok') {
+      setHostedIds((prev) => new Set([...(prev ?? []), asset.id]))
+    }
+    return result
+  }
+
+  /**
+   * 1 件削除。クラウド→この端末の順（先にローカルを消すと、次の下り取り込みで復活する）。
+   * 保管状況が取れていないとき（hostedIds === null）もクラウド側の削除を試す（冪等）。
+   */
+  const deleteAsset = async (asset: UserGameAsset): Promise<'ok' | 'failed'> => {
+    if (!assetRepo) return 'failed'
+    if (hostingApi && (hostedIds === null || hostedIds.has(asset.id))) {
+      if (!(await hostingApi.remove(asset.id))) return 'failed'
+      setHostedIds((prev) => {
+        if (!prev) return prev
+        const next = new Set(prev)
+        next.delete(asset.id)
+        return next
+      })
+    }
+    await assetRepo.remove(asset.id)
+    setAssets((prev) => prev.filter((a) => a.id !== asset.id))
+    return 'ok'
   }
 
   return (
@@ -199,7 +268,24 @@ export default function StagingView({ repo, work, currentEpisodeId, assetRepo }:
               話者・背景・場面の切れ目を行ごとに付けます。付けた演出は、書き出しの「サウンドノベル」で使われます。本文は変わりません。
             </p>
           </div>
-          <label className="ml-auto flex items-center gap-2 text-on-surface-variant text-xs">
+          {assetRepo ? (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="ml-auto gap-2 text-primary"
+              onClick={() => setManagerOpen(true)}
+            >
+              <Images className="size-4" />
+              素材の管理
+            </Button>
+          ) : null}
+          <label
+            className={cn(
+              'flex items-center gap-2 text-on-surface-variant text-xs',
+              !assetRepo && 'ml-auto',
+            )}
+          >
             話
             <select
               value={episode?.id ?? ''}
@@ -483,6 +569,9 @@ export default function StagingView({ repo, work, currentEpisodeId, assetRepo }:
                   />
                 ) : null}
                 {assetError ? <p className="mt-2 text-destructive text-xs">{assetError}</p> : null}
+                {hostNotice ? (
+                  <p className="mt-2 text-on-surface-variant text-xs">{hostNotice}</p>
+                ) : null}
                 {bgPreviewSrc(selected.bg, assets) ? (
                   <img
                     src={bgPreviewSrc(selected.bg, assets)}
@@ -533,6 +622,18 @@ export default function StagingView({ repo, work, currentEpisodeId, assetRepo }:
           )}
         </aside>
       </div>
+
+      {assetRepo ? (
+        <AssetManager
+          open={managerOpen}
+          onOpenChange={setManagerOpen}
+          assets={assets}
+          hostedIds={hostedIds}
+          member={member}
+          onDelete={deleteAsset}
+          onUpload={uploadAsset}
+        />
+      ) : null}
     </div>
   )
 }
