@@ -28,3 +28,35 @@ export const userAssetKey = (id: string) => `user:${id}`
 
 /** アセットキーが持ち込み素材か。 */
 export const isUserAssetKey = (key: string) => key.startsWith('user:')
+
+// ---------------------------------------------------------------------------
+// クラウド保管（R2 ホスティング・G2 後半・有料）
+// ---------------------------------------------------------------------------
+
+/**
+ * クラウドに保管できる枚数の上限（1 アカウントあたり・素材の種別を合わせて数える）。
+ * D-GAME-PRICE の「独自素材のホスティングは有料」の枠。値付けと連動して変えるならここ1箇所。
+ */
+export const HOSTED_ASSET_LIMIT = 30
+
+/**
+ * 1 素材の上限バイト数（data URL 文字列長で判定）。リサイズ済みの持ち込み画像は
+ * 通常 100〜300 KB なので、正常系では届かない安全弁。
+ */
+export const HOSTED_ASSET_MAX_BYTES = 1_500_000
+
+export type HostedAssetVerdict = 'ok' | 'too_large' | 'limit_reached'
+
+/**
+ * クラウドへ保存できるかの判定（サーバ・クライアント共通の単一の真実）。
+ * 同じ id の置き換え（上書き）は枚数に数えない。
+ */
+export function hostedAssetVerdict(
+  asset: Pick<UserGameAsset, 'id' | 'dataUrl'>,
+  existingIds: Iterable<string>,
+): HostedAssetVerdict {
+  if (asset.dataUrl.length > HOSTED_ASSET_MAX_BYTES) return 'too_large'
+  const ids = new Set(existingIds)
+  if (!ids.has(asset.id) && ids.size >= HOSTED_ASSET_LIMIT) return 'limit_reached'
+  return 'ok'
+}
