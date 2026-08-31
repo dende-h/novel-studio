@@ -86,6 +86,7 @@ Cloudflare Pages Functions
 | モジュール | 責務 |
 |---|---|
 | `src/core/parser/parseNotation.ts` | 記法テキスト → 正本 Block。`parseEpisodeBody` `parseInlines` |
+| `src/core/parser/reconcileBlockIds.ts` | 保存の再パースで振り直された block id を旧 blocks から引き継ぐ（演出譜 Staging のアンカー安定化。editorStore.save と mcp-edit の setEpisode が通す） |
 | `src/core/exporter/toEpub.ts` | 正本 → EPUB（`episodeToXhtml` + `zip/`） |
 | `src/core/exporter/toHtml.ts` | 正本 → 安全な HTML（プレビュー兼用・全エスケープ済み。`inlinesToHtml` も公開） |
 | `src/core/markdown/index.ts` | 生テキスト → プレビュー HTML の軽量マークダウン（`markdownToHtml` `stripMarkdown` `InlineRenderer`。行内は既定で parseInlines へ委譲＝[[用語]]・ルビが生きるが、**第3引数で差し替えられる**＝掲示板はここを使う） |

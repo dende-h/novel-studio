@@ -1,5 +1,6 @@
 import { type FlatNote, MAX_NOTE_DEPTH, rebuildEpisodeNotes } from '../outline'
 import { parseEpisodeBody } from '../parser/parseNotation'
+import { reconcileBlockIds } from '../parser/reconcileBlockIds'
 import {
   addBeat,
   addLine,
@@ -89,7 +90,10 @@ export function setEpisode(
       return {
         ...ep,
         ...(patch.title !== undefined ? { title: patch.title } : {}),
-        ...(patch.body !== undefined ? { blocks: parseEpisodeBody(patch.body) } : {}),
+        // 再パースの id は旧 blocks から引き継ぐ（AI が本文を直しても演出譜のアンカーが生きる）
+        ...(patch.body !== undefined
+          ? { blocks: reconcileBlockIds(ep.blocks, parseEpisodeBody(patch.body)) }
+          : {}),
       }
     })
     if (!found) throw new McpEditError(`episode_id "${episodeId}" の話が見つかりません`)
