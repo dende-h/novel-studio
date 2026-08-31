@@ -172,3 +172,59 @@ describe('unitsOfInlines（文字送りの1コマ列）', () => {
     expect(units[0]).toBe('👍')
   })
 })
+
+describe('持ち込み背景（user:* の同梱）', () => {
+  const userAsset = {
+    key: 'user:abc123',
+    id: 'abc123',
+    label: '自作の教室',
+    tone: ['#111111', '#222222', '#333333'] as [string, string, string],
+    mime: 'image/webp',
+    data: new Uint8Array([9, 9, 9]),
+  }
+
+  it('cue が指す持ち込み背景が zip とシナリオに載り、クレジットには載らない', () => {
+    const files = buildNovelGameFiles(
+      work,
+      episode,
+      staging([{ blockId: 'b3', bg: 'user:abc123' }]),
+      { userAssets: [userAsset] },
+    )
+    const s = scenarioOf(files)
+    expect(s.pages[1]?.bg).toBe('user:abc123')
+    expect(s.bgs['user:abc123']).toEqual({
+      src: 'assets/bg/user-abc123.webp',
+      label: '自作の教室',
+      tone: ['#111111', '#222222', '#333333'],
+    })
+    const file = files.find((f) => f.path === 'assets/bg/user-abc123.webp')
+    expect(file?.data).toBeInstanceOf(Uint8Array)
+    // 持ち込みは作者自身の素材＝クレジット（運営素材の一覧）に載せない
+    expect(s.credits.find((c) => c.label === '背景')?.body).not.toContain('自作の教室')
+  })
+
+  it('手元に無い user:* キーは従来どおり無視される', () => {
+    const files = buildNovelGameFiles(work, episode, staging([{ blockId: 'b3', bg: 'user:zzz' }]), {
+      userAssets: [userAsset],
+    })
+    const s = scenarioOf(files)
+    expect(s.pages[1]?.bg).toBeUndefined()
+    expect(files.some((f) => f.path.includes('user-'))).toBe(false)
+  })
+
+  it('渡しても使われていない持ち込み素材は同梱しない', () => {
+    const files = buildNovelGameFiles(work, episode, undefined, { userAssets: [userAsset] })
+    expect(files.some((f) => f.path.includes('user-'))).toBe(false)
+  })
+
+  it('defaultBg に持ち込み背景を指定できる', () => {
+    const s = scenarioOf(
+      buildNovelGameFiles(work, episode, undefined, {
+        defaultBg: 'user:abc123',
+        userAssets: [userAsset],
+      }),
+    )
+    expect(s.defaultBg).toBe('user:abc123')
+    expect(s.pages[0]?.bg).toBe('user:abc123')
+  })
+})

@@ -28,6 +28,16 @@ const state: BackupState = {
   stagings: [
     { workId: 'w1', episodeId: 'e1', cues: [{ blockId: 'b1', speaker: '光' }], updatedAt: 40 },
   ],
+  gameAssets: [
+    {
+      id: 'ga1',
+      kind: 'bg',
+      name: '自作の教室',
+      dataUrl: 'data:image/webp;base64,SGk=',
+      tone: ['#111111', '#222222', '#333333'],
+      createdAt: 50,
+    },
+  ],
 }
 
 describe('serializeBackup / deserializeBackup（全体バックアップの直列化）', () => {
@@ -95,6 +105,7 @@ describe('serializeBackup / deserializeBackup（全体バックアップの直�
         structures: [],
         plots: [],
         stagings: [],
+        gameAssets: [],
       },
       0,
     )

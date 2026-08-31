@@ -16,6 +16,7 @@ import { localDateKey, summarize } from '@/core/activity'
 import { decideBackupNudge, type NudgeDecision } from '@/core/nudge/backup-nudge'
 import type { WorkPlatform } from '@/core/schema'
 import type { ActivityRepository } from '@/core/storage/activityRepository'
+import type { GameAssetRepository } from '@/core/storage/gameAssetRepository'
 import type { StagingRepository } from '@/core/storage/stagingRepository'
 import type { WorkSummary } from '@/core/storage/workRepository'
 import { cn } from '@/lib/utils'
@@ -97,6 +98,8 @@ interface LibraryProps {
   onOpenCloudPlan?: () => void
   /** 保存済みの演出譜（サウンドノベル書き出しに載せる）。 */
   stagingRepo?: Pick<StagingRepository, 'get'>
+  /** 持ち込み背景（演出が指す分だけ zip に同梱される）。 */
+  gameAssetRepo?: Pick<GameAssetRepository, 'list'>
 }
 
 /** データ管理メニューの 1 項目。 */
@@ -155,6 +158,7 @@ export function Library({
   activityRepo,
   onOpenCloudPlan,
   stagingRepo,
+  gameAssetRepo,
 }: LibraryProps) {
   const state = useEditorStore(store)
   // コトノハ-grove- への投稿は Clerk JWT で認証する（執筆アカウント＝公開アカウント）。
@@ -560,6 +564,7 @@ export function Library({
         onOpenChange={setExportOpen}
         work={state.work}
         stagingRepo={stagingRepo}
+        gameAssetRepo={gameAssetRepo}
       />
       <BackupDialog
         open={backupOpen}

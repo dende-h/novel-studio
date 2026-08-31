@@ -1,10 +1,20 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import type { Staging } from '@/core/game'
+import type { UserGameAsset } from '@/core/game/assets'
 import { parseEpisodeBody } from '@/core/parser/parseNotation'
 import type { Work } from '@/core/schema'
+import type { GameAssetRepository } from '@/core/storage/gameAssetRepository'
 import type { StagingRepository } from '@/core/storage/stagingRepository'
 import StagingView from './staging-view'
+
+// happy-dom は canvas 非対応のため、リサイズは固定値を返す疑似実装に差し替える
+vi.mock('@/ui/_utils/imageResizer', () => ({
+  gameBgToDataUrl: async () => ({
+    dataUrl: 'data:image/webp;base64,SGk=',
+    tone: ['#111111', '#222222', '#333333'],
+  }),
+}))
 
 /** メモリ実装の疑似リポジトリ（get/save だけ本物と同じ形）。 */
 function fakeRepo(initial?: Staging) {
@@ -115,6 +125,38 @@ describe('StagingView（演出エディタ）', () => {
       sceneBreak: true,
       bg: 'preset:bg/room-night',
     })
+  })
+
+  it('背景の「画像を追加…」で持ち込み画像が保存され、その行の背景になる', async () => {
+    const { repo, saved } = fakeRepo()
+    const assetSaved: UserGameAsset[] = []
+    const assetRepo = {
+      list: async () => [],
+      save: async (a: UserGameAsset) => {
+        assetSaved.push(a)
+      },
+    } as unknown as GameAssetRepository
+    render(
+      <StagingView repo={repo} work={makeWork()} currentEpisodeId="e1" assetRepo={assetRepo} />,
+    )
+    fireEvent.click(await screen.findByText('「——まだ、書いてるんだね」'))
+    // 「画像を追加…」を選んだだけでは保存されない（ファイル選択で保存）
+    fireEvent.change(screen.getByLabelText('背景'), { target: { value: '__add_image__' } })
+    expect(saved).toHaveLength(0)
+    const file = new File(['x'], '海辺の夕暮れ.png', { type: 'image/png' })
+    fireEvent.change(screen.getByLabelText('背景画像を選ぶ'), { target: { files: [file] } })
+    await waitFor(() => expect(saved).toHaveLength(1))
+    expect(assetSaved).toHaveLength(1)
+    expect(assetSaved[0]).toMatchObject({
+      kind: 'bg',
+      name: '海辺の夕暮れ',
+      dataUrl: 'data:image/webp;base64,SGk=',
+      tone: ['#111111', '#222222', '#333333'],
+    })
+    expect(saved[0]?.cues[0]).toEqual({ blockId: 'b2', bg: `user:${assetSaved[0]?.id}` })
+    // 一覧の行と背景セレクトに持ち込み画像の名前が出る
+    expect(await screen.findByText('背景 海辺の夕暮れ')).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: '海辺の夕暮れ' })).toBeInTheDocument()
   })
 
   it('行き先を失った演出（orphan）が列挙され、外せる', async () => {

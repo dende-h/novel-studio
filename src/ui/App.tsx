@@ -7,6 +7,7 @@ import { parseEpisodeBody } from '@/core/parser/parseNotation'
 import type { GlossaryEntry } from '@/core/schema'
 import { countEpisodeChars, countWorkChars } from '@/core/stats'
 import type { ActivityRepository } from '@/core/storage/activityRepository'
+import type { GameAssetRepository } from '@/core/storage/gameAssetRepository'
 import type { IdeaRepository } from '@/core/storage/ideaRepository'
 import type { PlotRepository } from '@/core/storage/plotRepository'
 import type { StagingRepository } from '@/core/storage/stagingRepository'
@@ -82,6 +83,8 @@ interface AppProps {
   plotRepo?: PlotRepository
   /** 演出譜（サウンドノベルの Staging）のリポジトリ。 */
   stagingRepo?: StagingRepository
+  /** 持ち込みゲーム素材（背景画像）のリポジトリ。 */
+  gameAssetRepo?: GameAssetRepository
   /** 構想の道具（プロット・アウトライン・相関図・マインドマップ）を出すか＝無料アカウント登録で true。 */
   canUseStructure?: boolean
   /** ネタ帳（マインドマップの取り込み用）。 */
@@ -156,6 +159,7 @@ export function App({
   structureRepo,
   plotRepo,
   stagingRepo,
+  gameAssetRepo,
   canUseStructure,
   ideaRepo,
 }: AppProps) {
@@ -465,7 +469,12 @@ export function App({
       <ErrorBoundary key={activeScreen} fallback={(retry) => <ScreenFailure retry={retry} />}>
         {activeScreen === 'staging' && work && stagingRepo ? (
           <Suspense fallback={<ScreenLoading />}>
-            <StagingView repo={stagingRepo} work={work} currentEpisodeId={state.currentEpisodeId} />
+            <StagingView
+              repo={stagingRepo}
+              work={work}
+              currentEpisodeId={state.currentEpisodeId}
+              assetRepo={gameAssetRepo}
+            />
           </Suspense>
         ) : activeScreen === 'plot' && work && plotRepo ? (
           <Suspense fallback={<ScreenLoading />}>
@@ -828,6 +837,7 @@ export function App({
             : undefined
         }
         stagingRepo={stagingRepo}
+        gameAssetRepo={gameAssetRepo}
         onEditStaging={
           stagingAvailable
             ? () => {

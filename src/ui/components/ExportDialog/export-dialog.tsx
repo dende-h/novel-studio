@@ -1,13 +1,16 @@
 import { BookText, Copy, Download, Folder, Gamepad2, Globe, Pencil, Sparkles } from 'lucide-react'
 import { type ComponentType, useId, useState } from 'react'
 import { glossaryToPlainText, workToPlainText } from '@/core/exporter/toPlainText'
+import { userAssetKey } from '@/core/game/assets'
 import {
   DEFAULT_BG_KEY,
   PRESET_BACKGROUNDS,
   presetBackground,
   presetBgSvg,
 } from '@/core/game/presets'
+import { dataUrlMime, decodeDataUrl } from '@/core/image'
 import type { Work } from '@/core/schema'
+import type { GameAssetRepository } from '@/core/storage/gameAssetRepository'
 import type { StagingRepository } from '@/core/storage/stagingRepository'
 import { cn } from '@/lib/utils'
 import { copyText } from '@/ui/_utils/clipboard'
@@ -46,6 +49,8 @@ interface ExportDialogProps {
   onEditMeta?: () => void
   /** 保存済みの演出譜（サウンドノベル用）。渡されたときだけ書き出しに演出が載る。 */
   stagingRepo?: Pick<StagingRepository, 'get'>
+  /** 持ち込み背景の置き場所（演出が指す分だけ zip に同梱される）。 */
+  gameAssetRepo?: Pick<GameAssetRepository, 'list'>
   /** 演出エディタへ（指定時のみ「演出を編集」を表示。ホスト側がこのダイアログを閉じてから開く） */
   onEditStaging?: () => void
 }
@@ -97,6 +102,7 @@ export function ExportDialog({
   work,
   onEditMeta,
   stagingRepo,
+  gameAssetRepo,
   onEditStaging,
 }: ExportDialogProps) {
   const [format, setFormat] = useState<Format>('epub')
@@ -159,8 +165,22 @@ export function ExportDialog({
           const font = await loadGameFont()
           // 保存済みの演出譜（話者・背景・場面の切れ目）があれば載せる
           const staging = await stagingRepo?.get(work.id, selectedEpisode.id)
+          // 持ち込み背景は手元の全件を渡し、演出が指す分だけ exporter が同梱する
+          const userAssets = ((await gameAssetRepo?.list()) ?? []).map((a) => ({
+            key: userAssetKey(a.id),
+            id: a.id,
+            label: a.name,
+            tone: a.tone,
+            mime: dataUrlMime(a.dataUrl) ?? 'image/webp',
+            data: decodeDataUrl(a.dataUrl),
+          }))
           triggerDownload(
-            episodeNovelGameExport(work, selectedEpisode, { defaultBg: gameBg, font }, staging),
+            episodeNovelGameExport(
+              work,
+              selectedEpisode,
+              { defaultBg: gameBg, font, userAssets },
+              staging,
+            ),
           )
         } catch {
           // 原稿は失われていない。ダイアログを開いたままメッセージを見せる

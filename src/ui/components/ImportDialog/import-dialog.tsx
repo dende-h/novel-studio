@@ -184,6 +184,7 @@ export function ImportDialog({ open, onOpenChange, onImport, onRestoreAll }: Imp
                 <li>プロット：{phase.backup.plots.length}</li>
                 <li>構造データ：{phase.backup.structures.length}</li>
                 <li>サウンドノベルの演出：{phase.backup.stagings.length}</li>
+                <li>持ち込み背景：{phase.backup.gameAssets.length}</li>
                 <li>執筆記録：{phase.backup.activity.length}日</li>
               </ul>
               <p className="flex items-start gap-2 rounded-md bg-destructive/10 p-3 text-destructive text-xs">

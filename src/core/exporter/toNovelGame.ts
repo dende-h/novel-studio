@@ -1,11 +1,5 @@
 import { applyCues, plainTextOfBlock, type Staging, toPages } from '../game'
-import {
-  buildGameCredits,
-  DEFAULT_BG_KEY,
-  type PresetBackground,
-  presetBackground,
-  presetBgSvg,
-} from '../game/presets'
+import { buildGameCredits, DEFAULT_BG_KEY, presetBackground, presetBgSvg } from '../game/presets'
 import type { Episode, Inline, Work } from '../schema'
 import type { ZipInput } from '../zip'
 import { buildPlayerHtml, type GameScenario, type ScenarioPage } from './novelGamePlayer'
@@ -26,11 +20,42 @@ export interface NovelGameFont {
   licenseText: string
 }
 
+/** 持ち込み素材（画像）。UI 層が data URL をバイト列へ落として渡す。 */
+export interface NovelGameUserAsset {
+  /** 'user:<id>'（Cue.bg / defaultBg が指すキー） */
+  key: string
+  id: string
+  label: string
+  tone: [string, string, string]
+  /** image/webp など。zip 内の拡張子に使う */
+  mime: string
+  data: Uint8Array
+}
+
 export interface NovelGameOptions {
   /** 既定背景のキー。未指定・未知キーは DEFAULT_BG_KEY に倒す */
   defaultBg?: string
   /** 同梱フォント。無ければシステムの明朝で動く（書き出しは失敗させない） */
   font?: NovelGameFont
+  /** 手元にある持ち込み素材。cue / defaultBg が指す分だけ zip へ同梱される */
+  userAssets?: NovelGameUserAsset[]
+}
+
+/** zip に入れる背景 1 枚（テンプレ SVG か持ち込み画像かを吸収する内部表現）。 */
+interface BgEntry {
+  key: string
+  label: string
+  tone: [string, string, string]
+  path: string
+  data: string | Uint8Array
+  /** クレジット画面に載せるか（運営テンプレのみ。持ち込みは作者自身の素材） */
+  credit: boolean
+}
+
+const IMAGE_EXT: Record<string, string> = {
+  'image/webp': 'webp',
+  'image/jpeg': 'jpg',
+  'image/png': 'png',
 }
 
 function escapeHtml(s: string): string {
@@ -109,22 +134,50 @@ export function buildNovelGameFiles(
   const pages = applyCues(toPages(episode.blocks), staging)
   const blockById = new Map(episode.blocks.map((b) => [b.id, b]))
 
-  const fallback = presetBackground(DEFAULT_BG_KEY)
+  // 背景キー → zip に入れる実体。テンプレ（SVG 生成）と持ち込み（画像バイト列）を同じ形へ。
+  const userByKey = new Map((opts.userAssets ?? []).map((a) => [a.key, a]))
+  const resolveBg = (key: string): BgEntry | undefined => {
+    const preset = presetBackground(key)
+    if (preset) {
+      return {
+        key: preset.key,
+        label: preset.label,
+        tone: preset.tone,
+        path: `assets/bg/${preset.slug}.svg`,
+        data: presetBgSvg(preset),
+        credit: true,
+      }
+    }
+    const user = userByKey.get(key)
+    if (user) {
+      return {
+        key: user.key,
+        label: user.label,
+        tone: user.tone,
+        path: `assets/bg/user-${user.id}.${IMAGE_EXT[user.mime] ?? 'img'}`,
+        data: user.data,
+        credit: false,
+      }
+    }
+    return undefined
+  }
+
+  const fallback = resolveBg(DEFAULT_BG_KEY)
   if (!fallback) throw new Error('既定背景プリセットが見つからない')
-  const defaultPreset = presetBackground(opts.defaultBg ?? '') ?? fallback
+  const defaultEntry = resolveBg(opts.defaultBg ?? '') ?? fallback
 
   // 使った背景だけを同梱する（キー→実体の整合は used が単一の真実）
-  const used = new Map<string, PresetBackground>([[defaultPreset.key, defaultPreset]])
+  const used = new Map<string, BgEntry>([[defaultEntry.key, defaultEntry]])
   let current = ''
   const scenarioPages = pages.map((page, index): ScenarioPage => {
     const block = blockById.get(page.blockId)
-    const cuePreset = page.bg ? presetBackground(page.bg) : undefined
-    const target = cuePreset?.key ?? (index === 0 ? defaultPreset.key : undefined)
+    const cueEntry = page.bg ? resolveBg(page.bg) : undefined
+    const target = cueEntry?.key ?? (index === 0 ? defaultEntry.key : undefined)
     let bg: string | undefined
     if (target && target !== current) {
       bg = target
       current = target
-      if (cuePreset) used.set(cuePreset.key, cuePreset)
+      if (cueEntry) used.set(cueEntry.key, cueEntry)
     }
     return {
       id: page.blockId,
@@ -146,16 +199,13 @@ export function buildNovelGameFiles(
     episodeTitle: episode.title,
     ...(work.author ? { author: work.author } : {}),
     saveKey: `kotonoha:novel-game:${work.id}:${episode.id}`,
-    defaultBg: defaultPreset.key,
+    defaultBg: defaultEntry.key,
     bgs: Object.fromEntries(
-      usedList.map((p) => [
-        p.key,
-        { src: `assets/bg/${p.slug}.svg`, label: p.label, tone: p.tone },
-      ]),
+      usedList.map((e) => [e.key, { src: e.path, label: e.label, tone: e.tone }]),
     ),
     ...(opts.font ? { fontSrc: FONT_PATH } : {}),
     credits: buildGameCredits({
-      bgLabels: usedList.map((p) => p.label),
+      bgLabels: usedList.filter((e) => e.credit).map((e) => e.label),
       fontEmbedded: Boolean(opts.font),
     }),
     pages: scenarioPages,
@@ -170,6 +220,6 @@ export function buildNovelGameFiles(
           { path: FONT_LICENSE_PATH, data: opts.font.licenseText },
         ]
       : []),
-    ...usedList.map((p) => ({ path: `assets/bg/${p.slug}.svg`, data: presetBgSvg(p) })),
+    ...usedList.map((e) => ({ path: e.path, data: e.data })),
   ]
 }

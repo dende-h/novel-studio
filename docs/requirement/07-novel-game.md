@@ -165,6 +165,14 @@ type AssetRef = {
 
 **data URL で `Work` に埋める方式は採らない**（§2.1）。ここが既存の画像方式との明確な分岐点。
 
+> **実装メモ（G2 前半・実装済み）**: 持ち込み背景の**ローカル側**を実装した。
+> `src/core/game/assets.ts`（`UserGameAssetSchema`・演出のキーは `user:<id>`）と
+> `gameAssetRepository`（IndexedDB・`gameasset:` プレフィクス）。保持形式は Blob ではなく
+> **リサイズ済み data URL 文字列**（`gameBgToDataUrl`＝長辺 1280 WebP q0.82。カード共有用の
+> tone 3色も同時に抽出）で、実用上十分小さい。`Work` には埋めない（演出 Staging と同じく正本の外）。
+> 書き出しは zip に `assets/bg/user-<id>.webp` として**使用分のみ**同梱し、クレジットは持ち込み欄へ振り分け。
+> サーバ改修ゼロ・無料。R2 ホスティング（端末間で素材を運ぶ・grove 配信・有料）は G2 後半で別途。
+
 ## 5. プレイヤーの品質要件
 
 クオリティを決めるのは絵ではない。効く順に並べ、**上から実装する**。

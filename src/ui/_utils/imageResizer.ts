@@ -65,6 +65,48 @@ export async function coverToDataUrl(file: File): Promise<string> {
   )
 }
 
+const GAME_BG_MAX_LONG_EDGE = 1280
+const GAME_BG_QUALITY = 0.82
+
+/**
+ * サウンドノベルの持ち込み背景：長辺 1280 にクランプ（拡大なし）→ WebP data URL。
+ * WebP をエンコードできない環境（toDataURL が PNG へフォールバックする）では JPEG に落とす。
+ * tone はカード共有・クロスフェードの下地に使う3色（上・中・下の帯の平均色）。
+ */
+export async function gameBgToDataUrl(
+  file: File,
+): Promise<{ dataUrl: string; tone: [string, string, string] }> {
+  const img = await loadImage(file)
+  const { w, h } = dimsOf(img)
+  const fit = fitWithin(w, h, GAME_BG_MAX_LONG_EDGE)
+
+  const canvas = document.createElement('canvas')
+  canvas.width = fit.width
+  canvas.height = fit.height
+  const ctx = canvas.getContext('2d')
+  if (!ctx) throw new Error('canvas 2d コンテキストを取得できません')
+  ctx.fillStyle = '#ffffff'
+  ctx.fillRect(0, 0, fit.width, fit.height)
+  ctx.drawImage(img, 0, 0, fit.width, fit.height)
+
+  let dataUrl = canvas.toDataURL('image/webp', GAME_BG_QUALITY)
+  if (!dataUrl.startsWith('data:image/webp')) {
+    dataUrl = canvas.toDataURL('image/jpeg', GAME_BG_QUALITY)
+  }
+
+  // 上・中・下の3色：1×3 に縮めて各ピクセルの色を読む
+  const toneCanvas = document.createElement('canvas')
+  toneCanvas.width = 1
+  toneCanvas.height = 3
+  const toneCtx = toneCanvas.getContext('2d')
+  if (!toneCtx) throw new Error('canvas 2d コンテキストを取得できません')
+  toneCtx.drawImage(canvas, 0, 0, 1, 3)
+  const px = toneCtx.getImageData(0, 0, 1, 3).data
+  const hex = (i: number) =>
+    `#${[px[i], px[i + 1], px[i + 2]].map((v) => (v ?? 0).toString(16).padStart(2, '0')).join('')}`
+  return { dataUrl, tone: [hex(0), hex(4), hex(8)] }
+}
+
 /** 用語集サムネ：中央正方形クロップ 256×256（拡大なし）→ JPEG data URL。 */
 export async function thumbnailToDataUrl(file: File): Promise<string> {
   const img = await loadImage(file)

@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { type DailyActivity, DailyActivitySchema } from '../activity'
 import { type Staging, StagingSchema } from '../game'
+import { type UserGameAsset, UserGameAssetSchema } from '../game/assets'
 import { type IdeaNote, IdeaNoteSchema } from '../idea'
 import { type Plot, PlotSchema } from '../plot'
 import { type Profile, ProfileSchema } from '../profile'
@@ -37,6 +38,8 @@ const CloudBackupSchema = z.object({
   plots: z.array(PlotSchema).optional().default([]),
   /** 演出譜（サウンドノベルの Staging）。旧バックアップには無いので既定 []。 */
   stagings: z.array(StagingSchema).optional().default([]),
+  /** 持ち込みのゲーム素材（背景画像）。旧バックアップには無いので既定 []。 */
+  gameAssets: z.array(UserGameAssetSchema).optional().default([]),
 })
 export type CloudBackup = z.infer<typeof CloudBackupSchema>
 
@@ -50,6 +53,7 @@ export interface BackupState {
   structures: Structure[]
   plots: Plot[]
   stagings: Staging[]
+  gameAssets: UserGameAsset[]
 }
 
 /** 全状態を 1 つのバックアップ JSON に直列化する（暗号化前の平文）。 */
