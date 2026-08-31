@@ -160,9 +160,11 @@ export function attachEpisodeGames(
   episodes: BundleEpisode[],
   novelGame: NovelGameBundleInput,
 ): { episodes: BundleEpisode[]; withGame: boolean } {
-  if (work.platform?.visibility !== 'public') return { episodes, withGame: false }
-  // enabled: false は「やめた」の宣言＝v4 のまま game を載せない（先方が既存分を消す）
+  // enabled: false は「やめた」の宣言＝v4 のまま game を載せない（先方が既存分を消す）。
+  // **公開判定より先に見る**：下書きへ戻すのと同時に切っても、宣言は先方へ届かせる
+  // （ここで v2/v3 に落とすと先方は据え置き＝あとで再公開したとき古いプレイヤーが復活する）
   if (novelGame.enabled === false) return { episodes, withGame: episodes.length > 0 }
+  if (work.platform?.visibility !== 'public') return { episodes, withGame: false }
   const stagingByEpisode = new Map(novelGame.stagings.map((s) => [s.episodeId, s]))
   let withGame = false
   const next = episodes.map((ep): BundleEpisode => {
@@ -252,10 +254,13 @@ export async function publishWorkToPlatform(
   }
 
   const bundleWork = toBundleWork(work, novelGame)
-  // 「やめた」の宣言（enabled: false）でも v4 を名乗る＝先方が既存プレイヤーを消せる
+  // 「やめた」の宣言（enabled: false）でも v4 を名乗る＝先方が既存プレイヤーを消せる。
+  // 宣言は作品が下書きでも有効（attachEpisodeGames の注記を参照）
   const withGame =
     bundleWork.episodes.some((ep) => ep.game) ||
-    (novelGame !== undefined && work.platform?.visibility === 'public' && work.episodes.length > 0)
+    (novelGame !== undefined &&
+      work.episodes.length > 0 &&
+      (work.platform?.visibility === 'public' || novelGame.enabled === false))
   let res: Response
   try {
     res = await fetch(`${PLATFORM_ORIGIN}/api/import/kotonoha`, {

@@ -491,6 +491,26 @@ describe('契約 v4（サウンドノベル：episodes[].game）', () => {
     expect(body.work.episodes.every((ep: { game?: unknown }) => ep.game === undefined)).toBe(true)
   })
 
+  it('enabled:false は作品を下書きへ戻す送信でも v4 で届く（OFF が先方に伝わる）', async () => {
+    // ここで v2 に落とすと先方は据え置き＝OFF のまま再公開したとき古いプレイヤーが復活する
+    const { publishWorkToPlatform } = await loadModule()
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(new Response(JSON.stringify({ ok: true }), { status: 200 }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const draft: Work = { ...publicWork(), platform: { visibility: 'draft' } }
+    await publishWorkToPlatform(async () => 'jwt', draft, {
+      stagings: [],
+      gameAssets: [],
+      enabled: false,
+    })
+
+    const body = JSON.parse((fetchMock.mock.calls[0] as [string, RequestInit])[1].body as string)
+    expect(body.schemaVersion).toBe(4)
+    expect(body.work.episodes.every((ep: { game?: unknown }) => ep.game === undefined)).toBe(true)
+  })
+
   it('下書き作品では novelGame を渡しても game は付かない（v2 のまま）', async () => {
     const { publishWorkToPlatform } = await loadModule()
     const fetchMock = vi

@@ -228,16 +228,18 @@ export function PublishPage({
     const platform = buildPlatform()
     const desc = description.trim()
     // サウンドノベル（契約 v4）：ON かつ公開のときだけ、演出譜と素材を集めてプレイヤーを同梱する。
-    // 前回 ON で今回 OFF のときも v4 で「同梱なし」を宣言し、先方に前回のプレイヤーを消してもらう
-    //（何も送らないと v3 になり、先方は据え置き＝OFF が効かないため）。
+    // 前回 ON で今回 OFF のときは v4 で「同梱なし」を宣言し、先方に前回のプレイヤーを消してもらう
+    //（何も送らないと v3 になり、先方は据え置き＝OFF が効かないため）。この宣言は
+    // **下書きへ戻す送信でも出す**——ここで落とすと、OFF のまま再公開したとき
+    // 古いプレイヤーが先方で復活する。
     let gameInput: NovelGameBundleInput | undefined
-    if (visibility === 'public' && stagingRepo && gameAssetRepo) {
-      if (novelGame) {
+    if (stagingRepo && gameAssetRepo) {
+      if (novelGame && visibility === 'public') {
         gameInput = {
           stagings: await stagingRepo.listByWork(work.id),
           gameAssets: await gameAssetRepo.list(),
         }
-      } else if (work.platform?.novelGame === true) {
+      } else if (!novelGame && work.platform?.novelGame === true) {
         gameInput = { stagings: [], gameAssets: [], enabled: false }
       }
     }
