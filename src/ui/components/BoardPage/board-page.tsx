@@ -262,8 +262,16 @@ export function BoardPage({
     const result = await createThread(input, getToken)
     if (result.ok) {
       toast.show('スレッドを立てました')
-      // 立てたスレを先頭で見せたいので、一覧を先頭から読み直す。
-      void loadThreads(kind, signedIn)
+      // **立てたスレが必ず目に入る状態にしてから読み直す。**
+      // 絞り込みやタブをそのままにして読み直すと、立てた種別と食い違ったときに
+      // 「書けたのに一覧に何も出ない」が起きる（読み込み直すと絞り込みが消えて
+      // 出てくる＝「リロードしないと表示されない」の正体）。見ている場所を
+      // スレッド一覧・絞り込み無しへ戻してから、先頭から取り直す。
+      setTab('threads')
+      setKind(null)
+      // `setKind(null)` は種別が既に null なら effect を動かさないので、ここでも読む。
+      // 二重に走っても `listSeqRef` が後から投げたほうだけを採るので画面は乱れない。
+      void loadThreads(null, signedIn)
       void fetchMe(getToken).then((r) => {
         if (r.ok) setMe(r.data)
       })
