@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import {
+  FREE_IMPORT_LIMIT,
   HOSTED_ASSET_LIMIT,
   HOSTED_ASSET_MAX_BYTES,
   hostedAssetVerdict,
+  importVerdict,
+  isTemplateAssetId,
   isUserAssetKey,
   pickSprite,
   spriteExpressionsOf,
@@ -92,5 +95,23 @@ describe('game/assets — クラウド保管の判定（hostedAssetVerdict）', 
   it('大きすぎる素材は too_large（上限判定より優先）', () => {
     expect(hostedAssetVerdict(asset('new', HOSTED_ASSET_MAX_BYTES + 1), ids(0))).toBe('too_large')
     expect(hostedAssetVerdict(asset('new', HOSTED_ASSET_MAX_BYTES), ids(0))).toBe('ok')
+  })
+
+  it('テンプレ由来（tpl-）は枚数に数えない（保存も既存カウントも）', () => {
+    expect(isTemplateAssetId('tpl-abc')).toBe(true)
+    expect(isTemplateAssetId('abc')).toBe(false)
+    // 上限いっぱいでもテンプレは保存できる
+    expect(hostedAssetVerdict(asset('tpl-new'), ids(HOSTED_ASSET_LIMIT))).toBe('ok')
+    // 既存にテンプレが混ざっていても、数えるのは持ち込み分だけ
+    const withTemplates = [...ids(HOSTED_ASSET_LIMIT - 1), 'tpl-a', 'tpl-b']
+    expect(hostedAssetVerdict(asset('new'), withTemplates)).toBe('ok')
+  })
+})
+
+describe('game/assets — 持ち込みの無料枠（importVerdict）', () => {
+  it('無料は FREE_IMPORT_LIMIT 枚まで、会員は無制限', () => {
+    expect(importVerdict(FREE_IMPORT_LIMIT - 1, false)).toBe('ok')
+    expect(importVerdict(FREE_IMPORT_LIMIT, false)).toBe('free_limit')
+    expect(importVerdict(FREE_IMPORT_LIMIT * 10, true)).toBe('ok')
   })
 })

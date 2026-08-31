@@ -44,7 +44,7 @@ import { pickPrimaryPlot, WORLD_CUSTOM_SLOT, WORLD_SLOTS } from '../../../src/co
 
 /** クライアントが未指定のときに名乗る MCP プロトコル版（十分に新しい安定版）。 */
 const DEFAULT_PROTOCOL_VERSION = '2025-06-18'
-const SERVER_INFO = { name: 'novel-studio', version: '1.6.0' } as const
+const SERVER_INFO = { name: 'novel-studio', version: '1.7.0' } as const
 
 /**
  * クライアント（AI）へ最初に渡す使い方。MCP の `initialize` が返す標準の instructions。
@@ -504,6 +504,11 @@ export const MCP_TOOLS = [
                 type: 'string',
                 description:
                   '立ち絵の表情（get_staging の「立ち絵」一覧にある表情から。話者の付いたセリフの行のみ。空文字で外す＝既定の表情）',
+              },
+              appear: {
+                type: 'string',
+                description:
+                  '立ち絵の登場（人物名）。この行からその人物の立ち絵が舞台に入る（名前枠は出さない・地の文にも付けられる）。立ち絵のある人物のみ。空文字で外す',
               },
               scene_break: {
                 type: 'boolean',

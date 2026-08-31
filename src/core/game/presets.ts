@@ -239,6 +239,8 @@ export const GAME_FONT_CREDIT =
  */
 export function buildGameCredits(opts: {
   bgLabels: string[]
+  /** 使ったテンプレ立ち絵のラベル（持ち込み立ち絵は作者自身の素材なので載せない） */
+  spriteLabels?: string[]
   fontEmbedded: boolean
 }): CreditLine[] {
   const lines: CreditLine[] = []
@@ -246,6 +248,12 @@ export function buildGameCredits(opts: {
     lines.push({
       label: '背景',
       body: `コトノハ 標準背景素材（${opts.bgLabels.join('・')}）`,
+    })
+  }
+  if (opts.spriteLabels && opts.spriteLabels.length > 0) {
+    lines.push({
+      label: '立ち絵',
+      body: `コトノハ 標準立ち絵素材（${opts.spriteLabels.join('・')}）`,
     })
   }
   if (opts.fontEmbedded) {

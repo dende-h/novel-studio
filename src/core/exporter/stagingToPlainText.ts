@@ -101,7 +101,8 @@ export function stagingToPlainText(
       : ['- 立ち絵はまだありません（アプリの「演出」画面で追加できます）']
   sections.push(
     [
-      `立ち絵（話者を付けると自動で表示。表情は expression で指定・省略は「${DEFAULT_EXPRESSION}」）:`,
+      `立ち絵（話者を付けると自動で表示。表情は expression で指定・省略は「${DEFAULT_EXPRESSION}」。`,
+      'セリフの前から出すには、地の文の行に appear（登場・人物名）を付ける）:',
       ...spriteLines,
     ].join('\n'),
   )
@@ -114,6 +115,7 @@ function cueSummary(cue: Cue): string {
   const parts: string[] = []
   if (cue.speaker) parts.push(`話者=${cue.speaker}`)
   if (cue.expression) parts.push(`表情=${cue.expression}`)
+  if (cue.appear) parts.push(`登場=${cue.appear}`)
   if (cue.sceneBreak) parts.push('場面の切れ目')
   if (cue.bg) parts.push(`背景=${cue.bg}`)
   if (cue.bgm) parts.push(`BGM=${cue.bgm}`)

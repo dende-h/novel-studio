@@ -358,6 +358,7 @@ describe('mcp-edit — 演出譜（set_staging の純ロジック）', () => {
         blockId: 'b2',
         speaker: '灯',
         expression: undefined,
+        appear: undefined,
         sceneBreak: true,
         bg: undefined,
         transition: undefined,
@@ -540,6 +541,57 @@ describe('mcp-edit — 演出譜（set_staging の純ロジック）', () => {
     expect(cleared.stagings[0]?.cues[0]).toEqual({ blockId: 'b2', speaker: '灯' })
   })
 
+  it('登場（appear）は立ち絵のある人物にだけ付けられる（地の文でも可）', () => {
+    const sprites = [
+      { id: 'sp1', kind: 'sprite', character: '灯', expression: '通常', createdAt: 1 },
+    ]
+    // 地の文（b1）に登場を付けられる
+    const ok = setStagingCues(
+      [],
+      [stagedWork()],
+      'w1',
+      'e1',
+      [{ blockId: 'b1', appear: '灯' }],
+      sprites,
+      100,
+    )
+    expect(ok.stagings[0]?.cues[0]).toEqual({ blockId: 'b1', appear: '灯' })
+    // ？？？・立ち絵の無い人物はエラー
+    expect(() =>
+      setStagingCues(
+        [],
+        [stagedWork()],
+        'w1',
+        'e1',
+        [{ blockId: 'b1', appear: '？？？' }],
+        sprites,
+        100,
+      ),
+    ).toThrow(/appear/)
+    expect(() =>
+      setStagingCues(
+        [],
+        [stagedWork()],
+        'w1',
+        'e1',
+        [{ blockId: 'b1', appear: '影' }],
+        sprites,
+        100,
+      ),
+    ).toThrow(/立ち絵がまだありません/)
+    // 空文字で外せる
+    const cleared = setStagingCues(
+      ok.stagings,
+      [stagedWork()],
+      'w1',
+      'e1',
+      [{ blockId: 'b1', appear: '' }],
+      sprites,
+      100,
+    )
+    expect(cleared.stagings[0]?.cues).toHaveLength(0)
+  })
+
   it('不正な入力は McpEditError で全体を保存しない（部分適用を残さない）', () => {
     const cases: Array<Parameters<typeof setStagingCues>[4]> = [
       [{ blockId: 'b3', speaker: '灯' }], // 空行（間）宛て
@@ -550,6 +602,7 @@ describe('mcp-edit — 演出譜（set_staging の純ロジック）', () => {
       [{ blockId: 'b404', speaker: '灯' }], // 未知の行
       [{ blockId: 'b2' }], // 変更項目なし
       [{ blockId: 'b2', clear: true, speaker: '灯' }], // clear と他項目の併用
+      [{ blockId: 'b2', clear: true, appear: '灯' }], // clear と登場の併用
       [{ blockId: 'b404', clear: true }], // 行も演出も無い clear
     ]
     for (const items of cases) {
