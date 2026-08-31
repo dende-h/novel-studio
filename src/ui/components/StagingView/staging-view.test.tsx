@@ -1,0 +1,110 @@
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { describe, expect, it } from 'vitest'
+import type { Staging } from '@/core/game'
+import { parseEpisodeBody } from '@/core/parser/parseNotation'
+import type { Work } from '@/core/schema'
+import type { StagingRepository } from '@/core/storage/stagingRepository'
+import StagingView from './staging-view'
+
+/** メモリ実装の疑似リポジトリ（get/save だけ本物と同じ形）。 */
+function fakeRepo(initial?: Staging) {
+  const saved: Staging[] = []
+  let current = initial
+  return {
+    saved,
+    repo: {
+      get: async () => current,
+      save: async (s: Staging) => {
+        current = s
+        saved.push(s)
+      },
+    } as unknown as StagingRepository,
+  }
+}
+
+function makeWork(): Work {
+  return {
+    id: 'w1',
+    title: '夜の物語',
+    episodes: [
+      {
+        id: 'e1',
+        title: '第一話',
+        blocks: parseEpisodeBody(
+          '　[[灯]]が振り返った。\n「——まだ、書いてるんだね」\n\n\n　場面が変わる。',
+        ),
+      },
+    ],
+    glossary: [
+      {
+        id: 'g1',
+        name: '灯',
+        aliases: [],
+        category: '人物',
+        createdAt: 0,
+        updatedAt: 0,
+      },
+    ],
+  }
+}
+
+describe('StagingView（演出エディタ）', () => {
+  it('本文の行がセリフ/地の文の別つきで並び、場面の切れ目の提案が出る', async () => {
+    const { repo } = fakeRepo()
+    render(<StagingView repo={repo} work={makeWork()} currentEpisodeId="e1" />)
+    expect(await screen.findByText('「——まだ、書いてるんだね」')).toBeInTheDocument()
+    expect(screen.getByText('セリフ')).toBeInTheDocument()
+    expect(screen.getAllByText('地の文')).toHaveLength(2)
+    // 空行2つのあとの行に「場面の切れ目？」の提案
+    expect(screen.getByText('場面の切れ目？')).toBeInTheDocument()
+  })
+
+  it('セリフ行を選んで話者を付けると、その場で保存される', async () => {
+    const { repo, saved } = fakeRepo()
+    render(<StagingView repo={repo} work={makeWork()} currentEpisodeId="e1" />)
+    fireEvent.click(await screen.findByText('「——まだ、書いてるんだね」'))
+    fireEvent.change(screen.getByLabelText('話者'), { target: { value: '灯' } })
+    await waitFor(() => expect(saved).toHaveLength(1))
+    expect(saved[0]?.cues).toEqual([{ blockId: 'b2', speaker: '灯' }])
+    // 一覧の行にも話者が出る
+    expect(await screen.findByText('話者：灯')).toBeInTheDocument()
+  })
+
+  it('話者候補（直前の地の文の参照）がボタンで出て、1クリックで適用できる', async () => {
+    const { repo, saved } = fakeRepo()
+    render(<StagingView repo={repo} work={makeWork()} currentEpisodeId="e1" />)
+    fireEvent.click(await screen.findByText('「——まだ、書いてるんだね」'))
+    fireEvent.click(screen.getByRole('button', { name: '候補「灯」を使う' }))
+    await waitFor(() => expect(saved).toHaveLength(1))
+    expect(saved[0]?.cues[0]).toEqual({ blockId: 'b2', speaker: '灯' })
+  })
+
+  it('場面の切れ目スイッチと背景選択が cue に載る', async () => {
+    const { repo, saved } = fakeRepo()
+    render(<StagingView repo={repo} work={makeWork()} currentEpisodeId="e1" />)
+    // 既定のテキストマッチャは前後の空白（字下げの全角空白）を正規化する
+    fireEvent.click(await screen.findByText('場面が変わる。'))
+    fireEvent.click(screen.getByRole('switch', { name: /ここから場面が変わる/ }))
+    fireEvent.change(screen.getByLabelText('背景'), { target: { value: 'preset:bg/room-night' } })
+    await waitFor(() => expect(saved).toHaveLength(2))
+    expect(saved[1]?.cues[0]).toMatchObject({
+      blockId: 'b5',
+      sceneBreak: true,
+      bg: 'preset:bg/room-night',
+    })
+  })
+
+  it('行き先を失った演出（orphan）が列挙され、外せる', async () => {
+    const { repo, saved } = fakeRepo({
+      workId: 'w1',
+      episodeId: 'e1',
+      cues: [{ blockId: 'b99', speaker: '灯' }],
+      updatedAt: 1,
+    })
+    render(<StagingView repo={repo} work={makeWork()} currentEpisodeId="e1" />)
+    expect(await screen.findByText('行き先を失った演出')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /外す/ }))
+    await waitFor(() => expect(saved).toHaveLength(1))
+    expect(saved[0]?.cues).toHaveLength(0)
+  })
+})

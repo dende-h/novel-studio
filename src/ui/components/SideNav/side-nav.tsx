@@ -4,6 +4,7 @@ import {
   CircleHelp,
   ExternalLink,
   FileText,
+  Gamepad2,
   Library,
   ListTree,
   MessagesSquare,
@@ -36,6 +37,7 @@ export type NavKey =
   | 'episodes'
   | 'glossary'
   | 'plot'
+  | 'staging'
   | 'outline'
   | 'mindmap'
   | 'chart'
@@ -87,6 +89,8 @@ interface SideNavProps {
   onNavigateGlossary?: () => void
   /** プロット（幕×ビートの物語設計）へ切替（作品オープン＋アカウント登録時のみ） */
   onNavigatePlot?: () => void
+  /** 演出（サウンドノベル）へ切替（作品オープン＋アカウント登録時のみ） */
+  onNavigateStaging?: () => void
   /** アウトラインへ切替（作品オープン＋アカウント登録時のみ） */
   onNavigateOutline?: () => void
   /** マインドマップへ切替（作品オープン＋アカウント登録時のみ） */
@@ -146,6 +150,7 @@ export function SideNav({
   onNavigateEpisodes,
   onNavigateGlossary,
   onNavigatePlot,
+  onNavigateStaging,
   onNavigateOutline,
   onNavigateMindmap,
   onNavigateChart,
@@ -269,6 +274,14 @@ export function SideNav({
                 label="マインドマップ"
                 active={active === 'mindmap'}
                 onClick={onNavigateMindmap}
+              />
+            ) : null}
+            {onNavigateStaging ? (
+              <NavRow
+                icon={Gamepad2}
+                label="演出"
+                active={active === 'staging'}
+                onClick={onNavigateStaging}
               />
             ) : null}
           </div>

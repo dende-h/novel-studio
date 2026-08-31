@@ -157,6 +157,7 @@ export interface EditorStoreDeps {
    */
   structureRepo?: { removeByWork(workId: string): Promise<void> }
   plotRepo?: { removeByWork(workId: string): Promise<void> }
+  stagingRepo?: { removeByWork(workId: string): Promise<void> }
   genId: () => string
   now: () => number
   /** 履歴の集約間隔(ms)。連続編集中はこの間隔内の保存を最新版へ合体し、版の氾濫を防ぐ。 */
@@ -188,6 +189,7 @@ export function createEditorStore({
   activityRepo,
   structureRepo,
   plotRepo,
+  stagingRepo,
   genId,
   now,
   snapshotMinIntervalMs,
@@ -205,13 +207,14 @@ export function createEditorStore({
   }
 
   /**
-   * 作品の完全削除に伴う後始末。履歴（版）に加え、その作品の構造レイヤー・プロットも消す。
-   * 残すと本人には見えないまま端末に溜まり、同期にも載り続けるため。
+   * 作品の完全削除に伴う後始末。履歴（版）に加え、その作品の構造レイヤー・プロット・
+   * 演出譜も消す。残すと本人には見えないまま端末に溜まり、同期にも載り続けるため。
    */
   const purgeWorkArtifacts = async (workId: string) => {
     await snapshotRepo.clear(workId)
     await structureRepo?.removeByWork(workId)
     await plotRepo?.removeByWork(workId)
+    await stagingRepo?.removeByWork(workId)
   }
   const set = (patch: Partial<EditorState>) => {
     state = { ...state, ...patch }

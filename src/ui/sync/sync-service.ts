@@ -1,4 +1,5 @@
 import type { DailyActivity } from '@/core/activity'
+import { StagingSchema } from '@/core/game'
 import { IdeaNoteSchema } from '@/core/idea'
 import { PlotSchema } from '@/core/plot'
 import { ProfileRepository, ProfileSchema } from '@/core/profile'
@@ -9,6 +10,7 @@ import { ActivityRepository } from '@/core/storage/activityRepository'
 import { IdbStore } from '@/core/storage/idbStore'
 import { IdeaRepository } from '@/core/storage/ideaRepository'
 import { PlotRepository } from '@/core/storage/plotRepository'
+import { StagingRepository, stagingIdOf } from '@/core/storage/stagingRepository'
 import { StructureRepository } from '@/core/storage/structureRepository'
 import { WorkRepository } from '@/core/storage/workRepository'
 import { StructureSchema } from '@/core/structure'
@@ -82,11 +84,12 @@ export interface SyncService {
 }
 
 /**
- * 同期 id の種別。Work は素の id、構造・ネタ帳・プロフィール・プロットは種別プレフィックス付き id
- * （`structure:<id>` / `idea:<id>` / `profile:me` / `plot:<id>`）で同じ D1 `works` テーブル・API に
- * 相乗りする（D-SYNC2-ITEMS・サーバ無改修）。
+ * 同期 id の種別。Work は素の id、構造・ネタ帳・プロフィール・プロット・演出譜は
+ * 種別プレフィックス付き id（`structure:<id>` / `idea:<id>` / `profile:me` / `plot:<id>` /
+ * `staging:<workId>:<episodeId>`）で同じ D1 `works` テーブル・API に相乗りする
+ * （D-SYNC2-ITEMS・サーバ無改修）。
  */
-type ItemKind = 'work' | 'structure' | 'idea' | 'profile' | 'plot'
+type ItemKind = 'work' | 'structure' | 'idea' | 'profile' | 'plot' | 'staging'
 
 /** プロフィールは端末に 1 件だけの singleton（決定的 id）。 */
 const PROFILE_SYNC_ID = 'profile:me'
@@ -100,9 +103,12 @@ const kindOf = (syncId: string): ItemKind =>
         ? 'profile'
         : syncId.startsWith('plot:')
           ? 'plot'
-          : 'work'
+          : syncId.startsWith('staging:')
+            ? 'staging'
+            : 'work'
 
-const rawIdOf = (syncId: string): string => syncId.replace(/^(?:structure|idea|profile|plot):/, '')
+const rawIdOf = (syncId: string): string =>
+  syncId.replace(/^(?:structure|idea|profile|plot|staging):/, '')
 
 /** ネタ帳の 1 行目を退避一覧の見出しに使う（長文は切り詰める）。 */
 const ideaTitle = (text: string | undefined): string | undefined => {
@@ -124,6 +130,7 @@ export interface SyncDeps {
   ideas: IdeaRepository
   profile: ProfileRepository
   plots: PlotRepository
+  stagings: StagingRepository
   bases: SyncBaseRepository
   /**
    * 競合の敗者・purge 直前の内容の退避先（`synclost:<syncId>`・1 アイテム 1 世代・件数上限つき）。
@@ -268,6 +275,18 @@ export function createSyncService(deps: SyncDeps): SyncService {
         const str = canonicalJson(PlotSchema, p)
         canon.set(syncId, str)
         localItems.push({ workId: syncId, updatedAt: p.updatedAt, hash: await sha256Hex(str) })
+      } catch {
+        maskedIds.add(syncId)
+      }
+    }
+    // 演出譜（サウンドノベルの Staging）もプロットと同じ流儀で相乗りする。
+    const stagingList = await deps.stagings.list()
+    for (const s of stagingList) {
+      const syncId = `staging:${stagingIdOf(s.workId, s.episodeId)}`
+      try {
+        const str = canonicalJson(StagingSchema, s)
+        canon.set(syncId, str)
+        localItems.push({ workId: syncId, updatedAt: s.updatedAt, hash: await sha256Hex(str) })
       } catch {
         maskedIds.add(syncId)
       }
@@ -489,6 +508,22 @@ export function createSyncService(deps: SyncDeps): SyncService {
                   }
                 }
                 await deps.plots.put(pulled)
+              } else if (kind === 'staging') {
+                // 演出譜も同じく素通し put（演出エディタは sync-applied 通知で再読込する）。
+                const pulled = StagingSchema.parse(JSON.parse(got.json))
+                const cur = await deps.stagings.getById(rawId)
+                currentJson = cur ? canonicalJson(StagingSchema, cur) : undefined
+                if (currentJson !== undefined) {
+                  const currentHash = await sha256Hex(currentJson)
+                  if (currentHash !== planHash.get(op.workId)) {
+                    replanNeeded = true
+                    break
+                  }
+                  if (conflictIds.has(op.workId)) {
+                    await recordLost(op.workId, 'conflict', 'サウンドノベルの演出', currentJson)
+                  }
+                }
+                await deps.stagings.put(pulled)
               } else {
                 // プロフィール：競合の敗者は synclost へ退避してから LWW 勝者を採用する。
                 const pulled = ProfileSchema.parse(JSON.parse(got.json))
@@ -622,6 +657,17 @@ export function createSyncService(deps: SyncDeps): SyncService {
               await recordLost(op.workId, 'remoteDelete', cur.title, canonicalJson(PlotSchema, cur))
             }
             await deps.plots.remove(rawIdOf(op.workId))
+          } else if (kind === 'staging') {
+            const cur = await deps.stagings.getById(rawIdOf(op.workId))
+            if (cur) {
+              await recordLost(
+                op.workId,
+                'remoteDelete',
+                'サウンドノベルの演出',
+                canonicalJson(StagingSchema, cur),
+              )
+            }
+            await deps.stagings.removeById(rawIdOf(op.workId))
           } else {
             break // プロフィールはローカルから消さない（tombstone が来ても保持＝防御）
           }
@@ -786,6 +832,7 @@ export function createDefaultSyncService(
     ideas: new IdeaRepository(store),
     profile: new ProfileRepository(store),
     plots: new PlotRepository(store),
+    stagings: new StagingRepository(store),
     bases: new SyncBaseRepository(store),
     // 競合の敗者・purge 直前の内容の 1 世代退避（synclost:<syncId>・件数上限つき押し出し）。
     saveLost: (entry) => new SyncLostRepository(store).save(entry),

@@ -4,8 +4,11 @@ import type { Episode, GlossaryEntry } from '../schema'
 import {
   applyCues,
   classifyBlock,
+  emptyStaging,
   findOrphanCues,
+  patchCue,
   plainTextOfBlock,
+  removeCue,
   type Staging,
   StagingSchema,
   suggestSceneBreaks,
@@ -205,6 +208,58 @@ describe('suggestSpeaker（辞書からの話者候補・外れてよい）', ()
     const blocks = parseEpisodeBody('　誰かが言った。\n「……」')
     expect(suggestSpeaker(blocks, 0, entries)).toBeUndefined()
     expect(suggestSpeaker(blocks, 1, entries)).toBeUndefined()
+  })
+})
+
+describe('patchCue / removeCue（演出の部分更新・パッチ方式）', () => {
+  const base = (): Staging =>
+    staging([{ blockId: 'b1', speaker: '灯', bg: 'preset:bg/room-night' }])
+
+  it('渡した項目だけ書き換え、省略した項目は据え置く', () => {
+    const out = patchCue(base(), 'b1', { speaker: '暁' }, 10)
+    expect(out.cues[0]).toEqual({ blockId: 'b1', speaker: '暁', bg: 'preset:bg/room-night' })
+    expect(out.updatedAt).toBe(10)
+  })
+
+  it('undefined を明示すると項目を削除する', () => {
+    const out = patchCue(base(), 'b1', { speaker: undefined }, 10)
+    expect(out.cues[0]).toEqual({ blockId: 'b1', bg: 'preset:bg/room-night' })
+  })
+
+  it('無い blockId へのパッチは cue を新規に足す（位置は末尾）', () => {
+    const out = patchCue(base(), 'b9', { sceneBreak: true }, 10)
+    expect(out.cues).toHaveLength(2)
+    expect(out.cues[1]).toEqual({ blockId: 'b9', sceneBreak: true })
+  })
+
+  it('全項目が空になった cue は落ちる', () => {
+    const out = patchCue(base(), 'b1', { speaker: undefined, bg: undefined }, 10)
+    expect(out.cues).toHaveLength(0)
+  })
+
+  it('既存 cue の位置（並び）を保つ', () => {
+    const s = staging([
+      { blockId: 'b1', speaker: '灯' },
+      { blockId: 'b2', speaker: '暁' },
+    ])
+    const out = patchCue(s, 'b1', { bg: 'preset:bg/sky-day' }, 10)
+    expect(out.cues.map((c) => c.blockId)).toEqual(['b1', 'b2'])
+  })
+
+  it('removeCue は指定 block の演出を丸ごと外し、入力を変更しない', () => {
+    const s = base()
+    const out = removeCue(s, 'b1', 10)
+    expect(out.cues).toHaveLength(0)
+    expect(s.cues).toHaveLength(1)
+  })
+
+  it('emptyStaging はキーと空の cues を持つ', () => {
+    expect(emptyStaging('w1', 'e1', 5)).toEqual({
+      workId: 'w1',
+      episodeId: 'e1',
+      cues: [],
+      updatedAt: 5,
+    })
   })
 })
 

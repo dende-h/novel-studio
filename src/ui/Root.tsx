@@ -46,6 +46,7 @@ import {
   createDefaultActivityRepository,
   createDefaultIdeaRepository,
   createDefaultPlotRepository,
+  createDefaultStagingRepository,
   createDefaultStructureRepository,
 } from './store/createDefaultStore'
 import type { EditorStore } from './store/editorStore'
@@ -163,6 +164,11 @@ function RootRoutes({ store }: RootProps) {
   const plotRepo = useMemo(
     () =>
       withSyncTouch(createDefaultPlotRepository(), ['create', 'save', 'remove', 'removeByWork']),
+    [],
+  )
+  // 演出譜（サウンドノベルの Staging）も同じ。編集は Repository 直書きなので sync-touch で push の契機を作る。
+  const stagingRepo = useMemo(
+    () => withSyncTouch(createDefaultStagingRepository(), ['save', 'remove', 'removeByWork']),
     [],
   )
   /**
@@ -407,6 +413,7 @@ function RootRoutes({ store }: RootProps) {
           activityRepo={activityRepo}
           structureRepo={structureRepo}
           plotRepo={plotRepo}
+          stagingRepo={stagingRepo}
           canUseStructure={canUseCreativeTools}
           ideaRepo={ideaRepo}
         />
@@ -430,6 +437,7 @@ function RootRoutes({ store }: RootProps) {
           isMember={status === 'member'}
           onboarded={onboarded}
           activityRepo={activityRepo}
+          stagingRepo={stagingRepo}
           // 無料の人向けクラウド導線＝サインアップ（→購読）。Clerk 未構成時はリンクを出さない。
           onOpenCloudPlan={available ? openSignUp : undefined}
         />

@@ -31,6 +31,7 @@ const KIND_LABEL: Record<SyncLostEntry['kind'], string> = {
   work: '作品',
   structure: '構造（アウトライン・相関図・マインドマップ）',
   plot: 'プロット',
+  staging: 'サウンドノベルの演出',
   idea: 'ネタ帳',
   profile: 'プロフィール',
 }
