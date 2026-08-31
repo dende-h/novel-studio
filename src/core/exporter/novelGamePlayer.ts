@@ -23,6 +23,8 @@ export interface ScenarioPage {
   transition?: 'cut' | 'fade' | 'flash'
   /** 背景が切り替わるページにだけ載る（先頭ページには必ず載る） */
   bg?: string
+  /** 立ち絵が替わるページにだけ載る（'' ＝ 立ち絵を消す）。exporter が話者から解決済み */
+  sprite?: string
   units: (string | [string, string])[]
   /** 純本文（共有カード・オート送りの読み時間に使う） */
   text: string
@@ -45,6 +47,8 @@ export interface GameScenario {
   saveKey: string
   defaultBg: string
   bgs: Record<string, ScenarioBg>
+  /** 立ち絵（キー → 実体パス）。使われているときだけ載る */
+  sprites?: Record<string, { src: string; label: string }>
   /** 同梱フォント（無ければシステムの明朝で表示） */
   fontSrc?: string
   credits: CreditLine[]
@@ -82,6 +86,9 @@ html,body{height:100%;margin:0;background:#05060A}
   transition:opacity .9s ease}
 .bg.kb{animation:kb 38s ease-in-out infinite alternate}
 @keyframes kb{from{transform:scale(1) translate(0,0)}to{transform:scale(1.08) translate(-1.2%,.8%)}}
+.sp{position:absolute;bottom:0;left:50%;transform:translateX(-50%);height:min(82vh,900px);
+  max-width:min(92vw,720px);object-fit:contain;object-position:bottom center;opacity:0;
+  transition:opacity .45s ease;pointer-events:none}
 #flash{position:absolute;inset:0;background:#fff;opacity:0;pointer-events:none}
 #flash.on{animation:fl .5s ease-out}
 @keyframes fl{0%{opacity:.9}100%{opacity:0}}
@@ -135,6 +142,8 @@ html,body{height:100%;margin:0;background:#05060A}
 <div id="stage">
   <div id="bgA" class="bg"></div>
   <div id="bgB" class="bg"></div>
+  <img id="spA" class="sp" alt="">
+  <img id="spB" class="sp" alt="">
   <div id="shade"></div>
   <div id="flash"></div>
   <div id="hud" hidden>
@@ -191,13 +200,14 @@ html,body{height:100%;margin:0;background:#05060A}
   var S = JSON.parse(document.getElementById('scenario').textContent)
   function $(id) { return document.getElementById(id) }
   var bgA = $('bgA'), bgB = $('bgB'), flashEl = $('flash'), hud = $('hud')
+  var spA = $('spA'), spB = $('spB')
   var box = $('box'), nameEl = $('name'), lineEl = $('line'), nextEl = $('next')
   var overlays = { title: $('ovTitle'), log: $('ovLog'), menu: $('ovMenu'), credits: $('ovCredits'), end: $('ovEnd') }
   var SETTINGS_KEY = 'kotonoha:novel-game:settings'
   var SPEEDS = [72, 50, 34, 22, 13] // ゆっくり → はやい（1コマの ms）
   var settings = { speed: 3 }
   var state = { i: -1, maxSeen: -1, typing: false, timer: 0, unitIdx: 0,
-    auto: false, skip: false, front: 'A', bgKey: '', started: false }
+    auto: false, skip: false, front: 'A', bgKey: '', spFront: 'A', spKey: '', started: false }
 
   function esc(s) {
     return String(s).replace(/[&<>"]/g, function (c) {
@@ -255,6 +265,39 @@ html,body{height:100%;margin:0;background:#05060A}
     state.front = state.front === 'A' ? 'B' : 'A'
   }
 
+  // ---- 立ち絵（話者に自動で紐づく。exporter が sprite マーカーへ解決済み） ----
+  function spriteAt(i) {
+    var key = ''
+    for (var j = 0; j <= i && j < S.pages.length; j++) {
+      if (typeof S.pages[j].sprite === 'string') key = S.pages[j].sprite
+    }
+    return key
+  }
+  function setSprite(key, instant) {
+    if (key === state.spKey) return
+    if (key && !(S.sprites && S.sprites[key])) return
+    state.spKey = key
+    var front = state.spFront === 'A' ? spA : spB
+    var back = state.spFront === 'A' ? spB : spA
+    if (!key) {
+      if (instant) {
+        front.style.transition = 'none'; front.style.opacity = '0'
+        requestAnimationFrame(function () { front.style.transition = '' })
+      } else front.style.opacity = '0'
+      return
+    }
+    back.src = S.sprites[key].src
+    back.alt = S.sprites[key].label
+    if (instant) {
+      back.style.transition = 'none'; front.style.transition = 'none'
+      back.style.opacity = '1'; front.style.opacity = '0'
+      requestAnimationFrame(function () { back.style.transition = ''; front.style.transition = '' })
+    } else {
+      back.style.opacity = '1'; front.style.opacity = '0'
+    }
+    state.spFront = state.spFront === 'A' ? 'B' : 'A'
+  }
+
   // ---- セーブ（進んだ分だけ自動で） ----
   function save() { saveJson(S.saveKey, { i: state.i, max: state.maxSeen, t: Date.now() }) }
   function loadSave() {
@@ -278,6 +321,7 @@ html,body{height:100%;margin:0;background:#05060A}
     save()
     clearTimeout(state.timer)
     setBg(bgAt(i), p.bg ? p.transition : undefined, instant)
+    setSprite(spriteAt(i), instant)
     box.hidden = false
     if (p.kind === 'dialogue' && p.speaker) { nameEl.textContent = p.speaker; nameEl.hidden = false }
     else { nameEl.hidden = true }

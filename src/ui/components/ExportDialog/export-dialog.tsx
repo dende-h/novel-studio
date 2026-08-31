@@ -169,7 +169,7 @@ export function ExportDialog({
           const font = await loadGameFont()
           // 保存済みの演出譜（話者・背景・場面の切れ目）があれば載せる
           const staging = await stagingRepo?.get(work.id, selectedEpisode.id)
-          // 持ち込み背景は手元の全件を渡し、演出が指す分だけ exporter が同梱する
+          // 持ち込み素材（背景・立ち絵）は手元の全件を渡し、使う分だけ exporter が同梱する
           const userAssets = ((await gameAssetRepo?.list()) ?? []).map((a) => ({
             key: userAssetKey(a.id),
             id: a.id,
@@ -177,6 +177,10 @@ export function ExportDialog({
             tone: a.tone,
             mime: dataUrlMime(a.dataUrl) ?? 'image/webp',
             data: decodeDataUrl(a.dataUrl),
+            kind: a.kind,
+            ...(a.character ? { character: a.character } : {}),
+            ...(a.expression ? { expression: a.expression } : {}),
+            createdAt: a.createdAt,
           }))
           triggerDownload(
             episodeNovelGameExport(

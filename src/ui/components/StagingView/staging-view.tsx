@@ -5,6 +5,7 @@ import {
   type Cue,
   emptyStaging,
   findOrphanCues,
+  MASKED_SPEAKER,
   patchCue,
   plainTextOfBlock,
   removeCue,
@@ -13,14 +14,20 @@ import {
   suggestSpeaker,
   toPages,
 } from '@/core/game'
-import { type UserGameAsset, userAssetKey } from '@/core/game/assets'
+import {
+  DEFAULT_EXPRESSION,
+  pickSprite,
+  spriteExpressionsOf,
+  type UserGameAsset,
+  userAssetKey,
+} from '@/core/game/assets'
 import { PRESET_BACKGROUNDS, presetBackground, presetBgSvg } from '@/core/game/presets'
 import { PERSON_CATEGORY } from '@/core/glossary'
 import type { Work } from '@/core/schema'
 import type { GameAssetRepository } from '@/core/storage/gameAssetRepository'
 import type { StagingRepository } from '@/core/storage/stagingRepository'
 import { cn } from '@/lib/utils'
-import { gameBgToDataUrl } from '@/ui/_utils/imageResizer'
+import { gameBgToDataUrl, gameSpriteToDataUrl } from '@/ui/_utils/imageResizer'
 import { useAuth } from '@/ui/auth/auth-context'
 import { Button } from '@/ui/components/ui/button'
 import { Input } from '@/ui/components/ui/input'
@@ -59,8 +66,6 @@ const TRANSITIONS: { value: NonNullable<Cue['transition']>; label: string }[] = 
   { value: 'flash', label: '白いフラッシュ' },
 ]
 
-/** 正体を伏せた話者の表示名（名前枠に ？？？ と出す）。 */
-const MASKED_SPEAKER = '？？？'
 /** 話者セレクトの「自由に入力…」の目印（cue には入らない）。 */
 const CUSTOM_SPEAKER = '__custom__'
 /** 背景セレクトの「画像を追加…」の目印（cue には入らない）。 */
@@ -91,6 +96,13 @@ export default function StagingView({ repo, work, currentEpisodeId, assetRepo }:
   // 話者の自由記述モード（選択中の行にだけ効く。行を替えたら閉じる）
   const [customSpeaker, setCustomSpeaker] = useState(false)
   const [customDraft, setCustomDraft] = useState('')
+  // 立ち絵の追加（画像を選んだあと、表情名を付けて確定する2段階）
+  const [pendingSprite, setPendingSprite] = useState<{
+    dataUrl: string
+    tone: [string, string, string]
+  } | null>(null)
+  const [spriteExprDraft, setSpriteExprDraft] = useState(DEFAULT_EXPRESSION)
+  const spriteInputRef = useRef<HTMLInputElement>(null)
   // 持ち込み背景（この端末のローカル資産）
   const [assets, setAssets] = useState<UserGameAsset[]>([])
   const [assetError, setAssetError] = useState<string | null>(null)
@@ -164,6 +176,8 @@ export default function StagingView({ repo, work, currentEpisodeId, assetRepo }:
     () => (work.glossary ?? []).filter((e) => PERSON_CATEGORY.test(e.category ?? '')),
     [work.glossary],
   )
+  // 背景の選択肢に立ち絵を混ぜない
+  const bgAssets = useMemo(() => assets.filter((a) => a.kind === 'bg'), [assets])
   const blockTextById = useMemo(() => {
     const m = new Map<string, string>()
     for (const b of episode?.blocks ?? []) m.set(b.id, plainTextOfBlock(b))
@@ -176,6 +190,18 @@ export default function StagingView({ repo, work, currentEpisodeId, assetRepo }:
   }, [episode])
 
   const selected = staged.find((p) => p.blockId === selectedId) ?? null
+  // 選択行の話者に紐づく立ち絵（表情の選択肢とプレビュー）
+  const speakerExpressions = useMemo(
+    () =>
+      selected?.speaker && selected.speaker !== MASKED_SPEAKER
+        ? spriteExpressionsOf(assets, selected.speaker)
+        : [],
+    [assets, selected?.speaker],
+  )
+  const spritePreview =
+    selected?.speaker && selected.speaker !== MASKED_SPEAKER
+      ? pickSprite(assets, selected.speaker, selected.expression)
+      : undefined
   const speakerCandidate = useMemo(() => {
     if (!episode || !selected || selected.kind !== 'dialogue') return undefined
     const index = blockIndexById.get(selected.blockId)
@@ -198,6 +224,7 @@ export default function StagingView({ repo, work, currentEpisodeId, assetRepo }:
   const selectRow = (blockId: string) => {
     setSelectedId(blockId)
     setCustomSpeaker(false)
+    setPendingSprite(null)
   }
   const commitCustomSpeaker = (blockId: string) => {
     const name = customDraft.trim()
@@ -236,6 +263,38 @@ export default function StagingView({ repo, work, currentEpisodeId, assetRepo }:
       setHostedIds((prev) => new Set([...(prev ?? []), asset.id]))
     }
     return result
+  }
+
+  /** 立ち絵の画像ファイル → リサイズだけ済ませ、表情名の入力（commitSprite）を待つ。 */
+  const pickSpriteFile = async (file: File) => {
+    setAssetError(null)
+    setHostNotice(null)
+    try {
+      setPendingSprite(await gameSpriteToDataUrl(file))
+      setSpriteExprDraft(DEFAULT_EXPRESSION)
+    } catch {
+      setAssetError('この画像は読み込めませんでした。別のファイルでお試しください。')
+    }
+  }
+
+  /** 立ち絵を確定保存する（話者に自動で紐づく。会員はクラウドにも控えを置く）。 */
+  const commitSprite = async (speaker: string) => {
+    if (!assetRepo || !pendingSprite) return
+    const expression = spriteExprDraft.trim() || DEFAULT_EXPRESSION
+    const asset: UserGameAsset = {
+      id: crypto.randomUUID(),
+      kind: 'sprite',
+      name: `${speaker}（${expression}）`,
+      dataUrl: pendingSprite.dataUrl,
+      tone: pendingSprite.tone,
+      character: speaker,
+      expression,
+      createdAt: Date.now(),
+    }
+    await assetRepo.save(asset)
+    setAssets((prev) => [asset, ...prev])
+    setPendingSprite(null)
+    if (hostingApi) void uploadAsset(asset).then((r) => setHostNotice(uploadNoticeOf(r)))
   }
 
   /**
@@ -392,6 +451,9 @@ export default function StagingView({ repo, work, currentEpisodeId, assetRepo }:
                           {page.kind === 'dialogue' ? (
                             <span>話者：{page.speaker ?? '—'}</span>
                           ) : null}
+                          {page.kind === 'dialogue' && page.expression ? (
+                            <span>表情 {page.expression}</span>
+                          ) : null}
                           {!page.sceneBreak && bgLabel ? <span>背景 {bgLabel}</span> : null}
                         </span>
                       </span>
@@ -492,6 +554,111 @@ export default function StagingView({ repo, work, currentEpisodeId, assetRepo }:
                       候補「{speakerCandidate}」を使う
                     </Button>
                   ) : null}
+
+                  {selected.speaker && selected.speaker !== MASKED_SPEAKER && assetRepo ? (
+                    <div className="mt-4">
+                      <label
+                        htmlFor="staging-expression"
+                        className="mb-2 block text-on-surface-variant text-xs uppercase tracking-wider"
+                      >
+                        立ち絵
+                      </label>
+                      {speakerExpressions.length > 0 ? (
+                        <>
+                          <select
+                            id="staging-expression"
+                            value={selected.expression ?? ''}
+                            onChange={(e) =>
+                              apply(selected.blockId, {
+                                expression: e.target.value || undefined,
+                              })
+                            }
+                            className={SELECT_CLASS}
+                          >
+                            <option value="">（自動：{DEFAULT_EXPRESSION}）</option>
+                            {/* 未登録の表情が付いた既存 cue も選択状態は保つ（勝手に外さない） */}
+                            {selected.expression &&
+                            !speakerExpressions.includes(selected.expression) ? (
+                              <option value={selected.expression}>
+                                {selected.expression}（この表情は未登録）
+                              </option>
+                            ) : null}
+                            {speakerExpressions.map((e) => (
+                              <option key={e} value={e}>
+                                {e}
+                              </option>
+                            ))}
+                          </select>
+                          {spritePreview ? (
+                            <img
+                              src={spritePreview.dataUrl}
+                              alt={`立ち絵プレビュー: ${spritePreview.name}`}
+                              className="mx-auto mt-2 h-40 object-contain"
+                            />
+                          ) : null}
+                        </>
+                      ) : (
+                        <p className="text-[11px] text-on-surface-variant leading-relaxed">
+                          「{selected.speaker}
+                          」の立ち絵はまだありません。追加すると、この話者のセリフで自動的に表示されます。
+                        </p>
+                      )}
+                      {pendingSprite ? (
+                        <div className="mt-2 space-y-2 rounded-md border border-outline-variant/30 p-2">
+                          <img
+                            src={pendingSprite.dataUrl}
+                            alt="追加する立ち絵"
+                            className="mx-auto h-40 object-contain"
+                          />
+                          <Input
+                            aria-label="表情名"
+                            value={spriteExprDraft}
+                            placeholder={DEFAULT_EXPRESSION}
+                            onChange={(e) => setSpriteExprDraft(e.target.value)}
+                          />
+                          <div className="flex gap-2">
+                            <Button
+                              type="button"
+                              size="sm"
+                              onClick={() => void commitSprite(selected.speaker ?? '')}
+                            >
+                              追加
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => setPendingSprite(null)}
+                            >
+                              やめる
+                            </Button>
+                          </div>
+                        </div>
+                      ) : (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="mt-2 text-primary"
+                          onClick={() => spriteInputRef.current?.click()}
+                        >
+                          立ち絵を追加…
+                        </Button>
+                      )}
+                      <input
+                        ref={spriteInputRef}
+                        type="file"
+                        accept="image/*"
+                        hidden
+                        aria-label="立ち絵の画像を選ぶ"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0]
+                          e.target.value = ''
+                          if (file) void pickSpriteFile(file)
+                        }}
+                      />
+                    </div>
+                  ) : null}
                 </div>
               ) : null}
 
@@ -536,9 +703,9 @@ export default function StagingView({ repo, work, currentEpisodeId, assetRepo }:
                   {selected.bg && !bgLabelOf(selected.bg, assets) ? (
                     <option value={selected.bg}>（この端末に無い画像）</option>
                   ) : null}
-                  {assets.length > 0 ? (
+                  {bgAssets.length > 0 ? (
                     <optgroup label="持ち込み">
-                      {assets.map((a) => (
+                      {bgAssets.map((a) => (
                         <option key={a.id} value={userAssetKey(a.id)}>
                           {a.name}
                         </option>
@@ -642,6 +809,7 @@ export default function StagingView({ repo, work, currentEpisodeId, assetRepo }:
 function describeCue(cue: Cue, assets: UserGameAsset[]): string {
   const parts: string[] = []
   if (cue.speaker) parts.push(`話者 ${cue.speaker}`)
+  if (cue.expression) parts.push(`表情 ${cue.expression}`)
   if (cue.sceneBreak) parts.push('場面の切れ目')
   if (cue.bg) parts.push(`背景 ${bgLabelOf(cue.bg, assets) ?? cue.bg}`)
   if (cue.bgm) parts.push('BGM')

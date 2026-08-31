@@ -3,22 +3,25 @@ import { z } from 'zod'
 /**
  * ユーザー持ち込みのゲーム素材（07-novel-game.md §4.4）。
  *
- * G2 前半＝**この端末のローカル資産**（IndexedDB・全体バックアップに同乗）。
- * 実体はリサイズ済み画像の data URL（表紙・図鑑サムネと同じ方式）で、正本 Work には
- * 埋めない（D-GAME-ASSET-STORE）。R2 ホスティング（端末間で素材を運ぶ・grove 配信・有料）は
- * G2 後半で、このスキーマのまま実体の置き場所だけが増える。
+ * この端末のローカル資産（IndexedDB・全体バックアップに同乗）が正で、会員は
+ * R2 ホスティング（G2 後半）に控えを置ける。実体はリサイズ済み画像の data URL
+ * （表紙・図鑑サムネと同じ方式）で、正本 Work には埋めない（D-GAME-ASSET-STORE）。
  * 作品をまたいで使える（workId に紐づけない）。
  */
 export const UserGameAssetSchema = z.object({
   id: z.string(),
-  /** 将来 'bgm' | 'se' | 'sprite' を足す（後方互換のため enum に狭めない） */
-  kind: z.literal('bg'),
+  /** 将来 'bgm' | 'se' を足すときもここへ（旧クライアントは未知 kind の素材を扱えないだけ） */
+  kind: z.enum(['bg', 'sprite']),
   /** 一覧・クレジットに出す表示名（既定はファイル名） */
   name: z.string(),
   /** リサイズ済み画像の data URL */
   dataUrl: z.string().refine((s) => s.startsWith('data:image/'), 'data URL が必要'),
-  /** 上・中・下の3色。共有カードの下地とクロスフェードの間の色に使う */
+  /** 上・中・下の3色。共有カードの下地とクロスフェードの間の色に使う（立ち絵では未使用） */
   tone: z.tuple([z.string(), z.string(), z.string()]),
+  /** 立ち絵のみ：この立ち絵の人物（Cue.speaker と同じ文字列で突き合わせる） */
+  character: z.string().optional(),
+  /** 立ち絵のみ：表情名（省略は DEFAULT_EXPRESSION 扱い） */
+  expression: z.string().optional(),
   createdAt: z.number(),
 })
 export type UserGameAsset = z.infer<typeof UserGameAssetSchema>
@@ -28,6 +31,59 @@ export const userAssetKey = (id: string) => `user:${id}`
 
 /** アセットキーが持ち込み素材か。 */
 export const isUserAssetKey = (key: string) => key.startsWith('user:')
+
+// ---------------------------------------------------------------------------
+// 立ち絵（sprite・G2 のオプション＝D-GAME-NOSPRITE）
+// ---------------------------------------------------------------------------
+
+/** 表情名を省略したときの既定（「通常」の顔）。 */
+export const DEFAULT_EXPRESSION = '通常'
+
+/** 立ち絵の選定に必要な形（core の UserGameAsset と exporter 入力の両方が満たす）。 */
+export interface SpriteSource {
+  id: string
+  kind?: string
+  character?: string
+  expression?: string
+  createdAt?: number
+}
+
+/** speaker に紐づく立ち絵（登録の古い順・同時刻は id 順）。 */
+export function spritesOfSpeaker<T extends SpriteSource>(
+  assets: readonly T[],
+  speaker: string,
+): T[] {
+  return assets
+    .filter((a) => a.kind === 'sprite' && a.character === speaker)
+    .sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0) || a.id.localeCompare(b.id))
+}
+
+/** speaker の立ち絵にある表情名（重複なし・登録の古い順）。UI の選択肢と MCP の検証に使う。 */
+export function spriteExpressionsOf(assets: readonly SpriteSource[], speaker: string): string[] {
+  const out: string[] = []
+  for (const a of spritesOfSpeaker(assets, speaker)) {
+    const e = a.expression?.trim() || DEFAULT_EXPRESSION
+    if (!out.includes(e)) out.push(e)
+  }
+  return out
+}
+
+/**
+ * 表示する立ち絵を 1 枚選ぶ。表情の指定が無い／見つからないときは
+ * 「通常」→ 最初に登録した 1 枚、の順に倒す（**選べる限り必ず出す**＝壊さない）。
+ */
+export function pickSprite<T extends SpriteSource>(
+  assets: readonly T[],
+  speaker: string,
+  expression?: string,
+): T | undefined {
+  const candidates = spritesOfSpeaker(assets, speaker)
+  if (candidates.length === 0) return undefined
+  const byExpr = (e: string) =>
+    candidates.find((a) => (a.expression?.trim() || DEFAULT_EXPRESSION) === e)
+  const wanted = expression?.trim()
+  return (wanted ? byExpr(wanted) : undefined) ?? byExpr(DEFAULT_EXPRESSION) ?? candidates[0]
+}
 
 // ---------------------------------------------------------------------------
 // クラウド保管（R2 ホスティング・G2 後半・有料）

@@ -17,11 +17,16 @@ import type { Block, Episode, GlossaryEntry, Inline } from '../schema'
 // スキーマ（演出譜）
 // ---------------------------------------------------------------------------
 
+/** 正体を伏せた話者の表示名（名前枠に ？？？ と出し、立ち絵も出さない）。 */
+export const MASKED_SPEAKER = '？？？'
+
 export const CueSchema = z.object({
   /** 張り付き先の Block.id。本文は一切書き換えない（アンカーのみ） */
   blockId: z.string(),
   /** 話者名。辞書 entry の name（= [[名前]] の解決キーと同一） */
   speaker: z.string().optional(),
+  /** 表情名。話者に立ち絵があるときだけ意味を持つ（無ければ「通常」→最初の1枚に倒す） */
+  expression: z.string().optional(),
   /** ここで場面が変わる（背景・BGM の切り替え点）。正本に区切りは復活させない（D-GAME-SCENE-MANUAL） */
   sceneBreak: z.boolean().optional(),
   /** アセットキー（'preset:bg/room-day' 等）。実体は持たない（D-GAME-ASSET-STORE） */
@@ -76,7 +81,15 @@ export function patchCue(
 ): Staging {
   const current = staging.cues.find((c) => c.blockId === blockId) ?? { blockId }
   const merged: Cue = { ...current }
-  for (const key of ['speaker', 'sceneBreak', 'bg', 'bgm', 'se', 'transition'] as const) {
+  for (const key of [
+    'speaker',
+    'expression',
+    'sceneBreak',
+    'bg',
+    'bgm',
+    'se',
+    'transition',
+  ] as const) {
     if (!(key in patch)) continue
     const value = patch[key]
     if (value === undefined) delete merged[key]
@@ -180,6 +193,7 @@ export function toPages(blocks: Block[]): GamePage[] {
 
 export interface StagedPage extends GamePage {
   speaker?: string
+  expression?: string
   sceneBreak?: boolean
   bg?: string
   bgm?: string

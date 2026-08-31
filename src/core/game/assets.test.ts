@@ -4,6 +4,8 @@ import {
   HOSTED_ASSET_MAX_BYTES,
   hostedAssetVerdict,
   isUserAssetKey,
+  pickSprite,
+  spriteExpressionsOf,
   UserGameAssetSchema,
   userAssetKey,
 } from './assets'
@@ -29,6 +31,44 @@ describe('game/assets — キーとスキーマ', () => {
     expect(UserGameAssetSchema.safeParse({ ...base, dataUrl: 'https://evil/x.png' }).success).toBe(
       false,
     )
+  })
+})
+
+describe('game/assets — 立ち絵の選定（pickSprite / spriteExpressionsOf）', () => {
+  const sprite = (id: string, character: string, expression?: string, createdAt = 1) => ({
+    id,
+    kind: 'sprite',
+    character,
+    expression,
+    createdAt,
+  })
+  const assets = [
+    { id: 'bg1', kind: 'bg', createdAt: 0 }, // 背景は候補に入らない
+    sprite('a-smile', '灯', '笑顔', 2),
+    sprite('a-normal', '灯', '通常', 1),
+    sprite('b-1', '影', undefined, 3), // 表情省略＝「通常」扱い
+  ]
+
+  it('話者の立ち絵から表情で選ぶ（省略・無指定は「通常」）', () => {
+    expect(pickSprite(assets, '灯')?.id).toBe('a-normal')
+    expect(pickSprite(assets, '灯', '笑顔')?.id).toBe('a-smile')
+    expect(pickSprite(assets, '影')?.id).toBe('b-1')
+  })
+
+  it('無い表情は「通常」→最初の1枚へ倒す（選べる限り必ず出す）', () => {
+    expect(pickSprite(assets, '灯', '泣き')?.id).toBe('a-normal')
+    const noNormal = [sprite('x-2', '灯', '笑顔', 2), sprite('x-1', '灯', '怒り', 1)]
+    expect(pickSprite(noNormal, '灯', '泣き')?.id).toBe('x-1') // 登録の古い順の先頭
+  })
+
+  it('立ち絵の無い話者は undefined', () => {
+    expect(pickSprite(assets, '誰か')).toBeUndefined()
+  })
+
+  it('spriteExpressionsOf は重複なし・登録の古い順', () => {
+    expect(spriteExpressionsOf(assets, '灯')).toEqual(['通常', '笑顔'])
+    expect(spriteExpressionsOf(assets, '影')).toEqual(['通常'])
+    expect(spriteExpressionsOf(assets, '誰か')).toEqual([])
   })
 })
 
