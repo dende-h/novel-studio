@@ -16,7 +16,6 @@ import {
 import { stagingToPlainText } from '../../../src/core/exporter/stagingToPlainText'
 import { structuresToPlainText } from '../../../src/core/exporter/structureToPlainText'
 import { glossaryToPlainText, workToPlainText } from '../../../src/core/exporter/toPlainText'
-import { userAssetKey } from '../../../src/core/game/assets'
 import {
   addEpisode,
   createWork,
@@ -45,7 +44,7 @@ import { pickPrimaryPlot, WORLD_CUSTOM_SLOT, WORLD_SLOTS } from '../../../src/co
 
 /** クライアントが未指定のときに名乗る MCP プロトコル版（十分に新しい安定版）。 */
 const DEFAULT_PROTOCOL_VERSION = '2025-06-18'
-const SERVER_INFO = { name: 'novel-studio', version: '1.5.0' } as const
+const SERVER_INFO = { name: 'novel-studio', version: '1.6.0' } as const
 
 /**
  * クライアント（AI）へ最初に渡す使い方。MCP の `initialize` が返す標準の instructions。
@@ -64,7 +63,7 @@ const SERVER_INSTRUCTIONS = [
   '- 世界観設定（get_world / set_world_note）… 作品の決め事・設定ルール・執筆方針を置く',
   '  **作者だけの場所。公開されません。**',
   '- プロット（get_plot / upsert_plot_beat 等）… 幕とビート、プロットライン、伏線、秘密。公開されません。',
-  '- 演出譜（get_staging / set_staging）… サウンドノベル書き出し用の話者・場面の切れ目・背景。',
+  '- 演出譜（get_staging / set_staging）… サウンドノベル書き出し用の話者・表情・場面の切れ目・背景。',
   '  本文には一切触れない別レコードで、公開されません。',
   '',
   '守ってほしい手順：',
@@ -484,7 +483,7 @@ export const MCP_TOOLS = [
   {
     name: 'set_staging',
     description:
-      '1 つの話の演出（話者・場面の切れ目・背景・切り替え方）を行単位でまとめて付ける。本文は一切変わらない。cues の各要素は get_staging の [block_id: …] を指し、渡した項目だけ書き換える（省略＝据え置き・空文字＝削除・clear: true でその行の演出を丸ごと外す）。話者はセリフの行にだけ付けられ、用語集の人物名／？？？（名前を伏せる）／自由な名前が使える。どれか 1 行でもエラーになると全体が保存されない。',
+      '1 つの話の演出（話者・表情・場面の切れ目・背景・切り替え方）を行単位でまとめて付ける。本文は一切変わらない。cues の各要素は get_staging の [block_id: …] を指し、渡した項目だけ書き換える（省略＝据え置き・空文字＝削除・clear: true でその行の演出を丸ごと外す）。話者はセリフの行にだけ付けられ、用語集の人物名／？？？（名前を伏せる）／自由な名前が使える。立ち絵は話者から自動で表示され、expression は立ち絵のある話者の表情の指定にだけ使える。どれか 1 行でもエラーになると全体が保存されない。',
     inputSchema: {
       type: 'object',
       properties: {
@@ -500,6 +499,11 @@ export const MCP_TOOLS = [
               speaker: {
                 type: 'string',
                 description: '話者名（セリフの行のみ。？？？で名前を伏せる。空文字で外す）',
+              },
+              expression: {
+                type: 'string',
+                description:
+                  '立ち絵の表情（get_staging の「立ち絵」一覧にある表情から。話者の付いたセリフの行のみ。空文字で外す＝既定の表情）',
               },
               scene_break: {
                 type: 'boolean',
@@ -972,7 +976,7 @@ async function callTool(
           workId,
           str(args, 'episode_id') ?? '',
           parseStagingCueInputs(args?.cues),
-          (snap.gameAssets ?? []).map((a) => userAssetKey(a.id)),
+          snap.gameAssets ?? [],
           now,
         )
         next = { ...snap, stagings: res.stagings }

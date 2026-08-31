@@ -357,6 +357,7 @@ describe('mcp-edit — 演出譜（set_staging の純ロジック）', () => {
       {
         blockId: 'b2',
         speaker: '灯',
+        expression: undefined,
         sceneBreak: true,
         bg: undefined,
         transition: undefined,
@@ -425,20 +426,118 @@ describe('mcp-edit — 演出譜（set_staging の純ロジック）', () => {
     ])
   })
 
-  it('持ち込み背景のキーは userBgKeys にあるものだけ通す', () => {
+  it('持ち込み背景のキーは手元の素材（kind bg）にあるものだけ通す', () => {
     const ok = setStagingCues(
       [],
       [stagedWork()],
       'w1',
       'e1',
       [{ blockId: 'b5', bg: 'user:abc' }],
-      ['user:abc'],
+      [{ id: 'abc', kind: 'bg' }],
       100,
     )
     expect(ok.stagings[0]?.cues[0]?.bg).toBe('user:abc')
     expect(() =>
       setStagingCues([], [stagedWork()], 'w1', 'e1', [{ blockId: 'b5', bg: 'user:zzz' }], [], 100),
     ).toThrow(/使えません/)
+    // 立ち絵（kind 'sprite'）のキーは背景には指せない
+    expect(() =>
+      setStagingCues(
+        [],
+        [stagedWork()],
+        'w1',
+        'e1',
+        [{ blockId: 'b5', bg: 'user:sp1' }],
+        [{ id: 'sp1', kind: 'sprite', character: '灯' }],
+        100,
+      ),
+    ).toThrow(/使えません/)
+  })
+
+  it('表情は「立ち絵のある話者」の付いたセリフの行にだけ付けられる', () => {
+    const sprites = [
+      { id: 'sp1', kind: 'sprite', character: '灯', expression: '通常', createdAt: 1 },
+      { id: 'sp2', kind: 'sprite', character: '灯', expression: '笑顔', createdAt: 2 },
+    ]
+    const ok = setStagingCues(
+      [],
+      [stagedWork()],
+      'w1',
+      'e1',
+      [{ blockId: 'b2', speaker: '灯', expression: '笑顔' }],
+      sprites,
+      100,
+    )
+    expect(ok.stagings[0]?.cues[0]).toEqual({ blockId: 'b2', speaker: '灯', expression: '笑顔' })
+
+    // 話者なし・？？？・地の文・未登録の表情・立ち絵の無い話者は全部エラー
+    expect(() =>
+      setStagingCues(
+        [],
+        [stagedWork()],
+        'w1',
+        'e1',
+        [{ blockId: 'b2', expression: '笑顔' }],
+        sprites,
+        100,
+      ),
+    ).toThrow(/話者/)
+    expect(() =>
+      setStagingCues(
+        [],
+        [stagedWork()],
+        'w1',
+        'e1',
+        [{ blockId: 'b2', speaker: '？？？', expression: '笑顔' }],
+        sprites,
+        100,
+      ),
+    ).toThrow(/立ち絵が出ない/)
+    expect(() =>
+      setStagingCues(
+        [],
+        [stagedWork()],
+        'w1',
+        'e1',
+        [{ blockId: 'b1', expression: '笑顔' }],
+        sprites,
+        100,
+      ),
+    ).toThrow(/セリフの行/)
+    expect(() =>
+      setStagingCues(
+        [],
+        [stagedWork()],
+        'w1',
+        'e1',
+        [{ blockId: 'b2', speaker: '灯', expression: '泣き' }],
+        sprites,
+        100,
+      ),
+    ).toThrow(/使える表情: 通常・笑顔/)
+    expect(() =>
+      setStagingCues(
+        [],
+        [stagedWork()],
+        'w1',
+        'e1',
+        [{ blockId: 'b2', speaker: '影', expression: '通常' }],
+        sprites,
+        100,
+      ),
+    ).toThrow(/立ち絵がまだありません/)
+
+    // 空文字＝表情を外す（既定の表情へ戻す）は常に通る
+    const cleared = setStagingCues(
+      ok.stagings,
+      [stagedWork()],
+      'w1',
+      'e1',
+      [{ blockId: 'b2', expression: '' }],
+      sprites,
+      100,
+    )
+    expect(cleared.stagings[0]?.cues[0]).toEqual({ blockId: 'b2', speaker: '灯' })
   })
 
   it('不正な入力は McpEditError で全体を保存しない（部分適用を残さない）', () => {

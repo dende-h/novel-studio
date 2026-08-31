@@ -777,6 +777,53 @@ describe('演出譜ツール（get_staging / set_staging）', () => {
     expect(contentText(bad)).toContain('使えません')
   })
 
+  it('set_staging の表情はスナップショットの立ち絵で検証され、get_staging に立ち絵一覧が載る', async () => {
+    const sprite = (id: string, expression: string, createdAt: number): UserGameAsset => ({
+      id,
+      kind: 'sprite',
+      name: `アカリ（${expression}）`,
+      dataUrl: 'data:image/webp;base64,SGk=',
+      tone: ['#111111', '#222222', '#333333'],
+      character: 'アカリ',
+      expression,
+      createdAt,
+    })
+    const { deps: d, get } = makeDeps({
+      ...snapshot([gameWork()]),
+      gameAssets: [sprite('sp1', '通常', 1), sprite('sp2', '笑顔', 2)],
+    })
+    const ok = await handleMcpMessage(
+      call('set_staging', {
+        work_id: 'w1',
+        episode_id: 'e1',
+        cues: [{ block_id: 'b2', speaker: 'アカリ', expression: '笑顔' }],
+      }),
+      d,
+    )
+    expect(isError(ok)).toBe(false)
+    expect(get()?.stagings?.[0]?.cues[0]).toEqual({
+      blockId: 'b2',
+      speaker: 'アカリ',
+      expression: '笑顔',
+    })
+    const text = contentText(
+      await handleMcpMessage(call('get_staging', { work_id: 'w1', episode_id: 'e1' }), d),
+    )
+    expect(text).toContain('【話者=アカリ／表情=笑顔】')
+    expect(text).toContain('- アカリ … 表情: 通常／笑顔')
+    // 未登録の表情は isError（使える表情を教える）
+    const bad = await handleMcpMessage(
+      call('set_staging', {
+        work_id: 'w1',
+        episode_id: 'e1',
+        cues: [{ block_id: 'b2', expression: '泣き' }],
+      }),
+      d,
+    )
+    expect(isError(bad)).toBe(true)
+    expect(contentText(bad)).toContain('使える表情: 通常・笑顔')
+  })
+
   it('set_staging のドメインエラー（空行宛て・地の文へ話者）は isError で返る', async () => {
     const { deps: d, get } = makeDeps(snapshot([gameWork()]))
     const gap = await handleMcpMessage(

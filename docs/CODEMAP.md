@@ -79,7 +79,7 @@ Cloudflare Pages Functions
 | `plot/` | プロット（幕/ライン/ビート/伏線/秘密）＋**世界観設定**（`Plot.world`・作者専用） | `PlotSection` `PlotLine` `PlotBeat` `Foreshadow` `Secret` / `beatsInStoryOrder` `sectionOfBeat` `linesOfBeat` `foreshadowsOfBeat` `secretsHiddenAt` / `WorldNote` `WORLD_SLOTS` `WORLD_CUSTOM_SLOT` `worldNoteLabel` `worldNotesInOrder` `setWorldNote` `removeWorldNote` |
 | `structure/` | 構造レイヤー（outline/chart/mindmap）のノード・辺 | `StructureNode` `StructureEdge` `StructureKind` `emptyStructure` `addNode` `pickPrimaryStructure` |
 | `idea/` | ネタ帳のメモ | `IdeaNote` `normalizeIdeaText` |
-| `game/` | サウンドノベル化のドメイン（演出譜＝正本の外・blockId アンカー） | `Staging` `Cue` `AssetRef` / `classifyBlock` `toPages` `applyCues` `findOrphanCues` `suggestSceneBreaks` `suggestSpeaker` / テンプレ背景は `presets.ts`（`PRESET_BACKGROUNDS` `presetBgSvg` `buildGameCredits`）／持ち込み背景は `assets.ts`（`UserGameAsset`＝data URL＋tone 3色・キーは `userAssetKey`＝`user:<id>`。クラウド保管の上限 `HOSTED_ASSET_LIMIT` と判定 `hostedAssetVerdict` もここ） |
+| `game/` | サウンドノベル化のドメイン（演出譜＝正本の外・blockId アンカー） | `Staging` `Cue` `AssetRef` / `classifyBlock` `toPages` `applyCues` `findOrphanCues` `suggestSceneBreaks` `suggestSpeaker` / テンプレ背景は `presets.ts`（`PRESET_BACKGROUNDS` `presetBgSvg` `buildGameCredits`）／持ち込み素材（背景・立ち絵）は `assets.ts`（`UserGameAsset`＝data URL＋tone 3色・キーは `userAssetKey`＝`user:<id>`。立ち絵の選定 `pickSprite` `spriteExpressionsOf`、クラウド保管の上限 `HOSTED_ASSET_LIMIT` と判定 `hostedAssetVerdict` もここ） |
 | `profile/` | 作者プロフィール（ペンネーム・アバター）と、**アカウントとの突き合わせ**（`account.ts`）。どのアカウントの名前かの印は `profile` とは**別キー**（同期・バックアップに乗せない） | `Profile`（`penName` `avatar` `updatedAt`） `ProfileRepository`（+ `getAccountId` `saveAccountId`） / `penNameForAccount` `PenNameSync` |
 | `board/` | **掲示板の共有契約**（Zod）と純ロジック。詳細は下表 | `BOARD_KINDS` `BOARD_LIMITS` `BoardThread` `BoardPost` `PollResult` `LinkCard` `BoardThreadDetail` `ThreadListResponse` `BoardMeResponse` `ModerateInputSchema` ほか（`types.ts`） |
 
@@ -163,7 +163,7 @@ Cloudflare Pages Functions
 - **執筆**: `EditorPane/`（textarea + 記法バー + `@` サジェスト + 置換パネル）, `PreviewPane/`, `HistoryPanel/`
 - **作品管理**: `Library/`（カード/リスト・作品メニュー）, `TrashDialog/`, `WorkMetaDialog/`, `TitlePromptDialog/`
 - **用語集**: `GlossaryView/`（左：一覧／右：その場編集の二枚看板）, `GlossaryEntryForm/`（本文からのクイック作成・パネル編集用モーダル）, `GlossaryPeek/`
-- **構想の道具（無料アカウント登録で解禁・遅延ロード）**: `MindmapView/`, `CorrelationChartView/`, `OutlineView/`, `PlotView/`（`plot-view.tsx` ＋ 世界観設定タブ `world-view.tsx`）, `StructureCanvas/`, `StagingView/`（サウンドノベルの演出エディタ：行一覧＋話者/背景/場面の切れ目・背景画像の持ち込み・素材の管理 `asset-manager.tsx`＝一覧/削除/クラウド保管）
+- **構想の道具（無料アカウント登録で解禁・遅延ロード）**: `MindmapView/`, `CorrelationChartView/`, `OutlineView/`, `PlotView/`（`plot-view.tsx` ＋ 世界観設定タブ `world-view.tsx`）, `StructureCanvas/`, `StagingView/`（サウンドノベルの演出エディタ：行一覧＋話者/表情/背景/場面の切れ目・背景と立ち絵の持ち込み・素材の管理 `asset-manager.tsx`＝一覧/削除/クラウド保管）
 - **執筆画面の右パネル（遅延ロードしない）**: `PlotPeek/`（この話のビート一覧 `plot-peek.tsx` ＋ 読み取り専用のビート詳細 `beat-detail.tsx`）
 - **入出力**: `ExportDialog/`, `ImportDialog/`, `BackupDialog/`, `CloudBackupDialog/`, `AiPullDialog/`
 - **同期/課金**: `SyncOnboarding/`, `SyncLostDialog/`, `RestoreGrace/`, `McpConnectDialog/`, `SaveStateIndicator/`, `BackupNudgeDialog/`
@@ -227,7 +227,7 @@ Cloudflare Pages Functions
 | `clipboard.ts` | `copyText` |
 | `exporters.ts` | `episodeNarouExport` `episodeKakuyomuExport` `episodeNovelGameExport` `workEpubExport` `workFolderZipExport` `workAiTextExport` `worksBundleExport`（`ExportFile` を返す・core/exporter への配線） |
 | `game-font.ts` | `loadGameFont`（サウンドノベル zip 同梱用の明朝 woff2＋OFL 全文を fetch） |
-| `imageResizer.ts` | `coverToDataUrl` `thumbnailToDataUrl` `gameBgToDataUrl`（持ち込み背景＝長辺1280 WebP＋tone 3色） |
+| `imageResizer.ts` | `coverToDataUrl` `thumbnailToDataUrl` `gameBgToDataUrl`（持ち込み背景＝長辺1280 WebP＋tone 3色） `gameSpriteToDataUrl`（立ち絵＝長辺1080・透過保持） |
 | `caretCoordinates.ts` | `getCaretCoordinates`（textarea のキャレット座標） |
 | `cover-tone.ts` | `coverTone` `COVER_TONES` |
 

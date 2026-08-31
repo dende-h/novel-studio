@@ -228,3 +228,113 @@ describe('持ち込み背景（user:* の同梱）', () => {
     expect(s.pages[0]?.bg).toBe('user:abc123')
   })
 })
+
+describe('立ち絵（話者に自動で紐づく）', () => {
+  // b1=セリフ / b2=地の文 / b3=セリフ / b4=地の文
+  const spriteEpisode: Episode = {
+    id: 'e9',
+    title: '立ち絵の話',
+    blocks: parseEpisodeBody('「おはよう」\n　朝だった。\n「……行こうか」\n　二人は歩き出した。'),
+  }
+  const tone = ['#111111', '#222222', '#333333'] as [string, string, string]
+  const sprite = (id: string, character: string, expression: string, createdAt: number) => ({
+    key: `user:${id}`,
+    id,
+    label: `${character}（${expression}）`,
+    tone,
+    mime: 'image/webp' as const,
+    data: new Uint8Array([7]),
+    kind: 'sprite' as const,
+    character,
+    expression,
+    createdAt,
+  })
+  const akariNormal = sprite('ak-n', '灯', '通常', 1)
+  const akariSmile = sprite('ak-s', '灯', '笑顔', 2)
+  const opts = { userAssets: [akariNormal, akariSmile] }
+
+  it('話者の付いたセリフで立ち絵が出て、使った分だけ zip に同梱される', () => {
+    const files = buildNovelGameFiles(
+      work,
+      spriteEpisode,
+      staging([{ blockId: 'b1', speaker: '灯' }]),
+      opts,
+    )
+    const s = scenarioOf(files)
+    expect(s.pages[0]?.sprite).toBe('user:ak-n')
+    expect(s.pages[1]?.sprite).toBeUndefined() // 地の文は据え置き（マーカー無し）
+    expect(s.pages[2]?.sprite).toBeUndefined() // 話者未設定のセリフも据え置き（ちらつかせない）
+    expect(s.sprites?.['user:ak-n']).toEqual({
+      src: 'assets/sprite/user-ak-n.webp',
+      label: '灯（通常）',
+    })
+    const paths = files.map((f) => f.path)
+    expect(paths).toContain('assets/sprite/user-ak-n.webp')
+    expect(paths).not.toContain('assets/sprite/user-ak-s.webp') // 未使用は同梱しない
+    // プレイヤーに立ち絵レイヤがある
+    const html = files.find((f) => f.path === 'index.html')?.data as string
+    expect(html).toContain('id="spA"')
+  })
+
+  it('表情（cue.expression）で同じ話者の別の立ち絵に替わる', () => {
+    const s = scenarioOf(
+      buildNovelGameFiles(
+        work,
+        spriteEpisode,
+        staging([
+          { blockId: 'b1', speaker: '灯' },
+          { blockId: 'b3', speaker: '灯', expression: '笑顔' },
+        ]),
+        opts,
+      ),
+    )
+    expect(s.pages[0]?.sprite).toBe('user:ak-n')
+    expect(s.pages[2]?.sprite).toBe('user:ak-s')
+  })
+
+  it('立ち絵の無い話者・？？？のセリフでは立ち絵が消える', () => {
+    const s = scenarioOf(
+      buildNovelGameFiles(
+        work,
+        spriteEpisode,
+        staging([
+          { blockId: 'b1', speaker: '灯' },
+          { blockId: 'b3', speaker: '？？？' },
+        ]),
+        opts,
+      ),
+    )
+    expect(s.pages[0]?.sprite).toBe('user:ak-n')
+    expect(s.pages[2]?.sprite).toBe('') // '' ＝ 消す
+  })
+
+  it('場面の切れ目（sceneBreak）で立ち絵が消える', () => {
+    const s = scenarioOf(
+      buildNovelGameFiles(
+        work,
+        spriteEpisode,
+        staging([
+          { blockId: 'b1', speaker: '灯' },
+          { blockId: 'b4', sceneBreak: true },
+        ]),
+        opts,
+      ),
+    )
+    expect(s.pages[3]?.sprite).toBe('')
+  })
+
+  it('立ち絵が無ければシナリオは従来のまま（sprites も sprite マーカーも出ない）', () => {
+    const s = scenarioOf(
+      buildNovelGameFiles(work, spriteEpisode, staging([{ blockId: 'b1', speaker: '灯' }])),
+    )
+    expect(s.sprites).toBeUndefined()
+    expect(s.pages.every((p) => p.sprite === undefined)).toBe(true)
+  })
+
+  it('立ち絵のキーは背景として解決されない（cue.bg が指しても無視）', () => {
+    const s = scenarioOf(
+      buildNovelGameFiles(work, spriteEpisode, staging([{ blockId: 'b2', bg: 'user:ak-n' }]), opts),
+    )
+    expect(s.pages[1]?.bg).toBeUndefined()
+  })
+})

@@ -107,6 +107,45 @@ export async function gameBgToDataUrl(
   return { dataUrl, tone: [hex(0), hex(4), hex(8)] }
 }
 
+const GAME_SPRITE_MAX_LONG_EDGE = 1080
+const GAME_SPRITE_QUALITY = 0.85
+
+/**
+ * サウンドノベルの立ち絵：長辺 1080 にクランプ（拡大なし）→ WebP data URL。
+ * 背景と違い**透過を保つ**（白で塗らない）。WebP をエンコードできない環境は PNG に落とす
+ * （JPEG は透過が消えるので使わない）。tone はスキーマ統一のため抽出するが立ち絵では未使用。
+ */
+export async function gameSpriteToDataUrl(
+  file: File,
+): Promise<{ dataUrl: string; tone: [string, string, string] }> {
+  const img = await loadImage(file)
+  const { w, h } = dimsOf(img)
+  const fit = fitWithin(w, h, GAME_SPRITE_MAX_LONG_EDGE)
+
+  const canvas = document.createElement('canvas')
+  canvas.width = fit.width
+  canvas.height = fit.height
+  const ctx = canvas.getContext('2d')
+  if (!ctx) throw new Error('canvas 2d コンテキストを取得できません')
+  ctx.drawImage(img, 0, 0, fit.width, fit.height)
+
+  let dataUrl = canvas.toDataURL('image/webp', GAME_SPRITE_QUALITY)
+  if (!dataUrl.startsWith('data:image/webp')) {
+    dataUrl = canvas.toDataURL('image/png')
+  }
+
+  const toneCanvas = document.createElement('canvas')
+  toneCanvas.width = 1
+  toneCanvas.height = 3
+  const toneCtx = toneCanvas.getContext('2d')
+  if (!toneCtx) throw new Error('canvas 2d コンテキストを取得できません')
+  toneCtx.drawImage(canvas, 0, 0, 1, 3)
+  const px = toneCtx.getImageData(0, 0, 1, 3).data
+  const hex = (i: number) =>
+    `#${[px[i], px[i + 1], px[i + 2]].map((v) => (v ?? 0).toString(16).padStart(2, '0')).join('')}`
+  return { dataUrl, tone: [hex(0), hex(4), hex(8)] }
+}
+
 /** 用語集サムネ：中央正方形クロップ 256×256（拡大なし）→ JPEG data URL。 */
 export async function thumbnailToDataUrl(file: File): Promise<string> {
   const img = await loadImage(file)

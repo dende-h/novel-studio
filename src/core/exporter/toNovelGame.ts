@@ -1,4 +1,5 @@
-import { applyCues, plainTextOfBlock, type Staging, toPages } from '../game'
+import { applyCues, MASKED_SPEAKER, plainTextOfBlock, type Staging, toPages } from '../game'
+import { pickSprite } from '../game/assets'
 import { buildGameCredits, DEFAULT_BG_KEY, presetBackground, presetBgSvg } from '../game/presets'
 import type { Episode, Inline, Work } from '../schema'
 import type { ZipInput } from '../zip'
@@ -30,6 +31,14 @@ export interface NovelGameUserAsset {
   /** image/webp など。zip 内の拡張子に使う */
   mime: string
   data: Uint8Array
+  /** 省略は 'bg'（持ち込み背景しか無かったころの呼び出しと互換） */
+  kind?: 'bg' | 'sprite'
+  /** 立ち絵のみ：この立ち絵の人物（Cue.speaker と突き合わせ） */
+  character?: string
+  /** 立ち絵のみ：表情名（省略は「通常」扱い） */
+  expression?: string
+  /** 立ち絵の既定（同じ人物の最初の1枚）を決める登録時刻 */
+  createdAt?: number
 }
 
 export interface NovelGameOptions {
@@ -135,7 +144,10 @@ export function buildNovelGameFiles(
   const blockById = new Map(episode.blocks.map((b) => [b.id, b]))
 
   // 背景キー → zip に入れる実体。テンプレ（SVG 生成）と持ち込み（画像バイト列）を同じ形へ。
-  const userByKey = new Map((opts.userAssets ?? []).map((a) => [a.key, a]))
+  // 立ち絵（kind 'sprite'）は背景として解決しない（cue.bg が指しても無視＝壊さない）。
+  const userByKey = new Map(
+    (opts.userAssets ?? []).filter((a) => (a.kind ?? 'bg') === 'bg').map((a) => [a.key, a]),
+  )
   const resolveBg = (key: string): BgEntry | undefined => {
     const preset = presetBackground(key)
     if (preset) {
@@ -166,9 +178,18 @@ export function buildNovelGameFiles(
   if (!fallback) throw new Error('既定背景プリセットが見つからない')
   const defaultEntry = resolveBg(opts.defaultBg ?? '') ?? fallback
 
-  // 使った背景だけを同梱する（キー→実体の整合は used が単一の真実）
+  // 立ち絵：話者に自動で紐づく（cue.expression は表情の指定だけ）。sceneBreak で消え、
+  // **話者が明示された**セリフで交代する——立ち絵の無い話者・？？？なら消える（名前枠と
+  // 立っている人物の食い違いを作らない）。話者未設定のセリフ・地の文は据え置き（ちらつかせない）。
+  const spriteAssets = (opts.userAssets ?? []).filter((a) => a.kind === 'sprite')
+  const spritePathOf = (a: NovelGameUserAsset) =>
+    `assets/sprite/user-${a.id}.${IMAGE_EXT[a.mime] ?? 'img'}`
+
+  // 使った背景・立ち絵だけを同梱する（キー→実体の整合は used が単一の真実）
   const used = new Map<string, BgEntry>([[defaultEntry.key, defaultEntry]])
+  const usedSprites = new Map<string, NovelGameUserAsset>()
   let current = ''
+  let currentSprite = ''
   const scenarioPages = pages.map((page, index): ScenarioPage => {
     const block = blockById.get(page.blockId)
     const cueEntry = page.bg ? resolveBg(page.bg) : undefined
@@ -179,6 +200,22 @@ export function buildNovelGameFiles(
       current = target
       if (cueEntry) used.set(cueEntry.key, cueEntry)
     }
+    let sprite: string | undefined // '' ＝ 立ち絵を消す
+    if (spriteAssets.length > 0) {
+      let desired = page.sceneBreak ? '' : currentSprite
+      if (page.kind === 'dialogue' && page.speaker) {
+        const chosen =
+          page.speaker !== MASKED_SPEAKER
+            ? pickSprite(spriteAssets, page.speaker, page.expression)
+            : undefined
+        desired = chosen?.key ?? ''
+        if (chosen) usedSprites.set(chosen.key, chosen)
+      }
+      if (desired !== currentSprite) {
+        sprite = desired
+        currentSprite = desired
+      }
+    }
     return {
       id: page.blockId,
       kind: page.kind,
@@ -187,12 +224,14 @@ export function buildNovelGameFiles(
       ...(page.sceneBreak ? { sceneBreak: true } : {}),
       ...(page.transition ? { transition: page.transition } : {}),
       ...(bg ? { bg } : {}),
+      ...(sprite !== undefined ? { sprite } : {}),
       units: unitsOfInlines(block?.inlines ?? []),
       text: block ? plainTextOfBlock(block) : '',
     }
   })
 
   const usedList = [...used.values()]
+  const usedSpriteList = [...usedSprites.values()]
   const scenario: GameScenario = {
     v: 1,
     workTitle: work.title,
@@ -203,6 +242,13 @@ export function buildNovelGameFiles(
     bgs: Object.fromEntries(
       usedList.map((e) => [e.key, { src: e.path, label: e.label, tone: e.tone }]),
     ),
+    ...(usedSpriteList.length > 0
+      ? {
+          sprites: Object.fromEntries(
+            usedSpriteList.map((a) => [a.key, { src: spritePathOf(a), label: a.label }]),
+          ),
+        }
+      : {}),
     ...(opts.font ? { fontSrc: FONT_PATH } : {}),
     credits: buildGameCredits({
       bgLabels: usedList.filter((e) => e.credit).map((e) => e.label),
@@ -221,5 +267,6 @@ export function buildNovelGameFiles(
         ]
       : []),
     ...usedList.map((e) => ({ path: e.path, data: e.data })),
+    ...usedSpriteList.map((a) => ({ path: spritePathOf(a), data: a.data })),
   ]
 }

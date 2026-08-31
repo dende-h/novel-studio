@@ -8,7 +8,7 @@ import {
   suggestSpeaker,
 } from '../game'
 import type { UserGameAsset } from '../game/assets'
-import { userAssetKey } from '../game/assets'
+import { DEFAULT_EXPRESSION, spriteExpressionsOf, userAssetKey } from '../game/assets'
 import { PRESET_BACKGROUNDS } from '../game/presets'
 import type { Episode, Work } from '../schema'
 
@@ -74,15 +74,35 @@ export function stagingToPlainText(
     )
   }
 
+  const bgAssets = gameAssets.filter((a) => a.kind === 'bg')
   const userLines =
-    gameAssets.length > 0
-      ? gameAssets.map((a) => `- ${userAssetKey(a.id)} … ${a.name}（持ち込み画像）`)
+    bgAssets.length > 0
+      ? bgAssets.map((a) => `- ${userAssetKey(a.id)} … ${a.name}（持ち込み画像）`)
       : ['- 持ち込み画像はまだありません（アプリの「演出」画面で追加できます）']
   sections.push(
     [
       '使える背景（bg）キー:',
       ...PRESET_BACKGROUNDS.map((p) => `- ${p.key} … ${p.label}`),
       ...userLines,
+    ].join('\n'),
+  )
+
+  // 立ち絵は話者から自動で出る。AI が選べるのは表情（expression）だけ
+  const spriteCharacters = [
+    ...new Set(
+      gameAssets.filter((a) => a.kind === 'sprite' && a.character).map((a) => a.character),
+    ),
+  ] as string[]
+  const spriteLines =
+    spriteCharacters.length > 0
+      ? spriteCharacters.map(
+          (c) => `- ${c} … 表情: ${spriteExpressionsOf(gameAssets, c).join('／')}`,
+        )
+      : ['- 立ち絵はまだありません（アプリの「演出」画面で追加できます）']
+  sections.push(
+    [
+      `立ち絵（話者を付けると自動で表示。表情は expression で指定・省略は「${DEFAULT_EXPRESSION}」）:`,
+      ...spriteLines,
     ].join('\n'),
   )
 
@@ -93,6 +113,7 @@ export function stagingToPlainText(
 function cueSummary(cue: Cue): string {
   const parts: string[] = []
   if (cue.speaker) parts.push(`話者=${cue.speaker}`)
+  if (cue.expression) parts.push(`表情=${cue.expression}`)
   if (cue.sceneBreak) parts.push('場面の切れ目')
   if (cue.bg) parts.push(`背景=${cue.bg}`)
   if (cue.bgm) parts.push(`BGM=${cue.bgm}`)

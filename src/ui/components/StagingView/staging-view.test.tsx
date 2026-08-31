@@ -15,6 +15,10 @@ vi.mock('@/ui/_utils/imageResizer', () => ({
     dataUrl: 'data:image/webp;base64,SGk=',
     tone: ['#111111', '#222222', '#333333'],
   }),
+  gameSpriteToDataUrl: async () => ({
+    dataUrl: 'data:image/png;base64,U1A=',
+    tone: ['#000000', '#000000', '#000000'],
+  }),
 }))
 
 // クラウド保管の API（fetch 層）だけ差し替え、配線（asset-hosting）は本物を通す
@@ -174,6 +178,60 @@ describe('StagingView（演出エディタ）', () => {
     // 一覧の行と背景セレクトに持ち込み画像の名前が出る
     expect(await screen.findByText('背景 海辺の夕暮れ')).toBeInTheDocument()
     expect(screen.getByRole('option', { name: '海辺の夕暮れ' })).toBeInTheDocument()
+  })
+
+  it('話者を付けたセリフ行で立ち絵を追加できる（表情名つきで保存・話者に自動で紐づく）', async () => {
+    const { repo } = fakeRepo()
+    const { repo: assetRepo, map } = memoryAssetRepo()
+    render(
+      <StagingView repo={repo} work={makeWork()} currentEpisodeId="e1" assetRepo={assetRepo} />,
+    )
+    fireEvent.click(await screen.findByText('「——まだ、書いてるんだね」'))
+    fireEvent.change(screen.getByLabelText('話者'), { target: { value: '灯' } })
+    // 話者が付くと立ち絵の案内と追加ボタンが出る
+    expect(await screen.findByText(/「灯」の立ち絵はまだありません/)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: '立ち絵を追加…' }))
+    const file = new File(['x'], 'akari.png', { type: 'image/png' })
+    fireEvent.change(screen.getByLabelText('立ち絵の画像を選ぶ'), { target: { files: [file] } })
+    // 画像を選んだだけでは保存されない（表情名を付けて確定）
+    const expr = await screen.findByLabelText('表情名')
+    expect(map.size).toBe(0)
+    fireEvent.change(expr, { target: { value: '笑顔' } })
+    fireEvent.click(screen.getByRole('button', { name: '追加' }))
+    await waitFor(() => expect(map.size).toBe(1))
+    const saved = [...map.values()][0]
+    expect(saved).toMatchObject({
+      kind: 'sprite',
+      character: '灯',
+      expression: '笑顔',
+      name: '灯（笑顔）',
+      dataUrl: 'data:image/png;base64,U1A=',
+    })
+    // 追加した表情が選択肢に並ぶ
+    expect(await screen.findByRole('option', { name: '笑顔' })).toBeInTheDocument()
+  })
+
+  it('話者に立ち絵があると表情を選べて、その場で cue に保存される', async () => {
+    const { repo, saved } = fakeRepo({
+      workId: 'w1',
+      episodeId: 'e1',
+      cues: [{ blockId: 'b2', speaker: '灯' }],
+      updatedAt: 1,
+    })
+    const { repo: assetRepo } = memoryAssetRepo([
+      { ...memoryAsset('sp1', '灯（通常）'), kind: 'sprite', character: '灯', expression: '通常' },
+      { ...memoryAsset('sp2', '灯（笑顔）'), kind: 'sprite', character: '灯', expression: '笑顔' },
+    ])
+    render(
+      <StagingView repo={repo} work={makeWork()} currentEpisodeId="e1" assetRepo={assetRepo} />,
+    )
+    fireEvent.click(await screen.findByText('「——まだ、書いてるんだね」'))
+    const select = await screen.findByLabelText('立ち絵')
+    fireEvent.change(select, { target: { value: '笑顔' } })
+    await waitFor(() => expect(saved).toHaveLength(1))
+    expect(saved[0]?.cues[0]).toEqual({ blockId: 'b2', speaker: '灯', expression: '笑顔' })
+    // 一覧の行にも表情が出る
+    expect(await screen.findByText('表情 笑顔')).toBeInTheDocument()
   })
 
   it('素材の管理を開くと、非会員にはクラウド保管が有料である案内が出る', async () => {

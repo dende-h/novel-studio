@@ -79,4 +79,34 @@ describe('stagingToPlainText（MCP 向け演出譜テキスト）', () => {
       '持ち込み画像はまだありません',
     )
   })
+
+  it('立ち絵の一覧（人物ごとの表情）が載り、cue の表情も要約に出る', () => {
+    const sprite = (id: string, expression: string, createdAt: number): UserGameAsset => ({
+      id,
+      kind: 'sprite',
+      name: `灯（${expression}）`,
+      dataUrl: 'data:image/webp;base64,SGk=',
+      tone: ['#111111', '#222222', '#333333'],
+      character: '灯',
+      expression,
+      createdAt,
+    })
+    const staging: Staging = {
+      workId: 'w1',
+      episodeId: 'e1',
+      cues: [{ blockId: 'b2', speaker: '灯', expression: '笑顔' }],
+      updatedAt: 1,
+    }
+    const text = stagingToPlainText(work(), episode(), staging, [
+      sprite('sp1', '通常', 1),
+      sprite('sp2', '笑顔', 2),
+    ])
+    expect(text).toContain('【話者=灯／表情=笑顔】')
+    expect(text).toContain('立ち絵（話者を付けると自動で表示')
+    expect(text).toContain('- 灯 … 表情: 通常／笑顔')
+    // 立ち絵は背景キーの一覧には混ざらない
+    expect(text).not.toContain('- user:sp1')
+    // 立ち絵が無いときは案内だけ
+    expect(stagingToPlainText(work(), episode(), undefined, [])).toContain('立ち絵はまだありません')
+  })
 })
