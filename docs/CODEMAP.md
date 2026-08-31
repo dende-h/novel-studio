@@ -36,6 +36,9 @@ Cloudflare Pages Functions
 | プレビューのマークダウン（見出し・リスト・表・引用）を変える | `src/core/markdown/index.ts`（本文は非対応。効くのはプロット・世界観・用語集の記法つき欄） |
 | 書き出し（EPUB/なろう/カクヨム/HTML）の出力を変える | `src/core/exporter/` 配下（形式ごとに1ファイル） |
 | サウンドノベル書き出し（ゲーム化・演出譜）を変える | `src/core/game/`（判別・演出譜・テンプレ背景・持ち込み背景）+ `src/core/exporter/toNovelGame.ts`（プレイヤー本体は `novelGamePlayer.ts`）。演出エディタは `src/ui/components/StagingView/`、永続化は `src/core/storage/stagingRepository.ts`（演出譜）と `gameAssetRepository.ts`（持ち込み背景） |
+| サウンドノベルの効果音（合成SE・素材ファイル無し）を変える | レシピは `src/core/game/sePresets.ts`（`PRESET_SES` `presetSe`）。解釈はプレイヤー（`novelGamePlayer.ts` の `playSe`）とアプリ試聴 `src/ui/_utils/sePlayer.ts` の2箇所——**両方を同時に直す** |
+| サウンドノベルの grove 公開（契約 v4）を変える | leaf 側は `src/ui/_api/publish.ts`（`attachEpisodeGames`＝話ごとの自己完結HTML同梱・`GAME_FONT_HREF`）と公開ページの切り替え（`PublishPage` §2.5・`WorkPlatform.novelGame`）。インライン書き出しは `src/core/exporter/toNovelGame.ts` の `buildNovelGameHtml`。grove 側は novel-platform の `kotonoha-bundle.ts` / `import-work.ts`（契約文書は先方の `novel-platform:docs/architecture/kotonoha-import-contract.md`） |
+| 立ち絵を用語集（図鑑）から登録・整理する | `src/ui/components/GlossaryView/sprite-section.tsx`（人物ページの立ち絵欄。正本は `gameAssetRepository.ts` のまま・名前/別名で紐づけ） |
 | 持ち込み素材のクラウド保管（有料・枚数上限）を変える | API は `functions/api/game-assets.ts`、上限と判定は `src/core/game/assets.ts`（`HOSTED_ASSET_LIMIT` `hostedAssetVerdict`）、配線は `src/ui/game/asset-hosting.ts`（下り取り込み）、管理 UI は `src/ui/components/StagingView/asset-manager.tsx` |
 | エディタの入力・ショートカット・サジェスト | `src/ui/components/EditorPane/` |
 | 保存・自動保存・undo・開いている作品の状態 | `src/ui/store/editorStore.ts` |
@@ -79,7 +82,7 @@ Cloudflare Pages Functions
 | `plot/` | プロット（幕/ライン/ビート/伏線/秘密）＋**世界観設定**（`Plot.world`・作者専用） | `PlotSection` `PlotLine` `PlotBeat` `Foreshadow` `Secret` / `beatsInStoryOrder` `sectionOfBeat` `linesOfBeat` `foreshadowsOfBeat` `secretsHiddenAt` / `WorldNote` `WORLD_SLOTS` `WORLD_CUSTOM_SLOT` `worldNoteLabel` `worldNotesInOrder` `setWorldNote` `removeWorldNote` |
 | `structure/` | 構造レイヤー（outline/chart/mindmap）のノード・辺 | `StructureNode` `StructureEdge` `StructureKind` `emptyStructure` `addNode` `pickPrimaryStructure` |
 | `idea/` | ネタ帳のメモ | `IdeaNote` `normalizeIdeaText` |
-| `game/` | サウンドノベル化のドメイン（演出譜＝正本の外・blockId アンカー） | `Staging` `Cue` `AssetRef` / `classifyBlock` `toPages` `applyCues` `findOrphanCues` `suggestSceneBreaks` `suggestSpeaker` / テンプレ背景は `presets.ts`（`PRESET_BACKGROUNDS` `presetBgSvg` `buildGameCredits`）／テンプレ立ち絵（シルエット6種）は `spritePresets.ts`（`PRESET_SPRITES` `presetSpriteSvg`）／持ち込み素材（背景・立ち絵）は `assets.ts`（`UserGameAsset`＝data URL＋tone 3色・キーは `userAssetKey`＝`user:<id>`。立ち絵の選定 `pickSprite` `spriteExpressionsOf`、無料枠 `FREE_IMPORT_LIMIT` `importVerdict`、クラウド保管の上限 `HOSTED_ASSET_LIMIT` と判定 `hostedAssetVerdict` もここ） |
+| `game/` | サウンドノベル化のドメイン（演出譜＝正本の外・blockId アンカー） | `Staging` `Cue` `AssetRef` / `classifyBlock` `toPages` `applyCues` `findOrphanCues` `suggestSceneBreaks` `suggestSpeaker` / テンプレ背景は `presets.ts`（`PRESET_BACKGROUNDS` `presetBgSvg` `buildGameCredits`）／テンプレ立ち絵（シルエット6種）は `spritePresets.ts`（`PRESET_SPRITES` `presetSpriteSvg`）／持ち込み素材（背景・立ち絵）は `assets.ts`（`UserGameAsset`＝data URL＋tone 3色・キーは `userAssetKey`＝`user:<id>`。立ち絵の選定 `pickSprite` `spriteExpressionsOf`、無料枠 `FREE_IMPORT_LIMIT` `importVerdict`、クラウド保管の上限 `HOSTED_ASSET_LIMIT` と判定 `hostedAssetVerdict` もここ）／合成SEレシピは `sePresets.ts`（`PRESET_SES` `presetSe` `seDuration`・キーは `preset:se/<名>`） |
 | `profile/` | 作者プロフィール（ペンネーム・アバター）と、**アカウントとの突き合わせ**（`account.ts`）。どのアカウントの名前かの印は `profile` とは**別キー**（同期・バックアップに乗せない） | `Profile`（`penName` `avatar` `updatedAt`） `ProfileRepository`（+ `getAccountId` `saveAccountId`） / `penNameForAccount` `PenNameSync` |
 | `board/` | **掲示板の共有契約**（Zod）と純ロジック。詳細は下表 | `BOARD_KINDS` `BOARD_LIMITS` `BoardThread` `BoardPost` `PollResult` `LinkCard` `BoardThreadDetail` `ThreadListResponse` `BoardMeResponse` `ModerateInputSchema` ほか（`types.ts`） |
 
@@ -92,7 +95,7 @@ Cloudflare Pages Functions
 | `src/core/exporter/toHtml.ts` | 正本 → 安全な HTML（プレビュー兼用・全エスケープ済み。`inlinesToHtml` も公開） |
 | `src/core/markdown/index.ts` | 生テキスト → プレビュー HTML の軽量マークダウン（`markdownToHtml` `stripMarkdown` `InlineRenderer`。行内は既定で parseInlines へ委譲＝[[用語]]・ルビが生きるが、**第3引数で差し替えられる**＝掲示板はここを使う） |
 | `src/core/exporter/toNarou.ts` / `src/core/exporter/toKakuyomu.ts` | 各投稿サイト記法 |
-| `src/core/exporter/toNovelGame.ts` | 正本＋演出譜 → サウンドノベル zip の中身（`buildNovelGameFiles`）。プレイヤー（index.html の CSS/JS 一式）は `novelGamePlayer.ts` |
+| `src/core/exporter/toNovelGame.ts` | 正本＋演出譜 → サウンドノベル zip の中身（`buildNovelGameFiles`）と grove 同梱用の自己完結HTML（`buildNovelGameHtml`＝素材 data URL 内包・契約 v4）。プレイヤー（index.html の CSS/JS 一式）は `novelGamePlayer.ts` |
 | `src/core/exporter/toPlainText.ts` / `plotToPlainText.ts` / `structureToPlainText.ts` / `stagingToPlainText.ts` | AI 投げ込み用の平文（`glossaryToPlainText`、演出譜の `stagingToPlainText` 含む） |
 | `src/core/exporter/blocksToNotation.ts` | 正本 → 記法（往復変換） |
 | `src/core/zip/index.ts` | 依存ゼロの ZIP（store 法）・`crc32` |
@@ -163,7 +166,7 @@ Cloudflare Pages Functions
 - **執筆**: `EditorPane/`（textarea + 記法バー + `@` サジェスト + 置換パネル）, `PreviewPane/`, `HistoryPanel/`
 - **作品管理**: `Library/`（カード/リスト・作品メニュー）, `TrashDialog/`, `WorkMetaDialog/`, `TitlePromptDialog/`
 - **用語集**: `GlossaryView/`（左：一覧／右：その場編集の二枚看板）, `GlossaryEntryForm/`（本文からのクイック作成・パネル編集用モーダル）, `GlossaryPeek/`
-- **構想の道具（無料アカウント登録で解禁・遅延ロード）**: `MindmapView/`, `CorrelationChartView/`, `OutlineView/`, `PlotView/`（`plot-view.tsx` ＋ 世界観設定タブ `world-view.tsx`）, `StructureCanvas/`, `StagingView/`（サウンドノベルの演出エディタ：行一覧＋話者/表情/背景/場面の切れ目・背景と立ち絵の持ち込み・素材の管理 `asset-manager.tsx`＝一覧/削除/クラウド保管）
+- **構想の道具（無料アカウント登録で解禁・遅延ロード）**: `MindmapView/`, `CorrelationChartView/`, `OutlineView/`, `PlotView/`（`plot-view.tsx` ＋ 世界観設定タブ `world-view.tsx`）, `StructureCanvas/`, `StagingView/`（サウンドノベルの演出エディタ：行一覧＋話者/表情/背景/効果音/場面の切れ目・背景と立ち絵の持ち込み・素材の管理 `asset-manager.tsx`＝一覧/削除/クラウド保管）
 - **執筆画面の右パネル（遅延ロードしない）**: `PlotPeek/`（この話のビート一覧 `plot-peek.tsx` ＋ 読み取り専用のビート詳細 `beat-detail.tsx`）
 - **入出力**: `ExportDialog/`, `ImportDialog/`, `BackupDialog/`, `CloudBackupDialog/`, `AiPullDialog/`
 - **同期/課金**: `SyncOnboarding/`, `SyncLostDialog/`, `RestoreGrace/`, `McpConnectDialog/`, `SaveStateIndicator/`, `BackupNudgeDialog/`
@@ -227,6 +230,7 @@ Cloudflare Pages Functions
 | `clipboard.ts` | `copyText` |
 | `exporters.ts` | `episodeNarouExport` `episodeKakuyomuExport` `episodeNovelGameExport` `workEpubExport` `workFolderZipExport` `workAiTextExport` `worksBundleExport`（`ExportFile` を返す・core/exporter への配線） |
 | `game-font.ts` | `loadGameFont`（サウンドノベル zip 同梱用の明朝 woff2＋OFL 全文を fetch） |
+| `sePlayer.ts` | `playPresetSe`（合成SEのアプリ内試聴。レシピ解釈はプレイヤー側 `novelGamePlayer.ts` と揃える契約） |
 | `imageResizer.ts` | `coverToDataUrl` `thumbnailToDataUrl` `gameBgToDataUrl`（持ち込み背景＝長辺1280 WebP＋tone 3色） `gameSpriteToDataUrl`（立ち絵＝長辺1080・透過保持） |
 | `caretCoordinates.ts` | `getCaretCoordinates`（textarea のキャレット座標） |
 | `cover-tone.ts` | `coverTone` `COVER_TONES` |

@@ -1,3 +1,6 @@
+import { buildNovelGameHtml } from '@/core/exporter/toNovelGame'
+import type { Staging } from '@/core/game'
+import type { UserGameAsset } from '@/core/game/assets'
 import { publicTextOf } from '@/core/glossary'
 import type { Episode, GlossaryEntry, Work, WorkPlatform } from '@/core/schema'
 
@@ -19,13 +22,21 @@ type GetToken = () => Promise<string | null>
 
 /**
  * 送信するバンドルの形式。platform 側と揃える。
- * v2 で work.platform、v3 で episodes[].visibility（話ごとの公開状態）を追加。
+ * v2 で work.platform、v3 で episodes[].visibility（話ごとの公開状態）、
+ * v4 で episodes[].game（サウンドノベルの自己完結プレイヤー HTML）を追加。
  *
- * 話ごとの状態を載せないバンドルは **v2 のまま送る**。先方が v3 を知らない版のあいだも
+ * 使わない機能の版は名乗らない（**最小の版で送る**）。先方が新しい版を知らないあいだも
  * 「本文の更新だけは通る」ようにしておく（新しすぎるバンドルは 409 で弾かれる契約）。
  */
+const SCHEMA_VERSION_WITH_GAME = 4
 const SCHEMA_VERSION_WITH_EPISODES = 3
 const SCHEMA_VERSION_BASE = 2
+
+/**
+ * プレイヤー HTML が参照するフォントの配信パス（コトノハ-grove- 側が同名で持つ契約 v4）。
+ * HTML へ埋めると話ごとに MB 単位で太るため、フォントだけ配信側の静的ファイルを指す。
+ */
+export const GAME_FONT_HREF = '/game-assets/fonts/shippori-mincho-b1.woff2'
 
 /** platform のベースURL。未設定なら投稿UIを出さない */
 export const PLATFORM_ORIGIN: string | undefined = import.meta.env.VITE_PLATFORM_ORIGIN
@@ -88,8 +99,29 @@ export function toPlatformPayload(platform: WorkPlatform | undefined): PlatformP
   return Object.keys(payload).length > 0 ? payload : undefined
 }
 
-/** 送信する話。契約 v3 で `visibility`（話ごとの公開状態）を載せられるようになった。 */
-export type BundleEpisode = Episode & { visibility?: 'draft' | 'public' }
+/** 話ごとのサウンドノベル（契約 v4）。html は素材内包の自己完結プレイヤー。 */
+export interface EpisodeGamePayload {
+  v: 1
+  html: string
+}
+
+/**
+ * 送信する話。契約 v3 で `visibility`（話ごとの公開状態）、
+ * v4 で `game`（サウンドノベルのプレイヤー HTML）を載せられるようになった。
+ */
+export type BundleEpisode = Episode & { visibility?: 'draft' | 'public'; game?: EpisodeGamePayload }
+
+/** 契約 v4 でサウンドノベルを載せるときに渡す材料（作品ぶんの演出譜と手元の素材）。 */
+export interface NovelGameBundleInput {
+  stagings: Staging[]
+  gameAssets: UserGameAsset[]
+  /**
+   * false ＝「サウンドノベルをやめた」の宣言。v4 は名乗るが game は 1 つも載せない
+   * ＝先方が既存のプレイヤーを消す（v3 に落とすと旧クライアントと区別できず消せない）。
+   * 省略は true。
+   */
+  enabled?: boolean
+}
 
 /** 送信する作品。ローカル専用キーを落とし、話に公開状態を載せた形。 */
 export type BundleWork = Omit<Work, 'episodes' | 'platform'> & {
@@ -118,6 +150,36 @@ export function toBundleEpisodes(work: Work): { episodes: BundleEpisode[]; decla
 }
 
 /**
+ * 契約 v4：公開する話にサウンドノベル（自己完結プレイヤー HTML）を添える。
+ * 対象は **公開作品の公開話だけ**（下書きの話には作らない＝読者に出ない分で太らせない）。
+ * 演出譜（Staging）が無い話も「演出ゼロでプレイできる」不変条件どおり成立する。
+ * 1話でも載れば withGame ＝ schemaVersion 4 を名乗る。
+ */
+export function attachEpisodeGames(
+  work: Work,
+  episodes: BundleEpisode[],
+  novelGame: NovelGameBundleInput,
+): { episodes: BundleEpisode[]; withGame: boolean } {
+  if (work.platform?.visibility !== 'public') return { episodes, withGame: false }
+  // enabled: false は「やめた」の宣言＝v4 のまま game を載せない（先方が既存分を消す）
+  if (novelGame.enabled === false) return { episodes, withGame: episodes.length > 0 }
+  const stagingByEpisode = new Map(novelGame.stagings.map((s) => [s.episodeId, s]))
+  let withGame = false
+  const next = episodes.map((ep): BundleEpisode => {
+    if (ep.visibility === 'draft') return ep
+    const source = work.episodes.find((e) => e.id === ep.id)
+    if (!source) return ep
+    const html = buildNovelGameHtml(work, source, stagingByEpisode.get(ep.id), {
+      fontHref: GAME_FONT_HREF,
+      gameAssets: novelGame.gameAssets,
+    })
+    withGame = true
+    return { ...ep, game: { v: 1, html } }
+  })
+  return { episodes: next, withGame }
+}
+
+/**
  * 送信する用語集を組み立てる。**作者メモ（authorNote）は必ず落とす**。
  *
  * 用語集そのものは読者に見せる前提で送っている（先方が初出の話まで読んだ読者に開く＝段階公開）。
@@ -138,14 +200,16 @@ function toBundleGlossary(glossary: GlossaryEntry[] | undefined): GlossaryEntry[
 }
 
 /** 送信するバンドルの work を組み立てる（契約に無いローカル専用キーを落とす）。 */
-export function toBundleWork(work: Work): BundleWork {
+export function toBundleWork(work: Work, novelGame?: NovelGameBundleInput): BundleWork {
   const { platform: _local, episodes: _episodes, glossary, ...rest } = work
   const payload = toPlatformPayload(work.platform)
   const sendable = toBundleGlossary(glossary)
+  let episodes = toBundleEpisodes(work).episodes
+  if (novelGame) episodes = attachEpisodeGames(work, episodes, novelGame).episodes
   const base: BundleWork = {
     ...rest,
     ...(sendable ? { glossary: sendable } : {}),
-    episodes: toBundleEpisodes(work).episodes,
+    episodes,
   }
   return payload ? { ...base, platform: payload } : base
 }
@@ -168,10 +232,15 @@ export function describePublishBlocked(reason: PublishBlockedReason): string {
   return '投稿は保存できましたが、この作品は コトノハ-grove- の運営が非表示にしているため公開できません。コトノハ-grove- の管理画面をご確認ください。'
 }
 
-/** 作品を platform へ送る（work.platform に投稿設定を載せて渡す） */
+/**
+ * 作品を platform へ送る（work.platform に投稿設定を載せて渡す）。
+ * novelGame を渡すと、公開する話へサウンドノベル（プレイヤー HTML）を添えて v4 で送る
+ * （渡さなければ従来どおり v2/v3＝先方が v4 を知らなくても本文の更新は通る）。
+ */
 export async function publishWorkToPlatform(
   getToken: GetToken,
   work: Work,
+  novelGame?: NovelGameBundleInput,
 ): Promise<PublishResult> {
   if (!PLATFORM_ORIGIN) {
     return { ok: false, message: '公開先が設定されていません' }
@@ -182,16 +251,23 @@ export async function publishWorkToPlatform(
     return { ok: false, message: '公開するにはサインインが必要です' }
   }
 
+  const bundleWork = toBundleWork(work, novelGame)
+  // 「やめた」の宣言（enabled: false）でも v4 を名乗る＝先方が既存プレイヤーを消せる
+  const withGame =
+    bundleWork.episodes.some((ep) => ep.game) ||
+    (novelGame !== undefined && work.platform?.visibility === 'public' && work.episodes.length > 0)
   let res: Response
   try {
     res = await fetch(`${PLATFORM_ORIGIN}/api/import/kotonoha`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${jwt}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        schemaVersion: toBundleEpisodes(work).declared
-          ? SCHEMA_VERSION_WITH_EPISODES
-          : SCHEMA_VERSION_BASE,
-        work: toBundleWork(work),
+        schemaVersion: withGame
+          ? SCHEMA_VERSION_WITH_GAME
+          : toBundleEpisodes(work).declared
+            ? SCHEMA_VERSION_WITH_EPISODES
+            : SCHEMA_VERSION_BASE,
+        work: bundleWork,
       }),
     })
   } catch {
@@ -221,6 +297,14 @@ export async function publishWorkToPlatform(
     }
   }
 
+  // 先方がまだ v4（サウンドノベル）を知らない版のときの案内（supported を添えて返る契約）
+  if (payload.error === 'unsupported-schema-version') {
+    return {
+      ok: false,
+      message:
+        '公開先がまだサウンドノベル公開に対応していません。「サウンドノベル」を切ってから、もう一度お試しください。',
+    }
+  }
   const message = typeof payload.message === 'string' ? payload.message : defaultMessage(res.status)
   const registerUrl =
     typeof payload.registerUrl === 'string' ? `${PLATFORM_ORIGIN}${payload.registerUrl}` : undefined

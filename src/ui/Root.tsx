@@ -351,6 +351,8 @@ function RootRoutes({ store }: RootProps) {
         getToken={getTokenStable}
         isSignedIn={isSignedIn}
         onSignIn={available ? openSignIn : undefined}
+        stagingRepo={stagingRepo}
+        gameAssetRepo={gameAssetRepo}
       />
     )
   }

@@ -10,6 +10,7 @@ import {
 import type { UserGameAsset } from '../game/assets'
 import { DEFAULT_EXPRESSION, spriteExpressionsOf, userAssetKey } from '../game/assets'
 import { PRESET_BACKGROUNDS } from '../game/presets'
+import { PRESET_SES } from '../game/sePresets'
 import type { Episode, Work } from '../schema'
 
 /**
@@ -84,6 +85,13 @@ export function stagingToPlainText(
       '使える背景（bg）キー:',
       ...PRESET_BACKGROUNDS.map((p) => `- ${p.key} … ${p.label}`),
       ...userLines,
+    ].join('\n'),
+  )
+
+  sections.push(
+    [
+      '使える効果音（se）キー（その行の表示と同時に1回鳴る）:',
+      ...PRESET_SES.map((p) => `- ${p.key} … ${p.label}`),
     ].join('\n'),
   )
 

@@ -25,6 +25,7 @@ import {
   userAssetKey,
 } from '@/core/game/assets'
 import { PRESET_BACKGROUNDS, presetBackground, presetBgSvg } from '@/core/game/presets'
+import { PRESET_SES, presetSe } from '@/core/game/sePresets'
 import {
   PRESET_SPRITE_TONE,
   PRESET_SPRITES,
@@ -37,6 +38,7 @@ import type { GameAssetRepository } from '@/core/storage/gameAssetRepository'
 import type { StagingRepository } from '@/core/storage/stagingRepository'
 import { cn } from '@/lib/utils'
 import { gameBgToDataUrl, gameSpriteToDataUrl } from '@/ui/_utils/imageResizer'
+import { playPresetSe } from '@/ui/_utils/sePlayer'
 import { useAuth } from '@/ui/auth/auth-context'
 import { Button } from '@/ui/components/ui/button'
 import { Input } from '@/ui/components/ui/input'
@@ -547,6 +549,7 @@ export default function StagingView({ repo, work, currentEpisodeId, assetRepo }:
                             <span>表情 {page.expression}</span>
                           ) : null}
                           {page.appear ? <span>登場 {page.appear}</span> : null}
+                          {page.se ? <span>効果音 {presetSe(page.se)?.label ?? ''}</span> : null}
                           {!page.sceneBreak && bgLabel ? <span>背景 {bgLabel}</span> : null}
                         </span>
                       </span>
@@ -947,6 +950,49 @@ export default function StagingView({ repo, work, currentEpisodeId, assetRepo }:
                 </div>
               ) : null}
 
+              <div>
+                <label
+                  htmlFor="staging-se"
+                  className="mb-2 block text-on-surface-variant text-xs uppercase tracking-wider"
+                >
+                  効果音
+                </label>
+                <div className="flex gap-2">
+                  <select
+                    id="staging-se"
+                    value={selected.se ?? ''}
+                    onChange={(e) => apply(selected.blockId, { se: e.target.value || undefined })}
+                    className={SELECT_CLASS}
+                  >
+                    <option value="">（なし）</option>
+                    {/* 未知キー（将来の効果音等）も選択状態は保つ（勝手に外さない） */}
+                    {selected.se && !presetSe(selected.se) ? (
+                      <option value={selected.se}>{selected.se}</option>
+                    ) : null}
+                    {PRESET_SES.map((p) => (
+                      <option key={p.key} value={p.key}>
+                        {p.label}
+                      </option>
+                    ))}
+                  </select>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="shrink-0 text-primary"
+                    disabled={!selected.se || !presetSe(selected.se)}
+                    onClick={() => {
+                      if (selected.se) playPresetSe(selected.se)
+                    }}
+                  >
+                    試聴
+                  </Button>
+                </div>
+                <p className="mt-2 text-[11px] text-on-surface-variant leading-relaxed">
+                  この行が表示された瞬間に、1回鳴ります。
+                </p>
+              </div>
+
               <Button
                 type="button"
                 variant="ghost"
@@ -986,7 +1032,7 @@ function describeCue(cue: Cue, assets: UserGameAsset[]): string {
   if (cue.sceneBreak) parts.push('場面の切れ目')
   if (cue.bg) parts.push(`背景 ${bgLabelOf(cue.bg, assets) ?? cue.bg}`)
   if (cue.bgm) parts.push('BGM')
-  if (cue.se) parts.push('効果音')
+  if (cue.se) parts.push(`効果音 ${presetSe(cue.se)?.label ?? ''}`.trim())
   if (cue.transition) parts.push('切り替え効果')
   return parts.length > 0 ? parts.join('・') : '（内容なし）'
 }

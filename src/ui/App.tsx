@@ -551,6 +551,7 @@ export function App({
             }}
             onDelete={(id) => void store.deleteGlossaryEntry(id)}
             onCreateEntry={createPlainGlossaryEntry}
+            gameAssetRepo={gameAssetRepo}
           />
         ) : episode ? (
           <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col">

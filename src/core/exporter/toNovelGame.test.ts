@@ -451,6 +451,22 @@ describe('テンプレ立ち絵（シルエット・preset）', () => {
     expect(credit?.body).toContain('シルエット（女性）')
   })
 
+  it('効果音（cue.se）はページに載り、使ったレシピだけ ses に同梱・クレジットにも載る', () => {
+    const s = scenarioOf(
+      buildNovelGameFiles(work, ep, staging([{ blockId: 'b1', se: 'preset:se/bell' }])),
+    )
+    expect(s.pages[0]?.se).toBe('preset:se/bell')
+    expect(s.ses?.['preset:se/bell']?.label).toBe('鐘')
+    expect(s.ses?.['preset:se/bell']?.steps.length).toBeGreaterThan(0)
+    expect(Object.keys(s.ses ?? {})).toEqual(['preset:se/bell'])
+    expect(s.credits.find((c) => c.label === '効果音')?.body).toContain('鐘')
+    // 未知キーは無視して壊さない（ses も出ない）
+    const s2 = scenarioOf(buildNovelGameFiles(work, ep, staging([{ blockId: 'b1', se: 'zzz' }])))
+    expect(s2.pages[0]?.se).toBeUndefined()
+    expect(s2.ses).toBeUndefined()
+    expect(s2.credits.some((c) => c.label === '効果音')).toBe(false)
+  })
+
   it('持ち込みの立ち絵はクレジットに載らない', () => {
     const own = { ...tplAsset, key: 'user:own-1', id: 'own-1', preset: undefined }
     const s = scenarioOf(

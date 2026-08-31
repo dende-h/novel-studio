@@ -164,6 +164,11 @@ export const WorkPlatformSchema = z.object({
 
   // ---- ここから下は コトノハ-grove- との取り決めに無い＝コトノハ-leaf- のローカル専用。
   //      送信時に落とす（src/ui/_api/publish.ts の toBundleWork）。 ----
+  /**
+   * 投稿時にサウンドノベル（プレイヤー付きの話）も載せるか（契約 v4）。
+   * フラグ自体はローカル専用で、先方へは episodes[].game の有無として伝わる。
+   */
+  novelGame: z.boolean().optional(),
   /** 最後に投稿できた時刻。ライブラリで「投稿済みか」を判定して公開切替を出すのに使う。 */
   lastPublishedAt: z.number().optional(),
   /** 前回の投稿で返ってきた読者ページ／管理画面（コトノハ-grove- の絶対URL）。 */

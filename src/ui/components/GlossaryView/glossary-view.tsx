@@ -4,12 +4,14 @@ import {
   type Appearances,
   categoriesOf,
   matchesQuery,
+  PERSON_CATEGORY,
   publicTextOf,
   resolvedNameSet,
   resolveRef,
   sortEntries,
 } from '@/core/glossary'
 import type { GlossaryEntry } from '@/core/schema'
+import type { GameAssetRepository } from '@/core/storage/gameAssetRepository'
 import { cn } from '@/lib/utils'
 import { thumbnailToDataUrl } from '@/ui/_utils/imageResizer'
 import { ConfirmDialog } from '@/ui/components/ConfirmDialog/confirm-dialog'
@@ -18,6 +20,7 @@ import {
   type GlossaryFormValues,
 } from '@/ui/components/GlossaryEntryForm/glossary-entry-form'
 import { GlossaryEntryDetail } from '@/ui/components/GlossaryPeek/entry-detail'
+import { SpriteSection } from '@/ui/components/GlossaryView/sprite-section'
 import { NotationField } from '@/ui/components/NotationField/notation-field'
 import { NotationHelpButton } from '@/ui/components/NotationField/notation-help'
 import { Button } from '@/ui/components/ui/button'
@@ -60,6 +63,8 @@ interface GlossaryViewProps {
   onDelete: (id: string) => void
   /** サジェストの「＋ 用語集に登録」（名前だけのクイック作成・作成した名前を返す）。 */
   onCreateEntry?: (name: string) => Promise<string | null>
+  /** ゲーム素材の置き場所（渡されたときだけ、人物 entry に「立ち絵」欄が出る。PC 限定）。 */
+  gameAssetRepo?: GameAssetRepository
 }
 
 export function GlossaryView({
@@ -71,6 +76,7 @@ export function GlossaryView({
   onRename,
   onDelete,
   onCreateEntry,
+  gameAssetRepo,
 }: GlossaryViewProps) {
   const [query, setQuery] = useState('')
   const [category, setCategory] = useState<string | null>(null)
@@ -210,6 +216,7 @@ export function GlossaryView({
                 onCreateEntry={onCreateEntry}
                 onRefClick={jumpToRef}
                 onBack={() => setSelectedId(null)}
+                assetRepo={gameAssetRepo}
               />
             ) : (
               <div className="flex flex-1 items-center justify-center px-6">
@@ -391,6 +398,7 @@ function EntryEditor({
   onCreateEntry,
   onRefClick,
   onBack,
+  assetRepo,
 }: {
   entry: GlossaryEntry
   appearances: Appearances
@@ -402,6 +410,7 @@ function EntryEditor({
   onCreateEntry?: (name: string) => Promise<string | null>
   onRefClick: (name: string) => void
   onBack: () => void
+  assetRepo?: GameAssetRepository
 }) {
   const uid = useId()
   const [error, setError] = useState<string | null>(null)
@@ -633,6 +642,18 @@ function EntryEditor({
           </div>
         </div>
       </section>
+
+      {/* 立ち絵（人物のみ・PC 限定＝作る作業なので D-GAME-PC。実体は素材層で Work には入らない）。 */}
+      {assetRepo && PERSON_CATEGORY.test(entry.category ?? '') ? (
+        <div className="max-lg:hidden">
+          <SpriteSection
+            key={entry.name}
+            name={entry.name}
+            aliases={entry.aliases}
+            assetRepo={assetRepo}
+          />
+        </div>
+      ) : null}
     </div>
   )
 }

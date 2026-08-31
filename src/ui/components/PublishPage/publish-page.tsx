@@ -17,11 +17,14 @@ import {
   type WorkPlatform,
 } from '@/core/schema'
 import { countEpisodeChars } from '@/core/stats'
+import type { GameAssetRepository } from '@/core/storage/gameAssetRepository'
+import type { StagingRepository } from '@/core/storage/stagingRepository'
 import { cn } from '@/lib/utils'
 import { type AuthorStatus, fetchAuthorStatus } from '@/ui/_api/author'
 import {
   canPublishPublicly,
   describePublishBlocked,
+  type NovelGameBundleInput,
   PLATFORM_ORIGIN,
   type PublishResult,
   publishWorkToPlatform,
@@ -57,6 +60,10 @@ interface PublishPageProps {
   /** 戻り先（既定は執筆画面）。 */
   backHref?: string
   backLabel?: string
+  /** 演出譜の置き場所（渡されたときだけ「サウンドノベル」の切り替えが出る・契約 v4）。 */
+  stagingRepo?: Pick<StagingRepository, 'listByWork'>
+  /** ゲーム素材の置き場所（サウンドノベルの背景・立ち絵を同梱するのに使う）。 */
+  gameAssetRepo?: Pick<GameAssetRepository, 'list'>
 }
 
 /** 自由タグの入力（読点／カンマ／改行区切り）を配列へ。trim・空除去・重複除去。 */
@@ -110,6 +117,8 @@ export function PublishPage({
   onPersist,
   backHref = '#/write',
   backLabel = '執筆画面へ戻る',
+  stagingRepo,
+  gameAssetRepo,
 }: PublishPageProps) {
   const uid = useId()
   const [description, setDescription] = useState('')
@@ -121,6 +130,7 @@ export function PublishPage({
   const [original, setOriginal] = useState(false)
   const [visibility, setVisibility] = useState<Visibility>('draft')
   const [episodeVisibility, setEpisodeVisibility] = useState<Record<string, Visibility>>({})
+  const [novelGame, setNovelGame] = useState(false)
 
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [pending, setPending] = useState(false)
@@ -146,6 +156,7 @@ export function PublishPage({
     setOriginal(p?.declaredOriginal === true)
     setVisibility(p?.visibility === 'public' ? 'public' : 'draft')
     setEpisodeVisibility({ ...(p?.episodeVisibility ?? {}) })
+    setNovelGame(p?.novelGame === true)
     setResult(null)
   }, [work])
 
@@ -202,6 +213,7 @@ export function PublishPage({
       // 作品が下書きなら話ごとの記録は送らないが、こちらには残す
       //（下書きへ戻して公開し直したときに、伏せた話が黙って表へ出ないように）
       ...(Object.keys(episodeVisibility).length > 0 ? { episodeVisibility } : {}),
+      ...(novelGame ? { novelGame: true } : {}),
       ...(lastPublishedAt !== undefined ? { lastPublishedAt } : {}),
       ...(workUrl ? { workUrl } : {}),
       ...(manageUrl ? { manageUrl } : {}),
@@ -215,7 +227,25 @@ export function PublishPage({
 
     const platform = buildPlatform()
     const desc = description.trim()
-    const res = await publishWorkToPlatform(getToken, { ...work, description: desc, platform })
+    // サウンドノベル（契約 v4）：ON かつ公開のときだけ、演出譜と素材を集めてプレイヤーを同梱する。
+    // 前回 ON で今回 OFF のときも v4 で「同梱なし」を宣言し、先方に前回のプレイヤーを消してもらう
+    //（何も送らないと v3 になり、先方は据え置き＝OFF が効かないため）。
+    let gameInput: NovelGameBundleInput | undefined
+    if (visibility === 'public' && stagingRepo && gameAssetRepo) {
+      if (novelGame) {
+        gameInput = {
+          stagings: await stagingRepo.listByWork(work.id),
+          gameAssets: await gameAssetRepo.list(),
+        }
+      } else if (work.platform?.novelGame === true) {
+        gameInput = { stagings: [], gameAssets: [], enabled: false }
+      }
+    }
+    const res = await publishWorkToPlatform(
+      getToken,
+      { ...work, description: desc, platform },
+      gameInput,
+    )
 
     if (res.ok) {
       onPersist(work.id, {
@@ -411,6 +441,35 @@ export function PublishPage({
             </ul>
           )}
         </section>
+
+        {/* 2.5 サウンドノベル（契約 v4）。公開する話にプレイヤー付きの読み方が並ぶ */}
+        {stagingRepo && gameAssetRepo ? (
+          <section className="rounded-xl border border-outline-variant/40 bg-surface-container-lowest p-5">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="min-w-0">
+                <h2 className="font-semibold font-serif text-[17px] text-on-surface">
+                  サウンドノベル
+                </h2>
+                <p className="mt-1.5 text-[13px] text-on-surface-variant leading-relaxed">
+                  公開する話を、コトノハ-grove- で「サウンドノベルで読む」形でも読めるようにします。
+                  演出（話者・背景・立ち絵・効果音）を付けてあれば、その演出で再生されます。
+                  スマートフォンでも遊べます。
+                </p>
+              </div>
+              <Switch
+                aria-label="サウンドノベルでも公開する"
+                checked={novelGame}
+                disabled={visibility !== 'public'}
+                onCheckedChange={setNovelGame}
+              />
+            </div>
+            {visibility !== 'public' ? (
+              <p className="mt-3 text-[12px] text-on-surface-variant/70">
+                作品が下書きのあいだは変更できません。上で「公開」を選ぶと操作できます。
+              </p>
+            ) : null}
+          </section>
+        ) : null}
 
         {/* 3. コトノハ-grove- へ渡す情報 */}
         <section className="space-y-5 rounded-xl border border-outline-variant/40 bg-surface-container-lowest p-5">
