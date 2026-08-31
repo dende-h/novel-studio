@@ -92,7 +92,7 @@ Cloudflare Pages Functions
 | `src/core/markdown/index.ts` | 生テキスト → プレビュー HTML の軽量マークダウン（`markdownToHtml` `stripMarkdown` `InlineRenderer`。行内は既定で parseInlines へ委譲＝[[用語]]・ルビが生きるが、**第3引数で差し替えられる**＝掲示板はここを使う） |
 | `src/core/exporter/toNarou.ts` / `src/core/exporter/toKakuyomu.ts` | 各投稿サイト記法 |
 | `src/core/exporter/toNovelGame.ts` | 正本＋演出譜 → サウンドノベル zip の中身（`buildNovelGameFiles`）。プレイヤー（index.html の CSS/JS 一式）は `novelGamePlayer.ts` |
-| `src/core/exporter/toPlainText.ts` / `plotToPlainText.ts` / `structureToPlainText.ts` | AI 投げ込み用の平文（`glossaryToPlainText` 含む） |
+| `src/core/exporter/toPlainText.ts` / `plotToPlainText.ts` / `structureToPlainText.ts` / `stagingToPlainText.ts` | AI 投げ込み用の平文（`glossaryToPlainText`、演出譜の `stagingToPlainText` 含む） |
 | `src/core/exporter/blocksToNotation.ts` | 正本 → 記法（往復変換） |
 | `src/core/zip/index.ts` | 依存ゼロの ZIP（store 法）・`crc32` |
 | `bundle/` `folder/` | 全作品バンドル JSON / フォルダ形式の入出力 |
@@ -124,7 +124,7 @@ Cloudflare Pages Functions
 | `src/core/nudge/backup-nudge.ts` | バックアップ促しの判定（節目・クールダウン） |
 | `src/core/billing/stripe-event.ts` | Stripe イベント → `StripeAction` 解釈 |
 | `src/core/billing/reap-policy.ts` | アカウント削除の判定（`shouldReap`）。**解約後の猶予切れだけ**が対象＝無料アカウントに期限は無い |
-| `src/core/mcp-edit/index.ts` | **MCP 経由の編集操作の純ロジック**（`createWork` `setEpisode` `upsertGlossaryEntry` `setPlotMeta` `setPlotWorldNote` `deletePlotWorldNote` 等）。サーバの MCP ツールはこれを呼ぶ |
+| `src/core/mcp-edit/index.ts` | **MCP 経由の編集操作の純ロジック**（`createWork` `setEpisode` `upsertGlossaryEntry` `setPlotMeta` `setPlotWorldNote` `deletePlotWorldNote` `setStagingCues`（演出譜） 等）。サーバの MCP ツールはこれを呼ぶ |
 | `activity/` | 執筆記録（`localDateKey` `currentStreak` `buildHeatmap`） |
 | `stats/` | 文字数カウント |
 | `outline/` | アウトラインのメモ木操作（`indentNote` `moveNote` 等） |
@@ -281,7 +281,7 @@ Cloudflare Pages Functions
 | `/api/oauth/*` | 認可サーバー窓口。`authorize` は Clerk へ 302、`token`/`register` ほかはサーバー側中継 |
 
 `api/_lib/`: `auth`（Clerk 検証・`verifyMember`）, `membership`（**会員判定の単一の真実 = D1 `subscriptions`**）,
-`crypto`（at-rest 暗号化）, `mcp-server`（MCP プロトコル核・約960行）, `mcp-auth`, `mcp-token`,
+`crypto`（at-rest 暗号化）, `mcp-server`（MCP プロトコル核・約1,100行）, `mcp-auth`, `mcp-token`,
 `oauth-metadata`, `oauth-upstream`（中継先 Clerk の取得）, `stripe`, `rate-limit`, `purge`, `visitor`,
 `board-store`（**掲示板の SQL はすべてここ**・行 ⇄ camelCase の変換も）, `board-link-fetch`（OGP の取得とキャッシュ）。
 

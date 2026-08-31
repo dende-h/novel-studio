@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
+import type { Staging } from '../game'
 import { resolveRef } from '../glossary'
+import { parseEpisodeBody } from '../parser/parseNotation'
 import type { Work } from '../schema'
 import { emptyStructure } from '../structure'
 import {
@@ -8,9 +10,11 @@ import {
   deleteGlossaryEntry,
   McpEditError,
   parseOutlineNotes,
+  parseStagingCueInputs,
   parseStructure,
   setEpisode,
   setOutlineNotes,
+  setStagingCues,
   setWorkMeta,
   upsertGlossaryEntry,
   upsertStructure,
@@ -330,5 +334,154 @@ describe('mcp-edit（MCP 書き込みの純ロジック）', () => {
     expect(upsertStructure([], a).map((s) => s.id)).toEqual(['s1'])
     expect(upsertStructure([a], b)[0]?.title).toBe('改')
     expect(upsertStructure([a], emptyStructure('s2', 'w1', 'mindmap', 0))).toHaveLength(2)
+  })
+})
+
+describe('mcp-edit — 演出譜（set_staging の純ロジック）', () => {
+  // b1=地の文 / b2=セリフ / b3,b4=空行 / b5=地の文
+  const stagedWork = (): Work => ({
+    ...work(),
+    episodes: [
+      {
+        id: 'e1',
+        title: '第一話',
+        blocks: parseEpisodeBody(
+          '　灯が振り返った。\n「まだ書いてるんだね」\n\n\n　場面が変わる。',
+        ),
+      },
+    ],
+  })
+
+  it('parseStagingCueInputs は snake_case を検証して型付ける（不正は McpEditError）', () => {
+    expect(parseStagingCueInputs([{ block_id: 'b2', speaker: '灯', scene_break: true }])).toEqual([
+      {
+        blockId: 'b2',
+        speaker: '灯',
+        sceneBreak: true,
+        bg: undefined,
+        transition: undefined,
+        clear: undefined,
+      },
+    ])
+    expect(() => parseStagingCueInputs(undefined)).toThrow(McpEditError)
+    expect(() => parseStagingCueInputs([])).toThrow(McpEditError)
+    expect(() => parseStagingCueInputs([{ speaker: '灯' }])).toThrow(McpEditError)
+    expect(() => parseStagingCueInputs([{ block_id: 'b2', scene_break: 'yes' }])).toThrow(
+      McpEditError,
+    )
+  })
+
+  it('話者・場面の切れ目・背景をまとめて付けられる（新規 Staging を作る）', () => {
+    const res = setStagingCues(
+      [],
+      [stagedWork()],
+      'w1',
+      'e1',
+      [
+        { blockId: 'b2', speaker: '灯' },
+        { blockId: 'b5', sceneBreak: true, bg: 'preset:bg/room-night', transition: 'cut' },
+      ],
+      [],
+      100,
+    )
+    expect(res.applied).toBe(2)
+    expect(res.stagings).toHaveLength(1)
+    expect(res.stagings[0]).toMatchObject({ workId: 'w1', episodeId: 'e1', updatedAt: 100 })
+    expect(res.stagings[0]?.cues).toEqual([
+      { blockId: 'b2', speaker: '灯' },
+      { blockId: 'b5', sceneBreak: true, bg: 'preset:bg/room-night', transition: 'cut' },
+    ])
+  })
+
+  it('パッチ方式：渡した項目だけ書き換え・空文字で削除・clear で丸ごと外す', () => {
+    const initial: Staging = {
+      workId: 'w1',
+      episodeId: 'e1',
+      cues: [
+        { blockId: 'b2', speaker: '灯' },
+        { blockId: 'b5', sceneBreak: true, bg: 'preset:bg/room-night' },
+        { blockId: 'b99', speaker: '消えた行' }, // orphan
+      ],
+      updatedAt: 1,
+    }
+    const res = setStagingCues(
+      [initial],
+      [stagedWork()],
+      'w1',
+      'e1',
+      [
+        { blockId: 'b2', speaker: '？？？' }, // 上書き
+        { blockId: 'b5', bg: '' }, // bg だけ外す（sceneBreak は据え置き）
+        { blockId: 'b99', clear: true }, // orphan の掃除
+      ],
+      [],
+      200,
+    )
+    expect(res.applied).toBe(2)
+    expect(res.cleared).toBe(1)
+    expect(res.stagings[0]?.cues).toEqual([
+      { blockId: 'b2', speaker: '？？？' },
+      { blockId: 'b5', sceneBreak: true },
+    ])
+  })
+
+  it('持ち込み背景のキーは userBgKeys にあるものだけ通す', () => {
+    const ok = setStagingCues(
+      [],
+      [stagedWork()],
+      'w1',
+      'e1',
+      [{ blockId: 'b5', bg: 'user:abc' }],
+      ['user:abc'],
+      100,
+    )
+    expect(ok.stagings[0]?.cues[0]?.bg).toBe('user:abc')
+    expect(() =>
+      setStagingCues([], [stagedWork()], 'w1', 'e1', [{ blockId: 'b5', bg: 'user:zzz' }], [], 100),
+    ).toThrow(/使えません/)
+  })
+
+  it('不正な入力は McpEditError で全体を保存しない（部分適用を残さない）', () => {
+    const cases: Array<Parameters<typeof setStagingCues>[4]> = [
+      [{ blockId: 'b3', speaker: '灯' }], // 空行（間）宛て
+      [{ blockId: 'b1', speaker: '灯' }], // 地の文に話者
+      [{ blockId: 'b2', bg: 'preset:bg/nowhere' }], // 未知の背景キー
+      [{ blockId: 'b2', transition: 'spin' }], // 未知の切り替え方
+      [{ blockId: 'b5', transition: 'fade' }], // bg の無い行に transition
+      [{ blockId: 'b404', speaker: '灯' }], // 未知の行
+      [{ blockId: 'b2' }], // 変更項目なし
+      [{ blockId: 'b2', clear: true, speaker: '灯' }], // clear と他項目の併用
+      [{ blockId: 'b404', clear: true }], // 行も演出も無い clear
+    ]
+    for (const items of cases) {
+      expect(() => setStagingCues([], [stagedWork()], 'w1', 'e1', items, [], 100)).toThrow(
+        McpEditError,
+      )
+    }
+    // 1 件目が成功しても 2 件目のエラーで全体が保存されない
+    expect(() =>
+      setStagingCues(
+        [],
+        [stagedWork()],
+        'w1',
+        'e1',
+        [
+          { blockId: 'b2', speaker: '灯' },
+          { blockId: 'b404', speaker: 'x' },
+        ],
+        [],
+        100,
+      ),
+    ).toThrow(McpEditError)
+  })
+
+  it('未知の作品・話は McpEditError', () => {
+    const items = [{ blockId: 'b2', speaker: '灯' }]
+    expect(() => setStagingCues([], [stagedWork()], 'zzz', 'e1', items, [], 1)).toThrow(
+      McpEditError,
+    )
+    expect(() => setStagingCues([], [stagedWork()], 'w1', 'zzz', items, [], 1)).toThrow(
+      McpEditError,
+    )
   })
 })

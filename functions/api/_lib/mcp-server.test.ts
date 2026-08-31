@@ -1,6 +1,8 @@
 // @vitest-environment node
 import { describe, expect, it } from 'vitest'
 import type { CloudBackup } from '../../../src/core/backup'
+import type { UserGameAsset } from '../../../src/core/game/assets'
+import { parseEpisodeBody } from '../../../src/core/parser/parseNotation'
 import type { Work } from '../../../src/core/schema'
 import { addEdge, addNode, emptyStructure, type Structure } from '../../../src/core/structure'
 import { handleMcpMessage, MCP_TOOLS, type McpDeps } from './mcp-server'
@@ -107,7 +109,7 @@ describe('handleMcpMessage — プロトコル', () => {
     ).toBeNull()
   })
 
-  it('tools/list は 27 ツール（読み6・書き18・バックアップ3）', async () => {
+  it('tools/list は 29 ツール（読み7・書き19・バックアップ3）', async () => {
     const res = (await handleMcpMessage(
       { jsonrpc: '2.0', id: 1, method: 'tools/list' },
       deps(),
@@ -115,7 +117,9 @@ describe('handleMcpMessage — プロトコル', () => {
       result: { tools: { name: string }[] }
     }
     const names = res.result.tools.map((t) => t.name)
-    expect(MCP_TOOLS).toHaveLength(27)
+    expect(MCP_TOOLS).toHaveLength(29)
+    expect(names).toContain('get_staging')
+    expect(names).toContain('set_staging')
     expect(names).toContain('upsert_secret')
     expect(names).toContain('get_plot')
     expect(names).toContain('upsert_plot_beat')
@@ -677,5 +681,124 @@ describe('世界観設定ツール（get_world / set_world_note / delete_world_n
     const text = contentText(await handleMcpMessage(call('get_glossary', { work_id: 'w1' }), d))
     expect(text).toContain('作者メモ（非公開）')
     expect(text).toContain('正体は管理AI')
+  })
+})
+
+describe('演出譜ツール（get_staging / set_staging）', () => {
+  // b1=地の文（[[アカリ]] 参照つき）/ b2=セリフ / b3,b4=空行 / b5=地の文
+  const gameWork = (): Work => ({
+    ...work(),
+    episodes: [
+      {
+        id: 'e1',
+        title: '第一話',
+        blocks: parseEpisodeBody(
+          '　[[アカリ]]が振り返った。\n「まだ書いてるんだね」\n\n\n　場面が変わる。',
+        ),
+      },
+    ],
+    glossary: [
+      { id: 'g1', name: 'アカリ', aliases: [], category: '人物', createdAt: 1, updatedAt: 1 },
+    ],
+  })
+
+  it('get_staging は行ごとの block_id・提案・背景キー一覧を返す', async () => {
+    const { deps: d } = makeDeps(snapshot([gameWork()]))
+    const text = contentText(
+      await handleMcpMessage(call('get_staging', { work_id: 'w1', episode_id: 'e1' }), d),
+    )
+    expect(text).toContain('[block_id: b2] セリフ: 「まだ書いてるんだね」')
+    expect(text).toContain('話者候補=アカリ') // 提案（保存はされない）
+    expect(text).toContain('場面の切れ目？') // 空行 2 つのあとの b5 への提案
+    expect(text).toContain('- preset:bg/room-night … 室内（夜）')
+    // 未知の話は isError
+    expect(
+      isError(await handleMcpMessage(call('get_staging', { work_id: 'w1', episode_id: 'zzz' }), d)),
+    ).toBe(true)
+  })
+
+  it('set_staging はスナップショットへ保存され get_staging に反映される', async () => {
+    const { deps: d, get } = makeDeps(snapshot([gameWork()]))
+    const res = await handleMcpMessage(
+      call('set_staging', {
+        work_id: 'w1',
+        episode_id: 'e1',
+        cues: [
+          { block_id: 'b2', speaker: 'アカリ' },
+          { block_id: 'b5', scene_break: true, bg: 'preset:bg/room-night', transition: 'fade' },
+        ],
+      }),
+      d,
+    )
+    expect(isError(res)).toBe(false)
+    expect(contentText(res)).toContain('演出を保存しました（更新 2 行')
+    expect(contentText(res)).toContain('取り込')
+    expect(get()?.stagings?.[0]?.cues).toEqual([
+      { blockId: 'b2', speaker: 'アカリ' },
+      { blockId: 'b5', sceneBreak: true, bg: 'preset:bg/room-night', transition: 'fade' },
+    ])
+    const text = contentText(
+      await handleMcpMessage(call('get_staging', { work_id: 'w1', episode_id: 'e1' }), d),
+    )
+    expect(text).toContain('【話者=アカリ】')
+    expect(text).toContain('【場面の切れ目／背景=preset:bg/room-night／切り替え=fade】')
+  })
+
+  it('set_staging は持ち込み背景のキーをスナップショットの資産で検証する', async () => {
+    const asset: UserGameAsset = {
+      id: 'abc',
+      kind: 'bg',
+      name: '海辺の夕暮れ',
+      dataUrl: 'data:image/webp;base64,SGk=',
+      tone: ['#111111', '#222222', '#333333'],
+      createdAt: 0,
+    }
+    const { deps: d, get } = makeDeps({ ...snapshot([gameWork()]), gameAssets: [asset] })
+    const ok = await handleMcpMessage(
+      call('set_staging', {
+        work_id: 'w1',
+        episode_id: 'e1',
+        cues: [{ block_id: 'b5', bg: 'user:abc' }],
+      }),
+      d,
+    )
+    expect(isError(ok)).toBe(false)
+    expect(get()?.stagings?.[0]?.cues[0]?.bg).toBe('user:abc')
+    // 無い持ち込みキー・未知テンプレは isError（保存されない）
+    const bad = await handleMcpMessage(
+      call('set_staging', {
+        work_id: 'w1',
+        episode_id: 'e1',
+        cues: [{ block_id: 'b2', bg: 'user:zzz' }],
+      }),
+      d,
+    )
+    expect(isError(bad)).toBe(true)
+    expect(contentText(bad)).toContain('使えません')
+  })
+
+  it('set_staging のドメインエラー（空行宛て・地の文へ話者）は isError で返る', async () => {
+    const { deps: d, get } = makeDeps(snapshot([gameWork()]))
+    const gap = await handleMcpMessage(
+      call('set_staging', {
+        work_id: 'w1',
+        episode_id: 'e1',
+        cues: [{ block_id: 'b3', scene_break: true }],
+      }),
+      d,
+    )
+    expect(isError(gap)).toBe(true)
+    expect(contentText(gap)).toContain('空行')
+    const narr = await handleMcpMessage(
+      call('set_staging', {
+        work_id: 'w1',
+        episode_id: 'e1',
+        cues: [{ block_id: 'b1', speaker: 'アカリ' }],
+      }),
+      d,
+    )
+    expect(isError(narr)).toBe(true)
+    expect(contentText(narr)).toContain('セリフの行')
+    expect(get()?.stagings ?? []).toHaveLength(0)
   })
 })

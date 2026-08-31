@@ -1,3 +1,5 @@
+import { type Cue, classifyBlock, emptyStaging, patchCue, removeCue, type Staging } from '../game'
+import { presetBackground } from '../game/presets'
 import { type FlatNote, MAX_NOTE_DEPTH, rebuildEpisodeNotes } from '../outline'
 import { parseEpisodeBody } from '../parser/parseNotation'
 import { reconcileBlockIds } from '../parser/reconcileBlockIds'
@@ -782,4 +784,166 @@ export function deletePlotItem(
     throw new McpEditError(`foreshadow_id "${itemId}" の伏線が見つかりません`)
   }
   return putPlot(plots, removeForeshadow(plot, itemId), now)
+}
+
+// ---- 演出譜（サウンドノベルの Staging）の編集 ----------------------------------------
+// 対象は work×episode の 1 レコード。行（block_id）単位のパッチで、一括置換はさせない
+// （プロットと同じ理由＝AI の一手ミスで全演出が消えないように）。
+
+/** set_staging の cues 1 件ぶん（キーは JSON 入力の snake_case から変換済み）。 */
+export interface StagingCueInput {
+  blockId: string
+  speaker?: string
+  sceneBreak?: boolean
+  bg?: string
+  transition?: string
+  clear?: boolean
+}
+
+/** set_staging の cues 配列（JSON 由来の unknown）を検証して型付ける。 */
+export function parseStagingCueInputs(raw: unknown): StagingCueInput[] {
+  if (!Array.isArray(raw) || raw.length === 0) {
+    throw new McpEditError('cues には 1 件以上の配列を渡してください')
+  }
+  return raw.map((item, i) => {
+    if (typeof item !== 'object' || item === null || Array.isArray(item)) {
+      throw new McpEditError(`cues[${i}] がオブジェクトではありません`)
+    }
+    const o = item as Record<string, unknown>
+    const field = (key: string): string | undefined => {
+      const v = o[key]
+      if (v === undefined) return undefined
+      if (typeof v !== 'string')
+        throw new McpEditError(`cues[${i}].${key} は文字列で渡してください`)
+      return v
+    }
+    const flag = (key: string): boolean | undefined => {
+      const v = o[key]
+      if (v === undefined) return undefined
+      if (typeof v !== 'boolean') {
+        throw new McpEditError(`cues[${i}].${key} は true / false で渡してください`)
+      }
+      return v
+    }
+    const blockId = field('block_id')
+    if (!blockId) {
+      throw new McpEditError(`cues[${i}] に block_id がありません（get_staging の [block_id: …]）`)
+    }
+    return {
+      blockId,
+      speaker: field('speaker'),
+      sceneBreak: flag('scene_break'),
+      bg: field('bg'),
+      transition: field('transition'),
+      clear: flag('clear'),
+    }
+  })
+}
+
+const TRANSITION_CHOICES: readonly string[] = ['fade', 'cut', 'flash']
+
+/**
+ * 演出譜へ行単位のパッチをまとめて当てる。渡した項目だけ書き換える
+ * （省略＝据え置き・空文字＝削除・clear で行の演出を丸ごと外す）。
+ * どれか 1 件でも不正なら McpEditError で全体を保存しない（部分適用を残さない）。
+ */
+export function setStagingCues(
+  stagings: Staging[],
+  works: Work[],
+  workId: string,
+  episodeId: string,
+  items: StagingCueInput[],
+  userBgKeys: string[],
+  now: number,
+): { stagings: Staging[]; applied: number; cleared: number } {
+  const work = works.find((w) => w.id === workId)
+  if (!work) throw new McpEditError(`work_id "${workId}" の作品が見つかりません`)
+  const episode = work.episodes.find((e) => e.id === episodeId)
+  if (!episode) throw new McpEditError(`episode_id "${episodeId}" の話が見つかりません`)
+  const blocks = new Map(episode.blocks.map((b) => [b.id, b]))
+  const userKeys = new Set(userBgKeys)
+
+  let staging =
+    stagings.find((s) => s.workId === workId && s.episodeId === episodeId) ??
+    emptyStaging(workId, episodeId, now)
+  let applied = 0
+  let cleared = 0
+
+  for (const item of items) {
+    if (item.clear === true) {
+      // 丸ごと外す（orphan の掃除も兼ねるので、行が消えていても cue があれば通す）。
+      if (item.speaker !== undefined || item.sceneBreak !== undefined || item.bg !== undefined) {
+        throw new McpEditError(`block_id "${item.blockId}": clear: true と他の項目は併用できません`)
+      }
+      const exists =
+        blocks.has(item.blockId) || staging.cues.some((c) => c.blockId === item.blockId)
+      if (!exists) {
+        throw new McpEditError(
+          `block_id "${item.blockId}" の行も演出も見つかりません（get_staging で確認）`,
+        )
+      }
+      staging = removeCue(staging, item.blockId, now)
+      cleared++
+      continue
+    }
+
+    const block = blocks.get(item.blockId)
+    if (!block) {
+      throw new McpEditError(
+        `block_id "${item.blockId}" の行が見つかりません（get_staging で確認）`,
+      )
+    }
+    if (classifyBlock(block) === 'gap') {
+      throw new McpEditError(
+        `block_id "${item.blockId}" は空行（間）です。演出は本文のある行に付けてください`,
+      )
+    }
+
+    const patch: Partial<Omit<Cue, 'blockId'>> = {}
+    if (item.speaker !== undefined) {
+      const speaker = emptyToUndef(item.speaker)
+      if (speaker !== undefined && classifyBlock(block) !== 'dialogue') {
+        throw new McpEditError(
+          `block_id "${item.blockId}" は地の文です。話者はセリフの行にだけ付けられます`,
+        )
+      }
+      patch.speaker = speaker
+    }
+    if (item.sceneBreak !== undefined) patch.sceneBreak = item.sceneBreak ? true : undefined
+    if (item.bg !== undefined) {
+      const bg = emptyToUndef(item.bg)
+      if (bg !== undefined && !presetBackground(bg) && !userKeys.has(bg)) {
+        throw new McpEditError(
+          `bg "${bg}" は使えません。使える背景キーは get_staging の一覧で確認してください`,
+        )
+      }
+      patch.bg = bg
+    }
+    if (item.transition !== undefined) {
+      const transition = emptyToUndef(item.transition)
+      if (transition !== undefined && !TRANSITION_CHOICES.includes(transition)) {
+        throw new McpEditError(`transition は ${TRANSITION_CHOICES.join(' / ')} のいずれかです`)
+      }
+      patch.transition = transition as Cue['transition']
+    }
+    if (Object.keys(patch).length === 0) {
+      throw new McpEditError(
+        `block_id "${item.blockId}": 変更する項目がありません（speaker / scene_break / bg / transition / clear のいずれかを渡す）`,
+      )
+    }
+    staging = patchCue(staging, item.blockId, patch, now)
+    // 背景の切り替え方は背景と一緒でだけ効く（G0 プレイヤーの契約。07 §14）。
+    const merged = staging.cues.find((c) => c.blockId === item.blockId)
+    if (merged?.transition && !merged.bg) {
+      throw new McpEditError(
+        `block_id "${item.blockId}": 切り替え方（transition）は背景（bg）と同じ行に付けてください`,
+      )
+    }
+    applied++
+  }
+
+  const next = stagings.some((s) => s.workId === workId && s.episodeId === episodeId)
+    ? stagings.map((s) => (s.workId === workId && s.episodeId === episodeId ? staging : s))
+    : [...stagings, staging]
+  return { stagings: next, applied, cleared }
 }
