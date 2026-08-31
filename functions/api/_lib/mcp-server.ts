@@ -13,8 +13,10 @@ import {
   worldPointerLine,
   worldToPlainText,
 } from '../../../src/core/exporter/plotToPlainText'
+import { stagingToPlainText } from '../../../src/core/exporter/stagingToPlainText'
 import { structuresToPlainText } from '../../../src/core/exporter/structureToPlainText'
 import { glossaryToPlainText, workToPlainText } from '../../../src/core/exporter/toPlainText'
+import { userAssetKey } from '../../../src/core/game/assets'
 import {
   addEpisode,
   createWork,
@@ -23,11 +25,13 @@ import {
   deletePlotItem,
   deletePlotWorldNote,
   McpEditError,
+  parseStagingCueInputs,
   parseStructure,
   setEpisode,
   setOutlineNotes,
   setPlotMeta,
   setPlotWorldNote,
+  setStagingCues,
   setWorkMeta,
   upsertGlossaryEntry,
   upsertPlotBeat,
@@ -41,7 +45,7 @@ import { pickPrimaryPlot, WORLD_CUSTOM_SLOT, WORLD_SLOTS } from '../../../src/co
 
 /** クライアントが未指定のときに名乗る MCP プロトコル版（十分に新しい安定版）。 */
 const DEFAULT_PROTOCOL_VERSION = '2025-06-18'
-const SERVER_INFO = { name: 'novel-studio', version: '1.4.2' } as const
+const SERVER_INFO = { name: 'novel-studio', version: '1.5.0' } as const
 
 /**
  * クライアント（AI）へ最初に渡す使い方。MCP の `initialize` が返す標準の instructions。
@@ -60,6 +64,8 @@ const SERVER_INSTRUCTIONS = [
   '- 世界観設定（get_world / set_world_note）… 作品の決め事・設定ルール・執筆方針を置く',
   '  **作者だけの場所。公開されません。**',
   '- プロット（get_plot / upsert_plot_beat 等）… 幕とビート、プロットライン、伏線、秘密。公開されません。',
+  '- 演出譜（get_staging / set_staging）… サウンドノベル書き出し用の話者・場面の切れ目・背景。',
+  '  本文には一切触れない別レコードで、公開されません。',
   '',
   '守ってほしい手順：',
   '1. 用語集・プロット・本文のいずれかを書き換える前に、まず get_world でこの作品の決め事を読む。',
@@ -462,6 +468,68 @@ export const MCP_TOOLS = [
     },
   },
   {
+    name: 'get_staging',
+    description:
+      '1 つの話の演出譜（サウンドノベル書き出し用の話者・場面の切れ目・背景）を、本文の行ごとの [block_id: …] 付きで返す。話者が未設定のセリフには候補、空行 2 つ以上のあとの行には場面の切れ目の提案が〔提案: …〕として付く（提案は保存されていない）。set_staging の対象 block_id と使える背景キーはここで確認する。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        ...workIdProp,
+        episode_id: { type: 'string', description: 'list_works の各話 id' },
+      },
+      required: ['work_id', 'episode_id'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'set_staging',
+    description:
+      '1 つの話の演出（話者・場面の切れ目・背景・切り替え方）を行単位でまとめて付ける。本文は一切変わらない。cues の各要素は get_staging の [block_id: …] を指し、渡した項目だけ書き換える（省略＝据え置き・空文字＝削除・clear: true でその行の演出を丸ごと外す）。話者はセリフの行にだけ付けられ、用語集の人物名／？？？（名前を伏せる）／自由な名前が使える。どれか 1 行でもエラーになると全体が保存されない。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        ...workIdProp,
+        episode_id: { type: 'string', description: 'list_works の各話 id' },
+        cues: {
+          type: 'array',
+          description: '行ごとの演出パッチ（1 件以上）',
+          items: {
+            type: 'object',
+            properties: {
+              block_id: { type: 'string', description: '対象の行（get_staging の [block_id: …]）' },
+              speaker: {
+                type: 'string',
+                description: '話者名（セリフの行のみ。？？？で名前を伏せる。空文字で外す）',
+              },
+              scene_break: {
+                type: 'boolean',
+                description: 'ここから場面が変わる（背景の切り替え点。false で外す）',
+              },
+              bg: {
+                type: 'string',
+                description: '背景キー（get_staging の「使える背景キー」から。空文字で外す）',
+              },
+              transition: {
+                type: 'string',
+                description:
+                  '背景の切り替え方: fade（ゆっくり）/ cut（ぱっと）/ flash（白いフラッシュ）。bg と同じ行に付ける（空文字で外す）',
+              },
+              clear: {
+                type: 'boolean',
+                description:
+                  'true でこの行の演出を丸ごと外す（他の項目と併用不可。行き先を失った演出の掃除にも使う）',
+              },
+            },
+            required: ['block_id'],
+            additionalProperties: false,
+          },
+        },
+      },
+      required: ['work_id', 'episode_id', 'cues'],
+      additionalProperties: false,
+    },
+  },
+  {
     name: 'get_world',
     description:
       '1 作品の世界観設定（作者だけの決め事・設定ルール・執筆方針）を [slot: …, note_id: …] 付きで返す。**用語集・プロット・本文を書き換える前に必ず最初に読むこと。**ここは公開されないので、まだ読者に伏せている情報も書かれている。',
@@ -645,6 +713,7 @@ async function callTool(
     'delete_plot_item',
     'set_world_note',
     'delete_world_note',
+    'set_staging',
   ])
   if (writeTools.has(name ?? '')) {
     if (!snap) {
@@ -896,6 +965,18 @@ async function callTool(
           plots: deletePlotItem(snap.plots ?? [], workId, kind, str(args, 'item_id') ?? '', now),
         }
         message = '削除しました。'
+      } else if (name === 'set_staging') {
+        const res = setStagingCues(
+          snap.stagings ?? [],
+          works,
+          workId,
+          str(args, 'episode_id') ?? '',
+          parseStagingCueInputs(args?.cues),
+          (snap.gameAssets ?? []).map((a) => userAssetKey(a.id)),
+          now,
+        )
+        next = { ...snap, stagings: res.stagings }
+        message = `演出を保存しました（更新 ${res.applied} 行・外した演出 ${res.cleared} 件）。`
       }
 
       const saved = await deps.saveSnapshot(next)
@@ -915,9 +996,19 @@ async function callTool(
     name === 'get_glossary' ||
     name === 'get_structures' ||
     name === 'get_plot' ||
-    name === 'get_world'
+    name === 'get_world' ||
+    name === 'get_staging'
   ) {
     if (!work) return text(`work_id "${workId}" の作品が見つかりません。`, true)
+    if (name === 'get_staging') {
+      const episodeId = str(args, 'episode_id') ?? ''
+      const episode = work.episodes.find((e) => e.id === episodeId)
+      if (!episode) return text(`episode_id "${episodeId}" の話が見つかりません。`, true)
+      const staging = (snap?.stagings ?? []).find(
+        (s) => s.workId === workId && s.episodeId === episodeId,
+      )
+      return text(stagingToPlainText(work, episode, staging, snap?.gameAssets ?? []))
+    }
     // 本文・構造も「書き換える前に決め事を読む」の対象。1 行の導線を先頭に置く
     // （本体を載せると本文が長いので、取りに行かせる形にする）。
     const primaryPlot = () =>
