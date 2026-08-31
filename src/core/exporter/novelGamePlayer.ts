@@ -19,6 +19,7 @@ export interface ScenarioPage {
   /** 直前の空行数（間）。0 は省略 */
   beat?: number
   sceneBreak?: boolean
+  /** G0 では背景切替（bg）と同時のときだけ効く。単独 transition の意味論は G1 で決める */
   transition?: 'cut' | 'fade' | 'flash'
   /** 背景が切り替わるページにだけ載る（先頭ページには必ず載る） */
   bg?: string
@@ -85,12 +86,12 @@ html,body{height:100%;margin:0;background:#05060A}
 #flash.on{animation:fl .5s ease-out}
 @keyframes fl{0%{opacity:.9}100%{opacity:0}}
 #shade{position:absolute;inset:0;background:radial-gradient(120% 95% at 50% 10%,transparent 45%,rgba(0,0,0,.4) 100%);pointer-events:none}
-#hud{position:absolute;top:10px;right:12px;display:flex;gap:2px;z-index:4}
+#hud{position:absolute;top:calc(10px + env(safe-area-inset-top,0px));right:calc(12px + env(safe-area-inset-right,0px));display:flex;gap:2px;z-index:4}
 #hud button{background:none;border:0;padding:6px 8px;cursor:pointer;color:var(--dim);
   font-family:'Noto Sans JP','Hiragino Sans',sans-serif;font-size:11px;letter-spacing:.14em}
 #hud button.on{color:var(--gold)}
 #hud button.on::after{content:'●';font-size:6px;vertical-align:.35em;margin-left:3px}
-#box{position:absolute;left:4%;right:4%;bottom:calc(4.5% + env(safe-area-inset-bottom,0px));
+#box{position:absolute;left:calc(4% + env(safe-area-inset-left,0px));right:calc(4% + env(safe-area-inset-right,0px));bottom:calc(4.5% + env(safe-area-inset-bottom,0px));
   background:rgba(7,11,22,.68);border:1px solid rgba(226,233,250,.16);border-radius:8px;
   padding:18px clamp(16px,3vw,30px) 20px;max-height:46vh;overflow-y:auto;z-index:2}
 #name{color:var(--gold);letter-spacing:.22em;font-size:clamp(.85rem,1.6vw,1rem);margin:0 0 .5em;font-weight:600}
@@ -153,7 +154,7 @@ html,body{height:100%;margin:0;background:#05060A}
     <button id="btnContinue" class="act" type="button" hidden>つづきから</button>
     <button id="btnStart" class="act" type="button">はじめから</button>
     <p class="hint">タップかクリックで読み進めます</p>
-    <p class="t-mark">コトノハ -leaf-</p>
+    <p class="t-mark">コトノハ-leaf-</p>
   </div>
   <div id="ovLog" class="overlay" hidden>
     <h2>ログ</h2>
@@ -311,17 +312,25 @@ html,body{height:100%;margin:0;background:#05060A}
     state.typing = false
     nextEl.hidden = false
     if (state.auto) {
+      clearTimeout(state.timer)
       state.timer = setTimeout(function () {
-        if (state.auto && !state.typing && !overlayOpen()) advance()
+        if (state.auto && !state.typing && !overlayOpen() && !document.hidden) advance()
       }, 420 + S.pages[state.i].text.length * 26)
     }
   }
   function queueSkip() {
+    clearTimeout(state.timer)
     state.timer = setTimeout(function () {
-      if (!state.skip || overlayOpen()) return
+      if (!state.skip || overlayOpen() || document.hidden) return
       if (state.i + 1 < S.pages.length) showPage(state.i + 1)
       else { toggleSkip(false); showEnd() }
     }, 85)
+  }
+  // オーバーレイを閉じた・タブへ戻った後に、オート／スキップの進行を張り直す
+  function resumeFlow() {
+    if (!state.started || overlayOpen()) return
+    if (state.auto && !state.typing) typingDone()
+    if (state.skip) queueSkip()
   }
   function advance() {
     if (!state.started || overlayOpen()) return
@@ -378,11 +387,12 @@ html,body{height:100%;margin:0;background:#05060A}
     return 0.299 * (n >> 16 & 255) + 0.587 * (n >> 8 & 255) + 0.114 * (n & 255)
   }
   function wrapText(ctx, text, maxWidth) {
+    // Array.from＝コードポイント単位。サロゲートペア（絵文字・拡張漢字）を行間で割らない
+    var chars = Array.from(text)
     var lines = []
     var line = ''
-    for (var i = 0; i < text.length; i++) {
-      var ch = text.charAt(i)
-      if (ch === '\\n') { lines.push(line); line = ''; continue }
+    for (var i = 0; i < chars.length; i++) {
+      var ch = chars[i]
       if (ctx.measureText(line + ch).width > maxWidth && line !== '') { lines.push(line); line = ch }
       else line += ch
     }
@@ -424,7 +434,9 @@ html,body{height:100%;margin:0;background:#05060A}
     }
     if (lines.length > 4) {
       lines = lines.slice(0, 4)
-      lines[3] = lines[3].slice(0, Math.max(0, lines[3].length - 1)) + '…'
+      var lastChars = Array.from(lines[3])
+      lastChars.pop()
+      lines[3] = lastChars.join('') + '…'
     }
     ctx.fillStyle = ink
     var lh = size * 1.9
@@ -435,21 +447,14 @@ html,body{height:100%;margin:0;background:#05060A}
     var foot = S.episodeTitle + (S.author ? '　' + S.author : '')
     ctx.fillText(foot, 80, H - 64)
     ctx.font = '500 20px ' + serif
-    var mark = 'コトノハ -leaf-'
+    var mark = 'コトノハ-leaf-'
     ctx.fillText(mark, W - 80 - ctx.measureText(mark).width, H - 64)
     cv.toBlob(function (blob) {
       if (!blob) { msg('カードを作れませんでした'); return }
       shareCard(blob, p)
     }, 'image/png')
   }
-  function shareCard(blob, p) {
-    var file
-    try { file = new File([blob], 'card.png', { type: 'image/png' }) } catch (e) { file = null }
-    var text = p.text + ' — ' + S.workTitle + '「' + S.episodeTitle + '」'
-    if (file && navigator.canShare && navigator.canShare({ files: [file] })) {
-      navigator.share({ files: [file], text: text }).catch(function () {})
-      return
-    }
+  function downloadCard(blob, text) {
     var a = document.createElement('a')
     a.href = URL.createObjectURL(blob)
     a.download = 'card.png'
@@ -458,6 +463,19 @@ html,body{height:100%;margin:0;background:#05060A}
     if (navigator.clipboard && navigator.clipboard.writeText) {
       navigator.clipboard.writeText(text).then(function () { msg('画像を保存し、本文をコピーしました') }, function () { msg('画像を保存しました') })
     } else msg('画像を保存しました')
+  }
+  function shareCard(blob, p) {
+    var file
+    try { file = new File([blob], 'card.png', { type: 'image/png' }) } catch (e) { file = null }
+    var text = p.text + ' — ' + S.workTitle + '「' + S.episodeTitle + '」'
+    if (file && navigator.canShare && navigator.canShare({ files: [file] })) {
+      // 共有シートを閉じた（AbortError）ときは何もしない。それ以外の失敗は保存へ倒す
+      navigator.share({ files: [file], text: text }).catch(function (err) {
+        if (!err || err.name !== 'AbortError') downloadCard(blob, text)
+      })
+      return
+    }
+    downloadCard(blob, text)
   }
   function card() {
     var run = function () { makeCard() }
@@ -513,7 +531,7 @@ html,body{height:100%;margin:0;background:#05060A}
   })
   $('btnCredits').addEventListener('click', function () { openOverlay('credits') })
   $('btnEndCredits').addEventListener('click', function () { openOverlay('credits') })
-  $('btnCard').addEventListener('click', function () { closeOverlays(); card() })
+  $('btnCard').addEventListener('click', function () { closeOverlays(); card(); resumeFlow() })
   $('btnEndCard').addEventListener('click', card)
   $('speed').addEventListener('input', function (e) {
     settings.speed = Number(e.target.value) || 3
@@ -523,8 +541,7 @@ html,body{height:100%;margin:0;background:#05060A}
   for (var ci = 0; ci < closes.length; ci++) {
     closes[ci].addEventListener('click', function () {
       closeOverlays()
-      if (state.auto && !state.typing) typingDone()
-      if (state.skip) queueSkip()
+      resumeFlow()
     })
   }
   $('stage').addEventListener('click', function (e) {
@@ -535,12 +552,18 @@ html,body{height:100%;margin:0;background:#05060A}
     if (e.key === 'Escape') {
       if (!overlays.title.hidden || !overlays.end.hidden) return
       closeOverlays()
+      resumeFlow()
       return
     }
+    // フォーカスがボタン等にあるときは奪わない（キーボードだけで HUD を操作できるように）
+    if (e.target && e.target.closest && e.target.closest('button, input, a')) return
     if ((e.key === 'Enter' || e.key === ' ') && !overlayOpen()) {
       e.preventDefault()
       advance()
     }
+  })
+  document.addEventListener('visibilitychange', function () {
+    if (!document.hidden) resumeFlow()
   })
 
   // 先頭ページの背景をタイトル画面の借景にする

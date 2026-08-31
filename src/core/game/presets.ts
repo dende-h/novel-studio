@@ -251,6 +251,6 @@ export function buildGameCredits(opts: {
   if (opts.fontEmbedded) {
     lines.push({ label: 'フォント', body: GAME_FONT_CREDIT })
   }
-  lines.push({ label: '制作ツール', body: 'コトノハ -leaf-（サウンドノベル書き出し）' })
+  lines.push({ label: '制作ツール', body: 'コトノハ-leaf-（サウンドノベル書き出し）' })
   return lines
 }

@@ -94,6 +94,7 @@ export function ExportDialog({ open, onOpenChange, work, onEditMeta }: ExportDia
   const [includeGlossary, setIncludeGlossary] = useState(false)
   const [gameBg, setGameBg] = useState(DEFAULT_BG_KEY)
   const [busy, setBusy] = useState(false)
+  const [gameError, setGameError] = useState(false)
   const glossaryToggleId = useId()
   const glossaryCount = work?.glossary?.length ?? 0
 
@@ -140,12 +141,17 @@ export function ExportDialog({ open, onOpenChange, work, onEditMeta }: ExportDia
     if (format === 'game') {
       if (work && selectedEpisode && gameUnlocked) {
         setBusy(true)
+        setGameError(false)
         try {
           // フォントが取れなくても書き出しは止めない（システムの明朝で動く zip になる）
           const font = await loadGameFont()
           triggerDownload(
             episodeNovelGameExport(work, selectedEpisode, { defaultBg: gameBg, font }),
           )
+        } catch {
+          // 原稿は失われていない。ダイアログを開いたままメッセージを見せる
+          setGameError(true)
+          return
         } finally {
           setBusy(false)
         }
@@ -189,6 +195,7 @@ export function ExportDialog({ open, onOpenChange, work, onEditMeta }: ExportDia
                   onClick={() => {
                     setFormat(key)
                     setCopied(null)
+                    setGameError(false)
                   }}
                   className={cn(
                     'flex items-start gap-3 rounded-md p-3 text-left font-sans transition-colors',
@@ -354,6 +361,11 @@ export function ExportDialog({ open, onOpenChange, work, onEditMeta }: ExportDia
                       背景とフォントはコトノハの標準素材です。クレジット表記はゲーム内に自動で入り、ZIP
                       は素材ごと配布できます。
                     </p>
+                    {gameError && (
+                      <p className="text-destructive text-sm">
+                        書き出しに失敗しました。もう一度お試しください。
+                      </p>
+                    )}
                   </div>
                 </Section>
               ) : (
@@ -377,7 +389,8 @@ export function ExportDialog({ open, onOpenChange, work, onEditMeta }: ExportDia
                         </Button>
                       )}
                       <p className="text-on-surface-variant text-xs">
-                        EPUB・Web投稿形式・フォルダ・AI のコピーは、サインインなしで使えます。
+                        ほかの書き出し（EPUB・Web投稿形式・フォルダ・AI
+                        に渡す）は、サインインなしで使えます。
                       </p>
                     </div>
                   )}

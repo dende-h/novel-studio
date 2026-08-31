@@ -91,7 +91,7 @@ function buildReadme(work: Work, episode: Episode, fontEmbedded: boolean): strin
   if (fontEmbedded) {
     lines.push(`フォント（しっぽり明朝 B1）のライセンス全文は ${FONT_LICENSE_PATH} にあります。`)
   }
-  lines.push('', 'このゲームは コトノハ -leaf- の「サウンドノベル書き出し」で作られました。', '')
+  lines.push('', 'このゲームは、コトノハ-leaf- の「サウンドノベル書き出し」で作られました。', '')
   return lines.join('\n')
 }
 
