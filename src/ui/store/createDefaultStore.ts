@@ -4,6 +4,7 @@ import { ActivityRepository } from '../../core/storage/activityRepository'
 import { IdbStore } from '../../core/storage/idbStore'
 import { IdeaRepository } from '../../core/storage/ideaRepository'
 import { PlotRepository } from '../../core/storage/plotRepository'
+import { StagingRepository } from '../../core/storage/stagingRepository'
 import { StructureRepository } from '../../core/storage/structureRepository'
 import { WorkRepository } from '../../core/storage/workRepository'
 import { createEditorStore, type EditorStore } from './editorStore'
@@ -26,10 +27,11 @@ export function createDefaultStore(): EditorStore {
     snapshotRepo,
     profileRepo,
     activityRepo,
-    // 作品を完全削除したら、その作品の構造レイヤー・プロットも一緒に消す
+    // 作品を完全削除したら、その作品の構造レイヤー・プロット・演出譜も一緒に消す
     // （残すと見えない孤児レコードが端末に溜まり、同期にも載り続ける）。
     structureRepo: new StructureRepository(store),
     plotRepo: new PlotRepository(store),
+    stagingRepo: new StagingRepository(store),
     genId: () => crypto.randomUUID(),
     now: () => Date.now(),
     snapshotMinIntervalMs: SNAPSHOT_MIN_INTERVAL_MS,
@@ -55,4 +57,9 @@ export function createDefaultStructureRepository(): StructureRepository {
 /** プロット（幕×ビートの物語設計）用のリポジトリ。 */
 export function createDefaultPlotRepository(): PlotRepository {
   return new PlotRepository(new IdbStore('novel-studio'))
+}
+
+/** 演出譜（サウンドノベルの Staging）用のリポジトリ。 */
+export function createDefaultStagingRepository(): StagingRepository {
+  return new StagingRepository(new IdbStore('novel-studio'))
 }

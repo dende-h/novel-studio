@@ -25,6 +25,9 @@ const state: BackupState = {
       updatedAt: 30,
     },
   ],
+  stagings: [
+    { workId: 'w1', episodeId: 'e1', cues: [{ blockId: 'b1', speaker: '光' }], updatedAt: 40 },
+  ],
 }
 
 describe('serializeBackup / deserializeBackup（全体バックアップの直列化）', () => {
@@ -83,7 +86,16 @@ describe('serializeBackup / deserializeBackup（全体バックアップの直�
 
   it('空状態も往復できる', () => {
     const json = serializeBackup(
-      { works: [], trash: [], profile: {}, activity: [], ideas: [], structures: [], plots: [] },
+      {
+        works: [],
+        trash: [],
+        profile: {},
+        activity: [],
+        ideas: [],
+        structures: [],
+        plots: [],
+        stagings: [],
+      },
       0,
     )
     const back = deserializeBackup(json)

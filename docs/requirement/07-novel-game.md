@@ -89,11 +89,18 @@ type AssetRef = {
 > 編集していない行は挿入・削除・移動をまたいで id を保ち、1行の推敲でも id は残る。
 > 対応が取れない新しい行だけが新 id になる（出力の id は常に一意）。
 
-### 2.4 永続化
+### 2.4 永続化（G1 実装済み・実装に合わせて記述を更新）
 
-- `Staging` は `Work` とは**別レコード**として IndexedDB に持つ（`workId+episodeId` がキー）。
-- 同期は D-SYNC-MEDIA の doc/media 2分割に**3つ目を足さない**。`Staging` は軽量（数 KB）なので **doc 側に相乗り**させる。素材の実体だけが別扱い（§4.4）。
-- バンドル export / スナップショットも doc 相乗りに従う＝追加実装をほぼ持たない。
+- `Staging` は `Work` とは**別レコード**として IndexedDB に持つ（`staging:<workId>:<episodeId>`・
+  `StagingRepository`）。id は決定的合成＝複数端末が同時に演出を付けても同じレコードに収束する。
+- 同期は D-SYNC-MEDIA の doc/media 2分割に**3つ目を足さない**。プロットと同じ
+  **種別プレフィックス相乗り**（D-SYNC2-ITEMS・syncId `staging:<workId>:<episodeId>`）で
+  同じ D1 works テーブル・API に載る（サーバ無改修）。数 KB なので 25 MB/doc 制限にも遠い。
+  旧クライアントは未知の syncId を parse できず読み飛ばす＝ローカル無傷（`plot:` 追加時と同じ前例）。
+- **全体バックアップには入る**（`CloudBackupSchema.stagings`・旧バックアップは既定 `[]`）。
+  **作品バンドル（kotonoha-leaf-bundle.json）と履歴スナップショットには入らない** —
+  プロット・構造レイヤーも同じ現行仕様で、丸ごとの持ち運びは全体バックアップが受け持つ。
+  素材の実体はどの経路にも持たない（§4.4）。
 
 ## 3. セリフ・地の文・場面の判別
 
