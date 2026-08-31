@@ -11,7 +11,7 @@
  * 「削除・非表示を除く条件」の書き忘れから本文が漏れる経路（§7-6）を作らない。
  *
  * POST の判定順は **認証 → 入力 → 表示名 → 投稿禁止・種別（`canCreateThread`）→
- * スレ 3 本/日 → 投稿 10 件/時 → 分あたりの安全弁 → 書き込み**。
+ * スレ 10 本/日（staff は除外）→ 投稿 10 件/時 → 分あたりの安全弁 → 書き込み**。
  * 先に安い判定（ネットワークも DB も要らないもの）を済ませ、
  * DB を叩く判定を後ろに置く。**流量の上限は 2 枚ある**（設計の 10 件/時と、連打を止める
  * 分あたりの弁）。前者を分窓の `checkRateLimit` に任せると 10 件/分＝60 倍緩くなる。
@@ -56,7 +56,7 @@ interface Env extends ClerkEnv, BoardLinkEnv {}
 /** 一覧 1 ページの件数。増やすときはクライアントの読み込みも合わせる。 */
 const PAGE_SIZE = 20
 
-/** スレ 3 本/日（D-BOARD-OPEN）を数える窓。 */
+/** スレ 10 本/日（D-BOARD-OPEN）を数える窓。 */
 const DAY_MS = 24 * 60 * 60 * 1000
 
 const isBoardKind = (v: string | null): v is BoardKind =>
@@ -155,11 +155,17 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     if (!check.ok) return boardJson({ error: 'bad_poll', reason: check.reason }, 400)
   }
 
-  // スレ 3 本/日（D-BOARD-OPEN）。countThreadsSince は削除済みも数える＝
+  // スレ 10 本/日（D-BOARD-OPEN）。countThreadsSince は削除済みも数える＝
   // 消して立て直せば上限を無視できる、という抜け道を作らない。
-  const threadsToday = await countThreadsSince(db, userId, now - DAY_MS)
-  if (threadsToday >= BOARD_LIMITS.threadsPerDay) {
-    return boardJson({ error: 'too_many_threads' }, 429)
+  //
+  // **運営（staff）は数えない。** この上限が守るのは「一人が一覧を埋めない」ことで、
+  // 呼び水スレやお知らせを並べる運営はその心配の相手ではない。除外しないと、
+  // 掲示板を立ち上げる当人が最初に引っかかる（実際に引っかかった）。
+  if (actor.role !== 'staff') {
+    const threadsToday = await countThreadsSince(db, userId, now - DAY_MS)
+    if (threadsToday >= BOARD_LIMITS.threadsPerDay) {
+      return boardJson({ error: 'too_many_threads' }, 429)
+    }
   }
 
   // 投稿 10 件/時（D-BOARD-OPEN）。**スレ本文も board_posts の 1 件**なので、スレ立ても

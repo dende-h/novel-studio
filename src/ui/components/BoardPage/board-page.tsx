@@ -411,13 +411,7 @@ export function BoardPage({
                   <p className="py-8 text-center text-on-surface-variant text-sm">読み込み中…</p>
                 ) : (
                   <>
-                    <ThreadList
-                      threads={threads}
-                      now={nowMs}
-                      kind={kind}
-                      onCreate={signedIn ? startCreate : undefined}
-                      onClearKind={() => setKind(null)}
-                    />
+                    <ThreadList threads={threads} now={nowMs} kind={kind} />
                     {nextCursor !== null && (
                       <div className="mt-4 flex justify-center">
                         <Button

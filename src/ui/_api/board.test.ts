@@ -441,7 +441,7 @@ describe('エラーの文言', () => {
   })
 
   it('数える上限の文言は board-guidelines.html の数字と揃っている', () => {
-    expect(BOARD_ERROR_MESSAGES.too_many_threads).toContain('1日に3本')
+    expect(BOARD_ERROR_MESSAGES.too_many_threads).toContain('1日に10本')
     expect(BOARD_ERROR_MESSAGES.too_many_posts).toContain('1時間に10件')
   })
 
