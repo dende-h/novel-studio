@@ -1,6 +1,7 @@
 import { ProfileRepository } from '../../core/profile'
 import { SnapshotRepository } from '../../core/snapshot/snapshotRepository'
 import { ActivityRepository } from '../../core/storage/activityRepository'
+import { GameAssetRepository } from '../../core/storage/gameAssetRepository'
 import { IdbStore } from '../../core/storage/idbStore'
 import { IdeaRepository } from '../../core/storage/ideaRepository'
 import { PlotRepository } from '../../core/storage/plotRepository'
@@ -62,4 +63,9 @@ export function createDefaultPlotRepository(): PlotRepository {
 /** 演出譜（サウンドノベルの Staging）用のリポジトリ。 */
 export function createDefaultStagingRepository(): StagingRepository {
   return new StagingRepository(new IdbStore('novel-studio'))
+}
+
+/** 持ち込みゲーム素材（背景画像）用のリポジトリ。純ローカル（同期に載せない）。 */
+export function createDefaultGameAssetRepository(): GameAssetRepository {
+  return new GameAssetRepository(new IdbStore('novel-studio'))
 }

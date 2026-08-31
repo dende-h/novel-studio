@@ -22,6 +22,7 @@ function makeDeps(over: Partial<BackupDeps> = {}) {
     structures: [],
     plots: [],
     stagings: [],
+    gameAssets: [],
   }
   const created: string[] = []
   const live: string[] = []
@@ -74,6 +75,7 @@ describe('createLocalBackupService（ローカル・ファイルバックアッ�
       structures: [],
       plots: [],
       stagings: [],
+      gameAssets: [],
     }
     const svc = createLocalBackupService(io(state), () => 999)
     const back = deserializeBackup(await svc.exportPlaintext())
@@ -93,6 +95,7 @@ describe('createLocalBackupService（ローカル・ファイルバックアッ�
       structures: [],
       plots: [],
       stagings: [],
+      gameAssets: [],
     }
     const svc = createLocalBackupService(
       io(empty, (s) => {
@@ -135,6 +138,7 @@ describe('createLocalBackupService（ローカル・ファイルバックアッ�
         stagings: [
           { workId: 'w1', episodeId: 'e1', cues: [{ blockId: 'b1', speaker: '光' }], updatedAt: 4 },
         ],
+        gameAssets: [],
       },
       5,
     )
@@ -162,6 +166,7 @@ describe('createLocalBackupService（ローカル・ファイルバックアッ�
       structures: [],
       plots: [],
       stagings: [],
+      gameAssets: [],
     }
     await expect(createLocalBackupService(io(empty)).restorePlaintext('not json')).rejects.toThrow()
   })
@@ -201,6 +206,7 @@ describe('createBackupService', () => {
           structures: [],
           plots: [],
           stagings: [],
+          gameAssets: [],
         },
         5,
       ),
@@ -223,6 +229,7 @@ describe('createBackupService', () => {
           structures: [],
           plots: [],
           stagings: [],
+          gameAssets: [],
         },
         5,
       ),
@@ -249,6 +256,7 @@ describe('createBackupService', () => {
           structures: [],
           plots: [],
           stagings: [],
+          gameAssets: [],
         },
         5,
       ),
@@ -285,6 +293,7 @@ describe('createBackupService', () => {
         structures: [],
         plots: [],
         stagings: [],
+        gameAssets: [],
       },
       50,
     )
@@ -311,6 +320,7 @@ describe('createBackupService', () => {
         structures: [],
         plots: [],
         stagings: [],
+        gameAssets: [],
       },
       50,
     )
@@ -337,6 +347,7 @@ describe('createBackupService', () => {
         structures: [],
         plots: [],
         stagings: [],
+        gameAssets: [],
       },
       50,
     )
@@ -362,6 +373,7 @@ describe('createBackupService', () => {
         structures: [],
         plots: [],
         stagings: [],
+        gameAssets: [],
       },
       50,
     )
@@ -415,6 +427,7 @@ describe('全置換（復元・AI の変更の取り込み）は自動同期と�
       structures: [],
       plots: [],
       stagings: [],
+      gameAssets: [],
     })
     // 置換の最中は保留＝走っている reconcile が base を書き戻さない（誤 purge の防止）。
     expect(isSyncSuspended()).toBe(true)

@@ -1,6 +1,7 @@
 import { type BackupState, deserializeBackup, serializeBackup } from '@/core/backup'
 import { ProfileRepository } from '@/core/profile'
 import { ActivityRepository } from '@/core/storage/activityRepository'
+import { GameAssetRepository } from '@/core/storage/gameAssetRepository'
 import { IdbStore } from '@/core/storage/idbStore'
 import { IdeaRepository } from '@/core/storage/ideaRepository'
 import { PlotRepository } from '@/core/storage/plotRepository'
@@ -97,6 +98,7 @@ export function createBackupService(deps: BackupDeps): BackupService {
         structures: backup.structures,
         plots: backup.plots,
         stagings: backup.stagings,
+        gameAssets: backup.gameAssets,
       })
       return true
     },
@@ -124,6 +126,7 @@ export function createBackupService(deps: BackupDeps): BackupService {
         structures: backup.structures,
         plots: backup.plots,
         stagings: backup.stagings,
+        gameAssets: backup.gameAssets,
       })
       // 取り込み済みなので AI 編集の目印を消し、以後の自動 push を通常運転に戻す
       // （force しないと自分の 409 でブロックされ続ける）。失敗しても取り込み自体は成立。
@@ -146,6 +149,7 @@ export function createLocalBackupIO(): Pick<BackupDeps, 'gather' | 'replaceAll'>
   const structureRepo = new StructureRepository(store)
   const plotRepo = new PlotRepository(store)
   const stagingRepo = new StagingRepository(store)
+  const gameAssetRepo = new GameAssetRepository(store)
   const syncBases = new SyncBaseRepository(store)
   return {
     gather: async () => ({
@@ -157,6 +161,7 @@ export function createLocalBackupIO(): Pick<BackupDeps, 'gather' | 'replaceAll'>
       structures: await structureRepo.list(),
       plots: await plotRepo.list(),
       stagings: await stagingRepo.list(),
+      gameAssets: await gameAssetRepo.list(),
     }),
     // 全置換は自動同期と**排他**で行う（sync-gate）。同期は 5〜10 秒おきに走るので、
     // 置換の最中に走っている reconcile が base を書き戻すと、base 全消しの意味が消えて
@@ -171,6 +176,7 @@ export function createLocalBackupIO(): Pick<BackupDeps, 'gather' | 'replaceAll'>
         await structureRepo.replaceAll(state.structures)
         await plotRepo.replaceAll(state.plots)
         await stagingRepo.replaceAll(state.stagings)
+        await gameAssetRepo.replaceAll(state.gameAssets)
         // 同期 base（最後に同期した点の記録）は復元後の実態と食い違うため全消しする。
         // 消すとこの端末は「新品」として三方向差分に入り、復元で消えた作品を誤って
         // リモート purge する事故（base 残留→ケース6誤爆）を防げる。

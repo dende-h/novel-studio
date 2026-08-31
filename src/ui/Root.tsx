@@ -44,6 +44,7 @@ import {
 } from './hooks/use-pen-name'
 import {
   createDefaultActivityRepository,
+  createDefaultGameAssetRepository,
   createDefaultIdeaRepository,
   createDefaultPlotRepository,
   createDefaultStagingRepository,
@@ -171,6 +172,8 @@ function RootRoutes({ store }: RootProps) {
     () => withSyncTouch(createDefaultStagingRepository(), ['save', 'remove', 'removeByWork']),
     [],
   )
+  // 持ち込みゲーム素材（背景画像）。純ローカル＝同期に載せないので sync-touch は不要。
+  const gameAssetRepo = useMemo(() => createDefaultGameAssetRepository(), [])
   /**
    * 構想の道具（プロット・世界観設定・アウトライン・相関図・マインドマップ）を出すか。
    *
@@ -414,6 +417,7 @@ function RootRoutes({ store }: RootProps) {
           structureRepo={structureRepo}
           plotRepo={plotRepo}
           stagingRepo={stagingRepo}
+          gameAssetRepo={gameAssetRepo}
           canUseStructure={canUseCreativeTools}
           ideaRepo={ideaRepo}
         />
@@ -438,6 +442,7 @@ function RootRoutes({ store }: RootProps) {
           onboarded={onboarded}
           activityRepo={activityRepo}
           stagingRepo={stagingRepo}
+          gameAssetRepo={gameAssetRepo}
           // 無料の人向けクラウド導線＝サインアップ（→購読）。Clerk 未構成時はリンクを出さない。
           onOpenCloudPlan={available ? openSignUp : undefined}
         />

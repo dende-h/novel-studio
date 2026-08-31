@@ -1,5 +1,5 @@
 import { Trash2 } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   applyCues,
   type Cue,
@@ -13,11 +13,14 @@ import {
   suggestSpeaker,
   toPages,
 } from '@/core/game'
+import { type UserGameAsset, userAssetKey } from '@/core/game/assets'
 import { PRESET_BACKGROUNDS, presetBackground, presetBgSvg } from '@/core/game/presets'
 import { PERSON_CATEGORY } from '@/core/glossary'
 import type { Work } from '@/core/schema'
+import type { GameAssetRepository } from '@/core/storage/gameAssetRepository'
 import type { StagingRepository } from '@/core/storage/stagingRepository'
 import { cn } from '@/lib/utils'
+import { gameBgToDataUrl } from '@/ui/_utils/imageResizer'
 import { Button } from '@/ui/components/ui/button'
 import { Input } from '@/ui/components/ui/input'
 import { Switch } from '@/ui/components/ui/switch'
@@ -36,6 +39,8 @@ interface StagingViewProps {
   work: Work
   /** エディタで開いている話（初期選択）。 */
   currentEpisodeId: string | null
+  /** 持ち込み背景の置き場所（渡されたときだけ「画像を追加…」が出る）。 */
+  assetRepo?: GameAssetRepository
 }
 
 const SELECT_CLASS =
@@ -51,8 +56,25 @@ const TRANSITIONS: { value: NonNullable<Cue['transition']>; label: string }[] = 
 const MASKED_SPEAKER = '？？？'
 /** 話者セレクトの「自由に入力…」の目印（cue には入らない）。 */
 const CUSTOM_SPEAKER = '__custom__'
+/** 背景セレクトの「画像を追加…」の目印（cue には入らない）。 */
+const ADD_IMAGE = '__add_image__'
 
-export default function StagingView({ repo, work, currentEpisodeId }: StagingViewProps) {
+/** 背景キーの表示名（テンプレ／持ち込み。どちらでもなければ undefined）。 */
+function bgLabelOf(key: string, assets: UserGameAsset[]): string | undefined {
+  const preset = presetBackground(key)
+  if (preset) return preset.label
+  return assets.find((a) => userAssetKey(a.id) === key)?.name
+}
+
+/** 背景キーのプレビュー画像（テンプレは SVG を生成、持ち込みは保存済み data URL）。 */
+function bgPreviewSrc(key: string | undefined, assets: UserGameAsset[]): string | undefined {
+  if (!key) return undefined
+  const preset = presetBackground(key)
+  if (preset) return `data:image/svg+xml;utf8,${encodeURIComponent(presetBgSvg(preset))}`
+  return assets.find((a) => userAssetKey(a.id) === key)?.dataUrl
+}
+
+export default function StagingView({ repo, work, currentEpisodeId, assetRepo }: StagingViewProps) {
   const episodes = work.episodes
   const [episodeId, setEpisodeId] = useState(currentEpisodeId ?? episodes[0]?.id ?? '')
   const episode = episodes.find((e) => e.id === episodeId) ?? episodes[0] ?? null
@@ -62,6 +84,21 @@ export default function StagingView({ repo, work, currentEpisodeId }: StagingVie
   // 話者の自由記述モード（選択中の行にだけ効く。行を替えたら閉じる）
   const [customSpeaker, setCustomSpeaker] = useState(false)
   const [customDraft, setCustomDraft] = useState('')
+  // 持ち込み背景（この端末のローカル資産）
+  const [assets, setAssets] = useState<UserGameAsset[]>([])
+  const [assetError, setAssetError] = useState<string | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    if (!assetRepo) return
+    void assetRepo.list().then((list) => {
+      if (!cancelled) setAssets(list)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [assetRepo])
 
   useEffect(() => {
     let cancelled = false
@@ -130,6 +167,27 @@ export default function StagingView({ repo, work, currentEpisodeId }: StagingVie
     setCustomSpeaker(false)
     apply(blockId, { speaker: name || undefined })
   }
+  /** 画像ファイル → リサイズして保存 → その行の背景に設定。 */
+  const addImage = async (file: File, blockId: string) => {
+    if (!assetRepo) return
+    setAssetError(null)
+    try {
+      const { dataUrl, tone } = await gameBgToDataUrl(file)
+      const asset: UserGameAsset = {
+        id: crypto.randomUUID(),
+        kind: 'bg',
+        name: file.name.replace(/\.[^.]+$/, '') || '持ち込み背景',
+        dataUrl,
+        tone,
+        createdAt: Date.now(),
+      }
+      await assetRepo.save(asset)
+      setAssets((prev) => [asset, ...prev])
+      apply(blockId, { bg: userAssetKey(asset.id) })
+    } catch {
+      setAssetError('この画像は読み込めませんでした。別のファイルでお試しください。')
+    }
+  }
 
   return (
     <div className="flex min-h-0 flex-1 flex-col font-sans">
@@ -174,7 +232,7 @@ export default function StagingView({ repo, work, currentEpisodeId }: StagingVie
                     className="flex items-center justify-between gap-3 rounded border border-outline-variant/30 px-2 py-1.5 text-xs"
                   >
                     <span className="min-w-0 truncate text-on-surface-variant">
-                      {describeCue(cue)}
+                      {describeCue(cue, assets)}
                     </span>
                     <Button
                       type="button"
@@ -202,7 +260,7 @@ export default function StagingView({ repo, work, currentEpisodeId }: StagingVie
             <ul className="mx-auto max-w-3xl space-y-1">
               {staged.map((page) => {
                 const active = page.blockId === selectedId
-                const bg = page.bg ? presetBackground(page.bg) : undefined
+                const bgLabel = page.bg ? bgLabelOf(page.bg, assets) : undefined
                 const suggested = suggestions.has(page.blockId) && !page.sceneBreak
                 return (
                   <li key={page.blockId}>
@@ -216,7 +274,7 @@ export default function StagingView({ repo, work, currentEpisodeId }: StagingVie
                     {page.sceneBreak ? (
                       <div className="my-1 flex items-center gap-2 px-2 font-medium text-[11px] text-primary">
                         <span className="h-px flex-1 bg-primary/40" />
-                        場面の切れ目{bg ? `・背景 ${bg.label}` : ''}
+                        場面の切れ目{bgLabel ? `・背景 ${bgLabel}` : ''}
                         <span className="h-px flex-1 bg-primary/40" />
                       </div>
                     ) : null}
@@ -248,7 +306,7 @@ export default function StagingView({ repo, work, currentEpisodeId }: StagingVie
                           {page.kind === 'dialogue' ? (
                             <span>話者：{page.speaker ?? '—'}</span>
                           ) : null}
-                          {!page.sceneBreak && bg ? <span>背景 {bg.label}</span> : null}
+                          {!page.sceneBreak && bgLabel ? <span>背景 {bgLabel}</span> : null}
                         </span>
                       </span>
                       {suggested ? (
@@ -377,22 +435,58 @@ export default function StagingView({ repo, work, currentEpisodeId }: StagingVie
                 <select
                   id="staging-bg"
                   value={selected.bg ?? ''}
-                  onChange={(e) => apply(selected.blockId, { bg: e.target.value || undefined })}
+                  onChange={(e) => {
+                    const value = e.target.value
+                    if (value === ADD_IMAGE) {
+                      fileInputRef.current?.click()
+                      return
+                    }
+                    apply(selected.blockId, { bg: value || undefined })
+                  }}
                   className={SELECT_CLASS}
                 >
                   <option value="">（変えない）</option>
-                  {PRESET_BACKGROUNDS.map((p) => (
-                    <option key={p.key} value={p.key}>
-                      {p.label}
-                    </option>
-                  ))}
+                  {/* この端末に無い持ち込み画像のキーも選択状態は保つ（勝手に外さない） */}
+                  {selected.bg && !bgLabelOf(selected.bg, assets) ? (
+                    <option value={selected.bg}>（この端末に無い画像）</option>
+                  ) : null}
+                  {assets.length > 0 ? (
+                    <optgroup label="持ち込み">
+                      {assets.map((a) => (
+                        <option key={a.id} value={userAssetKey(a.id)}>
+                          {a.name}
+                        </option>
+                      ))}
+                    </optgroup>
+                  ) : null}
+                  <optgroup label="テンプレ">
+                    {PRESET_BACKGROUNDS.map((p) => (
+                      <option key={p.key} value={p.key}>
+                        {p.label}
+                      </option>
+                    ))}
+                  </optgroup>
+                  {assetRepo ? <option value={ADD_IMAGE}>（画像を追加…）</option> : null}
                 </select>
-                {selected.bg && presetBackground(selected.bg) ? (
+                {assetRepo ? (
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*"
+                    hidden
+                    aria-label="背景画像を選ぶ"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0]
+                      e.target.value = ''
+                      if (file) void addImage(file, selected.blockId)
+                    }}
+                  />
+                ) : null}
+                {assetError ? <p className="mt-2 text-destructive text-xs">{assetError}</p> : null}
+                {bgPreviewSrc(selected.bg, assets) ? (
                   <img
-                    src={`data:image/svg+xml;utf8,${encodeURIComponent(
-                      presetBgSvg(presetBackground(selected.bg) ?? PRESET_BACKGROUNDS[0]!),
-                    )}`}
-                    alt={`背景プレビュー: ${presetBackground(selected.bg)?.label ?? ''}`}
+                    src={bgPreviewSrc(selected.bg, assets)}
+                    alt={`背景プレビュー: ${bgLabelOf(selected.bg ?? '', assets) ?? ''}`}
                     className="mt-2 aspect-video w-full rounded-md border border-outline-variant/30 object-cover"
                   />
                 ) : null}
@@ -444,11 +538,11 @@ export default function StagingView({ repo, work, currentEpisodeId }: StagingVie
 }
 
 /** orphan cue の一覧用に、中身を短い日本語で言う。 */
-function describeCue(cue: Cue): string {
+function describeCue(cue: Cue, assets: UserGameAsset[]): string {
   const parts: string[] = []
   if (cue.speaker) parts.push(`話者 ${cue.speaker}`)
   if (cue.sceneBreak) parts.push('場面の切れ目')
-  if (cue.bg) parts.push(`背景 ${presetBackground(cue.bg)?.label ?? cue.bg}`)
+  if (cue.bg) parts.push(`背景 ${bgLabelOf(cue.bg, assets) ?? cue.bg}`)
   if (cue.bgm) parts.push('BGM')
   if (cue.se) parts.push('効果音')
   if (cue.transition) parts.push('切り替え効果')
