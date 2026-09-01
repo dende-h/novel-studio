@@ -64,7 +64,15 @@ export interface NovelGameOptions {
    * シナリオに内包し、返り値は index.html の 1 件だけになる。フォントは配信側の
    * URL（fontHref）を参照する（HTML へ埋めると話ごとに MB 単位で太るため）。
    */
-  inline?: { fontHref?: string }
+  inline?: {
+    fontHref?: string
+    /**
+     * 持ち込み素材を実体（data URL）ではなく `asset:<id>` の参照で書く（契約 v5）。
+     * 実体は**作品ぶん1回だけ**送り、配信側が話ごとの HTML へ埋め戻す＝
+     * 同じ立ち絵を話数ぶん送り直さない（投稿1回の上限 20MB に早々に当たっていた）。
+     */
+    externalAssets?: boolean
+  }
   /**
    * 開いた瞬間に始めるページ番号（**アプリ内プレビュー専用**）。
    * 書き出し・投稿では渡さない＝読者はいつもタイトル画面から始める。
@@ -196,7 +204,9 @@ export function buildNovelGameFiles(
         label: user.label,
         tone: user.tone,
         path: inline
-          ? (user.dataUrl ?? '')
+          ? inline.externalAssets
+            ? `asset:${user.id}`
+            : (user.dataUrl ?? '')
           : `assets/bg/user-${user.id}.${IMAGE_EXT[user.mime] ?? 'img'}`,
         data: user.data,
         credit: false,
@@ -219,7 +229,11 @@ export function buildNovelGameFiles(
     (a) => a.kind === 'sprite' && (!inline || a.dataUrl),
   )
   const spritePathOf = (a: NovelGameUserAsset) =>
-    inline ? (a.dataUrl ?? '') : `assets/sprite/user-${a.id}.${IMAGE_EXT[a.mime] ?? 'img'}`
+    inline
+      ? inline.externalAssets
+        ? `asset:${a.id}`
+        : (a.dataUrl ?? '')
+      : `assets/sprite/user-${a.id}.${IMAGE_EXT[a.mime] ?? 'img'}`
 
   // 使った背景・立ち絵だけを同梱する（キー→実体の整合は used が単一の真実）
   const used = new Map<string, BgEntry>([[defaultEntry.key, defaultEntry]])
@@ -416,6 +430,8 @@ export function buildNovelGameHtml(
     gameAssets?: UserGameAsset[]
     /** アプリ内プレビュー専用：この行から始める（書き出し・投稿では渡さない） */
     startAt?: number
+    /** 持ち込み素材を実体ではなく `asset:<id>` で書く（契約 v5・`buildNovelGamePlayer` から） */
+    externalAssets?: boolean
   } = {},
 ): string {
   const userAssets: NovelGameUserAsset[] = (opts.gameAssets ?? []).map((a) => ({
@@ -435,10 +451,34 @@ export function buildNovelGameHtml(
   const files = buildNovelGameFiles(work, episode, staging, {
     defaultBg: opts.defaultBg,
     userAssets,
-    inline: { ...(opts.fontHref ? { fontHref: opts.fontHref } : {}) },
+    inline: {
+      ...(opts.fontHref ? { fontHref: opts.fontHref } : {}),
+      ...(opts.externalAssets ? { externalAssets: true } : {}),
+    },
     ...(opts.startAt !== undefined ? { startAt: opts.startAt } : {}),
   })
   const html = files.find((f) => f.path === 'index.html')?.data
   if (typeof html !== 'string') throw new Error('プレイヤー HTML を生成できなかった')
   return html
+}
+
+/**
+ * 契約 v5 用：持ち込み素材を `asset:<id>` の参照で書いたプレイヤー HTML と、
+ * **その話が実際に使った素材の id**（実体は作品ぶん1回だけ送る側で集める）。
+ *
+ * 同じ立ち絵・背景を話数ぶん送り直すと、投稿1回の上限（20MB）に十数話で当たっていた。
+ * 参照にすると 1 話ぶんは数十 KB に収まり、話数を増やしても投稿が通る。
+ */
+export function buildNovelGamePlayer(
+  work: Work,
+  episode: Episode,
+  staging: Staging | undefined,
+  opts: { defaultBg?: string; fontHref?: string; gameAssets?: UserGameAsset[] } = {},
+): { html: string; assetIds: string[] } {
+  const html = buildNovelGameHtml(work, episode, staging, { ...opts, externalAssets: true })
+  // 実際に埋まった参照だけを拾う（使わなかった素材は送らない）
+  const assetIds = (opts.gameAssets ?? [])
+    .map((a) => a.id)
+    .filter((id) => html.includes(`asset:${id}`))
+  return { html, assetIds }
 }

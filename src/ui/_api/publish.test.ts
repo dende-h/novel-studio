@@ -586,6 +586,99 @@ describe('契約 v4（サウンドノベル：episodes[].game）', () => {
   })
 })
 
+describe('契約 v5（素材は作品ぶん1回だけ・話は asset:<id> で参照）', () => {
+  const dataUrl = 'data:image/webp;base64,SGkh'
+  const asset = {
+    id: 'a1',
+    kind: 'sprite' as const,
+    name: '灯（通常）',
+    dataUrl,
+    tone: ['#111111', '#222222', '#333333'] as [string, string, string],
+    character: '灯',
+    expression: '通常',
+    createdAt: 1,
+  }
+  const twoEpisodeWork = (): Work => ({
+    id: 'w1',
+    title: '作品',
+    episodes: [
+      { id: 'e1', title: '第一話', blocks: parseEpisodeBody('「おはよう」') },
+      { id: 'e2', title: '第二話', blocks: parseEpisodeBody('「こんばんは」') },
+    ],
+    platform: {
+      declaredAllAges: true,
+      declaredOriginal: true,
+      visibility: 'public',
+      novelGameEpisodes: { e1: true, e2: true },
+    },
+  })
+  const novelGame = () => ({
+    stagings: [
+      { workId: 'w1', episodeId: 'e1', cues: [{ blockId: 'b1', speaker: '灯' }], updatedAt: 1 },
+      { workId: 'w1', episodeId: 'e2', cues: [{ blockId: 'b1', speaker: '灯' }], updatedAt: 1 },
+    ],
+    gameAssets: [asset],
+  })
+
+  it('同じ立ち絵を使う2話でも、実体は1回だけ送る（話は参照だけを持つ）', async () => {
+    const { publishWorkToPlatform } = await loadModule()
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(new Response(JSON.stringify({ ok: true }), { status: 200 }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await publishWorkToPlatform(async () => 'jwt', twoEpisodeWork(), novelGame())
+
+    const body = JSON.parse((fetchMock.mock.calls[0] as [string, RequestInit])[1].body as string)
+    expect(body.schemaVersion).toBe(5)
+    // 実体は作品ぶんに 1 つだけ
+    expect(body.work.gameAssets).toEqual([{ id: 'a1', dataUrl }])
+    for (const ep of body.work.episodes) {
+      expect(ep.game.v).toBe(2)
+      expect(ep.game.assets).toEqual(['a1'])
+      // 話の HTML は参照だけ＝実体を話数ぶん送り直さない
+      expect(ep.game.html).toContain('asset:a1')
+      expect(ep.game.html).not.toContain(dataUrl)
+    }
+  })
+
+  it('持ち込み素材を使わない作品は v4 のまま（使わない版は名乗らない）', async () => {
+    const { publishWorkToPlatform } = await loadModule()
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(new Response(JSON.stringify({ ok: true }), { status: 200 }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    // 演出はあるが持ち込み素材は 1 枚も使っていない（テンプレだけ）
+    await publishWorkToPlatform(async () => 'jwt', twoEpisodeWork(), {
+      stagings: novelGame().stagings,
+      gameAssets: [],
+    })
+
+    const body = JSON.parse((fetchMock.mock.calls[0] as [string, RequestInit])[1].body as string)
+    expect(body.schemaVersion).toBe(4)
+    expect(body.work).not.toHaveProperty('gameAssets')
+    expect(body.work.episodes[0].game.v).toBe(1)
+  })
+
+  it('使っていない素材は送らない（手元にあるだけの分で太らせない）', async () => {
+    const { publishWorkToPlatform } = await loadModule()
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(new Response(JSON.stringify({ ok: true }), { status: 200 }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const unused = { ...asset, id: 'a2', character: '出番の無い人' }
+    await publishWorkToPlatform(async () => 'jwt', twoEpisodeWork(), {
+      stagings: novelGame().stagings,
+      gameAssets: [asset, unused],
+    })
+
+    const body = JSON.parse((fetchMock.mock.calls[0] as [string, RequestInit])[1].body as string)
+    expect(body.work.gameAssets).toEqual([{ id: 'a1', dataUrl }])
+  })
+})
+
 describe('canPublishPublicly / describePublishBlocked（公開可否の判定）', () => {
   it('誓約が2つとも揃ったときだけ公開して投稿できる', async () => {
     const { canPublishPublicly } = await loadModule()

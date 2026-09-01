@@ -220,11 +220,18 @@ html,body{height:100%;margin:0;background:#05060A}
   </div>
   <div id="msg"></div>
 </div>
+<!-- 素材の実体（キー → data URL）。**配信側が埋める席**（契約 v5）。
+     書き出し・プレビューでは空のまま＝シナリオ側が実体を直接持つ。 -->
+<script id="assets" type="application/json">{}</script>
 <script id="scenario" type="application/json">${json}</script>
 <script>
 (function () {
   'use strict'
   var S = JSON.parse(document.getElementById('scenario').textContent)
+  // 素材の実体。'asset:<id>' で参照された分だけここから引く（空なら src がそのまま実体）
+  var A = {}
+  try { A = JSON.parse(document.getElementById('assets').textContent) || {} } catch (e) { A = {} }
+  function srcOf(s) { return s && s.slice(0, 6) === 'asset:' ? (A[s.slice(6)] || '') : s }
   function $(id) { return document.getElementById(id) }
   var bgA = $('bgA'), bgB = $('bgB'), flashEl = $('flash'), hud = $('hud')
   var spritesEl = $('sprites')
@@ -278,7 +285,7 @@ html,body{height:100%;margin:0;background:#05060A}
     state.bgKey = key
     var front = state.front === 'A' ? bgA : bgB
     var back = state.front === 'A' ? bgB : bgA
-    back.style.backgroundImage = 'url("' + S.bgs[key].src + '")'
+    back.style.backgroundImage = 'url("' + srcOf(S.bgs[key].src) + '")'
     back.classList.remove('kb'); void back.offsetWidth; back.classList.add('kb')
     if (instant || transition === 'cut' || transition === 'flash') {
       back.style.transition = 'none'; front.style.transition = 'none'
@@ -333,7 +340,7 @@ html,body{height:100%;margin:0;background:#05060A}
       var e = want[k]
       var el = document.createElement('img')
       el.setAttribute('data-k', k)
-      el.src = S.sprites[k].src
+      el.src = srcOf(S.sprites[k].src)
       el.alt = S.sprites[k].label
       el.className = 'p-' + e.p + (e.a ? '' : ' dim') + (instant ? '' : ' in')
       spritesEl.appendChild(el)

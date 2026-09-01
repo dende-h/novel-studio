@@ -1,4 +1,4 @@
-import { buildNovelGameHtml } from '@/core/exporter/toNovelGame'
+import { buildNovelGamePlayer } from '@/core/exporter/toNovelGame'
 import type { Staging } from '@/core/game'
 import type { UserGameAsset } from '@/core/game/assets'
 import { publicTextOf } from '@/core/glossary'
@@ -23,11 +23,13 @@ type GetToken = () => Promise<string | null>
 /**
  * 送信するバンドルの形式。platform 側と揃える。
  * v2 で work.platform、v3 で episodes[].visibility（話ごとの公開状態）、
- * v4 で episodes[].game（サウンドノベルの自己完結プレイヤー HTML）を追加。
+ * v4 で episodes[].game（サウンドノベルの自己完結プレイヤー HTML）、
+ * v5 で work.gameAssets（素材の実体を**作品ぶん1回だけ**送り、話は `asset:<id>` で参照）を追加。
  *
  * 使わない機能の版は名乗らない（**最小の版で送る**）。先方が新しい版を知らないあいだも
  * 「本文の更新だけは通る」ようにしておく（新しすぎるバンドルは 409 で弾かれる契約）。
  */
+const SCHEMA_VERSION_WITH_SHARED_ASSETS = 5
 const SCHEMA_VERSION_WITH_GAME = 4
 const SCHEMA_VERSION_WITH_EPISODES = 3
 const SCHEMA_VERSION_BASE = 2
@@ -99,10 +101,18 @@ export function toPlatformPayload(platform: WorkPlatform | undefined): PlatformP
   return Object.keys(payload).length > 0 ? payload : undefined
 }
 
-/** 話ごとのサウンドノベル（契約 v4）。html は素材内包の自己完結プレイヤー。 */
-export interface EpisodeGamePayload {
-  v: 1
-  html: string
+/**
+ * 話ごとのサウンドノベル。
+ * - `v: 1`（契約 v4）＝素材を内包した自己完結プレイヤー。
+ * - `v: 2`（契約 v5）＝持ち込み素材を `asset:<id>` で参照し、実体は `work.gameAssets` にまとめる。
+ *   同じ立ち絵を話数ぶん送り直さないための形（投稿1回の上限に十数話で当たっていた）。
+ */
+export type EpisodeGamePayload = { v: 1; html: string } | { v: 2; html: string; assets: string[] }
+
+/** 作品ぶんの素材の実体（契約 v5）。話の `asset:<id>` はここを指す。 */
+export interface BundleGameAsset {
+  id: string
+  dataUrl: string
 }
 
 /**
@@ -127,6 +137,8 @@ export interface NovelGameBundleInput {
 export type BundleWork = Omit<Work, 'episodes' | 'platform'> & {
   episodes: BundleEpisode[]
   platform?: PlatformPayload
+  /** 契約 v5：話から参照される素材の実体（使われた分だけ・1作品1回） */
+  gameAssets?: BundleGameAsset[]
 }
 
 /**
@@ -186,29 +198,42 @@ export function attachEpisodeGames(
   work: Work,
   episodes: BundleEpisode[],
   novelGame: NovelGameBundleInput,
-): { episodes: BundleEpisode[]; withGame: boolean } {
+): { episodes: BundleEpisode[]; withGame: boolean; assets: BundleGameAsset[]; shared: boolean } {
   // enabled: false は「やめた」の宣言＝v4 のまま game を載せない（先方が既存分を消す）。
   // **公開判定より先に見る**：下書きへ戻すのと同時に切っても、宣言は先方へ届かせる
   // （ここで v2/v3 に落とすと先方は据え置き＝あとで再公開したとき古いプレイヤーが復活する）
-  if (novelGame.enabled === false) return { episodes, withGame: episodes.length > 0 }
-  if (work.platform?.visibility !== 'public') return { episodes, withGame: false }
+  if (novelGame.enabled === false) {
+    return { episodes, withGame: episodes.length > 0, assets: [], shared: false }
+  }
+  if (work.platform?.visibility !== 'public') {
+    return { episodes, withGame: false, assets: [], shared: false }
+  }
   const stagingByEpisode = new Map(novelGame.stagings.map((s) => [s.episodeId, s]))
   const selected = work.platform?.novelGameEpisodes
   let withGame = false
+  // 話をまたいで使われた素材の id。実体は作品ぶん1回だけ送る（契約 v5）
+  const usedAssetIds = new Set<string>()
   const next = episodes.map((ep): BundleEpisode => {
     if (ep.visibility === 'draft') return ep
     if (!novelGameEpisodeOf(selected, ep.id)) return ep
     const staging = stagingByEpisode.get(ep.id)
     const source = work.episodes.find((e) => e.id === ep.id)
     if (!source) return ep
-    const html = buildNovelGameHtml(work, source, staging, {
+    const { html, assetIds } = buildNovelGamePlayer(work, source, staging, {
       fontHref: GAME_FONT_HREF,
       gameAssets: novelGame.gameAssets,
     })
     withGame = true
-    return { ...ep, game: { v: 1, html } }
+    // 持ち込み素材を使わない話は自己完結（v: 1）のまま＝**使わない版は名乗らない**。
+    // テンプレだけの作品は、先方が v5 を知らなくても今までどおり投稿できる
+    if (assetIds.length === 0) return { ...ep, game: { v: 1, html } }
+    for (const id of assetIds) usedAssetIds.add(id)
+    return { ...ep, game: { v: 2, html, assets: assetIds } }
   })
-  return { episodes: next, withGame }
+  const assets = novelGame.gameAssets
+    .filter((a) => usedAssetIds.has(a.id))
+    .map((a): BundleGameAsset => ({ id: a.id, dataUrl: a.dataUrl }))
+  return { episodes: next, withGame, assets, shared: assets.length > 0 }
 }
 
 /**
@@ -237,11 +262,17 @@ export function toBundleWork(work: Work, novelGame?: NovelGameBundleInput): Bund
   const payload = toPlatformPayload(work.platform)
   const sendable = toBundleGlossary(glossary)
   let episodes = toBundleEpisodes(work).episodes
-  if (novelGame) episodes = attachEpisodeGames(work, episodes, novelGame).episodes
+  let gameAssets: BundleGameAsset[] = []
+  if (novelGame) {
+    const attached = attachEpisodeGames(work, episodes, novelGame)
+    episodes = attached.episodes
+    gameAssets = attached.assets
+  }
   const base: BundleWork = {
     ...rest,
     ...(sendable ? { glossary: sendable } : {}),
     episodes,
+    ...(gameAssets.length > 0 ? { gameAssets } : {}),
   }
   return payload ? { ...base, platform: payload } : base
 }
@@ -297,11 +328,14 @@ export async function publishWorkToPlatform(
       method: 'POST',
       headers: { Authorization: `Bearer ${jwt}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        schemaVersion: withGame
-          ? SCHEMA_VERSION_WITH_GAME
-          : toBundleEpisodes(work).declared
-            ? SCHEMA_VERSION_WITH_EPISODES
-            : SCHEMA_VERSION_BASE,
+        // 素材をまとめて送るときだけ v5。テンプレだけの作品は v4 のまま＝使わない版は名乗らない
+        schemaVersion: bundleWork.gameAssets
+          ? SCHEMA_VERSION_WITH_SHARED_ASSETS
+          : withGame
+            ? SCHEMA_VERSION_WITH_GAME
+            : toBundleEpisodes(work).declared
+              ? SCHEMA_VERSION_WITH_EPISODES
+              : SCHEMA_VERSION_BASE,
         work: bundleWork,
       }),
     })
