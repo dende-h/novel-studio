@@ -49,6 +49,8 @@ Cloudflare Pages Functions
 | 課金・会員判定 | `src/core/billing/` + `functions/api/billing/` + `functions/api/_lib/membership.ts` |
 | 無料／有料の線（どの機能をどの状態で出すか） | `src/ui/Root.tsx`（`canUseCreativeTools` ほか）+ `src/ui/auth/derive-status.ts` |
 | AI/MCP 連携（外部から原稿を編集） | `src/core/mcp-edit/index.ts` + `functions/api/_lib/mcp-server.ts` |
+| MCP のツール定義（名前・説明文・引数スキーマ）を足す/直す | `functions/api/_lib/mcp-tools.ts`（定義だけ。実行は `mcp-server.ts`） |
+| MCP の読み取りが「大きすぎて読めない」（索引・絞り込み・応答予算） | `src/core/mcp-read/index.ts`（予算の判断）+ 各 exporter の索引関数 + `functions/api/_lib/mcp-server.ts` の読み取り区間 |
 | MCP コネクタの接続（OAuth ディスカバリ・認可の窓口） | `functions/_middleware.ts` + `functions/api/oauth/[[path]].ts` |
 | **UI 部品・ヘルパを新規に作りたい** | まず §3「共通部品カタログ」で在庫を確認する（重複作成の防止） |
 | **掲示板**（記名式スレッド・お知らせ・アンケート・通報）の挙動 | 画面は `src/ui/components/BoardPage/`、判断は `src/core/board/`、SQL は `functions/api/_lib/board-store.ts`、窓口は `functions/api/board/` |
@@ -88,7 +90,7 @@ Cloudflare Pages Functions
 | `src/core/exporter/toHtml.ts` | 正本 → 安全な HTML（プレビュー兼用・全エスケープ済み。`inlinesToHtml` も公開） |
 | `src/core/markdown/index.ts` | 生テキスト → プレビュー HTML の軽量マークダウン（`markdownToHtml` `stripMarkdown` `InlineRenderer`。行内は既定で parseInlines へ委譲＝[[用語]]・ルビが生きるが、**第3引数で差し替えられる**＝掲示板はここを使う） |
 | `src/core/exporter/toNarou.ts` / `src/core/exporter/toKakuyomu.ts` | 各投稿サイト記法 |
-| `src/core/exporter/toPlainText.ts` / `plotToPlainText.ts` / `structureToPlainText.ts` | AI 投げ込み用の平文（`glossaryToPlainText` 含む） |
+| `src/core/exporter/toPlainText.ts` / `plotToPlainText.ts` / `structureToPlainText.ts` | AI 投げ込み用の平文（`glossaryToPlainText` 含む）。**全量と索引の両方**をここで組み立てる（`glossaryIndexToPlainText` `episodeIndexToPlainText` `worldIndexToPlainText` `plotIndexToPlainText` `structureIndexToPlainText`）。絞り込みは任意オプション、ページングは持ち込まない |
 | `src/core/exporter/blocksToNotation.ts` | 正本 → 記法（往復変換） |
 | `src/core/zip/index.ts` | 依存ゼロの ZIP（store 法）・`crc32` |
 | `bundle/` `folder/` | 全作品バンドル JSON / フォルダ形式の入出力 |
@@ -119,6 +121,7 @@ Cloudflare Pages Functions
 | `src/core/billing/stripe-event.ts` | Stripe イベント → `StripeAction` 解釈 |
 | `src/core/billing/reap-policy.ts` | アカウント削除の判定（`shouldReap`）。**解約後の猶予切れだけ**が対象＝無料アカウントに期限は無い |
 | `src/core/mcp-edit/index.ts` | **MCP 経由の編集操作の純ロジック**（`createWork` `setEpisode` `upsertGlossaryEntry` `setPlotMeta` `setPlotWorldNote` `deletePlotWorldNote` 等）。サーバの MCP ツールはこれを呼ぶ |
+| `src/core/mcp-read/index.ts` | **MCP 読み取りの応答サイズの判断**（`utf8Bytes` `resolveMaxBytes` `paginate` `clipLinesToBytes` `fitToBudget` `budgetNotice`）。全量が予算を超えたら索引へ 1 段だけ縮退させる関門。整形は持たない |
 | `activity/` | 執筆記録（`localDateKey` `currentStreak` `buildHeatmap`） |
 | `stats/` | 文字数カウント |
 | `outline/` | アウトラインのメモ木操作（`indentNote` `moveNote` 等） |
@@ -268,15 +271,23 @@ Cloudflare Pages Functions
 | `POST /api/board/reports` | 通報（作業キューに積むだけ・自動非表示はしない） |
 | `/api/board/me` | GET=自分の表示名と投稿 / PUT=表示名の設定・変更（**アカウントのペンネームの正本**） |
 | `POST /api/board/moderate` | 運営の措置（非表示・投稿禁止・カードの停止）。**staff のみ** |
-| `/api/mcp` | リモート MCP（Streamable HTTP・JSON-RPC 2.0） |
+| `/api/mcp` | リモート MCP（Streamable HTTP・JSON-RPC 2.0・31 ツール） |
 | `/api/mcp/token` | MCP アクセストークン発行（会員のみ） |
 | `/api/mcp/oauth-protected-resource` | RFC 9728 メタデータ |
 | `/api/oauth/*` | 認可サーバー窓口。`authorize` は Clerk へ 302、`token`/`register` ほかはサーバー側中継 |
 
 `api/_lib/`: `auth`（Clerk 検証・`verifyMember`）, `membership`（**会員判定の単一の真実 = D1 `subscriptions`**）,
-`crypto`（at-rest 暗号化）, `mcp-server`（MCP プロトコル核・約960行）, `mcp-auth`, `mcp-token`,
+`crypto`（at-rest 暗号化）, `mcp-server`（MCP プロトコル核・約940行）, `mcp-tools`（**31 ツールの定義**・約590行）, `mcp-auth`, `mcp-token`,
 `oauth-metadata`, `oauth-upstream`（中継先 Clerk の取得）, `stripe`, `rate-limit`, `purge`, `visitor`,
 `board-store`（**掲示板の SQL はすべてここ**・行 ⇄ camelCase の変換も）, `board-link-fetch`（OGP の取得とキャッシュ）。
+
+MCP の読み取りは **「索引（軽い）→ 中身（重い）」の二段構え**（D-MCP-READ-INDEX）。索引 4 本
+（`get_work_map` `list_glossary_entries` `list_world_notes` `list_plot_beats`）で id を得て、既存の
+`get_work` / `get_glossary` / `get_world` / `get_plot` / `get_structures` に**任意の**絞り込み引数を渡す。
+**引数を渡さなければ出力は改修前と 1 バイトも同じ**で、それは `functions/api/_lib/mcp-server.golden.test.ts`
+（全文スナップショット）が凍結している。**この ゴールデンが変わる差分は原則として通さない。**
+全量が既定予算（100,000 バイト）を超えたときだけ索引へ縮退し、`max_bytes=0` で従来どおりに戻せる。
+フィクスチャと fake deps は `functions/api/_lib/mcp-test-util.ts`。
 
 掲示板の共通部品は `functions/api/board/board-endpoint.ts`（`boardJson`＝`private, no-store` 付きの応答、
 `rateLimitedResponse`＝分あたりの安全弁、`postQuotaExceeded`＝10件/時、`createPostRetrying`、`conflictResponse`）。

@@ -9,12 +9,23 @@
 
 import type { CloudBackup } from '../../../src/core/backup'
 import {
+  plotIndexToPlainText,
   plotToPlainText,
+  worldIndexToPlainText,
   worldPointerLine,
   worldToPlainText,
 } from '../../../src/core/exporter/plotToPlainText'
-import { structuresToPlainText } from '../../../src/core/exporter/structureToPlainText'
-import { glossaryToPlainText, workToPlainText } from '../../../src/core/exporter/toPlainText'
+import {
+  structureIndexToPlainText,
+  structuresToPlainText,
+} from '../../../src/core/exporter/structureToPlainText'
+import {
+  episodeIndexToPlainText,
+  glossaryIndexToPlainText,
+  glossaryToPlainText,
+  workToPlainText,
+} from '../../../src/core/exporter/toPlainText'
+import { filterEntries, publicTextOf } from '../../../src/core/glossary'
 import {
   addEpisode,
   createWork,
@@ -37,11 +48,45 @@ import {
   upsertPlotSection,
   upsertStructure,
 } from '../../../src/core/mcp-edit'
-import { pickPrimaryPlot, WORLD_CUSTOM_SLOT, WORLD_SLOTS } from '../../../src/core/plot'
+import {
+  budgetNotice,
+  clipLinesToBytes,
+  DEFAULT_FULL_BYTES,
+  DEFAULT_INDEX_BYTES,
+  fitToBudget,
+  paginate,
+  resolveMaxBytes,
+  utf8Bytes,
+  WORK_MAP_BYTES,
+} from '../../../src/core/mcp-read'
+import {
+  beatsOfSection,
+  pickPrimaryPlot,
+  sectionById,
+  worldNotesInOrder,
+  worldNotesOf,
+} from '../../../src/core/plot'
+import { countEpisodeChars } from '../../../src/core/stats'
+import { MCP_TOOLS } from './mcp-tools'
+
+export { MCP_TOOLS }
 
 /** クライアントが未指定のときに名乗る MCP プロトコル版（十分に新しい安定版）。 */
 const DEFAULT_PROTOCOL_VERSION = '2025-06-18'
-const SERVER_INFO = { name: 'novel-studio', version: '1.4.2' } as const
+/**
+ * こちらが実際に話せるプロトコル版。**要求された版がここに無ければ既定版を名乗る**
+ * （知らない版をそのままオウム返しすると、その版に無い機能を使っているように見えてしまう）。
+ */
+const SUPPORTED_PROTOCOL_VERSIONS = new Set([
+  '2024-11-05',
+  '2025-03-26',
+  '2025-06-18',
+  '2025-11-25',
+])
+const SERVER_INFO = { name: 'novel-studio', version: '1.5.0' } as const
+
+/** 索引ツールの既定件数。 */
+const DEFAULT_LIST_LIMIT = 200
 
 /**
  * クライアント（AI）へ最初に渡す使い方。MCP の `initialize` が返す標準の instructions。
@@ -70,467 +115,17 @@ const SERVER_INSTRUCTIONS = [
   '3. 特定の項目にだけ紐づく内緒の情報（この人物の正体など）は、',
   '   upsert_glossary_entry の author_note に書く（この欄は公開時に取り除かれます）。',
   '4. 読者にいつ何を明かすかの管理は upsert_secret（秘密）を使う。',
+  '5. 項目の多い作品は「索引 → 中身」の順で読む。get_work_map で各器の件数を見てから、',
+  '   list_world_notes / list_glossary_entries / list_plot_beats で id を得て、',
+  '   get_world(slots) / get_glossary(entry_ids) / get_plot(section_id) で必要なぶんだけ取る。',
+  '   応答の先頭に truncated=true とある場合、それは全量ではなく索引です。',
+  '',
+  'ツール名の読み方：list_ ＝索引（本文を含まない）／get_ ＝中身／',
+  'set_・add_・upsert_・delete_ ＝書き込み。',
 ].join('\n')
 
 /** 書き込み系の結果に添える案内（ブラウザで取り込むまでローカルには反映されない）。 */
 const PULL_HINT = 'アプリの「AIの変更を取り込む」でこの変更をローカルに反映してください。'
-
-const workIdProp = { work_id: { type: 'string', description: 'list_works が返す作品 id' } }
-
-/**
- * set_world_note の slot 説明。枠の定義（WORLD_SLOTS）から組み立てる＝
- * 画面に出す案内と AI に渡す選択肢が食い違わない。
- */
-const WORLD_SLOT_DESCRIPTION = [
-  '枠：',
-  [
-    ...WORLD_SLOTS.map((slot) => `${slot.key}（${slot.label}）`),
-    `${WORLD_CUSTOM_SLOT}（自由枠・title 必須）`,
-  ].join(' / '),
-].join('')
-
-/** 公開ツール定義。inputSchema はクライアントの引数検証に使われる。 */
-export const MCP_TOOLS = [
-  {
-    name: 'list_works',
-    description:
-      '作品の一覧（id・タイトル・著者・話数）を返す。他ツールに渡す work_id / episode_id を得るため最初に呼ぶ。',
-    inputSchema: { type: 'object', properties: {}, additionalProperties: false },
-  },
-  {
-    name: 'get_work',
-    description:
-      '1 作品の本文全体をプレーンテキスト（タイトル・各話見出し付き）で返す。書き換える前に get_world でこの作品の決め事（語り手・言葉づかい・やらないこと等）を確認すること。',
-    inputSchema: {
-      type: 'object',
-      properties: workIdProp,
-      required: ['work_id'],
-      additionalProperties: false,
-    },
-  },
-  {
-    name: 'get_glossary',
-    description:
-      '1 作品の用語集（人物・場所・組織・用語・アイテム・生物の事典）を各項目の [entry_id: …] 付きで返す。この entry_id を upsert_glossary_entry の id / delete_glossary_entry の entry_id に渡す。用語集は公開サイトで読者にも見える器なので、書き換える前に get_world で作品の決め事を確認すること。',
-    inputSchema: {
-      type: 'object',
-      properties: workIdProp,
-      required: ['work_id'],
-      additionalProperties: false,
-    },
-  },
-  {
-    name: 'get_structures',
-    description:
-      '1 作品の構造データ（アウトライン・相関図・マインドマップ）をプレーンテキストで返す。書き換える前に get_world で作品の決め事を確認すること。',
-    inputSchema: {
-      type: 'object',
-      properties: workIdProp,
-      required: ['work_id'],
-      additionalProperties: false,
-    },
-  },
-  {
-    name: 'set_work_meta',
-    description:
-      '作品のメタ情報（タイトル・著者名・あらすじ）を更新する。渡した項目だけ書き換える。',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        ...workIdProp,
-        title: { type: 'string', description: '作品タイトル' },
-        author: { type: 'string', description: '作者名（空文字で未設定）' },
-        description: { type: 'string', description: 'あらすじ（空文字で未設定）' },
-      },
-      required: ['work_id'],
-      additionalProperties: false,
-    },
-  },
-  {
-    name: 'set_episode',
-    description:
-      '既存の話のタイトル・本文を更新する。body はプレーンテキスト（改行で段落・行頭「＊」でシーン区切り・｜漢字《かんじ》でルビ）。渡した項目だけ書き換える。**書く前に get_world で作品の決め事（語り手と文体・言葉づかい・開示方針・やらないこと）を読み、それに従うこと。**',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        ...workIdProp,
-        episode_id: { type: 'string', description: 'list_works の各話 id' },
-        title: { type: 'string', description: '話のタイトル' },
-        body: { type: 'string', description: '本文（プレーンテキスト）' },
-      },
-      required: ['work_id', 'episode_id'],
-      additionalProperties: false,
-    },
-  },
-  {
-    name: 'add_episode',
-    description:
-      '作品に新しい話を末尾に追加する。作成した episode_id を返す。**書く前に get_world で作品の決め事を読み、それに従うこと。**',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        ...workIdProp,
-        title: { type: 'string', description: '話のタイトル' },
-        body: { type: 'string', description: '本文（プレーンテキスト・任意）' },
-      },
-      required: ['work_id', 'title'],
-      additionalProperties: false,
-    },
-  },
-  {
-    name: 'create_work',
-    description:
-      '新しい作品（空の作品）を作成する。作成した work_id を返す。話は add_episode で追加する。',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        title: { type: 'string', description: '作品タイトル（必須）' },
-        author: { type: 'string', description: '著者名（任意）' },
-        description: { type: 'string', description: 'あらすじ（任意）' },
-      },
-      required: ['title'],
-      additionalProperties: false,
-    },
-  },
-  {
-    name: 'set_outline',
-    description:
-      '1 つの話の構成メモ（アウトライン）を丸ごと書き換える。notes は 1 行 1 メモのプレーンテキストで、行頭のインデント（タブ 1 個または半角スペース 2 個で 1 段・最大 3 段）が階層になる。行頭の「- 」は無視される。空文字でその話のメモを全消去。現状は get_structures で確認できる。',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        ...workIdProp,
-        episode_id: { type: 'string', description: 'list_works の各話 id' },
-        notes: {
-          type: 'string',
-          description: '構成メモ（1 行 1 メモ・行頭インデントで階層）',
-        },
-      },
-      required: ['work_id', 'episode_id', 'notes'],
-      additionalProperties: false,
-    },
-  },
-  {
-    name: 'upsert_glossary_entry',
-    description:
-      '用語集の項目（人物・場所・組織・用語・アイテム・生物）を追加または更新する。id を渡すと更新、無ければ新規作成。既存を更新するときは先に get_glossary で [entry_id: …] を確認して id に渡す。更新は**渡した項目だけ書き換える**（省略した項目は据え置き・空文字を渡すとその項目を削除）。name を変えると改名になり、旧名は自動で別名に残る＝本文の [[旧名]] は解決され続ける。name／別名が他項目と重複する書き込みはエラーになる。【重要】name/summary は公開サイトで読者にも見える。設定ルール・執筆の決め事・世界の仕組みはここではなく set_world_note へ書く。項目に紐づく非公開の情報は author_note へ書く。',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        ...workIdProp,
-        id: {
-          type: 'string',
-          description: '更新する既存エントリの id（get_glossary の [entry_id: …]。新規なら省略）',
-        },
-        name: { type: 'string', description: '名称（必須）' },
-        aliases: { type: 'array', items: { type: 'string' }, description: '別名' },
-        category: { type: 'string', description: '分類（キャラ/用語/場所 等）' },
-        reading: { type: 'string', description: 'よみ' },
-        summary: {
-          type: 'string',
-          description:
-            '公開情報（読者にも見える説明文。一行要約〜詳しい本文までここに 1 本で書く。空文字で削除）',
-        },
-        body: {
-          type: 'string',
-          description:
-            '【非推奨・旧フィールド】渡すと summary の末尾に結合される。summary を使うこと',
-        },
-        author_note: {
-          type: 'string',
-          description:
-            '作者メモ。この項目に紐づく非公開の情報（正体・後の展開など）。公開時に取り除かれる（空文字で削除）',
-        },
-      },
-      required: ['work_id', 'name'],
-      additionalProperties: false,
-    },
-  },
-  {
-    name: 'delete_glossary_entry',
-    description: '用語集の項目を削除する。先に get_glossary で対象の [entry_id: …] を確認する。',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        ...workIdProp,
-        entry_id: {
-          type: 'string',
-          description: '用語集の項目の id（get_glossary の [entry_id: …]）',
-        },
-      },
-      required: ['work_id', 'entry_id'],
-      additionalProperties: false,
-    },
-  },
-  {
-    name: 'set_structure',
-    description:
-      '構造データ（アウトライン/相関図/マインドマップ）を JSON で追加・更新する。get_structures で現状を把握し、Structure の JSON（id・workId・kind・nodes・edges）を渡す。id 一致で置換。',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        structure_json: { type: 'string', description: 'Structure 1 件の JSON 文字列' },
-      },
-      required: ['structure_json'],
-      additionalProperties: false,
-    },
-  },
-  {
-    name: 'get_plot',
-    description:
-      '1 作品のプロット（幕×ビート・プロットライン・伏線・秘密）を各要素の id 付きプレーンテキストで返す。先頭にこの作品の世界観設定（作者だけの決め事）が付くので、書き換えの前にそれに従うこと。upsert/delete 系プロットツールの対象 id はここで確認する。伏線は回収状態（未回収/回収済/根なし）、秘密は開示状態（開示予定/開示未定/明かさない）付き。',
-    inputSchema: {
-      type: 'object',
-      properties: workIdProp,
-      required: ['work_id'],
-      additionalProperties: false,
-    },
-  },
-  {
-    name: 'set_plot_meta',
-    description:
-      'プロットのメタ（タイトル・ログライン・テーマ）を更新する。渡した項目だけ書き換える（空文字で未設定に戻す）。プロットが無い作品では新規作成を兼ねる（幕は upsert_plot_section で作る）。',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        ...workIdProp,
-        title: { type: 'string', description: 'プロットのタイトル（例：本編プロット）' },
-        premise: { type: 'string', description: 'ログライン（一行で言うと何の話か）' },
-        theme: { type: 'string', description: 'テーマ' },
-      },
-      required: ['work_id'],
-      additionalProperties: false,
-    },
-  },
-  {
-    name: 'upsert_plot_section',
-    description:
-      '幕（プロットの大きな区切り）を追加または更新する。id を渡すと更新、無ければ新規作成して section_id を返す。index（0 始まり）で並び位置を指定できる。',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        ...workIdProp,
-        id: { type: 'string', description: '更新する幕の id（get_plot の [section_id: …]）' },
-        title: { type: 'string', description: '幕のタイトル（例：第一幕）。新規では必須' },
-        note: { type: 'string', description: '幕のメモ（空文字で削除）' },
-        index: { type: 'number', description: '並び位置（0 始まり）' },
-      },
-      required: ['work_id'],
-      additionalProperties: false,
-    },
-  },
-  {
-    name: 'upsert_plot_beat',
-    description:
-      'ビート（出来事カード）を追加または更新する。id を渡すと更新（渡した項目だけ書き換え・空文字で未設定に戻す）、無ければ新規作成して beat_id を返す。新規は title 必須、section_id は幕が 1 つだけなら省略可。section_id / index を渡すと移動・並べ替えになる。',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        ...workIdProp,
-        id: { type: 'string', description: '更新するビートの id（get_plot の [beat_id: …]）' },
-        section_id: { type: 'string', description: '所属させる幕の id' },
-        index: { type: 'number', description: '幕内の位置（0 始まり）' },
-        title: { type: 'string', description: 'ビートのタイトル（新規では必須）' },
-        summary: {
-          type: 'string',
-          description:
-            '何が起きるか（数行の要約）。本文と同じ記法が使える：[[用語]] で用語集とつながり、｜漢字《かんじ》でルビ、《《強調》》で傍点',
-        },
-        note: {
-          type: 'string',
-          description: '狙い・代案などの自由メモ（要約と同じ記法が使える）',
-        },
-        time_label: { type: 'string', description: '作中時間の自由記述（例：三日後の夜）' },
-        pov: { type: 'string', description: '視点キャラ（get_glossary の entry_id）' },
-        cast: {
-          type: 'array',
-          items: { type: 'string' },
-          description: '登場キャラ（entry_id の配列・丸ごと置換）',
-        },
-        place: {
-          type: 'array',
-          items: { type: 'string' },
-          description: '舞台（entry_id の配列・丸ごと置換）',
-        },
-        line_ids: {
-          type: 'array',
-          items: { type: 'string' },
-          description: '属するプロットライン（get_plot の [line_id: …] の配列・丸ごと置換）',
-        },
-        episode_id: { type: 'string', description: '対応する本文の話 id（list_works の各話 id）' },
-        status: {
-          type: 'string',
-          description: '進行状態：idea（検討中）/ fixed（確定）/ writing（執筆中）/ done（済）',
-        },
-        target_length: { type: 'number', description: '予定文字数（0 で未設定に戻す）' },
-      },
-      required: ['work_id'],
-      additionalProperties: false,
-    },
-  },
-  {
-    name: 'delete_plot_beat',
-    description:
-      'ビートを削除する。伏線が参照していた場合、その伏線は get_plot で [根なし] 警告として残る。先に get_plot で [beat_id: …] を確認する。',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        ...workIdProp,
-        beat_id: { type: 'string', description: 'ビートの id（get_plot の [beat_id: …]）' },
-      },
-      required: ['work_id', 'beat_id'],
-      additionalProperties: false,
-    },
-  },
-  {
-    name: 'upsert_plot_line',
-    description:
-      'プロットライン（メイン・サブプロット・キャラアークなどの筋）を追加または更新する。id を渡すと更新、無ければ新規作成して line_id を返す。ビートへの割り当ては upsert_plot_beat の line_ids で行う。',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        ...workIdProp,
-        id: { type: 'string', description: '更新するラインの id（get_plot の [line_id: …]）' },
-        title: { type: 'string', description: 'ラインの名前（例：ユキの正体）。新規では必須' },
-        note: { type: 'string', description: 'ラインのメモ（空文字で削除）' },
-      },
-      required: ['work_id'],
-      additionalProperties: false,
-    },
-  },
-  {
-    name: 'upsert_foreshadow',
-    description:
-      '伏線を追加または更新する。plant_beat_id＝張るビート、payoff_beat_id＝回収するビート（空文字で解除）。回収漏れは get_plot の伏線一覧に [未回収]/[根なし] として出る。',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        ...workIdProp,
-        id: { type: 'string', description: '更新する伏線の id（get_plot の [foreshadow_id: …]）' },
-        title: { type: 'string', description: '伏線の名前（新規では必須）' },
-        note: { type: 'string', description: 'メモ（空文字で削除）' },
-        plant_beat_id: { type: 'string', description: '張るビートの id（空文字で解除）' },
-        payoff_beat_id: { type: 'string', description: '回収するビートの id（空文字で解除）' },
-      },
-      required: ['work_id'],
-      additionalProperties: false,
-    },
-  },
-  {
-    name: 'upsert_secret',
-    description:
-      '秘密（読者に伏せている情報）を追加または更新する。伏線が「布石を張って回収したか」なのに対し、秘密は「読者がいつ真相を知るか」を管理する。truth＝真相（作者用メモ・本文には出ない）、reveal_beat_id＝読者に明かすビート（空文字で解除）。明かし忘れは get_plot に [開示未定] として出る。最後まで明かさないと決めた秘密は keep_hidden: true で点検対象から外す。',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        ...workIdProp,
-        id: { type: 'string', description: '更新する秘密の id（get_plot の [secret_id: …]）' },
-        title: {
-          type: 'string',
-          description: '伏せている事柄の呼び名（例：ユキの正体。新規では必須）',
-        },
-        truth: { type: 'string', description: '真相（読者に伏せている中身・空文字で削除）' },
-        reveal_beat_id: {
-          type: 'string',
-          description: '読者に明かすビートの id（空文字で解除）',
-        },
-        keep_hidden: {
-          type: 'boolean',
-          description: '最後まで明かさない（true で点検対象から外す）',
-        },
-      },
-      required: ['work_id'],
-      additionalProperties: false,
-    },
-  },
-  {
-    name: 'delete_plot_item',
-    description:
-      '幕・プロットライン・伏線・秘密を削除する。kind に section / line / foreshadow / secret、item_id にその id を渡す。幕の削除では中のビートが隣の幕へ移動する（最後の 1 幕は削除不可）。ビートの削除は delete_plot_beat を使う。',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        ...workIdProp,
-        kind: {
-          type: 'string',
-          description: '削除する種別：section / line / foreshadow / secret',
-        },
-        item_id: { type: 'string', description: '対象の id（get_plot で確認）' },
-      },
-      required: ['work_id', 'kind', 'item_id'],
-      additionalProperties: false,
-    },
-  },
-  {
-    name: 'get_world',
-    description:
-      '1 作品の世界観設定（作者だけの決め事・設定ルール・執筆方針）を [slot: …, note_id: …] 付きで返す。**用語集・プロット・本文を書き換える前に必ず最初に読むこと。**ここは公開されないので、まだ読者に伏せている情報も書かれている。',
-    inputSchema: {
-      type: 'object',
-      properties: workIdProp,
-      required: ['work_id'],
-      additionalProperties: false,
-    },
-  },
-  {
-    name: 'set_world_note',
-    description:
-      '世界観設定の枠を書き込む（作者だけの場所・公開されない）。設定のルール・世界の仕組み・読者への開示方針・執筆の決め事はすべてここへ書く（用語集へ書かない）。定型枠は slot 一致で 1 枠に上書きされ、slot: custom は自分で見出しを付ける自由枠。body を空文字にするとその枠を削除する。プロットがまだ無い作品でも書ける。',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        ...workIdProp,
-        slot: { type: 'string', description: WORLD_SLOT_DESCRIPTION },
-        id: {
-          type: 'string',
-          description: '更新する自由枠の note_id（get_world の [note_id: …]）。定型枠では不要',
-        },
-        title: { type: 'string', description: '自由枠（slot: custom）の見出し。定型枠では不要' },
-        body: { type: 'string', description: '本文（空文字でその枠を削除）' },
-      },
-      required: ['work_id', 'slot', 'body'],
-      additionalProperties: false,
-    },
-  },
-  {
-    name: 'delete_world_note',
-    description: '世界観設定の枠を削除する。先に get_world で対象の [note_id: …] を確認する。',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        ...workIdProp,
-        note_id: {
-          type: 'string',
-          description: '世界観設定の note_id（get_world の [note_id: …]）',
-        },
-      },
-      required: ['work_id', 'note_id'],
-      additionalProperties: false,
-    },
-  },
-  {
-    name: 'create_backup',
-    description:
-      '現在の全状態をクラウドに手動バックアップ（版を作る）。有料（cloud 会員）機能。作成した backup_id を返す。',
-    inputSchema: { type: 'object', properties: {}, additionalProperties: false },
-  },
-  {
-    name: 'list_backups',
-    description: 'クラウドバックアップの一覧（id・作成日時、新しい順）を返す。有料機能。',
-    inputSchema: { type: 'object', properties: {}, additionalProperties: false },
-  },
-  {
-    name: 'restore_backup',
-    description:
-      '指定バックアップの内容をライブスナップショットに戻す（有料機能）。反映にはアプリで「AIの変更を取り込む」が必要。',
-    inputSchema: {
-      type: 'object',
-      properties: { backup_id: { type: 'string', description: 'list_backups が返す id' } },
-      required: ['backup_id'],
-      additionalProperties: false,
-    },
-  },
-] as const
 
 /** 注入 I/O：ライブスナップショットの読み書きとクラウドバックアップ操作。 */
 export interface McpDeps {
@@ -545,6 +140,12 @@ export interface McpDeps {
   restoreBackup(id: string): Promise<boolean>
   now(): number
   genId(): string
+  /**
+   * 応答サイズの上限（バイト）。テストから小さい値を注入して縮退を検査するための口で、
+   * 本番は既定値のまま。環境変数では持たない（同じコードで環境ごとに戻り値が変わると、
+   * 「いつ壊れたか」を観測できなくなる）。
+   */
+  limits?: { maxBytes?: number; indexMaxBytes?: number }
 }
 
 interface JsonRpcMessage {
@@ -560,10 +161,34 @@ const err = (id: JsonRpcMessage['id'], code: number, message: string) => ({
   id: id ?? null,
   error: { code, message },
 })
-const text = (body: string, isError = false) => ({
+/**
+ * tools/call の結果。`structuredContent` は MCP 2025-06-18 の構造化出力で、**索引ツールにだけ**
+ * 添える（全量返却に添えると text と JSON でペイロードが二重になり、今回直したい
+ * 「大きすぎて読めない」を悪化させる）。`outputSchema` は宣言しない — 宣言すると
+ * 「schema あり・structured なし」の組み合わせで厳格なクライアントが落ちる経路を自分で作ることになる。
+ */
+export interface ToolResult {
+  content: Array<{ type: 'text'; text: string }>
+  structuredContent?: Record<string, unknown>
+  isError?: boolean
+}
+
+const text = (body: string, isError = false): ToolResult => ({
   content: [{ type: 'text', text: body }],
   ...(isError ? { isError: true } : {}),
 })
+
+/** text ＋ 構造化データ。合計が予算を超えるなら構造化データを落とす（text は必ず残す）。 */
+const textWith = (
+  body: string,
+  structured: Record<string, unknown>,
+  maxBytes: number,
+): ToolResult => {
+  if (maxBytes > 0 && utf8Bytes(body) + utf8Bytes(JSON.stringify(structured)) > maxBytes) {
+    return text(body)
+  }
+  return { content: [{ type: 'text', text: body }], structuredContent: structured }
+}
 
 const str = (args: Record<string, unknown> | undefined, key: string): string | undefined =>
   typeof args?.[key] === 'string' ? (args[key] as string) : undefined
@@ -592,12 +217,35 @@ function listWorksText(works: CloudBackup['works']): string {
 const fmtDate = (ms: number) =>
   new Date(ms).toLocaleString('ja-JP', { dateStyle: 'medium', timeStyle: 'short' })
 
+/**
+ * 索引の本文を予算に収める（行の途中では切らない）。落とした行があることは必ず書く
+ * ＝ AI が「これで全部」と誤読しない。
+ */
+const clipIndex = (body: string, maxBytes: number): string => {
+  if (maxBytes <= 0 || utf8Bytes(body) <= maxBytes) return body
+  const reserve = 160 // 省略の案内 1 行ぶん
+  const { lines, dropped } = clipLinesToBytes(body.split('\n'), Math.max(200, maxBytes - reserve))
+  if (dropped === 0) return lines.join('\n')
+  return [
+    ...lines,
+    `※ ${dropped} 行を省略しました。limit / offset で範囲を指定してください。`,
+  ].join('\n')
+}
+
+/** ツール引数を JSON リテラルとして書き戻す（案内文に「そのまま呼べる実例」を載せるため）。 */
+const callExample = (tool: string, args: Record<string, string | number | boolean>): string => {
+  const inner = Object.entries(args)
+    .map(([k, v]) => `${k}=${typeof v === 'string' ? JSON.stringify(v) : String(v)}`)
+    .join(', ')
+  return `${tool}(${inner})`
+}
+
 /** tools/call の 1 ツールを実行する。ツール側のエラー（未検出等）は isError 結果で返す。 */
 async function callTool(
   name: string | undefined,
   args: Record<string, unknown> | undefined,
   deps: McpDeps,
-): Promise<ReturnType<typeof text>> {
+): Promise<ToolResult> {
   // --- バックアップ操作（スナップショット読み込み不要） ---
   if (name === 'create_backup') {
     const res = await deps.createBackup()
@@ -907,43 +555,349 @@ async function callTool(
     }
   }
 
-  // 読み取り（work 指定）
+  // --- 読み取り（work 指定） ---
+  //
+  // 全量返却は「予算に収まればこれまでどおり、収まらなければ同じ器の索引」の 2 通りだけ
+  // （fitToBudget が唯一の関門）。引数を渡さなければ出力は改修前と 1 バイトも変わらない。
   const workId = str(args, 'work_id') ?? ''
   const work = works.find((w) => w.id === workId)
-  if (
-    name === 'get_work' ||
-    name === 'get_glossary' ||
-    name === 'get_structures' ||
-    name === 'get_plot' ||
-    name === 'get_world'
-  ) {
+  const readTools = new Set([
+    'get_work',
+    'get_glossary',
+    'get_structures',
+    'get_plot',
+    'get_world',
+    'get_work_map',
+    'list_glossary_entries',
+    'list_world_notes',
+    'list_plot_beats',
+  ])
+  if (readTools.has(name ?? '')) {
     if (!work) return text(`work_id "${workId}" の作品が見つかりません。`, true)
+    const plots = snap?.plots ?? []
     // 本文・構造も「書き換える前に決め事を読む」の対象。1 行の導線を先頭に置く
     // （本体を載せると本文が長いので、取りに行かせる形にする）。
-    const primaryPlot = () =>
-      pickPrimaryPlot((snap?.plots ?? []).filter((p) => p.workId === workId))
-    if (name === 'get_work') {
-      return text(`${worldPointerLine(primaryPlot())}\n\n${workToPlainText(work)}`)
-    }
-    if (name === 'get_world') {
-      return text(
-        worldToPlainText(primaryPlot()) ||
-          'この作品にはまだ世界観設定がありません。set_world_note で書けます（作者だけの場所で、公開はされません）。',
+    const primaryPlot = () => pickPrimaryPlot(plots.filter((p) => p.workId === workId))
+    const fullBudget = resolveMaxBytes(args?.max_bytes, deps.limits?.maxBytes ?? DEFAULT_FULL_BYTES)
+    const indexBudget = resolveMaxBytes(
+      args?.max_bytes,
+      deps.limits?.indexMaxBytes ?? DEFAULT_INDEX_BYTES,
+    )
+    /** 縮退したときの案内。復旧線には**既存ツール名＋引数**を必ず入れる。 */
+    const notice = (mode: string, fullBytes: number, recovery: string[]) =>
+      budgetNotice({ truncated: true, mode, maxBytes: fullBudget, fullBytes, recovery })
+
+    if (name === 'get_work_map') {
+      const glossary = work.glossary ?? []
+      const plot = primaryPlot()
+      const notes = plot ? worldNotesInOrder(plot) : []
+      const chars = work.episodes.reduce((sum, ep) => sum + countEpisodeChars(ep), 0)
+      const glossaryChars = glossary.reduce(
+        (sum, e) => sum + publicTextOf(e).length + (e.authorNote?.length ?? 0),
+        0,
+      )
+      const worldChars = notes.reduce((sum, n) => sum + n.body.length, 0)
+      const structures = (snap?.structures ?? []).filter((s) => s.workId === workId)
+      const lines = [
+        `# ${work.title} の全体像 [work_id: ${work.id}]`,
+        ...(work.author ? [`著者: ${work.author}`] : []),
+        '',
+        `- 本文: ${work.episodes.length}話・${chars.toLocaleString('en-US')}字 → ${callExample('get_work', { work_id: work.id })}／1 話だけなら episode_id を渡す`,
+        `- 用語集: ${glossary.length}項目・${glossaryChars.toLocaleString('en-US')}字 → ${callExample('list_glossary_entries', { work_id: work.id })} → ${callExample('get_glossary', { work_id: work.id, entry_id: glossary[0]?.id ?? '…' })}`,
+        `- 世界観設定: ${notes.length}項目・${worldChars.toLocaleString('en-US')}字 → ${callExample('list_world_notes', { work_id: work.id })} → ${callExample('get_world', { work_id: work.id, note_id: notes[0]?.id ?? '…' })}`,
+        plot
+          ? `- プロット: ${plot.sections.length}幕・${plot.beats.length}ビート・伏線${plot.foreshadows.length}件・秘密${plot.secrets.length}件 → ${callExample('list_plot_beats', { work_id: work.id })} → ${callExample('get_plot', { work_id: work.id, section_id: plot.sections[0]?.id ?? '…' })}`
+          : `- プロット: まだありません（set_plot_meta で作れます）`,
+        `- 構造データ: ${structures.length}件${structures.length > 0 ? `（${structures.map((s) => s.kind).join('・')}）` : ''} → ${callExample('get_structures', { work_id: work.id })}`,
+        '',
+        '※ 字数は中身の目安です（応答のバイト数ではありません）。',
+        '※ 全量が応答の上限を超えると索引に切り替わります。従来どおり全量を取るには max_bytes=0 を渡してください。',
+      ]
+      const body = clipLinesToBytes(lines, WORK_MAP_BYTES).lines.join('\n')
+      return textWith(
+        body,
+        {
+          work_id: work.id,
+          title: work.title,
+          episodes: work.episodes.length,
+          episode_chars: chars,
+          glossary_entries: glossary.length,
+          world_notes: notes.length,
+          plot_sections: plot?.sections.length ?? 0,
+          plot_beats: plot?.beats.length ?? 0,
+          foreshadows: plot?.foreshadows.length ?? 0,
+          secrets: plot?.secrets.length ?? 0,
+          structures: structures.map((s) => s.kind),
+        },
+        WORK_MAP_BYTES,
       )
     }
-    if (name === 'get_glossary') {
-      // 用語集は公開される器。器の住み分けを見失わないよう、世界観設定への導線を先頭に置く。
-      const body =
-        // 各エントリに entry_id を添える＝ upsert（更新）/ delete の対象を AI が指定できる。
-        glossaryToPlainText(work.glossary ?? [], { withIds: true }) ||
-        '（この作品の用語集は空です）'
-      return text(`${worldPointerLine(primaryPlot())}\n\n${body}`)
+
+    if (name === 'get_work') {
+      const episodeId = str(args, 'episode_id')
+      if (episodeId !== undefined && !work.episodes.some((e) => e.id === episodeId)) {
+        return text(`episode_id "${episodeId}" の話が見つかりません。`, true)
+      }
+      const full = `${worldPointerLine(primaryPlot())}\n\n${workToPlainText(work, { episodeId })}`
+      return text(
+        fitToBudget(
+          full,
+          (bytes) =>
+            [
+              // 本文は途中で切らない（切れた原稿を全文と誤認されると推敲そのものが壊れる）。
+              notice('episodes', bytes, [
+                `1 話ずつ読む: ${callExample('get_work', { work_id: work.id, episode_id: work.episodes[0]?.id ?? '…' })}`,
+                `従来どおり全量: ${callExample('get_work', { work_id: work.id, max_bytes: 0 })}`,
+              ]),
+              worldPointerLine(primaryPlot()),
+              episodeIndexToPlainText(work),
+            ].join('\n\n'),
+          fullBudget,
+        ),
+      )
     }
-    if (name === 'get_plot') return text(plotToPlainText(snap?.plots ?? [], work))
-    return text(
-      `${worldPointerLine(primaryPlot())}\n\n${structuresToPlainText(snap?.structures ?? [], work)}`,
-    )
+
+    if (name === 'get_world') {
+      const plot = primaryPlot()
+      const noteId = str(args, 'note_id')
+      const slots = strArray(args, 'slots')
+      const notes = worldNotesOf(plot, { noteId, slots })
+      // id 指定の未検出はエラー（黙って空を返すと「その枠は空」と誤解される）。
+      if (noteId !== undefined && notes.length === 0) {
+        return text(`note_id "${noteId}" の世界観設定が見つかりません。`, true)
+      }
+      if (slots !== undefined && slots.length > 0 && notes.length === 0) {
+        return text(
+          `slot ${slots.join(' / ')} に書かれた世界観設定はありません。list_world_notes で枠の一覧を確認してください。`,
+        )
+      }
+      const full =
+        worldToPlainText(plot, { noteId, slots }) ||
+        'この作品にはまだ世界観設定がありません。set_world_note で書けます（作者だけの場所で、公開はされません）。'
+      return text(
+        fitToBudget(
+          full,
+          (bytes) =>
+            [
+              notice('index', bytes, [
+                `枠を選んで読む: ${callExample('get_world', { work_id: work.id, note_id: notes[0]?.id ?? '…' })}`,
+                `従来どおり全量: ${callExample('get_world', { work_id: work.id, max_bytes: 0 })}`,
+              ]),
+              worldIndexToPlainText(notes),
+            ].join('\n\n'),
+          fullBudget,
+        ),
+      )
+    }
+
+    if (name === 'list_world_notes') {
+      const plot = primaryPlot()
+      const all = plot ? worldNotesInOrder(plot) : []
+      const page = paginate(all.length, args?.offset, args?.limit, DEFAULT_LIST_LIMIT)
+      const shown = all.slice(page.start, page.end)
+      const hint = [
+        `※ 中身は ${callExample('get_world', { work_id: work.id, note_id: shown[0]?.id ?? '…' })} または slots で取れます。`,
+        ...(page.nextOffset !== null
+          ? [
+              `※ 続き: ${callExample('list_world_notes', { work_id: work.id, offset: page.nextOffset })}`,
+            ]
+          : []),
+      ].join('\n')
+      const body = clipIndex(
+        `${hint}\n\n${worldIndexToPlainText(shown, { total: all.length, withEmptySlots: true })}`,
+        indexBudget,
+      )
+      return textWith(
+        body,
+        {
+          work_id: work.id,
+          total: all.length,
+          offset: page.start,
+          next_offset: page.nextOffset,
+          notes: shown.map((n) => ({
+            note_id: n.id,
+            slot: n.slot,
+            title: n.title ?? null,
+            chars: n.body.length,
+          })),
+        },
+        indexBudget,
+      )
+    }
+
+    if (name === 'get_glossary') {
+      const entries = work.glossary ?? []
+      const ids =
+        strArray(args, 'entry_ids') ??
+        (str(args, 'entry_id') ? [str(args, 'entry_id') as string] : undefined)
+      let selected = ids
+        ? entries.filter((e) => ids.includes(e.id))
+        : filterEntries(entries, { query: str(args, 'query'), category: str(args, 'category') })
+      if (ids !== undefined && selected.length === 0) {
+        return text(`entry_id ${ids.join(' / ')} の用語集項目が見つかりません。`, true)
+      }
+      // limit / offset は明示されたときだけ効かせる（既定の呼び出しは従来どおり全件）。
+      const paged = args?.limit !== undefined || args?.offset !== undefined
+      const page = paginate(selected.length, args?.offset, args?.limit, DEFAULT_LIST_LIMIT)
+      if (paged) selected = selected.slice(page.start, page.end)
+      const body =
+        glossaryToPlainText(selected, { withIds: true }) ||
+        (entries.length === 0
+          ? '（この作品の用語集は空です）'
+          : '（条件に合う用語集の項目はありません。list_glossary_entries で索引を確認してください）')
+      const full = `${worldPointerLine(primaryPlot())}\n\n${body}`
+      return text(
+        fitToBudget(
+          full,
+          (bytes) =>
+            [
+              notice('index', bytes, [
+                `1 項目だけ: ${callExample('get_glossary', { work_id: work.id, entry_id: selected[0]?.id ?? '…' })}`,
+                `分類で絞る: ${callExample('get_glossary', { work_id: work.id, category: '人物' })}`,
+                `従来どおり全量: ${callExample('get_glossary', { work_id: work.id, max_bytes: 0 })}`,
+              ]),
+              worldPointerLine(primaryPlot()),
+              glossaryIndexToPlainText(selected),
+            ].join('\n\n'),
+          fullBudget,
+        ),
+      )
+    }
+
+    if (name === 'list_glossary_entries') {
+      const entries = filterEntries(work.glossary ?? [], {
+        query: str(args, 'query'),
+        category: str(args, 'category'),
+      })
+      const page = paginate(entries.length, args?.offset, args?.limit, DEFAULT_LIST_LIMIT)
+      const shown = entries.slice(page.start, page.end)
+      const hint = [
+        `※ 中身は ${callExample('get_glossary', { work_id: work.id, entry_id: shown[0]?.id ?? '…' })}（複数なら entry_ids）で取れます。`,
+        ...(page.nextOffset !== null
+          ? [
+              `※ 続き: ${callExample('list_glossary_entries', { work_id: work.id, offset: page.nextOffset })}`,
+            ]
+          : []),
+      ].join('\n')
+      const body = clipIndex(`${hint}\n\n${glossaryIndexToPlainText(shown)}`, indexBudget)
+      return textWith(
+        body,
+        {
+          work_id: work.id,
+          total: entries.length,
+          offset: page.start,
+          next_offset: page.nextOffset,
+          entries: shown.map((e) => ({
+            entry_id: e.id,
+            name: e.name,
+            category: e.category ?? null,
+            reading: e.reading ?? null,
+            aliases: e.aliases,
+            public_chars: publicTextOf(e).length,
+            author_note_chars: e.authorNote?.length ?? 0,
+          })),
+        },
+        indexBudget,
+      )
+    }
+
+    if (name === 'get_plot') {
+      const plot = primaryPlot()
+      const sectionId = str(args, 'section_id')
+      const beatIds = strArray(args, 'beat_ids')
+      if (plot && sectionId !== undefined && sectionById(plot, sectionId) === undefined) {
+        return text(`section_id "${sectionId}" の幕が見つかりません。`, true)
+      }
+      if (
+        plot &&
+        beatIds !== undefined &&
+        !beatIds.some((id) => plot.beats.some((b) => b.id === id))
+      ) {
+        return text(`beat_id ${beatIds.join(' / ')} のビートが見つかりません。`, true)
+      }
+      const full = plotToPlainText(plots, work, {
+        includeWorld: bool(args, 'include_world'),
+        sectionId,
+        beatIds,
+      })
+      return text(
+        fitToBudget(
+          full,
+          (bytes) =>
+            [
+              notice('index', bytes, [
+                `幕ごとに読む: ${callExample('get_plot', { work_id: work.id, section_id: plot?.sections[0]?.id ?? '…' })}`,
+                `世界観を外す: ${callExample('get_plot', { work_id: work.id, include_world: false })}`,
+                `従来どおり全量: ${callExample('get_plot', { work_id: work.id, max_bytes: 0 })}`,
+              ]),
+              plotIndexToPlainText(plots, work, { sectionId }),
+            ].join('\n\n'),
+          fullBudget,
+        ),
+      )
+    }
+
+    if (name === 'list_plot_beats') {
+      const plot = primaryPlot()
+      const sectionId = str(args, 'section_id')
+      if (plot && sectionId !== undefined && sectionById(plot, sectionId) === undefined) {
+        return text(`section_id "${sectionId}" の幕が見つかりません。`, true)
+      }
+      const hint = `※ 中身は ${callExample('get_plot', { work_id: work.id, section_id: plot?.sections[0]?.id ?? '…' })}（ビート単位なら beat_ids）で取れます。`
+      const body = clipIndex(
+        `${hint}\n\n${plotIndexToPlainText(plots, work, { sectionId })}`,
+        indexBudget,
+      )
+      return textWith(
+        body,
+        {
+          work_id: work.id,
+          sections: (plot?.sections ?? [])
+            .filter((s) => sectionId === undefined || s.id === sectionId)
+            .map((s) => ({
+              section_id: s.id,
+              title: s.title,
+              beats: beatsOfSection(plot as NonNullable<typeof plot>, s.id).map((b) => ({
+                beat_id: b.id,
+                title: b.title,
+                status: b.status,
+                summary_chars: b.summary?.length ?? 0,
+                episode_id: b.episodeRef ?? null,
+              })),
+            })),
+          foreshadows: plot?.foreshadows.length ?? 0,
+          secrets: plot?.secrets.length ?? 0,
+          world_notes: plot ? worldNotesInOrder(plot).length : 0,
+        },
+        indexBudget,
+      )
+    }
+
+    if (name === 'get_structures') {
+      const kindArg = str(args, 'kind')
+      const kind =
+        kindArg === 'outline' || kindArg === 'chart' || kindArg === 'mindmap' ? kindArg : undefined
+      const structures = snap?.structures ?? []
+      const full = `${worldPointerLine(primaryPlot())}\n\n${structuresToPlainText(structures, work, { kind })}`
+      return text(
+        fitToBudget(
+          full,
+          (bytes) =>
+            [
+              notice('index', bytes, [
+                `種別ごとに読む: ${callExample('get_structures', { work_id: work.id, kind: 'outline' })}`,
+                `従来どおり全量: ${callExample('get_structures', { work_id: work.id, max_bytes: 0 })}`,
+              ]),
+              worldPointerLine(primaryPlot()),
+              structureIndexToPlainText(structures, work),
+            ].join('\n\n'),
+          fullBudget,
+        ),
+      )
+    }
   }
+  // 読み取りの分岐はすべて明示的に return する（取りこぼしが「別のツールの結果」に化けないよう、
+  // ここは必ず未知ツール扱いで終わらせる）。
   return text(`未知のツール: ${name}`, true)
 }
 
@@ -958,7 +912,12 @@ export async function handleMcpMessage(msg: JsonRpcMessage, deps: McpDeps): Prom
   switch (method) {
     case 'initialize':
       return ok(id, {
-        protocolVersion: params?.protocolVersion ?? DEFAULT_PROTOCOL_VERSION,
+        // 要求された版がこちらの話せる版なら合わせ、そうでなければ既定版を名乗る。
+        protocolVersion:
+          params?.protocolVersion !== undefined &&
+          SUPPORTED_PROTOCOL_VERSIONS.has(params.protocolVersion)
+            ? params.protocolVersion
+            : DEFAULT_PROTOCOL_VERSION,
         capabilities: { tools: {} },
         serverInfo: SERVER_INFO,
         instructions: SERVER_INSTRUCTIONS,

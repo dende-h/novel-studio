@@ -77,9 +77,13 @@ function mindmapText(s: Structure): string {
  * 指定作品の構造データ（アウトライン・相関図・マインドマップ）を1ドキュメントにまとめる。
  * structures は全作品ぶんでよい（内部で work.id で絞る）。無ければ案内文を返す。
  */
-export function structuresToPlainText(structures: Structure[], work: Work): string {
+export function structuresToPlainText(
+  structures: Structure[],
+  work: Work,
+  opts: { kind?: Structure['kind'] } = {},
+): string {
   const mine = structures
-    .filter((s) => s.workId === work.id)
+    .filter((s) => s.workId === work.id && (opts.kind === undefined || s.kind === opts.kind))
     .sort((a, b) => KIND_ORDER[a.kind] - KIND_ORDER[b.kind])
   if (mine.length === 0) {
     return '（この作品の構造データ（アウトライン・相関図・マインドマップ）はまだありません）'
@@ -93,4 +97,30 @@ export function structuresToPlainText(structures: Structure[], work: Work): stri
     })
     .filter((t) => t.length > 0)
   return sections.join('\n\n')
+}
+
+/** 種別ごとの日本語名（索引の表示用）。 */
+const KIND_LABEL: Record<Structure['kind'], string> = {
+  outline: 'アウトライン',
+  chart: '相関図',
+  mindmap: 'マインドマップ',
+}
+
+/**
+ * 構造データの索引（種別と規模だけ。メモ本文・関係の中身は含まない）。
+ * 全量が応答の上限に収まらないときの受け皿。中身は `get_structures(work_id, kind)` で取る。
+ */
+export function structureIndexToPlainText(structures: Structure[], work: Work): string {
+  const mine = structures
+    .filter((s) => s.workId === work.id)
+    .sort((a, b) => KIND_ORDER[a.kind] - KIND_ORDER[b.kind])
+  const head = '# 構造データの索引（本文は含みません）'
+  if (mine.length === 0) {
+    return `${head}\n（この作品の構造データ（アウトライン・相関図・マインドマップ）はまだありません）`
+  }
+  const lines = mine.map((s) => {
+    const title = s.title ? `${KIND_LABEL[s.kind]}: ${s.title}` : KIND_LABEL[s.kind]
+    return `- ${title} [kind: ${s.kind}]（ノード ${s.nodes.length}件 ／ 線 ${s.edges.length}件）`
+  })
+  return [head, ...lines].join('\n')
 }

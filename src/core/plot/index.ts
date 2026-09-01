@@ -260,6 +260,37 @@ export function worldNotesInOrder(plot: Plot): WorldNote[] {
 }
 
 /**
+ * 世界観設定のノートを絞り込む（MCP の `get_world` の note_id / slots 用）。
+ *
+ * note_id 指定だけは `plot.world` の全件から引く。`worldNotesInOrder` は同じ定型枠に
+ * 複数ノートがある旧データを 1 件しか拾わないので、そこから引くと **保存されているのに
+ * どうやっても読み出せないノート**が生まれてしまう（索引に出ないものも id 指定では読める）。
+ */
+export function worldNotesOf(
+  plot: Plot | undefined,
+  filter: { noteId?: string; slots?: string[] } = {},
+): WorldNote[] {
+  if (!plot) return []
+  if (filter.noteId) return (plot.world ?? []).filter((n) => n.id === filter.noteId)
+  const ordered = worldNotesInOrder(plot)
+  if (filter.slots && filter.slots.length > 0) {
+    const want = new Set(filter.slots)
+    return ordered.filter((n) => want.has(n.slot))
+  }
+  return ordered
+}
+
+/** 幕 1 件を id で引く。 */
+export function sectionById(plot: Plot, sectionId: string): PlotSection | undefined {
+  return plot.sections.find((s) => s.id === sectionId)
+}
+
+/** ビート 1 件を id で引く。 */
+export function beatById(plot: Plot, beatId: string): PlotBeat | undefined {
+  return plot.beats.find((b) => b.id === beatId)
+}
+
+/**
  * 世界観設定のノートを書き込む。
  *
  * 定型枠（WORLD_SLOTS）は slot 一致で 1 枠 1 ノートに収束し、**本文が空になったら削除する**

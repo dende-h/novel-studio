@@ -9,8 +9,10 @@ import {
   secretStatus,
   sectionTargetTotal,
   WORLD_SLOTS,
+  type WorldNote,
   worldNoteLabel,
   worldNotesInOrder,
+  worldNotesOf,
 } from '../plot'
 import type { GlossaryEntry, Work } from '../schema'
 
@@ -110,19 +112,59 @@ function foreshadowText(f: Foreshadow, plot: Plot): string {
  * まだ伏せている真相もそのまま書かれている前提で扱う。定型枠は WORLD_SLOTS の順、
  * 自由枠はその後ろ。中身のある枠だけが並ぶ（空の器は保存されない）。
  */
-export function worldToPlainText(plot: Plot | undefined): string {
-  const notes = plot ? worldNotesInOrder(plot) : []
+export function worldToPlainText(
+  plot: Plot | undefined,
+  filter: { noteId?: string; slots?: string[] } = {},
+): string {
+  const notes = worldNotesOf(plot, filter)
   if (notes.length === 0) return ''
-  const body = notes.map((n) => {
-    const slot = WORLD_SLOTS.find((s) => s.key === n.slot)
-    const head = `## ${worldNoteLabel(n)} [slot: ${slot ? slot.key : n.slot}, note_id: ${n.id}]`
-    return `${head}\n${n.body}`
-  })
+  const body = notes.map(worldNoteToPlainText)
   return [
     '# 世界観設定（作者専用・読者には公開されません）',
     'この作品の決め事です。用語集・プロット・本文を書き換える前に、必ずここに従ってください。',
     ...body,
   ].join('\n\n')
+}
+
+/** 世界観設定 1 枠。全量出力に出るブロックと 1 文字も違わない（索引経由でも欄が落ちない）。 */
+export function worldNoteToPlainText(note: WorldNote): string {
+  const slot = WORLD_SLOTS.find((s) => s.key === note.slot)
+  const head = `## ${worldNoteLabel(note)} [slot: ${slot ? slot.key : note.slot}, note_id: ${note.id}]`
+  return `${head}\n${note.body}`
+}
+
+/** 索引 1 行。冒頭 60 字だけ載せる＝「どの枠を開くか」を本文なしで選べる。 */
+export function worldIndexLine(note: WorldNote, opts: { preview?: boolean } = {}): string {
+  const slot = WORLD_SLOTS.find((s) => s.key === note.slot)
+  const head = `- ${worldNoteLabel(note)} [slot: ${slot ? slot.key : note.slot}, note_id: ${note.id}]（${note.body.length}字）`
+  if (opts.preview === false) return head
+  const preview = note.body.replace(/\s+/g, ' ').trim().slice(0, 60)
+  return preview === '' ? head : `${head}\n    ${preview}${note.body.length > 60 ? '…' : ''}`
+}
+
+/**
+ * 世界観設定の索引（見出し・slot・note_id・字数・冒頭 60 字。**本文は含まない**）。
+ * `withEmptySlots` を立てると、まだ書かれていない定型枠も 1 行出す
+ * ＝ `set_world_note` で何が書けるかが読み側の索引に出て、読み書きで枠の語彙が揃う。
+ */
+export function worldIndexToPlainText(
+  notes: WorldNote[],
+  opts: { total?: number; withEmptySlots?: boolean; preview?: boolean } = {},
+): string {
+  const head = `# 世界観設定の索引（作者専用・全 ${opts.total ?? notes.length} 項目・本文は含みません）`
+  const lines = notes.map((n) => worldIndexLine(n, { preview: opts.preview }))
+  if (opts.withEmptySlots) {
+    const filled = new Set(notes.map((n) => n.slot))
+    const empty = WORLD_SLOTS.filter((s) => !filled.has(s.key)).map(
+      (s) => `- ${s.label} [slot: ${s.key}]（未記入）`,
+    )
+    if (empty.length > 0)
+      lines.push('', 'まだ書かれていない枠（set_world_note で書けます）:', ...empty)
+  }
+  if (lines.length === 0) {
+    return `${head}\n（この作品にはまだ世界観設定がありません。set_world_note で書けます）`
+  }
+  return [head, ...lines].join('\n')
 }
 
 /**
@@ -141,7 +183,11 @@ export function worldPointerLine(plot: Plot | undefined): string {
  * 指定作品の主プロットを1ドキュメントにまとめる。plots は全作品ぶんでよい（内部で絞る）。
  * 無ければ作成方法の案内文を返す。
  */
-export function plotToPlainText(plots: Plot[], work: Work): string {
+export function plotToPlainText(
+  plots: Plot[],
+  work: Work,
+  opts: { includeWorld?: boolean; sectionId?: string; beatIds?: string[] } = {},
+): string {
   const mine = plots.filter((p) => p.workId === work.id)
   const plot = pickPrimaryPlot(mine)
   if (!plot) {
@@ -164,18 +210,32 @@ export function plotToPlainText(plots: Plot[], work: Work): string {
     head.push(`※ 他に ${mine.length - 1} 件のプロット案があります（MCP の対象は主プロットのみ）`)
   }
 
+  // 幕・ビートの絞り込み（引数が無ければ全量＝従来どおり）。
+  const wantBeats = opts.beatIds && opts.beatIds.length > 0 ? new Set(opts.beatIds) : undefined
+  const targetSections =
+    opts.sectionId === undefined
+      ? plot.sections
+      : plot.sections.filter((s) => s.id === opts.sectionId)
+
   const sections =
     plot.sections.length === 0
       ? ['（幕がまだありません。upsert_plot_section で幕を作成してください）']
-      : plot.sections.map((section) => {
-          const beats = beatsOfSection(plot, section.id)
-          const target = sectionTargetTotal(plot, section.id)
-          const meta = `（${beats.length}ビート${target > 0 ? `・予定 ${fmt(target)}字` : ''}）`
-          const headLine = `## ${section.title} [section_id: ${section.id}]${meta}`
-          const note = section.note ? `${section.note}` : ''
-          const body = beats.map((b, i) => beatText(b, i + 1, plot, work)).join('\n')
-          return [headLine, note, body].filter((s) => s !== '').join('\n')
-        })
+      : targetSections
+          .map((section) => {
+            const all = beatsOfSection(plot, section.id)
+            const beats = wantBeats ? all.filter((b) => wantBeats.has(b.id)) : all
+            if (wantBeats && beats.length === 0) return ''
+            const target = sectionTargetTotal(plot, section.id)
+            const meta = `（${all.length}ビート${target > 0 ? `・予定 ${fmt(target)}字` : ''}）`
+            const headLine = `## ${section.title} [section_id: ${section.id}]${meta}`
+            const note = section.note ? `${section.note}` : ''
+            // 番号は幕の中の通し番号（絞り込んでも「何番目のビートか」が変わらない）。
+            const body = beats
+              .map((b) => beatText(b, all.findIndex((x) => x.id === b.id) + 1, plot, work))
+              .join('\n')
+            return [headLine, note, body].filter((s) => s !== '').join('\n')
+          })
+          .filter((s) => s !== '')
 
   const foreshadows =
     plot.foreshadows.length > 0
@@ -190,8 +250,74 @@ export function plotToPlainText(plots: Plot[], work: Work): string {
 
   // 世界観設定はプロットと同じ器（Plot）にあり、プロットを触る AI が最初に読むべきもの。
   // get_world を待たずにここへ丸ごと載せる＝「まず決め事を読む」を取りこぼさない。
-  const world = worldToPlainText(plot)
+  // include_world: false でも導線（worldPointerLine）は必ず残す＝存在ごと消さない。
+  const world = opts.includeWorld === false ? '' : worldToPlainText(plot)
   const preamble = world !== '' ? [world] : [worldPointerLine(plot)]
 
   return [...preamble, head.join('\n'), ...sections, ...foreshadows, ...secrets].join('\n\n')
+}
+
+/** ビート 1 件の索引行（要約・メモの本文は含まず、字数だけ載せる）。 */
+export function beatIndexLine(beat: PlotBeat, order: number): string {
+  const meta: string[] = []
+  if (beat.summary) meta.push(`要約 ${beat.summary.length}字`)
+  if (beat.note) meta.push(`メモ ${beat.note.length}字`)
+  if (beat.episodeRef) meta.push(`対応話 [episode_id: ${beat.episodeRef}]`)
+  const tail = meta.length > 0 ? `（${meta.join(' ／ ')}）` : ''
+  return `${order}. [${STATUS_LABEL[beat.status]}] ${beat.title} [beat_id: ${beat.id}]${tail}`
+}
+
+/**
+ * プロットの索引（幕とビートの見出しだけ。要約・メモ・世界観の本文は含まない）。
+ * 全量が応答の上限に収まらないときの受け皿であり、`list_plot_beats` の本体でもある。
+ *
+ * 世界観設定は**索引の形で必ず先頭に残す**（見出し・slot・note_id・件数）。
+ * ここが消えると「決め事があること」自体が AI から見えなくなり、
+ * 用語集へ設定を書き込む事故（この器の分け方を作った理由そのもの）に戻ってしまう。
+ */
+export function plotIndexToPlainText(
+  plots: Plot[],
+  work: Work,
+  opts: { sectionId?: string } = {},
+): string {
+  const mine = plots.filter((p) => p.workId === work.id)
+  const plot = pickPrimaryPlot(mine)
+  if (!plot) {
+    return [
+      worldPointerLine(undefined),
+      '（この作品のプロットはまだありません。set_plot_meta で作成できます）',
+    ].join('\n\n')
+  }
+
+  const head = [`【プロット】${plot.title} [plot_id: ${plot.id}]（索引・本文は含みません）`]
+  if (plot.premise) head.push(`ログライン: ${plot.premise}`)
+  if (plot.lines.length > 0) {
+    head.push(
+      `プロットライン: ${plot.lines.map((l) => `${l.title} [line_id: ${l.id}]`).join('、')}`,
+    )
+  }
+
+  const targetSections =
+    opts.sectionId === undefined
+      ? plot.sections
+      : plot.sections.filter((s) => s.id === opts.sectionId)
+  const sections =
+    targetSections.length === 0
+      ? ['（幕がまだありません。upsert_plot_section で幕を作成してください）']
+      : targetSections.map((section) => {
+          const beats = beatsOfSection(plot, section.id)
+          const target = sectionTargetTotal(plot, section.id)
+          const meta = `（${beats.length}ビート${target > 0 ? `・予定 ${fmt(target)}字` : ''}）`
+          const lines = beats.map((b, i) => beatIndexLine(b, i + 1))
+          return [`## ${section.title} [section_id: ${section.id}]${meta}`, ...lines].join('\n')
+        })
+
+  const counts = `伏線 ${plot.foreshadows.length}件 ／ 秘密 ${plot.secrets.length}件（中身は get_plot で読めます）`
+
+  return [
+    worldIndexToPlainText(worldNotesInOrder(plot), { preview: false }),
+    head.join('\n'),
+    ...sections,
+    counts,
+  ].join('\n\n')
 }

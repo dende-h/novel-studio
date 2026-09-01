@@ -1,7 +1,14 @@
 import { describe, expect, it } from 'vitest'
 import { parseEpisodeBody } from '../parser/parseNotation'
 import type { GlossaryEntry, Work } from '../schema'
-import { blocksToPlainText, glossaryToPlainText, workToPlainText } from './toPlainText'
+import {
+  blocksToPlainText,
+  episodeIndexToPlainText,
+  glossaryEntryToPlainText,
+  glossaryIndexToPlainText,
+  glossaryToPlainText,
+  workToPlainText,
+} from './toPlainText'
 
 function entry(over: Partial<GlossaryEntry> & { name: string }): GlossaryEntry {
   return { id: `g-${over.name}`, aliases: [], createdAt: 0, updatedAt: 0, ...over }
@@ -130,5 +137,66 @@ describe('glossaryToPlainText', () => {
     )
     // 既定（無料コピー導線）は ID を出さない。
     expect(glossaryToPlainText([entry({ name: 'アリス' })])).not.toContain('entry_id')
+  })
+})
+
+describe('索引と 1 件取得（MCP の読み取り用）', () => {
+  const alice = entry({
+    name: 'アリス',
+    category: '人物',
+    reading: 'ありす',
+    aliases: ['白兎'],
+    summary: '主人公。',
+    authorNote: '正体は…',
+  })
+  // 旧 2 欄レコード（summary＋body）。字数は publicTextOf 経由で数える。
+  const lighthouse = entry({ name: '灯台', summary: '岬の灯台。', body: '百年前から。' })
+  const entries: GlossaryEntry[] = [alice, lighthouse]
+
+  it('索引は本文を含まず、旧 2 欄レコードでも字数が 0 にならない', () => {
+    const text = glossaryIndexToPlainText(entries)
+    expect(text).toContain(
+      '- アリス [entry_id: g-アリス] ／ 分類: 人物 ／ よみ: ありす ／ 別名: 白兎 ／ 公開情報 4字 ／ 作者メモ 4字',
+    )
+    expect(text).not.toContain('主人公。')
+    expect(text).not.toContain('正体は…')
+    // 「岬の灯台。」＋空行＋「百年前から。」＝ 13 字。summary だけ数えると 5 字になってしまう。
+    expect(text).toContain('公開情報 13字')
+  })
+
+  it('索引は空でも空文字を返さない', () => {
+    expect(glossaryIndexToPlainText([])).toContain('該当する項目はありません')
+  })
+
+  it('1 件の整形は既定で entry_id を出さない（無料のコピー導線に内部 id を混ぜない）', () => {
+    expect(glossaryEntryToPlainText(alice)).not.toContain('entry_id')
+    expect(glossaryEntryToPlainText(alice, true)).toContain('[entry_id: g-アリス]')
+    // 全量出力に出るブロックと 1 文字も違わない（索引経由でも欄が落ちない）。
+    expect(glossaryToPlainText(entries, { withIds: true })).toContain(
+      glossaryEntryToPlainText(alice, true),
+    )
+  })
+
+  it('workToPlainText は episodeId でその話だけ返し、見出しの形は変えない', () => {
+    const work: Work = {
+      id: 'w1',
+      title: '本',
+      episodes: [
+        { id: 'e1', title: '一話', blocks: parseEpisodeBody('あ') },
+        { id: 'e2', title: '二話', blocks: parseEpisodeBody('い') },
+      ],
+    }
+    expect(workToPlainText(work, { episodeId: 'e2' })).toBe('# 本\n\n## 二話\n\nい')
+    expect(workToPlainText(work)).toContain('## 一話')
+  })
+
+  it('話の索引は本文を持たず、字数と episode_id を出す', () => {
+    const work: Work = {
+      id: 'w1',
+      title: '本',
+      episodes: [{ id: 'e1', title: '一話', blocks: parseEpisodeBody('あいう') }],
+    }
+    expect(episodeIndexToPlainText(work)).toBe('# 本（全 1 話）\n1. 一話（3字） [episode_id: e1]')
+    expect(episodeIndexToPlainText({ ...work, episodes: [] })).toContain('まだ話がありません')
   })
 })

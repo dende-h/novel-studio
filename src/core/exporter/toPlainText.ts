@@ -1,5 +1,6 @@
 import { publicTextOf } from '../glossary'
-import type { Block, GlossaryEntry, Inline, Work } from '../schema'
+import type { Block, Episode, GlossaryEntry, Inline, Work } from '../schema'
+import { countEpisodeChars } from '../stats'
 
 /**
  * 正本 → AI が読める / コピーできるプレーンテキスト。
@@ -38,16 +39,36 @@ export function blocksToPlainText(blocks: Block[]): string {
  * Work 全体 → 1 ドキュメント。タイトル/著者/あらすじの見出し＋各話を Markdown 風の
  * 見出しで連結し、AI が構造（作品名・話境界）を把握できるようにする。
  */
-export function workToPlainText(work: Work): string {
+export function workToPlainText(work: Work, opts: { episodeId?: string } = {}): string {
   const meta = [`# ${work.title}`]
   if (work.author) meta.push(`著者: ${work.author}`)
 
   const sections = [meta.join('\n')]
   if (work.description) sections.push(work.description)
-  for (const ep of work.episodes) {
+  // episodeId を渡すと 1 話だけ（見出しの形は全話ぶんと同じ＝AI から見て地続き）。
+  const episodes =
+    opts.episodeId === undefined
+      ? work.episodes
+      : work.episodes.filter((ep) => ep.id === opts.episodeId)
+  for (const ep of episodes) {
     sections.push(`## ${ep.title}\n\n${blocksToPlainText(ep.blocks)}`)
   }
   return sections.join('\n\n')
+}
+
+/** 話 1 件の索引行（本文は含まない）。 */
+export function episodeIndexLine(ep: Episode, order: number): string {
+  return `${order}. ${ep.title || '無題の話'}（${countEpisodeChars(ep)}字） [episode_id: ${ep.id}]`
+}
+
+/**
+ * 本文の索引（話のタイトルと字数だけ）。全文が応答の上限に収まらないときの受け皿。
+ * **本文は途中で切らない**（文の途中で切れた原稿を AI が全文と誤認すると、推敲そのものが壊れる）。
+ */
+export function episodeIndexToPlainText(work: Work): string {
+  const head = `# ${work.title}（全 ${work.episodes.length} 話）`
+  if (work.episodes.length === 0) return `${head}\n（まだ話がありません）`
+  return [head, ...work.episodes.map((ep, i) => episodeIndexLine(ep, i + 1))].join('\n')
 }
 
 /**
@@ -58,7 +79,7 @@ export function workToPlainText(work: Work): string {
  * 作者メモは公開バンドルには載らない情報なので、非公開であることが読み手（AI・作者本人）に
  * 分かる見出しを必ず添える。
  */
-function entryToPlainText(entry: GlossaryEntry, withId = false): string {
+export function glossaryEntryToPlainText(entry: GlossaryEntry, withId = false): string {
   const meta: string[] = []
   if (entry.category) meta.push(`分類: ${entry.category}`)
   if (entry.reading) meta.push(`よみ: ${entry.reading}`)
@@ -86,5 +107,31 @@ export function glossaryToPlainText(
   opts: { withIds?: boolean } = {},
 ): string {
   if (glossary.length === 0) return ''
-  return ['# 用語集', ...glossary.map((e) => entryToPlainText(e, opts.withIds))].join('\n\n')
+  return ['# 用語集', ...glossary.map((e) => glossaryEntryToPlainText(e, opts.withIds))].join(
+    '\n\n',
+  )
+}
+
+/**
+ * 用語集 1 項目の索引行（**公開情報・作者メモの本文は含まない**）。
+ * 字数は必ず `publicTextOf` 経由で数える＝旧 2 欄（summary＋body）のレコードが 0 字に化けない。
+ */
+export function glossaryIndexLine(entry: GlossaryEntry): string {
+  const meta: string[] = []
+  if (entry.category) meta.push(`分類: ${entry.category}`)
+  if (entry.reading) meta.push(`よみ: ${entry.reading}`)
+  if (entry.aliases.length > 0) meta.push(`別名: ${entry.aliases.join('、')}`)
+  meta.push(`公開情報 ${publicTextOf(entry).length}字`)
+  if (entry.authorNote) meta.push(`作者メモ ${entry.authorNote.length}字`)
+  return `- ${entry.name} [entry_id: ${entry.id}] ／ ${meta.join(' ／ ')}`
+}
+
+/**
+ * 用語集の索引（見出しと entry_id だけ）。中身は `get_glossary(work_id, entry_id)` で 1 件ずつ取る。
+ * 並びは保存順のまま（五十音に並べ替えない＝全量出力と順序が一致し、offset が意味を保つ）。
+ */
+export function glossaryIndexToPlainText(entries: GlossaryEntry[]): string {
+  const head = '# 用語集の索引（本文は含みません）'
+  if (entries.length === 0) return `${head}\n（該当する項目はありません）`
+  return [head, ...entries.map(glossaryIndexLine)].join('\n')
 }

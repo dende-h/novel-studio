@@ -107,7 +107,41 @@ describe('handleMcpMessage — プロトコル', () => {
     ).toBeNull()
   })
 
-  it('tools/list は 27 ツール（読み6・書き18・バックアップ3）', async () => {
+  /**
+   * 改修前から公開している 27 本。**この一覧から名前が消える変更は通してはいけない**
+   * （接続済みのホストは tools/list をキャッシュしているので、名前が変わると呼べなくなる）。
+   */
+  const TOOLS_BEFORE_INDEXING = [
+    'list_works',
+    'get_work',
+    'get_glossary',
+    'get_structures',
+    'get_plot',
+    'get_world',
+    'set_work_meta',
+    'set_episode',
+    'add_episode',
+    'create_work',
+    'set_outline',
+    'upsert_glossary_entry',
+    'delete_glossary_entry',
+    'set_structure',
+    'set_plot_meta',
+    'upsert_plot_section',
+    'upsert_plot_beat',
+    'delete_plot_beat',
+    'upsert_plot_line',
+    'upsert_foreshadow',
+    'upsert_secret',
+    'delete_plot_item',
+    'set_world_note',
+    'delete_world_note',
+    'create_backup',
+    'list_backups',
+    'restore_backup',
+  ]
+
+  it('tools/list は 31 ツール（読み10・書き18・バックアップ3）', async () => {
     const res = (await handleMcpMessage(
       { jsonrpc: '2.0', id: 1, method: 'tools/list' },
       deps(),
@@ -115,22 +149,28 @@ describe('handleMcpMessage — プロトコル', () => {
       result: { tools: { name: string }[] }
     }
     const names = res.result.tools.map((t) => t.name)
-    expect(MCP_TOOLS).toHaveLength(27)
-    expect(names).toContain('upsert_secret')
-    expect(names).toContain('get_plot')
-    expect(names).toContain('upsert_plot_beat')
-    expect(names).toContain('upsert_foreshadow')
-    expect(names).toContain('delete_plot_item')
-    expect(names).toContain('set_episode')
-    expect(names).toContain('create_work')
-    expect(names).toContain('set_outline')
-    expect(names).toContain('upsert_glossary_entry')
-    expect(names).toContain('set_structure')
-    expect(names).toContain('create_backup')
-    expect(names).toContain('restore_backup')
-    expect(names).toContain('get_world')
-    expect(names).toContain('set_world_note')
-    expect(names).toContain('delete_world_note')
+    expect(MCP_TOOLS).toHaveLength(31)
+    expect(names).toEqual(expect.arrayContaining(TOOLS_BEFORE_INDEXING))
+    // 索引ツール（軽い読み口）は 4 本。
+    expect(names).toContain('get_work_map')
+    expect(names).toContain('list_glossary_entries')
+    expect(names).toContain('list_world_notes')
+    expect(names).toContain('list_plot_beats')
+  })
+
+  it('引数を足しても required は増やさず、未知キーは受け付けないまま', () => {
+    // 旧クライアントは新しい引数を知らないまま呼ぶ。必須化すると、その瞬間に呼べなくなる。
+    const required = (n: string) =>
+      (MCP_TOOLS.find((t) => t.name === n)?.inputSchema as { required?: string[] }).required ?? []
+    expect(required('get_work')).toEqual(['work_id'])
+    expect(required('get_glossary')).toEqual(['work_id'])
+    expect(required('get_world')).toEqual(['work_id'])
+    expect(required('get_plot')).toEqual(['work_id'])
+    expect(required('get_structures')).toEqual(['work_id'])
+    expect(required('list_works')).toEqual([])
+    for (const tool of MCP_TOOLS) {
+      expect(tool.inputSchema.additionalProperties).toBe(false)
+    }
   })
 
   it('ping は空結果、未知メソッドは -32601', async () => {

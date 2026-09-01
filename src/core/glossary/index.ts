@@ -284,6 +284,26 @@ export function suggestRefs(
     .slice(0, limit)
 }
 
+/**
+ * 用語集の絞り込み（MCP の読み取り用）。**保存順のまま**返す
+ * ＝全量出力と索引で並びが一致し、offset の意味が保たれる。
+ *
+ * query は `matchesQuery`（name・別名・よみの部分一致）をそのまま使う。ここを広げると
+ * `suggestRefs` 経由で本文エディタの @ サジェストが全作者ぶん変わるので、絶対に触らない。
+ * category は空文字・未指定のどちらも「絞らない」（画面の「全分類」と同じ意味）。
+ */
+export function filterEntries(
+  entries: GlossaryEntry[],
+  filter: { query?: string; category?: string } = {},
+): GlossaryEntry[] {
+  const category = filter.category?.trim()
+  return entries.filter((e) => {
+    if (filter.query !== undefined && !matchesQuery(e, filter.query)) return false
+    if (category) return (e.category ?? '').trim() === category
+    return true
+  })
+}
+
 /** 辞書のカテゴリ絞り込み用に、出現するカテゴリの一覧を重複なく返す（出現順）。 */
 export function categoriesOf(entries: GlossaryEntry[]): string[] {
   const seen = new Set<string>()

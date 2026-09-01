@@ -3,6 +3,7 @@ import { parseEpisodeBody } from '../parser/parseNotation'
 import type { GlossaryEntry, Inline, Work } from '../schema'
 import {
   categoriesOf,
+  filterEntries,
   findAppearances,
   matchesQuery,
   publicTextOf,
@@ -420,5 +421,36 @@ describe('publicTextOf（公開情報＝概要＋旧・詳細の一本化）', (
   it('両方無し・空白のみは空文字', () => {
     expect(publicTextOf({})).toBe('')
     expect(publicTextOf({ summary: '  ', body: '\n' })).toBe('')
+  })
+})
+
+describe('filterEntries（MCP の読み取り用の絞り込み）', () => {
+  const entries: GlossaryEntry[] = [
+    { id: 'g1', name: 'アカリ', aliases: ['灯の子'], category: '人物', createdAt: 0, updatedAt: 0 },
+    { id: 'g2', name: '灯台', aliases: [], category: '場所', createdAt: 0, updatedAt: 0 },
+    { id: 'g3', name: '星狩り', aliases: [], createdAt: 0, updatedAt: 0 },
+  ]
+
+  it('絞り込みなしは保存順のまま全件（全量出力と並びが一致する）', () => {
+    expect(filterEntries(entries).map((e) => e.id)).toEqual(['g1', 'g2', 'g3'])
+    expect(filterEntries(entries, {}).map((e) => e.id)).toEqual(['g1', 'g2', 'g3'])
+  })
+
+  it('query は名前・別名・よみの部分一致（matchesQuery と同じ規則）', () => {
+    expect(filterEntries(entries, { query: '灯の子' }).map((e) => e.id)).toEqual(['g1'])
+    expect(filterEntries(entries, { query: '灯' }).map((e) => e.id)).toEqual(['g1', 'g2'])
+    expect(filterEntries(entries, { query: '' }).map((e) => e.id)).toEqual(['g1', 'g2', 'g3'])
+  })
+
+  it('category の空文字・未指定はどちらも「絞らない」（画面の「全分類」と同じ意味）', () => {
+    expect(filterEntries(entries, { category: '人物' }).map((e) => e.id)).toEqual(['g1'])
+    expect(filterEntries(entries, { category: '' }).map((e) => e.id)).toEqual(['g1', 'g2', 'g3'])
+    expect(filterEntries(entries, { category: '  ' }).map((e) => e.id)).toEqual(['g1', 'g2', 'g3'])
+  })
+
+  it('query と category は重ねられる', () => {
+    expect(filterEntries(entries, { query: '灯', category: '場所' }).map((e) => e.id)).toEqual([
+      'g2',
+    ])
   })
 })
