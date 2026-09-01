@@ -117,12 +117,12 @@ describe('用語集の立ち絵欄（SpriteSection）', () => {
     expect(map.size).toBe(1)
   })
 
-  it('無料プランの持ち込み枠（5枚・テンプレ除く）に達すると案内を出して開かない', async () => {
+  it('無料プランの持ち込み枠（20枚・テンプレ除く）に達すると案内を出して開かない', async () => {
     const five = Array.from({ length: FREE_IMPORT_LIMIT }, (_, i) => bg(`bg-${i}`))
     const { repo, map } = memoryAssetRepo(five)
     render(<SpriteSection name="灯" aliases={[]} assetRepo={repo} />)
     fireEvent.click(await screen.findByRole('button', { name: '立ち絵を追加…' }))
-    expect(await screen.findByText(/無料プランでは 5 枚までです/)).toBeInTheDocument()
+    expect(await screen.findByText(/無料プランでは 20 枚までです/)).toBeInTheDocument()
     expect(map.size).toBe(FREE_IMPORT_LIMIT)
   })
 

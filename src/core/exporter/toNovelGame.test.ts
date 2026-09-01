@@ -136,7 +136,7 @@ describe('buildNovelGameFiles（zip の中身）', () => {
     const files = buildNovelGameFiles(work, evil, undefined)
     const html = files.find((f) => f.path === 'index.html')?.data as string
     // シナリオ JSON 内の < は < 化される＝生の </script> が本文由来で現れない
-    expect(html.match(/<\/script>/g)?.length).toBe(2) // シナリオ用と プレイヤー本体のみ
+    expect(html.match(/<\/script>/g)?.length).toBe(3) // 素材・シナリオ・プレイヤー本体のみ
     const s = scenarioOf(files)
     expect(s.pages[0]?.text).toContain('<script>')
     const joined = s.pages[0]?.units.map((u) => (typeof u === 'string' ? u : u[0])).join('')

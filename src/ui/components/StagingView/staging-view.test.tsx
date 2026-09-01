@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Staging } from '@/core/game'
-import { HOSTED_ASSET_LIMIT, type UserGameAsset } from '@/core/game/assets'
+import { FREE_IMPORT_LIMIT, HOSTED_ASSET_LIMIT, type UserGameAsset } from '@/core/game/assets'
 import { parseEpisodeBody } from '@/core/parser/parseNotation'
 import type { Work } from '@/core/schema'
 import type { GameAssetRepository } from '@/core/storage/gameAssetRepository'
@@ -436,23 +436,25 @@ describe('StagingView（演出エディタ）', () => {
     expect(map.size).toBe(1)
   })
 
-  it('無料プランは持ち込み5枚まで（テンプレは数えない・案内を出してファイル選択を開かない）', async () => {
+  it('無料プランは持ち込み 20 枚まで（テンプレは数えない・案内を出してファイル選択を開かない）', async () => {
     const { repo } = fakeRepo()
-    const five = Array.from({ length: 5 }, (_, i) => memoryAsset(`bg-${i}`, `背景${i}`))
+    const filled = Array.from({ length: FREE_IMPORT_LIMIT }, (_, i) =>
+      memoryAsset(`bg-${i}`, `背景${i}`),
+    )
     const tpl: UserGameAsset = {
       ...memoryAsset('tpl-x', '灯（シルエット）'),
       kind: 'sprite',
       character: '灯',
       preset: 'preset:sprite/silhouette-woman',
     }
-    const { repo: assetRepo, map } = memoryAssetRepo([...five, tpl])
+    const { repo: assetRepo, map } = memoryAssetRepo([...filled, tpl])
     render(
       <StagingView repo={repo} work={makeWork()} currentEpisodeId="e1" assetRepo={assetRepo} />,
     )
     fireEvent.click(await screen.findByText('「——まだ、書いてるんだね」'))
     fireEvent.change(screen.getByLabelText('背景'), { target: { value: '__add_image__' } })
-    expect(await screen.findByText(/無料プランでは 5 枚までです/)).toBeInTheDocument()
-    expect(map.size).toBe(6) // 何も追加されていない
+    expect(await screen.findByText(/無料プランでは 20 枚までです/)).toBeInTheDocument()
+    expect(map.size).toBe(FREE_IMPORT_LIMIT + 1) // 何も追加されていない
   })
 
   it('素材の管理を開くと、非会員には無料枠の枚数とクラウド版の案内が出る', async () => {
@@ -462,8 +464,8 @@ describe('StagingView（演出エディタ）', () => {
       <StagingView repo={repo} work={makeWork()} currentEpisodeId="e1" assetRepo={assetRepo} />,
     )
     fireEvent.click(await screen.findByRole('button', { name: '素材の管理' }))
-    expect(await screen.findByText(/持ち込み 1 \/ 5 枚（無料プラン/)).toBeInTheDocument()
-    expect(screen.getByText(/クラウド版では 30 枚まで/)).toBeInTheDocument()
+    expect(await screen.findByText(/持ち込み 1 \/ 20 枚（無料プラン/)).toBeInTheDocument()
+    expect(screen.getByText(/クラウド版では 50 枚まで/)).toBeInTheDocument()
     expect(screen.getByText('海辺')).toBeInTheDocument()
     // 非会員はクラウド操作もバッジも出ない
     expect(screen.queryByRole('button', { name: 'クラウドへ上げる' })).not.toBeInTheDocument()

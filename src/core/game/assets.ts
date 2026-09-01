@@ -98,7 +98,7 @@ export function pickSprite<T extends SpriteSource>(
  * クラウドに保管できる枚数の上限（1 アカウントあたり・素材の種別を合わせて数える）。
  * D-GAME-PRICE の「独自素材のホスティングは有料」の枠。値付けと連動して変えるならここ1箇所。
  */
-export const HOSTED_ASSET_LIMIT = 30
+export const HOSTED_ASSET_LIMIT = 50
 
 /**
  * 1 素材の上限バイト数（data URL 文字列長で判定）。リサイズ済みの持ち込み画像は
@@ -133,8 +133,15 @@ export function hostedAssetVerdict(
 // 持ち込みの無料枠（D-GAME-PRICE v2：持ち込み自体は有料・無料は枠つき）
 // ---------------------------------------------------------------------------
 
-/** 無料アカウントの持ち込み枚数（背景＋立ち絵の合算・テンプレ由来は数えない）。 */
-export const FREE_IMPORT_LIMIT = 5
+/**
+ * 無料アカウントの持ち込み枚数（背景＋立ち絵の合算・テンプレ由来は数えない）。
+ *
+ * 実体はこの端末の IndexedDB にあるだけ＝**運営に保管の費用が発生しない**ので、
+ * 枚数を絞る理由は費用ではない。立ち絵は「1人×表情3種」で膨らむため、少なすぎると
+ * 1場面すら組み上がらないまま体験が終わる。課金の理由は枚数ではなく、
+ * クラウド保管（端末をまたぐ・機種変で消えない）と枚数の上乗せに置く。
+ */
+export const FREE_IMPORT_LIMIT = 20
 
 export type ImportVerdict = 'ok' | 'free_limit'
 
