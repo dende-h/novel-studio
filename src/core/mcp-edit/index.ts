@@ -9,6 +9,7 @@ import {
 } from '../game'
 import { type SpriteSource, spriteExpressionsOf, userAssetKey } from '../game/assets'
 import { presetBackground } from '../game/presets'
+import { presetSe } from '../game/sePresets'
 import { type FlatNote, MAX_NOTE_DEPTH, rebuildEpisodeNotes } from '../outline'
 import { parseEpisodeBody } from '../parser/parseNotation'
 import { reconcileBlockIds } from '../parser/reconcileBlockIds'
@@ -807,6 +808,7 @@ export interface StagingCueInput {
   appear?: string
   sceneBreak?: boolean
   bg?: string
+  se?: string
   transition?: string
   clear?: boolean
 }
@@ -847,6 +849,7 @@ export function parseStagingCueInputs(raw: unknown): StagingCueInput[] {
       appear: field('appear'),
       sceneBreak: flag('scene_break'),
       bg: field('bg'),
+      se: field('se'),
       transition: field('transition'),
       clear: flag('clear'),
     }
@@ -894,6 +897,7 @@ export function setStagingCues(
         item.appear !== undefined ||
         item.sceneBreak !== undefined ||
         item.bg !== undefined ||
+        item.se !== undefined ||
         item.transition !== undefined
       ) {
         throw new McpEditError(`block_id "${item.blockId}": clear: true と他の項目は併用できません`)
@@ -954,6 +958,15 @@ export function setStagingCues(
       }
       patch.bg = bg
     }
+    if (item.se !== undefined) {
+      const se = emptyToUndef(item.se)
+      if (se !== undefined && !presetSe(se)) {
+        throw new McpEditError(
+          `se "${se}" は使えません。使える効果音キーは get_staging の一覧で確認してください`,
+        )
+      }
+      patch.se = se
+    }
     if (item.transition !== undefined) {
       const transition = emptyToUndef(item.transition)
       if (transition !== undefined && !TRANSITION_CHOICES.includes(transition)) {
@@ -963,7 +976,7 @@ export function setStagingCues(
     }
     if (Object.keys(patch).length === 0) {
       throw new McpEditError(
-        `block_id "${item.blockId}": 変更する項目がありません（speaker / expression / appear / scene_break / bg / transition / clear のいずれかを渡す）`,
+        `block_id "${item.blockId}": 変更する項目がありません（speaker / expression / appear / scene_break / bg / se / transition / clear のいずれかを渡す）`,
       )
     }
     staging = patchCue(staging, item.blockId, patch, now)

@@ -361,6 +361,7 @@ describe('mcp-edit — 演出譜（set_staging の純ロジック）', () => {
         appear: undefined,
         sceneBreak: true,
         bg: undefined,
+        se: undefined,
         transition: undefined,
         clear: undefined,
       },
@@ -587,6 +588,40 @@ describe('mcp-edit — 演出譜（set_staging の純ロジック）', () => {
       'e1',
       [{ blockId: 'b1', appear: '' }],
       sprites,
+      100,
+    )
+    expect(cleared.stagings[0]?.cues).toHaveLength(0)
+  })
+
+  it('効果音（se）はテンプレのキーだけ通る（空文字で外す）', () => {
+    const ok = setStagingCues(
+      [],
+      [stagedWork()],
+      'w1',
+      'e1',
+      [{ blockId: 'b1', se: 'preset:se/rain' }],
+      [],
+      100,
+    )
+    expect(ok.stagings[0]?.cues[0]).toEqual({ blockId: 'b1', se: 'preset:se/rain' })
+    expect(() =>
+      setStagingCues(
+        [],
+        [stagedWork()],
+        'w1',
+        'e1',
+        [{ blockId: 'b1', se: 'preset:se/zzz' }],
+        [],
+        100,
+      ),
+    ).toThrow(/使えません/)
+    const cleared = setStagingCues(
+      ok.stagings,
+      [stagedWork()],
+      'w1',
+      'e1',
+      [{ blockId: 'b1', se: '' }],
+      [],
       100,
     )
     expect(cleared.stagings[0]?.cues).toHaveLength(0)

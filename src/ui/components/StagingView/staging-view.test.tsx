@@ -270,6 +270,16 @@ describe('StagingView（演出エディタ）', () => {
     expect(await screen.findByText('表情 笑顔')).toBeInTheDocument()
   })
 
+  it('効果音を選ぶとその場で保存され、一覧の行にラベルが出る', async () => {
+    const { repo, saved } = fakeRepo()
+    render(<StagingView repo={repo} work={makeWork()} currentEpisodeId="e1" />)
+    fireEvent.click(await screen.findByText('「——まだ、書いてるんだね」'))
+    fireEvent.change(screen.getByLabelText('効果音'), { target: { value: 'preset:se/rain' } })
+    await waitFor(() => expect(saved).toHaveLength(1))
+    expect(saved[0]?.cues[0]).toEqual({ blockId: 'b2', se: 'preset:se/rain' })
+    expect(await screen.findByText('効果音 雨')).toBeInTheDocument()
+  })
+
   it('地の文の行で「立ち絵の登場」を選ぶと cue（appear）に保存される', async () => {
     const { repo, saved } = fakeRepo()
     const { repo: assetRepo } = memoryAssetRepo([

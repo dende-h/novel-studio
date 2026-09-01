@@ -23,6 +23,7 @@ import { cn } from '@/lib/utils'
 import {
   describePublishBlocked,
   isPublishAvailable,
+  type NovelGameBundleInput,
   publishWorkToPlatform,
 } from '@/ui/_api/publish'
 import { triggerDownload } from '@/ui/_utils/download'
@@ -96,9 +97,9 @@ interface LibraryProps {
   activityRepo: ActivityRepository
   /** 案内モーダルの「クラウドバックアップを利用する場合はこちら」導線（無料の人向け・未指定なら非表示）。 */
   onOpenCloudPlan?: () => void
-  /** 保存済みの演出譜（サウンドノベル書き出しに載せる）。 */
-  stagingRepo?: Pick<StagingRepository, 'get'>
-  /** 持ち込み背景（演出が指す分だけ zip に同梱される）。 */
+  /** 保存済みの演出譜（サウンドノベル書き出し・公開切替の v4 再送に載せる）。 */
+  stagingRepo?: Pick<StagingRepository, 'get' | 'listByWork'>
+  /** 持ち込み背景（演出が指す分だけ zip・v4 バンドルに同梱される）。 */
   gameAssetRepo?: Pick<GameAssetRepository, 'list'>
 }
 
@@ -275,7 +276,21 @@ export function Library({
         ...work.platform,
         visibility: summary.platform?.visibility === 'public' ? 'draft' : 'public',
       }
-      const res = await publishWorkToPlatform(getToken, { ...work, platform })
+      // サウンドノベル ON の作品を公開へ戻すときは、プレイヤーも作り直して v4 で送る。
+      // 渡さないと v3（先方は据え置き）になり、本文だけ新しくプレイヤーが古いまま残る
+      let gameInput: NovelGameBundleInput | undefined
+      if (
+        platform.visibility === 'public' &&
+        platform.novelGame === true &&
+        stagingRepo &&
+        gameAssetRepo
+      ) {
+        gameInput = {
+          stagings: await stagingRepo.listByWork(work.id),
+          gameAssets: await gameAssetRepo.list(),
+        }
+      }
+      const res = await publishWorkToPlatform(getToken, { ...work, platform }, gameInput)
       if (!res.ok) {
         show(res.message)
         return

@@ -1,6 +1,7 @@
 import { applyCues, MASKED_SPEAKER, plainTextOfBlock, type Staging, toPages } from '../game'
-import { pickSprite } from '../game/assets'
+import { pickSprite, type UserGameAsset, userAssetKey } from '../game/assets'
 import { buildGameCredits, DEFAULT_BG_KEY, presetBackground, presetBgSvg } from '../game/presets'
+import { type PresetSe, presetSe } from '../game/sePresets'
 import { presetSprite } from '../game/spritePresets'
 import type { Episode, Inline, Work } from '../schema'
 import type { ZipInput } from '../zip'
@@ -47,6 +48,8 @@ export interface NovelGameUserAsset {
   preset?: string
   /** 立ち絵の既定（同じ人物の最初の1枚）を決める登録時刻 */
   createdAt?: number
+  /** インライン（単一 HTML）ビルド用の data URL。inline 指定時はこちらが実体になる */
+  dataUrl?: string
 }
 
 export interface NovelGameOptions {
@@ -56,6 +59,12 @@ export interface NovelGameOptions {
   font?: NovelGameFont
   /** 手元にある持ち込み素材。cue / defaultBg が指す分だけ zip へ同梱される */
   userAssets?: NovelGameUserAsset[]
+  /**
+   * 単一 HTML ビルド（grove 埋め込み・契約 v4）。素材をファイルではなく data URL で
+   * シナリオに内包し、返り値は index.html の 1 件だけになる。フォントは配信側の
+   * URL（fontHref）を参照する（HTML へ埋めると話ごとに MB 単位で太るため）。
+   */
+  inline?: { fontHref?: string }
 }
 
 /** zip に入れる背景 1 枚（テンプレ SVG か持ち込み画像かを吸収する内部表現）。 */
@@ -154,28 +163,36 @@ export function buildNovelGameFiles(
 
   // 背景キー → zip に入れる実体。テンプレ（SVG 生成）と持ち込み（画像バイト列）を同じ形へ。
   // 立ち絵（kind 'sprite'）は背景として解決しない（cue.bg が指しても無視＝壊さない）。
+  // inline（単一 HTML）ビルドでは path をファイルパスではなく data URL にする。
+  const inline = opts.inline
   const userByKey = new Map(
     (opts.userAssets ?? []).filter((a) => (a.kind ?? 'bg') === 'bg').map((a) => [a.key, a]),
   )
   const resolveBg = (key: string): BgEntry | undefined => {
     const preset = presetBackground(key)
     if (preset) {
+      const svg = presetBgSvg(preset)
       return {
         key: preset.key,
         label: preset.label,
         tone: preset.tone,
-        path: `assets/bg/${preset.slug}.svg`,
-        data: presetBgSvg(preset),
+        path: inline
+          ? `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`
+          : `assets/bg/${preset.slug}.svg`,
+        data: svg,
         credit: true,
       }
     }
     const user = userByKey.get(key)
     if (user) {
+      if (inline && !user.dataUrl) return undefined // 内包できない実体は無視（壊さない）
       return {
         key: user.key,
         label: user.label,
         tone: user.tone,
-        path: `assets/bg/user-${user.id}.${IMAGE_EXT[user.mime] ?? 'img'}`,
+        path: inline
+          ? (user.dataUrl ?? '')
+          : `assets/bg/user-${user.id}.${IMAGE_EXT[user.mime] ?? 'img'}`,
         data: user.data,
         credit: false,
       }
@@ -193,13 +210,16 @@ export function buildNovelGameFiles(
   //  - いま話している人物だけ明るい（a=1）。立ち絵の無い話者・？？？のセリフは**退場させず**
   //    全員減光（画面外の声として扱う）。話者未設定のセリフ・地の文は据え置き（ちらつかせない）。
   //  - 場面の切れ目（sceneBreak）で全員退場。
-  const spriteAssets = (opts.userAssets ?? []).filter((a) => a.kind === 'sprite')
+  const spriteAssets = (opts.userAssets ?? []).filter(
+    (a) => a.kind === 'sprite' && (!inline || a.dataUrl),
+  )
   const spritePathOf = (a: NovelGameUserAsset) =>
-    `assets/sprite/user-${a.id}.${IMAGE_EXT[a.mime] ?? 'img'}`
+    inline ? (a.dataUrl ?? '') : `assets/sprite/user-${a.id}.${IMAGE_EXT[a.mime] ?? 'img'}`
 
   // 使った背景・立ち絵だけを同梱する（キー→実体の整合は used が単一の真実）
   const used = new Map<string, BgEntry>([[defaultEntry.key, defaultEntry]])
   const usedSprites = new Map<string, NovelGameUserAsset>()
+  const usedSes = new Map<string, PresetSe>()
   let current = ''
   interface Standing {
     key: string
@@ -284,6 +304,9 @@ export function buildNovelGameFiles(
         lastStageMark = serialized
       }
     }
+    // 効果音：ページ表示の瞬間に 1 回鳴らす。未知キーは無視（壊さない）
+    const se = page.se ? presetSe(page.se) : undefined
+    if (se) usedSes.set(se.key, se)
     return {
       id: page.blockId,
       kind: page.kind,
@@ -293,6 +316,7 @@ export function buildNovelGameFiles(
       ...(page.transition ? { transition: page.transition } : {}),
       ...(bg ? { bg } : {}),
       ...(stage !== undefined ? { stage } : {}),
+      ...(se ? { se: se.key } : {}),
       units: unitsOfInlines(block?.inlines ?? []),
       text: block ? plainTextOfBlock(block) : '',
     }
@@ -317,7 +341,14 @@ export function buildNovelGameFiles(
           ),
         }
       : {}),
-    ...(opts.font ? { fontSrc: FONT_PATH } : {}),
+    ...(usedSes.size > 0
+      ? {
+          ses: Object.fromEntries(
+            [...usedSes.values()].map((s) => [s.key, { label: s.label, steps: s.steps }]),
+          ),
+        }
+      : {}),
+    ...(opts.font ? { fontSrc: FONT_PATH } : inline?.fontHref ? { fontSrc: inline.fontHref } : {}),
     credits: buildGameCredits({
       bgLabels: usedList.filter((e) => e.credit).map((e) => e.label),
       // テンプレ立ち絵だけ運営素材としてクレジットに載せる（重複は畳む）
@@ -328,10 +359,14 @@ export function buildNovelGameFiles(
             .map((a) => (a.preset ? (presetSprite(a.preset)?.label ?? 'シルエット') : '')),
         ),
       ].filter(Boolean),
-      fontEmbedded: Boolean(opts.font),
+      seLabels: [...usedSes.values()].map((s) => s.label),
+      fontEmbedded: Boolean(opts.font) || Boolean(inline?.fontHref),
     }),
     pages: scenarioPages,
   }
+
+  // inline ビルドは素材を data URL で内包済み＝index.html の 1 件だけ返す
+  if (inline) return [{ path: 'index.html', data: buildPlayerHtml(scenario) }]
 
   return [
     { path: 'index.html', data: buildPlayerHtml(scenario) },
@@ -345,4 +380,40 @@ export function buildNovelGameFiles(
     ...usedList.map((e) => ({ path: e.path, data: e.data })),
     ...usedSpriteList.map((a) => ({ path: spritePathOf(a), data: a.data })),
   ]
+}
+
+/**
+ * 1話ぶんの**自己完結プレイヤー HTML**（grove 埋め込み・契約 v4）。
+ * 素材（背景・立ち絵・効果音レシピ）をすべて内包し、外部参照はフォント（fontHref・
+ * 配信側が /game-assets/fonts/ で持つ契約）だけ。プレイヤーは iframe に埋められると
+ * 親へ postMessage（type: 'kotonoha-novel-game'）で進捗と読了を知らせる。
+ */
+export function buildNovelGameHtml(
+  work: Work,
+  episode: Episode,
+  staging: Staging | undefined,
+  opts: { defaultBg?: string; fontHref?: string; gameAssets?: UserGameAsset[] } = {},
+): string {
+  const userAssets: NovelGameUserAsset[] = (opts.gameAssets ?? []).map((a) => ({
+    key: userAssetKey(a.id),
+    id: a.id,
+    label: a.name,
+    tone: a.tone,
+    mime: 'image/webp', // inline では未使用（実体は dataUrl）
+    data: new Uint8Array(0),
+    kind: a.kind,
+    ...(a.character ? { character: a.character } : {}),
+    ...(a.expression ? { expression: a.expression } : {}),
+    ...(a.preset ? { preset: a.preset } : {}),
+    createdAt: a.createdAt,
+    dataUrl: a.dataUrl,
+  }))
+  const files = buildNovelGameFiles(work, episode, staging, {
+    defaultBg: opts.defaultBg,
+    userAssets,
+    inline: { ...(opts.fontHref ? { fontHref: opts.fontHref } : {}) },
+  })
+  const html = files.find((f) => f.path === 'index.html')?.data
+  if (typeof html !== 'string') throw new Error('プレイヤー HTML を生成できなかった')
+  return html
 }

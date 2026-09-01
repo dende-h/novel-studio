@@ -371,6 +371,10 @@ grove 側の設計上の要点:
 | **D-GAME-PRICE** | 作るのは無料（zip 書き出し・grove 公開）／凝るのは有料（独自素材の R2 ホスティング・MCP 演出）。インフラ実費はほぼゼロ（§8）なので、有料化は原価回収ではなく値付け戦略として扱う。既存の「配布は無料・保全が有料」と矛盾させない。 |
 | **D-GAME-QUALITY** | 品質の優先順は 文字組 ＞ 文字送りの間 ＞ オート/スキップ/バックログ/セーブ ＞ Ken Burns/クロスフェード ＞ 縦書き。**絵の量ではなく上位3つが「ちゃんとしたノベルゲーム」の判定を決める。** |
 | **D-GAME-PC** | **作る作業は PC（広い画面・1024px 以上）に限定**する（2026-08 決定）。演出エディタは構想の道具と同じ入口ゲート（`App.tsx` の `stagingAvailable`）、書き出しも ExportDialog の game 形式を同じ幅（`useIsNarrow`）で制限。**プレイは端末を問わない**——書き出した zip のプレイヤーはスマホ対応を維持し、grove 公開分（G3）もスマホで遊べる想定。MCP の演出付けはサーバ側で端末非依存のまま。 |
+| **D-GAME-SE-SYNTH** | 効果音は**素材ファイルを持たず Web Audio で端末合成**する（2026-08-31 決定・実装済み）。レシピ（`SeStep[]`＝波形・周波数・減衰の数値列）を `src/core/game/sePresets.ts` に8種（雨・風・遠雷・鐘・チャイム・ノック・足音・鼓動）持ち、シナリオへは使ったレシピだけ `ses` として同梱。プレイヤー（ES5）とアプリ試聴（`src/ui/_utils/sePlayer.ts`）が同じレシピを解釈する。容量ゼロ・ライセンス問題ゼロで、BGM（オリジナル曲・D-GAME-BGM-LOOP）とは別軸。既定 ON・メニューで OFF 可・スキップ中は鳴らさない。 |
+| **D-GAME-V4** | grove 公開（契約 v4・2026-08-31 実装）は **`episodes[].game = { v, html }`＝話ごとの自己完結HTML** を投稿バンドルに同梱する形。素材は data URL 内包、フォントだけ grove の静的配信（`/game-assets/fonts/shippori-mincho-b1.woff2`・OFL 同梱・CORS 全開）を指す（1.9MB を話ごとに重複させない）。grove は非公開バケット `episode-players` に保存し、**CSP `sandbox allow-scripts` ＋ iframe sandbox の二重掛け**で別オリジン配信（作者HTML の stored XSS 対策）。v4 バンドルは全話ぶんの宣言＝game の無い話はプレイヤーが外れる（サウンドノベル OFF は `enabled:false` で v4 のまま送る）。上限はリクエスト 20MB・1話 10MB。 |
+| **D-GAME-READ-BUTTON** | ゲーム側の読了は**自動で立てない**。プレイヤーは「おわり」到達を postMessage（`{type:'kotonoha-novel-game', event:'end'}`）で親へ合図するだけで、grove の再生画面が読書画面と同じ確認（読者が「読了にする」を押したときだけ記録・grove 0042）を出す。zip 単体・file:// では何も送らない。 |
+| **D-GLOS-SPRITE** | 用語集の人物ページに**立ち絵欄**を置く（2026-08-31 実装・`SpriteSection`）。立ち絵の正本はこれまでどおり素材置き場（`GameAssetRepository`・character/expression メタ）で、用語集からは**名前と別名で紐づけて見せる**＝ `GlossaryEntry` へ画像を持たせない（D-SYNC-CAPACITY 維持・公開バンドルにも載らない）。登録・テンプレ選択・削除は演出エディタの素材管理と同じ API を使い、置き場所が2つに割れない。 |
 
 ## 14. 未決
 
@@ -392,10 +396,13 @@ grove 側の設計上の要点:
       （`FREE_IMPORT_LIMIT`・端末ローカルのみ・テンプレ由来は数えない）、有料は 30 枚＋クラウド保管。
       テンプレ立ち絵は**シルエット調 6 種**（`spritePresets.ts`・SVG 生成）で実装済み。
       生成AIの本画像が揃ったら、背景と同じくキー据え置きで実体だけ差し替える
-- [ ] **効果音・BGM** — `Cue.bgm` / `Cue.se` はスキーマにあるが素材・UI・プレイヤーが未実装。
-      効果音は Web Audio 合成のテンプレ（雨・風・鐘など・素材ファイル不要）から先に入れる案。
-      BGM はオリジナル曲の制作（運営作業）が前提で、ループ点スキーマ（D-GAME-BGM-LOOP）は準備済み
-- [ ] **grove publish 契約 v4** — `Staging` と素材参照をどう載せるか。G0 完成後に交渉
-- [ ] **読了状態の共有方式** — ゲーム側の読了を小説側へどう反映するか（grove 側の設計と合わせて決める）
+- [x] **効果音** — 実装済み（2026-08-31・D-GAME-SE-SYNTH）。**BGM は未実装のまま**：
+      オリジナル曲の制作（運営作業）が前提で、ループ点スキーマ（D-GAME-BGM-LOOP）は準備済み
+- [x] **grove publish 契約 v4** — 実装済み（2026-08-31・D-GAME-V4）。`Staging` や素材参照は
+      送らず、**書き出し済みの自己完結HTML**を話ごとに載せる形に決着（先方は保存と
+      サンドボックス配信だけ・演出の解釈を持たない）。leaf 側は `src/ui/_api/publish.ts` の
+      `attachEpisodeGames`、grove 側は `kotonoha-bundle.ts` / `import-work.ts` の `syncPlayers`
+- [x] **読了状態の共有方式** — 決着（2026-08-31・D-GAME-READ-BUTTON）。自動反映はせず、
+      プレイヤーの `end` 合図で grove が読書画面と同じ「読了にする」確認を出す
 - [ ] **`Staging` の同期単位** — doc 相乗り（§2.4）で 25 MB 制限に収まるか、話数の多い作品で実測する
 - [ ] **縦書きプレイヤーの対象環境** — スマホ縦持ちで成立させるか、PC/横持ち限定にするか

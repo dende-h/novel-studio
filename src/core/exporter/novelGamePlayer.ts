@@ -1,4 +1,5 @@
 import type { CreditLine } from '../game/presets'
+import type { SeStep } from '../game/sePresets'
 
 /**
  * サウンドノベルのプレイヤー（zip の index.html）。設計は docs/requirement/07-novel-game.md §5。
@@ -35,6 +36,8 @@ export interface ScenarioPage {
   bg?: string
   /** 立ち絵の舞台が変わるページにだけ載る（その時点の**全景**。空配列 ＝ 全員退場） */
   stage?: ScenarioStageEntry[]
+  /** このページを表示した瞬間に鳴らす効果音のキー（ses のレシピを合成） */
+  se?: string
   units: (string | [string, string])[]
   /** 純本文（共有カード・オート送りの読み時間に使う） */
   text: string
@@ -59,6 +62,8 @@ export interface GameScenario {
   bgs: Record<string, ScenarioBg>
   /** 立ち絵（キー → 実体パス）。使われているときだけ載る */
   sprites?: Record<string, { src: string; label: string }>
+  /** 効果音（キー → 合成レシピ）。使われているときだけ載る（素材ファイルは持たない） */
+  ses?: Record<string, { label: string; steps: SeStep[] }>
   /** 同梱フォント（無ければシステムの明朝で表示） */
   fontSrc?: string
   credits: CreditLine[]
@@ -189,6 +194,7 @@ html,body{height:100%;margin:0;background:#05060A}
   <div id="ovMenu" class="overlay" hidden>
     <h2>メニュー</h2>
     <div class="speed"><span>ゆっくり</span><input id="speed" type="range" min="1" max="5" step="1"><span>はやい</span></div>
+    <button id="btnSe" class="act" type="button"></button>
     <button id="btnCard" class="act" type="button">この一文をカードにする</button>
     <button id="btnCredits" class="act" type="button">クレジット</button>
     <button id="btnRestart" class="act" type="button">はじめから読み直す</button>
@@ -221,7 +227,7 @@ html,body{height:100%;margin:0;background:#05060A}
   var overlays = { title: $('ovTitle'), log: $('ovLog'), menu: $('ovMenu'), credits: $('ovCredits'), end: $('ovEnd') }
   var SETTINGS_KEY = 'kotonoha:novel-game:settings'
   var SPEEDS = [72, 50, 34, 22, 13] // ゆっくり → はやい（1コマの ms）
-  var settings = { speed: 3 }
+  var settings = { speed: 3, se: true }
   var state = { i: -1, maxSeen: -1, typing: false, timer: 0, unitIdx: 0,
     auto: false, skip: false, front: 'A', bgKey: '', started: false }
 
@@ -239,6 +245,7 @@ html,body{height:100%;margin:0;background:#05060A}
 
   var stored = loadJson(SETTINGS_KEY)
   if (stored && stored.speed >= 1 && stored.speed <= 5) settings.speed = stored.speed
+  if (stored && typeof stored.se === 'boolean') settings.se = stored.se
 
   function unitHtml(u) { return typeof u === 'string' ? u : u[0] }
   function unitText(u) { return typeof u === 'string' ? u : u[1] }
@@ -336,6 +343,76 @@ html,body{height:100%;margin:0;background:#05060A}
     }
   }
 
+  // ---- 効果音（合成レシピの小型インタプリタ。素材ファイルは持たない） ----
+  var audioCtx = null, noiseBuf = null
+  function ensureAudio() {
+    if (!audioCtx) {
+      try { audioCtx = new (window.AudioContext || window.webkitAudioContext)() } catch (e) { return null }
+    }
+    if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume()
+    return audioCtx
+  }
+  function getNoise(ctx) {
+    if (!noiseBuf) {
+      noiseBuf = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate)
+      var data = noiseBuf.getChannelData(0)
+      for (var i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1
+    }
+    return noiseBuf
+  }
+  function playSe(key) {
+    if (!settings.se || !(S.ses && S.ses[key])) return
+    var ctx = ensureAudio()
+    if (!ctx) return
+    var steps = S.ses[key].steps
+    var base = ctx.currentTime + 0.02
+    for (var i = 0; i < steps.length; i++) {
+      var s = steps[i]
+      var t0 = base + (s.t || 0)
+      var g = s.g == null ? 0.5 : s.g
+      var src
+      if (s.w === 'noise') {
+        src = ctx.createBufferSource()
+        src.buffer = getNoise(ctx)
+        src.loop = true
+      } else {
+        src = ctx.createOscillator()
+        src.type = s.w
+        src.frequency.setValueAtTime(s.f || 440, t0)
+        if (s.f2) src.frequency.exponentialRampToValueAtTime(s.f2, t0 + s.d)
+      }
+      var node = src
+      if (s.lp) {
+        var lp = ctx.createBiquadFilter()
+        lp.type = 'lowpass'
+        lp.frequency.setValueAtTime(s.lp, t0)
+        if (s.lp2) lp.frequency.exponentialRampToValueAtTime(s.lp2, t0 + s.d)
+        node.connect(lp)
+        node = lp
+      }
+      var gain = ctx.createGain()
+      gain.gain.setValueAtTime(0.0001, t0)
+      gain.gain.exponentialRampToValueAtTime(Math.max(g, 0.001), t0 + 0.015)
+      gain.gain.exponentialRampToValueAtTime(0.0001, t0 + s.d)
+      node.connect(gain)
+      gain.connect(ctx.destination)
+      src.start(t0)
+      src.stop(t0 + s.d + 0.05)
+    }
+  }
+
+  // ---- 埋め込み先（grove 等）への通知。単体（zip・file://）では何もしない ----
+  function notifyHost(event) {
+    try {
+      if (window.parent && window.parent !== window) {
+        window.parent.postMessage(
+          { type: 'kotonoha-novel-game', event: event, page: state.i, total: S.pages.length },
+          '*',
+        )
+      }
+    } catch (e) {}
+  }
+
   // ---- セーブ（進んだ分だけ自動で） ----
   function save() { saveJson(S.saveKey, { i: state.i, max: state.maxSeen, t: Date.now() }) }
   function loadSave() {
@@ -357,9 +434,12 @@ html,body{height:100%;margin:0;background:#05060A}
     state.i = i
     if (i > state.maxSeen) state.maxSeen = i
     save()
+    notifyHost('progress')
     clearTimeout(state.timer)
     setBg(bgAt(i), p.bg ? p.transition : undefined, instant)
     applyStage(stageAt(i), instant)
+    // 効果音はページ表示の瞬間に 1 回。復元（instant）・スキップ中は鳴らさない
+    if (p.se && !instant && !state.skip) playSe(p.se)
     box.hidden = false
     if (p.kind === 'dialogue' && p.speaker) { nameEl.textContent = p.speaker; nameEl.hidden = false }
     else { nameEl.hidden = true }
@@ -585,6 +665,7 @@ html,body{height:100%;margin:0;background:#05060A}
   function showEnd() {
     toggleAuto(false); toggleSkip(false)
     openOverlay('end')
+    notifyHost('end')
   }
 
   // ---- 配線 ----
@@ -618,6 +699,18 @@ html,body{height:100%;margin:0;background:#05060A}
   $('speed').addEventListener('input', function (e) {
     settings.speed = Number(e.target.value) || 3
     saveJson(SETTINGS_KEY, settings)
+  })
+  function renderSeButton() {
+    $('btnSe').textContent = settings.se ? '効果音：あり' : '効果音：なし'
+  }
+  // 効果音を使わないシナリオではボタン自体を出さない
+  if (!S.ses) $('btnSe').hidden = true
+  renderSeButton()
+  $('btnSe').addEventListener('click', function () {
+    settings.se = !settings.se
+    saveJson(SETTINGS_KEY, settings)
+    renderSeButton()
+    if (settings.se) playSe(Object.keys(S.ses || {})[0]) // 効きを確かめる試し鳴らし
   })
   var closes = document.querySelectorAll('.close')
   for (var ci = 0; ci < closes.length; ci++) {
