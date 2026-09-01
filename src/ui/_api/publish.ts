@@ -150,10 +150,34 @@ export function toBundleEpisodes(work: Work): { episodes: BundleEpisode[]; decla
 }
 
 /**
+ * この話をサウンドノベルにするか。
+ *
+ * 記録が無い話は**演出を付けた話だけ ON** に倒す。演出エディタで手を入れた話は
+ * 「ゲームにしたい」の意思表示とみなし、触っていない話（＝真っ黒な画面に文字が出るだけ）を
+ * 黙って公開しない。作者が行ごとのスイッチで決めたら、そちらが常に優先される。
+ */
+export function novelGameEpisodeOf(
+  map: Record<string, boolean> | undefined,
+  episodeId: string,
+  hasStaging: boolean,
+): boolean {
+  return map?.[episodeId] ?? hasStaging
+}
+
+/** 演出譜が「付いている」と言えるか（器だけ作られて中身が空のものは数えない）。 */
+export function hasStagingCues(staging: Staging | undefined): boolean {
+  return (staging?.cues.length ?? 0) > 0
+}
+
+/**
  * 契約 v4：公開する話にサウンドノベル（自己完結プレイヤー HTML）を添える。
- * 対象は **公開作品の公開話だけ**（下書きの話には作らない＝読者に出ない分で太らせない）。
- * 演出譜（Staging）が無い話も「演出ゼロでプレイできる」不変条件どおり成立する。
- * 1話でも載れば withGame ＝ schemaVersion 4 を名乗る。
+ * 対象は **公開作品の公開話のうち、作者がサウンドノベルにすると決めた話だけ**
+ * （下書きの話には作らない＝読者に出ない分で太らせない）。どの話にするかは
+ * `novelGameEpisodeOf` が決める（記録が無ければ演出を付けた話だけ）。
+ * 演出譜が無い話も、作者が明示的に選べば「演出ゼロでプレイできる」不変条件どおり成立する。
+ *
+ * **載せなかった話は先方でプレイヤーが外れる**（v4 は全話ぶんの宣言）。
+ * つまり行ごとのスイッチを切ることが、そのまま「この話のゲームをやめる」になる。
  */
 export function attachEpisodeGames(
   work: Work,
@@ -166,12 +190,15 @@ export function attachEpisodeGames(
   if (novelGame.enabled === false) return { episodes, withGame: episodes.length > 0 }
   if (work.platform?.visibility !== 'public') return { episodes, withGame: false }
   const stagingByEpisode = new Map(novelGame.stagings.map((s) => [s.episodeId, s]))
+  const selected = work.platform?.novelGameEpisodes
   let withGame = false
   const next = episodes.map((ep): BundleEpisode => {
     if (ep.visibility === 'draft') return ep
+    const staging = stagingByEpisode.get(ep.id)
+    if (!novelGameEpisodeOf(selected, ep.id, hasStagingCues(staging))) return ep
     const source = work.episodes.find((e) => e.id === ep.id)
     if (!source) return ep
-    const html = buildNovelGameHtml(work, source, stagingByEpisode.get(ep.id), {
+    const html = buildNovelGameHtml(work, source, staging, {
       fontHref: GAME_FONT_HREF,
       gameAssets: novelGame.gameAssets,
     })

@@ -459,6 +459,63 @@ describe('契約 v4（サウンドノベル：episodes[].game）', () => {
     expect(e2.game).toBeUndefined()
   })
 
+  it('演出を付けた話だけがサウンドノベルになる（記録が無いときの既定）', async () => {
+    const { publishWorkToPlatform } = await loadModule()
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(new Response(JSON.stringify({ ok: true }), { status: 200 }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    // e1 には演出譜あり・e3 には無し。どちらも公開の話
+    const work: Work = {
+      ...publicWork(),
+      episodes: [
+        { id: 'e1', title: '第一話', blocks: parseEpisodeBody('「おはよう」') },
+        { id: 'e3', title: '第三話', blocks: parseEpisodeBody('「こんばんは」') },
+      ],
+      platform: { declaredAllAges: true, declaredOriginal: true, visibility: 'public' },
+    }
+    await publishWorkToPlatform(async () => 'jwt', work, novelGame())
+
+    const body = JSON.parse((fetchMock.mock.calls[0] as [string, RequestInit])[1].body as string)
+    const [e1, e3] = body.work.episodes
+    expect(e1.game?.v).toBe(1)
+    expect(e3.game).toBeUndefined()
+  })
+
+  it('話ごとの記録があれば、演出の有無より作者の指定を優先する', async () => {
+    const { publishWorkToPlatform } = await loadModule()
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(new Response(JSON.stringify({ ok: true }), { status: 200 }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    // 演出のある e1 を外し、演出の無い e3 を選ぶ（どちらも作者の明示的な指定）
+    const work: Work = {
+      ...publicWork(),
+      episodes: [
+        { id: 'e1', title: '第一話', blocks: parseEpisodeBody('「おはよう」') },
+        { id: 'e3', title: '第三話', blocks: parseEpisodeBody('「こんばんは」') },
+      ],
+      platform: {
+        declaredAllAges: true,
+        declaredOriginal: true,
+        visibility: 'public',
+        novelGameEpisodes: { e1: false, e3: true },
+      },
+    }
+    await publishWorkToPlatform(async () => 'jwt', work, novelGame())
+
+    const body = JSON.parse((fetchMock.mock.calls[0] as [string, RequestInit])[1].body as string)
+    const [e1, e3] = body.work.episodes
+    expect(e1.game).toBeUndefined()
+    expect(e3.game?.v).toBe(1)
+    // 1話も載らなくなる形でも v4 は名乗る（先方が外したぶんを消せるように）
+    expect(body.schemaVersion).toBe(4)
+    // 話ごとの記録はローカル専用。契約に無いキーは送らない
+    expect(body.work.platform).not.toHaveProperty('novelGameEpisodes')
+  })
+
   it('novelGame を渡さなければ従来どおり（v3 のまま・game は付かない）', async () => {
     const { publishWorkToPlatform } = await loadModule()
     const fetchMock = vi
