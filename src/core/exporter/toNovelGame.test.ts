@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import type { Staging } from '../game'
+import { applyCues, type Staging, toPages } from '../game'
+import { resolveContinuity } from '../game/continuity'
 import { DEFAULT_BG_KEY } from '../game/presets'
 import { parseEpisodeBody } from '../parser/parseNotation'
 import type { Episode, Work } from '../schema'
@@ -396,6 +397,32 @@ describe('立ち絵（話者に自動で紐づく舞台・最大2人）', () => 
     )
     expect(s.pages[1]?.stage).toEqual([{ k: 'user:ak-n', p: 'c' }]) // 立つが a 無し
     expect(s.pages[2]?.stage).toEqual([{ k: 'user:ak-n', p: 'c', a: 1 }]) // 話して明るく
+  })
+
+  it('画面が説明する「効いているもの」と、書き出す中身が一致する（ずれの見張り）', () => {
+    // 演出エディタの続きレーンは resolveContinuity で描く。ここがずれると画面が嘘をつく
+    const cues = [
+      { blockId: 'b1', speaker: '灯', bg: 'preset:bg/town-night' },
+      { blockId: 'b2', appear: 'ベニ', se: 'preset:se/rain', seRepeat: 'loop' as const },
+      { blockId: 'b3', speaker: 'ベニ' },
+      { blockId: 'b4', hideSprite: true },
+      { blockId: 'b5', sceneBreak: true, bg: 'preset:bg/room-night' },
+    ]
+    const s = scenarioOf(buildNovelGameFiles(work, spriteEpisode, staging(cues), opts))
+    const continuity = resolveContinuity(applyCues(toPages(spriteEpisode.blocks), staging(cues)), {
+      hasSprite: (name) => opts.userAssets.some((a) => a.character === name),
+    })
+    const charOf = new Map(opts.userAssets.map((a) => [a.key, a.character]))
+
+    let bg = ''
+    let stage: string[] = []
+    s.pages.forEach((page, i) => {
+      if (page.bg) bg = page.bg
+      if (page.stage) stage = page.stage.map((e) => charOf.get(e.k) ?? e.k)
+      expect(bg).toBe(continuity[i]?.bg)
+      // 席の並びは exporter の領分なので、顔ぶれだけを突き合わせる
+      expect([...stage].sort()).toEqual([...(continuity[i]?.standing ?? [])].sort())
+    })
   })
 
   it('立ち絵を出さない（hideSprite）：舞台を空にし、次の場面の切れ目まで話者も出さない', () => {

@@ -212,7 +212,8 @@ describe('StagingView（演出エディタ）', () => {
     })
     expect(saved[0]?.cues[0]).toEqual({ blockId: 'b2', bg: `user:${assetSaved[0]?.id}` })
     // 一覧の行と背景セレクトに持ち込み画像の名前が出る
-    expect(await screen.findByText('背景 海辺の夕暮れ')).toBeInTheDocument()
+    // 行の印と、選択行の「効いているもの」の両方に出る
+    expect(await screen.findAllByText('背景 海辺の夕暮れ')).toHaveLength(2)
     expect(screen.getByRole('option', { name: '海辺の夕暮れ' })).toBeInTheDocument()
   })
 
@@ -294,6 +295,31 @@ describe('StagingView（演出エディタ）', () => {
     await waitFor(() => expect(saved).toHaveLength(1))
     expect(saved[0]?.cues[0]).toEqual({ blockId: 'b1', appear: '灯' })
     expect(await screen.findByText('登場 灯')).toBeInTheDocument()
+  })
+
+  it('続きレーンが、効いている範囲ぶんの行に立つ（設定した行だけではない）', async () => {
+    // 「何がどこまで続くか」が一覧で見えること。線の説明（title）も行ごとに出す
+    const { repo } = fakeRepo({
+      workId: 'w1',
+      episodeId: 'e1',
+      cues: [
+        { blockId: 'b1', bg: 'preset:bg/town-night', se: 'preset:se/rain', seRepeat: 'loop' },
+        { blockId: 'b5', sceneBreak: true },
+      ],
+      updatedAt: 1,
+    })
+    render(<StagingView repo={repo} work={makeWork()} currentEpisodeId="e1" />)
+    await screen.findByText('「——まだ、書いてるんだね」')
+
+    // 背景は 3 行すべてに続く（切れ目でも戻らない）
+    expect(screen.getAllByTitle('背景：街（夜）')).toHaveLength(3)
+    // 環境音は場面の切れ目まで＝1・2 行目だけ
+    expect(screen.getAllByTitle('環境音：雨')).toHaveLength(2)
+    expect(screen.getAllByTitle('環境音：なし')).toHaveLength(1)
+    // 選択行の要約でも言葉にする
+    fireEvent.click(screen.getByText('「——まだ、書いてるんだね」'))
+    expect(await screen.findByText(/この行に効いているもの/)).toBeInTheDocument()
+    expect(screen.getByText(/背景 街（夜）／環境音 雨/)).toBeInTheDocument()
   })
 
   it('効果音の鳴らし方を 1回／2回／ずっと から選べる', async () => {
