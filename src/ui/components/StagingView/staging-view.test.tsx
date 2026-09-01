@@ -296,6 +296,28 @@ describe('StagingView（演出エディタ）', () => {
     expect(await screen.findByText('登場 灯')).toBeInTheDocument()
   })
 
+  it('話者の行で「立ち絵を出さない」を入れられる（一枚絵の背景に重ねない）', async () => {
+    const { repo, saved } = fakeRepo({
+      workId: 'w1',
+      episodeId: 'e1',
+      cues: [{ blockId: 'b2', speaker: '灯' }],
+      updatedAt: 1,
+    })
+    const { repo: assetRepo } = memoryAssetRepo([
+      { ...memoryAsset('sp1', '灯（通常）'), kind: 'sprite', character: '灯', expression: '通常' },
+    ])
+    render(
+      <StagingView repo={repo} work={makeWork()} currentEpisodeId="e1" assetRepo={assetRepo} />,
+    )
+    fireEvent.click(await screen.findByText('「——まだ、書いてるんだね」'))
+    fireEvent.click(await screen.findByRole('switch', { name: /ここから立ち絵を出さない/ }))
+
+    await waitFor(() => expect(saved).toHaveLength(1))
+    expect(saved[0]?.cues[0]).toEqual({ blockId: 'b2', speaker: '灯', hideSprite: true })
+    // どこで止めたかが一覧から分かる（分からないと戻せない）
+    expect(await screen.findByText('立ち絵なし')).toBeInTheDocument()
+  })
+
   it('立ち絵が1枚も無くても、地の文で登場させる人物を選べる', async () => {
     // 一言も喋らない人物にも立ち絵を出せること。候補を「立ち絵のある人物」に絞らない
     const { repo, saved } = fakeRepo()

@@ -29,6 +29,11 @@ export const CueSchema = z.object({
   expression: z.string().optional(),
   /** 立ち絵の登場（人物名）。この行からその人物の立ち絵が舞台に入る（名前枠は出さない・地の文でも可） */
   appear: z.string().optional(),
+  /**
+   * この行から立ち絵を出さない（**次の場面の切れ目まで**）。人物ごと描いた一枚絵の背景に
+   * 立ち絵が重なるのを止めるための欄。話者名（名前枠）は出る。appear で明示すれば戻る。
+   */
+  hideSprite: z.boolean().optional(),
   /** ここで場面が変わる（背景・BGM の切り替え点）。正本に区切りは復活させない（D-GAME-SCENE-MANUAL） */
   sceneBreak: z.boolean().optional(),
   /** アセットキー（'preset:bg/room-day' 等）。実体は持たない（D-GAME-ASSET-STORE） */
@@ -87,6 +92,7 @@ export function patchCue(
     'speaker',
     'expression',
     'appear',
+    'hideSprite',
     'sceneBreak',
     'bg',
     'bgm',
@@ -198,6 +204,7 @@ export interface StagedPage extends GamePage {
   speaker?: string
   expression?: string
   appear?: string
+  hideSprite?: boolean
   sceneBreak?: boolean
   bg?: string
   bgm?: string

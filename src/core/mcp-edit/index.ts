@@ -806,6 +806,7 @@ export interface StagingCueInput {
   speaker?: string
   expression?: string
   appear?: string
+  hideSprite?: boolean
   sceneBreak?: boolean
   bg?: string
   se?: string
@@ -847,6 +848,7 @@ export function parseStagingCueInputs(raw: unknown): StagingCueInput[] {
       speaker: field('speaker'),
       expression: field('expression'),
       appear: field('appear'),
+      hideSprite: flag('hide_sprite'),
       sceneBreak: flag('scene_break'),
       bg: field('bg'),
       se: field('se'),
@@ -895,6 +897,7 @@ export function setStagingCues(
         item.speaker !== undefined ||
         item.expression !== undefined ||
         item.appear !== undefined ||
+        item.hideSprite !== undefined ||
         item.sceneBreak !== undefined ||
         item.bg !== undefined ||
         item.se !== undefined ||
@@ -948,6 +951,7 @@ export function setStagingCues(
     if (item.appear !== undefined) {
       patch.appear = emptyToUndef(item.appear)
     }
+    if (item.hideSprite !== undefined) patch.hideSprite = item.hideSprite ? true : undefined
     if (item.sceneBreak !== undefined) patch.sceneBreak = item.sceneBreak ? true : undefined
     if (item.bg !== undefined) {
       const bg = emptyToUndef(item.bg)

@@ -398,6 +398,46 @@ describe('立ち絵（話者に自動で紐づく舞台・最大2人）', () => 
     expect(s.pages[2]?.stage).toEqual([{ k: 'user:ak-n', p: 'c', a: 1 }]) // 話して明るく
   })
 
+  it('立ち絵を出さない（hideSprite）：舞台を空にし、次の場面の切れ目まで話者も出さない', () => {
+    // 人物ごと描いた一枚絵の背景に立ち絵が重なるのを止める欄（D-GAME-SPRITE-OFF）
+    const s = scenarioOf(
+      buildNovelGameFiles(
+        work,
+        spriteEpisode,
+        staging([
+          { blockId: 'b1', speaker: '灯' }, // 立つ
+          { blockId: 'b2', hideSprite: true }, // 地の文で下ろす
+          { blockId: 'b3', speaker: '灯' }, // 話しても出さない
+          { blockId: 'b4', sceneBreak: true, speaker: '灯' }, // 場面が変われば戻る
+        ]),
+        opts,
+      ),
+    )
+    expect(s.pages[0]?.stage).toEqual([{ k: 'user:ak-n', p: 'c', a: 1 }])
+    expect(s.pages[1]?.stage).toEqual([]) // 舞台を空にする
+    expect(s.pages[2]?.stage).toBeUndefined() // 空のまま（据え置き）
+    // 名前枠は出る＝「誰が喋ったか」は消さない
+    expect(s.pages[2]?.speaker).toBe('灯')
+    expect(s.pages[3]?.stage).toEqual([{ k: 'user:ak-n', p: 'c', a: 1 }])
+  })
+
+  it('立ち絵を出さない区間でも、登場（appear）を指定すれば戻る', () => {
+    const s = scenarioOf(
+      buildNovelGameFiles(
+        work,
+        spriteEpisode,
+        staging([
+          { blockId: 'b1', speaker: '灯' },
+          { blockId: 'b2', hideSprite: true },
+          { blockId: 'b5', appear: '灯' }, // 同じ場面のまま出し直す
+        ]),
+        opts,
+      ),
+    )
+    expect(s.pages[1]?.stage).toEqual([])
+    expect(s.pages[4]?.stage).toEqual([{ k: 'user:ak-n', p: 'c' }])
+  })
+
   it('登場は席の割り当てに従い、既に立っている人物・立ち絵の無い人物・？？？は無視', () => {
     const s = scenarioOf(
       buildNovelGameFiles(

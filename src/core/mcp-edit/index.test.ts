@@ -396,6 +396,30 @@ describe('mcp-edit — 演出譜（set_staging の純ロジック）', () => {
     ])
   })
 
+  it('hide_sprite（立ち絵を出さない）を付け外しできる', () => {
+    const on = setStagingCues(
+      [],
+      [stagedWork()],
+      'w1',
+      'e1',
+      [{ blockId: 'b2', speaker: '灯', hideSprite: true }],
+      [],
+      100,
+    )
+    expect(on.stagings[0]?.cues).toEqual([{ blockId: 'b2', speaker: '灯', hideSprite: true }])
+
+    const off = setStagingCues(
+      on.stagings,
+      [stagedWork()],
+      'w1',
+      'e1',
+      [{ blockId: 'b2', hideSprite: false }],
+      [],
+      200,
+    )
+    expect(off.stagings[0]?.cues).toEqual([{ blockId: 'b2', speaker: '灯' }])
+  })
+
   it('パッチ方式：渡した項目だけ書き換え・空文字で削除・clear で丸ごと外す', () => {
     const initial: Staging = {
       workId: 'w1',
