@@ -116,7 +116,7 @@ export interface NovelGameBundleInput {
   stagings: Staging[]
   gameAssets: UserGameAsset[]
   /**
-   * false ＝「サウンドノベルをやめた」の宣言。v4 は名乗るが game は 1 つも載せない
+   * false ＝「サウンドノベルにする話がもう無い」の宣言。v4 は名乗るが game は 1 つも載せない
    * ＝先方が既存のプレイヤーを消す（v3 に落とすと旧クライアントと区別できず消せない）。
    * 省略は true。
    */
@@ -160,6 +160,11 @@ export function novelGameEpisodeOf(
   episodeId: string,
 ): boolean {
   return map?.[episodeId] === true
+}
+
+/** サウンドノベルにする話が1つでもあるか（作品ぜんたいの切り替えは持たない）。 */
+export function hasNovelGameEpisodes(map: Record<string, boolean> | undefined): boolean {
+  return Object.values(map ?? {}).some(Boolean)
 }
 
 /** 演出譜が「付いている」と言えるか（器だけ作られて中身が空のものは数えない）。 */
@@ -332,7 +337,7 @@ export async function publishWorkToPlatform(
     return {
       ok: false,
       message:
-        '公開先がまだサウンドノベル公開に対応していません。「サウンドノベル」を切ってから、もう一度お試しください。',
+        '公開先がまだサウンドノベル公開に対応していません。話ごとの「サウンドノベル」をすべて切ってから、もう一度お試しください。',
     }
   }
   const message = typeof payload.message === 'string' ? payload.message : defaultMessage(res.status)

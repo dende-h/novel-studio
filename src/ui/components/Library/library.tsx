@@ -22,6 +22,7 @@ import type { WorkSummary } from '@/core/storage/workRepository'
 import { cn } from '@/lib/utils'
 import {
   describePublishBlocked,
+  hasNovelGameEpisodes,
   isPublishAvailable,
   type NovelGameBundleInput,
   publishWorkToPlatform,
@@ -276,12 +277,13 @@ export function Library({
         ...work.platform,
         visibility: summary.platform?.visibility === 'public' ? 'draft' : 'public',
       }
-      // サウンドノベル ON の作品を公開へ戻すときは、プレイヤーも作り直して v4 で送る。
-      // 渡さないと v3（先方は据え置き）になり、本文だけ新しくプレイヤーが古いまま残る
+      // サウンドノベルにする話がある作品を公開へ戻すときは、プレイヤーも作り直して v4 で送る。
+      // 渡さないと v3（先方は据え置き）になり、本文だけ新しくプレイヤーが古いまま残る。
+      // 前回は載せたが今は1話も選ばれていない作品でも v4 で送る＝先方が古い分を外せる
       let gameInput: NovelGameBundleInput | undefined
       if (
         platform.visibility === 'public' &&
-        platform.novelGame === true &&
+        (hasNovelGameEpisodes(platform.novelGameEpisodes) || platform.novelGame === true) &&
         stagingRepo &&
         gameAssetRepo
       ) {
