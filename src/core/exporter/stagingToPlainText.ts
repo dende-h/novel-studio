@@ -90,8 +90,10 @@ export function stagingToPlainText(
 
   sections.push(
     [
-      '使える効果音（se）キー（その行の表示と同時に1回鳴る）:',
+      '使える効果音（se）キー（その行の表示と同時に鳴る。',
+      'se_repeat: once（既定）/ twice / loop。loop は次の場面の切れ目か se: "stop" まで続く）:',
       ...PRESET_SES.map((p) => `- ${p.key} … ${p.label}`),
+      '- stop … 鳴っている環境音をここで止める（レシピは持たない予約キー）',
     ].join('\n'),
   )
 
@@ -130,6 +132,7 @@ function cueSummary(cue: Cue): string {
   if (cue.bg) parts.push(`背景=${cue.bg}`)
   if (cue.bgm) parts.push(`BGM=${cue.bgm}`)
   if (cue.se) parts.push(`効果音=${cue.se}`)
+  if (cue.seRepeat) parts.push(`鳴らし方=${cue.seRepeat === 'loop' ? 'ずっと' : '2回'}`)
   if (cue.transition) parts.push(`切り替え=${cue.transition}`)
   return parts.length > 0 ? parts.join('／') : '（内容なし）'
 }

@@ -9,7 +9,7 @@ import {
 } from '../game'
 import { type SpriteSource, spriteExpressionsOf, userAssetKey } from '../game/assets'
 import { presetBackground } from '../game/presets'
-import { presetSe } from '../game/sePresets'
+import { presetSe, SE_STOP } from '../game/sePresets'
 import { type FlatNote, MAX_NOTE_DEPTH, rebuildEpisodeNotes } from '../outline'
 import { parseEpisodeBody } from '../parser/parseNotation'
 import { reconcileBlockIds } from '../parser/reconcileBlockIds'
@@ -810,6 +810,7 @@ export interface StagingCueInput {
   sceneBreak?: boolean
   bg?: string
   se?: string
+  seRepeat?: string
   transition?: string
   clear?: boolean
 }
@@ -852,6 +853,7 @@ export function parseStagingCueInputs(raw: unknown): StagingCueInput[] {
       sceneBreak: flag('scene_break'),
       bg: field('bg'),
       se: field('se'),
+      seRepeat: field('se_repeat'),
       transition: field('transition'),
       clear: flag('clear'),
     }
@@ -859,6 +861,8 @@ export function parseStagingCueInputs(raw: unknown): StagingCueInput[] {
 }
 
 const TRANSITION_CHOICES: readonly string[] = ['fade', 'cut', 'flash']
+/** 効果音の鳴らし方（once は「指定なし」と同じ）。 */
+const SE_REPEAT_CHOICES: readonly string[] = ['once', 'twice', 'loop']
 
 /**
  * 演出譜へ行単位のパッチをまとめて当てる。渡した項目だけ書き換える
@@ -901,6 +905,7 @@ export function setStagingCues(
         item.sceneBreak !== undefined ||
         item.bg !== undefined ||
         item.se !== undefined ||
+        item.seRepeat !== undefined ||
         item.transition !== undefined
       ) {
         throw new McpEditError(`block_id "${item.blockId}": clear: true と他の項目は併用できません`)
@@ -964,12 +969,21 @@ export function setStagingCues(
     }
     if (item.se !== undefined) {
       const se = emptyToUndef(item.se)
-      if (se !== undefined && !presetSe(se)) {
+      // SE_STOP は実体を持たない予約キー（鳴っているループを止める合図）
+      if (se !== undefined && se !== SE_STOP && !presetSe(se)) {
         throw new McpEditError(
           `se "${se}" は使えません。使える効果音キーは get_staging の一覧で確認してください`,
         )
       }
       patch.se = se
+    }
+    if (item.seRepeat !== undefined) {
+      const raw = emptyToUndef(item.seRepeat)
+      if (raw !== undefined && !SE_REPEAT_CHOICES.includes(raw)) {
+        throw new McpEditError(`se_repeat は ${SE_REPEAT_CHOICES.join(' / ')} のいずれかです`)
+      }
+      // once は「指定なし」と同じ＝欄を空にする（同じ意味の書き方を2つ残さない）
+      patch.seRepeat = raw === 'twice' ? 2 : raw === 'loop' ? 'loop' : undefined
     }
     if (item.transition !== undefined) {
       const transition = emptyToUndef(item.transition)

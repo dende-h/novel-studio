@@ -396,6 +396,51 @@ describe('mcp-edit — 演出譜（set_staging の純ロジック）', () => {
     ])
   })
 
+  it('se_repeat（鳴らし方）と stop（環境音を止める）を扱える', () => {
+    const on = setStagingCues(
+      [],
+      [stagedWork()],
+      'w1',
+      'e1',
+      [
+        { blockId: 'b2', se: 'preset:se/rain', seRepeat: 'loop' },
+        { blockId: 'b5', se: 'stop' },
+      ],
+      [],
+      100,
+    )
+    expect(on.stagings[0]?.cues).toEqual([
+      { blockId: 'b2', se: 'preset:se/rain', seRepeat: 'loop' },
+      { blockId: 'b5', se: 'stop' },
+    ])
+
+    // once は「指定なし」と同じ＝欄を空にする（同じ意味の書き方を2つ残さない）
+    const once = setStagingCues(
+      on.stagings,
+      [stagedWork()],
+      'w1',
+      'e1',
+      [{ blockId: 'b2', seRepeat: 'once' }],
+      [],
+      200,
+    )
+    expect(once.stagings[0]?.cues[0]).toEqual({ blockId: 'b2', se: 'preset:se/rain' })
+  })
+
+  it('se_repeat に知らない言葉は通さない', () => {
+    expect(() =>
+      setStagingCues(
+        [],
+        [stagedWork()],
+        'w1',
+        'e1',
+        [{ blockId: 'b2', se: 'preset:se/rain', seRepeat: 'forever' }],
+        [],
+        100,
+      ),
+    ).toThrow(/se_repeat/)
+  })
+
   it('hide_sprite（立ち絵を出さない）を付け外しできる', () => {
     const on = setStagingCues(
       [],

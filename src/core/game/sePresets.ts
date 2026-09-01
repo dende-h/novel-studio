@@ -122,6 +122,25 @@ export function presetSe(key: string): PresetSe | undefined {
   return PRESET_SES.find((p) => p.key === key)
 }
 
+/**
+ * 鳴らし方（省略＝1回）。
+ * `'loop'` は**次の場面の切れ目か「止める」まで**鳴り続ける（1回ものは重ねて鳴らせる）。
+ */
+export type SeRepeat = 2 | 'loop'
+
+/**
+ * 「鳴っている音をここで止める」を表す予約キー（`Cue.se` に入る）。
+ * ループを場面の途中で終わらせる唯一の手段——これが無いと、止めるために
+ * 場面の切れ目を入れるしかなくなり、立ち絵まで下ろすことになる。
+ */
+export const SE_STOP = 'stop'
+
+/** 効果音キーの表示名（予約キーと未知キーも言葉にする）。 */
+export function seLabelOf(key: string): string {
+  if (key === SE_STOP) return '止める'
+  return presetSe(key)?.label ?? key
+}
+
 /** 1 レシピの総再生時間（秒）。試聴 UI の目安とテストの安全弁に使う。 */
 export function seDuration(se: PresetSe): number {
   return se.steps.reduce((max, s) => Math.max(max, (s.t ?? 0) + s.d), 0)

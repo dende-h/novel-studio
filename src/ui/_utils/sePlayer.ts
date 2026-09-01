@@ -1,4 +1,4 @@
-import { type PresetSe, presetSe } from '@/core/game/sePresets'
+import { type PresetSe, presetSe, type SeRepeat, seDuration } from '@/core/game/sePresets'
 
 /**
  * 効果音レシピ（core/game/sePresets）の試聴用インタプリタ（DOM/Web Audio 依存）。
@@ -31,13 +31,25 @@ function getNoise(ac: AudioContext): AudioBuffer {
   return noiseBuf
 }
 
-/** レシピを 1 回鳴らす。キーが未知・Web Audio 不可のときは何もしない。 */
-export function playPresetSe(key: string): void {
+/** ループの試聴で鳴らす回数。編集中に鳴り続けると邪魔なので、繰り返しが分かる長さで止める。 */
+const LOOP_PREVIEW_TIMES = 3
+
+/**
+ * レシピを鳴らす（試聴）。キーが未知・Web Audio 不可のときは何もしない。
+ * 鳴らし方は演出の指定に合わせる——ただし**ループは 3 回ぶんで止める**
+ * （書き出したプレイヤーでは次の場面の切れ目まで続く）。
+ */
+export function playPresetSe(key: string, repeat?: SeRepeat): void {
   const se: PresetSe | undefined = presetSe(key)
   if (!se) return
   const ac = ensureAudio()
   if (!ac) return
-  const base = ac.currentTime + 0.02
+  const times = repeat === 'loop' ? LOOP_PREVIEW_TIMES : repeat === 2 ? 2 : 1
+  const period = Math.max(0.2, seDuration(se))
+  for (let n = 0; n < times; n++) scheduleSe(ac, se, ac.currentTime + 0.02 + n * period)
+}
+
+function scheduleSe(ac: AudioContext, se: PresetSe, base: number): void {
   for (const s of se.steps) {
     const t0 = base + (s.t ?? 0)
     const g = s.g ?? 0.5

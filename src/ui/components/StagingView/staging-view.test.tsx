@@ -296,6 +296,36 @@ describe('StagingView（演出エディタ）', () => {
     expect(await screen.findByText('登場 灯')).toBeInTheDocument()
   })
 
+  it('効果音の鳴らし方を 1回／2回／ずっと から選べる', async () => {
+    const { repo, saved } = fakeRepo()
+    render(<StagingView repo={repo} work={makeWork()} currentEpisodeId="e1" />)
+    fireEvent.click(await screen.findByText('灯が振り返った。'))
+    fireEvent.change(screen.getByLabelText('効果音'), { target: { value: 'preset:se/rain' } })
+    await waitFor(() => expect(saved).toHaveLength(1))
+    // 音を選ぶまで鳴らし方は出さない（選ぶものが無い欄を並べない）
+    fireEvent.change(await screen.findByLabelText('鳴らし方'), { target: { value: 'loop' } })
+
+    await waitFor(() => expect(saved).toHaveLength(2))
+    expect(saved[1]?.cues[0]).toEqual({ blockId: 'b1', se: 'preset:se/rain', seRepeat: 'loop' })
+    expect(await screen.findByText(/効果音 雨（ずっと）/)).toBeInTheDocument()
+  })
+
+  it('「ここで止める」を選ぶと、鳴らし方の指定も一緒に落ちる', async () => {
+    const { repo, saved } = fakeRepo({
+      workId: 'w1',
+      episodeId: 'e1',
+      cues: [{ blockId: 'b1', se: 'preset:se/rain', seRepeat: 'loop' }],
+      updatedAt: 1,
+    })
+    render(<StagingView repo={repo} work={makeWork()} currentEpisodeId="e1" />)
+    fireEvent.click(await screen.findByText('灯が振り返った。'))
+    fireEvent.change(screen.getByLabelText('効果音'), { target: { value: 'stop' } })
+
+    await waitFor(() => expect(saved).toHaveLength(1))
+    expect(saved[0]?.cues[0]).toEqual({ blockId: 'b1', se: 'stop' })
+    expect(screen.queryByLabelText('鳴らし方')).not.toBeInTheDocument()
+  })
+
   it('欄のⓘを押すと、その欄の説明が出る（欄の下に説明を並べない）', async () => {
     const { repo } = fakeRepo()
     const { repo: assetRepo } = memoryAssetRepo()

@@ -25,7 +25,7 @@ import {
   userAssetKey,
 } from '@/core/game/assets'
 import { PRESET_BACKGROUNDS, presetBackground, presetBgSvg } from '@/core/game/presets'
-import { PRESET_SES, presetSe } from '@/core/game/sePresets'
+import { PRESET_SES, presetSe, SE_STOP, type SeRepeat, seLabelOf } from '@/core/game/sePresets'
 import {
   PRESET_SPRITE_TONE,
   PRESET_SPRITES,
@@ -724,7 +724,13 @@ export default function StagingView({ repo, work, currentEpisodeId, assetRepo }:
                           ) : null}
                           {page.appear ? <span>登場 {page.appear}</span> : null}
                           {page.hideSprite ? <span>立ち絵なし</span> : null}
-                          {page.se ? <span>効果音 {presetSe(page.se)?.label ?? ''}</span> : null}
+                          {page.se ? (
+                            <span>
+                              効果音 {seLabelOf(page.se)}
+                              {page.seRepeat === 'loop' ? '（ずっと）' : ''}
+                              {page.seRepeat === 2 ? '（2回）' : ''}
+                            </span>
+                          ) : null}
                           {!page.sceneBreak && bgLabel ? <span>背景 {bgLabel}</span> : null}
                         </span>
                       </span>
@@ -1076,12 +1082,20 @@ export default function StagingView({ repo, work, currentEpisodeId, assetRepo }:
                   <select
                     id="staging-se"
                     value={selected.se ?? ''}
-                    onChange={(e) => apply(selected.blockId, { se: e.target.value || undefined })}
+                    onChange={(e) => {
+                      const value = e.target.value
+                      // 音を外す・止めるときは鳴らし方の指定も一緒に落とす（宙に浮かせない）
+                      apply(selected.blockId, {
+                        se: value || undefined,
+                        ...(value === '' || value === SE_STOP ? { seRepeat: undefined } : {}),
+                      })
+                    }}
                     className={SELECT_CLASS}
                   >
                     <option value="">（なし）</option>
+                    <option value={SE_STOP}>ここで止める（ずっと鳴っている音を消す）</option>
                     {/* 未知キー（将来の効果音等）も選択状態は保つ（勝手に外さない） */}
-                    {selected.se && !presetSe(selected.se) ? (
+                    {selected.se && selected.se !== SE_STOP && !presetSe(selected.se) ? (
                       <option value={selected.se}>{selected.se}</option>
                     ) : null}
                     {PRESET_SES.map((p) => (
@@ -1097,12 +1111,37 @@ export default function StagingView({ repo, work, currentEpisodeId, assetRepo }:
                     className="shrink-0 text-primary"
                     disabled={!selected.se || !presetSe(selected.se)}
                     onClick={() => {
-                      if (selected.se) playPresetSe(selected.se)
+                      if (selected.se) playPresetSe(selected.se, selected.seRepeat)
                     }}
                   >
                     試聴
                   </Button>
                 </div>
+                {selected.se && selected.se !== SE_STOP ? (
+                  <div className="mt-2">
+                    <label htmlFor="staging-se-repeat" className="sr-only">
+                      鳴らし方
+                    </label>
+                    <select
+                      id="staging-se-repeat"
+                      value={selected.seRepeat === undefined ? '1' : String(selected.seRepeat)}
+                      onChange={(e) => {
+                        const value = e.target.value
+                        apply(selected.blockId, {
+                          seRepeat:
+                            value === '1'
+                              ? undefined
+                              : ((value === 'loop' ? 'loop' : 2) as SeRepeat),
+                        })
+                      }}
+                      className={SELECT_CLASS}
+                    >
+                      <option value="1">1回鳴らす</option>
+                      <option value="2">2回鳴らす</option>
+                      <option value="loop">ずっと鳴らす（次の場面まで）</option>
+                    </select>
+                  </div>
+                ) : null}
               </div>
 
               <Button
@@ -1156,7 +1195,7 @@ function describeCue(cue: Cue, assets: UserGameAsset[]): string {
   if (cue.sceneBreak) parts.push('場面の切れ目')
   if (cue.bg) parts.push(`背景 ${bgLabelOf(cue.bg, assets) ?? cue.bg}`)
   if (cue.bgm) parts.push('BGM')
-  if (cue.se) parts.push(`効果音 ${presetSe(cue.se)?.label ?? ''}`.trim())
+  if (cue.se) parts.push(`効果音 ${seLabelOf(cue.se)}`)
   if (cue.transition) parts.push('切り替え効果')
   return parts.length > 0 ? parts.join('・') : '（内容なし）'
 }

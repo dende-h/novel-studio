@@ -44,7 +44,7 @@ import { pickPrimaryPlot, WORLD_CUSTOM_SLOT, WORLD_SLOTS } from '../../../src/co
 
 /** クライアントが未指定のときに名乗る MCP プロトコル版（十分に新しい安定版）。 */
 const DEFAULT_PROTOCOL_VERSION = '2025-06-18'
-const SERVER_INFO = { name: 'novel-studio', version: '1.9.0' } as const
+const SERVER_INFO = { name: 'novel-studio', version: '1.10.0' } as const
 
 /**
  * クライアント（AI）へ最初に渡す使い方。MCP の `initialize` が返す標準の instructions。
@@ -483,7 +483,7 @@ export const MCP_TOOLS = [
   {
     name: 'set_staging',
     description:
-      '1 つの話の演出（話者・表情・場面の切れ目・背景・効果音・切り替え方）を行単位でまとめて付ける。本文は一切変わらない。cues の各要素は get_staging の [block_id: …] を指し、渡した項目だけ書き換える（省略＝据え置き・空文字＝削除・clear: true でその行の演出を丸ごと外す）。話者はセリフの行にだけ付けられ、用語集の人物名／？？？（名前を伏せる）／自由な名前が使える。立ち絵は話者から自動で表示され、expression は立ち絵のある話者の表情の指定にだけ使える。人物ごと描いた一枚絵の背景では hide_sprite で立ち絵を止められる（次の場面の切れ目まで）。どれか 1 行でもエラーになると全体が保存されない。',
+      '1 つの話の演出（話者・表情・場面の切れ目・背景・効果音・切り替え方）を行単位でまとめて付ける。本文は一切変わらない。cues の各要素は get_staging の [block_id: …] を指し、渡した項目だけ書き換える（省略＝据え置き・空文字＝削除・clear: true でその行の演出を丸ごと外す）。話者はセリフの行にだけ付けられ、用語集の人物名／？？？（名前を伏せる）／自由な名前が使える。立ち絵は話者から自動で表示され、expression は立ち絵のある話者の表情の指定にだけ使える。人物ごと描いた一枚絵の背景では hide_sprite で立ち絵を止められる（次の場面の切れ目まで）。効果音は se_repeat で 1回／2回／ずっと を選べ、se: "stop" で鳴っている環境音を止める。どれか 1 行でもエラーになると全体が保存されない。',
     inputSchema: {
       type: 'object',
       properties: {
@@ -526,7 +526,13 @@ export const MCP_TOOLS = [
               se: {
                 type: 'string',
                 description:
-                  '効果音キー（get_staging の「使える効果音キー」から。その行の表示と同時に1回鳴る。空文字で外す）',
+                  '効果音キー（get_staging の「使える効果音キー」から。その行の表示と同時に鳴る。"stop" で鳴っている環境音を止める。空文字で外す）',
+              },
+              se_repeat: {
+                type: 'string',
+                enum: ['once', 'twice', 'loop'],
+                description:
+                  '効果音の鳴らし方（省略・once＝1回。loop は次の場面の切れ目か se: "stop" まで鳴り続ける環境音）',
               },
               transition: {
                 type: 'string',
