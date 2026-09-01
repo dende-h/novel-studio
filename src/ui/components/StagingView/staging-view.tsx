@@ -24,6 +24,7 @@ import {
   type UserGameAsset,
   userAssetKey,
 } from '@/core/game/assets'
+import { type PageContinuity, resolveContinuity } from '@/core/game/continuity'
 import { PRESET_BACKGROUNDS, presetBackground, presetBgSvg } from '@/core/game/presets'
 import { PRESET_SES, presetSe, SE_STOP, type SeRepeat, seLabelOf } from '@/core/game/sePresets'
 import {
@@ -52,6 +53,7 @@ import { AssetManager, uploadNoticeOf } from './asset-manager'
 import {
   AppearHelp,
   BgHelp,
+  ContinuityHelp,
   HideSpriteHelp,
   SceneBreakHelp,
   SeHelp,
@@ -92,6 +94,62 @@ const TRANSITIONS: { value: NonNullable<Cue['transition']>; label: string }[] = 
 const CUSTOM_SPEAKER = '__custom__'
 /** 背景セレクトの「画像を追加…」の目印（cue には入らない）。 */
 const ADD_IMAGE = '__add_image__'
+
+/**
+ * 続きレーン 1 本ぶん（背景・立ち絵・環境音）。行の左に立ち、**効いている間ずっと**伸びる。
+ * 始まった行には頭に点を打つ。何が続いているかは title（ホバー）で言葉にする。
+ */
+function ContinuityLane({
+  on,
+  start,
+  color,
+  faint,
+  title,
+}: {
+  on: boolean
+  start: boolean
+  color: string
+  /** 立ち絵を出さない区間（線は残すが薄くする＝「いま出ていない」が見える） */
+  faint?: boolean
+  title: string
+}) {
+  return (
+    <span className="flex w-1.5 flex-col items-center self-stretch" title={title} aria-hidden>
+      {on ? (
+        <>
+          <span
+            className={cn('h-1.5 w-1.5 rounded-full', color, start ? 'opacity-100' : 'opacity-0')}
+          />
+          <span className={cn('w-[3px] flex-1 rounded-full', color, faint && 'opacity-30')} />
+        </>
+      ) : null}
+    </span>
+  )
+}
+
+/** レーンの色。凡例と行で同じものを使う（別々に書くとずれる）。 */
+const LANE_COLORS = {
+  bg: 'bg-forest-600',
+  sprite: 'bg-wheat-500',
+  se: 'bg-on-surface-variant/60',
+} as const
+
+/** 続きレーンの説明（行に出すホバー文言・選択行の要約と同じ言葉を使う）。 */
+function laneTitles(
+  cont: PageContinuity | undefined,
+  assets: UserGameAsset[],
+): { bg: string; sprite: string; se: string } {
+  if (!cont) return { bg: '', sprite: '', se: '' }
+  return {
+    bg: `背景：${bgLabelOf(cont.bg, assets) ?? cont.bg}`,
+    sprite: cont.hidden
+      ? '立ち絵：出さない区間'
+      : cont.standing.length > 0
+        ? `立ち絵：${cont.standing.join('・')}`
+        : '立ち絵：なし',
+    se: cont.loopSe ? `環境音：${seLabelOf(cont.loopSe)}` : '環境音：なし',
+  }
+}
 
 /** 背景キーの表示名（テンプレ／持ち込み。どちらでもなければ undefined）。 */
 function bgLabelOf(key: string, assets: UserGameAsset[]): string | undefined {
@@ -268,6 +326,13 @@ export default function StagingView({ repo, work, currentEpisodeId, assetRepo }:
     return m
   }, [episode])
 
+  // 「この行では何が効いているか」。設定した行にしか印が無いと、続きが見えない
+  const continuity = useMemo(
+    () => resolveContinuity(staged, { hasSprite: (name) => Boolean(pickSprite(assets, name)) }),
+    [staged, assets],
+  )
+  const selectedIndex = staged.findIndex((p) => p.blockId === selectedId)
+  const selectedCont = selectedIndex >= 0 ? continuity[selectedIndex] : undefined
   const selected = staged.find((p) => p.blockId === selectedId) ?? null
   const speakerCandidate = useMemo(() => {
     if (!episode || !selected || selected.kind !== 'dialogue') return undefined
@@ -670,80 +735,125 @@ export default function StagingView({ repo, work, currentEpisodeId, assetRepo }:
           ) : staging === null ? (
             <p className="p-6 text-center text-on-surface-variant text-sm">読み込んでいます…</p>
           ) : (
-            <ul className="mx-auto max-w-3xl space-y-1">
-              {staged.map((page) => {
-                const active = page.blockId === selectedId
-                const bgLabel = page.bg ? bgLabelOf(page.bg, assets) : undefined
-                const suggested = suggestions.has(page.blockId) && !page.sceneBreak
-                return (
-                  <li key={page.blockId}>
-                    {page.beat > 0 ? (
-                      <div className="my-1 flex items-center gap-2 px-2 text-[11px] text-on-surface-variant/60">
-                        <span className="h-px flex-1 bg-outline-variant/40" />
-                        間（空行 {page.beat}）
-                        <span className="h-px flex-1 bg-outline-variant/40" />
-                      </div>
-                    ) : null}
-                    {page.sceneBreak ? (
-                      <div className="my-1 flex items-center gap-2 px-2 font-medium text-[11px] text-primary">
-                        <span className="h-px flex-1 bg-primary/40" />
-                        場面の切れ目{bgLabel ? `・背景 ${bgLabel}` : ''}
-                        <span className="h-px flex-1 bg-primary/40" />
-                      </div>
-                    ) : null}
-                    <button
-                      type="button"
-                      onClick={() => selectRow(page.blockId)}
-                      className={cn(
-                        'flex w-full items-start gap-2 rounded-md border p-2 text-left transition-colors',
-                        active
-                          ? 'border-primary bg-surface-container-highest'
-                          : 'border-outline-variant/30 bg-surface hover:bg-surface-container-high',
-                      )}
-                    >
-                      <span
+            <>
+              <div className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1 px-1 text-[11px] text-on-surface-variant/80">
+                <span>行の左の線＝続いているもの</span>
+                <span className="flex items-center gap-1">
+                  <span className={cn('h-3 w-[3px] rounded-full', LANE_COLORS.bg)} aria-hidden />
+                  背景
+                </span>
+                <span className="flex items-center gap-1">
+                  <span
+                    className={cn('h-3 w-[3px] rounded-full', LANE_COLORS.sprite)}
+                    aria-hidden
+                  />
+                  立ち絵
+                </span>
+                <span className="flex items-center gap-1">
+                  <span className={cn('h-3 w-[3px] rounded-full', LANE_COLORS.se)} aria-hidden />
+                  環境音
+                </span>
+                <ContinuityHelp />
+              </div>
+              <ul className="mx-auto max-w-3xl space-y-1">
+                {staged.map((page, index) => {
+                  const active = page.blockId === selectedId
+                  const cont = continuity[index]
+                  const titles = laneTitles(cont, assets)
+                  const bgLabel = page.bg ? bgLabelOf(page.bg, assets) : undefined
+                  const suggested = suggestions.has(page.blockId) && !page.sceneBreak
+                  return (
+                    <li key={page.blockId}>
+                      {page.beat > 0 ? (
+                        <div className="my-1 flex items-center gap-2 px-2 text-[11px] text-on-surface-variant/60">
+                          <span className="h-px flex-1 bg-outline-variant/40" />
+                          間（空行 {page.beat}）
+                          <span className="h-px flex-1 bg-outline-variant/40" />
+                        </div>
+                      ) : null}
+                      {page.sceneBreak ? (
+                        <div className="my-1 flex items-center gap-2 px-2 font-medium text-[11px] text-primary">
+                          <span className="h-px flex-1 bg-primary/40" />
+                          場面の切れ目{bgLabel ? `・背景 ${bgLabel}` : ''}
+                          <span className="h-px flex-1 bg-primary/40" />
+                        </div>
+                      ) : null}
+                      <button
+                        type="button"
+                        onClick={() => selectRow(page.blockId)}
                         className={cn(
-                          'mt-0.5 shrink-0 rounded-full border px-1.5 py-px text-[10px]',
-                          page.kind === 'dialogue'
-                            ? 'border-primary/40 text-primary'
-                            : 'border-outline-variant/50 text-on-surface-variant',
+                          'flex w-full items-start gap-2 rounded-md border p-2 text-left transition-colors',
+                          active
+                            ? 'border-primary bg-surface-container-highest'
+                            : 'border-outline-variant/30 bg-surface hover:bg-surface-container-high',
                         )}
                       >
-                        {page.kind === 'dialogue' ? 'セリフ' : '地の文'}
-                      </span>
-                      <span className="min-w-0 flex-1">
-                        <span className="block truncate font-serif text-on-surface text-sm">
-                          {blockTextById.get(page.blockId) ?? ''}
+                        <span
+                          className={cn(
+                            'mt-0.5 shrink-0 rounded-full border px-1.5 py-px text-[10px]',
+                            page.kind === 'dialogue'
+                              ? 'border-primary/40 text-primary'
+                              : 'border-outline-variant/50 text-on-surface-variant',
+                          )}
+                        >
+                          {page.kind === 'dialogue' ? 'セリフ' : '地の文'}
                         </span>
-                        <span className="mt-0.5 flex flex-wrap gap-x-3 text-[11px] text-on-surface-variant">
-                          {page.kind === 'dialogue' ? (
-                            <span>話者：{page.speaker ?? '—'}</span>
-                          ) : null}
-                          {page.kind === 'dialogue' && page.expression ? (
-                            <span>表情 {page.expression}</span>
-                          ) : null}
-                          {page.appear ? <span>登場 {page.appear}</span> : null}
-                          {page.hideSprite ? <span>立ち絵なし</span> : null}
-                          {page.se ? (
-                            <span>
-                              効果音 {seLabelOf(page.se)}
-                              {page.seRepeat === 'loop' ? '（ずっと）' : ''}
-                              {page.seRepeat === 2 ? '（2回）' : ''}
-                            </span>
-                          ) : null}
-                          {!page.sceneBreak && bgLabel ? <span>背景 {bgLabel}</span> : null}
+                        {/* 続きレーン：背景・立ち絵・環境音が「どこから どこまで」効いているか */}
+                        <span className="flex shrink-0 gap-1 self-stretch">
+                          <ContinuityLane
+                            on
+                            start={Boolean(cont?.changed.bg)}
+                            color={LANE_COLORS.bg}
+                            title={titles.bg}
+                          />
+                          <ContinuityLane
+                            on={(cont?.standing.length ?? 0) > 0 || Boolean(cont?.hidden)}
+                            start={Boolean(cont?.changed.standing)}
+                            color={LANE_COLORS.sprite}
+                            faint={cont?.hidden}
+                            title={titles.sprite}
+                          />
+                          <ContinuityLane
+                            on={Boolean(cont?.loopSe)}
+                            start={Boolean(cont?.changed.loopSe)}
+                            color={LANE_COLORS.se}
+                            title={titles.se}
+                          />
                         </span>
-                      </span>
-                      {suggested ? (
-                        <span className="mt-0.5 shrink-0 rounded-full border border-outline-variant/50 px-1.5 py-px text-[10px] text-on-surface-variant">
-                          場面の切れ目？
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate font-serif text-on-surface text-sm">
+                            {blockTextById.get(page.blockId) ?? ''}
+                          </span>
+                          <span className="mt-0.5 flex flex-wrap gap-x-3 text-[11px] text-on-surface-variant">
+                            {page.kind === 'dialogue' ? (
+                              <span>話者：{page.speaker ?? '—'}</span>
+                            ) : null}
+                            {page.kind === 'dialogue' && page.expression ? (
+                              <span>表情 {page.expression}</span>
+                            ) : null}
+                            {page.appear ? <span>登場 {page.appear}</span> : null}
+                            {page.hideSprite ? <span>立ち絵なし</span> : null}
+                            {page.se ? (
+                              <span>
+                                効果音 {seLabelOf(page.se)}
+                                {page.seRepeat === 'loop' ? '（ずっと）' : ''}
+                                {page.seRepeat === 2 ? '（2回）' : ''}
+                              </span>
+                            ) : null}
+                            {!page.sceneBreak && bgLabel ? <span>背景 {bgLabel}</span> : null}
+                          </span>
                         </span>
-                      ) : null}
-                    </button>
-                  </li>
-                )
-              })}
-            </ul>
+                        {suggested ? (
+                          <span className="mt-0.5 shrink-0 rounded-full border border-outline-variant/50 px-1.5 py-px text-[10px] text-on-surface-variant">
+                            場面の切れ目？
+                          </span>
+                        ) : null}
+                      </button>
+                    </li>
+                  )
+                })}
+              </ul>
+            </>
           )}
         </div>
 
@@ -758,6 +868,20 @@ export default function StagingView({ repo, work, currentEpisodeId, assetRepo }:
               <p className="rounded-md bg-surface-container-low p-3 font-serif text-on-surface text-sm leading-relaxed">
                 {blockTextById.get(selected.blockId) ?? ''}
               </p>
+
+              {/* この行に効いているもの。前の行から続いている分は、設定欄には出てこない */}
+              {selectedCont ? (
+                <p className="text-[11px] text-on-surface-variant leading-relaxed">
+                  <span className="text-on-surface-variant/70">この行に効いているもの：</span>
+                  背景 {bgLabelOf(selectedCont.bg, assets) ?? selectedCont.bg}
+                  {selectedCont.hidden
+                    ? '／立ち絵 出さない区間'
+                    : selectedCont.standing.length > 0
+                      ? `／立ち絵 ${selectedCont.standing.join('・')}`
+                      : ''}
+                  {selectedCont.loopSe ? `／環境音 ${seLabelOf(selectedCont.loopSe)}` : ''}
+                </p>
+              ) : null}
 
               <Button
                 type="button"
