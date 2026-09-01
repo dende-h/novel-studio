@@ -230,3 +230,101 @@ export const resultIsError = (res: unknown): boolean =>
 
 export const resultStructured = (res: unknown): Record<string, unknown> | undefined =>
   (res as { result: { structuredContent?: Record<string, unknown> } }).result.structuredContent
+
+/**
+ * 「育った作品」のスナップショット。実際に事故が起きた規模（世界観 26 項目 14 万バイト・
+ * 用語集 21 万バイト）を再現するための生成器で、**既定予算のまま**縮退を検査するのに使う。
+ * 小さいフィクスチャに小さい予算を注入する形だと、索引のほうが全文より大きくなってしまい、
+ * 本番で起きることを確かめられない。
+ */
+export function fatSnapshot(
+  size: {
+    episodes?: number
+    episodeChars?: number
+    glossary?: number
+    glossaryChars?: number
+    worldNotes?: number
+    worldChars?: number
+    beats?: number
+  } = {},
+): CloudBackup {
+  const {
+    episodes = 40,
+    episodeChars = 3000,
+    glossary = 200,
+    glossaryChars = 300,
+    worldNotes = 60,
+    worldChars = 800,
+    beats = 300,
+  } = size
+  const work: Work = {
+    id: 'w1',
+    title: '星のない空',
+    author: '灯',
+    updatedAt: 10,
+    episodes: Array.from({ length: episodes }, (_, i) => ({
+      id: `e${i}`,
+      title: `第${i + 1}話`,
+      blocks: [
+        {
+          id: `b${i}`,
+          type: 'paragraph' as const,
+          inlines: [{ type: 'text' as const, text: 'あ'.repeat(episodeChars) }],
+        },
+      ],
+    })),
+    glossary: Array.from({ length: glossary }, (_, i) => ({
+      id: `g${i}`,
+      name: `用語${i}`,
+      aliases: [],
+      category: i % 2 === 0 ? '人物' : '場所',
+      summary: 'い'.repeat(glossaryChars),
+      createdAt: 1,
+      updatedAt: 2,
+    })),
+  }
+  const plot: Plot = {
+    id: 'p1',
+    workId: 'w1',
+    title: '星のない空',
+    sections: Array.from({ length: 10 }, (_, i) => ({
+      id: `s${i}`,
+      title: `第${i + 1}幕`,
+      beatIds: Array.from(
+        { length: Math.ceil(beats / 10) },
+        (_, j) => `bt${i * Math.ceil(beats / 10) + j}`,
+      ),
+    })),
+    beats: Array.from({ length: beats }, (_, i) => ({
+      id: `bt${i}`,
+      title: `ビート${i}`,
+      summary: 'う'.repeat(200),
+      castRefs: [],
+      placeRefs: [],
+      lineRefs: [],
+      status: 'idea' as const,
+    })),
+    lines: [],
+    foreshadows: [],
+    secrets: [],
+    world: Array.from({ length: worldNotes }, (_, i) => ({
+      id: `wn${i}`,
+      slot: i === 0 ? 'stage' : 'custom',
+      title: `設定${i}`,
+      body: 'え'.repeat(worldChars),
+      updatedAt: 5,
+    })),
+    updatedAt: 10,
+  }
+  return {
+    version: 1,
+    createdAt: 0,
+    works: [work],
+    trash: [],
+    profile: {},
+    activity: [],
+    ideas: [],
+    structures: [],
+    plots: [plot],
+  }
+}

@@ -110,6 +110,11 @@ describe('fitToBudget', () => {
     expect(fitToBudget(full, () => '索引', 0)).toBe(full)
   })
 
+  it('索引のほうが大きくなるなら縮退しない（縮退したのに増える、を防ぐ）', () => {
+    const full = 'あ'.repeat(50) // 150 バイト
+    expect(fitToBudget(full, () => 'い'.repeat(200), 100)).toBe(full)
+  })
+
   it('索引は超えたときにしか組み立てない（遅延評価）', () => {
     let built = 0
     fitToBudget(

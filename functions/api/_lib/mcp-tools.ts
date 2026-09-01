@@ -12,14 +12,15 @@ import { WORLD_CUSTOM_SLOT, WORLD_SLOTS } from '../../../src/core/plot'
 const workIdProp = { work_id: { type: 'string', description: 'list_works が返す作品 id' } }
 
 /**
- * 応答サイズの上限。**渡さなければ既定（全量 100,000 バイト／索引 60,000 バイト）**。
- * 0 を渡すと無制限＝この改修より前とまったく同じ全量が返る（利用者の逃げ道なので必ず残す）。
+ * 応答サイズの上限。**渡さなければ既定**（本文 300,000 バイト／設定系の全量 120,000 バイト／
+ * 索引 60,000 バイト）。0 を渡すと無制限＝この改修より前とまったく同じ全量が返る
+ * （利用者の逃げ道なので必ず残す）。
  */
 const maxBytesProp = {
   max_bytes: {
     type: 'integer',
     description:
-      '応答の上限バイト数。省略時は既定（全量 100,000／索引 60,000）。超えると索引に切り替わる。0 を渡すと無制限（従来どおりの全量）。',
+      '応答の上限バイト数。省略時は既定（本文 300,000／用語集・世界観・プロット等 120,000／索引 60,000）。超えると索引に切り替わる。0 を渡すと無制限（従来どおりの全量）。',
   },
 }
 
@@ -46,8 +47,8 @@ export const MCP_TOOLS = [
   {
     name: 'list_works',
     description:
-      '作品の一覧（id・タイトル・著者・話数）を返す。他ツールに渡す work_id / episode_id を得るため最初に呼ぶ。',
-    inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+      '作品の一覧（id・タイトル・著者・話数・各話の episode_id）を返す。他ツールに渡す work_id / episode_id を得るため最初に呼ぶ。作品や話が多くて上限を超える場合は各話の行を落とした一覧になる（話の一覧は get_work_map で取れる）。',
+    inputSchema: { type: 'object', properties: { ...maxBytesProp }, additionalProperties: false },
   },
   {
     name: 'get_work_map',

@@ -13,8 +13,19 @@
  * 崩さないため、exporter に offset / limit を持ち込まない）。
  */
 
-/** 既定の応答予算（全量返却ツール）。実測の破棄ライン 140,000 バイトより下に置く。 */
-export const DEFAULT_FULL_BYTES = 100_000
+/**
+ * 既定の応答予算（設定系の全量返却＝用語集・世界観設定・プロット・構造データ）。
+ * 実測の破棄ライン 140,000 バイトより下に置く。日本語は 1 字 3 バイトなので、
+ * **約 40,000 字**（用語集なら 300 字 × 130 項目ほど）を超えた作品で索引に切り替わる。
+ */
+export const DEFAULT_FULL_BYTES = 120_000
+/**
+ * 既定の応答予算（本文＝get_work）。設定系より高くしてある。
+ * 本文は途中で切れないので縮退先が「話の索引」しかなく、通し読み・全文推敲の用途では
+ * 索引に落ちた瞬間に役に立たなくなる。**約 100,000 字＝3,000 字の話で 33 話**までは
+ * 従来どおり全文が返る。それを超える作品は episode_id で話ごとに読む。
+ */
+export const DEFAULT_TEXT_BYTES = 300_000
 /** 既定の応答予算（索引ツール）。索引はそもそも軽いので、事故防止の天井として置く。 */
 export const DEFAULT_INDEX_BYTES = 60_000
 /** get_work_map の固定予算。「詰まったときに最後に呼べる軽い口」なので小さく固定する。 */
@@ -148,5 +159,8 @@ export function fitToBudget(
   if (maxBytes <= 0) return full
   const bytes = utf8Bytes(full)
   if (bytes <= maxBytes) return full
-  return fallback(bytes)
+  const index = fallback(bytes)
+  // 索引のほうが大きくなる形（短い本文に長いプレビューが付く等）では縮退しない。
+  // 「縮退したのに増える」は、この改修が直したい事故そのもの。
+  return utf8Bytes(index) < bytes ? index : full
 }

@@ -286,7 +286,8 @@ MCP の読み取りは **「索引（軽い）→ 中身（重い）」の二段
 `get_work` / `get_glossary` / `get_world` / `get_plot` / `get_structures` に**任意の**絞り込み引数を渡す。
 **引数を渡さなければ出力は改修前と 1 バイトも同じ**で、それは `functions/api/_lib/mcp-server.golden.test.ts`
 （全文スナップショット）が凍結している。**この ゴールデンが変わる差分は原則として通さない。**
-全量が既定予算（100,000 バイト）を超えたときだけ索引へ縮退し、`max_bytes=0` で従来どおりに戻せる。
+全量が既定予算（本文 300,000 バイト／設定系 120,000 バイト）を超えたときだけ索引へ縮退し、
+`max_bytes=0` で従来どおりに戻せる。縮退後の索引も同じ予算に収まる（索引が溢れたら元の事故が再発する）。
 フィクスチャと fake deps は `functions/api/_lib/mcp-test-util.ts`。
 
 掲示板の共通部品は `functions/api/board/board-endpoint.ts`（`boardJson`＝`private, no-store` 付きの応答、

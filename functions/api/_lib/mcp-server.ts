@@ -53,6 +53,7 @@ import {
   clipLinesToBytes,
   DEFAULT_FULL_BYTES,
   DEFAULT_INDEX_BYTES,
+  DEFAULT_TEXT_BYTES,
   fitToBudget,
   paginate,
   resolveMaxBytes,
@@ -61,6 +62,7 @@ import {
 } from '../../../src/core/mcp-read'
 import {
   beatsOfSection,
+  normalizePlot,
   pickPrimaryPlot,
   sectionById,
   worldNotesInOrder,
@@ -204,11 +206,15 @@ const num = (args: Record<string, unknown> | undefined, key: string): number | u
 const bool = (args: Record<string, unknown> | undefined, key: string): boolean | undefined =>
   typeof args?.[key] === 'boolean' ? (args[key] as boolean) : undefined
 
-function listWorksText(works: CloudBackup['works']): string {
+function listWorksText(works: CloudBackup['works'], opts: { withEpisodes?: boolean } = {}): string {
   if (works.length === 0) return '作品はまだありません。'
   const lines = works.map((w) => {
     const author = w.author ? `（著者: ${w.author}）` : ''
-    const eps = w.episodes.map((e) => `    - ${e.title} [episode_id: ${e.id}]`).join('\n')
+    // 予算を超えたときは各話の行だけ落とす（work_id は必ず残す＝次の一手が打てる）。
+    const eps =
+      opts.withEpisodes === false
+        ? ''
+        : w.episodes.map((e) => `    - ${e.title} [episode_id: ${e.id}]`).join('\n')
     return `- ${w.title}${author} — ${w.episodes.length}話 [work_id: ${w.id}]${eps ? `\n${eps}` : ''}`
   })
   return `作品が ${works.length} 件あります。\n${lines.join('\n')}`
@@ -221,15 +227,15 @@ const fmtDate = (ms: number) =>
  * 索引の本文を予算に収める（行の途中では切らない）。落とした行があることは必ず書く
  * ＝ AI が「これで全部」と誤読しない。
  */
-const clipIndex = (body: string, maxBytes: number): string => {
+const clipIndex = (body: string, maxBytes: number, more: string): string => {
   if (maxBytes <= 0 || utf8Bytes(body) <= maxBytes) return body
-  const reserve = 160 // 省略の案内 1 行ぶん
-  const { lines, dropped } = clipLinesToBytes(body.split('\n'), Math.max(200, maxBytes - reserve))
-  if (dropped === 0) return lines.join('\n')
-  return [
-    ...lines,
-    `※ ${dropped} 行を省略しました。limit / offset で範囲を指定してください。`,
-  ].join('\n')
+  const all = body.split('\n')
+  const reserve = 200 // 省略の案内 1 行ぶん
+  const { lines } = clipLinesToBytes(all, Math.max(200, maxBytes - reserve))
+  // 1 行目が予算より長い場合でも空応答にはしない（何も返らないのが最悪の結果）。
+  const kept = lines.length > 0 ? lines : [(all[0] ?? '').slice(0, 120)]
+  if (kept.length === all.length) return kept.join('\n')
+  return [...kept, `※ ここから ${all.length - kept.length} 行を省略しました。${more}`].join('\n')
 }
 
 /** ツール引数を JSON リテラルとして書き戻す（案内文に「そのまま呼べる実例」を載せるため）。 */
@@ -271,7 +277,34 @@ async function callTool(
   const snap = await deps.loadSnapshot()
   const works = snap?.works ?? []
 
-  if (name === 'list_works') return text(listWorksText(works))
+  if (name === 'list_works') {
+    // 二段構えの入口。ここが破棄されると work_id すら得られないので、予算の外に置かない。
+    const budget = resolveMaxBytes(args?.max_bytes, deps.limits?.maxBytes ?? DEFAULT_FULL_BYTES)
+    return text(
+      fitToBudget(
+        listWorksText(works),
+        (bytes) =>
+          clipIndex(
+            [
+              budgetNotice({
+                truncated: true,
+                mode: 'works',
+                maxBytes: budget,
+                fullBytes: bytes,
+                recovery: [
+                  `話の一覧は ${callExample('get_work_map', { work_id: works[0]?.id ?? '…' })} で取れます。`,
+                  `従来どおり全量: ${callExample('list_works', { max_bytes: 0 })}`,
+                ],
+              }),
+              listWorksText(works, { withEpisodes: false }),
+            ].join('\n\n'),
+            budget,
+            `作品ごとの中身は ${callExample('get_work_map', { work_id: works[0]?.id ?? '…' })} で取れます。`,
+          ),
+        budget,
+      ),
+    )
+  }
 
   // 書き込みツールはスナップショット必須。
   const writeTools = new Set([
@@ -574,11 +607,15 @@ async function callTool(
   ])
   if (readTools.has(name ?? '')) {
     if (!work) return text(`work_id "${workId}" の作品が見つかりません。`, true)
-    const plots = snap?.plots ?? []
+    // ライブスナップショットは JSON.parse するだけで Zod を通らない。後から足した欄
+    // （secrets・world）が無い古いレコードがそのまま来るので、入口で一度だけ揃える。
+    // 揃えないと `plot.secrets.length` で例外になり、JSON-RPC エラーではなく 500 が返る。
+    const plots = (snap?.plots ?? []).map(normalizePlot)
     // 本文・構造も「書き換える前に決め事を読む」の対象。1 行の導線を先頭に置く
     // （本体を載せると本文が長いので、取りに行かせる形にする）。
     const primaryPlot = () => pickPrimaryPlot(plots.filter((p) => p.workId === workId))
-    const fullBudget = resolveMaxBytes(args?.max_bytes, deps.limits?.maxBytes ?? DEFAULT_FULL_BYTES)
+    const defaultBudget = name === 'get_work' ? DEFAULT_TEXT_BYTES : DEFAULT_FULL_BYTES
+    const fullBudget = resolveMaxBytes(args?.max_bytes, deps.limits?.maxBytes ?? defaultBudget)
     const indexBudget = resolveMaxBytes(
       args?.max_bytes,
       deps.limits?.indexMaxBytes ?? DEFAULT_INDEX_BYTES,
@@ -586,6 +623,19 @@ async function callTool(
     /** 縮退したときの案内。復旧線には**既存ツール名＋引数**を必ず入れる。 */
     const notice = (mode: string, fullBytes: number, recovery: string[]) =>
       budgetNotice({ truncated: true, mode, maxBytes: fullBudget, fullBytes, recovery })
+    /**
+     * 「いま渡された引数のまま全量を取り直す」復旧線。絞り込み済みの呼び出しが超過したとき、
+     * 引数を落とした例だけを案内すると、AI は同じ呼び出しに戻ってまた溢れる。
+     */
+    const sameCallUnlimited = (tool: string) => {
+      const carried: Record<string, string | number | boolean> = { work_id: work.id }
+      for (const key of ['episode_id', 'note_id', 'entry_id', 'section_id', 'category', 'kind']) {
+        const v = str(args, key)
+        if (v !== undefined) carried[key] = v
+      }
+      carried.max_bytes = 0
+      return `いまの条件のまま全量: ${callExample(tool, carried)}`
+    }
 
     if (name === 'get_work_map') {
       const glossary = work.glossary ?? []
@@ -613,7 +663,13 @@ async function callTool(
         '※ 字数は中身の目安です（応答のバイト数ではありません）。',
         '※ 全量が応答の上限を超えると索引に切り替わります。従来どおり全量を取るには max_bytes=0 を渡してください。',
       ]
-      const body = clipLinesToBytes(lines, WORK_MAP_BYTES).lines.join('\n')
+      // 1 行が長すぎても（極端に長い作品名など）応答が空にならないよう、行ごとに切り詰める。
+      const capped = lines.map((l) => (utf8Bytes(l) > 600 ? `${l.slice(0, 180)}…` : l))
+      const clipped = clipLinesToBytes(capped, WORK_MAP_BYTES)
+      const body =
+        clipped.lines.length > 0
+          ? clipped.lines.join('\n')
+          : `# ${work.title.slice(0, 60)} [work_id: ${work.id}]`
       return textWith(
         body,
         {
@@ -643,15 +699,19 @@ async function callTool(
         fitToBudget(
           full,
           (bytes) =>
-            [
-              // 本文は途中で切らない（切れた原稿を全文と誤認されると推敲そのものが壊れる）。
-              notice('episodes', bytes, [
-                `1 話ずつ読む: ${callExample('get_work', { work_id: work.id, episode_id: work.episodes[0]?.id ?? '…' })}`,
-                `従来どおり全量: ${callExample('get_work', { work_id: work.id, max_bytes: 0 })}`,
-              ]),
-              worldPointerLine(primaryPlot()),
-              episodeIndexToPlainText(work),
-            ].join('\n\n'),
+            clipIndex(
+              [
+                // 本文は途中で切らない（切れた原稿を全文と誤認されると推敲そのものが壊れる）。
+                notice('episodes', bytes, [
+                  `1 話ずつ読む: ${callExample('get_work', { work_id: work.id, episode_id: work.episodes[0]?.id ?? '…' })}`,
+                  sameCallUnlimited('get_work'),
+                ]),
+                worldPointerLine(primaryPlot()),
+                episodeIndexToPlainText(work),
+              ].join('\n\n'),
+              fullBudget,
+              `話の一覧は ${callExample('get_work_map', { work_id: work.id })} でも確認できます。`,
+            ),
           fullBudget,
         ),
       )
@@ -678,13 +738,18 @@ async function callTool(
         fitToBudget(
           full,
           (bytes) =>
-            [
-              notice('index', bytes, [
-                `枠を選んで読む: ${callExample('get_world', { work_id: work.id, note_id: notes[0]?.id ?? '…' })}`,
-                `従来どおり全量: ${callExample('get_world', { work_id: work.id, max_bytes: 0 })}`,
-              ]),
-              worldIndexToPlainText(notes),
-            ].join('\n\n'),
+            clipIndex(
+              [
+                notice('index', bytes, [
+                  `枠を選んで読む: ${callExample('get_world', { work_id: work.id, note_id: notes[0]?.id ?? '…' })}`,
+                  sameCallUnlimited('get_world'),
+                ]),
+                // 縮退経路では冒頭プレビューを載せない（索引が全文より重くなることがある）。
+                worldIndexToPlainText(notes, { preview: false }),
+              ].join('\n\n'),
+              fullBudget,
+              `続きは ${callExample('list_world_notes', { work_id: work.id, offset: 200 })} で取れます。`,
+            ),
           fullBudget,
         ),
       )
@@ -706,6 +771,7 @@ async function callTool(
       const body = clipIndex(
         `${hint}\n\n${worldIndexToPlainText(shown, { total: all.length, withEmptySlots: true })}`,
         indexBudget,
+        `${callExample('list_world_notes', { work_id: work.id, offset: page.start + 1 })} のように offset をずらすか、limit を小さくしてください。`,
       )
       return textWith(
         body,
@@ -727,9 +793,11 @@ async function callTool(
 
     if (name === 'get_glossary') {
       const entries = work.glossary ?? []
-      const ids =
+      const idList =
         strArray(args, 'entry_ids') ??
         (str(args, 'entry_id') ? [str(args, 'entry_id') as string] : undefined)
+      // 空配列は「指定なし」と同じ扱い（`entry_id が空欄のまま見つからない`は案内にならない）。
+      const ids = idList && idList.length > 0 ? idList : undefined
       let selected = ids
         ? entries.filter((e) => ids.includes(e.id))
         : filterEntries(entries, { query: str(args, 'query'), category: str(args, 'category') })
@@ -750,15 +818,19 @@ async function callTool(
         fitToBudget(
           full,
           (bytes) =>
-            [
-              notice('index', bytes, [
-                `1 項目だけ: ${callExample('get_glossary', { work_id: work.id, entry_id: selected[0]?.id ?? '…' })}`,
-                `分類で絞る: ${callExample('get_glossary', { work_id: work.id, category: '人物' })}`,
-                `従来どおり全量: ${callExample('get_glossary', { work_id: work.id, max_bytes: 0 })}`,
-              ]),
-              worldPointerLine(primaryPlot()),
-              glossaryIndexToPlainText(selected),
-            ].join('\n\n'),
+            clipIndex(
+              [
+                notice('index', bytes, [
+                  `1 項目だけ: ${callExample('get_glossary', { work_id: work.id, entry_id: selected[0]?.id ?? '…' })}`,
+                  `分類で絞る: ${callExample('get_glossary', { work_id: work.id, category: '人物' })}`,
+                  sameCallUnlimited('get_glossary'),
+                ]),
+                worldPointerLine(primaryPlot()),
+                glossaryIndexToPlainText(selected),
+              ].join('\n\n'),
+              fullBudget,
+              `続きは ${callExample('list_glossary_entries', { work_id: work.id, offset: 200 })} で取れます。`,
+            ),
           fullBudget,
         ),
       )
@@ -779,7 +851,11 @@ async function callTool(
             ]
           : []),
       ].join('\n')
-      const body = clipIndex(`${hint}\n\n${glossaryIndexToPlainText(shown)}`, indexBudget)
+      const body = clipIndex(
+        `${hint}\n\n${glossaryIndexToPlainText(shown)}`,
+        indexBudget,
+        `${callExample('list_glossary_entries', { work_id: work.id, offset: page.start + 1 })} のように offset をずらすか、limit を小さくしてください。`,
+      )
       return textWith(
         body,
         {
@@ -808,30 +884,42 @@ async function callTool(
       if (plot && sectionId !== undefined && sectionById(plot, sectionId) === undefined) {
         return text(`section_id "${sectionId}" の幕が見つかりません。`, true)
       }
-      if (
-        plot &&
-        beatIds !== undefined &&
-        !beatIds.some((id) => plot.beats.some((b) => b.id === id))
-      ) {
-        return text(`beat_id ${beatIds.join(' / ')} のビートが見つかりません。`, true)
+      // 空配列は「指定なし」と同じ扱い。
+      const beats = beatIds && beatIds.length > 0 ? beatIds : undefined
+      if (plot && beats !== undefined) {
+        // 検査は section_id で絞ったあとの集合に対して行う。両方渡されて 0 件になる組み合わせを
+        // 黙って空で返すと、AI は「この幕は空だ」と誤解する。
+        const scope = sectionId === undefined ? plot.beats : beatsOfSection(plot, sectionId)
+        if (!beats.some((id) => scope.some((b) => b.id === id))) {
+          return text(
+            sectionId === undefined
+              ? `beat_id ${beats.join(' / ')} のビートが見つかりません。`
+              : `section_id "${sectionId}" の幕に beat_id ${beats.join(' / ')} は含まれていません。list_plot_beats で確認してください。`,
+            true,
+          )
+        }
       }
       const full = plotToPlainText(plots, work, {
         includeWorld: bool(args, 'include_world'),
         sectionId,
-        beatIds,
+        beatIds: beats,
       })
       return text(
         fitToBudget(
           full,
           (bytes) =>
-            [
-              notice('index', bytes, [
-                `幕ごとに読む: ${callExample('get_plot', { work_id: work.id, section_id: plot?.sections[0]?.id ?? '…' })}`,
-                `世界観を外す: ${callExample('get_plot', { work_id: work.id, include_world: false })}`,
-                `従来どおり全量: ${callExample('get_plot', { work_id: work.id, max_bytes: 0 })}`,
-              ]),
-              plotIndexToPlainText(plots, work, { sectionId }),
-            ].join('\n\n'),
+            clipIndex(
+              [
+                notice('index', bytes, [
+                  `幕ごとに読む: ${callExample('get_plot', { work_id: work.id, section_id: plot?.sections[0]?.id ?? '…' })}`,
+                  `世界観を外す: ${callExample('get_plot', { work_id: work.id, include_world: false })}`,
+                  sameCallUnlimited('get_plot'),
+                ]),
+                plotIndexToPlainText(plots, work, { sectionId }),
+              ].join('\n\n'),
+              fullBudget,
+              `${callExample('list_plot_beats', { work_id: work.id, section_id: plot?.sections[0]?.id ?? '…' })} のように幕ごとに分けてください。`,
+            ),
           fullBudget,
         ),
       )
@@ -847,6 +935,8 @@ async function callTool(
       const body = clipIndex(
         `${hint}\n\n${plotIndexToPlainText(plots, work, { sectionId })}`,
         indexBudget,
+        // list_plot_beats は幕の構造ごと返すので、ページングではなく幕で分ける。
+        `${callExample('list_plot_beats', { work_id: work.id, section_id: plot?.sections[0]?.id ?? '…' })} のように幕ごとに分けてください。`,
       )
       return textWith(
         body,
@@ -883,14 +973,18 @@ async function callTool(
         fitToBudget(
           full,
           (bytes) =>
-            [
-              notice('index', bytes, [
-                `種別ごとに読む: ${callExample('get_structures', { work_id: work.id, kind: 'outline' })}`,
-                `従来どおり全量: ${callExample('get_structures', { work_id: work.id, max_bytes: 0 })}`,
-              ]),
-              worldPointerLine(primaryPlot()),
-              structureIndexToPlainText(structures, work),
-            ].join('\n\n'),
+            clipIndex(
+              [
+                notice('index', bytes, [
+                  `種別ごとに読む: ${callExample('get_structures', { work_id: work.id, kind: 'outline' })}`,
+                  sameCallUnlimited('get_structures'),
+                ]),
+                worldPointerLine(primaryPlot()),
+                structureIndexToPlainText(structures, work),
+              ].join('\n\n'),
+              fullBudget,
+              `${callExample('get_structures', { work_id: work.id, kind: 'outline' })} のように種別で分けてください。`,
+            ),
           fullBudget,
         ),
       )
