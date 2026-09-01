@@ -107,6 +107,9 @@ export default function StagingView({ repo, work, currentEpisodeId, assetRepo }:
   // 話者の自由記述モード（選択中の行にだけ効く。行を替えたら閉じる）
   const [customSpeaker, setCustomSpeaker] = useState(false)
   const [customDraft, setCustomDraft] = useState('')
+  // 「登場」（地の文）の自由記述モード。話者と同じ 3 方式（人物・使った名前・自由記述）
+  const [customAppear, setCustomAppear] = useState(false)
+  const [customAppearDraft, setCustomAppearDraft] = useState('')
   // 立ち絵の追加（画像を選んだあと、表情名を付けて確定する2段階）
   const [pendingSprite, setPendingSprite] = useState<{
     dataUrl: string
@@ -209,12 +212,6 @@ export default function StagingView({ repo, work, currentEpisodeId, assetRepo }:
   )
   // 背景の選択肢に立ち絵を混ぜない
   const bgAssets = useMemo(() => assets.filter((a) => a.kind === 'bg'), [assets])
-  // 立ち絵のある人物（登場セレクトの選択肢）
-  const spriteCharacters = useMemo(() => {
-    const names = new Set<string>()
-    for (const a of assets) if (a.kind === 'sprite' && a.character) names.add(a.character)
-    return [...names].sort((a, b) => a.localeCompare(b, 'ja'))
-  }, [assets])
   // 持ち込み枚数（テンプレ由来は数えない）。無料プランは FREE_IMPORT_LIMIT まで。
   const importedCount = useMemo(() => assets.filter((a) => !a.preset).length, [assets])
 
@@ -237,6 +234,16 @@ export default function StagingView({ repo, work, currentEpisodeId, assetRepo }:
       .filter((n) => n !== MASKED_SPEAKER && !persons.some((p) => p.name === n))
       .sort((a, b) => a.localeCompare(b, 'ja'))
   }, [workSpeakers, staging, persons])
+  // 「登場」の選択肢のうち用語集に無い名前（話者で使った名前・立ち絵のある人物・登場で使った名前）。
+  // **立ち絵の有無で絞らない**——立ち絵はここで人物を選んでから付けられる（一言も喋らない人物のため）
+  const otherAppearNames = useMemo(() => {
+    const names = new Set(usedSpeakers)
+    for (const a of assets) if (a.kind === 'sprite' && a.character) names.add(a.character)
+    for (const c of staging?.cues ?? []) if (c.appear) names.add(c.appear)
+    return [...names]
+      .filter((n) => n !== MASKED_SPEAKER && !persons.some((p) => p.name === n))
+      .sort((a, b) => a.localeCompare(b, 'ja'))
+  }, [usedSpeakers, assets, staging, persons])
   const blockTextById = useMemo(() => {
     const m = new Map<string, string>()
     for (const b of episode?.blocks ?? []) m.set(b.id, plainTextOfBlock(b))
@@ -249,18 +256,6 @@ export default function StagingView({ repo, work, currentEpisodeId, assetRepo }:
   }, [episode])
 
   const selected = staged.find((p) => p.blockId === selectedId) ?? null
-  // 選択行の話者に紐づく立ち絵（表情の選択肢とプレビュー）
-  const speakerExpressions = useMemo(
-    () =>
-      selected?.speaker && selected.speaker !== MASKED_SPEAKER
-        ? spriteExpressionsOf(assets, selected.speaker)
-        : [],
-    [assets, selected?.speaker],
-  )
-  const spritePreview =
-    selected?.speaker && selected.speaker !== MASKED_SPEAKER
-      ? pickSprite(assets, selected.speaker, selected.expression)
-      : undefined
   const speakerCandidate = useMemo(() => {
     if (!episode || !selected || selected.kind !== 'dialogue') return undefined
     const index = blockIndexById.get(selected.blockId)
@@ -283,6 +278,7 @@ export default function StagingView({ repo, work, currentEpisodeId, assetRepo }:
   const selectRow = (blockId: string) => {
     setSelectedId(blockId)
     setCustomSpeaker(false)
+    setCustomAppear(false)
     setPendingSprite(null)
     setSpritePickerOpen(false)
   }
@@ -290,6 +286,11 @@ export default function StagingView({ repo, work, currentEpisodeId, assetRepo }:
     const name = customDraft.trim()
     setCustomSpeaker(false)
     apply(blockId, { speaker: name || undefined })
+  }
+  const commitCustomAppear = (blockId: string) => {
+    const name = customAppearDraft.trim()
+    setCustomAppear(false)
+    apply(blockId, { appear: name || undefined })
   }
   /** 画像ファイル → リサイズして保存 → その行の背景に設定。会員はクラウドにも控えを置く。 */
   const addImage = async (file: File, blockId: string) => {
@@ -389,6 +390,152 @@ export default function StagingView({ repo, work, currentEpisodeId, assetRepo }:
     setAssets((prev) => [asset, ...prev])
     setPendingSprite(null)
     if (hostingApi) void uploadAsset(asset).then((r) => setHostNotice(uploadNoticeOf(r)))
+  }
+
+  /**
+   * 立ち絵の欄（プレビュー・表情・追加）。**セリフの話者にも、地の文の「登場」にも同じ形で出す。**
+   * 一言も喋らない人物にも立ち絵を付けられるように、登録の入口を話者に縛らない（D-GAME-SPRITE-ANY）。
+   * 表情の選び分けはセリフ側だけ（登場は既定の表情で立たせる＝exporter の取り決めに合わせる）。
+   */
+  const renderSpriteEditor = (character: string, withExpression: boolean) => {
+    const expressions = spriteExpressionsOf(assets, character)
+    const preview = pickSprite(assets, character, withExpression ? selected?.expression : undefined)
+    return (
+      <div className="mt-4">
+        {withExpression ? (
+          <label
+            htmlFor="staging-expression"
+            className="mb-2 block text-on-surface-variant text-xs uppercase tracking-wider"
+          >
+            立ち絵
+          </label>
+        ) : null}
+        {expressions.length > 0 ? (
+          <>
+            {withExpression && selected ? (
+              <select
+                id="staging-expression"
+                value={selected.expression ?? ''}
+                onChange={(e) =>
+                  apply(selected.blockId, {
+                    expression: e.target.value || undefined,
+                  })
+                }
+                className={SELECT_CLASS}
+              >
+                <option value="">（自動：{DEFAULT_EXPRESSION}）</option>
+                {/* 未登録の表情が付いた既存 cue も選択状態は保つ（勝手に外さない） */}
+                {selected.expression && !expressions.includes(selected.expression) ? (
+                  <option value={selected.expression}>
+                    {selected.expression}（この表情は未登録）
+                  </option>
+                ) : null}
+                {expressions.map((e) => (
+                  <option key={e} value={e}>
+                    {e}
+                  </option>
+                ))}
+              </select>
+            ) : null}
+            {preview ? (
+              <img
+                src={preview.dataUrl}
+                alt={`立ち絵プレビュー: ${preview.name}`}
+                className="mx-auto mt-2 h-40 object-contain"
+              />
+            ) : null}
+          </>
+        ) : (
+          <p className="text-[11px] text-on-surface-variant leading-relaxed">
+            「{character}」の立ち絵はまだありません。追加すると、
+            {withExpression
+              ? 'この話者のセリフで自動的に表示されます。'
+              : 'この行から立ち絵が出ます。'}
+          </p>
+        )}
+        {pendingSprite ? (
+          <div className="mt-2 space-y-2 rounded-md border border-outline-variant/30 p-2">
+            <img
+              src={pendingSprite.dataUrl}
+              alt="追加する立ち絵"
+              className="mx-auto h-40 object-contain"
+            />
+            <Input
+              aria-label="表情名"
+              value={spriteExprDraft}
+              placeholder={DEFAULT_EXPRESSION}
+              onChange={(e) => setSpriteExprDraft(e.target.value)}
+            />
+            <div className="flex gap-2">
+              <Button type="button" size="sm" onClick={() => void commitSprite(character)}>
+                追加
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => setPendingSprite(null)}
+              >
+                やめる
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <div className="mt-2 flex flex-wrap gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="text-primary"
+              onClick={() => beginImport(spriteInputRef.current)}
+            >
+              立ち絵を追加…
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="text-primary"
+              onClick={() => setSpritePickerOpen((v) => !v)}
+            >
+              テンプレから選ぶ…
+            </Button>
+          </div>
+        )}
+        {spritePickerOpen && !pendingSprite ? (
+          <div className="mt-2 grid grid-cols-3 gap-2 rounded-md border border-outline-variant/30 p-2">
+            {PRESET_SPRITES.map((p) => (
+              <button
+                key={p.key}
+                type="button"
+                className="rounded-md border border-outline-variant/30 p-1 hover:bg-surface-container-high"
+                onClick={() => void pickTemplateSprite(character, p)}
+              >
+                <img src={presetSpriteDataUrl(p)} alt="" className="mx-auto h-20 object-contain" />
+                <span className="mt-1 block text-center text-[10px] text-on-surface-variant leading-tight">
+                  {p.label.replace('シルエット', '')}
+                </span>
+              </button>
+            ))}
+            <p className="col-span-3 text-[11px] text-on-surface-variant">
+              テンプレの立ち絵は枚数に数えません。
+            </p>
+          </div>
+        ) : null}
+        <input
+          ref={spriteInputRef}
+          type="file"
+          accept="image/*"
+          hidden
+          aria-label="立ち絵の画像を選ぶ"
+          onChange={(e) => {
+            const file = e.target.files?.[0]
+            e.target.value = ''
+            if (file) void pickSpriteFile(file)
+          }}
+        />
+      </div>
+    )
   }
 
   /**
@@ -663,151 +810,13 @@ export default function StagingView({ repo, work, currentEpisodeId, assetRepo }:
                     </Button>
                   ) : null}
 
-                  {selected.speaker && selected.speaker !== MASKED_SPEAKER && assetRepo ? (
-                    <div className="mt-4">
-                      <label
-                        htmlFor="staging-expression"
-                        className="mb-2 block text-on-surface-variant text-xs uppercase tracking-wider"
-                      >
-                        立ち絵
-                      </label>
-                      {speakerExpressions.length > 0 ? (
-                        <>
-                          <select
-                            id="staging-expression"
-                            value={selected.expression ?? ''}
-                            onChange={(e) =>
-                              apply(selected.blockId, {
-                                expression: e.target.value || undefined,
-                              })
-                            }
-                            className={SELECT_CLASS}
-                          >
-                            <option value="">（自動：{DEFAULT_EXPRESSION}）</option>
-                            {/* 未登録の表情が付いた既存 cue も選択状態は保つ（勝手に外さない） */}
-                            {selected.expression &&
-                            !speakerExpressions.includes(selected.expression) ? (
-                              <option value={selected.expression}>
-                                {selected.expression}（この表情は未登録）
-                              </option>
-                            ) : null}
-                            {speakerExpressions.map((e) => (
-                              <option key={e} value={e}>
-                                {e}
-                              </option>
-                            ))}
-                          </select>
-                          {spritePreview ? (
-                            <img
-                              src={spritePreview.dataUrl}
-                              alt={`立ち絵プレビュー: ${spritePreview.name}`}
-                              className="mx-auto mt-2 h-40 object-contain"
-                            />
-                          ) : null}
-                        </>
-                      ) : (
-                        <p className="text-[11px] text-on-surface-variant leading-relaxed">
-                          「{selected.speaker}
-                          」の立ち絵はまだありません。追加すると、この話者のセリフで自動的に表示されます。
-                        </p>
-                      )}
-                      {pendingSprite ? (
-                        <div className="mt-2 space-y-2 rounded-md border border-outline-variant/30 p-2">
-                          <img
-                            src={pendingSprite.dataUrl}
-                            alt="追加する立ち絵"
-                            className="mx-auto h-40 object-contain"
-                          />
-                          <Input
-                            aria-label="表情名"
-                            value={spriteExprDraft}
-                            placeholder={DEFAULT_EXPRESSION}
-                            onChange={(e) => setSpriteExprDraft(e.target.value)}
-                          />
-                          <div className="flex gap-2">
-                            <Button
-                              type="button"
-                              size="sm"
-                              onClick={() => void commitSprite(selected.speaker ?? '')}
-                            >
-                              追加
-                            </Button>
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => setPendingSprite(null)}
-                            >
-                              やめる
-                            </Button>
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="mt-2 flex flex-wrap gap-2">
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            className="text-primary"
-                            onClick={() => beginImport(spriteInputRef.current)}
-                          >
-                            立ち絵を追加…
-                          </Button>
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            className="text-primary"
-                            onClick={() => setSpritePickerOpen((v) => !v)}
-                          >
-                            テンプレから選ぶ…
-                          </Button>
-                        </div>
-                      )}
-                      {spritePickerOpen && !pendingSprite ? (
-                        <div className="mt-2 grid grid-cols-3 gap-2 rounded-md border border-outline-variant/30 p-2">
-                          {PRESET_SPRITES.map((p) => (
-                            <button
-                              key={p.key}
-                              type="button"
-                              className="rounded-md border border-outline-variant/30 p-1 hover:bg-surface-container-high"
-                              onClick={() => void pickTemplateSprite(selected.speaker ?? '', p)}
-                            >
-                              <img
-                                src={presetSpriteDataUrl(p)}
-                                alt=""
-                                className="mx-auto h-20 object-contain"
-                              />
-                              <span className="mt-1 block text-center text-[10px] text-on-surface-variant leading-tight">
-                                {p.label.replace('シルエット', '')}
-                              </span>
-                            </button>
-                          ))}
-                          <p className="col-span-3 text-[11px] text-on-surface-variant">
-                            テンプレの立ち絵は枚数に数えません。
-                          </p>
-                        </div>
-                      ) : null}
-                      <input
-                        ref={spriteInputRef}
-                        type="file"
-                        accept="image/*"
-                        hidden
-                        aria-label="立ち絵の画像を選ぶ"
-                        onChange={(e) => {
-                          const file = e.target.files?.[0]
-                          e.target.value = ''
-                          if (file) void pickSpriteFile(file)
-                        }}
-                      />
-                    </div>
-                  ) : null}
+                  {selected.speaker && selected.speaker !== MASKED_SPEAKER && assetRepo
+                    ? renderSpriteEditor(selected.speaker, true)
+                    : null}
                 </div>
               ) : null}
 
-              {selected.kind === 'narration' &&
-              assetRepo &&
-              (spriteCharacters.length > 0 || selected.appear) ? (
+              {selected.kind === 'narration' && assetRepo ? (
                 <div>
                   <label
                     htmlFor="staging-appear"
@@ -817,26 +826,61 @@ export default function StagingView({ repo, work, currentEpisodeId, assetRepo }:
                   </label>
                   <select
                     id="staging-appear"
-                    value={selected.appear ?? ''}
-                    onChange={(e) =>
-                      apply(selected.blockId, { appear: e.target.value || undefined })
-                    }
+                    value={customAppear ? CUSTOM_SPEAKER : (selected.appear ?? '')}
+                    onChange={(e) => {
+                      const value = e.target.value
+                      if (value === CUSTOM_SPEAKER) {
+                        // まだ保存しない。下の入力欄で名前を書いたときに保存する
+                        setCustomAppearDraft(selected.appear ?? '')
+                        setCustomAppear(true)
+                        return
+                      }
+                      setCustomAppear(false)
+                      apply(selected.blockId, { appear: value || undefined })
+                    }}
                     className={SELECT_CLASS}
                   >
                     <option value="">（なし）</option>
-                    {/* 立ち絵が無くなった人物の既存 cue も選択状態は保つ（勝手に外さない） */}
-                    {selected.appear && !spriteCharacters.includes(selected.appear) ? (
-                      <option value={selected.appear}>{selected.appear}（立ち絵なし）</option>
+                    {persons.length > 0 ? (
+                      <optgroup label="用語集の人物">
+                        {persons.map((p) => (
+                          <option key={p.id} value={p.name}>
+                            {p.name}
+                          </option>
+                        ))}
+                      </optgroup>
                     ) : null}
-                    {spriteCharacters.map((n) => (
-                      <option key={n} value={n}>
-                        {n}
-                      </option>
-                    ))}
+                    {otherAppearNames.length > 0 ? (
+                      <optgroup label="この作品の演出で使った名前">
+                        {otherAppearNames.map((n) => (
+                          <option key={n} value={n}>
+                            {n}
+                          </option>
+                        ))}
+                      </optgroup>
+                    ) : null}
+                    <option value={CUSTOM_SPEAKER}>（自由に入力…）</option>
                   </select>
+                  {customAppear ? (
+                    <Input
+                      aria-label="登場する人物の名前を入力"
+                      value={customAppearDraft}
+                      placeholder="立ち絵を出す人物の名前"
+                      autoFocus
+                      onChange={(e) => setCustomAppearDraft(e.target.value)}
+                      onBlur={() => commitCustomAppear(selected.blockId)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') commitCustomAppear(selected.blockId)
+                      }}
+                      className="mt-2"
+                    />
+                  ) : null}
                   <p className="mt-2 text-[11px] text-on-surface-variant leading-relaxed">
-                    この行から立ち絵を出します。名前枠は出ません。
+                    この行から立ち絵を出します。名前枠は出ません。セリフの無い人物にも使えます。
                   </p>
+                  {selected.appear && selected.appear !== MASKED_SPEAKER
+                    ? renderSpriteEditor(selected.appear, false)
+                    : null}
                 </div>
               ) : null}
 

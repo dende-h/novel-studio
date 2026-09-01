@@ -296,6 +296,58 @@ describe('StagingView（演出エディタ）', () => {
     expect(await screen.findByText('登場 灯')).toBeInTheDocument()
   })
 
+  it('立ち絵が1枚も無くても、地の文で登場させる人物を選べる', async () => {
+    // 一言も喋らない人物にも立ち絵を出せること。候補を「立ち絵のある人物」に絞らない
+    const { repo, saved } = fakeRepo()
+    const { repo: assetRepo } = memoryAssetRepo()
+    render(
+      <StagingView repo={repo} work={makeWork()} currentEpisodeId="e1" assetRepo={assetRepo} />,
+    )
+    fireEvent.click(await screen.findByText('灯が振り返った。'))
+    fireEvent.change(await screen.findByLabelText('立ち絵の登場'), { target: { value: '灯' } })
+
+    await waitFor(() => expect(saved).toHaveLength(1))
+    expect(saved[0]?.cues[0]).toEqual({ blockId: 'b1', appear: '灯' })
+    expect(screen.getByText(/「灯」の立ち絵はまだありません/)).toBeInTheDocument()
+  })
+
+  it('登場させた人物の立ち絵を、その行から登録できる（話者でなくても）', async () => {
+    const { repo } = fakeRepo({
+      workId: 'w1',
+      episodeId: 'e1',
+      cues: [{ blockId: 'b1', appear: '灯' }],
+      updatedAt: 1,
+    })
+    const { repo: assetRepo, map } = memoryAssetRepo()
+    render(
+      <StagingView repo={repo} work={makeWork()} currentEpisodeId="e1" assetRepo={assetRepo} />,
+    )
+    fireEvent.click(await screen.findByText('灯が振り返った。'))
+    fireEvent.click(await screen.findByRole('button', { name: 'テンプレから選ぶ…' }))
+    fireEvent.click(await screen.findByRole('button', { name: /（女性）/ }))
+
+    await waitFor(() => expect(map.size).toBe(1))
+    expect([...map.values()][0]).toMatchObject({ kind: 'sprite', character: '灯' })
+  })
+
+  it('用語集に無い人物も、自由に入力して登場させられる', async () => {
+    const { repo, saved } = fakeRepo()
+    const { repo: assetRepo } = memoryAssetRepo()
+    render(
+      <StagingView repo={repo} work={makeWork()} currentEpisodeId="e1" assetRepo={assetRepo} />,
+    )
+    fireEvent.click(await screen.findByText('灯が振り返った。'))
+    fireEvent.change(await screen.findByLabelText('立ち絵の登場'), {
+      target: { value: '__custom__' },
+    })
+    const input = await screen.findByLabelText('登場する人物の名前を入力')
+    fireEvent.change(input, { target: { value: '見知らぬ女' } })
+    fireEvent.blur(input)
+
+    await waitFor(() => expect(saved).toHaveLength(1))
+    expect(saved[0]?.cues[0]).toEqual({ blockId: 'b1', appear: '見知らぬ女' })
+  })
+
   it('テンプレから選ぶ…でシルエット立ち絵が話者に割り当てられる（tpl- id・枚数に数えない）', async () => {
     const { repo } = fakeRepo({
       workId: 'w1',
