@@ -50,6 +50,35 @@ function renderPage(work: Work, onPersist = vi.fn()) {
   return { onPersist }
 }
 
+/**
+ * サウンドノベルの切り替えは、演出譜と素材の置き場所を渡したときだけ出る。
+ * 既定（記録の無い話）は「演出を付けた話だけ ON」なので、演出譜を材料として渡す。
+ */
+function renderWithGame(work: Work, stagedEpisodeIds: string[] = ['e1'], onPersist = vi.fn()) {
+  const stagingRepo = {
+    listByWork: vi.fn().mockResolvedValue(
+      stagedEpisodeIds.map((episodeId) => ({
+        workId: work.id,
+        episodeId,
+        cues: [{ blockId: 'b1', speaker: '灯' }],
+        updatedAt: 1,
+      })),
+    ),
+  }
+  const gameAssetRepo = { list: vi.fn().mockResolvedValue([]), save: vi.fn() }
+  render(
+    <PublishPage
+      gameAssetRepo={gameAssetRepo}
+      getToken={getToken}
+      isSignedIn
+      onPersist={onPersist}
+      stagingRepo={stagingRepo}
+      work={work}
+    />,
+  )
+  return { onPersist, stagingRepo, gameAssetRepo }
+}
+
 beforeEach(() => {
   publishWorkToPlatform.mockReset().mockResolvedValue({
     ok: true,
@@ -188,5 +217,50 @@ describe('作者登録', () => {
     expect(registerAuthorApi.mock.calls[0]?.[1]).toMatchObject({ penName: '夜半' })
     // 登録できたらカードは消え、公開へ進める
     await waitFor(() => expect(screen.queryByRole('button', { name: '作者登録する' })).toBeNull())
+  })
+})
+
+describe('話ごとのサウンドノベル', () => {
+  const withGame: Work['platform'] = { ...publishable, novelGame: true }
+
+  it('作品の切り替えが ON のときだけ、話ごとのスイッチが出る', async () => {
+    renderWithGame(makeWork(publishable))
+    await waitFor(() => expect(fetchAuthorStatus).toHaveBeenCalled())
+    expect(
+      screen.queryByRole('switch', { name: '「第一話」をサウンドノベルにする' }),
+    ).not.toBeInTheDocument()
+  })
+
+  it('演出を付けた話だけが既定で ON になる', async () => {
+    renderWithGame(makeWork(withGame), ['e1'])
+    const first = await screen.findByRole('switch', { name: '「第一話」をサウンドノベルにする' })
+    const second = screen.getByRole('switch', { name: '「第二話」をサウンドノベルにする' })
+    expect(first).toBeChecked()
+    // 演出を付けていない第二話は、作品の切り替えが ON でも対象にしない
+    expect(second).not.toBeChecked()
+  })
+
+  it('話ごとの選択は記録され、作品へ保存される', async () => {
+    const { onPersist } = renderWithGame(makeWork(withGame), ['e1'])
+    const first = await screen.findByRole('switch', { name: '「第一話」をサウンドノベルにする' })
+    fireEvent.click(first)
+
+    fireEvent.click(screen.getByRole('button', { name: '公開状態を更新' }))
+    fireEvent.click(await screen.findByRole('button', { name: '公開する' }))
+
+    await waitFor(() => expect(onPersist).toHaveBeenCalled())
+    const values = onPersist.mock.calls[0]?.[1] as { platform: Work['platform'] }
+    expect(values.platform?.novelGameEpisodes).toEqual({ e1: false })
+  })
+
+  it('伏せた話はサウンドノベルにもできない（読者に出ない話のプレイヤーは作らない）', async () => {
+    renderWithGame(makeWork(withGame), ['e1'])
+    const gameSwitch = await screen.findByRole('switch', {
+      name: '「第一話」をサウンドノベルにする',
+    })
+    fireEvent.click(screen.getByRole('switch', { name: '「第一話」を公開する' }))
+
+    await waitFor(() => expect(gameSwitch).toBeDisabled())
+    expect(gameSwitch).not.toBeChecked()
   })
 })
