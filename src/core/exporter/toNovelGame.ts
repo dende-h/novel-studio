@@ -65,6 +65,11 @@ export interface NovelGameOptions {
    * URL（fontHref）を参照する（HTML へ埋めると話ごとに MB 単位で太るため）。
    */
   inline?: { fontHref?: string }
+  /**
+   * 開いた瞬間に始めるページ番号（**アプリ内プレビュー専用**）。
+   * 書き出し・投稿では渡さない＝読者はいつもタイトル画面から始める。
+   */
+  startAt?: number
 }
 
 /** zip に入れる背景 1 枚（テンプレ SVG か持ち込み画像かを吸収する内部表現）。 */
@@ -342,6 +347,7 @@ export function buildNovelGameFiles(
     episodeTitle: episode.title,
     ...(work.author ? { author: work.author } : {}),
     saveKey: `kotonoha:novel-game:${work.id}:${episode.id}`,
+    ...(opts.startAt !== undefined ? { start: opts.startAt } : {}),
     defaultBg: defaultEntry.key,
     bgs: Object.fromEntries(
       usedList.map((e) => [e.key, { src: e.path, label: e.label, tone: e.tone }]),
@@ -404,7 +410,13 @@ export function buildNovelGameHtml(
   work: Work,
   episode: Episode,
   staging: Staging | undefined,
-  opts: { defaultBg?: string; fontHref?: string; gameAssets?: UserGameAsset[] } = {},
+  opts: {
+    defaultBg?: string
+    fontHref?: string
+    gameAssets?: UserGameAsset[]
+    /** アプリ内プレビュー専用：この行から始める（書き出し・投稿では渡さない） */
+    startAt?: number
+  } = {},
 ): string {
   const userAssets: NovelGameUserAsset[] = (opts.gameAssets ?? []).map((a) => ({
     key: userAssetKey(a.id),
@@ -424,6 +436,7 @@ export function buildNovelGameHtml(
     defaultBg: opts.defaultBg,
     userAssets,
     inline: { ...(opts.fontHref ? { fontHref: opts.fontHref } : {}) },
+    ...(opts.startAt !== undefined ? { startAt: opts.startAt } : {}),
   })
   const html = files.find((f) => f.path === 'index.html')?.data
   if (typeof html !== 'string') throw new Error('プレイヤー HTML を生成できなかった')

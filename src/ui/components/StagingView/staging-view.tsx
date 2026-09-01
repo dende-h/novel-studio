@@ -1,4 +1,4 @@
-import { Images, Trash2 } from 'lucide-react'
+import { Images, Play, Trash2 } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   applyCues,
@@ -49,6 +49,17 @@ import {
   pullHostedAssets,
 } from '@/ui/game/asset-hosting'
 import { AssetManager, uploadNoticeOf } from './asset-manager'
+import {
+  AppearHelp,
+  BgHelp,
+  HideSpriteHelp,
+  SceneBreakHelp,
+  SeHelp,
+  SpeakerHelp,
+  SpriteHelp,
+  TransitionHelp,
+} from './field-helps'
+import { StagingPreviewDialog } from './preview-dialog'
 
 /**
  * 演出エディタ（サウンドノベルの Staging・G1）。設計は docs/requirement/07-novel-game.md §3。
@@ -135,6 +146,8 @@ export default function StagingView({ repo, work, currentEpisodeId, assetRepo }:
   const [hostedIds, setHostedIds] = useState<Set<string> | null>(null)
   const [hostNotice, setHostNotice] = useState<string | null>(null)
   const [managerOpen, setManagerOpen] = useState(false)
+  // プレビュー（null＝閉じている）。startAt を渡すとその行から始まる
+  const [preview, setPreview] = useState<{ startAt?: number } | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -408,12 +421,15 @@ export default function StagingView({ repo, work, currentEpisodeId, assetRepo }:
           </p>
         ) : null}
         {withExpression ? (
-          <label
-            htmlFor="staging-expression"
-            className="mb-2 block text-on-surface-variant text-xs uppercase tracking-wider"
-          >
-            立ち絵
-          </label>
+          <div className="mb-2 flex items-center gap-1">
+            <label
+              htmlFor="staging-expression"
+              className="text-on-surface-variant text-xs uppercase tracking-wider"
+            >
+              立ち絵
+            </label>
+            <SpriteHelp />
+          </div>
         ) : null}
         {expressions.length > 0 ? (
           <>
@@ -573,24 +589,30 @@ export default function StagingView({ repo, work, currentEpisodeId, assetRepo }:
               話者・背景・場面の切れ目を行ごとに付けます。付けた演出は、書き出しの「サウンドノベル」で使われます。本文は変わりません。
             </p>
           </div>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="ml-auto gap-2 text-primary"
+            disabled={!episode}
+            onClick={() => setPreview({})}
+          >
+            <Play className="size-4" />
+            プレビュー
+          </Button>
           {assetRepo ? (
             <Button
               type="button"
               variant="outline"
               size="sm"
-              className="ml-auto gap-2 text-primary"
+              className="gap-2 text-primary"
               onClick={() => setManagerOpen(true)}
             >
               <Images className="size-4" />
               素材の管理
             </Button>
           ) : null}
-          <label
-            className={cn(
-              'flex items-center gap-2 text-on-surface-variant text-xs',
-              !assetRepo && 'ml-auto',
-            )}
-          >
+          <label className="flex items-center gap-2 text-on-surface-variant text-xs">
             話
             <select
               value={episode?.id ?? ''}
@@ -731,18 +753,34 @@ export default function StagingView({ repo, work, currentEpisodeId, assetRepo }:
                 {blockTextById.get(selected.blockId) ?? ''}
               </p>
 
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="w-full gap-2 text-primary"
+                onClick={() =>
+                  setPreview({ startAt: staged.findIndex((p) => p.blockId === selected.blockId) })
+                }
+              >
+                <Play className="size-4" />
+                この行から見る
+              </Button>
+
               {hostNotice ? (
                 <p className="text-on-surface-variant text-xs leading-relaxed">{hostNotice}</p>
               ) : null}
 
               {selected.kind === 'dialogue' ? (
                 <div>
-                  <label
-                    htmlFor="staging-speaker"
-                    className="mb-2 block text-on-surface-variant text-xs uppercase tracking-wider"
-                  >
-                    話者
-                  </label>
+                  <div className="mb-2 flex items-center gap-1">
+                    <label
+                      htmlFor="staging-speaker"
+                      className="text-on-surface-variant text-xs uppercase tracking-wider"
+                    >
+                      話者
+                    </label>
+                    <SpeakerHelp />
+                  </div>
                   <select
                     id="staging-speaker"
                     value={customSpeaker ? CUSTOM_SPEAKER : (selected.speaker ?? '')}
@@ -824,12 +862,15 @@ export default function StagingView({ repo, work, currentEpisodeId, assetRepo }:
 
               {selected.kind === 'narration' && assetRepo ? (
                 <div>
-                  <label
-                    htmlFor="staging-appear"
-                    className="mb-2 block text-on-surface-variant text-xs uppercase tracking-wider"
-                  >
-                    立ち絵の登場
-                  </label>
+                  <div className="mb-2 flex items-center gap-1">
+                    <label
+                      htmlFor="staging-appear"
+                      className="text-on-surface-variant text-xs uppercase tracking-wider"
+                    >
+                      立ち絵の登場
+                    </label>
+                    <AppearHelp />
+                  </div>
                   <select
                     id="staging-appear"
                     value={customAppear ? CUSTOM_SPEAKER : (selected.appear ?? '')}
@@ -881,9 +922,6 @@ export default function StagingView({ repo, work, currentEpisodeId, assetRepo }:
                       className="mt-2"
                     />
                   ) : null}
-                  <p className="mt-2 text-[11px] text-on-surface-variant leading-relaxed">
-                    この行から立ち絵を出します。名前枠は出ません。セリフの無い人物にも使えます。
-                  </p>
                   {selected.appear && selected.appear !== MASKED_SPEAKER
                     ? renderSpriteEditor(selected.appear, false)
                     : null}
@@ -891,12 +929,12 @@ export default function StagingView({ repo, work, currentEpisodeId, assetRepo }:
               ) : null}
 
               <div className="flex items-center justify-between gap-3">
-                <label htmlFor="staging-scene" className="text-on-surface text-sm">
-                  ここから場面が変わる
-                  <span className="mt-0.5 block text-[11px] text-on-surface-variant">
-                    背景の切り替え点になります
-                  </span>
-                </label>
+                <div className="flex items-center gap-1">
+                  <label htmlFor="staging-scene" className="text-on-surface text-sm">
+                    ここから場面が変わる
+                  </label>
+                  <SceneBreakHelp />
+                </div>
                 <Switch
                   id="staging-scene"
                   checked={Boolean(selected.sceneBreak)}
@@ -908,12 +946,12 @@ export default function StagingView({ repo, work, currentEpisodeId, assetRepo }:
 
               {assetRepo ? (
                 <div className="flex items-center justify-between gap-3">
-                  <label htmlFor="staging-hide-sprite" className="text-on-surface text-sm">
-                    ここから立ち絵を出さない
-                    <span className="mt-0.5 block text-[11px] text-on-surface-variant">
-                      次の場面の切れ目まで。人物ごと描いた一枚絵の背景に
-                    </span>
-                  </label>
+                  <div className="flex items-center gap-1">
+                    <label htmlFor="staging-hide-sprite" className="text-on-surface text-sm">
+                      ここから立ち絵を出さない
+                    </label>
+                    <HideSpriteHelp />
+                  </div>
                   <Switch
                     id="staging-hide-sprite"
                     checked={Boolean(selected.hideSprite)}
@@ -925,12 +963,15 @@ export default function StagingView({ repo, work, currentEpisodeId, assetRepo }:
               ) : null}
 
               <div>
-                <label
-                  htmlFor="staging-bg"
-                  className="mb-2 block text-on-surface-variant text-xs uppercase tracking-wider"
-                >
-                  背景
-                </label>
+                <div className="mb-2 flex items-center gap-1">
+                  <label
+                    htmlFor="staging-bg"
+                    className="text-on-surface-variant text-xs uppercase tracking-wider"
+                  >
+                    背景
+                  </label>
+                  <BgHelp />
+                </div>
                 <select
                   id="staging-bg"
                   value={selected.bg ?? ''}
@@ -993,12 +1034,15 @@ export default function StagingView({ repo, work, currentEpisodeId, assetRepo }:
 
               {selected.bg ? (
                 <div>
-                  <label
-                    htmlFor="staging-transition"
-                    className="mb-2 block text-on-surface-variant text-xs uppercase tracking-wider"
-                  >
-                    切り替え方
-                  </label>
+                  <div className="mb-2 flex items-center gap-1">
+                    <label
+                      htmlFor="staging-transition"
+                      className="text-on-surface-variant text-xs uppercase tracking-wider"
+                    >
+                      切り替え方
+                    </label>
+                    <TransitionHelp />
+                  </div>
                   <select
                     id="staging-transition"
                     value={selected.transition ?? 'fade'}
@@ -1019,12 +1063,15 @@ export default function StagingView({ repo, work, currentEpisodeId, assetRepo }:
               ) : null}
 
               <div>
-                <label
-                  htmlFor="staging-se"
-                  className="mb-2 block text-on-surface-variant text-xs uppercase tracking-wider"
-                >
-                  効果音
-                </label>
+                <div className="mb-2 flex items-center gap-1">
+                  <label
+                    htmlFor="staging-se"
+                    className="text-on-surface-variant text-xs uppercase tracking-wider"
+                  >
+                    効果音
+                  </label>
+                  <SeHelp />
+                </div>
                 <div className="flex gap-2">
                   <select
                     id="staging-se"
@@ -1056,9 +1103,6 @@ export default function StagingView({ repo, work, currentEpisodeId, assetRepo }:
                     試聴
                   </Button>
                 </div>
-                <p className="mt-2 text-[11px] text-on-surface-variant leading-relaxed">
-                  この行が表示された瞬間に、1回鳴ります。
-                </p>
               </div>
 
               <Button
@@ -1075,6 +1119,18 @@ export default function StagingView({ repo, work, currentEpisodeId, assetRepo }:
           )}
         </aside>
       </div>
+
+      {episode ? (
+        <StagingPreviewDialog
+          open={preview !== null}
+          onOpenChange={(o) => setPreview(o ? (preview ?? {}) : null)}
+          work={work}
+          episode={episode}
+          staging={staging ?? undefined}
+          gameAssets={assets}
+          {...(preview?.startAt !== undefined ? { startAt: preview.startAt } : {})}
+        />
+      ) : null}
 
       {assetRepo ? (
         <AssetManager
