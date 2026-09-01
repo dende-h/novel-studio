@@ -18,3 +18,28 @@ export async function loadGameFont(): Promise<NovelGameFont | undefined> {
     return undefined
   }
 }
+/** data URL 化した同梱フォントの控え（プレビューを開くたびに作り直さない）。 */
+let fontDataUrl: Promise<string | undefined> | null = null
+
+/**
+ * アプリ内プレビュー用に、同梱フォントを data URL で返す（1 セッション 1 回だけ作る）。
+ *
+ * プレビューの iframe は sandbox（同一オリジンを渡さない）で動かすので、
+ * `/assets/…` のような**同じサイトの URL でもフォントは読めない**（CORS）。
+ * 読めないと本番と違う書体で組まれ、行の折り返しがずれて見える——文字組は
+ * このプレイヤーの一番の品質軸（D-GAME-QUALITY）なので、実体ごと渡す。
+ */
+export function loadGameFontDataUrl(): Promise<string | undefined> {
+  if (!fontDataUrl) {
+    fontDataUrl = loadGameFont().then((font) => {
+      if (!font) return undefined
+      let binary = ''
+      // 一度に渡すと引数の上限に当たるので分割する（約 1.9MB）
+      for (let i = 0; i < font.data.length; i += 0x8000) {
+        binary += String.fromCharCode(...font.data.subarray(i, i + 0x8000))
+      }
+      return `data:font/woff2;base64,${btoa(binary)}`
+    })
+  }
+  return fontDataUrl
+}

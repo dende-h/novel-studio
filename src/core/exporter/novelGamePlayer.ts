@@ -58,6 +58,11 @@ export interface GameScenario {
   author?: string
   /** localStorage のセーブキー（作品×話で一意） */
   saveKey: string
+  /**
+   * 開いた瞬間に始めるページ番号（**アプリ内プレビュー専用**）。
+   * 書き出し・投稿するプレイヤーには載せない＝読者はいつもタイトル画面から始める。
+   */
+  start?: number
   defaultBg: string
   bgs: Record<string, ScenarioBg>
   /** 立ち絵（キー → 実体パス）。使われているときだけ載る */
@@ -743,6 +748,9 @@ html,body{height:100%;margin:0;background:#05060A}
 
   // 先頭ページの背景をタイトル画面の借景にする
   setBg(bgAt(0), undefined, true)
+
+  // プレビュー（アプリ内）：タイトルを挟まず、指定の行からすぐ始める
+  if (typeof S.start === 'number' && S.start >= 0 && S.start < S.pages.length) start(S.start)
 })()
 </script>
 </body>

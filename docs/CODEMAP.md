@@ -35,7 +35,7 @@ Cloudflare Pages Functions
 | 記法（ルビ・傍点・`[[参照]]`）の解釈を変える | `src/core/parser/parseNotation.ts` + `src/core/schema/index.ts` |
 | プレビューのマークダウン（見出し・リスト・表・引用）を変える | `src/core/markdown/index.ts`（本文は非対応。効くのはプロット・世界観・用語集の記法つき欄） |
 | 書き出し（EPUB/なろう/カクヨム/HTML）の出力を変える | `src/core/exporter/` 配下（形式ごとに1ファイル） |
-| サウンドノベル書き出し（ゲーム化・演出譜）を変える | `src/core/game/`（判別・演出譜・テンプレ背景・持ち込み背景）+ `src/core/exporter/toNovelGame.ts`（プレイヤー本体は `novelGamePlayer.ts`）。演出エディタは `src/ui/components/StagingView/`、永続化は `src/core/storage/stagingRepository.ts`（演出譜）と `gameAssetRepository.ts`（持ち込み背景） |
+| サウンドノベル書き出し（ゲーム化・演出譜）を変える | `src/core/game/`（判別・演出譜・テンプレ背景・持ち込み背景）+ `src/core/exporter/toNovelGame.ts`（プレイヤー本体は `novelGamePlayer.ts`）。演出エディタは `src/ui/components/StagingView/`（欄の説明は `field-helps.tsx`、アプリ内プレビューは `preview-dialog.tsx`＝`buildNovelGameHtml` を sandbox iframe に流し込む・`startAt` でその行から）、永続化は `src/core/storage/stagingRepository.ts`（演出譜）と `gameAssetRepository.ts`（持ち込み背景） |
 | サウンドノベルの効果音（合成SE・素材ファイル無し）を変える | レシピは `src/core/game/sePresets.ts`（`PRESET_SES` `presetSe`）。解釈はプレイヤー（`novelGamePlayer.ts` の `playSe`）とアプリ試聴 `src/ui/_utils/sePlayer.ts` の2箇所——**両方を同時に直す** |
 | サウンドノベルの grove 公開（契約 v4）を変える | leaf 側は `src/ui/_api/publish.ts`（`attachEpisodeGames`＝話ごとの自己完結HTML同梱・対象は作者が選んだ話だけ＝`novelGameEpisodeOf`・`GAME_FONT_HREF`）と公開ページの切り替え（`PublishPage` の話一覧にある行スイッチだけ＝作品ぜんたいの切り替えは無い・`WorkPlatform.novelGameEpisodes`／`novelGame` は前回載せたかの控え）。インライン書き出しは `src/core/exporter/toNovelGame.ts` の `buildNovelGameHtml`。grove 側は novel-platform の `kotonoha-bundle.ts` / `import-work.ts`（契約文書は先方の `novel-platform:docs/architecture/kotonoha-import-contract.md`） |
 | 立ち絵の登録・整理（誰に付けるか） | 演出エディタは `src/ui/components/StagingView/staging-view.tsx` の `renderSpriteEditor`（セリフの「話者」欄と地の文の「立ち絵の登場」欄で共用＝**喋らない人物にも付けられる**。出さない区間は cue の `hideSprite`＝一覧の「立ち絵なし」・解釈は `toNovelGame.ts` の `spritesHidden`）。図鑑からは `src/ui/components/GlossaryView/sprite-section.tsx`（人物ページの立ち絵欄）。正本はどちらも `gameAssetRepository.ts`（character/expression で紐づく） |
@@ -208,7 +208,8 @@ Cloudflare Pages Functions
 | `@`/`[[` の用語集サジェスト付き入力欄（blur 確定） | `CommitTextarea`（`src/ui/components/NotationField/commit-textarea.tsx`） | 生の `<textarea>` ＋ 自前サジェスト |
 | 記法つき入力（書く／プレビュー切替・マークダウン描画・`[[用語]]` クリック委譲） | `NotationField`（`src/ui/components/NotationField/notation-field.tsx`） | 画面ごとのプレビュー自作 |
 | 記法つきテキストの読み取り専用表示（マークダウン描画・`[[用語]]` クリック委譲） | `NotationText`（`src/ui/components/NotationField/notation-text.tsx`） | 画面ごとに `markdownToHtml()` を直に描く自前配線 |
-| 記法つき欄の「使える記法」説明（ラベル横のⓘ＋ダイアログ） | `NotationHelpButton`（`src/ui/components/NotationField/notation-help.tsx`） | 画面ごとの説明文自作 |
+| **入力欄の説明（ラベル横のⓘ＋ダイアログ）** | `FieldHelp`（`src/ui/components/FieldHelp/field-help.tsx`） | 欄の下に説明文を並べる（画面が説明で埋まる） |
+| 記法つき欄の「使える記法」説明 | `NotationHelpButton`（`src/ui/components/NotationField/notation-help.tsx`・器は `FieldHelp`） | 画面ごとの説明文自作 |
 | 用語 1 項目のチラ見（読み取り専用の詳細表示） | `GlossaryEntryDetail`（`src/ui/components/GlossaryPeek/entry-detail.tsx`） | 画面ごとの項目詳細の自作 |
 | 作品/話のナビゲーション | `SideNav` / `TopAppBar` | — |
 | 軽量なケバブメニュー（Radix 不使用の作例） | `ProjectMenu`（`src/ui/components/Library/project-menu.tsx`） | — |

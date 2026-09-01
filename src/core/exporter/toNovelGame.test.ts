@@ -459,6 +459,25 @@ describe('立ち絵（話者に自動で紐づく舞台・最大2人）', () => 
   })
 })
 
+describe('プレビュー（startAt）', () => {
+  const ep: Episode = {
+    id: 'e9',
+    title: 'プレビューの話',
+    blocks: parseEpisodeBody('「おはよう」\n　朝だった。\n「……行こうか」'),
+  }
+  const work: Work = { id: 'w1', title: '作品', episodes: [ep] }
+
+  it('startAt を渡すとシナリオに start が載る（その行から始まる）', () => {
+    const s = scenarioOf(buildNovelGameFiles(work, ep, undefined, { startAt: 2 }))
+    expect(s.start).toBe(2)
+  })
+
+  it('書き出し・投稿では載らない（読者はタイトル画面から始める）', () => {
+    const s = scenarioOf(buildNovelGameFiles(work, ep, undefined))
+    expect(s.start).toBeUndefined()
+  })
+})
+
 describe('テンプレ立ち絵（シルエット・preset）', () => {
   const tplAsset = {
     key: 'user:tpl-1',

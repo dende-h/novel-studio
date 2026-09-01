@@ -296,6 +296,41 @@ describe('StagingView（演出エディタ）', () => {
     expect(await screen.findByText('登場 灯')).toBeInTheDocument()
   })
 
+  it('欄のⓘを押すと、その欄の説明が出る（欄の下に説明を並べない）', async () => {
+    const { repo } = fakeRepo()
+    const { repo: assetRepo } = memoryAssetRepo()
+    render(
+      <StagingView repo={repo} work={makeWork()} currentEpisodeId="e1" assetRepo={assetRepo} />,
+    )
+    fireEvent.click(await screen.findByText('「——まだ、書いてるんだね」'))
+    // 効く範囲を知らないと混乱する 2 つは、とくに詳しく出す
+    fireEvent.click(screen.getByRole('button', { name: 'ここから立ち絵を出さないの説明を開く' }))
+    expect(await screen.findByText(/次の「場面が変わる」までです/)).toBeInTheDocument()
+    expect(screen.getByText(/消えるのは絵だけです/)).toBeInTheDocument()
+  })
+
+  it('「この行から見る」でプレビューが開く（書き出しを待たずに確かめられる）', async () => {
+    const { repo } = fakeRepo({
+      workId: 'w1',
+      episodeId: 'e1',
+      cues: [{ blockId: 'b2', speaker: '灯' }],
+      updatedAt: 1,
+    })
+    const { repo: assetRepo } = memoryAssetRepo()
+    render(
+      <StagingView repo={repo} work={makeWork()} currentEpisodeId="e1" assetRepo={assetRepo} />,
+    )
+    fireEvent.click(await screen.findByText('「——まだ、書いてるんだね」'))
+    fireEvent.click(screen.getByRole('button', { name: 'この行から見る' }))
+
+    const frame = await screen.findByTitle('サウンドノベルのプレビュー')
+    const html = frame.getAttribute('srcdoc') ?? ''
+    expect(html).toContain('<!doctype html>')
+    expect(html).toContain('"start":1') // 選んだ行から始まる
+    // 保存領域に触れさせない（アプリと同じオリジンを渡さない）
+    expect(frame.getAttribute('sandbox')).toBe('allow-scripts')
+  })
+
   it('話者の行で「立ち絵を出さない」を入れられる（一枚絵の背景に重ねない）', async () => {
     const { repo, saved } = fakeRepo({
       workId: 'w1',
