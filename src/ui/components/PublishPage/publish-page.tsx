@@ -133,7 +133,6 @@ export function PublishPage({
   const [original, setOriginal] = useState(false)
   const [visibility, setVisibility] = useState<Visibility>('draft')
   const [episodeVisibility, setEpisodeVisibility] = useState<Record<string, Visibility>>({})
-  const [novelGame, setNovelGame] = useState(false)
   /** 話ごとのサウンドノベル（話ID → する / しない）。**ここに true がある話だけ**が対象 */
   const [novelGameEpisodes, setNovelGameEpisodes] = useState<Record<string, boolean>>({})
   /** 演出を付けてある話のID。選んだ話に演出がまだ無いことを知らせるのに使う */
@@ -163,7 +162,6 @@ export function PublishPage({
     setOriginal(p?.declaredOriginal === true)
     setVisibility(p?.visibility === 'public' ? 'public' : 'draft')
     setEpisodeVisibility({ ...(p?.episodeVisibility ?? {}) })
-    setNovelGame(p?.novelGame === true)
     setNovelGameEpisodes({ ...(p?.novelGameEpisodes ?? {}) })
     setResult(null)
   }, [work])
@@ -221,9 +219,8 @@ export function PublishPage({
     [episodes, episodeVisibility, visibility],
   )
 
-  /** 行ごとのサウンドノベルの切り替えを出すか（作品の切り替えが ON かつ公開のときだけ意味を持つ） */
-  const showGameSwitches =
-    Boolean(stagingRepo && gameAssetRepo) && novelGame && visibility === 'public'
+  /** 行ごとのサウンドノベルの切り替えを出すか（作品が公開のときだけ意味を持つ） */
+  const showGameSwitches = Boolean(stagingRepo && gameAssetRepo) && visibility === 'public'
 
   /** いま何話がサウンドノベルになるか（公開する話のうち、作者が ON にした話） */
   const gameCount = useMemo(
@@ -262,7 +259,10 @@ export function PublishPage({
       // 作品が下書きなら話ごとの記録は送らないが、こちらには残す
       //（下書きへ戻して公開し直したときに、伏せた話が黙って表へ出ないように）
       ...(Object.keys(episodeVisibility).length > 0 ? { episodeVisibility } : {}),
-      ...(novelGame ? { novelGame: true } : {}),
+      // 作品ぜんたいの切り替えは持たない（対象は話ごとの記録だけで決まる）。
+      // この印は「今回の投稿にプレイヤーを載せた」の控え＝次に1話も選ばれなくなったとき、
+      // 先方へ「消してほしい」と宣言すべきかの判断に使う
+      ...(gameCount > 0 ? { novelGame: true } : {}),
       ...(Object.keys(novelGameEpisodes).length > 0 ? { novelGameEpisodes } : {}),
       ...(lastPublishedAt !== undefined ? { lastPublishedAt } : {}),
       ...(workUrl ? { workUrl } : {}),
@@ -277,14 +277,14 @@ export function PublishPage({
 
     const platform = buildPlatform()
     const desc = description.trim()
-    // サウンドノベル（契約 v4）：ON かつ公開のときだけ、演出譜と素材を集めてプレイヤーを同梱する。
-    // 前回 ON で今回 OFF のときは v4 で「同梱なし」を宣言し、先方に前回のプレイヤーを消してもらう
-    //（何も送らないと v3 になり、先方は据え置き＝OFF が効かないため）。この宣言は
-    // **下書きへ戻す送信でも出す**——ここで落とすと、OFF のまま再公開したとき
+    // サウンドノベル（契約 v4）：選ばれた話があるときだけ、演出譜と素材を集めてプレイヤーを同梱する。
+    // 前回は載せたのに今回は1話も無いときは v4 で「同梱なし」を宣言し、先方に前回のプレイヤーを
+    // 消してもらう（何も送らないと v3 になり、先方は据え置き＝解除が効かないため）。この宣言は
+    // **下書きへ戻す送信でも出す**——ここで落とすと、解除したまま再公開したとき
     // 古いプレイヤーが先方で復活する。
     let gameInput: NovelGameBundleInput | undefined
     if (stagingRepo && gameAssetRepo) {
-      if (novelGame && visibility === 'public') {
+      if (gameCount > 0) {
         // 別の端末で登録した素材（クラウド保管ぶん）を先に取り込む。
         // ここを飛ばすと、その端末に無い背景・立ち絵が抜けたプレイヤーを公開してしまう
         //（作者から見れば「公開したら絵が消えた」になる）。取れなくても公開は止めない
@@ -293,7 +293,7 @@ export function PublishPage({
           stagings: await stagingRepo.listByWork(work.id),
           gameAssets: await gameAssetRepo.list(),
         }
-      } else if (!novelGame && work.platform?.novelGame === true) {
+      } else if (work.platform?.novelGame === true) {
         gameInput = { stagings: [], gameAssets: [], enabled: false }
       }
     }
@@ -417,7 +417,40 @@ export function PublishPage({
           )}
         </section>
 
-        {/* 2. 話ごとの公開。作品が公開のときだけ意味を持つ */}
+        {/* 2. サウンドノベル（契約 v4）。どの話を対象にするかは下の一覧で選ぶ */}
+        {stagingRepo && gameAssetRepo ? (
+          <section className="rounded-xl border border-outline-variant/40 bg-surface-container-lowest p-5">
+            <h2 className="font-semibold font-serif text-[17px] text-on-surface">サウンドノベル</h2>
+            <p className="mt-1.5 text-[13px] text-on-surface-variant leading-relaxed">
+              コトノハ-grove- に「サウンドノベルで読む」形の読み方を足します。出すのは話ごとです。
+              下の「話ごとの公開」で、この形にする話をひとつずつ選んでください。
+              <strong className="font-semibold">選んでいない話は出ません</strong>
+              ——演出を付けてある話でも、調整の途中なら手元に置いたままにできます。
+              文章での読み方はそのまま残ります。スマートフォンでも遊べます。
+            </p>
+            {visibility !== 'public' ? (
+              <p className="mt-3 text-[12px] text-on-surface-variant/70">
+                作品が下書きのあいだは選べません。上で「公開」を選ぶと操作できます。
+              </p>
+            ) : (
+              <>
+                <p className="mt-3 text-[12px] text-on-surface-variant/70 tabular-nums">
+                  {gameCount === 0
+                    ? 'いまはどの話も選ばれていません。下の一覧で、サウンドノベルにする話を選んでください。'
+                    : `公開する ${publicCount} 話のうち ${gameCount} 話をサウンドノベルにします。`}
+                </p>
+                {unstagedGameCount > 0 ? (
+                  <p className="mt-1.5 text-[12px] text-on-surface-variant/70 tabular-nums">
+                    そのうち {unstagedGameCount}{' '}
+                    話には演出（話者・背景・立ち絵・効果音）がまだありません。黒い画面に本文が出る形で進みます。
+                  </p>
+                ) : null}
+              </>
+            )}
+          </section>
+        ) : null}
+
+        {/* 3. 話ごとの公開。作品が公開のときだけ意味を持つ */}
         <section className="rounded-xl border border-outline-variant/40 bg-surface-container-lowest p-5">
           <div className="flex flex-wrap items-baseline justify-between gap-2">
             <h2 className="font-semibold font-serif text-[17px] text-on-surface">話ごとの公開</h2>
@@ -525,53 +558,7 @@ export function PublishPage({
           )}
         </section>
 
-        {/* 2.5 サウンドノベル（契約 v4）。公開する話にプレイヤー付きの読み方が並ぶ */}
-        {stagingRepo && gameAssetRepo ? (
-          <section className="rounded-xl border border-outline-variant/40 bg-surface-container-lowest p-5">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="min-w-0">
-                <h2 className="font-semibold font-serif text-[17px] text-on-surface">
-                  サウンドノベル
-                </h2>
-                <p className="mt-1.5 text-[13px] text-on-surface-variant leading-relaxed">
-                  コトノハ-grove-
-                  に「サウンドノベルで読む」形の読み方を足します。出すのは話ごとです。
-                  下の「話ごとの公開」で、この形にする話をひとつずつ選んでください。
-                  <strong className="font-semibold">選んでいない話は出ません</strong>
-                  ——演出を付けてある話でも、調整の途中なら手元に置いたままにできます。
-                  文章での読み方はそのまま残ります。スマートフォンでも遊べます。
-                </p>
-              </div>
-              <Switch
-                aria-label="サウンドノベルでも公開する"
-                checked={novelGame}
-                disabled={visibility !== 'public'}
-                onCheckedChange={setNovelGame}
-              />
-            </div>
-            {visibility !== 'public' ? (
-              <p className="mt-3 text-[12px] text-on-surface-variant/70">
-                作品が下書きのあいだは変更できません。上で「公開」を選ぶと操作できます。
-              </p>
-            ) : novelGame ? (
-              <>
-                <p className="mt-3 text-[12px] text-on-surface-variant/70 tabular-nums">
-                  {gameCount === 0
-                    ? 'いまはどの話も選ばれていません。下の一覧で、サウンドノベルにする話を選んでください。'
-                    : `公開する ${publicCount} 話のうち ${gameCount} 話をサウンドノベルにします。`}
-                </p>
-                {unstagedGameCount > 0 ? (
-                  <p className="mt-1.5 text-[12px] text-on-surface-variant/70 tabular-nums">
-                    そのうち {unstagedGameCount}{' '}
-                    話には演出（話者・背景・立ち絵・効果音）がまだありません。黒い画面に本文が出る形で進みます。
-                  </p>
-                ) : null}
-              </>
-            ) : null}
-          </section>
-        ) : null}
-
-        {/* 3. コトノハ-grove- へ渡す情報 */}
+        {/* 4. コトノハ-grove- へ渡す情報 */}
         <section className="space-y-5 rounded-xl border border-outline-variant/40 bg-surface-container-lowest p-5">
           <h2 className="font-semibold font-serif text-[17px] text-on-surface">
             コトノハ-grove- へ渡す情報
@@ -710,7 +697,7 @@ export function PublishPage({
           </fieldset>
         </section>
 
-        {/* 4. 手元に取り出す（作品まるごと） */}
+        {/* 5. 手元に取り出す（作品まるごと） */}
         <section className="rounded-xl border border-outline-variant/40 bg-surface-container-lowest p-5">
           <h2 className="font-semibold font-serif text-[17px] text-on-surface">作品を書き出す</h2>
           <p className="mt-1.5 text-[13px] text-on-surface-variant leading-relaxed">

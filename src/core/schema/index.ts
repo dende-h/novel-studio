@@ -165,8 +165,10 @@ export const WorkPlatformSchema = z.object({
   // ---- ここから下は コトノハ-grove- との取り決めに無い＝コトノハ-leaf- のローカル専用。
   //      送信時に落とす（src/ui/_api/publish.ts の toBundleWork）。 ----
   /**
-   * 投稿時にサウンドノベル（プレイヤー付きの話）も載せるか（契約 v4）。
-   * フラグ自体はローカル専用で、先方へは episodes[].game の有無として伝わる。
+   * **前回の投稿にサウンドノベル（プレイヤー付きの話）を載せたか**の控え（契約 v4）。
+   * 作品ぜんたいの切り替えは持たない——対象は novelGameEpisodes だけで決まる。この印は
+   * 「載せた実績はあるが、いまは1話も選ばれていない」＝先方へ解除を宣言すべき場合の判定に使う。
+   * ローカル専用で、先方へは episodes[].game の有無として伝わる。
    */
   novelGame: z.boolean().optional(),
   /**
