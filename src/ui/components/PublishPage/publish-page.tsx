@@ -134,9 +134,9 @@ export function PublishPage({
   const [visibility, setVisibility] = useState<Visibility>('draft')
   const [episodeVisibility, setEpisodeVisibility] = useState<Record<string, Visibility>>({})
   const [novelGame, setNovelGame] = useState(false)
-  /** 話ごとのサウンドノベル（記録のある話だけ入る。無い話は演出の有無で決まる） */
+  /** 話ごとのサウンドノベル（話ID → する / しない）。**ここに true がある話だけ**が対象 */
   const [novelGameEpisodes, setNovelGameEpisodes] = useState<Record<string, boolean>>({})
-  /** 演出を付けてある話のID。既定（記録の無い話）をどちらに倒すかの材料 */
+  /** 演出を付けてある話のID。選んだ話に演出がまだ無いことを知らせるのに使う */
   const [stagedEpisodeIds, setStagedEpisodeIds] = useState<Set<string>>(new Set())
 
   const [confirmOpen, setConfirmOpen] = useState(false)
@@ -168,8 +168,8 @@ export function PublishPage({
     setResult(null)
   }, [work])
 
-  // どの話に演出を付けてあるか。話ごとのサウンドノベルの既定を決めるのに要る
-  //（記録の無い話は「演出を付けた話だけ ON」に倒す）
+  // どの話に演出を付けてあるか。**選ぶ材料ではなく知らせる材料**——演出ゼロの話を
+  // 選んでも公開はできる（文字だけで進む）ので、そうなっていることだけ伝える
   useEffect(() => {
     if (!work || !stagingRepo) return
     let alive = true
@@ -225,13 +225,25 @@ export function PublishPage({
   const showGameSwitches =
     Boolean(stagingRepo && gameAssetRepo) && novelGame && visibility === 'public'
 
-  /** いま何話がサウンドノベルになるか（公開する話のうち、選ばれている話） */
+  /** いま何話がサウンドノベルになるか（公開する話のうち、作者が ON にした話） */
   const gameCount = useMemo(
     () =>
       episodes.filter(
         (e) =>
           episodeVisibilityOf(episodeVisibility, e.id, visibility) === 'public' &&
-          novelGameEpisodeOf(novelGameEpisodes, e.id, stagedEpisodeIds.has(e.id)),
+          novelGameEpisodeOf(novelGameEpisodes, e.id),
+      ).length,
+    [episodes, episodeVisibility, visibility, novelGameEpisodes],
+  )
+
+  /** 選んだ話のうち、まだ演出を付けていない話の数（＝文字だけで進む話） */
+  const unstagedGameCount = useMemo(
+    () =>
+      episodes.filter(
+        (e) =>
+          episodeVisibilityOf(episodeVisibility, e.id, visibility) === 'public' &&
+          novelGameEpisodeOf(novelGameEpisodes, e.id) &&
+          !stagedEpisodeIds.has(e.id),
       ).length,
     [episodes, episodeVisibility, visibility, novelGameEpisodes, stagedEpisodeIds],
   )
@@ -417,7 +429,7 @@ export function PublishPage({
             {visibility !== 'public'
               ? '作品が下書きのあいだは変更できません。上で「公開」を選ぶと操作できます。'
               : showGameSwitches
-                ? '公開しない話は伏せておけます。伏せた話も本文はこちらに残ります。右のスイッチで、その話をサウンドノベルにするかも決められます。'
+                ? '公開しない話は伏せておけます。伏せた話も本文はこちらに残ります。右の「サウンドノベル」を入れた話だけが、遊べる形でも出ます。'
                 : '公開しない話は伏せておけます。伏せた話も本文はこちらに残ります。'}
           </p>
 
@@ -430,11 +442,7 @@ export function PublishPage({
               {episodes.map((ep, index) => {
                 const epVisible =
                   episodeVisibilityOf(episodeVisibility, ep.id, visibility) === 'public'
-                const epGame = novelGameEpisodeOf(
-                  novelGameEpisodes,
-                  ep.id,
-                  stagedEpisodeIds.has(ep.id),
-                )
+                const epGame = novelGameEpisodeOf(novelGameEpisodes, ep.id)
                 return (
                   <li
                     key={ep.id}
@@ -526,10 +534,12 @@ export function PublishPage({
                   サウンドノベル
                 </h2>
                 <p className="mt-1.5 text-[13px] text-on-surface-variant leading-relaxed">
-                  コトノハ-grove- に「サウンドノベルで読む」形の読み方を足します。
-                  作品まるごとではなく、<strong className="font-semibold">話ごとに選べます</strong>
-                  （下の「話ごとの公開」で切り替え）。既定では、演出（話者・背景・立ち絵・効果音）を
-                  付けた話だけが対象です。文章での読み方はそのまま残ります。スマートフォンでも遊べます。
+                  コトノハ-grove-
+                  に「サウンドノベルで読む」形の読み方を足します。出すのは話ごとです。
+                  下の「話ごとの公開」で、この形にする話をひとつずつ選んでください。
+                  <strong className="font-semibold">選んでいない話は出ません</strong>
+                  ——演出を付けてある話でも、調整の途中なら手元に置いたままにできます。
+                  文章での読み方はそのまま残ります。スマートフォンでも遊べます。
                 </p>
               </div>
               <Switch
@@ -544,11 +554,19 @@ export function PublishPage({
                 作品が下書きのあいだは変更できません。上で「公開」を選ぶと操作できます。
               </p>
             ) : novelGame ? (
-              <p className="mt-3 text-[12px] text-on-surface-variant/70 tabular-nums">
-                {gameCount === 0
-                  ? 'いまはどの話も対象になっていません。下の一覧で話を選んでください。'
-                  : `公開する ${publicCount} 話のうち ${gameCount} 話をサウンドノベルにします。`}
-              </p>
+              <>
+                <p className="mt-3 text-[12px] text-on-surface-variant/70 tabular-nums">
+                  {gameCount === 0
+                    ? 'いまはどの話も選ばれていません。下の一覧で、サウンドノベルにする話を選んでください。'
+                    : `公開する ${publicCount} 話のうち ${gameCount} 話をサウンドノベルにします。`}
+                </p>
+                {unstagedGameCount > 0 ? (
+                  <p className="mt-1.5 text-[12px] text-on-surface-variant/70 tabular-nums">
+                    そのうち {unstagedGameCount}{' '}
+                    話には演出（話者・背景・立ち絵・効果音）がまだありません。黒い画面に本文が出る形で進みます。
+                  </p>
+                ) : null}
+              </>
             ) : null}
           </section>
         ) : null}
