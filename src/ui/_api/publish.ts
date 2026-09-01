@@ -150,18 +150,16 @@ export function toBundleEpisodes(work: Work): { episodes: BundleEpisode[]; decla
 }
 
 /**
- * この話をサウンドノベルにするか。
+ * この話をサウンドノベルにするか。**作者が明示的に ON にした話だけ**（D-GAME-EPISODE-PICK）。
  *
- * 記録が無い話は**演出を付けた話だけ ON** に倒す。演出エディタで手を入れた話は
- * 「ゲームにしたい」の意思表示とみなし、触っていない話（＝真っ黒な画面に文字が出るだけ）を
- * 黙って公開しない。作者が行ごとのスイッチで決めたら、そちらが常に優先される。
+ * 演出の有無で推し量らない。演出は書きかけの状態でも保存される——それを「出したい」と
+ * 読み替えると、調整の途中の話が黙って読者に出てしまう。公開は必ず作者の一手で決まる。
  */
 export function novelGameEpisodeOf(
   map: Record<string, boolean> | undefined,
   episodeId: string,
-  hasStaging: boolean,
 ): boolean {
-  return map?.[episodeId] ?? hasStaging
+  return map?.[episodeId] === true
 }
 
 /** 演出譜が「付いている」と言えるか（器だけ作られて中身が空のものは数えない）。 */
@@ -171,10 +169,10 @@ export function hasStagingCues(staging: Staging | undefined): boolean {
 
 /**
  * 契約 v4：公開する話にサウンドノベル（自己完結プレイヤー HTML）を添える。
- * 対象は **公開作品の公開話のうち、作者がサウンドノベルにすると決めた話だけ**
- * （下書きの話には作らない＝読者に出ない分で太らせない）。どの話にするかは
- * `novelGameEpisodeOf` が決める（記録が無ければ演出を付けた話だけ）。
- * 演出譜が無い話も、作者が明示的に選べば「演出ゼロでプレイできる」不変条件どおり成立する。
+ * 対象は **公開作品の公開話のうち、作者が行ごとのスイッチで ON にした話だけ**
+ * （下書きの話には作らない＝読者に出ない分で太らせない）。選ばれていない話は
+ * 演出譜が付いていても載せない＝調整中の話が黙って出ることはない。
+ * 演出譜が無い話も、作者が選べば「演出ゼロでプレイできる」不変条件どおり成立する。
  *
  * **載せなかった話は先方でプレイヤーが外れる**（v4 は全話ぶんの宣言）。
  * つまり行ごとのスイッチを切ることが、そのまま「この話のゲームをやめる」になる。
@@ -194,8 +192,8 @@ export function attachEpisodeGames(
   let withGame = false
   const next = episodes.map((ep): BundleEpisode => {
     if (ep.visibility === 'draft') return ep
+    if (!novelGameEpisodeOf(selected, ep.id)) return ep
     const staging = stagingByEpisode.get(ep.id)
-    if (!novelGameEpisodeOf(selected, ep.id, hasStagingCues(staging))) return ep
     const source = work.episodes.find((e) => e.id === ep.id)
     if (!source) return ep
     const html = buildNovelGameHtml(work, source, staging, {

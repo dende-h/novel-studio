@@ -170,8 +170,8 @@ export const WorkPlatformSchema = z.object({
    */
   novelGame: z.boolean().optional(),
   /**
-   * 話ごとのサウンドノベル（話ID → する / しない）。**記録の無い話は
-   * 「演出を付けた話だけする」に倒す**（`novelGameEpisodeOf`）。
+   * 話ごとのサウンドノベル（話ID → する / しない）。**ここに true がある話だけ**が対象で、
+   * 記録の無い話はしない（`novelGameEpisodeOf`）＝公開は作者の明示的な一手で決まる。
    *
    * 話ごとの公開（episodeVisibility）と同じく、先方へは `platform` では無く
    * episodes[].game の有無として伝わる。こちらでまとめて持つのは、公開先固有の

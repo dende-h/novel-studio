@@ -424,6 +424,7 @@ describe('契約 v4（サウンドノベル：episodes[].game）', () => {
       declaredOriginal: true,
       visibility: 'public',
       episodeVisibility: { e2: 'draft' },
+      novelGameEpisodes: { e1: true },
     },
   })
   const novelGame = () => ({
@@ -459,14 +460,15 @@ describe('契約 v4（サウンドノベル：episodes[].game）', () => {
     expect(e2.game).toBeUndefined()
   })
 
-  it('演出を付けた話だけがサウンドノベルになる（記録が無いときの既定）', async () => {
+  it('選んでいない話はサウンドノベルにしない（演出を付けてあっても）', async () => {
+    // 調整の途中で演出を付けただけの話が、黙って読者に出ないこと（D-GAME-EPISODE-PICK）
     const { publishWorkToPlatform } = await loadModule()
     const fetchMock = vi
       .fn()
       .mockResolvedValue(new Response(JSON.stringify({ ok: true }), { status: 200 }))
     vi.stubGlobal('fetch', fetchMock)
 
-    // e1 には演出譜あり・e3 には無し。どちらも公開の話
+    // e1 には演出譜あり。ただし話ごとの記録は無い＝作者はまだ選んでいない
     const work: Work = {
       ...publicWork(),
       episodes: [
@@ -478,19 +480,19 @@ describe('契約 v4（サウンドノベル：episodes[].game）', () => {
     await publishWorkToPlatform(async () => 'jwt', work, novelGame())
 
     const body = JSON.parse((fetchMock.mock.calls[0] as [string, RequestInit])[1].body as string)
-    const [e1, e3] = body.work.episodes
-    expect(e1.game?.v).toBe(1)
-    expect(e3.game).toBeUndefined()
+    expect(body.work.episodes.every((ep: { game?: unknown }) => ep.game === undefined)).toBe(true)
+    // それでも v4 で名乗る＝前に載せたぶんを先方が外せる
+    expect(body.schemaVersion).toBe(4)
   })
 
-  it('話ごとの記録があれば、演出の有無より作者の指定を優先する', async () => {
+  it('演出の無い話でも、選べばサウンドノベルになる', async () => {
     const { publishWorkToPlatform } = await loadModule()
     const fetchMock = vi
       .fn()
       .mockResolvedValue(new Response(JSON.stringify({ ok: true }), { status: 200 }))
     vi.stubGlobal('fetch', fetchMock)
 
-    // 演出のある e1 を外し、演出の無い e3 を選ぶ（どちらも作者の明示的な指定）
+    // 演出のある e1 を外し、演出の無い e3 を選ぶ（対象は作者の指定だけで決まる）
     const work: Work = {
       ...publicWork(),
       episodes: [

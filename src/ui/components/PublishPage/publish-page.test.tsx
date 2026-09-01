@@ -52,7 +52,8 @@ function renderPage(work: Work, onPersist = vi.fn()) {
 
 /**
  * サウンドノベルの切り替えは、演出譜と素材の置き場所を渡したときだけ出る。
- * 既定（記録の無い話）は「演出を付けた話だけ ON」なので、演出譜を材料として渡す。
+ * 演出譜は選択の材料ではない（対象は作者が選んだ話だけ）が、
+ * 「選んだ話にまだ演出が無い」ことを知らせるのに使うので渡しておく。
  */
 function renderWithGame(work: Work, stagedEpisodeIds: string[] = ['e1'], onPersist = vi.fn()) {
   const stagingRepo = {
@@ -231,26 +232,42 @@ describe('話ごとのサウンドノベル', () => {
     ).not.toBeInTheDocument()
   })
 
-  it('演出を付けた話だけが既定で ON になる', async () => {
+  it('選んでいない話は OFF のまま（演出を付けてあっても勝手に対象にしない）', async () => {
     renderWithGame(makeWork(withGame), ['e1'])
     const first = await screen.findByRole('switch', { name: '「第一話」をサウンドノベルにする' })
     const second = screen.getByRole('switch', { name: '「第二話」をサウンドノベルにする' })
-    expect(first).toBeChecked()
-    // 演出を付けていない第二話は、作品の切り替えが ON でも対象にしない
+    // 演出譜のある第一話も、作者が選ぶまでは対象にしない（調整中の話を黙って出さない）
+    expect(first).not.toBeChecked()
     expect(second).not.toBeChecked()
+    expect(
+      screen.getByText(
+        'いまはどの話も選ばれていません。下の一覧で、サウンドノベルにする話を選んでください。',
+      ),
+    ).toBeInTheDocument()
   })
 
   it('話ごとの選択は記録され、作品へ保存される', async () => {
     const { onPersist } = renderWithGame(makeWork(withGame), ['e1'])
     const first = await screen.findByRole('switch', { name: '「第一話」をサウンドノベルにする' })
     fireEvent.click(first)
+    expect(first).toBeChecked()
 
     fireEvent.click(screen.getByRole('button', { name: '公開状態を更新' }))
     fireEvent.click(await screen.findByRole('button', { name: '公開する' }))
 
     await waitFor(() => expect(onPersist).toHaveBeenCalled())
     const values = onPersist.mock.calls[0]?.[1] as { platform: Work['platform'] }
-    expect(values.platform?.novelGameEpisodes).toEqual({ e1: false })
+    expect(values.platform?.novelGameEpisodes).toEqual({ e1: true })
+  })
+
+  it('演出をまだ付けていない話を選んだら、そのことを伝える', async () => {
+    renderWithGame(makeWork(withGame), ['e1'])
+    const second = await screen.findByRole('switch', { name: '「第二話」をサウンドノベルにする' })
+    fireEvent.click(second)
+
+    expect(
+      await screen.findByText(/話には演出（話者・背景・立ち絵・効果音）がまだありません/),
+    ).toBeInTheDocument()
   })
 
   it('伏せた話はサウンドノベルにもできない（読者に出ない話のプレイヤーは作らない）', async () => {
@@ -258,6 +275,8 @@ describe('話ごとのサウンドノベル', () => {
     const gameSwitch = await screen.findByRole('switch', {
       name: '「第一話」をサウンドノベルにする',
     })
+    fireEvent.click(gameSwitch)
+    expect(gameSwitch).toBeChecked()
     fireEvent.click(screen.getByRole('switch', { name: '「第一話」を公開する' }))
 
     await waitFor(() => expect(gameSwitch).toBeDisabled())
