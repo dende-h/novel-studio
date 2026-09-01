@@ -38,6 +38,7 @@ import { Button } from '@/ui/components/ui/button'
 import { Label } from '@/ui/components/ui/label'
 import { Switch } from '@/ui/components/ui/switch'
 import { Textarea } from '@/ui/components/ui/textarea'
+import { createAssetHostingApi, pullHostedAssets } from '@/ui/game/asset-hosting'
 
 /** コトノハ-grove- 上での見え方。契約の `visibility` と同じ 2 値。 */
 type Visibility = 'draft' | 'public'
@@ -63,7 +64,7 @@ interface PublishPageProps {
   /** 演出譜の置き場所（渡されたときだけ「サウンドノベル」の切り替えが出る・契約 v4）。 */
   stagingRepo?: Pick<StagingRepository, 'listByWork'>
   /** ゲーム素材の置き場所（サウンドノベルの背景・立ち絵を同梱するのに使う）。 */
-  gameAssetRepo?: Pick<GameAssetRepository, 'list'>
+  gameAssetRepo?: Pick<GameAssetRepository, 'list' | 'save'>
 }
 
 /** 自由タグの入力（読点／カンマ／改行区切り）を配列へ。trim・空除去・重複除去。 */
@@ -235,6 +236,10 @@ export function PublishPage({
     let gameInput: NovelGameBundleInput | undefined
     if (stagingRepo && gameAssetRepo) {
       if (novelGame && visibility === 'public') {
+        // 別の端末で登録した素材（クラウド保管ぶん）を先に取り込む。
+        // ここを飛ばすと、その端末に無い背景・立ち絵が抜けたプレイヤーを公開してしまう
+        //（作者から見れば「公開したら絵が消えた」になる）。取れなくても公開は止めない
+        await pullHostedAssets(gameAssetRepo, createAssetHostingApi(getToken)).catch(() => null)
         gameInput = {
           stagings: await stagingRepo.listByWork(work.id),
           gameAssets: await gameAssetRepo.list(),

@@ -11,7 +11,7 @@ interface PublishRouteProps {
   onSignIn?: () => void
   /** サウンドノベル公開（契約 v4）の材料。渡されたときだけ切り替えが出る。 */
   stagingRepo?: Pick<StagingRepository, 'listByWork'>
-  gameAssetRepo?: Pick<GameAssetRepository, 'list'>
+  gameAssetRepo?: Pick<GameAssetRepository, 'list' | 'save'>
 }
 
 /**
