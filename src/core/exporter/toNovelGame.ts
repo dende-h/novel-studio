@@ -229,6 +229,8 @@ export function buildNovelGameFiles(
   }
   let standing: Standing[] = []
   let activeChar: string | null = null
+  /** 立ち絵を出さない区間か（hideSprite で入り、場面の切れ目か明示の登場で出る）。 */
+  let spritesHidden = false
   let lastStageMark = '[]'
   /** 舞台へ入れる（席の割り当て共通則）。既に立っている人物は表情（key）だけ差し替える。 */
   const enterStage = (key: string, char: string, at: number): void => {
@@ -266,10 +268,20 @@ export function buildNovelGameFiles(
       if (page.sceneBreak) {
         standing = []
         activeChar = null
+        spritesHidden = false
+      }
+      // 立ち絵を出さない（hideSprite）：いま立っている人物も下ろす。人物ごと描いた一枚絵の
+      // 背景に立ち絵を重ねないための欄で、**次の場面の切れ目まで**話者の自動表示も止める。
+      if (page.hideSprite) {
+        standing = []
+        activeChar = null
+        spritesHidden = true
       }
       // 登場（appear）：セリフの前から立ち絵を出す。名前枠は出さず、明るくもしない。
       // 既に立っている人物への appear は据え置き（表情は speaker+expression の領分）。
+      // 明示の指定なので、出さない区間もここで終わる（同じ場面でまた出したいときの戻り道）。
       if (page.appear && page.appear !== MASKED_SPEAKER) {
+        spritesHidden = false
         if (!standing.some((s) => s.char === page.appear)) {
           const chosen = pickSprite(spriteAssets, page.appear)
           if (chosen) {
@@ -280,7 +292,7 @@ export function buildNovelGameFiles(
       }
       if (page.kind === 'dialogue' && page.speaker) {
         const chosen =
-          page.speaker !== MASKED_SPEAKER
+          !spritesHidden && page.speaker !== MASKED_SPEAKER
             ? pickSprite(spriteAssets, page.speaker, page.expression)
             : undefined
         if (!chosen) {

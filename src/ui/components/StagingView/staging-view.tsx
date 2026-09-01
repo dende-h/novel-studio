@@ -402,6 +402,11 @@ export default function StagingView({ repo, work, currentEpisodeId, assetRepo }:
     const preview = pickSprite(assets, character, withExpression ? selected?.expression : undefined)
     return (
       <div className="mt-4">
+        {selected?.hideSprite ? (
+          <p className="mb-2 text-[11px] text-on-surface-variant leading-relaxed">
+            この行は「立ち絵を出さない」が入っています。登録はできますが、ここでは出ません。
+          </p>
+        ) : null}
         {withExpression ? (
           <label
             htmlFor="staging-expression"
@@ -696,6 +701,7 @@ export default function StagingView({ repo, work, currentEpisodeId, assetRepo }:
                             <span>表情 {page.expression}</span>
                           ) : null}
                           {page.appear ? <span>登場 {page.appear}</span> : null}
+                          {page.hideSprite ? <span>立ち絵なし</span> : null}
                           {page.se ? <span>効果音 {presetSe(page.se)?.label ?? ''}</span> : null}
                           {!page.sceneBreak && bgLabel ? <span>背景 {bgLabel}</span> : null}
                         </span>
@@ -899,6 +905,24 @@ export default function StagingView({ repo, work, currentEpisodeId, assetRepo }:
                   }
                 />
               </div>
+
+              {assetRepo ? (
+                <div className="flex items-center justify-between gap-3">
+                  <label htmlFor="staging-hide-sprite" className="text-on-surface text-sm">
+                    ここから立ち絵を出さない
+                    <span className="mt-0.5 block text-[11px] text-on-surface-variant">
+                      次の場面の切れ目まで。人物ごと描いた一枚絵の背景に
+                    </span>
+                  </label>
+                  <Switch
+                    id="staging-hide-sprite"
+                    checked={Boolean(selected.hideSprite)}
+                    onCheckedChange={(on) =>
+                      apply(selected.blockId, { hideSprite: on ? true : undefined })
+                    }
+                  />
+                </div>
+              ) : null}
 
               <div>
                 <label
