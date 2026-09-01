@@ -36,8 +36,13 @@ export interface ScenarioPage {
   bg?: string
   /** 立ち絵の舞台が変わるページにだけ載る（その時点の**全景**。空配列 ＝ 全員退場） */
   stage?: ScenarioStageEntry[]
-  /** このページを表示した瞬間に鳴らす効果音のキー（ses のレシピを合成） */
+  /**
+   * このページを表示した瞬間に鳴らす効果音のキー（ses のレシピを合成）。
+   * `'stop'` は予約キーで、鳴っているループをここで止める（レシピは持たない）。
+   */
   se?: string
+  /** 鳴らし方（省略＝1回）。'loop' は次の場面の切れ目か 'stop' まで続く */
+  seRepeat?: 2 | 'loop'
   units: (string | [string, string])[]
   /** 純本文（共有カード・オート送りの読み時間に使う） */
   text: string
@@ -372,12 +377,8 @@ html,body{height:100%;margin:0;background:#05060A}
     }
     return noiseBuf
   }
-  function playSe(key) {
-    if (!settings.se || !(S.ses && S.ses[key])) return
-    var ctx = ensureAudio()
-    if (!ctx) return
-    var steps = S.ses[key].steps
-    var base = ctx.currentTime + 0.02
+  /** レシピ 1 回ぶんを、指定の時刻から dest へ流す（時刻は AudioContext の絶対秒）。 */
+  function scheduleSe(ctx, steps, base, dest) {
     for (var i = 0; i < steps.length; i++) {
       var s = steps[i]
       var t0 = base + (s.t || 0)
@@ -407,10 +408,79 @@ html,body{height:100%;margin:0;background:#05060A}
       gain.gain.exponentialRampToValueAtTime(Math.max(g, 0.001), t0 + 0.015)
       gain.gain.exponentialRampToValueAtTime(0.0001, t0 + s.d)
       node.connect(gain)
-      gain.connect(ctx.destination)
+      gain.connect(dest)
       src.start(t0)
       src.stop(t0 + s.d + 0.05)
     }
+  }
+  function seDur(steps) {
+    var max = 0
+    for (var i = 0; i < steps.length; i++) max = Math.max(max, (steps[i].t || 0) + steps[i].d)
+    return Math.max(0.2, max)
+  }
+  /** 1回／2回。ループは startLoopSe が受け持つ（1回ものはループに重ねて鳴らせる）。 */
+  function playSe(key, repeat) {
+    if (!settings.se || !(S.ses && S.ses[key])) return
+    var ctx = ensureAudio()
+    if (!ctx) return
+    var steps = S.ses[key].steps
+    var base = ctx.currentTime + 0.02
+    scheduleSe(ctx, steps, base, ctx.destination)
+    if (repeat === 2) scheduleSe(ctx, steps, base + seDur(steps), ctx.destination)
+  }
+
+  // ---- ループする効果音（環境音）。場面の切れ目か 'stop' まで続く ----
+  // タイマーだけで繰り返すと、ずれて継ぎ目が空く。先の数秒ぶんを**絶対時刻で**予約し、
+  // タイマーは「次の予約をしに来る」係にする。止めるのは専用の gain を絞って行う。
+  var wantLoop = null, playingLoop = null, loopGain = null, loopTimer = 0, loopNext = 0
+  function loopSeAt(i) {
+    var key = null
+    for (var j = 0; j <= i && j < S.pages.length; j++) {
+      var p = S.pages[j]
+      if (p.sceneBreak) key = null
+      if (p.se === 'stop') key = null
+      else if (p.se && p.seRepeat === 'loop') key = p.se
+    }
+    return key
+  }
+  function stopLoopSe() {
+    playingLoop = null
+    clearTimeout(loopTimer)
+    loopTimer = 0
+    if (loopGain && audioCtx) {
+      var g = loopGain
+      try { g.gain.setTargetAtTime(0.0001, audioCtx.currentTime, 0.06) } catch (e) {}
+      setTimeout(function () { try { g.disconnect() } catch (e) {} }, 800)
+    }
+    loopGain = null
+  }
+  function startLoopSe(key) {
+    var ctx = ensureAudio()
+    if (!ctx || !(S.ses && S.ses[key])) return
+    var steps = S.ses[key].steps
+    var period = seDur(steps)
+    loopGain = ctx.createGain()
+    loopGain.gain.setValueAtTime(1, ctx.currentTime)
+    loopGain.connect(ctx.destination)
+    playingLoop = key
+    loopNext = ctx.currentTime + 0.02
+    var pump = function () {
+      if (playingLoop !== key) return
+      var until = ctx.currentTime + 4
+      while (loopNext < until) {
+        scheduleSe(ctx, steps, loopNext, loopGain)
+        loopNext += period
+      }
+      loopTimer = setTimeout(pump, 2000)
+    }
+    pump()
+  }
+  /** 設定（効果音のあり／なし）と、いま鳴っているべき音を突き合わせる。 */
+  function syncLoopSe() {
+    var want = settings.se ? wantLoop : null
+    if (want === playingLoop) return
+    stopLoopSe()
+    if (want) startLoopSe(want)
   }
 
   // ---- 埋め込み先（grove 等）への通知。単体（zip・file://）では何もしない ----
@@ -450,8 +520,13 @@ html,body{height:100%;margin:0;background:#05060A}
     clearTimeout(state.timer)
     setBg(bgAt(i), p.bg ? p.transition : undefined, instant)
     applyStage(stageAt(i), instant)
-    // 効果音はページ表示の瞬間に 1 回。復元（instant）・スキップ中は鳴らさない
-    if (p.se && !instant && !state.skip) playSe(p.se)
+    // 効果音はページ表示の瞬間に鳴らす。復元（instant）・スキップ中は鳴らさない。
+    // ループは「この場面で鳴っているべき音」なので、途中から開いても鳴らす（背景と同じ扱い）
+    if (p.se && p.se !== 'stop' && p.seRepeat !== 'loop' && !instant && !state.skip) {
+      playSe(p.se, p.seRepeat)
+    }
+    wantLoop = loopSeAt(i)
+    syncLoopSe()
     box.hidden = false
     if (p.kind === 'dialogue' && p.speaker) { nameEl.textContent = p.speaker; nameEl.hidden = false }
     else { nameEl.hidden = true }
@@ -676,6 +751,8 @@ html,body{height:100%;margin:0;background:#05060A}
   }
   function showEnd() {
     toggleAuto(false); toggleSkip(false)
+    wantLoop = null
+    syncLoopSe()
     openOverlay('end')
     notifyHost('end')
   }
@@ -722,7 +799,8 @@ html,body{height:100%;margin:0;background:#05060A}
     settings.se = !settings.se
     saveJson(SETTINGS_KEY, settings)
     renderSeButton()
-    if (settings.se) playSe(Object.keys(S.ses || {})[0]) // 効きを確かめる試し鳴らし
+    syncLoopSe()
+    if (settings.se && !playingLoop) playSe(Object.keys(S.ses || {})[0]) // 効きを確かめる試し鳴らし
   })
   var closes = document.querySelectorAll('.close')
   for (var ci = 0; ci < closes.length; ci++) {

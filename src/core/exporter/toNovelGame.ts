@@ -1,7 +1,7 @@
 import { applyCues, MASKED_SPEAKER, plainTextOfBlock, type Staging, toPages } from '../game'
 import { pickSprite, type UserGameAsset, userAssetKey } from '../game/assets'
 import { buildGameCredits, DEFAULT_BG_KEY, presetBackground, presetBgSvg } from '../game/presets'
-import { type PresetSe, presetSe } from '../game/sePresets'
+import { type PresetSe, presetSe, SE_STOP } from '../game/sePresets'
 import { presetSprite } from '../game/spritePresets'
 import type { Episode, Inline, Work } from '../schema'
 import type { ZipInput } from '../zip'
@@ -336,7 +336,9 @@ export function buildNovelGameFiles(
       }
     }
     // 効果音：ページ表示の瞬間に 1 回鳴らす。未知キーは無視（壊さない）
-    const se = page.se ? presetSe(page.se) : undefined
+    // 「止める」はレシピを持たない予約キー。実体が無くてもページには載せる（ループを終わらせる合図）
+    const stopSe = page.se === SE_STOP
+    const se = page.se && !stopSe ? presetSe(page.se) : undefined
     if (se) usedSes.set(se.key, se)
     return {
       id: page.blockId,
@@ -347,7 +349,8 @@ export function buildNovelGameFiles(
       ...(page.transition ? { transition: page.transition } : {}),
       ...(bg ? { bg } : {}),
       ...(stage !== undefined ? { stage } : {}),
-      ...(se ? { se: se.key } : {}),
+      ...(stopSe ? { se: SE_STOP } : se ? { se: se.key } : {}),
+      ...(se && page.seRepeat ? { seRepeat: page.seRepeat } : {}),
       units: unitsOfInlines(block?.inlines ?? []),
       text: block ? plainTextOfBlock(block) : '',
     }

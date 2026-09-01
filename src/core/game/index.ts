@@ -39,7 +39,10 @@ export const CueSchema = z.object({
   /** アセットキー（'preset:bg/room-day' 等）。実体は持たない（D-GAME-ASSET-STORE） */
   bg: z.string().optional(),
   bgm: z.string().optional(),
+  /** 効果音のキー。`'stop'`（SE_STOP）＝鳴っているループをここで止める */
   se: z.string().optional(),
+  /** 鳴らし方（省略＝1回）。'loop' は次の場面の切れ目か「止める」まで続く */
+  seRepeat: z.union([z.literal(2), z.literal('loop')]).optional(),
   transition: z.enum(['cut', 'fade', 'flash']).optional(),
 })
 export type Cue = z.infer<typeof CueSchema>
@@ -97,6 +100,7 @@ export function patchCue(
     'bg',
     'bgm',
     'se',
+    'seRepeat',
     'transition',
   ] as const) {
     if (!(key in patch)) continue
@@ -209,6 +213,7 @@ export interface StagedPage extends GamePage {
   bg?: string
   bgm?: string
   se?: string
+  seRepeat?: 2 | 'loop'
   transition?: 'cut' | 'fade' | 'flash'
 }
 

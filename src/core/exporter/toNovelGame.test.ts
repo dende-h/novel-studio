@@ -459,6 +459,52 @@ describe('立ち絵（話者に自動で紐づく舞台・最大2人）', () => 
   })
 })
 
+describe('効果音の鳴らし方（1回・2回・ずっと）', () => {
+  const ep: Episode = {
+    id: 'e9',
+    title: '音の話',
+    blocks: parseEpisodeBody('　雨が降りはじめた。\n「——行こうか」\n　やがて、雨はやんだ。'),
+  }
+  const work: Work = { id: 'w1', title: '作品', episodes: [ep] }
+
+  it('鳴らし方をページへ載せる（省略は1回＝載せない）', () => {
+    const s = scenarioOf(
+      buildNovelGameFiles(work, ep, {
+        workId: 'w1',
+        episodeId: 'e9',
+        cues: [
+          { blockId: 'b1', se: 'preset:se/rain', seRepeat: 'loop' },
+          { blockId: 'b2', se: 'preset:se/knock', seRepeat: 2 },
+          { blockId: 'b3', se: 'preset:se/bell' },
+        ],
+        updatedAt: 1,
+      }),
+    )
+    expect(s.pages[0]?.se).toBe('preset:se/rain')
+    expect(s.pages[0]?.seRepeat).toBe('loop')
+    expect(s.pages[1]?.seRepeat).toBe(2)
+    expect(s.pages[2]?.se).toBe('preset:se/bell')
+    expect(s.pages[2]?.seRepeat).toBeUndefined()
+  })
+
+  it('「止める」はレシピを持たないが、ページには載る（ループを終わらせる合図）', () => {
+    const s = scenarioOf(
+      buildNovelGameFiles(work, ep, {
+        workId: 'w1',
+        episodeId: 'e9',
+        cues: [
+          { blockId: 'b1', se: 'preset:se/rain', seRepeat: 'loop' },
+          { blockId: 'b3', se: 'stop' },
+        ],
+        updatedAt: 1,
+      }),
+    )
+    expect(s.pages[2]?.se).toBe('stop')
+    // 同梱するレシピは雨だけ（stop は実体を持たない）
+    expect(Object.keys(s.ses ?? {})).toEqual(['preset:se/rain'])
+  })
+})
+
 describe('プレビュー（startAt）', () => {
   const ep: Episode = {
     id: 'e9',
