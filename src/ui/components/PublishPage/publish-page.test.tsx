@@ -18,6 +18,10 @@ vi.mock('@/ui/_api/publish', async (importOriginal) => ({
   publishWorkToPlatform: (...args: unknown[]) => publishWorkToPlatform(...args),
 }))
 
+vi.mock('@/ui/_api/game-templates', () => ({
+  fetchTemplateManifest: async () => null,
+  fetchTemplateBytes: async () => null,
+}))
 vi.mock('@/ui/_api/author', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/ui/_api/author')>()),
   fetchAuthorStatus: (...args: unknown[]) => fetchAuthorStatus(...args),

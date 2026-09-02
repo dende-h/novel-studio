@@ -1,13 +1,9 @@
 import { BookText, Copy, Download, Folder, Gamepad2, Globe, Pencil, Sparkles } from 'lucide-react'
 import { type ComponentType, useId, useState } from 'react'
 import { glossaryToPlainText, workToPlainText } from '@/core/exporter/toPlainText'
-import { userAssetKey } from '@/core/game/assets'
-import {
-  DEFAULT_BG_KEY,
-  PRESET_BACKGROUNDS,
-  presetBackground,
-  presetBgSvg,
-} from '@/core/game/presets'
+import { gameAssetKey } from '@/core/game/assets'
+import { DEFAULT_BG_KEY } from '@/core/game/presets'
+import { mergeBackgroundCatalog } from '@/core/game/templates'
 import { dataUrlMime, decodeDataUrl } from '@/core/image'
 import type { Work } from '@/core/schema'
 import type { GameAssetRepository } from '@/core/storage/gameAssetRepository'
@@ -25,6 +21,7 @@ import {
 } from '@/ui/_utils/exporters'
 import { loadGameFont } from '@/ui/_utils/game-font'
 import { useAuth } from '@/ui/auth/auth-context'
+import { TemplatePicker } from '@/ui/components/StagingView/template-picker'
 import { Button } from '@/ui/components/ui/button'
 import {
   Dialog,
@@ -36,6 +33,13 @@ import {
 } from '@/ui/components/ui/dialog'
 import { Label } from '@/ui/components/ui/label'
 import { Switch } from '@/ui/components/ui/switch'
+import {
+  loadTemplateCatalog,
+  resolveTemplateBackgrounds,
+  templateBgKeysOf,
+  templateBgSrc,
+  useTemplateCatalog,
+} from '@/ui/game/template-catalog'
 import { useIsNarrow } from '@/ui/hooks/use-narrow'
 
 type Format = 'epub' | 'web' | 'game' | 'folder' | 'ai'
@@ -125,7 +129,14 @@ export function ExportDialog({
   // 判定は「構想の道具」と同じ形（loading 中に誤って解禁しない）。
   const auth = useAuth()
   const gameUnlocked = auth.status === 'free' || auth.status === 'member'
-  const gamePreset = presetBackground(gameBg) ?? PRESET_BACKGROUNDS[0]!
+  // 既定背景の候補（目録＋組み込み）。選んでいるキーが一覧から外されていても選択は保つ
+  const { backgrounds, manifest: templateManifest } = useTemplateCatalog()
+  const gamePreset =
+    backgrounds.find((b) => b.key === gameBg) ??
+    backgrounds.find((b) => b.key === DEFAULT_BG_KEY) ??
+    backgrounds[0]!
+  const bgOptions = backgrounds.filter((b) => !b.hidden || b.key === gamePreset.key)
+  const [bgPickerOpen, setBgPickerOpen] = useState(false)
   // 作る作業（演出付け・書き出し）は PC など広い画面に限定する（D-GAME-PC）。
   // 演出エディタの入口ゲート（App.tsx の stagingAvailable）と同じ閾値。プレイは端末を問わない。
   const narrow = useIsNarrow()
@@ -169,19 +180,30 @@ export function ExportDialog({
           const font = await loadGameFont()
           // 保存済みの演出譜（話者・背景・場面の切れ目）があれば載せる
           const staging = await stagingRepo?.get(work.id, selectedEpisode.id)
+          // テンプレ背景の画像（目録にある分）は実体を取って素材の形で渡す。取れなければ
+          // tone の控え（組み込みキーは exporter が SVG を描くので何も渡さない）
+          const catalog = mergeBackgroundCatalog(await loadTemplateCatalog())
+          const templates = await resolveTemplateBackgrounds(
+            templateBgKeysOf(staging ? [staging] : [], [gameBg]),
+            catalog,
+            { fallback: 'gradient' },
+          )
           // 持ち込み素材（背景・立ち絵）は手元の全件を渡し、使う分だけ exporter が同梱する
-          const userAssets = ((await gameAssetRepo?.list()) ?? []).map((a) => ({
-            key: userAssetKey(a.id),
-            id: a.id,
-            label: a.name,
-            tone: a.tone,
-            mime: dataUrlMime(a.dataUrl) ?? 'image/webp',
-            data: decodeDataUrl(a.dataUrl),
-            kind: a.kind,
-            ...(a.character ? { character: a.character } : {}),
-            ...(a.expression ? { expression: a.expression } : {}),
-            createdAt: a.createdAt,
-          }))
+          const userAssets = [...((await gameAssetRepo?.list()) ?? []), ...templates.assets].map(
+            (a) => ({
+              key: gameAssetKey(a),
+              id: a.id,
+              label: a.name,
+              tone: a.tone,
+              mime: dataUrlMime(a.dataUrl) ?? 'image/webp',
+              data: decodeDataUrl(a.dataUrl),
+              kind: a.kind,
+              ...(a.character ? { character: a.character } : {}),
+              ...(a.expression ? { expression: a.expression } : {}),
+              ...(a.preset ? { preset: a.preset } : {}),
+              createdAt: a.createdAt,
+            }),
+          )
           triggerDownload(
             episodeNovelGameExport(
               work,
@@ -397,14 +419,32 @@ export function ExportDialog({
                         onChange={(e) => setGameBg(e.target.value)}
                         className="w-full rounded-md border border-outline-variant bg-surface-container-lowest px-3 py-2 text-base text-on-surface outline-none focus:border-primary md:text-sm"
                       >
-                        {PRESET_BACKGROUNDS.map((p) => (
+                        {bgOptions.map((p) => (
                           <option key={p.key} value={p.key}>
                             {p.label}
                           </option>
                         ))}
                       </select>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="mt-2 text-primary"
+                        onClick={() => setBgPickerOpen(true)}
+                      >
+                        一覧から選ぶ…
+                      </Button>
+                      <TemplatePicker
+                        open={bgPickerOpen}
+                        onOpenChange={setBgPickerOpen}
+                        kind="bg"
+                        items={backgrounds}
+                        manifest={templateManifest}
+                        selectedKey={gamePreset.key}
+                        onPick={(bg) => setGameBg(bg.key)}
+                      />
                       <img
-                        src={`data:image/svg+xml;utf8,${encodeURIComponent(presetBgSvg(gamePreset))}`}
+                        src={templateBgSrc(gamePreset)}
                         alt={`背景プレビュー: ${gamePreset.label}`}
                         className="mt-3 aspect-video w-full rounded-md border border-outline-variant/30 object-cover"
                       />

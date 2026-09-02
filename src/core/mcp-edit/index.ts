@@ -877,6 +877,8 @@ export function setStagingCues(
   items: StagingCueInput[],
   gameAssets: readonly SpriteSource[],
   now: number,
+  /** 運営テンプレの目録が知っている背景キー（組み込み 24 枚の外にある絵）。省略＝組み込みだけ */
+  templateBgKeys: ReadonlySet<string> = new Set(),
 ): { stagings: Staging[]; applied: number; cleared: number } {
   const work = works.find((w) => w.id === workId)
   if (!work) throw new McpEditError(`work_id "${workId}" の作品が見つかりません`)
@@ -960,7 +962,12 @@ export function setStagingCues(
     if (item.sceneBreak !== undefined) patch.sceneBreak = item.sceneBreak ? true : undefined
     if (item.bg !== undefined) {
       const bg = emptyToUndef(item.bg)
-      if (bg !== undefined && !presetBackground(bg) && !userKeys.has(bg)) {
+      if (
+        bg !== undefined &&
+        !presetBackground(bg) &&
+        !userKeys.has(bg) &&
+        !templateBgKeys.has(bg)
+      ) {
         throw new McpEditError(
           `bg "${bg}" は使えません。使える背景キーは get_staging の一覧で確認してください`,
         )

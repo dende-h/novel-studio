@@ -1,8 +1,9 @@
 import { applyCues, MASKED_SPEAKER, plainTextOfBlock, type Staging, toPages } from '../game'
-import { pickSprite, type UserGameAsset, userAssetKey } from '../game/assets'
+import { gameAssetKey, pickSprite, type UserGameAsset } from '../game/assets'
 import { buildGameCredits, DEFAULT_BG_KEY, presetBackground, presetBgSvg } from '../game/presets'
 import { type PresetSe, presetSe, SE_STOP } from '../game/sePresets'
 import { presetSprite } from '../game/spritePresets'
+import { parseTemplateKey } from '../game/templates'
 import type { Episode, Inline, Work } from '../schema'
 import type { ZipInput } from '../zip'
 import {
@@ -181,7 +182,27 @@ export function buildNovelGameFiles(
   const userByKey = new Map(
     (opts.userAssets ?? []).filter((a) => (a.kind ?? 'bg') === 'bg').map((a) => [a.key, a]),
   )
+  // 渡された素材を先に引く：テンプレ背景の**画像**（目録から取った実体・`preset` 付き）は
+  // 組み込み SVG と同じキーで来るので、画像があればそちらを使い、無ければ SVG に倒す
   const resolveBg = (key: string): BgEntry | undefined => {
+    const user = userByKey.get(key)
+    if (user) {
+      if (inline && !user.dataUrl) return undefined // 内包できない実体は無視（壊さない）
+      const tplSlug = user.preset ? parseTemplateKey(user.preset)?.slug : undefined
+      return {
+        key: user.key,
+        label: user.label,
+        tone: user.tone,
+        path: inline
+          ? inline.externalAssets
+            ? `asset:${user.id}`
+            : (user.dataUrl ?? '')
+          : `assets/bg/${tplSlug ?? `user-${user.id}`}.${IMAGE_EXT[user.mime] ?? 'img'}`,
+        data: user.data,
+        // 運営素材（テンプレ由来）だけクレジットに載せる
+        credit: Boolean(user.preset),
+      }
+    }
     const preset = presetBackground(key)
     if (preset) {
       const svg = presetBgSvg(preset)
@@ -194,22 +215,6 @@ export function buildNovelGameFiles(
           : `assets/bg/${preset.slug}.svg`,
         data: svg,
         credit: true,
-      }
-    }
-    const user = userByKey.get(key)
-    if (user) {
-      if (inline && !user.dataUrl) return undefined // 内包できない実体は無視（壊さない）
-      return {
-        key: user.key,
-        label: user.label,
-        tone: user.tone,
-        path: inline
-          ? inline.externalAssets
-            ? `asset:${user.id}`
-            : (user.dataUrl ?? '')
-          : `assets/bg/user-${user.id}.${IMAGE_EXT[user.mime] ?? 'img'}`,
-        data: user.data,
-        credit: false,
       }
     }
     return undefined
@@ -438,7 +443,7 @@ export function buildNovelGameHtml(
   } = {},
 ): string {
   const userAssets: NovelGameUserAsset[] = (opts.gameAssets ?? []).map((a) => ({
-    key: userAssetKey(a.id),
+    key: gameAssetKey(a),
     id: a.id,
     label: a.name,
     tone: a.tone,

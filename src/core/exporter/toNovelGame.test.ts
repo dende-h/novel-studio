@@ -5,7 +5,7 @@ import { DEFAULT_BG_KEY } from '../game/presets'
 import { parseEpisodeBody } from '../parser/parseNotation'
 import type { Episode, Work } from '../schema'
 import type { GameScenario } from './novelGamePlayer'
-import { buildNovelGameFiles, unitsOfInlines } from './toNovelGame'
+import { buildNovelGameFiles, buildNovelGamePlayer, unitsOfInlines } from './toNovelGame'
 
 const episode: Episode = {
   id: 'e1',
@@ -607,5 +607,68 @@ describe('テンプレ立ち絵（シルエット・preset）', () => {
       }),
     )
     expect(s.credits.some((c) => c.label === '立ち絵')).toBe(false)
+  })
+})
+
+describe('テンプレ背景の画像（目録から取った実体・preset 付きの素材）', () => {
+  const roomDay = {
+    key: 'preset:bg/room-day',
+    id: 'tpl-bg-room-day',
+    label: '室内（昼）',
+    tone: ['#aaaaaa', '#bbbbbb', '#cccccc'] as [string, string, string],
+    mime: 'image/webp',
+    data: new Uint8Array([82, 73, 70, 70]),
+    kind: 'bg' as const,
+    preset: 'preset:bg/room-day',
+    dataUrl: 'data:image/webp;base64,UklGRg==',
+  }
+
+  it('同じキーの組み込み SVG より画像が優先され、zip には <slug>.webp で入る', () => {
+    const files = buildNovelGameFiles(
+      work,
+      episode,
+      staging([{ blockId: 'b3', bg: 'preset:bg/room-day' }]),
+      { userAssets: [roomDay] },
+    )
+    const s = scenarioOf(files)
+    expect(s.bgs['preset:bg/room-day']).toEqual({
+      src: 'assets/bg/room-day.webp',
+      label: '室内（昼）',
+      tone: ['#aaaaaa', '#bbbbbb', '#cccccc'],
+    })
+    expect(files.some((f) => f.path === 'assets/bg/room-day.webp')).toBe(true)
+    expect(files.some((f) => f.path === 'assets/bg/room-day.svg')).toBe(false)
+    // 運営素材なのでクレジットに載る
+    expect(s.credits.find((c) => c.label === '背景')?.body).toContain('室内（昼）')
+  })
+
+  it('画像が渡されなければ今までどおり組み込み SVG（旧作品の控え）', () => {
+    const files = buildNovelGameFiles(
+      work,
+      episode,
+      staging([{ blockId: 'b3', bg: 'preset:bg/room-day' }]),
+    )
+    expect(files.some((f) => f.path === 'assets/bg/room-day.svg')).toBe(true)
+  })
+
+  it('契約 v5：話の HTML は asset:<id> で参照し、その id が作品ぶんの素材として拾われる', () => {
+    const asset = {
+      id: 'tpl-bg-room-day',
+      kind: 'bg' as const,
+      name: '室内（昼）',
+      dataUrl: 'data:image/webp;base64,UklGRg==',
+      tone: ['#aaaaaa', '#bbbbbb', '#cccccc'] as [string, string, string],
+      preset: 'preset:bg/room-day',
+      createdAt: 1,
+    }
+    const { html, assetIds } = buildNovelGamePlayer(
+      work,
+      episode,
+      staging([{ blockId: 'b3', bg: 'preset:bg/room-day' }]),
+      { gameAssets: [asset] },
+    )
+    expect(assetIds).toEqual(['tpl-bg-room-day'])
+    const s = scenarioOf([{ path: 'index.html', data: html }])
+    expect(s.bgs['preset:bg/room-day']?.src).toBe('asset:tpl-bg-room-day')
   })
 })

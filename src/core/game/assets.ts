@@ -37,6 +37,14 @@ export const userAssetKey = (id: string) => `user:${id}`
 /** アセットキーが持ち込み素材か。 */
 export const isUserAssetKey = (key: string) => key.startsWith('user:')
 
+/**
+ * 素材が Cue.bg / defaultBg から指されるキー。テンプレ背景を素材の形で運ぶとき
+ * （目録の画像を書き出し・投稿に載せる経路）は `preset` のキーそのもの＝演出譜は
+ * `preset:bg/<slug>` のまま。それ以外は `user:<id>`。立ち絵は話者で引くので常に `user:<id>`。
+ */
+export const gameAssetKey = (a: Pick<UserGameAsset, 'id' | 'kind' | 'preset'>): string =>
+  a.kind === 'bg' && a.preset ? a.preset : userAssetKey(a.id)
+
 // ---------------------------------------------------------------------------
 // 立ち絵（sprite・G2 のオプション＝D-GAME-NOSPRITE）
 // ---------------------------------------------------------------------------

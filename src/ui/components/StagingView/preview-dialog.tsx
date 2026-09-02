@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { buildNovelGameHtml } from '@/core/exporter/toNovelGame'
 import type { Staging } from '@/core/game'
 import type { UserGameAsset } from '@/core/game/assets'
+import type { CatalogBackground } from '@/core/game/templates'
 import type { Episode, Work } from '@/core/schema'
 import { loadGameFontDataUrl } from '@/ui/_utils/game-font'
 import {
@@ -12,6 +13,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/ui/components/ui/dialog'
+import { resolveTemplateBackgrounds, templateBgKeysOf } from '@/ui/game/template-catalog'
 
 /**
  * 演出のプレビュー（アプリ内で遊べる・書き出しや投稿を待たない）。
@@ -27,6 +29,7 @@ export function StagingPreviewDialog({
   episode,
   staging,
   gameAssets,
+  templateBackgrounds = [],
   startAt,
 }: {
   open: boolean
@@ -35,6 +38,8 @@ export function StagingPreviewDialog({
   episode: Episode
   staging: Staging | undefined
   gameAssets: UserGameAsset[]
+  /** 運営テンプレの一覧（目録の画像があれば実体を取って同梱する。無ければ組み込み SVG） */
+  templateBackgrounds?: readonly CatalogBackground[]
   /** この行から始める（省略＝タイトル画面から）。 */
   startAt?: number
 }) {
@@ -48,26 +53,30 @@ export function StagingPreviewDialog({
       return
     }
     let alive = true
-    void loadGameFontDataUrl()
-      .catch(() => undefined)
-      .then((fontHref) => {
-        if (!alive) return
-        try {
-          setHtml(
-            buildNovelGameHtml(work, episode, staging, {
-              ...(fontHref ? { fontHref } : {}),
-              gameAssets,
-              ...(startAt !== undefined ? { startAt } : {}),
-            }),
-          )
-        } catch {
-          setError(true)
-        }
-      })
+    // テンプレ背景の画像は取れなければ tone の控えに倒す（プレビューは止めない）
+    void Promise.all([
+      loadGameFontDataUrl().catch(() => undefined),
+      resolveTemplateBackgrounds(templateBgKeysOf(staging ? [staging] : []), templateBackgrounds, {
+        fallback: 'gradient',
+      }).catch(() => ({ assets: [] })),
+    ]).then(([fontHref, tpl]) => {
+      if (!alive) return
+      try {
+        setHtml(
+          buildNovelGameHtml(work, episode, staging, {
+            ...(fontHref ? { fontHref } : {}),
+            gameAssets: [...gameAssets, ...tpl.assets],
+            ...(startAt !== undefined ? { startAt } : {}),
+          }),
+        )
+      } catch {
+        setError(true)
+      }
+    })
     return () => {
       alive = false
     }
-  }, [open, work, episode, staging, gameAssets, startAt])
+  }, [open, work, episode, staging, gameAssets, templateBackgrounds, startAt])
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
