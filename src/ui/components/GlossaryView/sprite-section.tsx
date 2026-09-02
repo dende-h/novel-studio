@@ -7,17 +7,13 @@ import {
   importVerdict,
   type UserGameAsset,
 } from '@/core/game/assets'
-import {
-  PRESET_SPRITE_TONE,
-  PRESET_SPRITES,
-  type PresetSprite,
-  presetSpriteDataUrl,
-} from '@/core/game/spritePresets'
+import type { CatalogSprite } from '@/core/game/templates'
 import type { GameAssetRepository } from '@/core/storage/gameAssetRepository'
 import { gameSpriteToDataUrl } from '@/ui/_utils/imageResizer'
 import { useAuth } from '@/ui/auth/auth-context'
 import { ConfirmDialog } from '@/ui/components/ConfirmDialog/confirm-dialog'
 import { AssetManager, uploadNoticeOf } from '@/ui/components/StagingView/asset-manager'
+import { TemplatePicker } from '@/ui/components/StagingView/template-picker'
 import { Button } from '@/ui/components/ui/button'
 import { Input } from '@/ui/components/ui/input'
 import { Label } from '@/ui/components/ui/label'
@@ -26,6 +22,7 @@ import {
   createAssetHostingApi,
   pullHostedAssets,
 } from '@/ui/game/asset-hosting'
+import { templateSpriteDataUrl, useTemplateCatalog } from '@/ui/game/template-catalog'
 
 /**
  * 用語集の人物 entry に出す「立ち絵」欄（図鑑側からの登録・管理・タスク #23）。
@@ -61,6 +58,7 @@ export function SpriteSection({ name, aliases, assetRepo }: SpriteSectionProps) 
   } | null>(null)
   const [exprDraft, setExprDraft] = useState(DEFAULT_EXPRESSION)
   const [pickerOpen, setPickerOpen] = useState(false)
+  const { sprites: templateSprites, manifest: templateManifest } = useTemplateCatalog()
   const [confirmTarget, setConfirmTarget] = useState<UserGameAsset | null>(null)
   const [managerOpen, setManagerOpen] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -157,26 +155,34 @@ export function SpriteSection({ name, aliases, assetRepo }: SpriteSectionProps) 
   }
 
   /** テンプレの割り当て（この人物のテンプレ由来が既にあれば差し替え・枚数に数えない）。 */
-  const pickTemplate = async (preset: PresetSprite) => {
+  const pickTemplate = async (sprite: CatalogSprite) => {
     setNotice(null)
     setPickerOpen(false)
+    const dataUrl = await templateSpriteDataUrl(sprite)
+    if (!dataUrl) {
+      setNotice(
+        'テンプレの画像を取得できませんでした。通信環境を確認して、もう一度お試しください。',
+      )
+      return
+    }
     const existing = assets.find((a) => a.kind === 'sprite' && a.character === name && a.preset)
     const asset: UserGameAsset = existing
       ? {
           ...existing,
-          name: `${name}（${preset.label}）`,
-          dataUrl: presetSpriteDataUrl(preset),
-          preset: preset.key,
+          name: `${name}（${sprite.label}）`,
+          dataUrl,
+          tone: sprite.tone,
+          preset: sprite.key,
         }
       : {
           id: `tpl-${crypto.randomUUID()}`,
           kind: 'sprite',
-          name: `${name}（${preset.label}）`,
-          dataUrl: presetSpriteDataUrl(preset),
-          tone: PRESET_SPRITE_TONE,
+          name: `${name}（${sprite.label}）`,
+          dataUrl,
+          tone: sprite.tone,
           character: name,
           expression: DEFAULT_EXPRESSION,
-          preset: preset.key,
+          preset: sprite.key,
           createdAt: Date.now(),
         }
     await assetRepo.save(asset)
@@ -293,26 +299,17 @@ export function SpriteSection({ name, aliases, assetRepo }: SpriteSectionProps) 
         </div>
       )}
 
-      {pickerOpen && !pending ? (
-        <div className="grid max-w-md grid-cols-3 gap-2 rounded-md border border-outline-variant/30 p-2">
-          {PRESET_SPRITES.map((p) => (
-            <button
-              key={p.key}
-              type="button"
-              className="rounded-md border border-outline-variant/30 p-1 hover:bg-surface-container-high"
-              onClick={() => void pickTemplate(p)}
-            >
-              <img src={presetSpriteDataUrl(p)} alt="" className="mx-auto h-20 object-contain" />
-              <span className="mt-1 block text-center text-[10px] text-on-surface-variant leading-tight">
-                {p.label.replace('シルエット', '')}
-              </span>
-            </button>
-          ))}
-          <p className="col-span-3 text-[11px] text-on-surface-variant">
-            テンプレの立ち絵は枚数に数えません。
-          </p>
-        </div>
-      ) : null}
+      <TemplatePicker
+        open={pickerOpen && !pending}
+        onOpenChange={setPickerOpen}
+        kind="sprite"
+        items={templateSprites}
+        manifest={templateManifest}
+        selectedKey={
+          assets.find((a) => a.kind === 'sprite' && a.character === name && a.preset)?.preset
+        }
+        onPick={(sp) => void pickTemplate(sp)}
+      />
 
       <input
         ref={fileInputRef}

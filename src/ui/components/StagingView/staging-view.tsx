@@ -25,14 +25,8 @@ import {
   userAssetKey,
 } from '@/core/game/assets'
 import { type PageContinuity, resolveContinuity } from '@/core/game/continuity'
-import { PRESET_BACKGROUNDS, presetBackground, presetBgSvg } from '@/core/game/presets'
 import { PRESET_SES, presetSe, SE_STOP, type SeRepeat, seLabelOf } from '@/core/game/sePresets'
-import {
-  PRESET_SPRITE_TONE,
-  PRESET_SPRITES,
-  type PresetSprite,
-  presetSpriteDataUrl,
-} from '@/core/game/spritePresets'
+import type { CatalogBackground, CatalogSprite } from '@/core/game/templates'
 import { PERSON_CATEGORY } from '@/core/glossary'
 import type { Work } from '@/core/schema'
 import type { GameAssetRepository } from '@/core/storage/gameAssetRepository'
@@ -49,6 +43,11 @@ import {
   createAssetHostingApi,
   pullHostedAssets,
 } from '@/ui/game/asset-hosting'
+import {
+  templateBgSrc,
+  templateSpriteDataUrl,
+  useTemplateCatalog,
+} from '@/ui/game/template-catalog'
 import { AssetManager, uploadNoticeOf } from './asset-manager'
 import {
   AppearHelp,
@@ -62,6 +61,7 @@ import {
   TransitionHelp,
 } from './field-helps'
 import { StagingPreviewDialog } from './preview-dialog'
+import { TemplatePicker } from './template-picker'
 
 /**
  * 演出エディタ（サウンドノベルの Staging・G1）。設計は docs/requirement/07-novel-game.md §3。
@@ -138,10 +138,11 @@ const LANE_COLORS = {
 function laneTitles(
   cont: PageContinuity | undefined,
   assets: UserGameAsset[],
+  backgrounds: readonly CatalogBackground[],
 ): { bg: string; sprite: string; se: string } {
   if (!cont) return { bg: '', sprite: '', se: '' }
   return {
-    bg: `背景：${bgLabelOf(cont.bg, assets) ?? cont.bg}`,
+    bg: `背景：${bgLabelOf(cont.bg, assets, backgrounds) ?? cont.bg}`,
     sprite: cont.hidden
       ? '立ち絵：出さない区間'
       : cont.standing.length > 0
@@ -152,17 +153,25 @@ function laneTitles(
 }
 
 /** 背景キーの表示名（テンプレ／持ち込み。どちらでもなければ undefined）。 */
-function bgLabelOf(key: string, assets: UserGameAsset[]): string | undefined {
-  const preset = presetBackground(key)
-  if (preset) return preset.label
+function bgLabelOf(
+  key: string,
+  assets: UserGameAsset[],
+  backgrounds: readonly CatalogBackground[],
+): string | undefined {
+  const tpl = backgrounds.find((b) => b.key === key)
+  if (tpl) return tpl.label
   return assets.find((a) => userAssetKey(a.id) === key)?.name
 }
 
-/** 背景キーのプレビュー画像（テンプレは SVG を生成、持ち込みは保存済み data URL）。 */
-function bgPreviewSrc(key: string | undefined, assets: UserGameAsset[]): string | undefined {
+/** 背景キーのプレビュー画像（テンプレは目録の画像か SVG、持ち込みは保存済み data URL）。 */
+function bgPreviewSrc(
+  key: string | undefined,
+  assets: UserGameAsset[],
+  backgrounds: readonly CatalogBackground[],
+): string | undefined {
   if (!key) return undefined
-  const preset = presetBackground(key)
-  if (preset) return `data:image/svg+xml;utf8,${encodeURIComponent(presetBgSvg(preset))}`
+  const tpl = backgrounds.find((b) => b.key === key)
+  if (tpl) return templateBgSrc(tpl)
   return assets.find((a) => userAssetKey(a.id) === key)?.dataUrl
 }
 
@@ -192,6 +201,9 @@ export default function StagingView({ repo, work, currentEpisodeId, assetRepo }:
   const [assets, setAssets] = useState<UserGameAsset[]>([])
   const [assetError, setAssetError] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  // 運営テンプレの目録（無ければ組み込みの SVG だけ）。表示名・プレビュー・一覧に使う
+  const { backgrounds, sprites, manifest: templateManifest } = useTemplateCatalog()
+  const [bgPickerOpen, setBgPickerOpen] = useState(false)
   // クラウド保管（R2 ホスティング・会員のみ）。ローカルが正で、クラウドは端末間で運ぶ控え。
   const auth = useAuth()
   const member = auth.status === 'member'
@@ -282,6 +294,8 @@ export default function StagingView({ repo, work, currentEpisodeId, assetRepo }:
     [work.glossary],
   )
   // 背景の選択肢に立ち絵を混ぜない
+  // 一覧に出すテンプレ＋（非表示になっていても）この行が指しているキー（勝手に外さない）
+  const bgOptions = backgrounds.filter((b) => !b.hidden || b.key === selected?.bg)
   const bgAssets = useMemo(() => assets.filter((a) => a.kind === 'bg'), [assets])
   // 持ち込み枚数（テンプレ由来は数えない）。無料プランは FREE_IMPORT_LIMIT まで。
   const importedCount = useMemo(() => assets.filter((a) => !a.preset).length, [assets])
@@ -420,27 +434,36 @@ export default function StagingView({ repo, work, currentEpisodeId, assetRepo }:
    * テンプレ立ち絵を話者へ割り当てる（無料でも使える・枚数に数えない）。
    * 同じ話者のテンプレ割り当てが既にあれば差し替える（持ち込んだ絵には触れない）。
    */
-  const pickTemplateSprite = async (speaker: string, preset: PresetSprite) => {
+  const pickTemplateSprite = async (speaker: string, sprite: CatalogSprite) => {
     if (!assetRepo) return
     setHostNotice(null)
     setSpritePickerOpen(false)
+    // 目録の画像なら実体を取り、取れなければ組み込みの SVG（無ければ諦めて知らせる）
+    const dataUrl = await templateSpriteDataUrl(sprite)
+    if (!dataUrl) {
+      setAssetError(
+        'テンプレの画像を取得できませんでした。通信環境を確認して、もう一度お試しください。',
+      )
+      return
+    }
     const existing = assets.find((a) => a.kind === 'sprite' && a.character === speaker && a.preset)
     const asset: UserGameAsset = existing
       ? {
           ...existing,
-          name: `${speaker}（${preset.label}）`,
-          dataUrl: presetSpriteDataUrl(preset),
-          preset: preset.key,
+          name: `${speaker}（${sprite.label}）`,
+          dataUrl,
+          tone: sprite.tone,
+          preset: sprite.key,
         }
       : {
           id: `tpl-${crypto.randomUUID()}`,
           kind: 'sprite',
-          name: `${speaker}（${preset.label}）`,
-          dataUrl: presetSpriteDataUrl(preset),
-          tone: PRESET_SPRITE_TONE,
+          name: `${speaker}（${sprite.label}）`,
+          dataUrl,
+          tone: sprite.tone,
           character: speaker,
           expression: DEFAULT_EXPRESSION,
-          preset: preset.key,
+          preset: sprite.key,
           createdAt: Date.now(),
         }
     await assetRepo.save(asset)
@@ -588,26 +611,17 @@ export default function StagingView({ repo, work, currentEpisodeId, assetRepo }:
             </Button>
           </div>
         )}
-        {spritePickerOpen && !pendingSprite ? (
-          <div className="mt-2 grid grid-cols-3 gap-2 rounded-md border border-outline-variant/30 p-2">
-            {PRESET_SPRITES.map((p) => (
-              <button
-                key={p.key}
-                type="button"
-                className="rounded-md border border-outline-variant/30 p-1 hover:bg-surface-container-high"
-                onClick={() => void pickTemplateSprite(character, p)}
-              >
-                <img src={presetSpriteDataUrl(p)} alt="" className="mx-auto h-20 object-contain" />
-                <span className="mt-1 block text-center text-[10px] text-on-surface-variant leading-tight">
-                  {p.label.replace('シルエット', '')}
-                </span>
-              </button>
-            ))}
-            <p className="col-span-3 text-[11px] text-on-surface-variant">
-              テンプレの立ち絵は枚数に数えません。
-            </p>
-          </div>
-        ) : null}
+        <TemplatePicker
+          open={spritePickerOpen && !pendingSprite}
+          onOpenChange={setSpritePickerOpen}
+          kind="sprite"
+          items={sprites}
+          manifest={templateManifest}
+          selectedKey={
+            assets.find((a) => a.kind === 'sprite' && a.character === character && a.preset)?.preset
+          }
+          onPick={(sp) => void pickTemplateSprite(character, sp)}
+        />
         <input
           ref={spriteInputRef}
           type="file"
@@ -710,7 +724,7 @@ export default function StagingView({ repo, work, currentEpisodeId, assetRepo }:
                     className="flex items-center justify-between gap-3 rounded border border-outline-variant/30 px-2 py-1.5 text-xs"
                   >
                     <span className="min-w-0 truncate text-on-surface-variant">
-                      {describeCue(cue, assets)}
+                      {describeCue(cue, assets, backgrounds)}
                     </span>
                     <Button
                       type="button"
@@ -759,8 +773,8 @@ export default function StagingView({ repo, work, currentEpisodeId, assetRepo }:
                 {staged.map((page, index) => {
                   const active = page.blockId === selectedId
                   const cont = continuity[index]
-                  const titles = laneTitles(cont, assets)
-                  const bgLabel = page.bg ? bgLabelOf(page.bg, assets) : undefined
+                  const titles = laneTitles(cont, assets, backgrounds)
+                  const bgLabel = page.bg ? bgLabelOf(page.bg, assets, backgrounds) : undefined
                   const suggested = suggestions.has(page.blockId) && !page.sceneBreak
                   return (
                     <li key={page.blockId}>
@@ -873,7 +887,7 @@ export default function StagingView({ repo, work, currentEpisodeId, assetRepo }:
               {selectedCont ? (
                 <p className="text-[11px] text-on-surface-variant leading-relaxed">
                   <span className="text-on-surface-variant/70">この行に効いているもの：</span>
-                  背景 {bgLabelOf(selectedCont.bg, assets) ?? selectedCont.bg}
+                  背景 {bgLabelOf(selectedCont.bg, assets, backgrounds) ?? selectedCont.bg}
                   {selectedCont.hidden
                     ? '／立ち絵 出さない区間'
                     : selectedCont.standing.length > 0
@@ -1117,7 +1131,7 @@ export default function StagingView({ repo, work, currentEpisodeId, assetRepo }:
                 >
                   <option value="">（変えない）</option>
                   {/* この端末に無い持ち込み画像のキーも選択状態は保つ（勝手に外さない） */}
-                  {selected.bg && !bgLabelOf(selected.bg, assets) ? (
+                  {selected.bg && !bgLabelOf(selected.bg, assets, backgrounds) ? (
                     <option value={selected.bg}>（この端末に無い画像）</option>
                   ) : null}
                   {bgAssets.length > 0 ? (
@@ -1130,7 +1144,7 @@ export default function StagingView({ repo, work, currentEpisodeId, assetRepo }:
                     </optgroup>
                   ) : null}
                   <optgroup label="テンプレ">
-                    {PRESET_BACKGROUNDS.map((p) => (
+                    {bgOptions.map((p) => (
                       <option key={p.key} value={p.key}>
                         {p.label}
                       </option>
@@ -1138,6 +1152,24 @@ export default function StagingView({ repo, work, currentEpisodeId, assetRepo }:
                   </optgroup>
                   {assetRepo ? <option value={ADD_IMAGE}>（画像を追加…）</option> : null}
                 </select>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="mt-2 text-primary"
+                  onClick={() => setBgPickerOpen(true)}
+                >
+                  一覧から選ぶ…
+                </Button>
+                <TemplatePicker
+                  open={bgPickerOpen}
+                  onOpenChange={setBgPickerOpen}
+                  kind="bg"
+                  items={backgrounds}
+                  manifest={templateManifest}
+                  selectedKey={selected.bg}
+                  onPick={(bg) => apply(selected.blockId, { bg: bg.key })}
+                />
                 {assetRepo ? (
                   <input
                     ref={fileInputRef}
@@ -1153,10 +1185,10 @@ export default function StagingView({ repo, work, currentEpisodeId, assetRepo }:
                   />
                 ) : null}
                 {assetError ? <p className="mt-2 text-destructive text-xs">{assetError}</p> : null}
-                {bgPreviewSrc(selected.bg, assets) ? (
+                {bgPreviewSrc(selected.bg, assets, backgrounds) ? (
                   <img
-                    src={bgPreviewSrc(selected.bg, assets)}
-                    alt={`背景プレビュー: ${bgLabelOf(selected.bg ?? '', assets) ?? ''}`}
+                    src={bgPreviewSrc(selected.bg, assets, backgrounds)}
+                    alt={`背景プレビュー: ${bgLabelOf(selected.bg ?? '', assets, backgrounds) ?? ''}`}
                     className="mt-2 aspect-video w-full rounded-md border border-outline-variant/30 object-cover"
                   />
                 ) : null}
@@ -1285,6 +1317,7 @@ export default function StagingView({ repo, work, currentEpisodeId, assetRepo }:
 
       {episode ? (
         <StagingPreviewDialog
+          templateBackgrounds={backgrounds}
           open={preview !== null}
           onOpenChange={(o) => setPreview(o ? (preview ?? {}) : null)}
           work={work}
@@ -1311,13 +1344,17 @@ export default function StagingView({ repo, work, currentEpisodeId, assetRepo }:
 }
 
 /** orphan cue の一覧用に、中身を短い日本語で言う。 */
-function describeCue(cue: Cue, assets: UserGameAsset[]): string {
+function describeCue(
+  cue: Cue,
+  assets: UserGameAsset[],
+  backgrounds: readonly CatalogBackground[],
+): string {
   const parts: string[] = []
   if (cue.speaker) parts.push(`話者 ${cue.speaker}`)
   if (cue.expression) parts.push(`表情 ${cue.expression}`)
   if (cue.appear) parts.push(`登場 ${cue.appear}`)
   if (cue.sceneBreak) parts.push('場面の切れ目')
-  if (cue.bg) parts.push(`背景 ${bgLabelOf(cue.bg, assets) ?? cue.bg}`)
+  if (cue.bg) parts.push(`背景 ${bgLabelOf(cue.bg, assets, backgrounds) ?? cue.bg}`)
   if (cue.bgm) parts.push('BGM')
   if (cue.se) parts.push(`効果音 ${seLabelOf(cue.se)}`)
   if (cue.transition) parts.push('切り替え効果')

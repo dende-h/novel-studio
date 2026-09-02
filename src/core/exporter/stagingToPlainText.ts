@@ -9,8 +9,8 @@ import {
 } from '../game'
 import type { UserGameAsset } from '../game/assets'
 import { DEFAULT_EXPRESSION, spriteExpressionsOf, userAssetKey } from '../game/assets'
-import { PRESET_BACKGROUNDS } from '../game/presets'
 import { PRESET_SES } from '../game/sePresets'
+import { mergeBackgroundCatalog, type TemplateManifest, visibleTemplates } from '../game/templates'
 import type { Episode, Work } from '../schema'
 
 /**
@@ -26,6 +26,8 @@ export function stagingToPlainText(
   episode: Episode,
   staging: Staging | undefined,
   gameAssets: UserGameAsset[],
+  /** 運営テンプレの目録（無ければ組み込みの 24 枚だけを案内する） */
+  templates: TemplateManifest | null = null,
 ): string {
   const cueByBlock = new Map((staging?.cues ?? []).map((c) => [c.blockId, c]))
   const sceneBreakSuggestions = new Set(suggestSceneBreaks(episode.blocks))
@@ -83,7 +85,7 @@ export function stagingToPlainText(
   sections.push(
     [
       '使える背景（bg）キー:',
-      ...PRESET_BACKGROUNDS.map((p) => `- ${p.key} … ${p.label}`),
+      ...visibleTemplates(mergeBackgroundCatalog(templates)).map((p) => `- ${p.key} … ${p.label}`),
       ...userLines,
     ].join('\n'),
   )

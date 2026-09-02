@@ -29,6 +29,10 @@ const hostApi = vi.hoisted(() => ({
   deleteHostedAsset: vi.fn(),
 }))
 vi.mock('@/ui/_api/game-assets', () => hostApi)
+vi.mock('@/ui/_api/game-templates', () => ({
+  fetchTemplateManifest: async () => null,
+  fetchTemplateBytes: async () => null,
+}))
 
 beforeEach(() => {
   hostApi.listHostedAssets.mockReset().mockResolvedValue([])

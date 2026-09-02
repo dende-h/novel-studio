@@ -27,11 +27,28 @@ export default defineConfig({
         // SPA のナビゲーションフォールバック（index.html 差し替え）の対象からも除外する。
         // これを怠ると古い manifest/work レスポンスが返り、同期が壊れる（Phase 2 の必須対策）。
         // /lp/ は独立した静的 LP。SPA フォールバックでアプリに差し替えられないよう除外する。
-        navigateFallbackDenylist: [/^\/api\//, /^\/lp/],
+        navigateFallbackDenylist: [/^\/api\//, /^\/lp/, /^\/game-templates\//],
         runtimeCaching: [
           {
             urlPattern: ({ url }) => url.pathname.startsWith('/api/'),
             handler: 'NetworkOnly',
+          },
+          // 運営テンプレ（背景・立ち絵）。目録は変わりうるので網を先に、実体は URL に内容ハッシュが
+          // 付く（?v=）ので取ったら手元を先に。precache には入れない（1 枚 100KB 超×百枚を
+          // 初回に落とさせない）。/api/ の外に置いてあるのはこのため
+          {
+            urlPattern: ({ url }) => url.pathname === '/game-templates/manifest.json',
+            handler: 'NetworkFirst',
+            options: { cacheName: 'game-templates-manifest', networkTimeoutSeconds: 5 },
+          },
+          {
+            urlPattern: ({ url }) => url.pathname.startsWith('/game-templates/'),
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'game-templates',
+              expiration: { maxEntries: 400, maxAgeSeconds: 60 * 60 * 24 * 30 },
+              cacheableResponse: { statuses: [0, 200] },
+            },
           },
         ],
       },

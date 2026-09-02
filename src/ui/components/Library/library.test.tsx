@@ -10,6 +10,12 @@ import type { LocalBackupService } from '@/ui/backup/backup-service'
 import { createEditorStore, type EditorStore } from '@/ui/store/editorStore'
 import { Library } from './library'
 
+// 公開ページが投稿の前に目録を読みに行く（fetch）のを止める＝投稿の fetch だけを数えられる
+vi.mock('@/ui/_api/game-templates', () => ({
+  fetchTemplateManifest: async () => null,
+  fetchTemplateBytes: async () => null,
+}))
+
 const makeStore = (): EditorStore => {
   let n = 0
   const kv = new MemoryStore()

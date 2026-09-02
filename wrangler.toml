@@ -16,6 +16,9 @@ database_name = "novel-studio"
 database_id = "811bad99-8040-4c46-9192-26623aeabc99"
 
 # 同期本体（Phase 2）の暗号化ブロブ置き場。`wrangler r2 bucket create novel-studio-media` 後に有効。
+# 運営テンプレ（背景・立ち絵）も同じバケットの `_templates/` 接頭辞に平文で置く
+# （目録 manifest.json ＋ 実体 webp・読み口は /game-templates/*・管理は /api/admin/templates＝staff だけ）。
+# user_id の接頭辞と衝突しないので退会 purge に巻き込まれない。stg は別バケットなので別々に投入する。
 [[r2_buckets]]
 binding = "MEDIA"
 bucket_name = "novel-studio-media"

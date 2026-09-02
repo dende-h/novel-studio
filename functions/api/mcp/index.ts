@@ -13,6 +13,7 @@ import { decryptPart, encryptPart, importKey } from '../_lib/crypto'
 import { resolveMcpAuth } from '../_lib/mcp-auth'
 import { handleMcpMessage, type McpDeps } from '../_lib/mcp-server'
 import { wwwAuthenticateBearer } from '../_lib/oauth-metadata'
+import { readTemplateManifest } from '../_lib/templates-store'
 
 interface Env {
   DB: D1Database
@@ -188,6 +189,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     createBackup: () => createBackup(env, userId),
     listBackups: () => listBackups(env, userId),
     restoreBackup: (id) => restoreBackup(env, userId, id),
+    loadTemplateManifest: () => readTemplateManifest(env.MEDIA),
     now: () => Date.now(),
     genId: () => crypto.randomUUID(),
   }

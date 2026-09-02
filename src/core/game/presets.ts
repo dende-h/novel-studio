@@ -1,9 +1,10 @@
 /**
- * 運営テンプレ背景（8場所 × 3時間帯 = 24枚。D-GAME-ASSET-SOURCE）。
+ * 組み込みのテンプレ背景（8場所 × 3時間帯 = 24枚。D-GAME-ASSET-SOURCE）。
  *
- * G0 は手続き的なグラデーション SVG で場所と時間帯の「空気」を出す。生成AIの本画像
- * （WebP 1280×720）が揃ったら、キーはそのままに実体ファイルだけ差し替える計画
- * （キー設計が契約、絵は中身）。SVG は数 KB なので zip をほぼ太らせない。
+ * 手続き的なグラデーション SVG で場所と時間帯の「空気」を出す。運営が管理ページから入れた
+ * 本画像（WebP 1280×720）は目録（templates.ts）経由で**同じキーに重なる**＝ここは画像が
+ * 入るまでの控えであり、旧作品の参照を壊さないための土台（キー設計が契約、絵は中身。
+ * D-GAME-TEMPLATE-CMS）。SVG は数 KB なので zip をほぼ太らせない。
  *
  * 素材の実体は正本 Work に埋めない（D-GAME-ASSET-STORE）。ここにあるのは
  * キーと生成規則だけで、zip へは書き出し時に必要な分だけ入る。
@@ -49,6 +50,14 @@ const TIMES: Array<{ time: GameTime; label: string }> = [
   { time: 'dusk', label: '夕' },
   { time: 'night', label: '夜' },
 ]
+
+/** 場所・時間帯の表示名。目録（templates.ts）の分類ラベルの既定値にも使う。 */
+export const PRESET_PLACE_LABELS: Record<GamePlace, string> = Object.fromEntries(
+  PLACES.map((p) => [p.place, p.label]),
+) as Record<GamePlace, string>
+export const PRESET_TIME_LABELS: Record<GameTime, string> = Object.fromEntries(
+  TIMES.map((t) => [t.time, t.label]),
+) as Record<GameTime, string>
 
 const TONES: Record<GamePlace, Record<GameTime, [string, string, string]>> = {
   room: {

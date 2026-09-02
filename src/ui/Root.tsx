@@ -42,6 +42,7 @@ import {
   usePenName,
   useSaveProfile,
 } from './hooks/use-pen-name'
+import { useIsStaff } from './hooks/use-staff'
 import {
   createDefaultActivityRepository,
   createDefaultGameAssetRepository,
@@ -65,6 +66,15 @@ const BoardPage = lazy(() =>
 const ThreadView = lazy(() =>
   import('./components/BoardPage/thread-view').then((m) => ({ default: m.ThreadView })),
 )
+/** 運営だけの管理ページ。staff 以外には入口も画面も出さないので、コードも遅延ロードで外に置く。 */
+const AdminTemplatesPage = lazy(() =>
+  import('./components/AdminTemplatesPage/admin-templates-page').then((m) => ({
+    default: m.AdminTemplatesPage,
+  })),
+)
+
+/** 運営テンプレの管理（`#/admin/templates`）。staff のときだけ描く（D-GAME-TEMPLATE-CMS）。 */
+const ADMIN_TEMPLATES_ROUTE = '/admin/templates'
 
 /** 掲示板スレッド詳細のハッシュ接頭辞（`#/board/<id>`）。 */
 const BOARD_THREAD_PREFIX = '/board/'
@@ -119,6 +129,8 @@ function RootRoutes({ store }: RootProps) {
   // 掲示板の表示名の初期候補に使うペンネーム（D-BOARD-NAME は「提案するだけ」）。
   // 購読は外側の `Root` が 1 回だけ行い、ここは配られた値を読む。
   const penName = usePenName()
+  // 運営か（管理ページの URL を開いたときだけ問い合わせる）。null は確定待ち
+  const isStaff = useIsStaff(route === ADMIN_TEMPLATES_ROUTE)
   // 初回のみ保存の仕組みを一度だけ説明する（思想の共有）。立てたら再表示しない。
   const [onboarded, markOnboarded] = useLocalFlag('ns-onboarded')
   const getTokenRef = useRef(getToken)
@@ -285,6 +297,18 @@ function RootRoutes({ store }: RootProps) {
 
   // 設定・ヘルプはサイドバー付き本体とは独立した一枚ものページ。認証・オンボーディングに関わらず
   // （狭い画面でも）到達できるよう、法務ページと同じくガードの手前に置く。
+  // 運営テンプレの管理。staff でなければ何も無かったことにして通常の入口へ倒す
+  //（存在を教えない）。確定するまでは読み込み中の受け皿
+  if (route === ADMIN_TEMPLATES_ROUTE && isStaff !== false) {
+    return isStaff === null ? (
+      <PageLoading />
+    ) : (
+      <Suspense fallback={<PageLoading />}>
+        <AdminTemplatesPage getToken={getTokenStable} />
+      </Suspense>
+    )
+  }
+
   if (route === '/settings') return <SettingsPage />
   if (route === '/help') return <HelpPage />
 

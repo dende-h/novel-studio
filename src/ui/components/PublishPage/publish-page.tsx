@@ -8,6 +8,7 @@ import {
   LoaderCircle,
 } from 'lucide-react'
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
+import { mergeBackgroundCatalog } from '@/core/game/templates'
 import {
   MAX_DESCRIPTION_LENGTH,
   PLATFORM_GENRES,
@@ -41,6 +42,11 @@ import { Label } from '@/ui/components/ui/label'
 import { Switch } from '@/ui/components/ui/switch'
 import { Textarea } from '@/ui/components/ui/textarea'
 import { createAssetHostingApi, pullHostedAssets } from '@/ui/game/asset-hosting'
+import {
+  loadTemplateCatalog,
+  resolveTemplateBackgrounds,
+  templateBgKeysOf,
+} from '@/ui/game/template-catalog'
 
 /** コトノハ-grove- 上での見え方。契約の `visibility` と同じ 2 値。 */
 type Visibility = 'draft' | 'public'
@@ -289,9 +295,30 @@ export function PublishPage({
         // ここを飛ばすと、その端末に無い背景・立ち絵が抜けたプレイヤーを公開してしまう
         //（作者から見れば「公開したら絵が消えた」になる）。取れなくても公開は止めない
         await pullHostedAssets(gameAssetRepo, createAssetHostingApi(getToken)).catch(() => null)
+        const stagings = await stagingRepo.listByWork(work.id)
+        // テンプレ背景の画像（目録にある分）は実体を取って、持ち込み素材と同じ形で載せる
+        //（契約 v5＝作品ぶん1回）。選んだ話が使う分だけ見る。取れなければ控えを送らず止める
+        //（先方は画像しか受け取らない＝tone の控えでは弾かれる）
+        const catalog = mergeBackgroundCatalog(await loadTemplateCatalog())
+        const templates = await resolveTemplateBackgrounds(
+          templateBgKeysOf(
+            stagings.filter((s) => novelGameEpisodeOf(novelGameEpisodes, s.episodeId)),
+          ),
+          catalog,
+          { fallback: 'none' },
+        )
+        if (templates.missing.length > 0) {
+          setResult({
+            ok: false,
+            message:
+              'テンプレ背景の画像を取得できませんでした。通信環境を確認して、もう一度お試しください',
+          })
+          setPending(false)
+          return
+        }
         gameInput = {
-          stagings: await stagingRepo.listByWork(work.id),
-          gameAssets: await gameAssetRepo.list(),
+          stagings,
+          gameAssets: [...(await gameAssetRepo.list()), ...templates.assets],
         }
       } else if (work.platform?.novelGame === true) {
         gameInput = { stagings: [], gameAssets: [], enabled: false }

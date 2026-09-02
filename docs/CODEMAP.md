@@ -40,6 +40,7 @@ Cloudflare Pages Functions
 | サウンドノベルの grove 公開（契約 v4）を変える | leaf 側は `src/ui/_api/publish.ts`（`attachEpisodeGames`＝話ごとのプレイヤー同梱・対象は作者が選んだ話だけ＝`novelGameEpisodeOf`・`GAME_FONT_HREF`。**素材の実体は作品ぶん1回**＝`work.gameAssets` と `buildNovelGamePlayer` の `asset:<id>` 参照・契約 v5）と公開ページの切り替え（`PublishPage` の話一覧にある行スイッチだけ＝作品ぜんたいの切り替えは無い・`WorkPlatform.novelGameEpisodes`／`novelGame` は前回載せたかの控え）。インライン書き出しは `src/core/exporter/toNovelGame.ts` の `buildNovelGameHtml`。grove 側は novel-platform の `kotonoha-bundle.ts` / `import-work.ts`（契約文書は先方の `novel-platform:docs/architecture/kotonoha-import-contract.md`） |
 | 立ち絵の登録・整理（誰に付けるか） | 演出エディタは `src/ui/components/StagingView/staging-view.tsx` の `renderSpriteEditor`（セリフの「話者」欄と地の文の「立ち絵の登場」欄で共用＝**喋らない人物にも付けられる**。出さない区間は cue の `hideSprite`＝一覧の「立ち絵なし」・解釈は `toNovelGame.ts` の `spritesHidden`）。図鑑からは `src/ui/components/GlossaryView/sprite-section.tsx`（人物ページの立ち絵欄）。正本はどちらも `gameAssetRepository.ts`（character/expression で紐づく） |
 | 持ち込み素材のクラウド保管（有料・枚数上限）を変える | API は `functions/api/game-assets.ts`、上限と判定は `src/core/game/assets.ts`（`HOSTED_ASSET_LIMIT` `hostedAssetVerdict`）、配線は `src/ui/game/asset-hosting.ts`（下り取り込み）、管理 UI は `src/ui/components/StagingView/asset-manager.tsx` |
+| **運営テンプレ（背景・立ち絵）の目録・管理ページ・配信**を変える（D-GAME-TEMPLATE-CMS） | 目録と合流は `src/core/game/templates.ts`（`TemplateManifest` `mergeBackgroundCatalog` `mergeSpriteCatalog` `parseTemplateFilename`＝**ファイル名がキー**・`applyTemplatePatch`）。画面へ配るのは `src/ui/game/template-catalog.ts`（`useTemplateCatalog` `resolveTemplateBackgrounds`＝書き出し・投稿へ画像を持ち込み素材と同じ経路で渡す・`setTemplateCatalog`）。一覧の部品は `StagingView/template-picker.tsx`。管理ページは `src/ui/components/AdminTemplatesPage/`（`#/admin/templates`・staff だけ・`use-staff.ts`）。サーバは読み口 `functions/game-templates/[[path]].ts` と管理 API `functions/api/admin/templates.ts`、R2 のキーは `functions/api/_lib/templates-store.ts`（`_templates/`）。組み込み SVG（`presets.ts` `spritePresets.ts`）は画像が入るまでの控え |
 | エディタの入力・ショートカット・サジェスト | `src/ui/components/EditorPane/` |
 | 保存・自動保存・undo・開いている作品の状態 | `src/ui/store/editorStore.ts` |
 | データの永続化・スキーマ移行 | `src/core/storage/*Repository.ts` |
@@ -82,7 +83,7 @@ Cloudflare Pages Functions
 | `plot/` | プロット（幕/ライン/ビート/伏線/秘密）＋**世界観設定**（`Plot.world`・作者専用） | `PlotSection` `PlotLine` `PlotBeat` `Foreshadow` `Secret` / `beatsInStoryOrder` `sectionOfBeat` `linesOfBeat` `foreshadowsOfBeat` `secretsHiddenAt` / `WorldNote` `WORLD_SLOTS` `WORLD_CUSTOM_SLOT` `worldNoteLabel` `worldNotesInOrder` `setWorldNote` `removeWorldNote` |
 | `structure/` | 構造レイヤー（outline/chart/mindmap）のノード・辺 | `StructureNode` `StructureEdge` `StructureKind` `emptyStructure` `addNode` `pickPrimaryStructure` |
 | `idea/` | ネタ帳のメモ | `IdeaNote` `normalizeIdeaText` |
-| `game/` | サウンドノベル化のドメイン（演出譜＝正本の外・blockId アンカー） | `Staging` `Cue` `AssetRef` / `classifyBlock` `toPages` `applyCues` `findOrphanCues` `suggestSceneBreaks` `suggestSpeaker` / テンプレ背景は `presets.ts`（`PRESET_BACKGROUNDS` `presetBgSvg` `buildGameCredits`）／テンプレ立ち絵（シルエット6種）は `spritePresets.ts`（`PRESET_SPRITES` `presetSpriteSvg`）／持ち込み素材（背景・立ち絵）は `assets.ts`（`UserGameAsset`＝data URL＋tone 3色・キーは `userAssetKey`＝`user:<id>`。立ち絵の選定 `pickSprite` `spriteExpressionsOf`、無料枠 `FREE_IMPORT_LIMIT` `importVerdict`、クラウド保管の上限 `HOSTED_ASSET_LIMIT` と判定 `hostedAssetVerdict` もここ）／合成SEレシピは `sePresets.ts`（`PRESET_SES` `presetSe` `seDuration`・キーは `preset:se/<名>`） |
+| `game/` | サウンドノベル化のドメイン（演出譜＝正本の外・blockId アンカー） | `Staging` `Cue` `AssetRef` / `classifyBlock` `toPages` `applyCues` `findOrphanCues` `suggestSceneBreaks` `suggestSpeaker` / テンプレ背景は `presets.ts`（`PRESET_BACKGROUNDS` `presetBgSvg` `buildGameCredits`・組み込み SVG＝画像が入るまでの控え）／テンプレ立ち絵（シルエット6種）は `spritePresets.ts`（`PRESET_SPRITES` `presetSpriteSvg`）／**運営テンプレの目録**は `templates.ts`（`TemplateManifest` `TemplateEntry` の Zod・`mergeBackgroundCatalog` `mergeSpriteCatalog`＝組み込みに目録を重ねる・`parseTemplateFilename` `parseTemplateTsv`・`templateAssetId`＝`tpl-<kind>-<slug>`・`templateUrl`・`applyTemplatePatch`・管理 API の入力 `TemplatePutInputSchema` `TemplatePatchInputSchema`）／持ち込み素材（背景・立ち絵）は `assets.ts`（`UserGameAsset`＝data URL＋tone 3色・キーは `userAssetKey`＝`user:<id>`、テンプレ由来の背景は `gameAssetKey` が `preset` のキーを返す。立ち絵の選定 `pickSprite` `spriteExpressionsOf`、無料枠 `FREE_IMPORT_LIMIT` `importVerdict`、クラウド保管の上限 `HOSTED_ASSET_LIMIT` と判定 `hostedAssetVerdict` もここ）／合成SEレシピは `sePresets.ts`（`PRESET_SES` `presetSe` `seDuration`・キーは `preset:se/<名>`） |
 | `profile/` | 作者プロフィール（ペンネーム・アバター）と、**アカウントとの突き合わせ**（`account.ts`）。どのアカウントの名前かの印は `profile` とは**別キー**（同期・バックアップに乗せない） | `Profile`（`penName` `avatar` `updatedAt`） `ProfileRepository`（+ `getAccountId` `saveAccountId`） / `penNameForAccount` `PenNameSync` |
 | `board/` | **掲示板の共有契約**（Zod）と純ロジック。詳細は下表 | `BOARD_KINDS` `BOARD_LIMITS` `BoardThread` `BoardPost` `PollResult` `LinkCard` `BoardThreadDetail` `ThreadListResponse` `BoardMeResponse` `ModerateInputSchema` ほか（`types.ts`） |
 
@@ -161,17 +162,19 @@ Cloudflare Pages Functions
 ### ルート（`src/ui/hooks/use-hash-route.ts`・`location.hash` が唯一の真実）
 `/` ライブラリ ・ `/write` 執筆 ・ `/publish` 公開 ・ `/activity` 執筆の記録 ・ `/ideas` ネタ帳
 ・ `/settings` ・ `/help` ・ `/plan` 同期の案内 ・ `/board` 掲示板 ・ `/board/<threadId>` スレ詳細
+・ `/admin/templates` 運営テンプレの管理（**staff だけ描く**・それ以外は通常の入口に倒す・`use-staff.ts`）
 
 ### 画面（`components/` — PascalCase ディレクトリ + kebab ファイル・1ファイル1コンポーネント）
 - **執筆**: `EditorPane/`（textarea + 記法バー + `@` サジェスト + 置換パネル）, `PreviewPane/`, `HistoryPanel/`
 - **作品管理**: `Library/`（カード/リスト・作品メニュー）, `TrashDialog/`, `WorkMetaDialog/`, `TitlePromptDialog/`
 - **用語集**: `GlossaryView/`（左：一覧／右：その場編集の二枚看板）, `GlossaryEntryForm/`（本文からのクイック作成・パネル編集用モーダル）, `GlossaryPeek/`
-- **構想の道具（無料アカウント登録で解禁・遅延ロード）**: `MindmapView/`, `CorrelationChartView/`, `OutlineView/`, `PlotView/`（`plot-view.tsx` ＋ 世界観設定タブ `world-view.tsx`）, `StructureCanvas/`, `StagingView/`（サウンドノベルの演出エディタ：行一覧＋話者/表情/背景/効果音/場面の切れ目・背景と立ち絵の持ち込み・素材の管理 `asset-manager.tsx`＝一覧/削除/クラウド保管）
+- **構想の道具（無料アカウント登録で解禁・遅延ロード）**: `MindmapView/`, `CorrelationChartView/`, `OutlineView/`, `PlotView/`（`plot-view.tsx` ＋ 世界観設定タブ `world-view.tsx`）, `StructureCanvas/`, `StagingView/`（サウンドノベルの演出エディタ：行一覧＋話者/表情/背景/効果音/場面の切れ目・背景と立ち絵の持ち込み・素材の管理 `asset-manager.tsx`＝一覧/削除/クラウド保管・テンプレの一覧 `template-picker.tsx`＝分類タブ＋サムネイル・書き出しと図鑑でも共用）
 - **執筆画面の右パネル（遅延ロードしない）**: `PlotPeek/`（この話のビート一覧 `plot-peek.tsx` ＋ 読み取り専用のビート詳細 `beat-detail.tsx`）
 - **入出力**: `ExportDialog/`, `ImportDialog/`, `BackupDialog/`, `CloudBackupDialog/`, `AiPullDialog/`
 - **同期/課金**: `SyncOnboarding/`, `SyncLostDialog/`, `RestoreGrace/`, `McpConnectDialog/`, `SaveStateIndicator/`, `BackupNudgeDialog/`
 - **掲示板（遅延ロード・未ログインでも読める）**: `BoardPage/`（`board-page.tsx` 一覧 ／ `thread-view.tsx` スレ詳細 ／ `thread-list.tsx` `board-body.tsx` `link-card.tsx` `poll-card.tsx` `name-dialog.tsx` `new-thread-dialog.tsx` `report-dialog.tsx` `staff-controls.tsx`）
-- **その他**: `ActivityPage/`, `IdeaboxPage/`, `PublishPage/`, `SettingsPage/`, `HelpPage/`, `ProfileDialog/`, `FirstRunDialog/`
+- **その他**: `ActivityPage/`, `IdeaboxPage/`, `PublishPage/`, `SettingsPage/`（staff には管理ページの入口）, `HelpPage/`, `ProfileDialog/`, `FirstRunDialog/`
+- **運営だけ（遅延ロード）**: `AdminTemplatesPage/`（テンプレ素材の管理：ドロップで一括投入＝ファイル名からキー・ブラウザで WebP/サムネ/tone・表示名/分類/時間帯/非表示・TSV の一括取り込み）
 - **共通**: `AppShell/`, `PageLayout/`, `SideNav/`, `TopAppBar/`, `Toast/`, `ConfirmDialog/`, `ErrorBoundary/`
 - `components/ui/` = shadcn/ui コピー品（**biome の lint 対象外**・手を入れない）→ 中身は次節のカタログ参照
 
@@ -242,12 +245,12 @@ Cloudflare Pages Functions
 ### 補助
 | ディレクトリ | 責務 |
 |---|---|
-| `_api/` | サーバ呼び出しの薄いクライアント（`sync` `backup` `billing` `publish` `author` `mcp` `board` `game-assets`） |
+| `_api/` | サーバ呼び出しの薄いクライアント（`sync` `backup` `billing` `publish` `author` `mcp` `board` `game-assets` `game-templates`＝目録/実体の取得と staff の管理 API） |
 | `_utils/` | 純関数（`caretCoordinates` `imageResizer` `exporters` `download` `format` `clipboard` `cover-tone`） |
-| `hooks/` | React ライフサイクル依存のみ（`use-autosave` `use-auto-sync` `use-auto-backup` `use-live-snapshot` `use-preferences` `use-narrow` `use-keyboard-inset` `use-pen-name` 等） |
+| `hooks/` | React ライフサイクル依存のみ（`use-autosave` `use-auto-sync` `use-auto-backup` `use-live-snapshot` `use-preferences` `use-narrow` `use-keyboard-inset` `use-pen-name` `use-staff`＝運営か・`enabled` のときだけ `/api/board/me` を見る 等） |
 | `sync/` | 同期クライアント。`src/ui/sync/sync-service.ts` が本体（約800行）・`sync-gate` `sync-status` `sync-touch` |
 | `src/ui/backup/backup-service.ts` | クラウド全体バックアップの実行 |
-| `game/` | 持ち込み素材のクラウド保管の配線（`asset-hosting.ts`＝API 結線と下り取り込み `pullHostedAssets`。ローカルが正・上りは追加時と明示操作のみ） |
+| `game/` | 持ち込み素材のクラウド保管の配線（`asset-hosting.ts`＝API 結線と下り取り込み `pullHostedAssets`。ローカルが正・上りは追加時と明示操作のみ）／運営テンプレの目録を画面へ配る `template-catalog.ts`（`useTemplateCatalog`＝アプリで1つの `useSyncExternalStore`・localStorage に控え、`templateBgSrc` `templateSpriteSrc`、`resolveTemplateBackgrounds`＝演出譜が指す目録の画像を実体ごと素材の形にして書き出し・投稿へ、`templateSpriteDataUrl`） |
 | `plot/` | プロットの表示ヘルパ（React 非依存・`beat-ui.ts` に `STATUS_UI` `LINE_PALETTE` `lineColorOf` `beatStripeColor` `plainOf` `fmtCount`）。プロット画面と執筆画面のパネルで色・表記を揃える |
 | `board/` | 掲示板の表示ヘルパ（React 非依存・`board-ui.ts` に `KIND_UI`／`STATUS_UI` の色・`kindOrder`・`creatableKindOrder(role)`・未読件数・抜粋） |
 | `structure/` | React Flow アダプタ（`flow-adapter` `tree-layout` `use-structure-flow` `ensure-structure`） |
@@ -271,6 +274,8 @@ Cloudflare Pages Functions
 | `POST /api/sync/activity` | 執筆記録の同期 |
 | `/api/backup` | クラウド全体バックアップ（セッション非依存） |
 | `/api/game-assets` | 持ち込みゲーム素材のクラウド保管（会員のみ・枚数/サイズ上限・暗号化）。GET=一覧/1件 / PUT / DELETE |
+| `/game-templates/*` | **運営テンプレの公開読み口**（認証なし・`/api/` の外＝SW がキャッシュする）。`manifest.json`（目録・max-age=300）／`<kind>/<slug>[.thumb].webp`（`?v=<hash>`・immutable）。実装は `functions/game-templates/[[path]].ts` |
+| `/api/admin/templates` | 運営テンプレの管理（**staff だけ・それ以外は 404**）。GET=目録 / PUT=`?kind=&slug=` 投入・置き換え / PATCH=表示名・分類・時間帯・並び・非表示・分類の表示名 / DELETE=非表示 |
 | `POST /api/hit` | 訪問者集計（Cookie なし） |
 | `/api/billing/{checkout,portal,status,reap}` | Stripe Checkout / Portal / 会員状態 / 未課金回収ジョブ |
 | `POST /api/webhooks/stripe` | Stripe webhook → D1 `subscriptions` にミラー |
@@ -291,7 +296,8 @@ Cloudflare Pages Functions
 `api/_lib/`: `auth`（Clerk 検証・`verifyMember`）, `membership`（**会員判定の単一の真実 = D1 `subscriptions`**）,
 `crypto`（at-rest 暗号化）, `mcp-server`（MCP プロトコル核・約1,100行）, `mcp-auth`, `mcp-token`,
 `oauth-metadata`, `oauth-upstream`（中継先 Clerk の取得）, `stripe`, `rate-limit`, `purge`, `visitor`,
-`board-store`（**掲示板の SQL はすべてここ**・行 ⇄ camelCase の変換も）, `board-link-fetch`（OGP の取得とキャッシュ）。
+`board-store`（**掲示板の SQL はすべてここ**・行 ⇄ camelCase の変換も）, `board-link-fetch`（OGP の取得とキャッシュ）,
+`staff`（`verifyStaff`＝運営の判定・`board_profiles.role`）, `templates-store`（運営テンプレの R2 キー `_templates/` と目録の読み書き）。
 
 掲示板の共通部品は `functions/api/board/board-endpoint.ts`（`boardJson`＝`private, no-store` 付きの応答、
 `rateLimitedResponse`＝分あたりの安全弁、`postQuotaExceeded`＝10件/時、`createPostRetrying`、`conflictResponse`）。

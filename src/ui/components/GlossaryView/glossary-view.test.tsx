@@ -6,6 +6,12 @@ import type { GlossaryEntry } from '@/core/schema'
 import type { GlossaryFormValues } from '@/ui/components/GlossaryEntryForm/glossary-entry-form'
 import { GlossaryView } from './glossary-view'
 
+// 立ち絵欄が目録を読みに行く（fetch）のを止める（happy-dom は実ネットワークへ出ようとする）
+vi.mock('@/ui/_api/game-templates', () => ({
+  fetchTemplateManifest: async () => null,
+  fetchTemplateBytes: async () => null,
+}))
+
 function entry(p: Partial<GlossaryEntry> & { id: string; name: string }): GlossaryEntry {
   return {
     id: p.id,

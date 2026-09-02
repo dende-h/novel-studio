@@ -3,6 +3,7 @@ import type { ComponentType } from 'react'
 import { cn } from '@/lib/utils'
 import { PageLayout } from '@/ui/components/PageLayout/page-layout'
 import { type ReadingSize, type Theme, usePreferences } from '@/ui/hooks/use-preferences'
+import { useIsStaff } from '@/ui/hooks/use-staff'
 
 interface SegmentedOption<T extends string> {
   value: T
@@ -85,6 +86,8 @@ const SIZE_OPTIONS: SegmentedOption<ReadingSize>[] = [
 /** 設定ページ（外観テーマ・本文の文字サイズ）。 */
 export function SettingsPage() {
   const { theme, readingSize, setTheme, setReadingSize } = usePreferences()
+  // 運営だけに管理ページの入口を出す（それ以外は何も出ない）
+  const staff = useIsStaff(true)
 
   return (
     <PageLayout
@@ -136,6 +139,18 @@ export function SettingsPage() {
             </p>
           </div>
         </div>
+
+        {staff ? (
+          <div>
+            <h2 className="mb-2.5 font-semibold font-serif text-[17px] text-on-surface">運営</h2>
+            <a
+              href="#/admin/templates"
+              className="text-[14px] text-primary underline-offset-2 hover:underline"
+            >
+              テンプレ素材の管理
+            </a>
+          </div>
+        ) : null}
       </section>
     </PageLayout>
   )

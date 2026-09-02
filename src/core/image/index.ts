@@ -68,3 +68,15 @@ export function decodeDataUrl(dataUrl: string): Uint8Array {
   for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i)
   return bytes
 }
+
+/**
+ * バイト列 → base64 の data URL（decodeDataUrl の逆）。一度に渡すと引数の上限に当たるので
+ * 分割して文字列にする（フォントの data URL 化と同じ理由）。
+ */
+export function bytesToDataUrl(bytes: Uint8Array, mime: string): string {
+  let binary = ''
+  for (let i = 0; i < bytes.length; i += 0x8000) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000))
+  }
+  return `data:${mime};base64,${btoa(binary)}`
+}

@@ -16,6 +16,7 @@ import {
 import { stagingToPlainText } from '../../../src/core/exporter/stagingToPlainText'
 import { structuresToPlainText } from '../../../src/core/exporter/structureToPlainText'
 import { glossaryToPlainText, workToPlainText } from '../../../src/core/exporter/toPlainText'
+import { catalogBackgroundKeys, type TemplateManifest } from '../../../src/core/game/templates'
 import {
   addEpisode,
   createWork,
@@ -636,6 +637,8 @@ export interface McpDeps {
   listBackups(): Promise<Array<{ id: string; createdAt: number }>>
   /** 指定バックアップの内容をライブに戻す。 */
   restoreBackup(id: string): Promise<boolean>
+  /** 運営テンプレの目録（背景キーの検証と get_staging の一覧に使う）。無ければ組み込みだけ */
+  loadTemplateManifest?(): Promise<TemplateManifest | null>
   now(): number
   genId(): string
 }
@@ -999,6 +1002,7 @@ async function callTool(
           parseStagingCueInputs(args?.cues),
           snap.gameAssets ?? [],
           now,
+          catalogBackgroundKeys((await deps.loadTemplateManifest?.()) ?? null),
         )
         next = { ...snap, stagings: res.stagings }
         message = `演出を保存しました（更新 ${res.applied} 行・外した演出 ${res.cleared} 件）。`
@@ -1032,7 +1036,15 @@ async function callTool(
       const staging = (snap?.stagings ?? []).find(
         (s) => s.workId === workId && s.episodeId === episodeId,
       )
-      return text(stagingToPlainText(work, episode, staging, snap?.gameAssets ?? []))
+      return text(
+        stagingToPlainText(
+          work,
+          episode,
+          staging,
+          snap?.gameAssets ?? [],
+          (await deps.loadTemplateManifest?.()) ?? null,
+        ),
+      )
     }
     // 本文・構造も「書き換える前に決め事を読む」の対象。1 行の導線を先頭に置く
     // （本体を載せると本文が長いので、取りに行かせる形にする）。

@@ -146,6 +146,37 @@ export async function gameSpriteToDataUrl(
   return { dataUrl, tone: [hex(0), hex(4), hex(8)] }
 }
 
+const TEMPLATE_THUMB_LONG_EDGE = 320
+const TEMPLATE_THUMB_QUALITY = 0.7
+
+/**
+ * 運営テンプレの一覧用サムネ：長辺 320（拡大なし）→ WebP data URL。
+ * 立ち絵（alpha）は透過を保ち、WebP 不可なら PNG。背景は白で平坦化し、不可なら JPEG。
+ */
+export async function templateThumbToDataUrl(
+  file: File,
+  opts: { alpha: boolean },
+): Promise<string> {
+  const img = await loadImage(file)
+  const { w, h } = dimsOf(img)
+  const fit = fitWithin(w, h, TEMPLATE_THUMB_LONG_EDGE)
+  const canvas = document.createElement('canvas')
+  canvas.width = fit.width
+  canvas.height = fit.height
+  const ctx = canvas.getContext('2d')
+  if (!ctx) throw new Error('canvas 2d コンテキストを取得できません')
+  if (!opts.alpha) {
+    ctx.fillStyle = '#ffffff'
+    ctx.fillRect(0, 0, fit.width, fit.height)
+  }
+  ctx.drawImage(img, 0, 0, fit.width, fit.height)
+  const dataUrl = canvas.toDataURL('image/webp', TEMPLATE_THUMB_QUALITY)
+  if (dataUrl.startsWith('data:image/webp')) return dataUrl
+  return opts.alpha
+    ? canvas.toDataURL('image/png')
+    : canvas.toDataURL('image/jpeg', TEMPLATE_THUMB_QUALITY)
+}
+
 /** 用語集サムネ：中央正方形クロップ 256×256（拡大なし）→ JPEG data URL。 */
 export async function thumbnailToDataUrl(file: File): Promise<string> {
   const img = await loadImage(file)

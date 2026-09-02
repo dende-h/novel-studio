@@ -9,6 +9,10 @@ import { ExportDialog } from './export-dialog'
 // ダウンロード発火とフォント取得はブラウザ API 依存なのでスタブ化する
 vi.mock('@/ui/_utils/download', () => ({ triggerDownload: vi.fn(), readFileText: vi.fn() }))
 vi.mock('@/ui/_utils/game-font', () => ({ loadGameFont: async () => undefined }))
+vi.mock('@/ui/_api/game-templates', () => ({
+  fetchTemplateManifest: async () => null,
+  fetchTemplateBytes: async () => null,
+}))
 
 import { triggerDownload } from '@/ui/_utils/download'
 
