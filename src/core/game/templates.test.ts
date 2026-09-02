@@ -9,11 +9,13 @@ import {
   EMPTY_TEMPLATE_MANIFEST,
   isTemplateSlug,
   mergeBackgroundCatalog,
+  mergeSeCatalog,
   mergeSpriteCatalog,
   parseTemplateFilename,
   parseTemplateKey,
   parseTemplateTsv,
   type TemplateEntry,
+  TemplateEntrySchema,
   type TemplateManifest,
   TemplateManifestSchema,
   templateAssetId,
@@ -93,8 +95,9 @@ describe('キー・id・URL', () => {
       kind: 'sprite',
       slug: 'silhouette-man',
     })
+    expect(parseTemplateKey('preset:se/rain')).toEqual({ kind: 'se', slug: 'rain' })
     expect(parseTemplateKey('user:abc')).toBeNull()
-    expect(parseTemplateKey('preset:se/rain')).toBeNull()
+    expect(parseTemplateKey('preset:bgm/calm')).toBeNull()
   })
 
   it('素材 id は tpl- 前置（枚数に数えない）で、同じ絵なら常に同じ', () => {
@@ -113,7 +116,7 @@ describe('キー・id・URL', () => {
 
 describe('表示名', () => {
   it('分類の表示名は 目録 → 組み込み → 語そのもの の順', () => {
-    const m = manifest([], { categories: { bg: { town: '街なか' }, sprite: {} } })
+    const m = manifest([], { categories: { bg: { town: '街なか' }, sprite: {}, se: {} } })
     expect(categoryLabelOf(m, 'bg', 'town')).toBe('街なか')
     expect(categoryLabelOf(null, 'bg', 'town')).toBe('街')
     expect(categoryLabelOf(null, 'sprite', 'woman')).toBe('女性')
@@ -140,15 +143,15 @@ describe('目録の検証（Zod）', () => {
   it('entries と categories は省略でき、空で埋まる', () => {
     const parsed = TemplateManifestSchema.parse({ v: 1 })
     expect(parsed.entries).toEqual([])
-    expect(parsed.categories).toEqual({ bg: {}, sprite: {} })
+    expect(parsed.categories).toEqual({ bg: {}, sprite: {}, se: {} })
   })
 
-  it('tone は #rrggbb だけ（SVG に埋める値なので形を縛る）', () => {
-    const bad = TemplateManifestSchema.safeParse({
-      v: 1,
-      entries: [entry({ kind: 'bg', slug: 'x', tone: ['red', '#000000', '#000000'] })],
-    })
-    expect(bad.success).toBe(false)
+  it('tone は #rrggbb だけ（SVG に埋める値なので形を縛る）。壊れた項目は目録から落ちる', () => {
+    const badEntry = entry({ kind: 'bg', slug: 'x', tone: ['red', '#000000', '#000000'] })
+    expect(TemplateEntrySchema.safeParse(badEntry).success).toBe(false)
+    const parsed = TemplateManifestSchema.safeParse({ v: 1, entries: [badEntry] })
+    expect(parsed.success).toBe(true)
+    expect(parsed.success && parsed.data.entries).toEqual([])
   })
 })
 
@@ -269,5 +272,64 @@ describe('parseTemplateTsv（表示名の一括取り込み）', () => {
       { kind: 'sprite', slug: 'silhouette-woman', label: 'シルエット（女性）' },
     ])
     expect(skipped).toHaveLength(1)
+  })
+})
+
+describe('効果音（kind se）', () => {
+  it('音声の拡張子なら効果音。分類は先頭の語、既定の表示名は分類を除いた語', () => {
+    expect(parseTemplateFilename('weather-rain-heavy.mp3')).toEqual({
+      kind: 'se',
+      slug: 'weather-rain-heavy',
+      category: 'weather',
+    })
+    expect(parseTemplateFilename('KNOCK.M4A')).toEqual({
+      kind: 'se',
+      slug: 'knock',
+      category: 'knock',
+    })
+    expect(
+      defaultTemplateLabel({ kind: 'se', slug: 'weather-rain-heavy', category: 'weather' }, '天気'),
+    ).toBe('rain heavy')
+    expect(defaultTemplateLabel({ kind: 'se', slug: 'knock', category: 'knock' }, 'knock')).toBe(
+      'knock',
+    )
+  })
+
+  it('組み込みの合成 8 種は分類 synth の控え。同じ slug のファイルが入れば実体が差し替わる', () => {
+    const none = mergeSeCatalog(null)
+    expect(none).toHaveLength(8)
+    expect(none.every((s) => s.builtin && !s.entry && s.category === 'synth')).toBe(true)
+    expect(categoryLabelOf(null, 'se', 'synth')).toBe('合成')
+
+    const file = entry({ kind: 'se', slug: 'rain', mime: 'audio/mpeg', durationMs: 3000 })
+    const list = mergeSeCatalog(manifest([file, entry({ kind: 'se', slug: 'door-knock' })]))
+    const rain = list.find((s) => s.key === 'preset:se/rain')
+    expect(rain?.entry).toBe(file)
+    expect(rain?.builtin).toBeDefined()
+    expect(rain?.durationMs).toBe(3000)
+    expect(list[list.length - 1]?.key).toBe('preset:se/door-knock')
+    expect(list[list.length - 1]?.builtin).toBeUndefined()
+  })
+
+  it('URL の拡張子は MIME から（音声は mp3・サムネは thumbMime）', () => {
+    expect(templateUrl(entry({ kind: 'se', slug: 'rain', mime: 'audio/mpeg', hash: 'h' }))).toBe(
+      '/game-templates/se/rain.mp3?v=h',
+    )
+    expect(
+      templateUrl(
+        entry({ kind: 'bg', slug: 'x', mime: 'image/webp', thumbMime: 'image/png', hash: 'h' }),
+        'thumb',
+      ),
+    ).toBe('/game-templates/bg/x.thumb.png?v=h')
+  })
+})
+
+describe('目録の寛容な読み方', () => {
+  it('読めない項目（将来の kind など）は落として、残りは使う', () => {
+    const parsed = TemplateManifestSchema.parse({
+      v: 1,
+      entries: [entry({ kind: 'bg', slug: 'a-day' }), { kind: 'bgm', slug: 'x' }, 'garbage'],
+    })
+    expect(parsed.entries.map((e) => e.slug)).toEqual(['a-day'])
   })
 })

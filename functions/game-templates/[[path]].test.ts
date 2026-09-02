@@ -15,18 +15,27 @@ describe('parseTemplateObjectPath', () => {
       kind: 'bg',
       slug: 'room-day',
       thumb: false,
+      ext: 'webp',
     })
-    expect(parseTemplateObjectPath('sprite/silhouette-woman.thumb.webp')).toEqual({
+    expect(parseTemplateObjectPath('sprite/silhouette-woman.thumb.png')).toEqual({
       kind: 'sprite',
       slug: 'silhouette-woman',
       thumb: true,
+      ext: 'png',
+    })
+    expect(parseTemplateObjectPath('se/weather-rain.mp3')).toEqual({
+      kind: 'se',
+      slug: 'weather-rain',
+      thumb: false,
+      ext: 'mp3',
     })
   })
 
-  it('種別違い・slug の形違い・拡張子違いは null', () => {
-    expect(parseTemplateObjectPath('se/rain.webp')).toBeNull()
+  it('種別違い・slug の形違い・知らない拡張子・効果音のサムネは null', () => {
+    expect(parseTemplateObjectPath('bgm/rain.mp3')).toBeNull()
     expect(parseTemplateObjectPath('bg/Room-Day.webp')).toBeNull()
-    expect(parseTemplateObjectPath('bg/room-day.png')).toBeNull()
+    expect(parseTemplateObjectPath('bg/room-day.gif')).toBeNull()
+    expect(parseTemplateObjectPath('se/rain.thumb.mp3')).toBeNull()
     expect(parseTemplateObjectPath('bg/../manifest.json')).toBeNull()
   })
 })
@@ -62,6 +71,14 @@ describe('GET /game-templates/*', () => {
     const miss = await call({ MEDIA: bucket }, 'https://x/game-templates/bg/room-night.webp')
     expect(miss.status).toBe(404)
     expect(miss.headers.get('cache-control')).toBe('no-store')
+  })
+
+  it('効果音は mp3 のキーから返す（content-type は audio）', async () => {
+    const { bucket, objects } = makeFakeR2()
+    objects.set(templateObjectKey('se', 'weather-rain', 'full', 'mp3'), new Uint8Array([9]))
+    const hit = await call({ MEDIA: bucket }, 'https://x/game-templates/se/weather-rain.mp3?v=a')
+    expect(hit.status).toBe(200)
+    expect(hit.headers.get('content-type')).toBe('audio/mpeg')
   })
 
   it('形の違うパスと GET 以外は通さない', async () => {

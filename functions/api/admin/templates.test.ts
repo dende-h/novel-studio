@@ -43,6 +43,7 @@ const call = (handler: Handler, env: unknown, request: Request): Promise<Respons
 const BASE = 'https://x/api/admin/templates'
 const auth = { authorization: 'Bearer x', 'content-type': 'application/json' }
 const WEBP = 'data:image/webp;base64,UklGRg=='
+const MP3 = 'data:audio/mpeg;base64,SUQzBAA='
 const TONE: [string, string, string] = ['#111111', '#222222', '#333333']
 
 const put = (kind: string, slug: string, body: unknown) =>
@@ -139,6 +140,54 @@ describe('GET / PUT / PATCH / DELETE（staff）', () => {
     expect(m.entries).toHaveLength(1)
     expect(m.entries[0]).toMatchObject({ label: '部屋', category: 'room', mime: 'image/png' })
     expect(m.entries[0]?.thumbHash).toBeUndefined()
+    // 拡張子が変わったので旧キー（.webp）は消え、新キー（.png）だけ残る
+    expect(objects.has(templateObjectKey('bg', 'room-day', 'full', 'webp'))).toBe(false)
+    expect(objects.has(templateObjectKey('bg', 'room-day', 'full', 'png'))).toBe(true)
+  })
+
+  it('効果音は mp3/m4a の data URL を受け、長さを持ち、時間帯とサムネは持たない', async () => {
+    const { env, objects } = makeEnv()
+    const res = await call(
+      onRequestPut,
+      env,
+      put('se', 'weather-rain-heavy', {
+        dataUrl: MP3,
+        durationMs: 4200,
+        label: '強い雨',
+      }),
+    )
+    expect(res.status).toBe(200)
+    const m = await manifestOf(objects)
+    expect(m.entries[0]).toMatchObject({
+      kind: 'se',
+      slug: 'weather-rain-heavy',
+      label: '強い雨',
+      category: 'weather',
+      mime: 'audio/mpeg',
+      durationMs: 4200,
+      tone: ['#000000', '#000000', '#000000'],
+    })
+    expect(m.entries[0]?.time).toBeUndefined()
+    expect(objects.has(templateObjectKey('se', 'weather-rain-heavy', 'full', 'mp3'))).toBe(true)
+  })
+
+  it('種別と中身が合わないものは弾く（効果音に画像・背景に音声・wav）', async () => {
+    const { env } = makeEnv()
+    expect((await call(onRequestPut, env, put('se', 'door-knock', { dataUrl: WEBP }))).status).toBe(
+      400,
+    )
+    expect(
+      (await call(onRequestPut, env, put('bg', 'room-day', { dataUrl: MP3, tone: TONE }))).status,
+    ).toBe(400)
+    expect(
+      (
+        await call(
+          onRequestPut,
+          env,
+          put('se', 'door-knock', { dataUrl: 'data:audio/wav;base64,UklGRg==' }),
+        )
+      ).status,
+    ).toBe(400)
   })
 
   it('立ち絵は時間帯を持たない', async () => {

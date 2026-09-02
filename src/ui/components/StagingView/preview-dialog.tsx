@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { buildNovelGameHtml } from '@/core/exporter/toNovelGame'
 import type { Staging } from '@/core/game'
 import type { UserGameAsset } from '@/core/game/assets'
-import type { CatalogBackground } from '@/core/game/templates'
+import type { CatalogBackground, CatalogSe } from '@/core/game/templates'
 import type { Episode, Work } from '@/core/schema'
 import { loadGameFontDataUrl } from '@/ui/_utils/game-font'
 import {
@@ -13,7 +13,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/ui/components/ui/dialog'
-import { resolveTemplateBackgrounds, templateBgKeysOf } from '@/ui/game/template-catalog'
+import {
+  resolveTemplateBackgrounds,
+  resolveTemplateSes,
+  templateBgKeysOf,
+  templateSeKeysOf,
+} from '@/ui/game/template-catalog'
 
 /**
  * 演出のプレビュー（アプリ内で遊べる・書き出しや投稿を待たない）。
@@ -30,6 +35,7 @@ export function StagingPreviewDialog({
   staging,
   gameAssets,
   templateBackgrounds = [],
+  templateSes = [],
   startAt,
 }: {
   open: boolean
@@ -40,6 +46,8 @@ export function StagingPreviewDialog({
   gameAssets: UserGameAsset[]
   /** 運営テンプレの一覧（目録の画像があれば実体を取って同梱する。無ければ組み込み SVG） */
   templateBackgrounds?: readonly CatalogBackground[]
+  /** 運営テンプレの効果音（目録の音声ファイルがあれば実体を取って同梱する。無ければ合成） */
+  templateSes?: readonly CatalogSe[]
   /** この行から始める（省略＝タイトル画面から）。 */
   startAt?: number
 }) {
@@ -59,13 +67,16 @@ export function StagingPreviewDialog({
       resolveTemplateBackgrounds(templateBgKeysOf(staging ? [staging] : []), templateBackgrounds, {
         fallback: 'gradient',
       }).catch(() => ({ assets: [] })),
-    ]).then(([fontHref, tpl]) => {
+      resolveTemplateSes(templateSeKeysOf(staging ? [staging] : []), templateSes, {
+        fallback: 'omit',
+      }).catch(() => ({ assets: [] })),
+    ]).then(([fontHref, tpl, tplSe]) => {
       if (!alive) return
       try {
         setHtml(
           buildNovelGameHtml(work, episode, staging, {
             ...(fontHref ? { fontHref } : {}),
-            gameAssets: [...gameAssets, ...tpl.assets],
+            gameAssets: [...gameAssets, ...tpl.assets, ...tplSe.assets],
             ...(startAt !== undefined ? { startAt } : {}),
           }),
         )
@@ -76,7 +87,7 @@ export function StagingPreviewDialog({
     return () => {
       alive = false
     }
-  }, [open, work, episode, staging, gameAssets, templateBackgrounds, startAt])
+  }, [open, work, episode, staging, gameAssets, templateBackgrounds, templateSes, startAt])
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

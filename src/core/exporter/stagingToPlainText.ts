@@ -9,8 +9,12 @@ import {
 } from '../game'
 import type { UserGameAsset } from '../game/assets'
 import { DEFAULT_EXPRESSION, spriteExpressionsOf, userAssetKey } from '../game/assets'
-import { PRESET_SES } from '../game/sePresets'
-import { mergeBackgroundCatalog, type TemplateManifest, visibleTemplates } from '../game/templates'
+import {
+  mergeBackgroundCatalog,
+  mergeSeCatalog,
+  type TemplateManifest,
+  visibleTemplates,
+} from '../game/templates'
 import type { Episode, Work } from '../schema'
 
 /**
@@ -94,7 +98,7 @@ export function stagingToPlainText(
     [
       '使える効果音（se）キー（その行の表示と同時に鳴る。',
       'se_repeat: once（既定）/ twice / loop。loop は次の場面の切れ目か se: "stop" まで続く）:',
-      ...PRESET_SES.map((p) => `- ${p.key} … ${p.label}`),
+      ...visibleTemplates(mergeSeCatalog(templates)).map((p) => `- ${p.key} … ${p.label}`),
       '- stop … 鳴っている環境音をここで止める（レシピは持たない予約キー）',
     ].join('\n'),
   )

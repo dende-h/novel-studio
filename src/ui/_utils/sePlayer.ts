@@ -1,4 +1,5 @@
 import { type PresetSe, presetSe, type SeRepeat, seDuration } from '@/core/game/sePresets'
+import { type CatalogSe, templateUrl } from '@/core/game/templates'
 
 /**
  * 効果音レシピ（core/game/sePresets）の試聴用インタプリタ（DOM/Web Audio 依存）。
@@ -84,4 +85,52 @@ function scheduleSe(ac: AudioContext, se: PresetSe, base: number): void {
     src.start(t0)
     src.stop(t0 + s.d + 0.05)
   }
+}
+
+// ---------------------------------------------------------------------------
+// 音声ファイルの効果音（運営テンプレの目録にある実体）
+// ---------------------------------------------------------------------------
+
+const fileBuffers = new Map<string, Promise<AudioBuffer | null>>()
+
+/** 音声ファイルを取って復号する（同じ URL は 1 回）。失敗は null（次の試聴でもう一度取る）。 */
+function loadFileBuffer(ac: AudioContext, url: string): Promise<AudioBuffer | null> {
+  let p = fileBuffers.get(url)
+  if (!p) {
+    p = fetch(url)
+      .then((r) => (r.ok ? r.arrayBuffer() : Promise.reject(new Error(String(r.status)))))
+      .then((ab) => ac.decodeAudioData(ab))
+      .catch(() => {
+        fileBuffers.delete(url)
+        return null
+      })
+    fileBuffers.set(url, p)
+  }
+  return p
+}
+
+/** 音声ファイルの試聴。鳴らし方は合成と同じ規則（ループは 3 回ぶんで止める）。 */
+export async function playSeFile(url: string, repeat?: SeRepeat): Promise<void> {
+  const ac = ensureAudio()
+  if (!ac) return
+  const buf = await loadFileBuffer(ac, url)
+  if (!buf) return
+  const times = repeat === 'loop' ? LOOP_PREVIEW_TIMES : repeat === 2 ? 2 : 1
+  let at = ac.currentTime + 0.02
+  for (let n = 0; n < times; n++) {
+    const src = ac.createBufferSource()
+    src.buffer = buf
+    src.connect(ac.destination)
+    src.start(at)
+    at += buf.duration
+  }
+}
+
+/** 目録の効果音を試聴する（音声ファイルがあればそれ、無ければ組み込みの合成レシピ）。 */
+export function playCatalogSe(se: CatalogSe, repeat?: SeRepeat): void {
+  if (se.entry) {
+    void playSeFile(templateUrl(se.entry), repeat)
+    return
+  }
+  playPresetSe(se.key, repeat)
 }

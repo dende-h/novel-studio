@@ -36,11 +36,11 @@ Cloudflare Pages Functions
 | プレビューのマークダウン（見出し・リスト・表・引用）を変える | `src/core/markdown/index.ts`（本文は非対応。効くのはプロット・世界観・用語集の記法つき欄） |
 | 書き出し（EPUB/なろう/カクヨム/HTML）の出力を変える | `src/core/exporter/` 配下（形式ごとに1ファイル） |
 | サウンドノベル書き出し（ゲーム化・演出譜）を変える | `src/core/game/`（判別・演出譜・テンプレ背景・持ち込み背景・`continuity.ts`＝「この行で何が効いているか」の解決）+ `src/core/exporter/toNovelGame.ts`（プレイヤー本体は `novelGamePlayer.ts`）。演出エディタは `src/ui/components/StagingView/`（欄の説明は `field-helps.tsx`、アプリ内プレビューは `preview-dialog.tsx`＝`buildNovelGameHtml` を sandbox iframe に流し込む・`startAt` でその行から）、永続化は `src/core/storage/stagingRepository.ts`（演出譜）と `gameAssetRepository.ts`（持ち込み背景） |
-| サウンドノベルの効果音（合成SE・素材ファイル無し）を変える | レシピは `src/core/game/sePresets.ts`（`PRESET_SES` `presetSe`・鳴らし方は `Cue.seRepeat`＝1回/2回/ループ・止めるのは予約キー `SE_STOP`）。解釈はプレイヤー（`novelGamePlayer.ts` の `playSe`）とアプリ試聴 `src/ui/_utils/sePlayer.ts` の2箇所——**両方を同時に直す** |
-| サウンドノベルの grove 公開（契約 v4）を変える | leaf 側は `src/ui/_api/publish.ts`（`attachEpisodeGames`＝話ごとのプレイヤー同梱・対象は作者が選んだ話だけ＝`novelGameEpisodeOf`・`GAME_FONT_HREF`。**素材の実体は作品ぶん1回**＝`work.gameAssets` と `buildNovelGamePlayer` の `asset:<id>` 参照・契約 v5）と公開ページの切り替え（`PublishPage` の話一覧にある行スイッチだけ＝作品ぜんたいの切り替えは無い・`WorkPlatform.novelGameEpisodes`／`novelGame` は前回載せたかの控え）。インライン書き出しは `src/core/exporter/toNovelGame.ts` の `buildNovelGameHtml`。grove 側は novel-platform の `kotonoha-bundle.ts` / `import-work.ts`（契約文書は先方の `novel-platform:docs/architecture/kotonoha-import-contract.md`） |
+| サウンドノベルの効果音（合成SE＋運営テンプレの音声ファイル）を変える | 合成レシピは `src/core/game/sePresets.ts`（`PRESET_SES` `presetSe`・鳴らし方は `Cue.seRepeat`＝1回/2回/ループ・止めるのは予約キー `SE_STOP`）。音声ファイル（目録 kind `se`・mp3/m4a）は `templates.ts` の `mergeSeCatalog` で合成に重なり、exporter がシナリオ `ses[key]` を `{steps}`（合成）か `{src}`（ファイル・zip は `assets/se/<slug>.mp3`・投稿は契約 v6 の `asset:<id>`）で載せる。解釈はプレイヤー（`novelGamePlayer.ts` の `playSe` `startLoopSe`＝`src` は fetch→decodeAudioData）とアプリ試聴 `src/ui/_utils/sePlayer.ts`（`playCatalogSe`）の2箇所——**両方を同時に直す** |
+| サウンドノベルの grove 公開（契約 v4〜v6）を変える | leaf 側は `src/ui/_api/publish.ts`（`attachEpisodeGames`＝話ごとのプレイヤー同梱・対象は作者が選んだ話だけ＝`novelGameEpisodeOf`・`GAME_FONT_HREF`。**素材の実体は作品ぶん1回**＝`work.gameAssets` と `buildNovelGamePlayer` の `asset:<id>` 参照・契約 v5。音声（効果音ファイル）を載せるときだけ v6）と公開ページの切り替え（`PublishPage` の話一覧にある行スイッチだけ＝作品ぜんたいの切り替えは無い・`WorkPlatform.novelGameEpisodes`／`novelGame` は前回載せたかの控え）。インライン書き出しは `src/core/exporter/toNovelGame.ts` の `buildNovelGameHtml`。grove 側は novel-platform の `kotonoha-bundle.ts` / `import-work.ts`（契約文書は先方の `novel-platform:docs/architecture/kotonoha-import-contract.md`） |
 | 立ち絵の登録・整理（誰に付けるか） | 演出エディタは `src/ui/components/StagingView/staging-view.tsx` の `renderSpriteEditor`（セリフの「話者」欄と地の文の「立ち絵の登場」欄で共用＝**喋らない人物にも付けられる**。出さない区間は cue の `hideSprite`＝一覧の「立ち絵なし」・解釈は `toNovelGame.ts` の `spritesHidden`）。図鑑からは `src/ui/components/GlossaryView/sprite-section.tsx`（人物ページの立ち絵欄）。正本はどちらも `gameAssetRepository.ts`（character/expression で紐づく） |
 | 持ち込み素材のクラウド保管（有料・枚数上限）を変える | API は `functions/api/game-assets.ts`、上限と判定は `src/core/game/assets.ts`（`HOSTED_ASSET_LIMIT` `hostedAssetVerdict`）、配線は `src/ui/game/asset-hosting.ts`（下り取り込み）、管理 UI は `src/ui/components/StagingView/asset-manager.tsx` |
-| **運営テンプレ（背景・立ち絵）の目録・管理ページ・配信**を変える（D-GAME-TEMPLATE-CMS） | 目録と合流は `src/core/game/templates.ts`（`TemplateManifest` `mergeBackgroundCatalog` `mergeSpriteCatalog` `parseTemplateFilename`＝**ファイル名がキー**・`applyTemplatePatch`）。画面へ配るのは `src/ui/game/template-catalog.ts`（`useTemplateCatalog` `resolveTemplateBackgrounds`＝書き出し・投稿へ画像を持ち込み素材と同じ経路で渡す・`setTemplateCatalog`）。一覧の部品は `StagingView/template-picker.tsx`。管理ページは `src/ui/components/AdminTemplatesPage/`（`#/admin/templates`・staff だけ・`use-staff.ts`）。サーバは読み口 `functions/game-templates/[[path]].ts` と管理 API `functions/api/admin/templates.ts`、R2 のキーは `functions/api/_lib/templates-store.ts`（`_templates/`）。組み込み SVG（`presets.ts` `spritePresets.ts`）は画像が入るまでの控え |
+| **運営テンプレ（背景・立ち絵・効果音）の目録・管理ページ・配信**を変える（D-GAME-TEMPLATE-CMS） | 目録と合流は `src/core/game/templates.ts`（`TemplateManifest` `mergeBackgroundCatalog` `mergeSpriteCatalog` `mergeSeCatalog` `parseTemplateFilename`＝**ファイル名がキー**（画像は kind bg/sprite・音声の拡張子は se）・`applyTemplatePatch`・読み方は寛容＝読めない項目を落とす）。画面へ配るのは `src/ui/game/template-catalog.ts`（`useTemplateCatalog` `resolveTemplateBackgrounds`＝書き出し・投稿へ画像を持ち込み素材と同じ経路で渡す・`setTemplateCatalog`）。一覧の部品は `StagingView/template-picker.tsx`。管理ページは `src/ui/components/AdminTemplatesPage/`（`#/admin/templates`・staff だけ・`use-staff.ts`）。サーバは読み口 `functions/game-templates/[[path]].ts` と管理 API `functions/api/admin/templates.ts`、R2 のキーは `functions/api/_lib/templates-store.ts`（`_templates/`）。組み込み SVG（`presets.ts` `spritePresets.ts`）は画像が入るまでの控え |
 | エディタの入力・ショートカット・サジェスト | `src/ui/components/EditorPane/` |
 | 保存・自動保存・undo・開いている作品の状態 | `src/ui/store/editorStore.ts` |
 | データの永続化・スキーマ移行 | `src/core/storage/*Repository.ts` |
@@ -174,7 +174,7 @@ Cloudflare Pages Functions
 - **同期/課金**: `SyncOnboarding/`, `SyncLostDialog/`, `RestoreGrace/`, `McpConnectDialog/`, `SaveStateIndicator/`, `BackupNudgeDialog/`
 - **掲示板（遅延ロード・未ログインでも読める）**: `BoardPage/`（`board-page.tsx` 一覧 ／ `thread-view.tsx` スレ詳細 ／ `thread-list.tsx` `board-body.tsx` `link-card.tsx` `poll-card.tsx` `name-dialog.tsx` `new-thread-dialog.tsx` `report-dialog.tsx` `staff-controls.tsx`）
 - **その他**: `ActivityPage/`, `IdeaboxPage/`, `PublishPage/`, `SettingsPage/`（staff には管理ページの入口）, `HelpPage/`, `ProfileDialog/`, `FirstRunDialog/`
-- **運営だけ（遅延ロード）**: `AdminTemplatesPage/`（テンプレ素材の管理：ドロップで一括投入＝ファイル名からキー・ブラウザで WebP/サムネ/tone・表示名/分類/時間帯/非表示・TSV の一括取り込み）
+- **運営だけ（遅延ロード）**: `AdminTemplatesPage/`（テンプレ素材の管理：背景・立ち絵・効果音のタブ。ドロップで一括投入＝ファイル名からキー・画像はブラウザで WebP/サムネ/tone・音声はそのまま長さだけ測る・表示名/分類/時間帯/非表示・TSV の一括取り込み・効果音は試聴）
 - **共通**: `AppShell/`, `PageLayout/`, `SideNav/`, `TopAppBar/`, `Toast/`, `ConfirmDialog/`, `ErrorBoundary/`
 - `components/ui/` = shadcn/ui コピー品（**biome の lint 対象外**・手を入れない）→ 中身は次節のカタログ参照
 
@@ -246,7 +246,7 @@ Cloudflare Pages Functions
 | ディレクトリ | 責務 |
 |---|---|
 | `_api/` | サーバ呼び出しの薄いクライアント（`sync` `backup` `billing` `publish` `author` `mcp` `board` `game-assets` `game-templates`＝目録/実体の取得と staff の管理 API） |
-| `_utils/` | 純関数（`caretCoordinates` `imageResizer` `exporters` `download` `format` `clipboard` `cover-tone`） |
+| `_utils/` | 純関数（`caretCoordinates` `imageResizer` `exporters` `download` `format` `clipboard` `cover-tone` `audioMeta`＝効果音ファイルの data URL 化と長さ計測・`sePlayer`＝効果音の試聴） |
 | `hooks/` | React ライフサイクル依存のみ（`use-autosave` `use-auto-sync` `use-auto-backup` `use-live-snapshot` `use-preferences` `use-narrow` `use-keyboard-inset` `use-pen-name` `use-staff`＝運営か・`enabled` のときだけ `/api/board/me` を見る 等） |
 | `sync/` | 同期クライアント。`src/ui/sync/sync-service.ts` が本体（約800行）・`sync-gate` `sync-status` `sync-touch` |
 | `src/ui/backup/backup-service.ts` | クラウド全体バックアップの実行 |
@@ -274,8 +274,8 @@ Cloudflare Pages Functions
 | `POST /api/sync/activity` | 執筆記録の同期 |
 | `/api/backup` | クラウド全体バックアップ（セッション非依存） |
 | `/api/game-assets` | 持ち込みゲーム素材のクラウド保管（会員のみ・枚数/サイズ上限・暗号化）。GET=一覧/1件 / PUT / DELETE |
-| `/game-templates/*` | **運営テンプレの公開読み口**（認証なし・`/api/` の外＝SW がキャッシュする）。`manifest.json`（目録・max-age=300）／`<kind>/<slug>[.thumb].webp`（`?v=<hash>`・immutable）。実装は `functions/game-templates/[[path]].ts` |
-| `/api/admin/templates` | 運営テンプレの管理（**staff だけ・それ以外は 404**）。GET=目録 / PUT=`?kind=&slug=` 投入・置き換え / PATCH=表示名・分類・時間帯・並び・非表示・分類の表示名 / DELETE=非表示 |
+| `/game-templates/*` | **運営テンプレの公開読み口**（認証なし・`/api/` の外＝SW がキャッシュする）。`manifest.json`（目録・max-age=300）／`<kind>/<slug>[.thumb].<ext>`（ext は MIME から＝webp/png/jpg/mp3/m4a・`?v=<hash>`・immutable）。実装は `functions/game-templates/[[path]].ts` |
+| `/api/admin/templates` | 運営テンプレの管理（**staff だけ・それ以外は 404**）。GET=目録 / PUT=`?kind=&slug=` 投入・置き換え（kind bg/sprite は画像 1.5MB＋サムネ、se は mp3/m4a 2MB＋長さ） / PATCH=表示名・分類・時間帯・並び・非表示・分類の表示名 / DELETE=非表示 |
 | `POST /api/hit` | 訪問者集計（Cookie なし） |
 | `/api/billing/{checkout,portal,status,reap}` | Stripe Checkout / Portal / 会員状態 / 未課金回収ジョブ |
 | `POST /api/webhooks/stripe` | Stripe webhook → D1 `subscriptions` にミラー |

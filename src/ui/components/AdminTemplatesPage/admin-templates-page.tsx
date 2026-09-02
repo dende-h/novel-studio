@@ -1,13 +1,15 @@
-import { ImagePlus, Save } from 'lucide-react'
+import { ImagePlus, Play, Save } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { GameTime } from '@/core/game/presets'
 import {
   type CatalogBackground,
+  type CatalogSe,
   type CatalogSprite,
   categoriesOf,
   categoryLabelOf,
   defaultTemplateLabel,
   mergeBackgroundCatalog,
+  mergeSeCatalog,
   mergeSpriteCatalog,
   parseTemplateFilename,
   parseTemplateTsv,
@@ -24,11 +26,13 @@ import {
   adminPatchTemplates,
   adminPutTemplate,
 } from '@/ui/_api/game-templates'
+import { audioDurationMs, audioFileToDataUrl } from '@/ui/_utils/audioMeta'
 import {
   gameBgToDataUrl,
   gameSpriteToDataUrl,
   templateThumbToDataUrl,
 } from '@/ui/_utils/imageResizer'
+import { playCatalogSe } from '@/ui/_utils/sePlayer'
 import { PageLayout } from '@/ui/components/PageLayout/page-layout'
 import { Button } from '@/ui/components/ui/button'
 import { Input } from '@/ui/components/ui/input'
@@ -37,10 +41,11 @@ import { Textarea } from '@/ui/components/ui/textarea'
 import { setTemplateCatalog, templateBgSrc, templateSpriteSrc } from '@/ui/game/template-catalog'
 
 /**
- * 運営テンプレ（背景・立ち絵）の管理ページ（`#/admin/templates`・**staff だけ**・D-GAME-TEMPLATE-CMS）。
+ * 運営テンプレ（背景・立ち絵・効果音）の管理ページ（`#/admin/templates`・**staff だけ**・D-GAME-TEMPLATE-CMS）。
  *
- * - 画像をまとめてドロップすると、ファイル名を命名規則で読んでキーと分類を決め、
- *   ブラウザで WebP・サムネ・tone を作ってから 1 枚ずつ送る（同じ名前は置き換え）。
+ * - 画像・音声をまとめてドロップすると、ファイル名を命名規則で読んでキーと分類を決め、
+ *   画像はブラウザで WebP・サムネ・tone を作り、音声（mp3/m4a）はそのまま長さだけ測って
+ *   1 件ずつ送る（同じ名前は置き換え）。
  * - 表示名・分類・時間帯・一覧に出すか は画面で直して「変更を保存」で目録に書く。
  *   改名 AI が返す TSV を貼れば、表示名と分類を一括で入れられる。
  * - 「削除」は無い。一覧から外す（非表示）だけで、既存作品の参照は生かす。
@@ -83,7 +88,11 @@ export function AdminTemplatesPage({ getToken }: AdminTemplatesPageProps) {
   const [manifest, setManifest] = useState<TemplateManifest | 'denied' | null>(null)
   const [tab, setTab] = useState<TemplateKind>('bg')
   const [drafts, setDrafts] = useState<Record<string, Draft>>({})
-  const [categoryDrafts, setCategoryDrafts] = useState<CategoryDrafts>({ bg: {}, sprite: {} })
+  const [categoryDrafts, setCategoryDrafts] = useState<CategoryDrafts>({
+    bg: {},
+    sprite: {},
+    se: {},
+  })
   const [upload, setUpload] = useState<{ done: number; total: number; current: string } | null>(
     null,
   )
@@ -108,7 +117,9 @@ export function AdminTemplatesPage({ getToken }: AdminTemplatesPageProps) {
 
   const backgrounds = useMemo(() => mergeBackgroundCatalog(current), [current])
   const sprites = useMemo(() => mergeSpriteCatalog(current), [current])
-  const rows: Array<CatalogBackground | CatalogSprite> = tab === 'bg' ? backgrounds : sprites
+  const ses = useMemo(() => mergeSeCatalog(current), [current])
+  const rows: Array<CatalogBackground | CatalogSprite | CatalogSe> =
+    tab === 'bg' ? backgrounds : tab === 'sprite' ? sprites : ses
   const groups = useMemo(() => categoriesOf(rows), [rows])
 
   const draftOf = (kind: TemplateKind, slug: string): Draft => drafts[keyOf(kind, slug)] ?? {}
@@ -143,23 +154,33 @@ export function AdminTemplatesPage({ getToken }: AdminTemplatesPageProps) {
       setUpload((u) => (u ? { ...u, current: file.name } : u))
       try {
         const kind = parsed.kind
-        const { dataUrl, tone } =
-          kind === 'bg' ? await gameBgToDataUrl(file) : await gameSpriteToDataUrl(file)
-        const thumbDataUrl = await templateThumbToDataUrl(file, { alpha: kind === 'sprite' })
         const exists = next.entries.some((e) => e.kind === kind && e.slug === parsed.slug)
-        const res = await adminPutTemplate(getToken, kind, parsed.slug, {
-          dataUrl,
-          thumbDataUrl,
-          tone,
-          // 置き換えなら表示名・分類は据え置き。新規は命名規則から既定を付ける
-          ...(exists
-            ? {}
-            : {
-                label: defaultTemplateLabel(parsed, categoryLabelOf(next, kind, parsed.category)),
-                category: parsed.category,
-                ...(parsed.time ? { time: parsed.time } : {}),
-              }),
-        })
+        // 置き換えなら表示名・分類は据え置き。新規は命名規則から既定を付ける
+        const meta = exists
+          ? {}
+          : {
+              label: defaultTemplateLabel(parsed, categoryLabelOf(next, kind, parsed.category)),
+              category: parsed.category,
+              ...(parsed.time ? { time: parsed.time } : {}),
+            }
+        let body: Parameters<typeof adminPutTemplate>[3]
+        if (kind === 'se') {
+          // 音声は変換しない（ブラウザにエンコーダが無い）。長さだけ測って添える
+          const dataUrl = await audioFileToDataUrl(file)
+          if (!dataUrl) {
+            appendLog(`${file.name}：mp3 か m4a だけ送れます`)
+            setUpload((u) => (u ? { ...u, done: u.done + 1 } : u))
+            continue
+          }
+          const durationMs = await audioDurationMs(file).catch(() => undefined)
+          body = { dataUrl, ...(durationMs !== undefined ? { durationMs } : {}), ...meta }
+        } else {
+          const { dataUrl, tone } =
+            kind === 'bg' ? await gameBgToDataUrl(file) : await gameSpriteToDataUrl(file)
+          const thumbDataUrl = await templateThumbToDataUrl(file, { alpha: kind === 'sprite' })
+          body = { dataUrl, thumbDataUrl, tone, ...meta }
+        }
+        const res = await adminPutTemplate(getToken, kind, parsed.slug, body)
         if (!res.ok) {
           appendLog(`${file.name}：送れませんでした（${res.error}）`)
         } else {
@@ -167,13 +188,13 @@ export function AdminTemplatesPage({ getToken }: AdminTemplatesPageProps) {
           setManifest(next)
         }
       } catch {
-        appendLog(`${file.name}：画像を読み込めませんでした`)
+        appendLog(`${file.name}：ファイルを読み込めませんでした`)
       }
       setUpload((u) => (u ? { ...u, done: u.done + 1 } : u))
     }
     setUpload(null)
     setTemplateCatalog(next)
-    setNotice(`${good.length} 枚を送りました`)
+    setNotice(`${good.length} 件を送りました`)
   }
 
   /** 改名 AI の TSV から表示名・分類を下書きに入れる（保存はまだ）。 */
@@ -224,7 +245,7 @@ export function AdminTemplatesPage({ getToken }: AdminTemplatesPageProps) {
     }
     setManifest(next)
     setDrafts({})
-    setCategoryDrafts({ bg: {}, sprite: {} })
+    setCategoryDrafts({ bg: {}, sprite: {}, se: {} })
     setTemplateCatalog(next)
     setNotice('保存しました')
   }
@@ -276,8 +297,8 @@ export function AdminTemplatesPage({ getToken }: AdminTemplatesPageProps) {
       >
         <ImagePlus className="mx-auto size-6 text-on-surface-variant" aria-hidden />
         <p className="mt-2 text-on-surface text-sm">
-          画像をここにまとめてドロップ（背景は <code>場所-時間帯.png</code>、立ち絵は{' '}
-          <code>silhouette-人物像.png</code>）
+          画像・音声をここにまとめてドロップ（背景は <code>場所-時間帯.png</code>、立ち絵は{' '}
+          <code>silhouette-人物像.png</code>、効果音は <code>分類-音.mp3</code>）
         </p>
         <p className="mt-1 text-on-surface-variant text-xs">
           同じ名前を送ると置き換えになります。表示名と分類は、新しい名前にだけ既定値が付きます。
@@ -295,7 +316,7 @@ export function AdminTemplatesPage({ getToken }: AdminTemplatesPageProps) {
         <input
           ref={fileInputRef}
           type="file"
-          accept="image/*"
+          accept="image/*,audio/mpeg,audio/mp4,.mp3,.m4a"
           multiple
           hidden
           aria-label="テンプレ画像を選ぶ"
@@ -324,7 +345,7 @@ export function AdminTemplatesPage({ getToken }: AdminTemplatesPageProps) {
       <section className="mt-8" aria-label="テンプレ一覧">
         <div className="flex items-center justify-between gap-3">
           <div className="flex gap-1 rounded-lg border border-outline-variant/30 bg-surface-container-low p-1">
-            {(['bg', 'sprite'] as const).map((k) => (
+            {(['bg', 'sprite', 'se'] as const).map((k) => (
               <button
                 key={k}
                 type="button"
@@ -337,7 +358,8 @@ export function AdminTemplatesPage({ getToken }: AdminTemplatesPageProps) {
                 aria-pressed={tab === k}
                 onClick={() => setTab(k)}
               >
-                {k === 'bg' ? '背景' : '立ち絵'}（画像 {imageCount(k)}）
+                {k === 'bg' ? '背景' : k === 'sprite' ? '立ち絵' : '効果音'}（
+                {k === 'se' ? '音' : '画像'} {imageCount(k)}）
               </button>
             ))}
           </div>
@@ -394,28 +416,44 @@ export function AdminTemplatesPage({ getToken }: AdminTemplatesPageProps) {
                         hidden && 'opacity-60',
                       )}
                     >
-                      <img
-                        src={
-                          tab === 'bg'
-                            ? templateBgSrc(row as CatalogBackground, 'thumb')
-                            : templateSpriteSrc(row as CatalogSprite, 'thumb')
-                        }
-                        alt=""
-                        className={cn(
-                          'shrink-0 rounded bg-surface-container object-contain',
-                          tab === 'bg' ? 'aspect-video w-28' : 'h-16 w-12',
-                        )}
-                      />
+                      {tab === 'se' ? (
+                        <button
+                          type="button"
+                          aria-label={`${row.slug} を試聴`}
+                          className="shrink-0 rounded-md border border-outline-variant/30 p-2 text-primary hover:bg-surface-container-high"
+                          onClick={() => playCatalogSe(row as CatalogSe)}
+                        >
+                          <Play className="size-4" aria-hidden />
+                        </button>
+                      ) : (
+                        <img
+                          src={
+                            tab === 'bg'
+                              ? templateBgSrc(row as CatalogBackground, 'thumb')
+                              : templateSpriteSrc(row as CatalogSprite, 'thumb')
+                          }
+                          alt=""
+                          className={cn(
+                            'shrink-0 rounded bg-surface-container object-contain',
+                            tab === 'bg' ? 'aspect-video w-28' : 'h-16 w-12',
+                          )}
+                        />
+                      )}
                       <div className="min-w-0 flex-1 space-y-1">
                         <div className="flex items-center gap-2">
                           <code className="text-on-surface text-xs">{row.slug}</code>
                           {entry ? (
                             <span className="text-on-surface-variant text-[11px]">
                               {kb(entry.bytes)}
+                              {entry.durationMs !== undefined
+                                ? `・${(entry.durationMs / 1000).toFixed(1)} 秒`
+                                : ''}
                             </span>
                           ) : (
                             <span className="rounded bg-surface-container px-1.5 py-0.5 text-[11px] text-on-surface-variant">
-                              画像なし（組み込みの SVG）
+                              {tab === 'se'
+                                ? 'ファイルなし（端末で合成）'
+                                : '画像なし（組み込みの SVG）'}
                             </span>
                           )}
                         </div>

@@ -11,7 +11,7 @@
  * テンプレは誰でも使える公開物。書き込みの口はここには無い（管理 API は staff だけ）。
  */
 
-import { isTemplateSlug, type TemplateKind } from '../../src/core/game/templates'
+import { isTemplateSlug, TEMPLATE_EXTS, type TemplateKind } from '../../src/core/game/templates'
 import {
   readTemplateManifest,
   TEMPLATE_MANIFEST_KEY,
@@ -22,15 +22,20 @@ interface Env {
   MEDIA: R2Bucket
 }
 
-/** `bg/room-day.webp` / `sprite/silhouette-woman.thumb.webp` を分解する。形が違えば null。 */
+/**
+ * `bg/room-day.webp` / `sprite/silhouette-woman.thumb.png` / `se/weather-rain.mp3` を分解する。
+ * 形が違えば null。拡張子は目録の MIME から決まるもの（TEMPLATE_EXTS）だけ。
+ */
 export function parseTemplateObjectPath(
   path: string,
-): { kind: TemplateKind; slug: string; thumb: boolean } | null {
-  const m = /^(bg|sprite)\/([a-z0-9-]+?)(\.thumb)?\.webp$/.exec(path)
+): { kind: TemplateKind; slug: string; thumb: boolean; ext: string } | null {
+  const m = /^(bg|sprite|se)\/([a-z0-9-]+?)(\.thumb)?\.([a-z0-9]+)$/.exec(path)
   const kind = m?.[1]
   const slug = m?.[2]
-  if (!kind || !slug || !isTemplateSlug(slug)) return null
-  return { kind: kind as TemplateKind, slug, thumb: Boolean(m[3]) }
+  const ext = m?.[4]
+  if (!kind || !slug || !ext || !isTemplateSlug(slug) || !TEMPLATE_EXTS.includes(ext)) return null
+  if (kind === 'se' && m[3]) return null // 効果音にサムネは無い
+  return { kind: kind as TemplateKind, slug, thumb: Boolean(m[3]), ext }
 }
 
 const notFound = () =>
@@ -61,11 +66,12 @@ export const onRequest: PagesFunction<Env> = async (context) => {
   const parsed = parseTemplateObjectPath(rel)
   if (!parsed) return notFound()
   const obj = await env.MEDIA.get(
-    templateObjectKey(parsed.kind, parsed.slug, parsed.thumb ? 'thumb' : 'full'),
+    templateObjectKey(parsed.kind, parsed.slug, parsed.thumb ? 'thumb' : 'full', parsed.ext),
   )
   if (!obj) return notFound()
   const headers = new Headers({
-    'content-type': obj.httpMetadata?.contentType ?? 'image/webp',
+    'content-type':
+      obj.httpMetadata?.contentType ?? (parsed.kind === 'se' ? 'audio/mpeg' : 'image/webp'),
     // URL に内容ハッシュ（?v=）が付く前提。置き換えたら URL が変わるので、ここは永久キャッシュでよい
     'cache-control': 'public, max-age=31536000, immutable',
   })

@@ -72,8 +72,12 @@ export interface GameScenario {
   bgs: Record<string, ScenarioBg>
   /** 立ち絵（キー → 実体パス）。使われているときだけ載る */
   sprites?: Record<string, { src: string; label: string }>
-  /** 効果音（キー → 合成レシピ）。使われているときだけ載る（素材ファイルは持たない） */
-  ses?: Record<string, { label: string; steps: SeStep[] }>
+  /**
+   * 効果音（キー → 合成レシピ か 音声ファイル）。使われているときだけ載る。
+   * `steps` は端末で合成（組み込み）、`src` は運営テンプレの音声ファイル（zip のパス・
+   * data URL・契約 v5 の `asset:<id>` のいずれか）
+   */
+  ses?: Record<string, { label: string; steps?: SeStep[]; src?: string }>
   /** 同梱フォント（無ければシステムの明朝で表示） */
   fontSrc?: string
   credits: CreditLine[]
@@ -360,14 +364,49 @@ html,body{height:100%;margin:0;background:#05060A}
     }
   }
 
-  // ---- 効果音（合成レシピの小型インタプリタ。素材ファイルは持たない） ----
+  // ---- 効果音（合成レシピの小型インタプリタ ＋ 音声ファイル） ----
   var audioCtx = null, noiseBuf = null
   function ensureAudio() {
     if (!audioCtx) {
       try { audioCtx = new (window.AudioContext || window.webkitAudioContext)() } catch (e) { return null }
+      preloadSes()
     }
     if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume()
     return audioCtx
+  }
+  // 音声ファイルの効果音（src）。取って復号したバッファを覚え、同じ音は 1 回だけ取る。
+  var seBufs = {}, seLoading = {}
+  function loadSeBuffer(key, cb) {
+    if (seBufs[key]) { cb(seBufs[key]); return }
+    var ctx = ensureAudio()
+    var src = S.ses && S.ses[key] ? srcOf(S.ses[key].src) : ''
+    if (!ctx || !src) return
+    if (seLoading[key]) { seLoading[key].push(cb); return }
+    seLoading[key] = [cb]
+    fetch(src)
+      .then(function (r) { return r.arrayBuffer() })
+      .then(function (ab) {
+        return new Promise(function (res, rej) { ctx.decodeAudioData(ab, res, rej) })
+      })
+      .then(function (buf) {
+        seBufs[key] = buf
+        var cbs = seLoading[key] || []
+        delete seLoading[key]
+        for (var i = 0; i < cbs.length; i++) cbs[i](buf)
+      })
+      .catch(function () { delete seLoading[key] })
+  }
+  /** 使う音声ファイルを先に取っておく（最初の 1 音が遅れないように）。 */
+  function preloadSes() {
+    if (!S.ses) return
+    for (var k in S.ses) if (S.ses[k].src) loadSeBuffer(k, function () {})
+  }
+  function playBuffer(ctx, buf, at, dest) {
+    var src = ctx.createBufferSource()
+    src.buffer = buf
+    src.connect(dest)
+    src.start(at)
+    return src
   }
   function getNoise(ctx) {
     if (!noiseBuf) {
@@ -423,7 +462,16 @@ html,body{height:100%;margin:0;background:#05060A}
     if (!settings.se || !(S.ses && S.ses[key])) return
     var ctx = ensureAudio()
     if (!ctx) return
-    var steps = S.ses[key].steps
+    var se = S.ses[key]
+    if (se.src) {
+      loadSeBuffer(key, function (buf) {
+        var at = ctx.currentTime + 0.02
+        playBuffer(ctx, buf, at, ctx.destination)
+        if (repeat === 2) playBuffer(ctx, buf, at + buf.duration, ctx.destination)
+      })
+      return
+    }
+    var steps = se.steps
     var base = ctx.currentTime + 0.02
     scheduleSe(ctx, steps, base, ctx.destination)
     if (repeat === 2) scheduleSe(ctx, steps, base + seDur(steps), ctx.destination)
@@ -432,7 +480,7 @@ html,body{height:100%;margin:0;background:#05060A}
   // ---- ループする効果音（環境音）。場面の切れ目か 'stop' まで続く ----
   // タイマーだけで繰り返すと、ずれて継ぎ目が空く。先の数秒ぶんを**絶対時刻で**予約し、
   // タイマーは「次の予約をしに来る」係にする。止めるのは専用の gain を絞って行う。
-  var wantLoop = null, playingLoop = null, loopGain = null, loopTimer = 0, loopNext = 0
+  var wantLoop = null, playingLoop = null, loopGain = null, loopTimer = 0, loopNext = 0, loopSource = null
   function loopSeAt(i) {
     var key = null
     for (var j = 0; j <= i && j < S.pages.length; j++) {
@@ -448,21 +496,40 @@ html,body{height:100%;margin:0;background:#05060A}
     clearTimeout(loopTimer)
     loopTimer = 0
     if (loopGain && audioCtx) {
-      var g = loopGain
+      var g = loopGain, s = loopSource
       try { g.gain.setTargetAtTime(0.0001, audioCtx.currentTime, 0.06) } catch (e) {}
-      setTimeout(function () { try { g.disconnect() } catch (e) {} }, 800)
+      setTimeout(function () {
+        try { if (s) s.stop() } catch (e) {}
+        try { g.disconnect() } catch (e) {}
+      }, 800)
     }
     loopGain = null
+    loopSource = null
   }
   function startLoopSe(key) {
     var ctx = ensureAudio()
     if (!ctx || !(S.ses && S.ses[key])) return
-    var steps = S.ses[key].steps
-    var period = seDur(steps)
+    var se = S.ses[key]
     loopGain = ctx.createGain()
     loopGain.gain.setValueAtTime(1, ctx.currentTime)
     loopGain.connect(ctx.destination)
     playingLoop = key
+    if (se.src) {
+      // 音声ファイルは 1 本の source をループさせる（継ぎ目はファイル側で作ってある前提）
+      var gainForKey = loopGain
+      loadSeBuffer(key, function (buf) {
+        if (playingLoop !== key || loopGain !== gainForKey) return
+        var s = ctx.createBufferSource()
+        s.buffer = buf
+        s.loop = true
+        s.connect(gainForKey)
+        s.start(ctx.currentTime + 0.02)
+        loopSource = s
+      })
+      return
+    }
+    var steps = se.steps
+    var period = seDur(steps)
     loopNext = ctx.currentTime + 0.02
     var pump = function () {
       if (playingLoop !== key) return
@@ -743,6 +810,7 @@ html,body{height:100%;margin:0;background:#05060A}
 
   // ---- 進行 ----
   function start(i) {
+    ensureAudio() // 操作の直後に AudioContext を作り、音声ファイルの効果音を先に取っておく
     closeOverlays()
     hud.hidden = false
     state.started = true

@@ -1,6 +1,9 @@
+import { Play } from 'lucide-react'
 import { useMemo, useState } from 'react'
+import { seDuration } from '@/core/game/sePresets'
 import {
   type CatalogBackground,
+  type CatalogSe,
   type CatalogSprite,
   categoriesOf,
   categoryLabelOf,
@@ -9,6 +12,7 @@ import {
   visibleTemplates,
 } from '@/core/game/templates'
 import { cn } from '@/lib/utils'
+import { playCatalogSe } from '@/ui/_utils/sePlayer'
 import {
   Dialog,
   DialogBody,
@@ -25,7 +29,13 @@ import { templateBgSrc, templateSpriteSrc } from '@/ui/game/template-catalog'
  * 一覧は目録の「一覧に出す」ものだけ（非表示は出さない・既存の参照は別途描ける）。
  */
 
-type Item = CatalogBackground | CatalogSprite
+type Item = CatalogBackground | CatalogSprite | CatalogSe
+
+/** 効果音の長さ（秒）。目録の音は測った値、合成はレシピから。 */
+function seSeconds(se: CatalogSe): string | null {
+  const ms = se.durationMs ?? (se.builtin ? seDuration(se.builtin) * 1000 : undefined)
+  return ms === undefined ? null : `${(ms / 1000).toFixed(1)} 秒`
+}
 
 interface TemplatePickerProps<T extends Item> {
   open: boolean
@@ -63,13 +73,20 @@ export function TemplatePicker<T extends Item>({
       <DialogContent className="sm:max-w-3xl">
         <DialogHeader>
           <DialogTitle className="font-serif text-on-surface">
-            {title ?? (kind === 'bg' ? 'テンプレの背景' : 'テンプレの立ち絵')}
+            {title ??
+              (kind === 'bg'
+                ? 'テンプレの背景'
+                : kind === 'sprite'
+                  ? 'テンプレの立ち絵'
+                  : 'テンプレの効果音')}
           </DialogTitle>
           <DialogDescription>
             {description ??
               (kind === 'bg'
                 ? '分類で絞って選びます。テンプレは枚数に数えません。'
-                : '分類で絞って選びます。テンプレの立ち絵は枚数に数えません。')}
+                : kind === 'sprite'
+                  ? '分類で絞って選びます。テンプレの立ち絵は枚数に数えません。'
+                  : '分類で絞って選びます。▶ で試聴できます。')}
           </DialogDescription>
         </DialogHeader>
         <DialogBody>
@@ -97,6 +114,44 @@ export function TemplatePicker<T extends Item>({
           ) : null}
           {shown.length === 0 ? (
             <p className="text-on-surface-variant text-sm">選べるテンプレがありません。</p>
+          ) : kind === 'se' ? (
+            <ul className="max-h-[60vh] space-y-1 overflow-y-auto pr-1">
+              {shown.map((item) => {
+                const se = item as CatalogSe
+                const selected = item.key === selectedKey
+                const seconds = seSeconds(se)
+                return (
+                  <li key={item.key} className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      aria-label={`${item.label}を試聴`}
+                      className="shrink-0 rounded-md border border-outline-variant/30 p-2 text-primary hover:bg-surface-container-high"
+                      onClick={() => playCatalogSe(se)}
+                    >
+                      <Play className="size-4" aria-hidden />
+                    </button>
+                    <button
+                      type="button"
+                      aria-pressed={selected}
+                      className={cn(
+                        'flex flex-1 items-center justify-between rounded-md border px-3 py-2 text-left text-sm hover:bg-surface-container-high',
+                        selected ? 'border-primary' : 'border-outline-variant/30',
+                      )}
+                      onClick={() => {
+                        onPick(item)
+                        onOpenChange(false)
+                      }}
+                    >
+                      <span>{item.label}</span>
+                      <span className="ml-2 text-[11px] text-on-surface-variant">
+                        {se.builtin && !se.entry ? '合成' : ''}
+                        {seconds ? ` ${seconds}` : ''}
+                      </span>
+                    </button>
+                  </li>
+                )
+              })}
+            </ul>
           ) : (
             <ul
               className={cn(

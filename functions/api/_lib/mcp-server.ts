@@ -16,7 +16,11 @@ import {
 import { stagingToPlainText } from '../../../src/core/exporter/stagingToPlainText'
 import { structuresToPlainText } from '../../../src/core/exporter/structureToPlainText'
 import { glossaryToPlainText, workToPlainText } from '../../../src/core/exporter/toPlainText'
-import { catalogBackgroundKeys, type TemplateManifest } from '../../../src/core/game/templates'
+import {
+  catalogBackgroundKeys,
+  catalogSeKeys,
+  type TemplateManifest,
+} from '../../../src/core/game/templates'
 import {
   addEpisode,
   createWork,
@@ -994,6 +998,7 @@ async function callTool(
         }
         message = '削除しました。'
       } else if (name === 'set_staging') {
+        const templates = (await deps.loadTemplateManifest?.()) ?? null
         const res = setStagingCues(
           snap.stagings ?? [],
           works,
@@ -1002,7 +1007,8 @@ async function callTool(
           parseStagingCueInputs(args?.cues),
           snap.gameAssets ?? [],
           now,
-          catalogBackgroundKeys((await deps.loadTemplateManifest?.()) ?? null),
+          catalogBackgroundKeys(templates),
+          catalogSeKeys(templates),
         )
         next = { ...snap, stagings: res.stagings }
         message = `演出を保存しました（更新 ${res.applied} 行・外した演出 ${res.cleared} 件）。`

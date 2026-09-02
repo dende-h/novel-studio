@@ -25,15 +25,15 @@ import {
   userAssetKey,
 } from '@/core/game/assets'
 import { type PageContinuity, resolveContinuity } from '@/core/game/continuity'
-import { PRESET_SES, presetSe, SE_STOP, type SeRepeat, seLabelOf } from '@/core/game/sePresets'
-import type { CatalogBackground, CatalogSprite } from '@/core/game/templates'
+import { SE_STOP, type SeRepeat } from '@/core/game/sePresets'
+import type { CatalogBackground, CatalogSe, CatalogSprite } from '@/core/game/templates'
 import { PERSON_CATEGORY } from '@/core/glossary'
 import type { Work } from '@/core/schema'
 import type { GameAssetRepository } from '@/core/storage/gameAssetRepository'
 import type { StagingRepository } from '@/core/storage/stagingRepository'
 import { cn } from '@/lib/utils'
 import { gameBgToDataUrl, gameSpriteToDataUrl } from '@/ui/_utils/imageResizer'
-import { playPresetSe } from '@/ui/_utils/sePlayer'
+import { playCatalogSe } from '@/ui/_utils/sePlayer'
 import { useAuth } from '@/ui/auth/auth-context'
 import { Button } from '@/ui/components/ui/button'
 import { Input } from '@/ui/components/ui/input'
@@ -95,6 +95,12 @@ const CUSTOM_SPEAKER = '__custom__'
 /** 背景セレクトの「画像を追加…」の目印（cue には入らない）。 */
 const ADD_IMAGE = '__add_image__'
 
+/** 効果音キーの表示名（目録 → 組み込み → 予約キー → キーそのもの）。 */
+function seLabelOf(key: string, ses: readonly CatalogSe[]): string {
+  if (key === SE_STOP) return '止める'
+  return ses.find((s) => s.key === key)?.label ?? key
+}
+
 /**
  * 続きレーン 1 本ぶん（背景・立ち絵・環境音）。行の左に立ち、**効いている間ずっと**伸びる。
  * 始まった行には頭に点を打つ。何が続いているかは title（ホバー）で言葉にする。
@@ -139,6 +145,7 @@ function laneTitles(
   cont: PageContinuity | undefined,
   assets: UserGameAsset[],
   backgrounds: readonly CatalogBackground[],
+  ses: readonly CatalogSe[],
 ): { bg: string; sprite: string; se: string } {
   if (!cont) return { bg: '', sprite: '', se: '' }
   return {
@@ -148,7 +155,7 @@ function laneTitles(
       : cont.standing.length > 0
         ? `立ち絵：${cont.standing.join('・')}`
         : '立ち絵：なし',
-    se: cont.loopSe ? `環境音：${seLabelOf(cont.loopSe)}` : '環境音：なし',
+    se: cont.loopSe ? `環境音：${seLabelOf(cont.loopSe, ses)}` : '環境音：なし',
   }
 }
 
@@ -202,8 +209,10 @@ export default function StagingView({ repo, work, currentEpisodeId, assetRepo }:
   const [assetError, setAssetError] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   // 運営テンプレの目録（無ければ組み込みの SVG だけ）。表示名・プレビュー・一覧に使う
-  const { backgrounds, sprites, manifest: templateManifest } = useTemplateCatalog()
+  const { backgrounds, sprites, ses, manifest: templateManifest } = useTemplateCatalog()
   const [bgPickerOpen, setBgPickerOpen] = useState(false)
+  const [sePickerOpen, setSePickerOpen] = useState(false)
+  const seOf = (key: string) => ses.find((s) => s.key === key)
   // クラウド保管（R2 ホスティング・会員のみ）。ローカルが正で、クラウドは端末間で運ぶ控え。
   const auth = useAuth()
   const member = auth.status === 'member'
@@ -724,7 +733,7 @@ export default function StagingView({ repo, work, currentEpisodeId, assetRepo }:
                     className="flex items-center justify-between gap-3 rounded border border-outline-variant/30 px-2 py-1.5 text-xs"
                   >
                     <span className="min-w-0 truncate text-on-surface-variant">
-                      {describeCue(cue, assets, backgrounds)}
+                      {describeCue(cue, assets, backgrounds, ses)}
                     </span>
                     <Button
                       type="button"
@@ -773,7 +782,7 @@ export default function StagingView({ repo, work, currentEpisodeId, assetRepo }:
                 {staged.map((page, index) => {
                   const active = page.blockId === selectedId
                   const cont = continuity[index]
-                  const titles = laneTitles(cont, assets, backgrounds)
+                  const titles = laneTitles(cont, assets, backgrounds, ses)
                   const bgLabel = page.bg ? bgLabelOf(page.bg, assets, backgrounds) : undefined
                   const suggested = suggestions.has(page.blockId) && !page.sceneBreak
                   return (
@@ -849,7 +858,7 @@ export default function StagingView({ repo, work, currentEpisodeId, assetRepo }:
                             {page.hideSprite ? <span>立ち絵なし</span> : null}
                             {page.se ? (
                               <span>
-                                効果音 {seLabelOf(page.se)}
+                                効果音 {seLabelOf(page.se, ses)}
                                 {page.seRepeat === 'loop' ? '（ずっと）' : ''}
                                 {page.seRepeat === 2 ? '（2回）' : ''}
                               </span>
@@ -893,7 +902,7 @@ export default function StagingView({ repo, work, currentEpisodeId, assetRepo }:
                     : selectedCont.standing.length > 0
                       ? `／立ち絵 ${selectedCont.standing.join('・')}`
                       : ''}
-                  {selectedCont.loopSe ? `／環境音 ${seLabelOf(selectedCont.loopSe)}` : ''}
+                  {selectedCont.loopSe ? `／環境音 ${seLabelOf(selectedCont.loopSe, ses)}` : ''}
                 </p>
               ) : null}
 
@@ -1250,29 +1259,50 @@ export default function StagingView({ repo, work, currentEpisodeId, assetRepo }:
                   >
                     <option value="">（なし）</option>
                     <option value={SE_STOP}>ここで止める（ずっと鳴っている音を消す）</option>
-                    {/* 未知キー（将来の効果音等）も選択状態は保つ（勝手に外さない） */}
-                    {selected.se && selected.se !== SE_STOP && !presetSe(selected.se) ? (
+                    {/* 未知キー（この端末の目録に無い音等）も選択状態は保つ（勝手に外さない） */}
+                    {selected.se && selected.se !== SE_STOP && !seOf(selected.se) ? (
                       <option value={selected.se}>{selected.se}</option>
                     ) : null}
-                    {PRESET_SES.map((p) => (
-                      <option key={p.key} value={p.key}>
-                        {p.label}
-                      </option>
-                    ))}
+                    {ses
+                      .filter((p) => !p.hidden || p.key === selected.se)
+                      .map((p) => (
+                        <option key={p.key} value={p.key}>
+                          {p.label}
+                        </option>
+                      ))}
                   </select>
                   <Button
                     type="button"
                     variant="outline"
                     size="sm"
                     className="shrink-0 text-primary"
-                    disabled={!selected.se || !presetSe(selected.se)}
+                    disabled={!selected.se || !seOf(selected.se)}
                     onClick={() => {
-                      if (selected.se) playPresetSe(selected.se, selected.seRepeat)
+                      const se = selected.se ? seOf(selected.se) : undefined
+                      if (se) playCatalogSe(se, selected.seRepeat)
                     }}
                   >
                     試聴
                   </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="shrink-0 text-primary"
+                    onClick={() => setSePickerOpen(true)}
+                  >
+                    一覧から選ぶ…
+                  </Button>
                 </div>
+                <TemplatePicker
+                  open={sePickerOpen}
+                  onOpenChange={setSePickerOpen}
+                  kind="se"
+                  items={ses}
+                  manifest={templateManifest}
+                  selectedKey={selected.se}
+                  onPick={(se) => apply(selected.blockId, { se: se.key })}
+                />
                 {selected.se && selected.se !== SE_STOP ? (
                   <div className="mt-2">
                     <label htmlFor="staging-se-repeat" className="sr-only">
@@ -1318,6 +1348,7 @@ export default function StagingView({ repo, work, currentEpisodeId, assetRepo }:
       {episode ? (
         <StagingPreviewDialog
           templateBackgrounds={backgrounds}
+          templateSes={ses}
           open={preview !== null}
           onOpenChange={(o) => setPreview(o ? (preview ?? {}) : null)}
           work={work}
@@ -1348,6 +1379,7 @@ function describeCue(
   cue: Cue,
   assets: UserGameAsset[],
   backgrounds: readonly CatalogBackground[],
+  ses: readonly CatalogSe[],
 ): string {
   const parts: string[] = []
   if (cue.speaker) parts.push(`話者 ${cue.speaker}`)
@@ -1356,7 +1388,7 @@ function describeCue(
   if (cue.sceneBreak) parts.push('場面の切れ目')
   if (cue.bg) parts.push(`背景 ${bgLabelOf(cue.bg, assets, backgrounds) ?? cue.bg}`)
   if (cue.bgm) parts.push('BGM')
-  if (cue.se) parts.push(`効果音 ${seLabelOf(cue.se)}`)
+  if (cue.se) parts.push(`効果音 ${seLabelOf(cue.se, ses)}`)
   if (cue.transition) parts.push('切り替え効果')
   return parts.length > 0 ? parts.join('・') : '（内容なし）'
 }

@@ -3,9 +3,13 @@ import { describe, expect, it, vi } from 'vitest'
 import {
   EMPTY_TEMPLATE_MANIFEST,
   mergeBackgroundCatalog,
+  mergeSeCatalog,
   type TemplateEntry,
 } from '@/core/game/templates'
 import { TemplatePicker } from './template-picker'
+
+const sePlayer = vi.hoisted(() => ({ playCatalogSe: vi.fn(), playPresetSe: vi.fn() }))
+vi.mock('@/ui/_utils/sePlayer', () => sePlayer)
 
 const entry = (slug: string, over: Partial<TemplateEntry> = {}): TemplateEntry => ({
   kind: 'bg',
@@ -24,7 +28,7 @@ describe('TemplatePicker', () => {
   it('分類のタブで絞り、選ぶとキーが返って閉じる。非表示は出ない', () => {
     const manifest = {
       ...EMPTY_TEMPLATE_MANIFEST,
-      categories: { bg: { school: '学校' }, sprite: {} },
+      categories: { bg: { school: '学校' }, sprite: {}, se: {} },
       entries: [
         entry('school-hall-day', { label: '学校の廊下（昼）', time: 'day' }),
         entry('school-gate-night', { label: '校門（夜）', time: 'night' }),
@@ -58,5 +62,40 @@ describe('TemplatePicker', () => {
       expect.objectContaining({ key: 'preset:bg/school-gate-night' }),
     )
     expect(onOpenChange).toHaveBeenCalledWith(false)
+  })
+
+  it('効果音は一覧（▶ 試聴つき）。合成の 8 種と目録の音が並び、選ぶとキーが返る', () => {
+    const manifest = {
+      ...EMPTY_TEMPLATE_MANIFEST,
+      entries: [
+        entry('weather-rain-heavy', {
+          kind: 'se',
+          label: '強い雨',
+          category: 'weather',
+          mime: 'audio/mpeg',
+          durationMs: 4200,
+        }),
+      ],
+    }
+    const onPick = vi.fn()
+    render(
+      <TemplatePicker
+        open
+        onOpenChange={() => {}}
+        kind="se"
+        items={mergeSeCatalog(manifest)}
+        manifest={manifest}
+        onPick={onPick}
+      />,
+    )
+    expect(screen.getAllByRole('button', { pressed: false })).toHaveLength(9)
+    fireEvent.click(screen.getByRole('button', { name: '強い雨を試聴' }))
+    expect(sePlayer.playCatalogSe).toHaveBeenCalledWith(
+      expect.objectContaining({ key: 'preset:se/weather-rain-heavy' }),
+    )
+    fireEvent.click(screen.getByRole('button', { name: /強い雨 4\.2 秒/ }))
+    expect(onPick).toHaveBeenCalledWith(
+      expect.objectContaining({ key: 'preset:se/weather-rain-heavy' }),
+    )
   })
 })

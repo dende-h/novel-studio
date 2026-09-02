@@ -589,7 +589,7 @@ describe('テンプレ立ち絵（シルエット・preset）', () => {
     )
     expect(s.pages[0]?.se).toBe('preset:se/bell')
     expect(s.ses?.['preset:se/bell']?.label).toBe('鐘')
-    expect(s.ses?.['preset:se/bell']?.steps.length).toBeGreaterThan(0)
+    expect(s.ses?.['preset:se/bell']?.steps?.length).toBeGreaterThan(0)
     expect(Object.keys(s.ses ?? {})).toEqual(['preset:se/bell'])
     expect(s.credits.find((c) => c.label === '効果音')?.body).toContain('鐘')
     // 未知キーは無視して壊さない（ses も出ない）
@@ -670,5 +670,81 @@ describe('テンプレ背景の画像（目録から取った実体・preset 付
     expect(assetIds).toEqual(['tpl-bg-room-day'])
     const s = scenarioOf([{ path: 'index.html', data: html }])
     expect(s.bgs['preset:bg/room-day']?.src).toBe('asset:tpl-bg-room-day')
+  })
+})
+
+describe('効果音の音声ファイル（目録の実体・preset 付きの素材）', () => {
+  const rainFile = {
+    key: 'preset:se/weather-rain',
+    id: 'tpl-se-weather-rain',
+    label: '雨（強）',
+    tone: ['#000000', '#000000', '#000000'] as [string, string, string],
+    mime: 'audio/mpeg',
+    data: new Uint8Array([73, 68, 51]),
+    kind: 'se' as const,
+    preset: 'preset:se/weather-rain',
+    dataUrl: 'data:audio/mpeg;base64,SUQz',
+  }
+  const knockFile = {
+    ...rainFile,
+    key: 'preset:se/knock',
+    id: 'tpl-se-knock',
+    label: 'ノック（木の扉）',
+    preset: 'preset:se/knock',
+  }
+
+  it('zip では assets/se/<slug>.mp3 に入り、シナリオは src で指す。クレジットは素材の行', () => {
+    const files = buildNovelGameFiles(
+      work,
+      episode,
+      staging([{ blockId: 'b1', se: 'preset:se/weather-rain', seRepeat: 'loop' }]),
+      { userAssets: [rainFile] },
+    )
+    const s = scenarioOf(files)
+    expect(s.pages[0]?.se).toBe('preset:se/weather-rain')
+    expect(s.ses?.['preset:se/weather-rain']).toEqual({
+      label: '雨（強）',
+      src: 'assets/se/weather-rain.mp3',
+    })
+    expect(files.some((f) => f.path === 'assets/se/weather-rain.mp3')).toBe(true)
+    expect(s.credits.find((c) => c.label === '効果音素材')?.body).toContain('雨（強）')
+    expect(s.credits.find((c) => c.label === '効果音')).toBeUndefined()
+  })
+
+  it('同じキーの合成レシピより音声ファイルが優先され、無ければ合成のまま', () => {
+    const withFile = scenarioOf(
+      buildNovelGameFiles(work, episode, staging([{ blockId: 'b1', se: 'preset:se/knock' }]), {
+        userAssets: [knockFile],
+      }),
+    )
+    expect(withFile.ses?.['preset:se/knock']?.src).toBe('assets/se/knock.mp3')
+    expect(withFile.ses?.['preset:se/knock']?.steps).toBeUndefined()
+
+    const synth = scenarioOf(
+      buildNovelGameFiles(work, episode, staging([{ blockId: 'b1', se: 'preset:se/knock' }])),
+    )
+    expect(synth.ses?.['preset:se/knock']?.steps?.length).toBeGreaterThan(0)
+    expect(synth.credits.find((c) => c.label === '効果音')?.body).toContain('ノック')
+  })
+
+  it('契約 v5 では asset:<id> で参照され、その id が拾われる', () => {
+    const asset = {
+      id: 'tpl-se-weather-rain',
+      kind: 'se' as const,
+      name: '雨（強）',
+      dataUrl: 'data:audio/mpeg;base64,SUQz',
+      tone: ['#000000', '#000000', '#000000'] as [string, string, string],
+      preset: 'preset:se/weather-rain',
+      createdAt: 1,
+    }
+    const { html, assetIds } = buildNovelGamePlayer(
+      work,
+      episode,
+      staging([{ blockId: 'b1', se: 'preset:se/weather-rain' }]),
+      { gameAssets: [asset] },
+    )
+    expect(assetIds).toEqual(['tpl-se-weather-rain'])
+    const s = scenarioOf([{ path: 'index.html', data: html }])
+    expect(s.ses?.['preset:se/weather-rain']?.src).toBe('asset:tpl-se-weather-rain')
   })
 })
