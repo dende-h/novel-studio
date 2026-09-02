@@ -1,5 +1,6 @@
 import { fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
+import { PRESET_SES } from '@/core/game/sePresets'
 import {
   EMPTY_TEMPLATE_MANIFEST,
   mergeBackgroundCatalog,
@@ -64,7 +65,7 @@ describe('TemplatePicker', () => {
     expect(onOpenChange).toHaveBeenCalledWith(false)
   })
 
-  it('効果音は一覧（▶ 試聴つき）。合成の 8 種と目録の音が並び、選ぶとキーが返る', () => {
+  it('効果音は一覧（▶ 試聴つき）。合成の各種と目録の音が並び、選ぶとキーが返る', () => {
     const manifest = {
       ...EMPTY_TEMPLATE_MANIFEST,
       entries: [
@@ -88,7 +89,7 @@ describe('TemplatePicker', () => {
         onPick={onPick}
       />,
     )
-    expect(screen.getAllByRole('button', { pressed: false })).toHaveLength(9)
+    expect(screen.getAllByRole('button', { pressed: false })).toHaveLength(PRESET_SES.length + 1)
     fireEvent.click(screen.getByRole('button', { name: '強い雨を試聴' }))
     expect(sePlayer.playCatalogSe).toHaveBeenCalledWith(
       expect.objectContaining({ key: 'preset:se/weather-rain-heavy' }),

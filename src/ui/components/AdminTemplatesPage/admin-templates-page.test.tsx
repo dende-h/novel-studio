@@ -1,5 +1,6 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { PRESET_SES } from '@/core/game/sePresets'
 import type { TemplateEntry, TemplateManifest } from '@/core/game/templates'
 import { AdminTemplatesPage } from './admin-templates-page'
 
@@ -152,7 +153,7 @@ describe('AdminTemplatesPage', () => {
     expect(screen.getByRole('button', { name: /背景（画像 1）/ })).toBeInTheDocument()
   })
 
-  it('効果音タブ：組み込みの合成 8 種は「ファイルなし」、mp3 を入れると長さ付きで並ぶ', async () => {
+  it('効果音タブ：組み込みの合成レシピは「ファイルなし」、mp3 を入れると長さ付きで並ぶ', async () => {
     api.adminFetchTemplates.mockResolvedValue(manifest([]))
     api.adminPutTemplate.mockImplementation(async (_t, kind, slug, input) => ({
       ok: true,
@@ -167,7 +168,7 @@ describe('AdminTemplatesPage', () => {
     }))
     render(<AdminTemplatesPage getToken={getToken} />)
     fireEvent.click(await screen.findByRole('button', { name: /効果音（音 0）/ }))
-    expect(screen.getAllByText('ファイルなし（端末で合成）')).toHaveLength(8)
+    expect(screen.getAllByText('ファイルなし（端末で合成）')).toHaveLength(PRESET_SES.length)
     expect(screen.getByLabelText('rain を試聴')).toBeInTheDocument()
 
     const files = [
