@@ -879,6 +879,8 @@ export function setStagingCues(
   now: number,
   /** 運営テンプレの目録が知っている背景キー（組み込み 24 枚の外にある絵）。省略＝組み込みだけ */
   templateBgKeys: ReadonlySet<string> = new Set(),
+  /** 同じく効果音キー（組み込みの合成 8 種の外にある音）。省略＝組み込みだけ */
+  templateSeKeys: ReadonlySet<string> = new Set(),
 ): { stagings: Staging[]; applied: number; cleared: number } {
   const work = works.find((w) => w.id === workId)
   if (!work) throw new McpEditError(`work_id "${workId}" の作品が見つかりません`)
@@ -977,7 +979,7 @@ export function setStagingCues(
     if (item.se !== undefined) {
       const se = emptyToUndef(item.se)
       // SE_STOP は実体を持たない予約キー（鳴っているループを止める合図）
-      if (se !== undefined && se !== SE_STOP && !presetSe(se)) {
+      if (se !== undefined && se !== SE_STOP && !presetSe(se) && !templateSeKeys.has(se)) {
         throw new McpEditError(
           `se "${se}" は使えません。使える効果音キーは get_staging の一覧で確認してください`,
         )

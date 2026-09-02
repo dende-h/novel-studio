@@ -1,9 +1,10 @@
 import { applyCues, MASKED_SPEAKER, plainTextOfBlock, type Staging, toPages } from '../game'
 import { gameAssetKey, pickSprite, type UserGameAsset } from '../game/assets'
 import { buildGameCredits, DEFAULT_BG_KEY, presetBackground, presetBgSvg } from '../game/presets'
-import { type PresetSe, presetSe, SE_STOP } from '../game/sePresets'
+import { presetSe, SE_STOP, type SeStep } from '../game/sePresets'
 import { presetSprite } from '../game/spritePresets'
 import { parseTemplateKey } from '../game/templates'
+import { dataUrlMime } from '../image'
 import type { Episode, Inline, Work } from '../schema'
 import type { ZipInput } from '../zip'
 import {
@@ -36,11 +37,14 @@ export interface NovelGameUserAsset {
   id: string
   label: string
   tone: [string, string, string]
-  /** image/webp など。zip 内の拡張子に使う */
+  /** image/webp・audio/mpeg など。zip 内の拡張子に使う */
   mime: string
   data: Uint8Array
-  /** 省略は 'bg'（持ち込み背景しか無かったころの呼び出しと互換） */
-  kind?: 'bg' | 'sprite'
+  /**
+   * 省略は 'bg'（持ち込み背景しか無かったころの呼び出しと互換）。
+   * 'se' は運営テンプレの効果音ファイル（目録の実体・`preset` 必須・キーは `preset:se/<slug>`）
+   */
+  kind?: 'bg' | 'sprite' | 'se'
   /** 立ち絵のみ：この立ち絵の人物（Cue.speaker と突き合わせ） */
   character?: string
   /** 立ち絵のみ：表情名（省略は「通常」扱い） */
@@ -92,11 +96,24 @@ interface BgEntry {
   credit: boolean
 }
 
+/** zip に入れる効果音 1 つ（合成レシピか音声ファイル）。 */
+interface SeEntry {
+  key: string
+  label: string
+  /** 合成レシピ（組み込み・ファイルが無いときの控え） */
+  steps?: SeStep[]
+  /** 音声ファイル（目録の実体）。path はシナリオの src、data は zip に入れる実体 */
+  path?: string
+  data?: Uint8Array
+}
+
 const IMAGE_EXT: Record<string, string> = {
   'image/webp': 'webp',
   'image/jpeg': 'jpg',
   'image/png': 'png',
   'image/svg+xml': 'svg',
+  'audio/mpeg': 'mp3',
+  'audio/mp4': 'm4a',
 }
 
 function escapeHtml(s: string): string {
@@ -220,6 +237,29 @@ export function buildNovelGameFiles(
     return undefined
   }
 
+  // 効果音：目録の音声ファイル（`preset` 付き）があればそれ、無ければ組み込みの合成レシピ
+  const seByKey = new Map(
+    (opts.userAssets ?? []).filter((a) => a.kind === 'se').map((a) => [a.key, a]),
+  )
+  const resolveSe = (key: string): SeEntry | undefined => {
+    const file = seByKey.get(key)
+    if (file && (!inline || file.dataUrl)) {
+      const tplSlug = file.preset ? parseTemplateKey(file.preset)?.slug : undefined
+      return {
+        key: file.key,
+        label: file.label,
+        path: inline
+          ? inline.externalAssets
+            ? `asset:${file.id}`
+            : (file.dataUrl ?? '')
+          : `assets/se/${tplSlug ?? `user-${file.id}`}.${IMAGE_EXT[file.mime] ?? 'bin'}`,
+        data: file.data,
+      }
+    }
+    const preset = presetSe(key)
+    return preset ? { key: preset.key, label: preset.label, steps: preset.steps } : undefined
+  }
+
   const fallback = resolveBg(DEFAULT_BG_KEY)
   if (!fallback) throw new Error('既定背景プリセットが見つからない')
   const defaultEntry = resolveBg(opts.defaultBg ?? '') ?? fallback
@@ -243,7 +283,7 @@ export function buildNovelGameFiles(
   // 使った背景・立ち絵だけを同梱する（キー→実体の整合は used が単一の真実）
   const used = new Map<string, BgEntry>([[defaultEntry.key, defaultEntry]])
   const usedSprites = new Map<string, NovelGameUserAsset>()
-  const usedSes = new Map<string, PresetSe>()
+  const usedSes = new Map<string, SeEntry>()
   let current = ''
   interface Standing {
     key: string
@@ -343,7 +383,7 @@ export function buildNovelGameFiles(
     // 効果音：ページ表示の瞬間に 1 回鳴らす。未知キーは無視（壊さない）
     // 「止める」はレシピを持たない予約キー。実体が無くてもページには載せる（ループを終わらせる合図）
     const stopSe = page.se === SE_STOP
-    const se = page.se && !stopSe ? presetSe(page.se) : undefined
+    const se = page.se && !stopSe ? resolveSe(page.se) : undefined
     if (se) usedSes.set(se.key, se)
     return {
       id: page.blockId,
@@ -384,7 +424,10 @@ export function buildNovelGameFiles(
     ...(usedSes.size > 0
       ? {
           ses: Object.fromEntries(
-            [...usedSes.values()].map((s) => [s.key, { label: s.label, steps: s.steps }]),
+            [...usedSes.values()].map((s) => [
+              s.key,
+              s.steps ? { label: s.label, steps: s.steps } : { label: s.label, src: s.path ?? '' },
+            ]),
           ),
         }
       : {}),
@@ -399,7 +442,8 @@ export function buildNovelGameFiles(
             .map((a) => (a.preset ? (presetSprite(a.preset)?.label ?? 'シルエット') : '')),
         ),
       ].filter(Boolean),
-      seLabels: [...usedSes.values()].map((s) => s.label),
+      seLabels: [...usedSes.values()].filter((s) => s.steps).map((s) => s.label),
+      seFileLabels: [...usedSes.values()].filter((s) => !s.steps).map((s) => s.label),
       fontEmbedded: Boolean(opts.font) || Boolean(inline?.fontHref),
     }),
     pages: scenarioPages,
@@ -419,6 +463,9 @@ export function buildNovelGameFiles(
       : []),
     ...usedList.map((e) => ({ path: e.path, data: e.data })),
     ...usedSpriteList.map((a) => ({ path: spritePathOf(a), data: a.data })),
+    ...[...usedSes.values()].flatMap((s) =>
+      s.path && s.data ? [{ path: s.path, data: s.data }] : [],
+    ),
   ]
 }
 
@@ -447,7 +494,7 @@ export function buildNovelGameHtml(
     id: a.id,
     label: a.name,
     tone: a.tone,
-    mime: 'image/webp', // inline では未使用（実体は dataUrl）
+    mime: dataUrlMime(a.dataUrl) ?? 'image/webp', // inline では実体は dataUrl（拡張子は未使用）
     data: new Uint8Array(0),
     kind: a.kind,
     ...(a.character ? { character: a.character } : {}),

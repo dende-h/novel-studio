@@ -741,3 +741,47 @@ describe('mcp-edit — 演出譜（set_staging の純ロジック）', () => {
     )
   })
 })
+
+describe('運営テンプレの目録にあるキー（背景・効果音）', () => {
+  const stagedWork = (): Work => ({
+    ...work(),
+    episodes: [
+      {
+        id: 'e1',
+        title: '第一話',
+        blocks: parseEpisodeBody(
+          '　灯が振り返った。\n「まだ書いてるんだね」\n\n\n　場面が変わる。',
+        ),
+      },
+    ],
+  })
+
+  it('目録のキーを渡せば、組み込みの外の背景・効果音も付けられる（渡さなければ弾く）', () => {
+    const res = setStagingCues(
+      [],
+      [stagedWork()],
+      'w1',
+      'e1',
+      [{ blockId: 'b5', bg: 'preset:bg/school-hall-day', se: 'preset:se/weather-rain' }],
+      [],
+      100,
+      new Set(['preset:bg/school-hall-day']),
+      new Set(['preset:se/weather-rain']),
+    )
+    expect(res.stagings[0]?.cues[0]).toMatchObject({
+      bg: 'preset:bg/school-hall-day',
+      se: 'preset:se/weather-rain',
+    })
+    expect(() =>
+      setStagingCues(
+        [],
+        [stagedWork()],
+        'w1',
+        'e1',
+        [{ blockId: 'b5', se: 'preset:se/weather-rain' }],
+        [],
+        100,
+      ),
+    ).toThrow(/使えません/)
+  })
+})

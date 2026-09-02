@@ -14,6 +14,14 @@ vi.mock('@/ui/_api/game-templates', () => ({
   fetchTemplateBytes: async () => null,
 }))
 
+// happy-dom は Audio 非対応なので、音声の下ごしらえも固定値
+vi.mock('@/ui/_utils/audioMeta', () => ({
+  audioFileToDataUrl: async (file: File) =>
+    /\.(mp3|m4a)$/i.test(file.name) ? 'data:audio/mpeg;base64,SUQz' : null,
+  audioDurationMs: async () => 4200,
+}))
+vi.mock('@/ui/_utils/sePlayer', () => ({ playCatalogSe: vi.fn(), playPresetSe: vi.fn() }))
+
 // happy-dom は canvas 非対応なので、変換は固定値
 vi.mock('@/ui/_utils/imageResizer', () => ({
   gameBgToDataUrl: async () => ({
@@ -44,7 +52,7 @@ const entry = (over: Partial<TemplateEntry> = {}): TemplateEntry => ({
 const manifest = (entries: TemplateEntry[]): TemplateManifest => ({
   v: 1,
   updatedAt: 1,
-  categories: { bg: {}, sprite: {} },
+  categories: { bg: {}, sprite: {}, se: {} },
   entries,
 })
 
@@ -78,7 +86,7 @@ describe('AdminTemplatesPage', () => {
     api.adminFetchTemplates.mockResolvedValue(manifest([entry()]))
     api.adminPatchTemplates.mockImplementation(async (_t, patch) => ({
       ...manifest([entry({ label: '裏路地（夜）', hidden: true })]),
-      categories: { bg: patch.categories?.bg ?? {}, sprite: {} },
+      categories: { bg: patch.categories?.bg ?? {}, sprite: {}, se: {} },
     }))
     render(<AdminTemplatesPage getToken={getToken} />)
     const label = await screen.findByLabelText('town-alley-night の表示名')
@@ -140,7 +148,44 @@ describe('AdminTemplatesPage', () => {
       time: 'dusk',
     })
     expect(await screen.findByText(/IMG_0001.png：名前が規則に合わない/)).toBeInTheDocument()
-    expect(await screen.findByText('1 枚を送りました')).toBeInTheDocument()
+    expect(await screen.findByText('1 件を送りました')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /背景（画像 1）/ })).toBeInTheDocument()
+  })
+
+  it('効果音タブ：組み込みの合成 8 種は「ファイルなし」、mp3 を入れると長さ付きで並ぶ', async () => {
+    api.adminFetchTemplates.mockResolvedValue(manifest([]))
+    api.adminPutTemplate.mockImplementation(async (_t, kind, slug, input) => ({
+      ok: true,
+      entry: entry({
+        kind,
+        slug,
+        label: input.label ?? '',
+        category: input.category ?? slug,
+        mime: 'audio/mpeg',
+        durationMs: input.durationMs,
+      }),
+    }))
+    render(<AdminTemplatesPage getToken={getToken} />)
+    fireEvent.click(await screen.findByRole('button', { name: /効果音（音 0）/ }))
+    expect(screen.getAllByText('ファイルなし（端末で合成）')).toHaveLength(8)
+    expect(screen.getByLabelText('rain を試聴')).toBeInTheDocument()
+
+    const files = [
+      new File(['a'], 'weather-rain-heavy.mp3', { type: 'audio/mpeg' }),
+      new File(['b'], 'door-knock.wav', { type: 'audio/wav' }),
+    ]
+    fireEvent.change(screen.getByLabelText('テンプレ画像を選ぶ'), { target: { files } })
+    await waitFor(() => expect(api.adminPutTemplate).toHaveBeenCalledTimes(1))
+    expect(api.adminPutTemplate.mock.calls[0]?.slice(1, 3)).toEqual(['se', 'weather-rain-heavy'])
+    expect(api.adminPutTemplate.mock.calls[0]?.[3]).toEqual({
+      dataUrl: 'data:audio/mpeg;base64,SUQz',
+      durationMs: 4200,
+      label: 'rain heavy',
+      category: 'weather',
+    })
+    expect(await screen.findByText(/door-knock.wav：mp3 か m4a だけ/)).toBeInTheDocument()
+    expect(await screen.findByText('2 件を送りました')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /効果音（音 1）/ })).toBeInTheDocument()
+    expect(screen.getByText(/4\.2 秒/)).toBeInTheDocument()
   })
 })

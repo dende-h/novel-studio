@@ -24,11 +24,13 @@ type GetToken = () => Promise<string | null>
  * 送信するバンドルの形式。platform 側と揃える。
  * v2 で work.platform、v3 で episodes[].visibility（話ごとの公開状態）、
  * v4 で episodes[].game（サウンドノベルの自己完結プレイヤー HTML）、
- * v5 で work.gameAssets（素材の実体を**作品ぶん1回だけ**送り、話は `asset:<id>` で参照）を追加。
+ * v5 で work.gameAssets（素材の実体を**作品ぶん1回だけ**送り、話は `asset:<id>` で参照）、
+ * v6 で work.gameAssets に**音声**（運営テンプレの効果音ファイル・`data:audio/…`）を追加。
  *
  * 使わない機能の版は名乗らない（**最小の版で送る**）。先方が新しい版を知らないあいだも
  * 「本文の更新だけは通る」ようにしておく（新しすぎるバンドルは 409 で弾かれる契約）。
  */
+const SCHEMA_VERSION_WITH_AUDIO_ASSETS = 6
 const SCHEMA_VERSION_WITH_SHARED_ASSETS = 5
 const SCHEMA_VERSION_WITH_GAME = 4
 const SCHEMA_VERSION_WITH_EPISODES = 3
@@ -328,9 +330,12 @@ export async function publishWorkToPlatform(
       method: 'POST',
       headers: { Authorization: `Bearer ${jwt}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        // 素材をまとめて送るときだけ v5。テンプレだけの作品は v4 のまま＝使わない版は名乗らない
+        // 素材をまとめて送るときだけ v5、その中に音声（効果音ファイル）があるときだけ v6。
+        // テンプレだけの作品は v4 のまま＝使わない版は名乗らない
         schemaVersion: bundleWork.gameAssets
-          ? SCHEMA_VERSION_WITH_SHARED_ASSETS
+          ? bundleWork.gameAssets.some((a) => a.dataUrl.startsWith('data:audio/'))
+            ? SCHEMA_VERSION_WITH_AUDIO_ASSETS
+            : SCHEMA_VERSION_WITH_SHARED_ASSETS
           : withGame
             ? SCHEMA_VERSION_WITH_GAME
             : toBundleEpisodes(work).declared
@@ -366,12 +371,16 @@ export async function publishWorkToPlatform(
     }
   }
 
-  // 先方がまだ v4（サウンドノベル）を知らない版のときの案内（supported を添えて返る契約）
+  // 先方がまだこの版（v4＝サウンドノベル・v6＝効果音ファイル）を知らないときの案内
+  //（supported を添えて返る契約）。v5 までは知っていて v6 だけ知らないなら、効果音を外せば通る
   if (payload.error === 'unsupported-schema-version') {
+    const supported = typeof payload.supported === 'number' ? payload.supported : 0
     return {
       ok: false,
       message:
-        '公開先がまだサウンドノベル公開に対応していません。話ごとの「サウンドノベル」をすべて切ってから、もう一度お試しください。',
+        supported >= SCHEMA_VERSION_WITH_SHARED_ASSETS
+          ? '公開先がまだ効果音の素材に対応していません。効果音をテンプレの合成音に戻すか外してから、もう一度お試しください。'
+          : '公開先がまだサウンドノベル公開に対応していません。話ごとの「サウンドノベル」をすべて切ってから、もう一度お試しください。',
     }
   }
   const message = typeof payload.message === 'string' ? payload.message : defaultMessage(res.status)

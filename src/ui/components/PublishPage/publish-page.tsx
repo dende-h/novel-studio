@@ -8,7 +8,7 @@ import {
   LoaderCircle,
 } from 'lucide-react'
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
-import { mergeBackgroundCatalog } from '@/core/game/templates'
+import { mergeBackgroundCatalog, mergeSeCatalog } from '@/core/game/templates'
 import {
   MAX_DESCRIPTION_LENGTH,
   PLATFORM_GENRES,
@@ -45,7 +45,9 @@ import { createAssetHostingApi, pullHostedAssets } from '@/ui/game/asset-hosting
 import {
   loadTemplateCatalog,
   resolveTemplateBackgrounds,
+  resolveTemplateSes,
   templateBgKeysOf,
+  templateSeKeysOf,
 } from '@/ui/game/template-catalog'
 
 /** コトノハ-grove- 上での見え方。契約の `visibility` と同じ 2 値。 */
@@ -299,26 +301,33 @@ export function PublishPage({
         // テンプレ背景の画像（目録にある分）は実体を取って、持ち込み素材と同じ形で載せる
         //（契約 v5＝作品ぶん1回）。選んだ話が使う分だけ見る。取れなければ控えを送らず止める
         //（先方は画像しか受け取らない＝tone の控えでは弾かれる）
-        const catalog = mergeBackgroundCatalog(await loadTemplateCatalog())
+        const manifest = await loadTemplateCatalog()
+        const selectedStagings = stagings.filter((s) =>
+          novelGameEpisodeOf(novelGameEpisodes, s.episodeId),
+        )
         const templates = await resolveTemplateBackgrounds(
-          templateBgKeysOf(
-            stagings.filter((s) => novelGameEpisodeOf(novelGameEpisodes, s.episodeId)),
-          ),
-          catalog,
+          templateBgKeysOf(selectedStagings),
+          mergeBackgroundCatalog(manifest),
           { fallback: 'none' },
         )
-        if (templates.missing.length > 0) {
+        // 効果音の音声ファイルも同じ経路（先方は画像と音声しか受けない＝控えは送らない）
+        const templateSes = await resolveTemplateSes(
+          templateSeKeysOf(selectedStagings),
+          mergeSeCatalog(manifest),
+          { fallback: 'none' },
+        )
+        if (templates.missing.length > 0 || templateSes.missing.length > 0) {
           setResult({
             ok: false,
             message:
-              'テンプレ背景の画像を取得できませんでした。通信環境を確認して、もう一度お試しください',
+              'テンプレ素材（背景・効果音）を取得できませんでした。通信環境を確認して、もう一度お試しください',
           })
           setPending(false)
           return
         }
         gameInput = {
           stagings,
-          gameAssets: [...(await gameAssetRepo.list()), ...templates.assets],
+          gameAssets: [...(await gameAssetRepo.list()), ...templates.assets, ...templateSes.assets],
         }
       } else if (work.platform?.novelGame === true) {
         gameInput = { stagings: [], gameAssets: [], enabled: false }

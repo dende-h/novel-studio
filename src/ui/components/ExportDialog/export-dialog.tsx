@@ -3,7 +3,7 @@ import { type ComponentType, useId, useState } from 'react'
 import { glossaryToPlainText, workToPlainText } from '@/core/exporter/toPlainText'
 import { gameAssetKey } from '@/core/game/assets'
 import { DEFAULT_BG_KEY } from '@/core/game/presets'
-import { mergeBackgroundCatalog } from '@/core/game/templates'
+import { mergeBackgroundCatalog, mergeSeCatalog } from '@/core/game/templates'
 import { dataUrlMime, decodeDataUrl } from '@/core/image'
 import type { Work } from '@/core/schema'
 import type { GameAssetRepository } from '@/core/storage/gameAssetRepository'
@@ -36,8 +36,10 @@ import { Switch } from '@/ui/components/ui/switch'
 import {
   loadTemplateCatalog,
   resolveTemplateBackgrounds,
+  resolveTemplateSes,
   templateBgKeysOf,
   templateBgSrc,
+  templateSeKeysOf,
   useTemplateCatalog,
 } from '@/ui/game/template-catalog'
 import { useIsNarrow } from '@/ui/hooks/use-narrow'
@@ -182,28 +184,36 @@ export function ExportDialog({
           const staging = await stagingRepo?.get(work.id, selectedEpisode.id)
           // テンプレ背景の画像（目録にある分）は実体を取って素材の形で渡す。取れなければ
           // tone の控え（組み込みキーは exporter が SVG を描くので何も渡さない）
-          const catalog = mergeBackgroundCatalog(await loadTemplateCatalog())
+          const manifest = await loadTemplateCatalog()
           const templates = await resolveTemplateBackgrounds(
             templateBgKeysOf(staging ? [staging] : [], [gameBg]),
-            catalog,
+            mergeBackgroundCatalog(manifest),
             { fallback: 'gradient' },
           )
-          // 持ち込み素材（背景・立ち絵）は手元の全件を渡し、使う分だけ exporter が同梱する
-          const userAssets = [...((await gameAssetRepo?.list()) ?? []), ...templates.assets].map(
-            (a) => ({
-              key: gameAssetKey(a),
-              id: a.id,
-              label: a.name,
-              tone: a.tone,
-              mime: dataUrlMime(a.dataUrl) ?? 'image/webp',
-              data: decodeDataUrl(a.dataUrl),
-              kind: a.kind,
-              ...(a.character ? { character: a.character } : {}),
-              ...(a.expression ? { expression: a.expression } : {}),
-              ...(a.preset ? { preset: a.preset } : {}),
-              createdAt: a.createdAt,
-            }),
+          // 効果音の音声ファイルも同じ（取れなければ合成の控え・無ければ鳴らないだけ）
+          const templateSes = await resolveTemplateSes(
+            templateSeKeysOf(staging ? [staging] : []),
+            mergeSeCatalog(manifest),
+            { fallback: 'omit' },
           )
+          // 持ち込み素材（背景・立ち絵）は手元の全件を渡し、使う分だけ exporter が同梱する
+          const userAssets = [
+            ...((await gameAssetRepo?.list()) ?? []),
+            ...templates.assets,
+            ...templateSes.assets,
+          ].map((a) => ({
+            key: gameAssetKey(a),
+            id: a.id,
+            label: a.name,
+            tone: a.tone,
+            mime: dataUrlMime(a.dataUrl) ?? 'image/webp',
+            data: decodeDataUrl(a.dataUrl),
+            kind: a.kind,
+            ...(a.character ? { character: a.character } : {}),
+            ...(a.expression ? { expression: a.expression } : {}),
+            ...(a.preset ? { preset: a.preset } : {}),
+            createdAt: a.createdAt,
+          }))
           triggerDownload(
             episodeNovelGameExport(
               work,

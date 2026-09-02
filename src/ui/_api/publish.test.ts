@@ -642,6 +642,58 @@ describe('契約 v5（素材は作品ぶん1回だけ・話は asset:<id> で参
     }
   })
 
+  it('効果音の音声（運営テンプレ）を載せるときだけ v6 を名乗る', async () => {
+    const { publishWorkToPlatform } = await loadModule()
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(new Response(JSON.stringify({ ok: true }), { status: 200 }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const se = {
+      id: 'tpl-se-weather-rain',
+      kind: 'se' as const,
+      name: '雨（強）',
+      dataUrl: 'data:audio/mpeg;base64,SUQz',
+      tone: ['#000000', '#000000', '#000000'] as [string, string, string],
+      preset: 'preset:se/weather-rain',
+      createdAt: 1,
+    }
+    await publishWorkToPlatform(async () => 'jwt', twoEpisodeWork(), {
+      stagings: [
+        {
+          workId: 'w1',
+          episodeId: 'e1',
+          cues: [{ blockId: 'b1', se: 'preset:se/weather-rain', seRepeat: 'loop' }],
+          updatedAt: 1,
+        },
+      ],
+      gameAssets: [asset, se],
+    })
+
+    const body = JSON.parse((fetchMock.mock.calls[0] as [string, RequestInit])[1].body as string)
+    expect(body.schemaVersion).toBe(6)
+    // 使った素材だけ（立ち絵は話者が無いので載らない）
+    expect(body.work.gameAssets).toEqual([{ id: 'tpl-se-weather-rain', dataUrl: se.dataUrl }])
+    expect(body.work.episodes[0].game.assets).toEqual(['tpl-se-weather-rain'])
+    expect(body.work.episodes[0].game.html).toContain('asset:tpl-se-weather-rain')
+  })
+
+  it('先方が v5 までしか知らないときは、効果音を外せば通ると案内する', async () => {
+    const { publishWorkToPlatform } = await loadModule()
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ error: 'unsupported-schema-version', supported: 5 }), {
+          status: 409,
+        }),
+      ),
+    )
+    const res = await publishWorkToPlatform(async () => 'jwt', twoEpisodeWork(), novelGame())
+    expect(res.ok).toBe(false)
+    if (res.ok) return
+    expect(res.message).toContain('効果音')
+  })
+
   it('持ち込み素材を使わない作品は v4 のまま（使わない版は名乗らない）', async () => {
     const { publishWorkToPlatform } = await loadModule()
     const fetchMock = vi

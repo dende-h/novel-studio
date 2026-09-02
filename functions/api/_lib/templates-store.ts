@@ -3,8 +3,8 @@
  * 運営テンプレ（背景・立ち絵）の R2 上の置き場（D-GAME-TEMPLATE-CMS）。
  *
  *   `_templates/manifest.json`            … 目録（src/core/game/templates.ts の TemplateManifest）
- *   `_templates/<kind>/<slug>.webp`       … 実体
- *   `_templates/<kind>/<slug>.thumb.webp` … 一覧用のサムネ
+ *   `_templates/<kind>/<slug>.<ext>`       … 実体（拡張子は MIME から＝webp/png/jpg/mp3/m4a）
+ *   `_templates/<kind>/<slug>.thumb.<ext>` … 一覧用のサムネ（画像だけ）
  *
  * 接頭辞 `_templates/` は Clerk の user_id（`user_…`）と衝突しないので、退会時の
  * `${userId}/` 一括 purge に巻き込まれない。公開物なので暗号化はしない。
@@ -26,7 +26,8 @@ export const templateObjectKey = (
   kind: TemplateKind,
   slug: string,
   variant: TemplateVariant = 'full',
-): string => `${TEMPLATES_PREFIX}${kind}/${slug}${variant === 'thumb' ? '.thumb' : ''}.webp`
+  ext = 'webp',
+): string => `${TEMPLATES_PREFIX}${kind}/${slug}${variant === 'thumb' ? '.thumb' : ''}.${ext}`
 
 /** 目録を読む。無い・壊れているときは空の目録（配信を止めない）。 */
 export async function readTemplateManifest(bucket: R2Bucket): Promise<TemplateManifest> {

@@ -5,8 +5,10 @@ import { presetBgSvg } from '@/core/game/presets'
 import { presetSpriteDataUrl } from '@/core/game/spritePresets'
 import {
   type CatalogBackground,
+  type CatalogSe,
   type CatalogSprite,
   mergeBackgroundCatalog,
+  mergeSeCatalog,
   mergeSpriteCatalog,
   type TemplateEntry,
   type TemplateManifest,
@@ -102,6 +104,7 @@ export interface TemplateCatalog {
   manifest: TemplateManifest | null
   backgrounds: CatalogBackground[]
   sprites: CatalogSprite[]
+  ses: CatalogSe[]
 }
 
 /** 画面用：目録（無ければ組み込みだけ）を合流済みの一覧で返し、初回に読みに行く。 */
@@ -111,7 +114,12 @@ export function useTemplateCatalog(): TemplateCatalog {
     void loadTemplateCatalog()
   }, [])
   return useMemo(
-    () => ({ manifest: m, backgrounds: mergeBackgroundCatalog(m), sprites: mergeSpriteCatalog(m) }),
+    () => ({
+      manifest: m,
+      backgrounds: mergeBackgroundCatalog(m),
+      sprites: mergeSpriteCatalog(m),
+      ses: mergeSeCatalog(m),
+    }),
     [m],
   )
 }
@@ -224,6 +232,51 @@ function templateBgAsset(bg: CatalogBackground, dataUrl: string): UserGameAsset 
     preset: bg.key,
     createdAt: bg.entry?.updatedAt ?? 0,
   }
+}
+
+/** 演出譜が指すテンプレ効果音のキー（重複なし・`preset:se/` だけ。予約キー stop は含まない）。 */
+export function templateSeKeysOf(stagings: readonly Staging[]): string[] {
+  const keys = new Set<string>()
+  for (const s of stagings)
+    for (const c of s.cues) if (c.se?.startsWith('preset:se/')) keys.add(c.se)
+  return [...keys]
+}
+
+/**
+ * 演出譜が指すテンプレ効果音のうち、目録に音声ファイルがあるものを素材の形にする
+ * （kind 'se'・`preset` 付き・id は `tpl-se-<slug>`）。組み込みの合成レシピだけのキーは何もしない
+ * （exporter がレシピを載せる）。ファイルを取れなかったキーは：合成の控えがあればそれに倒し
+ * （何もしない）、無ければ `fallback: 'none'` で `missing` に積む（投稿は止めて知らせる）／
+ * `'omit'` で黙って落とす（zip・プレビューは音が鳴らないだけで壊れない）。
+ */
+export async function resolveTemplateSes(
+  keys: readonly string[],
+  ses: readonly CatalogSe[],
+  opts: { fallback: 'omit' | 'none' },
+): Promise<ResolvedTemplateBackgrounds> {
+  const byKey = new Map(ses.map((s) => [s.key, s]))
+  const assets: UserGameAsset[] = []
+  const missing: string[] = []
+  for (const key of keys) {
+    const se = byKey.get(key)
+    if (!se?.entry) continue
+    const file = await loadTemplateImage(se.entry)
+    if (file) {
+      assets.push({
+        id: templateAssetId('se', se.slug),
+        kind: 'se',
+        name: se.label,
+        dataUrl: file.dataUrl,
+        tone: ['#000000', '#000000', '#000000'],
+        preset: se.key,
+        createdAt: se.entry.updatedAt,
+      })
+      continue
+    }
+    if (se.builtin) continue
+    if (opts.fallback === 'none') missing.push(key)
+  }
+  return { assets, missing }
 }
 
 /** テンプレ立ち絵を話者へ割り当てるときの実体（画像 → 組み込み SVG）。取れなければ null。 */
