@@ -100,8 +100,9 @@ interface BgEntry {
 interface SeEntry {
   key: string
   label: string
-  /** 合成レシピ（組み込み・ファイルが無いときの控え） */
+  /** 合成レシピ（組み込み・ファイルが無いときの控え）と、ループの周期（秒・省略＝長さ） */
   steps?: SeStep[]
+  period?: number
   /** 音声ファイル（目録の実体）。path はシナリオの src、data は zip に入れる実体 */
   path?: string
   data?: Uint8Array
@@ -257,7 +258,14 @@ export function buildNovelGameFiles(
       }
     }
     const preset = presetSe(key)
-    return preset ? { key: preset.key, label: preset.label, steps: preset.steps } : undefined
+    return preset
+      ? {
+          key: preset.key,
+          label: preset.label,
+          steps: preset.steps,
+          ...(preset.period !== undefined ? { period: preset.period } : {}),
+        }
+      : undefined
   }
 
   const fallback = resolveBg(DEFAULT_BG_KEY)
@@ -426,7 +434,13 @@ export function buildNovelGameFiles(
           ses: Object.fromEntries(
             [...usedSes.values()].map((s) => [
               s.key,
-              s.steps ? { label: s.label, steps: s.steps } : { label: s.label, src: s.path ?? '' },
+              s.steps
+                ? {
+                    label: s.label,
+                    steps: s.steps,
+                    ...(s.period !== undefined ? { period: s.period } : {}),
+                  }
+                : { label: s.label, src: s.path ?? '' },
             ]),
           ),
         }

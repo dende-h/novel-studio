@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { PRESET_BACKGROUNDS } from './presets'
+import { PRESET_SES } from './sePresets'
 import { PRESET_SPRITES } from './spritePresets'
 import {
   catalogBackgroundKeys,
@@ -295,9 +296,9 @@ describe('効果音（kind se）', () => {
     )
   })
 
-  it('組み込みの合成 8 種は分類 synth の控え。同じ slug のファイルが入れば実体が差し替わる', () => {
+  it('組み込みの合成レシピは分類 synth の控え。同じ slug のファイルが入れば実体が差し替わる', () => {
     const none = mergeSeCatalog(null)
-    expect(none).toHaveLength(8)
+    expect(none).toHaveLength(PRESET_SES.length)
     expect(none.every((s) => s.builtin && !s.entry && s.category === 'synth')).toBe(true)
     expect(categoryLabelOf(null, 'se', 'synth')).toBe('合成')
 

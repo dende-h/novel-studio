@@ -77,7 +77,7 @@ export interface GameScenario {
    * `steps` は端末で合成（組み込み）、`src` は運営テンプレの音声ファイル（zip のパス・
    * data URL・契約 v5 の `asset:<id>` のいずれか）
    */
-  ses?: Record<string, { label: string; steps?: SeStep[]; src?: string }>
+  ses?: Record<string, { label: string; steps?: SeStep[]; period?: number; src?: string }>
   /** 同梱フォント（無ければシステムの明朝で表示） */
   fontSrc?: string
   credits: CreditLine[]
@@ -365,7 +365,7 @@ html,body{height:100%;margin:0;background:#05060A}
   }
 
   // ---- 効果音（合成レシピの小型インタプリタ ＋ 音声ファイル） ----
-  var audioCtx = null, noiseBuf = null
+  var audioCtx = null, noiseBufs = {}, reverbIr = null
   function ensureAudio() {
     if (!audioCtx) {
       try { audioCtx = new (window.AudioContext || window.webkitAudioContext)() } catch (e) { return null }
@@ -408,48 +408,133 @@ html,body{height:100%;margin:0;background:#05060A}
     src.start(at)
     return src
   }
-  function getNoise(ctx) {
-    if (!noiseBuf) {
-      noiseBuf = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate)
-      var data = noiseBuf.getChannelData(0)
-      for (var i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1
+  /** ノイズ 3 色（2 秒・ループ）。pink は Paul Kellet の近似、brown は白色の積分。sePlayer.ts と同じ式 */
+  function getNoise(ctx, kind) {
+    if (noiseBufs[kind]) return noiseBufs[kind]
+    var len = ctx.sampleRate * 2
+    var buf = ctx.createBuffer(1, len, ctx.sampleRate)
+    var data = buf.getChannelData(0)
+    var i, w
+    if (kind === 'pink') {
+      var b0 = 0, b1 = 0, b2 = 0, b3 = 0, b4 = 0, b5 = 0, b6 = 0
+      for (i = 0; i < len; i++) {
+        w = Math.random() * 2 - 1
+        b0 = 0.99886 * b0 + w * 0.0555179
+        b1 = 0.99332 * b1 + w * 0.0750759
+        b2 = 0.969 * b2 + w * 0.153852
+        b3 = 0.8665 * b3 + w * 0.3104856
+        b4 = 0.55 * b4 + w * 0.5329522
+        b5 = -0.7616 * b5 - w * 0.016898
+        data[i] = (b0 + b1 + b2 + b3 + b4 + b5 + b6 + w * 0.5362) * 0.11
+        b6 = w * 0.115926
+      }
+    } else if (kind === 'brown') {
+      var last = 0
+      for (i = 0; i < len; i++) {
+        w = Math.random() * 2 - 1
+        last = (last + 0.02 * w) / 1.02
+        data[i] = last * 3.5
+      }
+    } else {
+      for (i = 0; i < len; i++) data[i] = Math.random() * 2 - 1
     }
-    return noiseBuf
+    noiseBufs[kind] = buf
+    return buf
+  }
+  /** 合成した部屋の残響（1.6 秒・指数減衰のノイズ・ステレオ）。 */
+  function getReverbIr(ctx) {
+    if (reverbIr) return reverbIr
+    var len = Math.floor(ctx.sampleRate * 1.6)
+    var buf = ctx.createBuffer(2, len, ctx.sampleRate)
+    for (var ch = 0; ch < 2; ch++) {
+      var data = buf.getChannelData(ch)
+      for (var i = 0; i < len; i++) data[i] = (Math.random() * 2 - 1) * Math.exp((-4.5 * i) / len)
+    }
+    reverbIr = buf
+    return buf
   }
   /** レシピ 1 回ぶんを、指定の時刻から dest へ流す（時刻は AudioContext の絶対秒）。 */
   function scheduleSe(ctx, steps, base, dest) {
+    var reverb = null
+    function getReverb() {
+      if (!reverb) {
+        reverb = ctx.createConvolver()
+        reverb.buffer = getReverbIr(ctx)
+        reverb.connect(dest)
+      }
+      return reverb
+    }
     for (var i = 0; i < steps.length; i++) {
       var s = steps[i]
       var t0 = base + (s.t || 0)
-      var g = s.g == null ? 0.5 : s.g
+      var end = t0 + s.d
+      var peak = Math.max(s.g == null ? 0.5 : s.g, 0.001)
       var src
-      if (s.w === 'noise') {
+      if (s.w === 'noise' || s.w === 'pink' || s.w === 'brown') {
         src = ctx.createBufferSource()
-        src.buffer = getNoise(ctx)
+        src.buffer = getNoise(ctx, s.w)
         src.loop = true
       } else {
         src = ctx.createOscillator()
         src.type = s.w
         src.frequency.setValueAtTime(s.f || 440, t0)
-        if (s.f2) src.frequency.exponentialRampToValueAtTime(s.f2, t0 + s.d)
+        if (s.f2) src.frequency.exponentialRampToValueAtTime(s.f2, end)
       }
       var node = src
+      if (s.hp) {
+        var hp = ctx.createBiquadFilter()
+        hp.type = 'highpass'
+        hp.frequency.setValueAtTime(s.hp, t0)
+        node.connect(hp)
+        node = hp
+      }
+      if (s.bp) {
+        var bp = ctx.createBiquadFilter()
+        bp.type = 'bandpass'
+        bp.frequency.setValueAtTime(s.bp, t0)
+        if (s.bp2) bp.frequency.exponentialRampToValueAtTime(s.bp2, end)
+        bp.Q.setValueAtTime(s.q == null ? 1 : s.q, t0)
+        node.connect(bp)
+        node = bp
+      }
       if (s.lp) {
         var lp = ctx.createBiquadFilter()
         lp.type = 'lowpass'
         lp.frequency.setValueAtTime(s.lp, t0)
-        if (s.lp2) lp.frequency.exponentialRampToValueAtTime(s.lp2, t0 + s.d)
+        if (s.lp2) lp.frequency.exponentialRampToValueAtTime(s.lp2, end)
         node.connect(lp)
         node = lp
       }
+      // エンベロープ：a 秒で立ち上がり → s 秒保つ → end までに指数減衰
+      var attack = Math.max(0.001, s.a == null ? 0.015 : s.a)
+      var holdUntil = t0 + attack + (s.s || 0)
       var gain = ctx.createGain()
       gain.gain.setValueAtTime(0.0001, t0)
-      gain.gain.exponentialRampToValueAtTime(Math.max(g, 0.001), t0 + 0.015)
-      gain.gain.exponentialRampToValueAtTime(0.0001, t0 + s.d)
+      gain.gain.exponentialRampToValueAtTime(peak, Math.min(t0 + attack, end))
+      if (holdUntil > t0 + attack && holdUntil < end) gain.gain.setValueAtTime(peak, holdUntil)
+      gain.gain.exponentialRampToValueAtTime(0.0001, end)
+      // 音量の揺らぎ（LFO を gain の値に足す）
+      if (s.mf && s.md) {
+        var lfo = ctx.createOscillator()
+        lfo.type = 'sine'
+        lfo.frequency.setValueAtTime(s.mf, t0)
+        var depth = ctx.createGain()
+        depth.gain.setValueAtTime(peak * Math.min(s.md, 0.9), t0)
+        lfo.connect(depth)
+        depth.connect(gain.gain)
+        lfo.start(t0)
+        lfo.stop(end + 0.05)
+      }
       node.connect(gain)
       gain.connect(dest)
+      if (s.rv) {
+        var send = ctx.createGain()
+        send.gain.setValueAtTime(Math.min(s.rv, 1), t0)
+        gain.connect(send)
+        send.connect(getReverb())
+      }
       src.start(t0)
-      src.stop(t0 + s.d + 0.05)
+      src.stop(end + 0.05)
     }
   }
   function seDur(steps) {
@@ -529,7 +614,7 @@ html,body{height:100%;margin:0;background:#05060A}
       return
     }
     var steps = se.steps
-    var period = seDur(steps)
+    var period = Math.max(0.2, se.period || seDur(steps))
     loopNext = ctx.currentTime + 0.02
     var pump = function () {
       if (playingLoop !== key) return
