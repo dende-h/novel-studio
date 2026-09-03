@@ -9,6 +9,7 @@ import {
 } from '../game'
 import type { UserGameAsset } from '../game/assets'
 import { DEFAULT_EXPRESSION, spriteExpressionsOf, userAssetKey } from '../game/assets'
+import { GAME_FEATURES } from '../game/features'
 import {
   mergeBackgroundCatalog,
   mergeSeCatalog,
@@ -94,16 +95,19 @@ export function stagingToPlainText(
     ].join('\n'),
   )
 
-  sections.push(
-    [
-      '使える効果音（se）キー（その行の表示と同時に鳴る。',
-      'se_repeat: once（既定）/ twice / loop。loop は次の場面の切れ目か se: "stop" まで続く）:',
-      ...visibleTemplates(mergeSeCatalog(templates)).map((p) => `- ${p.key} … ${p.label}`),
-      '- stop … 鳴っている環境音をここで止める（レシピは持たない予約キー）',
-    ].join('\n'),
-  )
+  // 効果音を出さない版（GAME_FEATURES.se＝false）では一覧を出さない（AI に無い欄を勧めない）
+  if (GAME_FEATURES.se) {
+    sections.push(
+      [
+        '使える効果音（se）キー（その行の表示と同時に鳴る。',
+        'se_repeat: once（既定）/ twice / loop。loop は次の場面の切れ目か se: "stop" まで続く）:',
+        ...visibleTemplates(mergeSeCatalog(templates)).map((p) => `- ${p.key} … ${p.label}`),
+        '- stop … 鳴っている環境音をここで止める（レシピは持たない予約キー）',
+      ].join('\n'),
+    )
+  }
 
-  // 立ち絵は話者から自動で出る。AI が選べるのは表情（expression）だけ
+  // 立ち絵は話者から自動で出る。AI が選べるのは表情（expression）と登場（appear）
   const spriteCharacters = [
     ...new Set(
       gameAssets.filter((a) => a.kind === 'sprite' && a.character).map((a) => a.character),
@@ -119,6 +123,7 @@ export function stagingToPlainText(
     [
       `立ち絵（話者を付けると自動で表示。表情は expression で指定・省略は「${DEFAULT_EXPRESSION}」。`,
       'セリフの前から出すには、地の文の行に appear（登場・人物名）を付ける。',
+      'expression は話者の付いた行ではその話者の、appear だけの行ではその人物の表情。',
       '人物ごと描いた一枚絵の背景では hide_sprite で出さない）:',
       ...spriteLines,
     ].join('\n'),
@@ -137,8 +142,10 @@ function cueSummary(cue: Cue): string {
   if (cue.sceneBreak) parts.push('場面の切れ目')
   if (cue.bg) parts.push(`背景=${cue.bg}`)
   if (cue.bgm) parts.push(`BGM=${cue.bgm}`)
-  if (cue.se) parts.push(`効果音=${cue.se}`)
-  if (cue.seRepeat) parts.push(`鳴らし方=${cue.seRepeat === 'loop' ? 'ずっと' : '2回'}`)
+  if (GAME_FEATURES.se && cue.se) parts.push(`効果音=${cue.se}`)
+  if (GAME_FEATURES.se && cue.seRepeat) {
+    parts.push(`鳴らし方=${cue.seRepeat === 'loop' ? 'ずっと' : '2回'}`)
+  }
   if (cue.transition) parts.push(`切り替え=${cue.transition}`)
   return parts.length > 0 ? parts.join('／') : '（内容なし）'
 }

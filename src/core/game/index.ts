@@ -25,7 +25,10 @@ export const CueSchema = z.object({
   blockId: z.string(),
   /** 話者名。辞書 entry の name（= [[名前]] の解決キーと同一） */
   speaker: z.string().optional(),
-  /** 表情名。話者に立ち絵があるときだけ意味を持つ（無ければ「通常」→最初の1枚に倒す） */
+  /**
+   * 表情名。話者の付いた行ではその話者の、そうでなければ登場（appear）する人物の表情。
+   * 立ち絵があるときだけ意味を持つ（無ければ「通常」→最初の1枚に倒す）
+   */
   expression: z.string().optional(),
   /** 立ち絵の登場（人物名）。この行からその人物の立ち絵が舞台に入る（名前枠は出さない・地の文でも可） */
   appear: z.string().optional(),

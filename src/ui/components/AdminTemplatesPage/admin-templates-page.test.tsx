@@ -23,6 +23,10 @@ vi.mock('@/ui/_utils/audioMeta', () => ({
 }))
 vi.mock('@/ui/_utils/sePlayer', () => ({ playCatalogSe: vi.fn(), playPresetSe: vi.fn() }))
 
+// この版は効果音を隠している（features.ts）。効果音タブそのものはここで検証し続ける。
+// フラグが落ちているときの振る舞いは admin-templates-page.features.test.tsx
+vi.mock('@/core/game/features', () => ({ GAME_FEATURES: { se: true } }))
+
 // happy-dom は canvas 非対応なので、変換は固定値
 vi.mock('@/ui/_utils/imageResizer', () => ({
   gameBgToDataUrl: async () => ({

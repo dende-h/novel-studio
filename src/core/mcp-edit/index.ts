@@ -8,6 +8,7 @@ import {
   type Staging,
 } from '../game'
 import { type SpriteSource, spriteExpressionsOf, userAssetKey } from '../game/assets'
+import { GAME_FEATURES } from '../game/features'
 import { presetBackground } from '../game/presets'
 import { presetSe, SE_STOP } from '../game/sePresets'
 import { type FlatNote, MAX_NOTE_DEPTH, rebuildEpisodeNotes } from '../outline'
@@ -879,7 +880,7 @@ export function setStagingCues(
   now: number,
   /** 運営テンプレの目録が知っている背景キー（組み込み 24 枚の外にある絵）。省略＝組み込みだけ */
   templateBgKeys: ReadonlySet<string> = new Set(),
-  /** 同じく効果音キー（組み込みの合成 8 種の外にある音）。省略＝組み込みだけ */
+  /** 同じく効果音キー（組み込みの合成 12 種の外にある音）。省略＝組み込みだけ */
   templateSeKeys: ReadonlySet<string> = new Set(),
 ): { stagings: Staging[]; applied: number; cleared: number } {
   const work = works.find((w) => w.id === workId)
@@ -949,13 +950,8 @@ export function setStagingCues(
       patch.speaker = speaker
     }
     if (item.expression !== undefined) {
-      const expression = emptyToUndef(item.expression)
-      if (expression !== undefined && classifyBlock(block) !== 'dialogue') {
-        throw new McpEditError(
-          `block_id "${item.blockId}" は地の文です。表情はセリフの行にだけ付けられます`,
-        )
-      }
-      patch.expression = expression
+      // 誰の表情かは併せて付いている話者／登場で決まる（下でまとめて検証する）
+      patch.expression = emptyToUndef(item.expression)
     }
     if (item.appear !== undefined) {
       patch.appear = emptyToUndef(item.appear)
@@ -978,6 +974,12 @@ export function setStagingCues(
     }
     if (item.se !== undefined) {
       const se = emptyToUndef(item.se)
+      // 効果音を出さない版（GAME_FEATURES.se＝false）では付けられない（外すのは通す）
+      if (se !== undefined && !GAME_FEATURES.se) {
+        throw new McpEditError(
+          `block_id "${item.blockId}": 効果音（se）はいまは使えません（空文字で外すことだけできます）`,
+        )
+      }
       // SE_STOP は実体を持たない予約キー（鳴っているループを止める合図）
       if (se !== undefined && se !== SE_STOP && !presetSe(se) && !templateSeKeys.has(se)) {
         throw new McpEditError(
@@ -988,6 +990,11 @@ export function setStagingCues(
     }
     if (item.seRepeat !== undefined) {
       const raw = emptyToUndef(item.seRepeat)
+      if (raw !== undefined && !GAME_FEATURES.se) {
+        throw new McpEditError(
+          `block_id "${item.blockId}": 効果音（se_repeat）はいまは使えません（空文字で外すことだけできます）`,
+        )
+      }
       if (raw !== undefined && !SE_REPEAT_CHOICES.includes(raw)) {
         throw new McpEditError(`se_repeat は ${SE_REPEAT_CHOICES.join(' / ')} のいずれかです`)
       }
@@ -1003,7 +1010,7 @@ export function setStagingCues(
     }
     if (Object.keys(patch).length === 0) {
       throw new McpEditError(
-        `block_id "${item.blockId}": 変更する項目がありません（speaker / expression / appear / scene_break / bg / se / transition / clear のいずれかを渡す）`,
+        `block_id "${item.blockId}": 変更する項目がありません（speaker / expression / appear / hide_sprite / scene_break / bg /${GAME_FEATURES.se ? ' se / se_repeat /' : ''} transition / clear のいずれかを渡す）`,
       )
     }
     staging = patchCue(staging, item.blockId, patch, now)
@@ -1014,28 +1021,29 @@ export function setStagingCues(
         `block_id "${item.blockId}": 切り替え方（transition）は背景（bg）と同じ行に付けてください`,
       )
     }
-    // 表情は「立ち絵の出る話者」にだけ意味を持つ（無意味な指定を保存しない）。
+    // 表情は「立ち絵の出る人物」にだけ意味を持つ（無意味な指定を保存しない）。
+    // 話者の付いた行ではその話者の、そうでなければ登場（appear）する人物の表情（exporter と同じ規則）。
     if (merged?.expression) {
-      const speaker = merged.speaker
-      if (!speaker) {
+      const target = merged.speaker ?? merged.appear
+      if (!target) {
         throw new McpEditError(
-          `block_id "${item.blockId}": 表情（expression）は話者（speaker）の付いた行にだけ付けてください`,
+          `block_id "${item.blockId}": 表情（expression）は話者（speaker）か登場（appear）の付いた行にだけ付けてください`,
         )
       }
-      if (speaker === MASKED_SPEAKER) {
+      if (target === MASKED_SPEAKER) {
         throw new McpEditError(
           `block_id "${item.blockId}": ${MASKED_SPEAKER}（名前を伏せた話者）には立ち絵が出ないため、表情は付けられません`,
         )
       }
-      const choices = spriteExpressionsOf(gameAssets, speaker)
+      const choices = spriteExpressionsOf(gameAssets, target)
       if (choices.length === 0) {
         throw new McpEditError(
-          `話者「${speaker}」の立ち絵がまだありません（アプリの「演出」画面で追加できます）`,
+          `「${target}」の立ち絵がまだありません（アプリの「演出」画面で追加できます）`,
         )
       }
       if (!choices.includes(merged.expression)) {
         throw new McpEditError(
-          `表情 "${merged.expression}" は「${speaker}」の立ち絵にありません（使える表情: ${choices.join('・')}）`,
+          `表情 "${merged.expression}" は「${target}」の立ち絵にありません（使える表情: ${choices.join('・')}）`,
         )
       }
     }

@@ -8,6 +8,7 @@ import {
   LoaderCircle,
 } from 'lucide-react'
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
+import { GAME_FEATURES } from '@/core/game/features'
 import { mergeBackgroundCatalog, mergeSeCatalog } from '@/core/game/templates'
 import {
   MAX_DESCRIPTION_LENGTH,
@@ -319,8 +320,7 @@ export function PublishPage({
         if (templates.missing.length > 0 || templateSes.missing.length > 0) {
           setResult({
             ok: false,
-            message:
-              'テンプレ素材（背景・効果音）を取得できませんでした。通信環境を確認して、もう一度お試しください',
+            message: `テンプレ素材（背景${GAME_FEATURES.se ? '・効果音' : ''}）を取得できませんでした。通信環境を確認して、もう一度お試しください`,
           })
           setPending(false)
           return
@@ -477,8 +477,9 @@ export function PublishPage({
                 </p>
                 {unstagedGameCount > 0 ? (
                   <p className="mt-1.5 text-[12px] text-on-surface-variant/70 tabular-nums">
-                    そのうち {unstagedGameCount}{' '}
-                    話には演出（話者・背景・立ち絵・効果音）がまだありません。黒い画面に本文が出る形で進みます。
+                    そのうち {unstagedGameCount} 話には演出（話者・背景・立ち絵
+                    {GAME_FEATURES.se ? '・効果音' : ''}
+                    ）がまだありません。黒い画面に本文が出る形で進みます。
                   </p>
                 ) : null}
               </>

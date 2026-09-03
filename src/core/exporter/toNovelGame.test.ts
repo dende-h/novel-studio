@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { applyCues, type Staging, toPages } from '../game'
 import { resolveContinuity } from '../game/continuity'
 import { DEFAULT_BG_KEY } from '../game/presets'
@@ -6,6 +6,10 @@ import { parseEpisodeBody } from '../parser/parseNotation'
 import type { Episode, Work } from '../schema'
 import type { GameScenario } from './novelGamePlayer'
 import { buildNovelGameFiles, buildNovelGamePlayer, unitsOfInlines } from './toNovelGame'
+
+// この版は効果音を隠している（features.ts）。書き出しの効果音経路そのものはここで検証し続ける。
+// フラグが落ちているときの振る舞いは toNovelGame.features.test.ts
+vi.mock('../game/features', () => ({ GAME_FEATURES: { se: true } }))
 
 const episode: Episode = {
   id: 'e1',
@@ -483,6 +487,53 @@ describe('立ち絵（話者に自動で紐づく舞台・最大2人）', () => 
       { k: 'user:be-n', p: 'r' },
     ])
     expect(s.pages[4]?.stage).toBeUndefined()
+  })
+
+  it('登場（appear）に表情（expression）を付けると、その表情の絵で立つ', () => {
+    const s = scenarioOf(
+      buildNovelGameFiles(
+        work,
+        spriteEpisode,
+        staging([{ blockId: 'b2', appear: '灯', expression: '笑顔' }]),
+        opts,
+      ),
+    )
+    expect(s.pages[1]?.stage).toEqual([{ k: 'user:ak-s', p: 'c' }])
+    expect(s.sprites?.['user:ak-s']).toBeDefined()
+    expect(s.sprites?.['user:ak-n']).toBeUndefined() // 使っていない表情は同梱しない
+  })
+
+  it('すでに立っている人物への登場は、表情を付けたときだけ差し替わる（付けなければ据え置き）', () => {
+    const s = scenarioOf(
+      buildNovelGameFiles(
+        work,
+        spriteEpisode,
+        staging([
+          { blockId: 'b1', speaker: '灯' }, // 通常で立つ
+          { blockId: 'b2', appear: '灯', expression: '笑顔' }, // 地の文で笑顔に差し替え
+          { blockId: 'b5', appear: '灯' }, // 表情なし＝そのまま（マーカーも出ない）
+        ]),
+        opts,
+      ),
+    )
+    expect(s.pages[0]?.stage).toEqual([{ k: 'user:ak-n', p: 'c', a: 1 }])
+    expect(s.pages[1]?.stage).toEqual([{ k: 'user:ak-s', p: 'c', a: 1 }])
+    expect(s.pages[4]?.stage).toBeUndefined()
+  })
+
+  it('話者の付いた行では、表情は話者のもの（同じ行の登場する人物には効かない）', () => {
+    const s = scenarioOf(
+      buildNovelGameFiles(
+        work,
+        spriteEpisode,
+        staging([{ blockId: 'b1', speaker: '灯', appear: 'ベニ', expression: '笑顔' }]),
+        opts,
+      ),
+    )
+    expect(s.pages[0]?.stage).toEqual([
+      { k: 'user:be-n', p: 'l' }, // 登場（既定の表情）
+      { k: 'user:ak-s', p: 'r', a: 1 }, // 話者が笑顔で話す
+    ])
   })
 })
 
