@@ -137,9 +137,7 @@ export function AdminTemplatesPage({ getToken }: AdminTemplatesPageProps) {
 
   const dirty =
     Object.keys(drafts).length > 0 ||
-    Object.keys(categoryDrafts.bg).length > 0 ||
-    Object.keys(categoryDrafts.sprite).length > 0 ||
-    Object.keys(categoryDrafts.se).length > 0
+    TEMPLATE_KINDS.some((k) => Object.keys(categoryDrafts[k]).length > 0)
 
   const appendLog = (line: string) => setLog((prev) => [...prev, line])
 
@@ -214,7 +212,13 @@ export function AdminTemplatesPage({ getToken }: AdminTemplatesPageProps) {
     const { rows: parsedRows, skipped } = parseTemplateTsv(tsv)
     let applied = 0
     let unknown = 0
+    let hidden = 0
     for (const r of parsedRows) {
+      // いま出していない種類（効果音）の行は触らない＝タブに無いものを裏から書き換えない
+      if (!TEMPLATE_KINDS.includes(r.kind)) {
+        hidden += 1
+        continue
+      }
       const exists = current.entries.some((e) => e.kind === r.kind && e.slug === r.slug)
       if (!exists) {
         unknown += 1
@@ -227,7 +231,7 @@ export function AdminTemplatesPage({ getToken }: AdminTemplatesPageProps) {
       applied += 1
     }
     setNotice(
-      `${applied} 件に入れました（未保存）${unknown > 0 ? `・まだ画像の無い名前 ${unknown} 件` : ''}${skipped.length > 0 ? `・読めない行 ${skipped.length}` : ''}`,
+      `${applied} 件に入れました（未保存）${unknown > 0 ? `・まだ画像の無い名前 ${unknown} 件` : ''}${hidden > 0 ? `・いまは扱わない効果音 ${hidden} 件` : ''}${skipped.length > 0 ? `・読めない行 ${skipped.length}` : ''}`,
     )
   }
 
@@ -241,10 +245,13 @@ export function AdminTemplatesPage({ getToken }: AdminTemplatesPageProps) {
         return { kind, slug, ...d }
       })
       .filter((p) => current.entries.some((e) => e.kind === p.kind && e.slug === p.slug))
-    const categories = {
-      ...(Object.keys(categoryDrafts.bg).length > 0 ? { bg: categoryDrafts.bg } : {}),
-      ...(Object.keys(categoryDrafts.sprite).length > 0 ? { sprite: categoryDrafts.sprite } : {}),
-    }
+    // 出している種類ぶんだけ送る（dirty の判定と同じ集合を見る＝下書きを黙って捨てない）
+    const categories = Object.fromEntries(
+      TEMPLATE_KINDS.filter((k) => Object.keys(categoryDrafts[k]).length > 0).map((k) => [
+        k,
+        categoryDrafts[k],
+      ]),
+    )
     const next = await adminPatchTemplates(getToken, {
       ...(entries.length > 0 ? { entries } : {}),
       ...(Object.keys(categories).length > 0 ? { categories } : {}),
@@ -333,7 +340,7 @@ export function AdminTemplatesPage({ getToken }: AdminTemplatesPageProps) {
         <input
           ref={fileInputRef}
           type="file"
-          accept="image/*,audio/mpeg,audio/mp4,.mp3,.m4a"
+          accept={GAME_FEATURES.se ? 'image/*,audio/mpeg,audio/mp4,.mp3,.m4a' : 'image/*'}
           multiple
           hidden
           aria-label="テンプレ画像を選ぶ"
