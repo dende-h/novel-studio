@@ -11,6 +11,7 @@ import type { CloudBackup } from '../../../src/core/backup'
 import {
   plotIndexToPlainText,
   plotToPlainText,
+  worldIndexLine,
   worldIndexToPlainText,
   worldPointerLine,
   worldToPlainText,
@@ -21,6 +22,7 @@ import {
 } from '../../../src/core/exporter/structureToPlainText'
 import {
   episodeIndexToPlainText,
+  glossaryIndexLine,
   glossaryIndexToPlainText,
   glossaryToPlainText,
   workToPlainText,
@@ -54,7 +56,10 @@ import {
   DEFAULT_FULL_BYTES,
   DEFAULT_INDEX_BYTES,
   DEFAULT_TEXT_BYTES,
+  fitItemsToBytes,
   fitToBudget,
+  type Page,
+  pageNotice,
   paginate,
   resolveMaxBytes,
   utf8Bytes,
@@ -230,20 +235,101 @@ const fmtDate = (ms: number) =>
 const clipIndex = (body: string, maxBytes: number, more: string): string => {
   if (maxBytes <= 0 || utf8Bytes(body) <= maxBytes) return body
   const all = body.split('\n')
-  const reserve = 200 // 省略の案内 1 行ぶん
+  // 省略の案内 1 行ぶんを**実際の文言から**予約する（固定 200 バイトだと、案内の長い
+  // ツールでは予約が足りず、結果として応答が予算を超える）。行数は最大でも全行数。
+  const omitted = (dropped: number) => `※ ここから ${dropped} 行を省略しました。${more}`
+  const reserve = utf8Bytes(omitted(all.length)) + 1
   const { lines } = clipLinesToBytes(all, Math.max(200, maxBytes - reserve))
   // 1 行目が予算より長い場合でも空応答にはしない（何も返らないのが最悪の結果）。
   const kept = lines.length > 0 ? lines : [(all[0] ?? '').slice(0, 120)]
   if (kept.length === all.length) return kept.join('\n')
-  return [...kept, `※ ここから ${all.length - kept.length} 行を省略しました。${more}`].join('\n')
+  return [...kept, omitted(all.length - kept.length)].join('\n')
+}
+
+/**
+ * 本文に実際に出た id を拾う（`[beat_id: bt1]` の形）。予算で本文の行が落ちたとき、
+ * 構造化データを**本文に載ったぶんだけ**に揃えるために使う（本文と食い違う id を渡すと、
+ * AI は本文に無いものを根拠に次の呼び出しを組み立てる）。
+ */
+const idsIn = (body: string, key: string): Set<string> => {
+  const found = new Set<string>()
+  for (const m of body.matchAll(new RegExp(`\\[${key}: ([^\\]]+)\\]`, 'g'))) {
+    found.add(m[1] as string)
+  }
+  return found
+}
+
+/** 案内文に載せられる引数の型（配列＝entry_ids / beat_ids / slots も載せる）。 */
+type CallArg = string | number | boolean | string[]
+
+/** そのツールの inputSchema にある引数だけに絞る（打てない実例を案内しない）。 */
+const argsFor = (tool: string, a: Record<string, CallArg>): Record<string, CallArg> => {
+  const props =
+    (
+      MCP_TOOLS.find((t) => t.name === tool)?.inputSchema as
+        | { properties?: Record<string, unknown> }
+        | undefined
+    )?.properties ?? {}
+  return Object.fromEntries(Object.entries(a).filter(([k]) => k in props))
 }
 
 /** ツール引数を JSON リテラルとして書き戻す（案内文に「そのまま呼べる実例」を載せるため）。 */
-const callExample = (tool: string, args: Record<string, string | number | boolean>): string => {
-  const inner = Object.entries(args)
-    .map(([k, v]) => `${k}=${typeof v === 'string' ? JSON.stringify(v) : String(v)}`)
+const callExample = (tool: string, args: Record<string, CallArg>): string => {
+  const inner = Object.entries(argsFor(tool, args))
+    // 数値・真偽値はそのまま、文字列と配列は JSON リテラル（"s0" / ["bt0","bt1"]）。
+    .map(
+      ([k, v]) =>
+        `${k}=${typeof v === 'number' || typeof v === 'boolean' ? String(v) : JSON.stringify(v)}`,
+    )
     .join(', ')
   return `${tool}(${inner})`
+}
+
+/**
+ * 復旧線へ持ち回る読み取り引数（max_bytes 以外の全部）。ここに載せ忘れた引数は
+ * 「いまの条件のまま全量」から静かに落ち、案内が**別の呼び出し**に化ける。
+ * 読み取りに新しい引数を足すときは、必ずこの一覧にも足すこと。
+ */
+const CARRY_KEYS = [
+  'episode_id',
+  'note_id',
+  'slots',
+  'entry_id',
+  'entry_ids',
+  'query',
+  'category',
+  'section_id',
+  'beat_ids',
+  'include_world',
+  'kind',
+  'limit',
+  'offset',
+] as const
+
+/** いま渡された引数のうち、案内文にそのまま書ける形のものを拾う（配列・真偽値・数値も含む）。 */
+const carriedArgs = (args: Record<string, unknown> | undefined): Record<string, CallArg> => {
+  const carried: Record<string, CallArg> = {}
+  for (const key of CARRY_KEYS) {
+    const raw = args?.[key]
+    if (typeof raw === 'string' || typeof raw === 'boolean') carried[key] = raw
+    else if (typeof raw === 'number' && Number.isFinite(raw)) carried[key] = raw
+    else {
+      const list = strArray(args, key)
+      if (list !== undefined && list.length > 0) carried[key] = list
+    }
+  }
+  return carried
+}
+
+/** 引数の組み合わせが同じか（max_bytes は無視）。「同じ呼び出しを案内しない」の判定。 */
+const sameArgs = (a: Record<string, CallArg>, b: Record<string, CallArg>): boolean => {
+  const norm = (o: Record<string, CallArg>) =>
+    JSON.stringify(
+      Object.entries(o)
+        .filter(([k]) => k !== 'max_bytes')
+        .sort(([x], [y]) => (x < y ? -1 : 1)),
+    )
+  return norm(a) === norm(b)
 }
 
 /** tools/call の 1 ツールを実行する。ツール側のエラー（未検出等）は isError 結果で返す。 */
@@ -620,22 +706,38 @@ async function callTool(
       args?.max_bytes,
       deps.limits?.indexMaxBytes ?? DEFAULT_INDEX_BYTES,
     )
-    /** 縮退したときの案内。復旧線には**既存ツール名＋引数**を必ず入れる。 */
-    const notice = (mode: string, fullBytes: number, recovery: string[]) =>
-      budgetNotice({ truncated: true, mode, maxBytes: fullBudget, fullBytes, recovery })
+    /**
+     * 縮退したときの案内。復旧線には**既存ツール名＋引数**を必ず入れる。
+     * 窓（limit / offset）を返している最中に縮退したときは `page` を渡す＝総件数と次の offset を落とさない。
+     */
+    const notice = (mode: string, fullBytes: number, recovery: string[], page?: Page) =>
+      budgetNotice({ truncated: true, mode, maxBytes: fullBudget, fullBytes, recovery, page })
+    /** いま呼ばれた引数の組み合わせ（work_id ＋ 絞り込み引数。max_bytes は含めない）。 */
+    const currentArgs: Record<string, CallArg> = { work_id: work.id, ...carriedArgs(args) }
+    /** 案内文から一部の引数を落とす（窓の引数を「全件」の案内に混ぜない等）。 */
+    const omitArgs = (a: Record<string, CallArg>, keys: string[]): Record<string, CallArg> =>
+      Object.fromEntries(Object.entries(a).filter(([k]) => !keys.includes(k)))
+    /** いまの絞り込み（ページングを除く）。案内を同じ集合の中に留める。 */
+    const narrowingArgs = () => omitArgs(currentArgs, ['limit', 'offset'])
     /**
      * 「いま渡された引数のまま全量を取り直す」復旧線。絞り込み済みの呼び出しが超過したとき、
      * 引数を落とした例だけを案内すると、AI は同じ呼び出しに戻ってまた溢れる。
+     * 配列・真偽値・数値も含めて**全部**持ち回る（1 つ落ちると別の呼び出しの案内になる）。
      */
-    const sameCallUnlimited = (tool: string) => {
-      const carried: Record<string, string | number | boolean> = { work_id: work.id }
-      for (const key of ['episode_id', 'note_id', 'entry_id', 'section_id', 'category', 'kind']) {
-        const v = str(args, key)
-        if (v !== undefined) carried[key] = v
-      }
-      carried.max_bytes = 0
-      return `いまの条件のまま全量: ${callExample(tool, carried)}`
-    }
+    const sameCallUnlimited = (tool: string) =>
+      `${'limit' in currentArgs || 'offset' in currentArgs ? 'いまの条件のまま上限なし' : 'いまの条件のまま全量'}: ${callExample(tool, { ...currentArgs, max_bytes: 0 })}`
+    /**
+     * 復旧線を組み立てる。**いま呼んだのと同じ組み合わせの候補は落とす**
+     * （同じ呼び出しを案内すると、AI は同じ縮退を繰り返して行き止まりになる）。
+     */
+    const recoveryLines = (
+      tool: string,
+      candidates: Array<[string, Record<string, CallArg>] | undefined>,
+    ): string[] =>
+      candidates
+        .filter((c): c is [string, Record<string, CallArg>] => c !== undefined)
+        .filter(([, a]) => !sameArgs(a, currentArgs))
+        .map(([label, a]) => `${label}: ${callExample(tool, a)}`)
 
     if (name === 'get_work_map') {
       const glossary = work.glossary ?? []
@@ -703,7 +805,15 @@ async function callTool(
               [
                 // 本文は途中で切らない（切れた原稿を全文と誤認されると推敲そのものが壊れる）。
                 notice('episodes', bytes, [
-                  `1 話ずつ読む: ${callExample('get_work', { work_id: work.id, episode_id: work.episodes[0]?.id ?? '…' })}`,
+                  ...recoveryLines('get_work', [
+                    // 話を指定して溢れたなら、別の話を案内しても解決しない（同じ軸は繰り返さない）。
+                    episodeId === undefined
+                      ? [
+                          '1 話ずつ読む',
+                          { work_id: work.id, episode_id: work.episodes[0]?.id ?? '…' },
+                        ]
+                      : undefined,
+                  ]),
                   sameCallUnlimited('get_work'),
                 ]),
                 worldPointerLine(primaryPlot()),
@@ -741,14 +851,24 @@ async function callTool(
             clipIndex(
               [
                 notice('index', bytes, [
-                  `枠を選んで読む: ${callExample('get_world', { work_id: work.id, note_id: notes[0]?.id ?? '…' })}`,
+                  ...recoveryLines('get_world', [
+                    // note_id 指定で溢れたなら、1 枠がすでに最小単位（同じ呼び出しを案内しない）。
+                    noteId === undefined
+                      ? ['枠を選んで読む', { work_id: work.id, note_id: notes[0]?.id ?? '…' }]
+                      : undefined,
+                  ]),
                   sameCallUnlimited('get_world'),
                 ]),
                 // 縮退経路では冒頭プレビューを載せない（索引が全文より重くなることがある）。
-                worldIndexToPlainText(notes, { preview: false }),
+                // 件数は**作品全体の実数**（notes は slots / note_id で絞ったあとの集合なので、
+                // それを「全 N 項目」と名乗ると、絞り込んだぶんだけが全部だと誤読される）。
+                worldIndexToPlainText(notes, {
+                  preview: false,
+                  total: plot ? worldNotesInOrder(plot).length : notes.length,
+                }),
               ].join('\n\n'),
               fullBudget,
-              `続きは ${callExample('list_world_notes', { work_id: work.id, offset: 200 })} で取れます。`,
+              `続きは ${callExample('list_world_notes', { work_id: work.id })} で取れます（続きの offset はその応答が案内します）。`,
             ),
           fullBudget,
         ),
@@ -759,27 +879,64 @@ async function callTool(
       const plot = primaryPlot()
       const all = plot ? worldNotesInOrder(plot) : []
       const page = paginate(all.length, args?.offset, args?.limit, DEFAULT_LIST_LIMIT)
-      const shown = all.slice(page.start, page.end)
-      const hint = [
-        `※ 中身は ${callExample('get_world', { work_id: work.id, note_id: shown[0]?.id ?? '…' })} または slots で取れます。`,
-        ...(page.nextOffset !== null
-          ? [
-              `※ 続き: ${callExample('list_world_notes', { work_id: work.id, offset: page.nextOffset })}`,
-            ]
-          : []),
-      ].join('\n')
-      const body = clipIndex(
-        `${hint}\n\n${worldIndexToPlainText(shown, { total: all.length, withEmptySlots: true })}`,
+      const asked = all.slice(page.start, page.end)
+      /**
+       * 案内文。**見積もりと本文を同じ関数で作る**＝予約したぶんと実際の文言がずれない。
+       * 続きの offset は「実際に載った件数」から出す（固定値だと、案内どおり進んだ AI が項目を飛ばす）。
+       */
+      const hintOf = (o: {
+        shown: number
+        trimmed: boolean
+        firstId?: string
+        next: number | null
+      }) =>
+        [
+          ...(o.trimmed
+            ? [`※ 応答の上限のため、${asked.length} 項目のうち ${o.shown} 項目だけ載せました。`]
+            : []),
+          `※ 中身は ${callExample('get_world', { work_id: work.id, note_id: o.firstId ?? '…' })} または slots で取れます。`,
+          ...(o.next !== null
+            ? [`※ 続き: ${callExample('list_world_notes', { work_id: work.id, offset: o.next })}`]
+            : []),
+        ].join('\n')
+      // 整形してから行で切ると「何項目載ったか」が分からなくなる。先に件数を予算へ収める。
+      // 見積もりは最大の桁数（全件・総件数）で取る＝実際の案内文がこれを超えることはない。
+      const overhead =
+        utf8Bytes(
+          hintOf({ shown: asked.length, trimmed: true, firstId: asked[0]?.id, next: all.length }),
+        ) +
+        2 + // 案内文と索引のあいだの空行
+        // 見出し＋未記入の枠（項目以外に必ず載るもの）。判定の母集合は常に全件。
+        utf8Bytes(worldIndexToPlainText([], { total: all.length, emptySlotsFrom: all }))
+      const fit = fitItemsToBytes(
+        asked.map((n) => worldIndexLine(n)),
+        overhead,
         indexBudget,
-        `${callExample('list_world_notes', { work_id: work.id, offset: page.start + 1 })} のように offset をずらすか、limit を小さくしてください。`,
       )
+      const shown = asked.slice(0, fit.count)
+      const nextOffset = page.start + shown.length < all.length ? page.start + shown.length : null
+      const hint = hintOf({
+        shown: shown.length,
+        trimmed: fit.dropped > 0,
+        firstId: shown[0]?.id,
+        next: nextOffset,
+      })
+      // 未記入の判定は必ず全件（all）から。ページ（shown）から数えると、中身のある枠が
+      // 「まだ書かれていない枠」に並び、それを信じた set_world_note が既存の決め事を消す。
+      // 枠の一覧は set_world_note への導線なので、入るかぎり必ず載せる（落とすのは案内であって、
+      // 書かれた設定は 1 件も落とさない）。
+      const withSlots = `${hint}\n\n${worldIndexToPlainText(shown, { total: all.length, emptySlotsFrom: all })}`
+      const body =
+        indexBudget <= 0 || utf8Bytes(withSlots) <= indexBudget
+          ? withSlots
+          : `${hint}\n\n${worldIndexToPlainText(shown, { total: all.length })}`
       return textWith(
         body,
         {
           work_id: work.id,
           total: all.length,
           offset: page.start,
-          next_offset: page.nextOffset,
+          next_offset: nextOffset,
           notes: shown.map((n) => ({
             note_id: n.id,
             slot: n.slot,
@@ -808,29 +965,90 @@ async function callTool(
       const paged = args?.limit !== undefined || args?.offset !== undefined
       const page = paginate(selected.length, args?.offset, args?.limit, DEFAULT_LIST_LIMIT)
       if (paged) selected = selected.slice(page.start, page.end)
+      // 窓を返したことは本文に必ず書く。縮退していないので truncated= のヘッダは付かず、
+      // 黙って 200 件を返すと AI は「これで全部」と読み終える（用語集 400 項目の作品で実際にそうなる）。
+      // 案内は**いまの絞り込みを保ったまま**出す（query / category を落とすと別の集合へ誘導してしまう）。
+      const pageHead =
+        paged && page.total > 0
+          ? pageNotice({
+              label: '用語集の項目',
+              page,
+              recovery: [
+                ...(page.nextOffset !== null
+                  ? [
+                      `続き: ${callExample('get_glossary', { ...omitArgs(currentArgs, ['offset']), offset: page.nextOffset })}`,
+                    ]
+                  : []),
+                `全件を一度に: ${callExample('get_glossary', narrowingArgs())}`,
+                ...(ids === undefined
+                  ? [
+                      `件数と id の一覧だけなら ${callExample('list_glossary_entries', narrowingArgs())}`,
+                    ]
+                  : []),
+              ],
+            })
+          : undefined
       const body =
         glossaryToPlainText(selected, { withIds: true }) ||
         (entries.length === 0
           ? '（この作品の用語集は空です）'
           : '（条件に合う用語集の項目はありません。list_glossary_entries で索引を確認してください）')
-      const full = `${worldPointerLine(primaryPlot())}\n\n${body}`
+      // pageHead が無いとき（＝ limit も offset も渡されていない既定の呼び出し）は、
+      // 改修前と 1 文字も変わらない文字列になる。
+      const full = [...(pageHead ? [pageHead] : []), worldPointerLine(primaryPlot()), body].join(
+        '\n\n',
+      )
       return text(
         fitToBudget(
           full,
-          (bytes) =>
-            clipIndex(
-              [
-                notice('index', bytes, [
-                  `1 項目だけ: ${callExample('get_glossary', { work_id: work.id, entry_id: selected[0]?.id ?? '…' })}`,
-                  `分類で絞る: ${callExample('get_glossary', { work_id: work.id, category: '人物' })}`,
-                  sameCallUnlimited('get_glossary'),
-                ]),
-                worldPointerLine(primaryPlot()),
-                glossaryIndexToPlainText(selected),
-              ].join('\n\n'),
-              fullBudget,
-              `続きは ${callExample('list_glossary_entries', { work_id: work.id, offset: 200 })} で取れます。`,
-            ),
+          (bytes) => {
+            const recovery = [
+              ...recoveryLines('get_glossary', [
+                ids === undefined
+                  ? ['1 項目だけ', { work_id: work.id, entry_id: selected[0]?.id ?? '…' }]
+                  : undefined,
+                // すでに分類で絞っているなら、別の分類を案内しても同じ悩みに戻る。
+                str(args, 'category') === undefined
+                  ? ['分類で絞る', { work_id: work.id, category: '人物' }]
+                  : undefined,
+              ]),
+              sameCallUnlimited('get_glossary'),
+            ]
+            const pointer = worldPointerLine(primaryPlot())
+            if (!(paged && page.total > 0)) {
+              return clipIndex(
+                [
+                  notice('index', bytes, recovery),
+                  pointer,
+                  glossaryIndexToPlainText(selected),
+                ].join('\n\n'),
+                fullBudget,
+                `続きは ${callExample('list_glossary_entries', { work_id: work.id })} で取れます（続きの offset はその応答が案内します）。`,
+              )
+            }
+            // 窓のまま予算も超えた場合。行で切ってから件数を名乗ると、next_offset が
+            // 落ちた項目を飛ばす（list_* で潰したのと同じずれ）。先に件数を予算へ収め、
+            // 実際に載った件数から総件数・表示範囲・次の offset を作り直す。
+            const overhead =
+              utf8Bytes(notice('index', bytes, recovery, page)) +
+              utf8Bytes(pointer) +
+              utf8Bytes(glossaryIndexToPlainText([])) +
+              4 // ブロックのあいだの空行 2 つぶん
+            const fit = fitItemsToBytes(selected.map(glossaryIndexLine), overhead, fullBudget)
+            const listed = selected.slice(0, fit.count)
+            const end = page.start + listed.length
+            const shownPage: Page = {
+              start: page.start,
+              end,
+              total: page.total,
+              nextOffset: end < page.total ? end : null,
+            }
+            return [
+              notice('index', bytes, recovery, shownPage),
+              pointer,
+              glossaryIndexToPlainText(listed),
+            ].join('\n\n')
+          },
           fullBudget,
         ),
       )
@@ -842,27 +1060,54 @@ async function callTool(
         category: str(args, 'category'),
       })
       const page = paginate(entries.length, args?.offset, args?.limit, DEFAULT_LIST_LIMIT)
-      const shown = entries.slice(page.start, page.end)
-      const hint = [
-        `※ 中身は ${callExample('get_glossary', { work_id: work.id, entry_id: shown[0]?.id ?? '…' })}（複数なら entry_ids）で取れます。`,
-        ...(page.nextOffset !== null
-          ? [
-              `※ 続き: ${callExample('list_glossary_entries', { work_id: work.id, offset: page.nextOffset })}`,
-            ]
-          : []),
-      ].join('\n')
-      const body = clipIndex(
-        `${hint}\n\n${glossaryIndexToPlainText(shown)}`,
-        indexBudget,
-        `${callExample('list_glossary_entries', { work_id: work.id, offset: page.start + 1 })} のように offset をずらすか、limit を小さくしてください。`,
-      )
+      const asked = entries.slice(page.start, page.end)
+      /** 案内文。見積もりと本文を同じ関数で作る（list_world_notes と同じ作法）。 */
+      const hintOf = (o: {
+        shown: number
+        trimmed: boolean
+        firstId?: string
+        next: number | null
+      }) =>
+        [
+          ...(o.trimmed
+            ? [`※ 応答の上限のため、${asked.length} 項目のうち ${o.shown} 項目だけ載せました。`]
+            : []),
+          `※ 中身は ${callExample('get_glossary', { work_id: work.id, entry_id: o.firstId ?? '…' })}（複数なら entry_ids）で取れます。`,
+          ...(o.next !== null
+            ? [
+                `※ 続き: ${callExample('list_glossary_entries', { work_id: work.id, offset: o.next })}`,
+              ]
+            : []),
+        ].join('\n')
+      // 先に件数を予算へ収めてから整形する（見積もりは最大の桁数で取る）。
+      const overhead =
+        utf8Bytes(
+          hintOf({
+            shown: asked.length,
+            trimmed: true,
+            firstId: asked[0]?.id,
+            next: entries.length,
+          }),
+        ) +
+        2 + // 案内文と索引のあいだの空行
+        utf8Bytes(glossaryIndexToPlainText([])) // 見出し（空のときの器が最小値）
+      const fit = fitItemsToBytes(asked.map(glossaryIndexLine), overhead, indexBudget)
+      const shown = asked.slice(0, fit.count)
+      const nextOffset =
+        page.start + shown.length < entries.length ? page.start + shown.length : null
+      const hint = hintOf({
+        shown: shown.length,
+        trimmed: fit.dropped > 0,
+        firstId: shown[0]?.id,
+        next: nextOffset,
+      })
       return textWith(
-        body,
+        `${hint}\n\n${glossaryIndexToPlainText(shown)}`,
         {
           work_id: work.id,
           total: entries.length,
           offset: page.start,
-          next_offset: page.nextOffset,
+          next_offset: nextOffset,
           entries: shown.map((e) => ({
             entry_id: e.id,
             name: e.name,
@@ -904,6 +1149,21 @@ async function callTool(
         sectionId,
         beatIds: beats,
       })
+      // いまの絞り込み。復旧線はこれを**保ったまま**次の一手を案内する
+      // （絞り込みを落とした例だけ出すと、AI は別物の呼び出しへ誘導される）。
+      const narrowing: Record<string, CallArg> = {
+        ...(sectionId !== undefined ? { section_id: sectionId } : {}),
+        ...(beats !== undefined ? { beat_ids: beats } : {}),
+      }
+      const narrowed = Object.keys(narrowing).length > 0
+      // 世界観を外した状態で溢れたなら、次の案内も外したまま出す。
+      const worldOff = bool(args, 'include_world') === false ? { include_world: false } : {}
+      const scopeBeats =
+        plot === undefined
+          ? []
+          : sectionId === undefined
+            ? plot.beats
+            : beatsOfSection(plot, sectionId)
       return text(
         fitToBudget(
           full,
@@ -911,8 +1171,33 @@ async function callTool(
             clipIndex(
               [
                 notice('index', bytes, [
-                  `幕ごとに読む: ${callExample('get_plot', { work_id: work.id, section_id: plot?.sections[0]?.id ?? '…' })}`,
-                  `世界観を外す: ${callExample('get_plot', { work_id: work.id, include_world: false })}`,
+                  ...recoveryLines('get_plot', [
+                    narrowed
+                      ? undefined
+                      : [
+                          '幕ごとに読む',
+                          {
+                            work_id: work.id,
+                            section_id: plot?.sections[0]?.id ?? '…',
+                            ...worldOff,
+                          },
+                        ],
+                    [
+                      narrowed ? 'この絞り込みのまま世界観を外す' : '世界観を外す',
+                      { work_id: work.id, ...narrowing, include_world: false },
+                    ],
+                    narrowed && beats === undefined
+                      ? [
+                          'ビートを選ぶ',
+                          {
+                            work_id: work.id,
+                            ...narrowing,
+                            beat_ids: [scopeBeats[0]?.id ?? '…'],
+                            include_world: false,
+                          },
+                        ]
+                      : undefined,
+                  ]),
                   sameCallUnlimited('get_plot'),
                 ]),
                 plotIndexToPlainText(plots, work, { sectionId }),
@@ -938,22 +1223,37 @@ async function callTool(
         // list_plot_beats は幕の構造ごと返すので、ページングではなく幕で分ける。
         `${callExample('list_plot_beats', { work_id: work.id, section_id: plot?.sections[0]?.id ?? '…' })} のように幕ごとに分けてください。`,
       )
+      // 予算で本文の行が落ちると、本文に無い幕・ビートが構造化データに残る。
+      // **本文に実際に出た id だけ**を載せる。全体の件数は total_ で必ず残す
+      // ＝「まだ先がある」ことは消さない（幕の存在ごと消えたように見せない）。
+      const shownSections = idsIn(body, 'section_id')
+      const shownBeats = idsIn(body, 'beat_id')
+      const listed = (plot?.sections ?? []).filter(
+        (s) => sectionId === undefined || s.id === sectionId,
+      )
       return textWith(
         body,
         {
           work_id: work.id,
-          sections: (plot?.sections ?? [])
-            .filter((s) => sectionId === undefined || s.id === sectionId)
+          total_sections: listed.length,
+          total_beats: listed.reduce(
+            (n, s) => n + beatsOfSection(plot as NonNullable<typeof plot>, s.id).length,
+            0,
+          ),
+          sections: listed
+            .filter((s) => shownSections.has(s.id))
             .map((s) => ({
               section_id: s.id,
               title: s.title,
-              beats: beatsOfSection(plot as NonNullable<typeof plot>, s.id).map((b) => ({
-                beat_id: b.id,
-                title: b.title,
-                status: b.status,
-                summary_chars: b.summary?.length ?? 0,
-                episode_id: b.episodeRef ?? null,
-              })),
+              beats: beatsOfSection(plot as NonNullable<typeof plot>, s.id)
+                .filter((b) => shownBeats.has(b.id))
+                .map((b) => ({
+                  beat_id: b.id,
+                  title: b.title,
+                  status: b.status,
+                  summary_chars: b.summary?.length ?? 0,
+                  episode_id: b.episodeRef ?? null,
+                })),
             })),
           foreshadows: plot?.foreshadows.length ?? 0,
           secrets: plot?.secrets.length ?? 0,
@@ -976,7 +1276,12 @@ async function callTool(
             clipIndex(
               [
                 notice('index', bytes, [
-                  `種別ごとに読む: ${callExample('get_structures', { work_id: work.id, kind: 'outline' })}`,
+                  ...recoveryLines('get_structures', [
+                    // すでに種別を指定して溢れたなら、別の種別は別のデータ（案内にならない）。
+                    kind === undefined
+                      ? ['種別ごとに読む', { work_id: work.id, kind: 'outline' }]
+                      : undefined,
+                  ]),
                   sameCallUnlimited('get_structures'),
                 ]),
                 worldPointerLine(primaryPlot()),

@@ -121,7 +121,7 @@ Cloudflare Pages Functions
 | `src/core/billing/stripe-event.ts` | Stripe イベント → `StripeAction` 解釈 |
 | `src/core/billing/reap-policy.ts` | アカウント削除の判定（`shouldReap`）。**解約後の猶予切れだけ**が対象＝無料アカウントに期限は無い |
 | `src/core/mcp-edit/index.ts` | **MCP 経由の編集操作の純ロジック**（`createWork` `setEpisode` `upsertGlossaryEntry` `setPlotMeta` `setPlotWorldNote` `deletePlotWorldNote` 等）。サーバの MCP ツールはこれを呼ぶ |
-| `src/core/mcp-read/index.ts` | **MCP 読み取りの応答サイズの判断**（`utf8Bytes` `resolveMaxBytes` `paginate` `clipLinesToBytes` `fitToBudget` `budgetNotice`）。全量が予算を超えたら索引へ 1 段だけ縮退させる関門。整形は持たない |
+| `src/core/mcp-read/index.ts` | **MCP 読み取りの応答サイズの判断**（`utf8Bytes` `resolveMaxBytes` `paginate` `clipLinesToBytes` `fitItemsToBytes` `fitToBudget` `budgetNotice` `pageNotice`）。全量が予算を超えたら索引へ 1 段だけ縮退させる関門。整形は持たない。**件数は整形前に `fitItemsToBytes` で決める**（整形後に行で切ると next_offset が落ちた項目を飛ばす） |
 | `activity/` | 執筆記録（`localDateKey` `currentStreak` `buildHeatmap`） |
 | `stats/` | 文字数カウント |
 | `outline/` | アウトラインのメモ木操作（`indentNote` `moveNote` 等） |
@@ -277,7 +277,7 @@ Cloudflare Pages Functions
 | `/api/oauth/*` | 認可サーバー窓口。`authorize` は Clerk へ 302、`token`/`register` ほかはサーバー側中継 |
 
 `api/_lib/`: `auth`（Clerk 検証・`verifyMember`）, `membership`（**会員判定の単一の真実 = D1 `subscriptions`**）,
-`crypto`（at-rest 暗号化）, `mcp-server`（MCP プロトコル核・約940行）, `mcp-tools`（**31 ツールの定義**・約590行）, `mcp-auth`, `mcp-token`,
+`crypto`（at-rest 暗号化）, `mcp-server`（MCP プロトコル核・約1,340行）, `mcp-tools`（**31 ツールの定義**・約590行）, `mcp-auth`, `mcp-token`,
 `oauth-metadata`, `oauth-upstream`（中継先 Clerk の取得）, `stripe`, `rate-limit`, `purge`, `visitor`,
 `board-store`（**掲示板の SQL はすべてここ**・行 ⇄ camelCase の変換も）, `board-link-fetch`（OGP の取得とキャッシュ）。
 
@@ -288,6 +288,15 @@ MCP の読み取りは **「索引（軽い）→ 中身（重い）」の二段
 （全文スナップショット）が凍結している。**この ゴールデンが変わる差分は原則として通さない。**
 全量が既定予算（本文 300,000 バイト／設定系 120,000 バイト）を超えたときだけ索引へ縮退し、
 `max_bytes=0` で従来どおりに戻せる。縮退後の索引も同じ予算に収まる（索引が溢れたら元の事故が再発する）。
+
+読み取りで守る 3 つの不変条件（破ると AI が行き止まりに入る）:
+- **絞ったら中身が返る** — `get_plot` に `section_id` / `beat_ids` を渡すと世界観設定は索引へ切り替わる
+  （全文だけで 14 万バイトに達し、絞り込んだ呼び出しまで縮退させていた）。`include_world=true` で全文に戻る。
+- **同じ呼び出しを案内しない** — 復旧線は `recoveryLines`（`sameArgs` で現在の引数と一致する候補を落とす）を通す。
+  「いまの条件のまま全量」は `CARRY_KEYS` の全引数を持ち回る（**読み取り引数を足したらこの一覧にも足す**）。
+- **名乗る件数は本文と一致する** — `next_offset`・`structuredContent`・`total` は、予算で削ったあとの
+  実件数から作る。`limit` / `offset` の窓は縮退ではないので `pageNotice`（`truncated=false`）で別に告知する。
+
 フィクスチャと fake deps は `functions/api/_lib/mcp-test-util.ts`。
 
 掲示板の共通部品は `functions/api/board/board-endpoint.ts`（`boardJson`＝`private, no-store` 付きの応答、

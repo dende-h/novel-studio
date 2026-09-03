@@ -192,6 +192,36 @@ describe('索引 → 個別取得（読み書きの粒度を揃える）', () =>
       expect((await call(name, { work_id: 'w1' })).saveCount).toBe(0)
     }
   })
+
+  it('list_world_notes を limit / offset で切っても、中身のある枠を「未記入」と言わない', async () => {
+    // set_world_note は slot 単位の上書き。中身のある枠を「未記入」と見せると、それを信じた
+    // AI の書き込みで作者の決め事が黙って消える。
+    const page1 = await call('list_world_notes', { work_id: 'w1', limit: 1 })
+    expect(page1.text).toContain('[slot: stage, note_id: wn1]')
+    // wn2（語り手と文体）はこのページに載らないだけで、中身はある。
+    expect(page1.text).not.toContain('[slot: style]（未記入）')
+    expect(page1.text).toContain('[slot: rules]（未記入）')
+
+    const page2 = await call('list_world_notes', { work_id: 'w1', offset: 2 })
+    expect(page2.text).toContain('[slot: custom, note_id: wn3]')
+    expect(page2.text).not.toContain('[slot: stage]（未記入）')
+    expect(page2.text).not.toContain('[slot: style]（未記入）')
+    expect(page2.text).toContain('[slot: rules]（未記入）')
+  })
+
+  it('「未記入」と書かれた枠は、どのページでも作品のどこにも中身が無い', async () => {
+    const filled = new Set(fixturePlot().world.map((n) => n.slot))
+    for (const paging of [{}, { limit: 1 }, { limit: 1, offset: 1 }, { offset: 2 }]) {
+      const res = await call('list_world_notes', { work_id: 'w1', ...paging })
+      const empties = [...res.text.matchAll(/\[slot: ([a-z]+)\]（未記入）/g)].map((m) => m[1])
+      // 未記入と名乗る枠に中身があってはいけない。
+      for (const slot of empties) {
+        expect(filled.has(slot as string), `${JSON.stringify(paging)} / ${slot}`).toBe(false)
+      }
+      // 未記入の枠そのものはどのページでも消さない（書ける枠への導線）。
+      expect(empties.length, JSON.stringify(paging)).toBeGreaterThan(0)
+    }
+  })
 })
 
 describe('応答予算（大きすぎて読めない、を無くす）', () => {
@@ -319,6 +349,220 @@ describe('応答予算（大きすぎて読めない、を無くす）', () => {
     expect(utf8Bytes(under)).toBeLessThanOrEqual(DEFAULT_FULL_BYTES)
     expect(under).not.toContain('truncated=true')
     expect(over).toContain('truncated=true')
+  })
+
+  it('世界観の大きい作品でも、幕で絞れば全量が返る（絞り込みが縮退に呑まれない）', async () => {
+    // 事故と同じ規模（世界観 26 項目 × 1,800 字 ≒ 14 万バイト）。絞り込んだ呼び出しまで索引へ
+    // 落ちると、「索引 → 個別取得」の二段構えそのものが機能しない。
+    const { deps } = makeReadDeps(fatSnapshot({ worldNotes: 26, worldChars: 1800, beats: 30 }))
+    const body = resultText(
+      await handleMcpMessage(callMsg('get_plot', { work_id: 'w1', section_id: 's0' }), deps),
+    )
+    expect(body).not.toContain('truncated=true')
+    expect(body).toContain('[section_id: s0]')
+    expect(body).toContain('う'.repeat(200)) // ビートの要約が本文で読める
+    // 世界観は索引として残る（本文は落ちるが、存在・note_id・読み方は消えない）。
+    expect(body).toContain('世界観設定の索引')
+    expect(body).toContain('note_id: wn0')
+    expect(body).toContain('get_world(work_id="w1", note_id="wn0")')
+    expect(body).not.toContain('え'.repeat(100))
+  })
+
+  it('絞り込んだまま溢れたら、絞り込みを保った復旧線を出す（同じ呼び出しは案内しない）', async () => {
+    const { deps } = makeReadDeps(fatSnapshot({ worldNotes: 26, worldChars: 1800, beats: 30 }))
+    const body = resultText(
+      await handleMcpMessage(
+        callMsg('get_plot', { work_id: 'w1', section_id: 's0', include_world: true }),
+        deps,
+      ),
+    )
+    expect(body).toContain('truncated=true')
+    // 次の一手は「section_id を保ったまま世界観を外す」＝実際に全量が返る組み合わせ。
+    expect(body).toContain('get_plot(work_id="w1", section_id="s0", include_world=false)')
+    // いま呼んだのと同じ組み合わせは案内しない（同じ縮退に戻る行き止まり）。
+    expect(body).not.toContain('※ 幕ごとに読む: get_plot(work_id="w1", section_id="s0")')
+    expect(body).toContain(
+      'いまの条件のまま全量: get_plot(work_id="w1", section_id="s0", include_world=true, max_bytes=0)',
+    )
+  })
+
+  it('「いまの条件のまま全量」は配列・真偽値・文字列の引数を落とさない', async () => {
+    const { deps } = makeReadDeps(fatSnapshot({ worldNotes: 26, worldChars: 1800, beats: 30 }))
+    const plotBody = resultText(
+      await handleMcpMessage(
+        callMsg('get_plot', { work_id: 'w1', beat_ids: ['bt0', 'bt1'], include_world: true }),
+        deps,
+      ),
+    )
+    expect(plotBody).toContain(
+      'いまの条件のまま全量: get_plot(work_id="w1", beat_ids=["bt0","bt1"], include_world=true, max_bytes=0)',
+    )
+
+    const { deps: gdeps } = makeReadDeps(fatSnapshot({ glossary: 400, glossaryChars: 400 }))
+    const glossaryBody = resultText(
+      await handleMcpMessage(
+        callMsg('get_glossary', { work_id: 'w1', query: '用語', category: '人物' }),
+        gdeps,
+      ),
+    )
+    expect(glossaryBody).toContain(
+      'いまの条件のまま全量: get_glossary(work_id="w1", query="用語", category="人物", max_bytes=0)',
+    )
+    // すでに分類で絞っているのに「分類で絞る」とは案内しない。
+    expect(glossaryBody).not.toContain('分類で絞る')
+  })
+
+  it('予算で件数が減ったら、続きの offset は実際に載った件数から出す（項目を飛ばさない）', async () => {
+    const { deps } = makeReadDeps(fatSnapshot({ glossary: 400 }), { indexMaxBytes: 4_000 })
+    const first = resultText(
+      await handleMcpMessage(callMsg('list_glossary_entries', { work_id: 'w1' }), deps),
+    )
+    const shown = [...first.matchAll(/\[entry_id: g(\d+)\]/g)].map((m) => Number(m[1]))
+    expect(shown.length).toBeGreaterThan(0)
+    expect(shown.length).toBeLessThan(200) // 既定の limit ぶんは載りきらない予算
+    expect(shown[0]).toBe(0)
+    // 案内の offset は「載った件数」。固定値（200）でも page.start + 1（＝1）でもない。
+    expect(first).toContain(`list_glossary_entries(work_id="w1", offset=${shown.length})`)
+    const second = resultText(
+      await handleMcpMessage(
+        callMsg('list_glossary_entries', { work_id: 'w1', offset: shown.length }),
+        deps,
+      ),
+    )
+    // 続きの先頭が、1 回目の続き番号ちょうど＝飛ばされた項目がない。
+    expect(second).toContain(`[entry_id: g${shown.length}]`)
+  })
+
+  it('世界観の索引も、減った件数に合わせて続きの offset を出す', async () => {
+    const { deps } = makeReadDeps(fatSnapshot({ worldNotes: 300 }), { indexMaxBytes: 4_000 })
+    const first = resultText(
+      await handleMcpMessage(callMsg('list_world_notes', { work_id: 'w1' }), deps),
+    )
+    // 索引 1 項目が 2 行（見出し＋冒頭プレビュー）になる器。行数と項目数は一致しない。
+    const shown = [...first.matchAll(/note_id: wn(\d+)\]/g)].map((m) => Number(m[1]))
+    expect(shown.length).toBeGreaterThan(0)
+    expect(shown.length).toBeLessThan(200)
+    expect(first).toContain(`list_world_notes(work_id="w1", offset=${shown.length})`)
+    const second = resultText(
+      await handleMcpMessage(
+        callMsg('list_world_notes', { work_id: 'w1', offset: shown.length }),
+        deps,
+      ),
+    )
+    expect(second).toContain(`note_id: wn${shown.length}]`)
+  })
+
+  it('索引の予算が極端に小さくても 1 項目は返す（見出しだけ返して行き止まりにしない）', async () => {
+    const glossary = await call('list_glossary_entries', { work_id: 'w1' }, { indexMaxBytes: 200 })
+    expect(glossary.isError).toBe(false)
+    expect(glossary.text).toContain('[entry_id: g1]')
+    const world = await call('list_world_notes', { work_id: 'w1' }, { indexMaxBytes: 200 })
+    expect(world.isError).toBe(false)
+    expect(world.text).toContain('note_id: wn1]')
+  })
+
+  it('list_plot_beats は、本文から落ちた幕・ビートを構造化データに残さない', async () => {
+    // ログラインが長い作品では、索引の 1 行が予算を食い切って本文からビートが消える。
+    const plot = { ...fixturePlot(), premise: 'ろ'.repeat(2_000) }
+    const { deps } = makeReadDeps({ ...fixtureSnapshot(), plots: [plot] }, { indexMaxBytes: 3_000 })
+    const res = await handleMcpMessage(callMsg('list_plot_beats', { work_id: 'w1' }), deps)
+    const body = resultText(res)
+    const structured = resultStructured(res)
+    expect(body).not.toContain('[beat_id: bt1]')
+    const sections = (structured?.sections ?? []) as {
+      section_id: string
+      beats: { beat_id: string }[]
+    }[]
+    // 構造化データが名乗る id は、必ず本文にも出ている。
+    for (const sec of sections) {
+      expect(body).toContain(`[section_id: ${sec.section_id}]`)
+      for (const b of sec.beats) expect(body).toContain(`[beat_id: ${b.beat_id}]`)
+    }
+    expect(sections.flatMap((sec) => sec.beats.map((b) => b.beat_id))).not.toContain('bt1')
+    // 「幕もビートもある」ことは件数で残す（存在ごと消さない）。
+    expect(structured?.total_sections).toBe(2)
+    expect(structured?.total_beats).toBe(3)
+  })
+
+  it('offset だけ渡した get_glossary は 200 件の窓になり、総件数と next_offset が本文に出る', async () => {
+    // 用語集 400 項目・各 10 字。全量でも予算内なので、縮退と窓を混ぜずに窓だけを見られる。
+    const { deps } = makeReadDeps(fatSnapshot({ glossary: 400, glossaryChars: 10 }))
+    const body = resultText(
+      await handleMcpMessage(callMsg('get_glossary', { work_id: 'w1', offset: 0 }), deps),
+    )
+    // 中身は本物（縮退＝索引ではない）。
+    expect(body).toContain('[entry_id: g0]')
+    expect(body).toContain('い'.repeat(10))
+    // 400 項目のうち 200 件しか返していないことを、AI が読める形で必ず書く。
+    const head = body.split('\n')[0] as string
+    expect(head).toContain('paged=true')
+    expect(head).toContain('truncated=false')
+    expect(head).toContain('total=400')
+    expect(head).toContain('shown=1-200')
+    expect(head).toContain('next_offset=200')
+    expect(body).toContain('get_glossary(work_id="w1", offset=200)')
+    expect(body).not.toContain('[entry_id: g200]')
+  })
+
+  it('窓に全件が収まったときは next_offset=null と「すべて返した」を書く', async () => {
+    const res = await call('get_glossary', { work_id: 'w1', limit: 10 })
+    expect(res.isError).toBe(false)
+    expect(res.text).toContain('total=3')
+    expect(res.text).toContain('next_offset=null')
+    expect(res.text).toContain('すべて返しました')
+    expect(res.text).toContain('[entry_id: g3]')
+  })
+
+  it('slots で絞って縮退しても、索引の見出しは作品全体の件数を名乗る', async () => {
+    // 絞り込んだ集合の件数を「全 N 項目」と書くと、残りが無いものとして扱われる。
+    const { deps } = makeReadDeps(fatSnapshot({ worldNotes: 60, worldChars: 1800 }))
+    const body = resultText(
+      await handleMcpMessage(callMsg('get_world', { work_id: 'w1', slots: ['custom'] }), deps),
+    )
+    expect(body).toContain('truncated=true')
+    expect(body).toContain('全 60 項目')
+    expect(body).not.toContain('全 59 項目')
+  })
+
+  it('窓のまま縮退しても、next_offset は索引に実際に載った件数から出す', async () => {
+    // 窓（limit / offset）を返しつつ全量が予算を超える作品。行で切ってから件数を名乗ると、
+    // 案内どおり next_offset へ進んだ AI が、索引から落ちた項目を読まないまま飛ばす。
+    // 窓（200 件）の索引そのものが予算に収まらない状況を作る。
+    const fat = fatSnapshot({ glossary: 400, glossaryChars: 400 })
+    const { deps } = makeReadDeps(fat, { maxBytes: 9_000 })
+    const body = resultText(
+      await handleMcpMessage(callMsg('get_glossary', { work_id: 'w1', offset: 0 }), deps),
+    )
+    expect(body).toContain('truncated=true')
+    const listed = [...body.matchAll(/\[entry_id: g(\d+)\]/g)].map((m) => Number(m[1]))
+    const head = body.split('\n')[0] as string
+    expect(head).toContain('total=400')
+    // 索引に載った件数と、名乗る表示範囲・次の offset が一致する。
+    expect(head).toContain(`shown=1-${listed.length}`)
+    expect(head).toContain(`next_offset=${listed.length}`)
+    // 続きの先頭が、名乗った next_offset ちょうど＝飛ばされた項目がない。
+    // 窓の 200 件をそのまま名乗らない（索引から落ちたぶんを飛ばさない）。
+    expect(listed.length).toBeLessThan(200)
+    const second = resultText(
+      await handleMcpMessage(
+        callMsg('get_glossary', { work_id: 'w1', offset: listed.length }),
+        deps,
+      ),
+    )
+    expect(second).toContain(`[entry_id: g${listed.length}]`)
+  })
+
+  it('窓の続きの案内は query / category を保つ（別の集合へ誘導しない）', async () => {
+    const { deps } = makeReadDeps(fatSnapshot({ glossary: 400, glossaryChars: 10 }))
+    const body = resultText(
+      await handleMcpMessage(
+        callMsg('get_glossary', { work_id: 'w1', category: '人物', offset: 0, limit: 10 }),
+        deps,
+      ),
+    )
+    expect(body).toContain('get_glossary(work_id="w1", category="人物", limit=10, offset=10)')
+    expect(body).toContain('全件を一度に: get_glossary(work_id="w1", category="人物")')
+    expect(body).toContain('list_glossary_entries(work_id="w1", category="人物")')
   })
 })
 

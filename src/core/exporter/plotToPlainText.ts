@@ -144,17 +144,23 @@ export function worldIndexLine(note: WorldNote, opts: { preview?: boolean } = {}
 
 /**
  * 世界観設定の索引（見出し・slot・note_id・字数・冒頭 60 字。**本文は含まない**）。
- * `withEmptySlots` を立てると、まだ書かれていない定型枠も 1 行出す
+ * `emptySlotsFrom` に**この作品の全ノート**を渡すと、まだ書かれていない定型枠も 1 行出す
  * ＝ `set_world_note` で何が書けるかが読み側の索引に出て、読み書きで枠の語彙が揃う。
+ *
+ * boolean ではなく「全ノートの配列」を受けるのは、呼び出し側の取り違えを型で塞ぐため。
+ * ページング済みの 1 枚から未記入を判定すると、**中身のある枠が「まだ書かれていない枠」に並ぶ**。
+ * set_world_note は slot 単位の上書きなので、それを信じた AI が書き込むと既存の決め事が消える。
+ * 未記入かどうかは常に全件で決める（`notes` はあくまで「今回並べるぶん」）。
  */
 export function worldIndexToPlainText(
   notes: WorldNote[],
-  opts: { total?: number; withEmptySlots?: boolean; preview?: boolean } = {},
+  opts: { total?: number; emptySlotsFrom?: WorldNote[]; preview?: boolean } = {},
 ): string {
   const head = `# 世界観設定の索引（作者専用・全 ${opts.total ?? notes.length} 項目・本文は含みません）`
   const lines = notes.map((n) => worldIndexLine(n, { preview: opts.preview }))
-  if (opts.withEmptySlots) {
-    const filled = new Set(notes.map((n) => n.slot))
+  if (opts.emptySlotsFrom) {
+    // 判定の母集合は「渡された全ノート」。表示するぶん（notes）ではない。
+    const filled = new Set(opts.emptySlotsFrom.map((n) => n.slot))
     const empty = WORLD_SLOTS.filter((s) => !filled.has(s.key)).map(
       (s) => `- ${s.label} [slot: ${s.key}]（未記入）`,
     )
@@ -216,6 +222,9 @@ export function plotToPlainText(
     opts.sectionId === undefined
       ? plot.sections
       : plot.sections.filter((s) => s.id === opts.sectionId)
+  // 絞り込みが効いているか。**効いているときだけ**世界観の載せ方を変える
+  // （引数を渡さない既定の呼び出しは、改修前と 1 バイトも変わらない）。
+  const narrowed = opts.sectionId !== undefined || wantBeats !== undefined
 
   const sections =
     plot.sections.length === 0
@@ -249,12 +258,35 @@ export function plotToPlainText(
       : []
 
   // 世界観設定はプロットと同じ器（Plot）にあり、プロットを触る AI が最初に読むべきもの。
-  // get_world を待たずにここへ丸ごと載せる＝「まず決め事を読む」を取りこぼさない。
+  // 絞り込みなしなら get_world を待たずに丸ごと載せる＝「まず決め事を読む」を取りこぼさない。
+  //
+  // 絞り込みが効いているときは索引だけにする。世界観の全文は 1 項目 1,800 字 × 26 項目で
+  // 約 14 万バイトになり、**それだけで応答予算を超える**。すると「幕 1 つを読む」呼び出しまで
+  // 索引へ縮退し、絞り込んだのに中身が読めないまま案内が同じ呼び出しへ戻る（この改修の動機）。
+  // 索引には見出し・slot・note_id・字数と get_world の実例が残るので、決め事の存在も
+  // 読む手段も消えない。include_world: true を明示すれば絞り込み中でも全文を載せる。
   // include_world: false でも導線（worldPointerLine）は必ず残す＝存在ごと消さない。
-  const world = opts.includeWorld === false ? '' : worldToPlainText(plot)
+  const world =
+    opts.includeWorld === false
+      ? ''
+      : narrowed && opts.includeWorld !== true
+        ? worldIndexBlock(plot, work)
+        : worldToPlainText(plot)
   const preamble = world !== '' ? [world] : [worldPointerLine(plot)]
 
   return [...preamble, head.join('\n'), ...sections, ...foreshadows, ...secrets].join('\n\n')
+}
+
+/**
+ * 絞り込み時の世界観設定ブロック（索引＋本文の取り方）。本文を載せないぶん、
+ * 「決め事があること」と「どう読むか」は必ず残す。まだ書かれていなければ空文字を返し、
+ * 呼び出し側の worldPointerLine（まずここへ書こう）に道を譲る。
+ */
+function worldIndexBlock(plot: Plot, work: Work): string {
+  const notes = worldNotesInOrder(plot)
+  if (notes.length === 0) return ''
+  const how = `※ 絞り込み中のため、世界観設定は索引だけです。本文は get_world(work_id="${work.id}", note_id="${notes[0]?.id ?? '…'}") で読めます（この応答に全文を戻すなら get_plot(work_id="${work.id}", include_world=true)）。`
+  return [how, worldIndexToPlainText(notes, { preview: false })].join('\n\n')
 }
 
 /** ビート 1 件の索引行（要約・メモの本文は含まず、字数だけ載せる）。 */

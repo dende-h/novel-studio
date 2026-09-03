@@ -96,7 +96,7 @@ export const MCP_TOOLS = [
   {
     name: 'get_glossary',
     description:
-      '1 作品の用語集（人物・場所・組織・用語・アイテム・生物の事典）を各項目の [entry_id: …] 付きで返す。entry_id / entry_ids を渡すとその項目だけ、query・category を渡すと絞り込んだぶんだけ返す（省略時は全項目）。この entry_id を upsert_glossary_entry の id / delete_glossary_entry の entry_id に渡す。全項目が上限を超える作品では list_glossary_entries で索引を見てから id 指定で読むこと。用語集は公開サイトで読者にも見える器なので、書き換える前に get_world で作品の決め事を確認すること。',
+      '1 作品の用語集（人物・場所・組織・用語・アイテム・生物の事典）を各項目の [entry_id: …] 付きで返す。entry_id / entry_ids を渡すとその項目だけ、query・category を渡すと絞り込んだぶんだけ返す（省略時は全項目）。**limit か offset を渡すと、1 回の応答は既定 200 件までの窓になる。**窓のときは応答の先頭に total と next_offset が出るので、続きは offset をずらして読む。全項目を一度に読むなら limit も offset も渡さないこと。この entry_id を upsert_glossary_entry の id / delete_glossary_entry の entry_id に渡す。全項目が上限を超える作品では list_glossary_entries で索引を見てから id 指定で読むこと。用語集は公開サイトで読者にも見える器なので、書き換える前に get_world で作品の決め事を確認すること。',
     inputSchema: {
       type: 'object',
       properties: {
@@ -283,7 +283,7 @@ export const MCP_TOOLS = [
   {
     name: 'get_plot',
     description:
-      '1 作品のプロット（幕×ビート・プロットライン・伏線・秘密）を各要素の id 付きプレーンテキストで返す。先頭にこの作品の世界観設定（作者だけの決め事）が付くので、書き換えの前にそれに従うこと。section_id / beat_ids を渡すとその幕・そのビートだけ返す（省略時は全量）。upsert/delete 系プロットツールの対象 id はここで確認する。ビートが多い作品では list_plot_beats で索引を見てから絞り込むこと。伏線は回収状態（未回収/回収済/根なし）、秘密は開示状態（開示予定/開示未定/明かさない）付き。',
+      '1 作品のプロット（幕×ビート・プロットライン・伏線・秘密）を各要素の id 付きプレーンテキストで返す。先頭にこの作品の世界観設定（作者だけの決め事）が付くので、書き換えの前にそれに従うこと。section_id / beat_ids を渡すとその幕・そのビートだけ返す（省略時は全量）。**絞り込むと世界観設定は索引（見出し・slot・note_id・字数）に切り替わる**（全文は get_world で読む。絞り込んだうえで全文も要るときは include_world: true）。upsert/delete 系プロットツールの対象 id はここで確認する。ビートが多い作品では list_plot_beats で索引を見てから絞り込むこと。伏線は回収状態（未回収/回収済/根なし）、秘密は開示状態（開示予定/開示未定/明かさない）付き。',
     inputSchema: {
       type: 'object',
       properties: {
@@ -296,7 +296,8 @@ export const MCP_TOOLS = [
         },
         include_world: {
           type: 'boolean',
-          description: '先頭に世界観設定の全文を載せるか（既定 true）',
+          description:
+            '先頭に世界観設定をどう載せるか。既定は「絞り込みなしなら全文・section_id / beat_ids で絞ったら索引」。true で絞り込み中も全文、false で索引も外す（件数の 1 行だけ残る）',
         },
         ...maxBytesProp,
       },

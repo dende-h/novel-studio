@@ -113,6 +113,43 @@ export function clipLinesToBytes(
   return { lines: kept, dropped: lines.length - kept.length }
 }
 
+export interface FitCount {
+  /** 実際に載せる件数。項目が 1 件以上あるなら必ず 1 以上（0 件は AI から見て行き止まり）。 */
+  count: number
+  /** 予算のために落とした件数。呼び出し側はこれで next_offset と案内文を作り直す。 */
+  dropped: number
+}
+
+/**
+ * **整形する前に**項目数を予算へ収める（行ではなく項目で数える）。
+ *
+ * 索引は 1 項目 1 行とはかぎらない（世界観設定は冒頭プレビューで 2 行になり、見出しや
+ * 「まだ書かれていない枠」の行も混ざる）。整形後の文字列を行で切ると「何項目載ったか」が
+ * 呼び出し側から分からなくなり、next_offset と構造化データが本文とずれる。案内どおり
+ * next_offset へ進んだ AI が、落ちた項目を読まないまま飛ばす。
+ *
+ * `overheadBytes` は項目以外に必ず載るもの（案内文・見出し）の合計バイト。
+ * `itemTexts` の 1 件は改行 1 つぶん（+1 バイト）を足して数える。
+ */
+export function fitItemsToBytes(
+  itemTexts: string[],
+  overheadBytes: number,
+  maxBytes: number,
+): FitCount {
+  if (maxBytes <= 0) return { count: itemTexts.length, dropped: 0 }
+  let used = overheadBytes
+  let count = 0
+  for (const t of itemTexts) {
+    const cost = utf8Bytes(t) + 1 // 改行ぶん
+    if (used + cost > maxBytes) break
+    used += cost
+    count += 1
+  }
+  // 1 件も入らない予算でも 1 件は返す（予算超過より、次の一手が打てないほうが悪い）。
+  if (count === 0 && itemTexts.length > 0) count = 1
+  return { count, dropped: itemTexts.length - count }
+}
+
 export interface BudgetHeaderInput {
   /** 縮退したか。false のときヘッダは出さない（＝従来どおりの出力）。 */
   truncated: boolean
@@ -145,6 +182,43 @@ export function budgetNotice(input: BudgetHeaderInput): string {
       ? `※ 全文は約 ${input.fullBytes.toLocaleString('en-US')} バイトで、応答の上限（${input.maxBytes.toLocaleString('en-US')} バイト）を超えました。索引に切り替えています。`
       : '※ 応答の上限を超えたため、索引に切り替えています。'
   return [head, size, ...input.recovery.map((r) => `※ ${r}`)].join('\n')
+}
+
+/** limit / offset で窓を返したときの案内に渡す材料。 */
+export interface PageNoticeInput {
+  /** 数える対象の呼び名（例：用語集の項目）。日本語の文の主語になる。 */
+  label: string
+  page: Page
+  /** 次の一手。**既存ツール名＋引数の実例**を必ず入れる（新ツールが見えないホスト対策）。 */
+  recovery: string[]
+}
+
+/**
+ * limit / offset が効いたときに応答の先頭へ置く案内。
+ *
+ * `budgetNotice` は「上限を超えたので索引へ落とした」告知で、**縮退していない窓には出ない**。
+ * その穴で事故が起きる：用語集 400 項目の作品で `get_glossary(offset=0)` を呼んだ AI は、
+ * 200 件を受け取って「これで全部」と読み終える。ここは縮退ではないので `truncated=false` と
+ * 明示し、総件数と次の offset を必ず書く。1 行目は機械可読・以降は日本語＝budgetNotice と同じ作法。
+ */
+export function pageNotice(input: PageNoticeInput): string {
+  const { page } = input
+  const fields = [
+    'truncated=false',
+    'paged=true',
+    `total=${page.total}`,
+    `shown=${page.total === 0 ? '0-0' : `${page.start + 1}-${page.end}`}`,
+    `next_offset=${page.nextOffset ?? 'null'}`,
+  ]
+  // 窓に全件が収まったなら「続きがある」と誤解させない（next_offset=null だけでは弱い）。
+  const whole = page.total === 0 || (page.start === 0 && page.end === page.total)
+  const body = whole
+    ? [`※ ${input.label} ${page.total} 件をすべて返しました（窓に全件が収まりました）。`]
+    : [
+        `※ 全件ではありません。${input.label} ${page.total} 件のうち ${page.start + 1}〜${page.end} 件目だけを返しました。`,
+        '※ 窓になったのは limit / offset を渡したためです（応答の上限による縮退ではありません）。',
+      ]
+  return [`[${fields.join(' ')}]`, ...body, ...input.recovery.map((r) => `※ ${r}`)].join('\n')
 }
 
 /**

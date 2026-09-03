@@ -3,9 +3,11 @@ import {
   budgetNotice,
   clampInt,
   clipLinesToBytes,
+  fitItemsToBytes,
   fitToBudget,
   MAX_MAX_BYTES,
   MIN_MAX_BYTES,
+  pageNotice,
   paginate,
   resolveMaxBytes,
   toInt,
@@ -146,5 +148,52 @@ describe('budgetNotice', () => {
     expect(head).toContain('shown=1-120')
     expect(head).toContain('next_offset=120')
     expect(rest.join('\n')).toContain('max_bytes=0')
+  })
+})
+
+describe('fitItemsToBytes', () => {
+  it('項目単位で予算に収める（行数と項目数が 1 対 1 でなくてもよい）', () => {
+    // 2 行になる項目（世界観索引の冒頭プレビュー）を混ぜる。
+    const items = ['あいう', 'かきく\n    えお', 'さしす']
+    expect(fitItemsToBytes(items, 0, 1_000)).toEqual({ count: 3, dropped: 0 })
+    // 1 件目（9 バイト＋改行）だけが入る予算。
+    expect(fitItemsToBytes(items, 0, 10)).toEqual({ count: 1, dropped: 2 })
+    // 見出し・案内ぶんの overhead を引いてから数える。
+    expect(fitItemsToBytes(items, 8, 100)).toEqual({ count: 3, dropped: 0 })
+    // 1 件も入らない予算でも 0 件にはしない（行き止まりを作らない）。
+    expect(fitItemsToBytes(items, 8, 10)).toEqual({ count: 1, dropped: 2 })
+    // 0 は無制限。項目が無ければ 0 件。
+    expect(fitItemsToBytes(items, 0, 0)).toEqual({ count: 3, dropped: 0 })
+    expect(fitItemsToBytes([], 0, 10)).toEqual({ count: 0, dropped: 0 })
+  })
+})
+
+describe('pageNotice', () => {
+  it('窓を返したときは truncated=false と総件数・次の offset を書く', () => {
+    const notice = pageNotice({
+      label: '用語集の項目',
+      page: { start: 0, end: 200, total: 400, nextOffset: 200 },
+      recovery: ['続き: get_glossary(work_id="w1", offset=200)'],
+    })
+    const [head, ...rest] = notice.split('\n')
+    // 1 行目は機械可読。縮退（索引）と窓を取り違えさせない。
+    expect(head).toContain('truncated=false')
+    expect(head).toContain('paged=true')
+    expect(head).toContain('total=400')
+    expect(head).toContain('shown=1-200')
+    expect(head).toContain('next_offset=200')
+    expect(rest.join('\n')).toContain('全件ではありません')
+    expect(rest.join('\n')).toContain('offset=200')
+  })
+
+  it('窓に全件が収まったら「すべて返した」と書く（続きがあると誤解させない）', () => {
+    const notice = pageNotice({
+      label: '用語集の項目',
+      page: { start: 0, end: 3, total: 3, nextOffset: null },
+      recovery: [],
+    })
+    expect(notice).toContain('next_offset=null')
+    expect(notice).toContain('すべて返しました')
+    expect(notice).not.toContain('全件ではありません')
   })
 })
