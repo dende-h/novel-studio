@@ -60,5 +60,41 @@ describe('AdminTemplatesPage — 効果音を出さない版（GAME_FEATURES.se�
       await screen.findByText(/weather-rain-heavy\.mp3：効果音はいまは受け付けていません/),
     ).toBeInTheDocument()
     await waitFor(() => expect(api.adminPutTemplate).not.toHaveBeenCalled())
+    // ファイル選択の窓も音を勧めない（拒むだけでなく、はじめから出さない）
+    expect(screen.getByLabelText('テンプレ画像を選ぶ')).toHaveAttribute('accept', 'image/*')
+  })
+
+  it('TSV に効果音の行が混ざっていても、下書きに入れずに数えて知らせる', async () => {
+    api.adminFetchTemplates.mockResolvedValue({
+      ...empty,
+      entries: [
+        {
+          kind: 'se',
+          slug: 'weather-rain',
+          label: '雨',
+          category: 'weather',
+          tone: ['#000000', '#000000', '#000000'],
+          mime: 'audio/mpeg',
+          bytes: 1,
+          hash: 'h',
+          updatedAt: 1,
+        },
+      ],
+    })
+    render(<AdminTemplatesPage getToken={async () => 'jwt'} />)
+    await screen.findByRole('button', { name: /背景（画像 0）/ })
+    fireEvent.change(screen.getByLabelText('TSV'), {
+      target: {
+        value: [
+          '新ファイル名\t元ファイル名\t表示名\t場所',
+          'weather-rain.mp3\tA.mp3\t大雨\tweather',
+        ].join('\n'),
+      },
+    })
+    fireEvent.click(screen.getByRole('button', { name: '表示名を取り込む' }))
+    expect(
+      await screen.findByText(/0 件に入れました（未保存）・いまは扱わない効果音 1 件/),
+    ).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '変更を保存' })).toBeDisabled()
   })
 })

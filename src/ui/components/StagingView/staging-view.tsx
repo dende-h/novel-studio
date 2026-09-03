@@ -520,9 +520,9 @@ export default function StagingView({ repo, work, currentEpisodeId, assetRepo }:
    * 表情（cue.expression）はどちらの行でも選べる＝話者の行ではその話者の、登場の行ではその人物の表情
    * （exporter・MCP と同じ規則）。
    */
-  const renderSpriteEditor = (character: string, withExpression: boolean) => {
+  const renderSpriteEditor = (character: string, role: 'speaker' | 'appear') => {
     const expressions = spriteExpressionsOf(assets, character)
-    const preview = pickSprite(assets, character, withExpression ? selected?.expression : undefined)
+    const preview = pickSprite(assets, character, selected?.expression)
     return (
       <div className="mt-4">
         {selected?.hideSprite ? (
@@ -530,20 +530,18 @@ export default function StagingView({ repo, work, currentEpisodeId, assetRepo }:
             この行は「立ち絵を出さない」が入っています。登録はできますが、ここでは出ません。
           </p>
         ) : null}
-        {withExpression ? (
-          <div className="mb-2 flex items-center gap-1">
-            <label
-              htmlFor="staging-expression"
-              className="text-on-surface-variant text-xs uppercase tracking-wider"
-            >
-              立ち絵
-            </label>
-            <SpriteHelp />
-          </div>
-        ) : null}
+        <div className="mb-2 flex items-center gap-1">
+          <label
+            htmlFor="staging-expression"
+            className="text-on-surface-variant text-xs uppercase tracking-wider"
+          >
+            立ち絵
+          </label>
+          <SpriteHelp />
+        </div>
         {expressions.length > 0 ? (
           <>
-            {withExpression && selected ? (
+            {selected ? (
               <select
                 id="staging-expression"
                 value={selected.expression ?? ''}
@@ -579,7 +577,7 @@ export default function StagingView({ repo, work, currentEpisodeId, assetRepo }:
         ) : (
           <p className="text-[11px] text-on-surface-variant leading-relaxed">
             「{character}」の立ち絵はまだありません。追加すると、
-            {withExpression
+            {role === 'speaker'
               ? 'この話者のセリフで自動的に表示されます。'
               : 'この行から立ち絵が出ます。'}
           </p>
@@ -1027,7 +1025,7 @@ export default function StagingView({ repo, work, currentEpisodeId, assetRepo }:
                   ) : null}
 
                   {selected.speaker && selected.speaker !== MASKED_SPEAKER && assetRepo
-                    ? renderSpriteEditor(selected.speaker, true)
+                    ? renderSpriteEditor(selected.speaker, 'speaker')
                     : null}
                 </div>
               ) : null}
@@ -1095,7 +1093,7 @@ export default function StagingView({ repo, work, currentEpisodeId, assetRepo }:
                     />
                   ) : null}
                   {selected.appear && selected.appear !== MASKED_SPEAKER
-                    ? renderSpriteEditor(selected.appear, true)
+                    ? renderSpriteEditor(selected.appear, 'appear')
                     : null}
                 </div>
               ) : null}

@@ -157,6 +157,34 @@ describe('AdminTemplatesPage', () => {
     expect(screen.getByRole('button', { name: /背景（画像 1）/ })).toBeInTheDocument()
   })
 
+  it('効果音タブで分類の表示名を直すと、その分も PATCH に載る（下書きを捨てない）', async () => {
+    api.adminFetchTemplates.mockResolvedValue(
+      manifest([
+        entry({
+          kind: 'se',
+          slug: 'weather-rain',
+          label: '雨',
+          category: 'weather',
+          mime: 'audio/mpeg',
+        }),
+      ]),
+    )
+    api.adminPatchTemplates.mockImplementation(async (_t, patch) => ({
+      ...manifest([]),
+      categories: { bg: {}, sprite: {}, se: patch.categories?.se ?? {} },
+    }))
+    render(<AdminTemplatesPage getToken={getToken} />)
+    fireEvent.click(await screen.findByRole('button', { name: /効果音（音 1）/ }))
+    fireEvent.change(screen.getByLabelText('分類「weather」の表示名'), {
+      target: { value: '天気' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: '変更を保存' }))
+    await waitFor(() => expect(api.adminPatchTemplates).toHaveBeenCalledTimes(1))
+    expect(api.adminPatchTemplates.mock.calls[0]?.[1]).toEqual({
+      categories: { se: { weather: '天気' } },
+    })
+  })
+
   it('効果音タブ：組み込みの合成レシピは「ファイルなし」、mp3 を入れると長さ付きで並ぶ', async () => {
     api.adminFetchTemplates.mockResolvedValue(manifest([]))
     api.adminPutTemplate.mockImplementation(async (_t, kind, slug, input) => ({
