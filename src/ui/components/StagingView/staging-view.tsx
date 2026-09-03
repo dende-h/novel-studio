@@ -25,6 +25,7 @@ import {
   userAssetKey,
 } from '@/core/game/assets'
 import { type PageContinuity, resolveContinuity } from '@/core/game/continuity'
+import { GAME_FEATURES } from '@/core/game/features'
 import { SE_STOP, type SeRepeat } from '@/core/game/sePresets'
 import type { CatalogBackground, CatalogSe, CatalogSprite } from '@/core/game/templates'
 import { PERSON_CATEGORY } from '@/core/glossary'
@@ -383,15 +384,26 @@ export default function StagingView({ repo, work, currentEpisodeId, assetRepo }:
     setPendingSprite(null)
     setSpritePickerOpen(false)
   }
+  /**
+   * 話者／登場する人物を替える。表情（expression）はその人物の絵の名前なので、
+   * 別の人に替えたら一緒に外す（前の人の表情名が残ると「未登録の表情」になる）。
+   */
+  const setPerson = (blockId: string, field: 'speaker' | 'appear', name: string | undefined) => {
+    const current = staging?.cues.find((c) => c.blockId === blockId)?.[field]
+    apply(blockId, {
+      [field]: name,
+      ...(name !== current ? { expression: undefined } : {}),
+    })
+  }
   const commitCustomSpeaker = (blockId: string) => {
     const name = customDraft.trim()
     setCustomSpeaker(false)
-    apply(blockId, { speaker: name || undefined })
+    setPerson(blockId, 'speaker', name || undefined)
   }
   const commitCustomAppear = (blockId: string) => {
     const name = customAppearDraft.trim()
     setCustomAppear(false)
-    apply(blockId, { appear: name || undefined })
+    setPerson(blockId, 'appear', name || undefined)
   }
   /** 画像ファイル → リサイズして保存 → その行の背景に設定。会員はクラウドにも控えを置く。 */
   const addImage = async (file: File, blockId: string) => {
@@ -505,7 +517,8 @@ export default function StagingView({ repo, work, currentEpisodeId, assetRepo }:
   /**
    * 立ち絵の欄（プレビュー・表情・追加）。**セリフの話者にも、地の文の「登場」にも同じ形で出す。**
    * 一言も喋らない人物にも立ち絵を付けられるように、登録の入口を話者に縛らない（D-GAME-SPRITE-ANY）。
-   * 表情の選び分けはセリフ側だけ（登場は既定の表情で立たせる＝exporter の取り決めに合わせる）。
+   * 表情（cue.expression）はどちらの行でも選べる＝話者の行ではその話者の、登場の行ではその人物の表情
+   * （exporter・MCP と同じ規則）。
    */
   const renderSpriteEditor = (character: string, withExpression: boolean) => {
     const expressions = spriteExpressionsOf(assets, character)
@@ -541,7 +554,7 @@ export default function StagingView({ repo, work, currentEpisodeId, assetRepo }:
                 }
                 className={SELECT_CLASS}
               >
-                <option value="">（自動：{DEFAULT_EXPRESSION}）</option>
+                <option value="">（指定なし：{DEFAULT_EXPRESSION}）</option>
                 {/* 未登録の表情が付いた既存 cue も選択状態は保つ（勝手に外さない） */}
                 {selected.expression && !expressions.includes(selected.expression) ? (
                   <option value={selected.expression}>
@@ -772,10 +785,12 @@ export default function StagingView({ repo, work, currentEpisodeId, assetRepo }:
                   />
                   立ち絵
                 </span>
-                <span className="flex items-center gap-1">
-                  <span className={cn('h-3 w-[3px] rounded-full', LANE_COLORS.se)} aria-hidden />
-                  環境音
-                </span>
+                {GAME_FEATURES.se ? (
+                  <span className="flex items-center gap-1">
+                    <span className={cn('h-3 w-[3px] rounded-full', LANE_COLORS.se)} aria-hidden />
+                    環境音
+                  </span>
+                ) : null}
                 <ContinuityHelp />
               </div>
               <ul className="mx-auto max-w-3xl space-y-1">
@@ -836,12 +851,14 @@ export default function StagingView({ repo, work, currentEpisodeId, assetRepo }:
                             faint={cont?.hidden}
                             title={titles.sprite}
                           />
-                          <ContinuityLane
-                            on={Boolean(cont?.loopSe)}
-                            start={Boolean(cont?.changed.loopSe)}
-                            color={LANE_COLORS.se}
-                            title={titles.se}
-                          />
+                          {GAME_FEATURES.se ? (
+                            <ContinuityLane
+                              on={Boolean(cont?.loopSe)}
+                              start={Boolean(cont?.changed.loopSe)}
+                              color={LANE_COLORS.se}
+                              title={titles.se}
+                            />
+                          ) : null}
                         </span>
                         <span className="min-w-0 flex-1">
                           <span className="block truncate font-serif text-on-surface text-sm">
@@ -851,12 +868,12 @@ export default function StagingView({ repo, work, currentEpisodeId, assetRepo }:
                             {page.kind === 'dialogue' ? (
                               <span>話者：{page.speaker ?? '—'}</span>
                             ) : null}
-                            {page.kind === 'dialogue' && page.expression ? (
+                            {page.appear ? <span>登場 {page.appear}</span> : null}
+                            {page.expression && (page.speaker || page.appear) ? (
                               <span>表情 {page.expression}</span>
                             ) : null}
-                            {page.appear ? <span>登場 {page.appear}</span> : null}
                             {page.hideSprite ? <span>立ち絵なし</span> : null}
-                            {page.se ? (
+                            {GAME_FEATURES.se && page.se ? (
                               <span>
                                 効果音 {seLabelOf(page.se, ses)}
                                 {page.seRepeat === 'loop' ? '（ずっと）' : ''}
@@ -902,7 +919,9 @@ export default function StagingView({ repo, work, currentEpisodeId, assetRepo }:
                     : selectedCont.standing.length > 0
                       ? `／立ち絵 ${selectedCont.standing.join('・')}`
                       : ''}
-                  {selectedCont.loopSe ? `／環境音 ${seLabelOf(selectedCont.loopSe, ses)}` : ''}
+                  {GAME_FEATURES.se && selectedCont.loopSe
+                    ? `／環境音 ${seLabelOf(selectedCont.loopSe, ses)}`
+                    : ''}
                 </p>
               ) : null}
 
@@ -946,11 +965,11 @@ export default function StagingView({ repo, work, currentEpisodeId, assetRepo }:
                         return
                       }
                       setCustomSpeaker(false)
-                      apply(selected.blockId, { speaker: value || undefined })
+                      setPerson(selected.blockId, 'speaker', value || undefined)
                     }}
                     className={SELECT_CLASS}
                   >
-                    <option value="">（名前を出さない）</option>
+                    <option value="">（なし：名前を出さない）</option>
                     <option value={MASKED_SPEAKER}>？？？（名前を伏せる）</option>
                     {persons.length > 0 ? (
                       <optgroup label="用語集の人物">
@@ -1000,7 +1019,7 @@ export default function StagingView({ repo, work, currentEpisodeId, assetRepo }:
                       className="mt-2 text-primary"
                       onClick={() => {
                         setCustomSpeaker(false)
-                        apply(selected.blockId, { speaker: speakerCandidate })
+                        setPerson(selected.blockId, 'speaker', speakerCandidate)
                       }}
                     >
                       候補「{speakerCandidate}」を使う
@@ -1036,7 +1055,7 @@ export default function StagingView({ repo, work, currentEpisodeId, assetRepo }:
                         return
                       }
                       setCustomAppear(false)
-                      apply(selected.blockId, { appear: value || undefined })
+                      setPerson(selected.blockId, 'appear', value || undefined)
                     }}
                     className={SELECT_CLASS}
                   >
@@ -1076,7 +1095,7 @@ export default function StagingView({ repo, work, currentEpisodeId, assetRepo }:
                     />
                   ) : null}
                   {selected.appear && selected.appear !== MASKED_SPEAKER
-                    ? renderSpriteEditor(selected.appear, false)
+                    ? renderSpriteEditor(selected.appear, true)
                     : null}
                 </div>
               ) : null}
@@ -1138,7 +1157,7 @@ export default function StagingView({ repo, work, currentEpisodeId, assetRepo }:
                   }}
                   className={SELECT_CLASS}
                 >
-                  <option value="">（変えない）</option>
+                  <option value="">（なし：変えない）</option>
                   {/* この端末に無い持ち込み画像のキーも選択状態は保つ（勝手に外さない） */}
                   {selected.bg && !bgLabelOf(selected.bg, assets, backgrounds) ? (
                     <option value={selected.bg}>（この端末に無い画像）</option>
@@ -1233,102 +1252,105 @@ export default function StagingView({ repo, work, currentEpisodeId, assetRepo }:
                 </div>
               ) : null}
 
-              <div>
-                <div className="mb-2 flex items-center gap-1">
-                  <label
-                    htmlFor="staging-se"
-                    className="text-on-surface-variant text-xs uppercase tracking-wider"
-                  >
-                    効果音
-                  </label>
-                  <SeHelp />
-                </div>
-                <div className="flex gap-2">
-                  <select
-                    id="staging-se"
-                    value={selected.se ?? ''}
-                    onChange={(e) => {
-                      const value = e.target.value
-                      // 音を外す・止めるときは鳴らし方の指定も一緒に落とす（宙に浮かせない）
-                      apply(selected.blockId, {
-                        se: value || undefined,
-                        ...(value === '' || value === SE_STOP ? { seRepeat: undefined } : {}),
-                      })
-                    }}
-                    className={SELECT_CLASS}
-                  >
-                    <option value="">（なし）</option>
-                    <option value={SE_STOP}>ここで止める（ずっと鳴っている音を消す）</option>
-                    {/* 未知キー（この端末の目録に無い音等）も選択状態は保つ（勝手に外さない） */}
-                    {selected.se && selected.se !== SE_STOP && !seOf(selected.se) ? (
-                      <option value={selected.se}>{selected.se}</option>
-                    ) : null}
-                    {ses
-                      .filter((p) => !p.hidden || p.key === selected.se)
-                      .map((p) => (
-                        <option key={p.key} value={p.key}>
-                          {p.label}
-                        </option>
-                      ))}
-                  </select>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    className="shrink-0 text-primary"
-                    disabled={!selected.se || !seOf(selected.se)}
-                    onClick={() => {
-                      const se = selected.se ? seOf(selected.se) : undefined
-                      if (se) playCatalogSe(se, selected.seRepeat)
-                    }}
-                  >
-                    試聴
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    className="shrink-0 text-primary"
-                    onClick={() => setSePickerOpen(true)}
-                  >
-                    一覧から選ぶ…
-                  </Button>
-                </div>
-                <TemplatePicker
-                  open={sePickerOpen}
-                  onOpenChange={setSePickerOpen}
-                  kind="se"
-                  items={ses}
-                  manifest={templateManifest}
-                  selectedKey={selected.se}
-                  onPick={(se) => apply(selected.blockId, { se: se.key })}
-                />
-                {selected.se && selected.se !== SE_STOP ? (
-                  <div className="mt-2">
-                    <label htmlFor="staging-se-repeat" className="sr-only">
-                      鳴らし方
+              {/* 効果音（GAME_FEATURES.se が false の版では欄ごと出さない。基盤は残る） */}
+              {GAME_FEATURES.se ? (
+                <div>
+                  <div className="mb-2 flex items-center gap-1">
+                    <label
+                      htmlFor="staging-se"
+                      className="text-on-surface-variant text-xs uppercase tracking-wider"
+                    >
+                      効果音
                     </label>
+                    <SeHelp />
+                  </div>
+                  <div className="flex gap-2">
                     <select
-                      id="staging-se-repeat"
-                      value={selected.seRepeat === undefined ? '1' : String(selected.seRepeat)}
+                      id="staging-se"
+                      value={selected.se ?? ''}
                       onChange={(e) => {
                         const value = e.target.value
+                        // 音を外す・止めるときは鳴らし方の指定も一緒に落とす（宙に浮かせない）
                         apply(selected.blockId, {
-                          seRepeat:
-                            value === '1'
-                              ? undefined
-                              : ((value === 'loop' ? 'loop' : 2) as SeRepeat),
+                          se: value || undefined,
+                          ...(value === '' || value === SE_STOP ? { seRepeat: undefined } : {}),
                         })
                       }}
                       className={SELECT_CLASS}
                     >
-                      <option value="1">1回鳴らす</option>
-                      <option value="2">2回鳴らす</option>
-                      <option value="loop">ずっと鳴らす（次の場面まで）</option>
+                      <option value="">（なし）</option>
+                      <option value={SE_STOP}>ここで止める（ずっと鳴っている音を消す）</option>
+                      {/* 未知キー（この端末の目録に無い音等）も選択状態は保つ（勝手に外さない） */}
+                      {selected.se && selected.se !== SE_STOP && !seOf(selected.se) ? (
+                        <option value={selected.se}>{selected.se}</option>
+                      ) : null}
+                      {ses
+                        .filter((p) => !p.hidden || p.key === selected.se)
+                        .map((p) => (
+                          <option key={p.key} value={p.key}>
+                            {p.label}
+                          </option>
+                        ))}
                     </select>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="shrink-0 text-primary"
+                      disabled={!selected.se || !seOf(selected.se)}
+                      onClick={() => {
+                        const se = selected.se ? seOf(selected.se) : undefined
+                        if (se) playCatalogSe(se, selected.seRepeat)
+                      }}
+                    >
+                      試聴
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="shrink-0 text-primary"
+                      onClick={() => setSePickerOpen(true)}
+                    >
+                      一覧から選ぶ…
+                    </Button>
                   </div>
-                ) : null}
-              </div>
+                  <TemplatePicker
+                    open={sePickerOpen}
+                    onOpenChange={setSePickerOpen}
+                    kind="se"
+                    items={ses}
+                    manifest={templateManifest}
+                    selectedKey={selected.se}
+                    onPick={(se) => apply(selected.blockId, { se: se.key })}
+                  />
+                  {selected.se && selected.se !== SE_STOP ? (
+                    <div className="mt-2">
+                      <label htmlFor="staging-se-repeat" className="sr-only">
+                        鳴らし方
+                      </label>
+                      <select
+                        id="staging-se-repeat"
+                        value={selected.seRepeat === undefined ? '1' : String(selected.seRepeat)}
+                        onChange={(e) => {
+                          const value = e.target.value
+                          apply(selected.blockId, {
+                            seRepeat:
+                              value === '1'
+                                ? undefined
+                                : ((value === 'loop' ? 'loop' : 2) as SeRepeat),
+                          })
+                        }}
+                        className={SELECT_CLASS}
+                      >
+                        <option value="1">1回鳴らす</option>
+                        <option value="2">2回鳴らす</option>
+                        <option value="loop">ずっと鳴らす（次の場面まで）</option>
+                      </select>
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
 
               <Button
                 type="button"
@@ -1388,7 +1410,7 @@ function describeCue(
   if (cue.sceneBreak) parts.push('場面の切れ目')
   if (cue.bg) parts.push(`背景 ${bgLabelOf(cue.bg, assets, backgrounds) ?? cue.bg}`)
   if (cue.bgm) parts.push('BGM')
-  if (cue.se) parts.push(`効果音 ${seLabelOf(cue.se, ses)}`)
+  if (GAME_FEATURES.se && cue.se) parts.push(`効果音 ${seLabelOf(cue.se, ses)}`)
   if (cue.transition) parts.push('切り替え効果')
   return parts.length > 0 ? parts.join('・') : '（内容なし）'
 }

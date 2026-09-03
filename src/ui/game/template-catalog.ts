@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useSyncExternalStore } from 'react'
 import type { Staging } from '@/core/game'
 import type { UserGameAsset } from '@/core/game/assets'
+import { GAME_FEATURES } from '@/core/game/features'
 import { presetBgSvg } from '@/core/game/presets'
 import { presetSpriteDataUrl } from '@/core/game/spritePresets'
 import {
@@ -254,6 +255,8 @@ export async function resolveTemplateSes(
   ses: readonly CatalogSe[],
   opts: { fallback: 'omit' | 'none' },
 ): Promise<ResolvedTemplateBackgrounds> {
+  // 効果音を出さない版（GAME_FEATURES.se＝false）では何も取らない＝プレビュー・書き出し・投稿に音を載せない
+  if (!GAME_FEATURES.se) return { assets: [], missing: [] }
   const byKey = new Map(ses.map((s) => [s.key, s]))
   const assets: UserGameAsset[] = []
   const missing: string[] = []

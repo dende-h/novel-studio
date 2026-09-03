@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import type { Staging } from '../game'
 import { resolveRef } from '../glossary'
 import { parseEpisodeBody } from '../parser/parseNotation'
@@ -19,6 +19,10 @@ import {
   upsertGlossaryEntry,
   upsertStructure,
 } from './index'
+
+// この版は効果音を隠している（features.ts）。MCP の効果音経路そのものはここで検証し続ける。
+// フラグが落ちているときの振る舞いは index.features.test.ts
+vi.mock('../game/features', () => ({ GAME_FEATURES: { se: true } }))
 
 const work = (): Work => ({
   id: 'w1',
@@ -564,6 +568,7 @@ describe('mcp-edit — 演出譜（set_staging の純ロジック）', () => {
         100,
       ),
     ).toThrow(/立ち絵が出ない/)
+    // 地の文でも、登場（appear）が無ければ誰の表情か決まらない
     expect(() =>
       setStagingCues(
         [],
@@ -574,7 +579,7 @@ describe('mcp-edit — 演出譜（set_staging の純ロジック）', () => {
         sprites,
         100,
       ),
-    ).toThrow(/セリフの行/)
+    ).toThrow(/話者.*登場/)
     expect(() =>
       setStagingCues(
         [],
@@ -609,6 +614,70 @@ describe('mcp-edit — 演出譜（set_staging の純ロジック）', () => {
       100,
     )
     expect(cleared.stagings[0]?.cues[0]).toEqual({ blockId: 'b2', speaker: '灯' })
+  })
+
+  it('登場（appear）の行にも表情を付けられる（その人物の表情で検証する）', () => {
+    const sprites = [
+      { id: 'sp1', kind: 'sprite', character: '灯', expression: '通常', createdAt: 1 },
+      { id: 'sp2', kind: 'sprite', character: '灯', expression: '笑顔', createdAt: 2 },
+      { id: 'sp3', kind: 'sprite', character: 'ベニ', expression: '通常', createdAt: 3 },
+    ]
+    const ok = setStagingCues(
+      [],
+      [stagedWork()],
+      'w1',
+      'e1',
+      [{ blockId: 'b1', appear: '灯', expression: '笑顔' }],
+      sprites,
+      100,
+    )
+    expect(ok.stagings[0]?.cues[0]).toEqual({ blockId: 'b1', appear: '灯', expression: '笑顔' })
+    // 登場する人物に無い表情は弾く
+    expect(() =>
+      setStagingCues(
+        [],
+        [stagedWork()],
+        'w1',
+        'e1',
+        [{ blockId: 'b1', appear: '灯', expression: '泣き' }],
+        sprites,
+        100,
+      ),
+    ).toThrow(/「灯」の立ち絵にありません/)
+    // 話者の付いた行では、表情は話者のもの（同じ行の登場する人物では検証しない）
+    expect(() =>
+      setStagingCues(
+        [],
+        [stagedWork()],
+        'w1',
+        'e1',
+        [{ blockId: 'b2', speaker: 'ベニ', appear: '灯', expression: '笑顔' }],
+        sprites,
+        100,
+      ),
+    ).toThrow(/「ベニ」の立ち絵にありません/)
+    // 登場だけ外すと表情が宙に浮く＝一緒に外す
+    expect(() =>
+      setStagingCues(
+        ok.stagings,
+        [stagedWork()],
+        'w1',
+        'e1',
+        [{ blockId: 'b1', appear: '' }],
+        sprites,
+        100,
+      ),
+    ).toThrow(/話者.*登場/)
+    const cleared = setStagingCues(
+      ok.stagings,
+      [stagedWork()],
+      'w1',
+      'e1',
+      [{ blockId: 'b1', appear: '', expression: '' }],
+      sprites,
+      100,
+    )
+    expect(cleared.stagings[0]?.cues).toHaveLength(0)
   })
 
   it('登場（appear）は立ち絵のある人物にだけ付けられる（地の文でも可）', () => {

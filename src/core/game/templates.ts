@@ -392,7 +392,7 @@ export interface CatalogSe {
 }
 
 /**
- * 効果音の一覧＝組み込みの合成 8 種（分類 `synth`）に目録の音声ファイルを重ねる。
+ * 効果音の一覧＝組み込みの合成 12 種（分類 `synth`）に目録の音声ファイルを重ねる。
  * 同じ slug のファイルが目録にあれば、キーはそのままに実体がファイルになる。
  */
 export function mergeSeCatalog(manifest: TemplateManifest | null): CatalogSe[] {

@@ -1,5 +1,6 @@
 import { applyCues, MASKED_SPEAKER, plainTextOfBlock, type Staging, toPages } from '../game'
 import { gameAssetKey, pickSprite, type UserGameAsset } from '../game/assets'
+import { GAME_FEATURES } from '../game/features'
 import { buildGameCredits, DEFAULT_BG_KEY, presetBackground, presetBgSvg } from '../game/presets'
 import { presetSe, SE_STOP, type SeStep } from '../game/sePresets'
 import { presetSprite } from '../game/spritePresets'
@@ -272,7 +273,8 @@ export function buildNovelGameFiles(
   if (!fallback) throw new Error('既定背景プリセットが見つからない')
   const defaultEntry = resolveBg(opts.defaultBg ?? '') ?? fallback
 
-  // 立ち絵：話者に自動で紐づく舞台（最大2人・1人=中央/2人=左右。cue.expression は表情の指定だけ）。
+  // 立ち絵：話者に自動で紐づく舞台（最大2人・1人=中央/2人=左右。cue.expression は表情の指定だけ＝
+  //  話者の付いた行ではその話者の、そうでなければ登場（appear）する人物の表情）。
   //  - 初登場は中央。2人目が来たら先客が左へ寄り、右に入る。3人目は「最近話していない方」と
   //    交代し、席（左右）を引き継ぐ。同じ話者の表情替えはその場で差し替え。
   //  - いま話している人物だけ明るい（a=1）。立ち絵の無い話者・？？？のセリフは**退場させず**
@@ -350,12 +352,14 @@ export function buildNovelGameFiles(
         spritesHidden = true
       }
       // 登場（appear）：セリフの前から立ち絵を出す。名前枠は出さず、明るくもしない。
-      // 既に立っている人物への appear は据え置き（表情は speaker+expression の領分）。
+      // 既に立っている人物への appear は据え置き。ただし表情を明示した（expression・話者の無い行）
+      // ときだけは、その表情の絵に差し替える（明示は自動より強い）。
       // 明示の指定なので、出さない区間もここで終わる（同じ場面でまた出したいときの戻り道）。
       if (page.appear && page.appear !== MASKED_SPEAKER) {
         spritesHidden = false
-        if (!standing.some((s) => s.char === page.appear)) {
-          const chosen = pickSprite(spriteAssets, page.appear)
+        const appearExpression = page.speaker ? undefined : page.expression
+        if (appearExpression || !standing.some((s) => s.char === page.appear)) {
+          const chosen = pickSprite(spriteAssets, page.appear, appearExpression)
           if (chosen) {
             usedSprites.set(chosen.key, chosen)
             enterStage(chosen.key, page.appear, index)
@@ -390,8 +394,9 @@ export function buildNovelGameFiles(
     }
     // 効果音：ページ表示の瞬間に 1 回鳴らす。未知キーは無視（壊さない）
     // 「止める」はレシピを持たない予約キー。実体が無くてもページには載せる（ループを終わらせる合図）
-    const stopSe = page.se === SE_STOP
-    const se = page.se && !stopSe ? resolveSe(page.se) : undefined
+    // 効果音を出さない版（GAME_FEATURES.se＝false）では cue の se を読み飛ばす＝ses も鳴らし方も載らない
+    const stopSe = GAME_FEATURES.se && page.se === SE_STOP
+    const se = GAME_FEATURES.se && page.se && !stopSe ? resolveSe(page.se) : undefined
     if (se) usedSes.set(se.key, se)
     return {
       id: page.blockId,

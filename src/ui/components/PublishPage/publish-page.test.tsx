@@ -298,7 +298,8 @@ describe('話ごとのサウンドノベル', () => {
     fireEvent.click(second)
 
     expect(
-      await screen.findByText(/話には演出（話者・背景・立ち絵・効果音）がまだありません/),
+      // 効果音を出さない版（GAME_FEATURES.se＝false）の文言
+      await screen.findByText(/話には演出（話者・背景・立ち絵）がまだありません/),
     ).toBeInTheDocument()
   })
 

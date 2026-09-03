@@ -1,5 +1,6 @@
 import { ImagePlus, Play, Save } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { GAME_FEATURES } from '@/core/game/features'
 import type { GameTime } from '@/core/game/presets'
 import {
   type CatalogBackground,
@@ -83,6 +84,11 @@ function upsertEntry(manifest: TemplateManifest, entry: TemplateEntry): Template
 
 const kb = (bytes: number) => `${Math.max(1, Math.round(bytes / 1024))} KB`
 
+/** 管理ページに出す種類。効果音は機能フラグ（GAME_FEATURES.se）が立っているときだけ（基盤は残る） */
+const TEMPLATE_KINDS: readonly TemplateKind[] = GAME_FEATURES.se
+  ? ['bg', 'sprite', 'se']
+  : ['bg', 'sprite']
+
 export function AdminTemplatesPage({ getToken }: AdminTemplatesPageProps) {
   // null ＝ 読込中、'denied' ＝ 取れなかった（staff でない・通信不良）
   const [manifest, setManifest] = useState<TemplateManifest | 'denied' | null>(null)
@@ -132,7 +138,8 @@ export function AdminTemplatesPage({ getToken }: AdminTemplatesPageProps) {
   const dirty =
     Object.keys(drafts).length > 0 ||
     Object.keys(categoryDrafts.bg).length > 0 ||
-    Object.keys(categoryDrafts.sprite).length > 0
+    Object.keys(categoryDrafts.sprite).length > 0 ||
+    Object.keys(categoryDrafts.se).length > 0
 
   const appendLog = (line: string) => setLog((prev) => [...prev, line])
 
@@ -143,9 +150,13 @@ export function AdminTemplatesPage({ getToken }: AdminTemplatesPageProps) {
     const jobs = files.map((file) => ({ file, parsed: parseTemplateFilename(file.name) }))
     for (const j of jobs) {
       if (!j.parsed) appendLog(`${j.file.name}：名前が規則に合わないので飛ばしました`)
+      else if (!TEMPLATE_KINDS.includes(j.parsed.kind)) {
+        appendLog(`${j.file.name}：効果音はいまは受け付けていません（音は後で出す予定）`)
+      }
     }
     const good = jobs.filter(
-      (j): j is { file: File; parsed: NonNullable<typeof j.parsed> } => j.parsed !== null,
+      (j): j is { file: File; parsed: NonNullable<typeof j.parsed> } =>
+        j.parsed !== null && TEMPLATE_KINDS.includes(j.parsed.kind),
     )
     if (good.length === 0) return
     setUpload({ done: 0, total: good.length, current: '' })
@@ -297,8 +308,14 @@ export function AdminTemplatesPage({ getToken }: AdminTemplatesPageProps) {
       >
         <ImagePlus className="mx-auto size-6 text-on-surface-variant" aria-hidden />
         <p className="mt-2 text-on-surface text-sm">
-          画像・音声をここにまとめてドロップ（背景は <code>場所-時間帯.png</code>、立ち絵は{' '}
-          <code>silhouette-人物像.png</code>、効果音は <code>分類-音.mp3</code>）
+          {GAME_FEATURES.se ? '画像・音声' : '画像'}をここにまとめてドロップ（背景は{' '}
+          <code>場所-時間帯.png</code>、立ち絵は <code>silhouette-人物像.png</code>
+          {GAME_FEATURES.se ? (
+            <>
+              、効果音は <code>分類-音.mp3</code>
+            </>
+          ) : null}
+          ）
         </p>
         <p className="mt-1 text-on-surface-variant text-xs">
           同じ名前を送ると置き換えになります。表示名と分類は、新しい名前にだけ既定値が付きます。
@@ -345,7 +362,7 @@ export function AdminTemplatesPage({ getToken }: AdminTemplatesPageProps) {
       <section className="mt-8" aria-label="テンプレ一覧">
         <div className="flex items-center justify-between gap-3">
           <div className="flex gap-1 rounded-lg border border-outline-variant/30 bg-surface-container-low p-1">
-            {(['bg', 'sprite', 'se'] as const).map((k) => (
+            {TEMPLATE_KINDS.map((k) => (
               <button
                 key={k}
                 type="button"

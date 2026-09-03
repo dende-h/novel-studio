@@ -109,4 +109,24 @@ describe('stagingToPlainText（MCP 向け演出譜テキスト）', () => {
     // 立ち絵が無いときは案内だけ
     expect(stagingToPlainText(work(), episode(), undefined, [])).toContain('立ち絵はまだありません')
   })
+
+  it('表情は話者の行ではその話者、登場だけの行ではその人物のものだと案内する', () => {
+    expect(stagingToPlainText(work(), episode(), undefined, [])).toContain(
+      'expression は話者の付いた行ではその話者の、appear だけの行ではその人物の表情',
+    )
+  })
+
+  it('効果音を出さない版では、効果音の一覧も cue の効果音も出ない', () => {
+    const staging: Staging = {
+      workId: 'w1',
+      episodeId: 'e1',
+      cues: [{ blockId: 'b2', speaker: '灯', se: 'preset:se/rain', seRepeat: 'loop' }],
+      updatedAt: 1,
+    }
+    const text = stagingToPlainText(work(), episode(), staging, [])
+    expect(text).not.toContain('使える効果音')
+    expect(text).not.toContain('効果音=')
+    expect(text).not.toContain('鳴らし方=')
+    expect(text).toContain('話者=灯')
+  })
 })

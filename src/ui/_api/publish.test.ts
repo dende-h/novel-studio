@@ -2,6 +2,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { parseEpisodeBody } from '@/core/parser/parseNotation'
 import type { Work } from '@/core/schema'
 
+// この版は効果音を隠している（features.ts）。音声を載せると v6 を名乗る仕組みはここで検証し続ける
+// （フラグが落ちていると音声は参照されず同梱もされない＝v5 以下のまま）
+vi.mock('@/core/game/features', () => ({ GAME_FEATURES: { se: true } }))
+
 /**
  * platform への直接投稿クライアント。
  * 失敗時にユーザーへ何を見せるかまで含めて固定する

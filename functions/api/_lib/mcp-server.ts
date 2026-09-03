@@ -16,6 +16,7 @@ import {
 import { stagingToPlainText } from '../../../src/core/exporter/stagingToPlainText'
 import { structuresToPlainText } from '../../../src/core/exporter/structureToPlainText'
 import { glossaryToPlainText, workToPlainText } from '../../../src/core/exporter/toPlainText'
+import { GAME_FEATURES } from '../../../src/core/game/features'
 import {
   catalogBackgroundKeys,
   catalogSeKeys,
@@ -487,8 +488,7 @@ export const MCP_TOOLS = [
   },
   {
     name: 'set_staging',
-    description:
-      '1 つの話の演出（話者・表情・場面の切れ目・背景・効果音・切り替え方）を行単位でまとめて付ける。本文は一切変わらない。cues の各要素は get_staging の [block_id: …] を指し、渡した項目だけ書き換える（省略＝据え置き・空文字＝削除・clear: true でその行の演出を丸ごと外す）。話者はセリフの行にだけ付けられ、用語集の人物名／？？？（名前を伏せる）／自由な名前が使える。立ち絵は話者から自動で表示され、expression は立ち絵のある話者の表情の指定にだけ使える。人物ごと描いた一枚絵の背景では hide_sprite で立ち絵を止められる（次の場面の切れ目まで）。効果音は se_repeat で 1回／2回／ずっと を選べ、se: "stop" で鳴っている環境音を止める。どれか 1 行でもエラーになると全体が保存されない。',
+    description: `1 つの話の演出（話者・表情・登場・場面の切れ目・背景${GAME_FEATURES.se ? '・効果音' : ''}・切り替え方）を行単位でまとめて付ける。本文は一切変わらない。cues の各要素は get_staging の [block_id: …] を指し、渡した項目だけ書き換える（省略＝据え置き・空文字＝削除・clear: true でその行の演出を丸ごと外す）。話者はセリフの行にだけ付けられ、用語集の人物名／？？？（名前を伏せる）／自由な名前が使える。立ち絵は話者から自動で表示され、expression は立ち絵のある人物の表情の指定（話者の付いた行ではその話者・appear だけの行ではその人物）。人物ごと描いた一枚絵の背景では hide_sprite で立ち絵を止められる（次の場面の切れ目まで）。${GAME_FEATURES.se ? '効果音は se_repeat で 1回／2回／ずっと を選べ、se: "stop" で鳴っている環境音を止める。' : ''}どれか 1 行でもエラーになると全体が保存されない。`,
     inputSchema: {
       type: 'object',
       properties: {
@@ -508,7 +508,7 @@ export const MCP_TOOLS = [
               expression: {
                 type: 'string',
                 description:
-                  '立ち絵の表情（get_staging の「立ち絵」一覧にある表情から。話者の付いたセリフの行のみ。空文字で外す＝既定の表情）',
+                  '立ち絵の表情（get_staging の「立ち絵」一覧にある表情から。話者の付いたセリフの行ではその話者、appear を付けた行ではその人物の表情。空文字で外す＝既定の表情）',
               },
               appear: {
                 type: 'string',
@@ -528,17 +528,22 @@ export const MCP_TOOLS = [
                 type: 'string',
                 description: '背景キー（get_staging の「使える背景キー」から。空文字で外す）',
               },
-              se: {
-                type: 'string',
-                description:
-                  '効果音キー（get_staging の「使える効果音キー」から。その行の表示と同時に鳴る。"stop" で鳴っている環境音を止める。空文字で外す）',
-              },
-              se_repeat: {
-                type: 'string',
-                enum: ['once', 'twice', 'loop'],
-                description:
-                  '効果音の鳴らし方（省略・once＝1回。loop は次の場面の切れ目か se: "stop" まで鳴り続ける環境音）',
-              },
+              // 効果音を出さない版（GAME_FEATURES.se＝false）では欄ごと出さない（渡しても mcp-edit が断る）
+              ...(GAME_FEATURES.se
+                ? {
+                    se: {
+                      type: 'string',
+                      description:
+                        '効果音キー（get_staging の「使える効果音キー」から。その行の表示と同時に鳴る。"stop" で鳴っている環境音を止める。空文字で外す）',
+                    },
+                    se_repeat: {
+                      type: 'string',
+                      enum: ['once', 'twice', 'loop'],
+                      description:
+                        '効果音の鳴らし方（省略・once＝1回。loop は次の場面の切れ目か se: "stop" まで鳴り続ける環境音）',
+                    },
+                  }
+                : {}),
               transition: {
                 type: 'string',
                 description:

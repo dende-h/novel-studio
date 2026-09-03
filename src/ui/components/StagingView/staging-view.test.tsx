@@ -33,6 +33,9 @@ vi.mock('@/ui/_api/game-templates', () => ({
   fetchTemplateManifest: async () => null,
   fetchTemplateBytes: async () => null,
 }))
+// この版は効果音を隠している（features.ts）。効果音の欄そのものはここで検証し続ける。
+// フラグが落ちているときの振る舞いは staging-view.features.test.tsx
+vi.mock('@/core/game/features', () => ({ GAME_FEATURES: { se: true } }))
 
 beforeEach(() => {
   hostApi.listHostedAssets.mockReset().mockResolvedValue([])
@@ -411,6 +414,69 @@ describe('StagingView（演出エディタ）', () => {
     expect(saved[0]?.cues[0]).toEqual({ blockId: 'b2', speaker: '灯', hideSprite: true })
     // どこで止めたかが一覧から分かる（分からないと戻せない）
     expect(await screen.findByText('立ち絵なし')).toBeInTheDocument()
+  })
+
+  it('登場させた人物に立ち絵が複数あると、地の文の行でも表情を選べる。人物を外すと表情も外れる', async () => {
+    const { repo, saved } = fakeRepo({
+      workId: 'w1',
+      episodeId: 'e1',
+      cues: [{ blockId: 'b1', appear: '灯' }],
+      updatedAt: 1,
+    })
+    const { repo: assetRepo } = memoryAssetRepo([
+      { ...memoryAsset('sp1', '灯（通常）'), kind: 'sprite', character: '灯', expression: '通常' },
+      { ...memoryAsset('sp2', '灯（笑顔）'), kind: 'sprite', character: '灯', expression: '笑顔' },
+    ])
+    render(
+      <StagingView repo={repo} work={makeWork()} currentEpisodeId="e1" assetRepo={assetRepo} />,
+    )
+    fireEvent.click(await screen.findByText('灯が振り返った。'))
+    const select = await screen.findByLabelText('立ち絵')
+    expect(screen.getByRole('option', { name: '（指定なし：通常）' })).toBeInTheDocument()
+    fireEvent.change(select, { target: { value: '笑顔' } })
+    await waitFor(() => expect(saved).toHaveLength(1))
+    expect(saved[0]?.cues[0]).toEqual({ blockId: 'b1', appear: '灯', expression: '笑顔' })
+    expect(await screen.findByText('表情 笑顔')).toBeInTheDocument()
+
+    // 登場する人物を「（なし）」に戻すと、その人の表情も一緒に外れる
+    fireEvent.change(screen.getByLabelText('立ち絵の登場'), { target: { value: '' } })
+    await waitFor(() => expect(saved).toHaveLength(2))
+    expect(saved[1]?.cues).toHaveLength(0)
+  })
+
+  it('話者を替えると、前の話者の表情は外れる（表情はその人の絵の名前）', async () => {
+    const { repo, saved } = fakeRepo({
+      workId: 'w1',
+      episodeId: 'e1',
+      cues: [{ blockId: 'b2', speaker: '灯', expression: '笑顔' }],
+      updatedAt: 1,
+    })
+    render(<StagingView repo={repo} work={makeWork()} currentEpisodeId="e1" />)
+    fireEvent.click(await screen.findByText('「——まだ、書いてるんだね」'))
+    fireEvent.change(screen.getByLabelText('話者'), { target: { value: '？？？' } })
+    await waitFor(() => expect(saved).toHaveLength(1))
+    expect(saved[0]?.cues[0]).toEqual({ blockId: 'b2', speaker: '？？？' })
+  })
+
+  it('プルダウンの先頭は「なし」と分かる文言で、選んだ話者・背景を外せる', async () => {
+    const { repo, saved } = fakeRepo({
+      workId: 'w1',
+      episodeId: 'e1',
+      cues: [{ blockId: 'b2', speaker: '灯', bg: 'preset:bg/town-night' }],
+      updatedAt: 1,
+    })
+    render(<StagingView repo={repo} work={makeWork()} currentEpisodeId="e1" />)
+    fireEvent.click(await screen.findByText('「——まだ、書いてるんだね」'))
+    expect(screen.getByRole('option', { name: '（なし：名前を出さない）' })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: '（なし：変えない）' })).toBeInTheDocument()
+
+    fireEvent.change(screen.getByLabelText('話者'), { target: { value: '' } })
+    await waitFor(() => expect(saved).toHaveLength(1))
+    expect(saved[0]?.cues[0]).toEqual({ blockId: 'b2', bg: 'preset:bg/town-night' })
+
+    fireEvent.change(screen.getByLabelText('背景'), { target: { value: '' } })
+    await waitFor(() => expect(saved).toHaveLength(2))
+    expect(saved[1]?.cues).toHaveLength(0)
   })
 
   it('立ち絵が1枚も無くても、地の文で登場させる人物を選べる', async () => {
