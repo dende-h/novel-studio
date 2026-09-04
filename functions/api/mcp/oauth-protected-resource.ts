@@ -9,13 +9,13 @@
  * （Clerk が書く）と食い違って RFC 9207 の照合に落ちる（docs/requirement/10-mcp-oauth.md §2-A）。
  */
 
-import { buildProtectedResourceMetadata } from '../_lib/oauth-metadata'
+import { buildProtectedResourceMetadata, parseScopes } from '../_lib/oauth-metadata'
 import { normalizeIssuer } from '../_lib/oauth-upstream'
 
 interface Env {
   /** 認可サーバー(Clerk)の issuer URL。未設定なら認可サーバーを名乗らない。 */
   MCP_OAUTH_ISSUER?: string
-  /** 対応スコープ（スペース区切り・任意）。 */
+  /** 要求してほしいスコープ（スペース区切り・任意。未設定なら DEFAULT_MCP_SCOPES）。 */
   MCP_OAUTH_SCOPES?: string
 }
 
@@ -36,7 +36,7 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
     // リソースの正準 URI＝MCP エンドポイント（同一オリジンの /api/mcp）。
     resource: `${url.origin}/api/mcp`,
     authorizationServers: issuer ? [issuer] : [],
-    scopesSupported: context.env.MCP_OAUTH_SCOPES?.split(/\s+/).filter(Boolean),
+    scopesSupported: parseScopes(context.env.MCP_OAUTH_SCOPES),
     resourceName: 'コトノハ-leaf-',
   })
   return new Response(JSON.stringify(meta), {

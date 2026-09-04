@@ -8,6 +8,7 @@
  */
 import { describe, expect, it } from 'vitest'
 import { onRequest } from './_middleware'
+import { DEFAULT_MCP_SCOPES } from './api/_lib/oauth-metadata'
 
 const ISSUER = 'https://credible-stork-66.clerk.accounts.dev'
 const ORIGIN = 'https://stg.novel-studio-b2m.pages.dev'
@@ -49,7 +50,7 @@ describe('OAuth ディスカバリ', () => {
     expect(doc.authorization_servers).toEqual([ISSUER])
   })
 
-  it('scopes は設定したときだけ出す', async () => {
+  it('scopes は必ず出す（未設定でも既定値・黙るとクライアントが空で認可を求める）', async () => {
     const withScopes = await call('/.well-known/oauth-protected-resource', {
       MCP_OAUTH_ISSUER: ISSUER,
       MCP_OAUTH_SCOPES: 'openid  profile',
@@ -58,10 +59,13 @@ describe('OAuth ディスカバリ', () => {
       'openid',
       'profile',
     ])
-    const without = await call('/.well-known/oauth-protected-resource', {
+    const fallback = await call('/.well-known/oauth-protected-resource', {
       MCP_OAUTH_ISSUER: ISSUER,
     })
-    expect('scopes_supported' in (await without.json())).toBe(false)
+    // offline_access が要（無いとリフレッシュトークンが出ず、期限切れで接続が黙って死ぬ）。
+    expect(((await fallback.json()) as Record<string, unknown>).scopes_supported).toEqual(
+      DEFAULT_MCP_SCOPES,
+    )
   })
 
   it('issuer 未設定なら認可サーバーを名乗らない（空配列・HTML には落とさない）', async () => {

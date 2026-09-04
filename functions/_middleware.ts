@@ -21,13 +21,13 @@
 // かつて Preview(=stg) をベーシック認証（BASIC_AUTH_USER/PASS）で保護していたが撤去した。
 // ダッシュボードに残った同名の環境変数はもう参照されない（残っていても無害）。
 
-import { buildProtectedResourceMetadata } from './api/_lib/oauth-metadata'
+import { buildProtectedResourceMetadata, parseScopes } from './api/_lib/oauth-metadata'
 import { normalizeIssuer } from './api/_lib/oauth-upstream'
 
 interface Env {
   /** 認可サーバー(Clerk)の issuer URL。PRM がクライアントへ案内する先。 */
   MCP_OAUTH_ISSUER?: string
-  /** 対応スコープ（スペース区切り・任意）。 */
+  /** 要求してほしいスコープ（スペース区切り・任意。未設定なら DEFAULT_MCP_SCOPES）。 */
   MCP_OAUTH_SCOPES?: string
 }
 
@@ -94,7 +94,7 @@ function oauthDiscovery(context: MiddlewareContext, url: URL): Response | null {
     resource: `${url.origin}/api/mcp`,
     // 認可サーバー＝Clerk。未設定のときは名乗れないので空にする。
     authorizationServers: issuer ? [issuer] : [],
-    scopesSupported: context.env.MCP_OAUTH_SCOPES?.split(/\s+/).filter(Boolean),
+    scopesSupported: parseScopes(context.env.MCP_OAUTH_SCOPES),
     resourceName: 'コトノハ-leaf-',
   })
   return jsonDiscovery(JSON.stringify(meta))
