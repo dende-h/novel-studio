@@ -1,16 +1,19 @@
 # 10 — MCP の認可は「窓口だけ自分」の折衷をやめる（ChatGPT 対応）
 
-> 2026-09 起案・未決定。**ChatGPT が繋がらない原因は、窓口だけ自オリジンで実体は Clerk という
-> 今の中間形にある。名乗る issuer は自分なのに、認可の応答を返すのは Clerk で、そこをコトノハは
-> 触れない。直すには Clerk を素直に指すか、認可サーバーごと自前に持つかのどちらかへ寄せるしかなく、
-> 本命は後者。** このメモは、その判断を仰ぐためのたたき台。
+> 2026-09-04 起案・**原因は STG で実測して確定**、直し方は未決定。
+> **窓口だけ自オリジンで実体は Clerk という中間形が原因。名乗る issuer は自分（`…pages.dev`）なのに、
+> 認可の応答を返すのは Clerk（`credible-stork-66.clerk.accounts.dev`）で、そこをコトノハは触れない。
+> しかも「`iss` を返します」という Clerk の申告まで自分の名前で転載している。** 直すには
+> Clerk を素直に指すか、認可サーバーごと自前に持つかのどちらかへ寄せるしかない。
+> 実測で他の環（DCR・PKCE・401・各エンドポイント）は全部通ったので、**まず前者を試す**。
 
 ## 0. このメモで決めたいこと
 
 1. **自前の認可サーバー（AS）を持つか**。持つなら Clerk は「誰がログインしているか」を答える
    身元確認だけに退き、OAuth の発行・検証はコトノハ側が行う。
-2. その前に**ファサードを外す実験**（Clerk の issuer を素直に指す版）を stg で 1 回だけ試すか。
-   試して通れば自前 AS は要らない。**自分は「試す価値はあるが通らないと見ている」**（→ §2-A）。
+2. その前に**ファサードを外す実験**（Clerk の issuer を素直に指す版）を stg で試すか。
+   通れば自前 AS は要らない。**実測後は「まずこれを試すべき」に傾いた**——壊れている環が
+   書き換え 1 か所だけだと分かったため（→ §2-B）。
 3. `search` / `fetch` ツールを足すか。ChatGPT の**開発者モードを使わない人でも読める**ようになる
    代わりに、ツールの見え方が変わる（→ §8-2）。
 
@@ -18,9 +21,10 @@
 **対象外**：Claude と Genspark の既存経路（動いているものは壊さないことだけを条件にする）、
 MCP のツール設計そのもの、コトノハ-grove- 側の公開 API。
 
-**この調査で確かめられなかったこと**：作業環境から `cotonoha-leaf.org` へ出られない（egress 拒否）ため、
-**本番の well-known が実際に何を返しているかは未観測**。§1 はコードから読んだ事実、§2 は仕様と
-外部の一次情報からの推定で、確度を各項に書いた。実測の手順は §7 に置いた。
+**確かめた範囲**：2026-09-04 に **STG（`stg.novel-studio-b2m.pages.dev`）へ実際に叩いて**
+ディスカバリ 4 本・401 のチャレンジ・DCR・認可の飛び先を観測した（生の値は §9）。
+**本番（`cotonoha-leaf.org`）は未観測**で、Clerk のインスタンスが違うだけで構図は同じと見ている。
+ChatGPT のコネクタ画面そのものは未検証（§2-E の線が残る）。
 
 ---
 
@@ -50,7 +54,7 @@ D1 の `mcp_tokens` を引き、そうでなければ Clerk SDK の `authenticat
 
 ## 2. 診断 — 名乗りは自オリジン、応答は Clerk。この食い違いが刺さる
 
-### A. 認可応答の `iss` が一致しない（確度：高。本命）
+### A. 認可応答の `iss` が一致しない（**実測で確定**・2026-09-04 STG）
 
 RFC 9207 は、認可サーバーが認可応答に自分の `iss` を載せ、クライアントがメタデータの `issuer` と
 突き合わせることを定めている。OpenAI はコネクタ用の固定 redirect_uri
@@ -59,35 +63,37 @@ RFC 9207 は、認可サーバーが認可応答に自分の `iss` を載せ、�
 PRM の `authorization_servers` を同じ値にすること、成功・失敗どちらの認可応答にも `iss` を返すこと**を
 挙げている。
 
-いまのコトノハは、前の 2 つを満たし、3 つ目だけを構造的に満たせない。`issuer` は
-`https://cotonoha-leaf.org` を名乗るのに、応答を返すのは Clerk（`clerk.cotonoha-leaf.org`）で、
-コトノハはその 302 を触れない。しかも `buildFacadeAuthServerMetadata` は `issuer` と
-エンドポイントだけを差し替えて残りは上流のまま配る（`oauth-metadata.ts:97`）ので、
-Clerk が `authorization_response_iss_parameter_supported: true` を名乗っていれば、
-**その申告ごと自オリジンの名前で転載している**。結果はどちらに転んでも失敗する。Clerk が `iss` を
-返せばクライアント側で「expected `https://cotonoha-leaf.org`, received `https://clerk.cotonoha-leaf.org`」の
-不一致になり、返さなければ「名乗ったのに来ない」になる。
+いまのコトノハは、前の 2 つを満たし、3 つ目だけを構造的に満たせない。**STG で実測した値がそのまま
+証拠になっている**（→ §9）。名乗りは `issuer: https://stg.novel-studio-b2m.pages.dev` で
+`authorization_response_iss_parameter_supported: true`、ところが `/api/oauth/authorize` の飛び先は
+`https://credible-stork-66.clerk.accounts.dev/oauth/authorize`。`iss` を書き込むのは Clerk で、
+その 302 はコトノハを通らない。`buildFacadeAuthServerMetadata` は `issuer` とエンドポイントだけを
+差し替えて残りを上流のまま配る（`oauth-metadata.ts:97`）ので、**Clerk の「`iss` を返します」という
+申告ごと自オリジンの名前で転載している**。クライアントから見れば
+「expected `https://stg.novel-studio-b2m.pages.dev`, received `https://credible-stork-66.clerk.accounts.dev`」。
+本番も構図は同じで、Clerk 側が `clerk.cotonoha-leaf.org` に変わるだけ。
 
-利用者の見立て（「認証のときのドメインの違い」）は、この形で当たっていると考える。
+利用者の見立て（「認証のときのドメインの違い」）は、この形で当たっていた。
 
-### B. ファサードそのものが逆効果になっている可能性（確度：中）
+### B. ファサードそのものが唯一の障害物である可能性（確度：中→やや高）
 
 ファサードは「ChatGPT は PRM の `authorization_servers` を辿らず、MCP ホストの well-known を
 直接読む」という前提で作った（`_middleware.ts` 冒頭のコメント）。ところが OpenAI の現在の説明は
 **PRM を読んでそこから認可サーバーへ辿る**手順で書かれている。前提が変わっていれば、
 Clerk の issuer を素直に指すだけで通り、書き換えが唯一の障害物ということになる。
-ただし A の不一致は「PRM を辿る」クライアントでも同じように起きるので、
-**ファサードを外す実験は A の切り分けを兼ねる**（→ §7 Phase 0）。
+A 以外の鎖（DCR・PKCE・401 のチャレンジ・各エンドポイント）は実測で全部通っているので、
+**壊れている環は書き換え 1 か所だけ**という読みが濃くなった。外せば Clerk の issuer で一貫し、
+`iss` の不一致は消える。残る不確かさは「ChatGPT が PRM を辿って別ドメインの AS へ行くか」の一点。
 
-### C. `MCP_OAUTH_ISSUER` が未設定だと、JSON でなく HTML が返る（確度：要実測）
+### C. `MCP_OAUTH_ISSUER` 未設定で HTML が返る（**否定**・STG は 4 本とも 200 の JSON）
 
 AS メタデータの分岐は `issuer` が無いと `return null` でミドルウェアを抜け（`_middleware.ts:97`）、
 そのまま SPA/404 の HTML に落ちる。PRM のほうも `authorization_servers: []` という、
 仕様上ありえない空配列を配る。クライアントから見れば「OAuth を実装していないサーバー」で、
-エラー文言はディスカバリ失敗になる。値が入っているかは Pages の環境変数を見るまで分からない。
-**落ちるときは JSON で落ちるべき**で、ここは自前 AS にするか否かと関係なく直す価値がある。
+エラー文言はディスカバリ失敗になる。STG では値が入っていて、この経路は踏んでいなかった。
+ただし**落ちるときは JSON で落ちるべき**なのは変わらないので、堅牢化として残す。
 
-### D. 401 が案内する PRM のパスが標準形でない（確度：中・単独では致命傷ではない）
+### D. 401 が案内する PRM のパスが標準形でない（**確認**・単独では致命傷ではない）
 
 `/api/mcp` の 401 は `resource_metadata="…/api/mcp/oauth-protected-resource"` を案内する
 （`functions/api/mcp/index.ts:50`）。RFC 9728 の標準形は
@@ -102,12 +108,27 @@ OAuth が通っても、開発者モードに入っていなければ `set_episo
 「繋がらない」の中身がここだった可能性も残るので、実測（§7）では**どの画面のどの文言で失敗したか**を
 先に確かめる。
 
-### F. Clerk の動的クライアント登録（DCR）が厳しい（確度：低〜中）
+### F. Clerk の動的クライアント登録（DCR）が厳しい（**否定**・ChatGPT と同じ形で通った）
 
 Clerk の DCR は `client_uri` の扱いが RFC 7591 より厳しく、MCP Inspector が弾かれた報告がある。
-ChatGPT の登録内容が同じ検査に触れると、ディスカバリの前段でなく登録で落ちる。
-なお Clerk は CIMD（クライアント ID にメタデータ文書の URL を使う方式）にも対応を進めていて、
-ChatGPT はそちらを優先する。中継しているぶん、**どちらの経路で落ちてもコトノハ側にログが残らない**。
+ChatGPT と同じ形（`client_uri: https://chatgpt.com`・固定 redirect_uri・`token_endpoint_auth_method: "none"`）で
+STG に投げたところ**受理された**ので、この線は消えた。なお AS メタデータに
+`client_id_metadata_document_supported` は出ていない＝ChatGPT は CIMD ではなく DCR に落ちてくる。
+
+### G. ID トークンでも同じ不一致が起きる（実測・A と同じ病気）
+
+`/.well-known/openid-configuration` は `id_token_signing_alg_values_supported: ["RS256"]` と
+`claims_supported` の `iss` を上流のまま配っている。ID トークンを発行するのは Clerk なので、
+その `iss` は Clerk のドメイン。OIDC として検証するクライアントは A と同じ理由で落ちる。
+`service_documentation` に `https://clerk.com/docs/oauth/scoped-access` がそのまま出ているのも同根で、
+**「上流の申告を、自分の名前で配っている」**という 1 つの設計ミスが 3 か所に出ている。
+
+### H. DCR の応答から `refresh_token` が落ちる（未解明・接続が後で死ぬ疑い）
+
+登録要求に `grant_types: ["authorization_code", "refresh_token"]` を入れても、Clerk の応答は
+`["authorization_code"]` だけを返す（`scope` には `offline_access` が残る）。更新が本当に効かないなら、
+アクセストークンの期限が切れた時点で**繋がっていた接続が黙って死ぬ**。A を直した後に、
+実際にトークン交換まで通して確かめる（→ §7 Phase 1 の確認項目）。
 
 ---
 
@@ -118,10 +139,10 @@ ChatGPT はそちらを優先する。中継しているぶん、**どちらの�
 | PRM | `/.well-known/oauth-protected-resource` を置き、`resource` と `authorization_servers` を書く | 満たす |
 | AS メタデータ | `issuer` が PRM の `authorization_servers` と一致 | 満たす（名乗りだけ） |
 | 認可応答の `iss` | 成功・失敗の両方で返す。メタデータの `issuer` と完全一致 | **満たせない**（§2-A） |
-| PKCE | S256 必須 | Clerk 任せ・素通し |
-| クライアント登録 | CIMD 優先、DCR も可 | Clerk 任せ（§2-F） |
+| PKCE | S256 必須 | `code_challenge_methods_supported: ["S256"]`・**実測で問題なし** |
+| クライアント登録 | CIMD 優先、DCR も可 | DCR が**実測で通る**。CIMD は名乗っていない（§2-F） |
 | `resource` | RFC 8707 を送ってくる | 素通し・**検証していない** |
-| 固定 redirect_uri | `https://chatgpt.com/connector_platform_oauth_redirect` | 登録先は Clerk |
+| 固定 redirect_uri | `https://chatgpt.com/connector_platform_oauth_redirect` | DCR で**そのまま登録できた** |
 | ツール | 書き込みは開発者モードのみ | 27 ツール（§2-E） |
 
 ---
@@ -130,7 +151,7 @@ ChatGPT はそちらを優先する。中継しているぶん、**どちらの�
 
 | | 案1 ファサード撤去（Clerk 直指し） | 案2 ファサード＋コールバック | 案3 自前 AS（本命） |
 |---|---|---|---|
-| 直る確度 | 低〜中（§2-B が当たりのときだけ） | 中（実質は案3の劣化版） | 高（要件を全部自分で満たせる） |
+| 直る確度 | 中〜高（§2-B。他の環は実測で通っている） | 中（実質は案3の劣化版） | 高（要件を全部自分で満たせる） |
 | `iss` を返せるか | Clerk の issuer で一貫（不一致は消える） | 返せる | 返せる |
 | 実装量 | 削るだけ（数十行） | 中（結局トークンを自分で発行することになる） | 大（AS 一式＋同意画面＋D1 4 表） |
 | 既存利用者への影響 | なし | なし | なし（検証は 3 系統の併存・§5 D-OAUTH-COMPAT） |
@@ -142,9 +163,11 @@ Clerk 側に登録できる redirect_uri は 1 つのクライアントに紐づ
 1 つに束ねる＝**結局こちらでトークンを発行する**ことになる。案3 との差は「身元確認を Clerk の
 セッションで取るか OAuth で取るか」だけで、労力はほぼ変わらない。**案2 は採らない。**
 
-**現時点の傾き**：まず案1 を stg で 1 回試し、通らなければ案3。案1 に賭けないのは、
-§2-A の不一致が「PRM を辿るクライアント」でも起きるため。ただし試す費用が 1 デプロイなので、
-順番として先に置く価値がある。
+**現時点の傾き**：まず案1 を stg で試し、通らなければ案3。実測前は案1 に賭けていなかったが、
+**A 以外の環が全部通っていた**（DCR・PKCE・401・エンドポイント）ので、壊れている 1 か所を外すだけで
+繋がる目が出てきた。残る不確かさは「ChatGPT が PRM を辿って別ドメインの AS へ行くか」だけで、
+これは stg に 1 回デプロイすれば答えが出る。案1 で通らなかったときも、その失敗が
+「同一ホストの AS メタデータを要求している」という証拠になり、案3 の裏づけになる。
 
 ---
 
@@ -201,24 +224,19 @@ scope・resource・失効時刻・回転元）。期限切れの掃除は token 
 
 ## 7. 段取り
 
-**Phase 0（実測・ここから始める）**。ChatGPT でどの画面のどの文言で失敗するかを控える
-（ディスカバリ失敗か、ログイン後に戻れないか、繋がったがツールが出ないか＝§2-E）。あわせて本番と
-stg で次を叩き、返る JSON を控える。
+**Phase 0（実測）— 2026-09-04 に STG で完了**。ディスカバリ 4 本・401 のチャレンジ・DCR・
+認可の飛び先を観測した（生の値は §9）。結果は §2 の各項に反映済み——A と D と G を確認、C と F を否定、
+H が新しく出た。**残りは ChatGPT のコネクタ画面での実地確認だけ**（どの画面のどの文言で落ちるか。
+とくに §2-E の開発者モードの線）。本番（`cotonoha-leaf.org`）は同じ手順で叩けば確かめられるが、
+STG と同じ結果になるはずなので急がない。
 
-```
-curl -si https://cotonoha-leaf.org/.well-known/oauth-protected-resource
-curl -si https://cotonoha-leaf.org/.well-known/oauth-protected-resource/api/mcp
-curl -si https://cotonoha-leaf.org/.well-known/oauth-authorization-server
-curl -si https://cotonoha-leaf.org/.well-known/openid-configuration
-curl -si -X POST https://cotonoha-leaf.org/api/mcp -H 'content-type: application/json' -d '{}'
-```
-
-見るところは 3 つ。`content-type` が `application/json` か（HTML なら §2-C）、AS メタデータの
-`issuer` が `https://cotonoha-leaf.org` か、`authorization_response_iss_parameter_supported` が
-入っているか。最後の POST は 401 と `WWW-Authenticate` が返るのが正しい。
-
-**Phase 1（実験・1 デプロイ）**。stg でファサードを外し、PRM の `authorization_servers` を
-Clerk の issuer に戻して ChatGPT から繋ぐ。通れば案1 で終わり、本番も同じ形に戻す。
+**Phase 1（実験・1 デプロイ）**。stg でファサードの**書き換えだけ**を外す。PRM の
+`authorization_servers` を Clerk の issuer に戻し、`/.well-known/oauth-authorization-server` と
+`/.well-known/openid-configuration` の中継をやめる（404 に戻し、クライアントを PRM 経由で
+Clerk へ行かせる）。**`/api/oauth/*` の中継そのものは残す**——既存クライアントがそこを
+token_endpoint として覚えている可能性があり、消すと更新が切れる。合わせて 401 の
+`resource_metadata` を標準パスへ寄せる（§2-D）。確認は 3 つ：ChatGPT が繋がるか、
+Claude の既存接続が生きているか、**トークンの更新が効くか**（§2-H）。
 
 **Phase 2（本命）**。§5 の自前 AS を stg で実装し、ChatGPT・Claude・MCP Inspector の 3 つで通す。
 Claude の既存接続が生きていることを確認してから本番へ。
@@ -247,3 +265,60 @@ AS メタデータの代替として読むだけで、厳密な OIDC 検証を�
 **4. 開発者モードの案内をどこまで書くか。** ChatGPT 側の UI は変わりやすく、手順を細かく書くほど
 陳腐化する。**暫定スタンス**：接続ダイアログには「設定 →コネクタ →開発者モード」程度に留め、
 詳しい手順は掲示板のお知らせスレに置いて直しやすくする。
+
+---
+
+## 9. 測定ログ（2026-09-04・STG）
+
+`https://stg.novel-studio-b2m.pages.dev` に対して観測した生の値。要点だけ抜く。
+
+**PRM**（`/.well-known/oauth-protected-resource` と `…/api/mcp` は同一内容）
+
+```json
+{"resource":"https://stg.novel-studio-b2m.pages.dev/api/mcp",
+ "authorization_servers":["https://stg.novel-studio-b2m.pages.dev"],
+ "bearer_methods_supported":["header"],"resource_name":"コトノハ-leaf-"}
+```
+
+**AS メタデータ**（`/.well-known/oauth-authorization-server`・抜粋）
+
+```json
+{"issuer":"https://stg.novel-studio-b2m.pages.dev",
+ "authorization_endpoint":"https://stg.novel-studio-b2m.pages.dev/api/oauth/authorize",
+ "registration_endpoint":"https://stg.novel-studio-b2m.pages.dev/api/oauth/register",
+ "code_challenge_methods_supported":["S256"],
+ "token_endpoint_auth_methods_supported":["client_secret_basic","none","client_secret_post"],
+ "id_token_signing_alg_values_supported":["RS256"],
+ "service_documentation":"https://clerk.com/docs/oauth/scoped-access",
+ "authorization_response_iss_parameter_supported":true}
+```
+
+**401 のチャレンジ**（`POST /api/mcp`）
+
+```
+www-authenticate: Bearer error="invalid_token",
+  resource_metadata="https://stg.novel-studio-b2m.pages.dev/api/mcp/oauth-protected-resource"
+```
+
+**DCR**（ChatGPT と同じ形で `POST /api/oauth/register`）。受理された。ただし要求した
+`grant_types` のうち `refresh_token` が応答から落ちている（§2-H）。
+
+```json
+{"client_id":"vPk9CHmgFL7KzH2u","client_name":"chatgpt-probe","client_uri":"https://chatgpt.com",
+ "redirect_uris":["https://chatgpt.com/connector_platform_oauth_redirect"],
+ "grant_types":["authorization_code"],"scope":"email offline_access profile",
+ "token_endpoint_auth_method":"none","application_type":"web"}
+```
+
+**認可の飛び先**（`GET /api/oauth/authorize` の `Location`）。ここが決め手。
+
+```
+https://credible-stork-66.clerk.accounts.dev/oauth/authorize?...
+```
+
+名乗った issuer は `https://stg.novel-studio-b2m.pages.dev`、応答を書くのは
+`https://credible-stork-66.clerk.accounts.dev`。**この 2 つが一致しないまま
+「`iss` を返します」と宣言している**のが §2-A。
+
+なお、この測定で STG の Clerk に `chatgpt-probe`（`vPk9CHmgFL7KzH2u`）というクライアントが
+1 件登録された。**用が済んだら Clerk ダッシュボードから消す。**
