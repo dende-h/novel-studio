@@ -130,6 +130,23 @@ STG に投げたところ**受理された**ので、この線は消えた。な
 アクセストークンの期限が切れた時点で**繋がっていた接続が黙って死ぬ**。A を直した後に、
 実際にトークン交換まで通して確かめる（→ §7 Phase 1 の確認項目）。
 
+### I. PRM がスコープを黙っていた（実測・Phase 1 後に判明）
+
+Phase 1 を STG へ出したあと、ChatGPT のコネクタ画面はディスカバリを通過した（DCR を選べる状態まで
+進み、`oauth_config` にエンドポイントが揃った）。それでもログイン後に失敗する。その `oauth_config` に
+答えが出ていた——`base_scopes: null`、`default_scopes: null`。**ChatGPT はスコープ無しで認可を
+求めていた。**
+
+原因はこちらにある。`MCP_OAUTH_SCOPES` が未設定だと PRM は `scopes_supported` を出さない。
+認可サーバーが何を受け付けるかは AS メタデータに書いてあるが、**この接続に何が要るかを言うのは
+リソース側の仕事**（RFC 9728 §2）。黙っていればクライアントは何も要求できない。
+とくに `offline_access` が付かないとリフレッシュトークンが出ず、§2-H の「DCR の応答から
+`refresh_token` が落ちる」と症状が重なる——**繋がった直後は動き、期限が切れた時点で黙って死ぬ**。
+
+対処は既定値を持つこと（`DEFAULT_MCP_SCOPES` = `openid profile email offline_access`。すべて Clerk の
+`scopes_supported` に含まれる）。`MCP_OAUTH_SCOPES` があればそちらが優先される。
+`parseScopes` に寄せ、未設定でも黙らないことをテストで固定した。
+
 ---
 
 ## 3. ChatGPT 側の要件（2026-09 時点で確認できたぶん）
@@ -230,7 +247,7 @@ H が新しく出た。**残りは ChatGPT のコネクタ画面での実地確�
 とくに §2-E の開発者モードの線）。本番（`cotonoha-leaf.org`）は同じ手順で叩けば確かめられるが、
 STG と同じ結果になるはずなので急がない。
 
-**Phase 1（実験・1 デプロイ）— 2026-09-04 に実装済み・STG へのデプロイ待ち**。ファサードの**書き換えだけ**を外した。PRM の
+**Phase 1（実験）— 2026-09-04 に STG へデプロイ済み。ディスカバリは通過、認可後にまだ失敗**。ファサードの**書き換えだけ**を外した。PRM の
 `authorization_servers` は Clerk の issuer を指し、`/.well-known/oauth-authorization-server` と
 `/.well-known/openid-configuration` は **JSON の 404**（HTML に落とさない＝§2-C の堅牢化も同時に果たす）。
 **`/api/oauth/*` の中継そのものは残す**——既存クライアントがそこを token_endpoint として覚えている
@@ -238,9 +255,15 @@ STG と同じ結果になるはずなので急がない。
 `buildFacadeAuthServerMetadata` は使われなくなったので消し、代わりに `functions/_middleware.test.ts` で
 **「自オリジンを認可サーバーとして名乗らない」を機械で固定**した（同じ穴に落ちないため）。
 
-STG へ出したあとの確認は 3 つ：ChatGPT が繋がるか、Claude の既存接続が生きているか、
-**トークンの更新が効くか**（§2-H）。繋がらなかった場合、その失敗自体が「ChatGPT は同一ホストの
-AS メタデータを要求している」という証拠になり、Phase 2 の裏づけになる。
+**結果**：ChatGPT はディスカバリを通過した（コネクタ画面が Clerk のエンドポイントを検出し、DCR を
+選べる状態になった）。§2-A と §2-B は解決。ただし認可後に失敗が残り、`oauth_config` から §2-I
+（スコープが空）が見つかったので、PRM に既定スコープを出す修正を足した。**その効果は次の
+デプロイで確認する。**
+
+これでも直らないときの残りの容疑者は 3 つ。Clerk が RFC 8707 の `resource` を拒む、
+コトノハの OAuth 検証がトークンを受け取れない（401）、会員判定で弾いている（403・ChatGPT で
+ログインしたアカウントが STG の `subscriptions` に無い）。手で認可コードを取ってトークン交換まで
+通せば、ChatGPT を介さずにどれかが決まる。
 
 **Phase 2（本命）**。§5 の自前 AS を stg で実装し、ChatGPT・Claude・MCP Inspector の 3 つで通す。
 Claude の既存接続が生きていることを確認してから本番へ。

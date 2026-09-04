@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import {
   buildProtectedResourceMetadata,
+  DEFAULT_MCP_SCOPES,
   PRM_WELL_KNOWN_PATH,
+  parseScopes,
   wwwAuthenticateBearer,
 } from './oauth-metadata'
 
@@ -39,5 +41,22 @@ describe('oauth-metadata（RFC 9728）', () => {
 
   it('PRM の位置は RFC 9728 の path-aware 形式（401 の案内先と揃える）', () => {
     expect(PRM_WELL_KNOWN_PATH).toBe('/.well-known/oauth-protected-resource/api/mcp')
+  })
+})
+
+describe('parseScopes（要求してほしいスコープ）', () => {
+  it('未設定・空白だけなら既定値へ倒す（黙らない）', () => {
+    expect(parseScopes(undefined)).toEqual(DEFAULT_MCP_SCOPES)
+    expect(parseScopes('')).toEqual(DEFAULT_MCP_SCOPES)
+    expect(parseScopes('   ')).toEqual(DEFAULT_MCP_SCOPES)
+  })
+
+  it('既定値にはリフレッシュ用の offline_access が入る', () => {
+    // 抜けるとトークンの期限切れで接続が黙って死ぬ（10-mcp-oauth.md §2-H）。
+    expect(DEFAULT_MCP_SCOPES).toContain('offline_access')
+  })
+
+  it('設定があればそれを使う（空白の連続も潰す）', () => {
+    expect(parseScopes('openid  profile\temail')).toEqual(['openid', 'profile', 'email'])
   })
 })

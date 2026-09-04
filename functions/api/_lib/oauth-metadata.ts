@@ -15,6 +15,26 @@
  */
 export const PRM_WELL_KNOWN_PATH = '/.well-known/oauth-protected-resource/api/mcp'
 
+/**
+ * クライアントに要求してほしいスコープの既定値（RFC 9728 `scopes_supported`）。
+ *
+ * **ここを黙っていると、クライアントはスコープ無しで認可を求める。** ChatGPT の
+ * `oauth_config` は実際 `default_scopes: null` になっていた（2026-09・10-mcp-oauth.md §2-I）。
+ * 認可サーバーが何を受け付けるかは AS メタデータに書いてあるが、**この接続に何が要るかを
+ * 言うのはリソース側の仕事**（RFC 9728 §2）。とくに `offline_access` が無いとリフレッシュ
+ * トークンが出ず、期限が切れた時点で接続が黙って死ぬ。
+ *
+ * 値はすべて Clerk の `scopes_supported` に含まれるもの。`MCP_OAUTH_SCOPES` を設定すれば
+ * そちらが優先される（増やす・減らすはダッシュボードだけで効く）。
+ */
+export const DEFAULT_MCP_SCOPES = ['openid', 'profile', 'email', 'offline_access']
+
+/** `MCP_OAUTH_SCOPES`（スペース区切り）を読む。未設定・空なら既定値。 */
+export function parseScopes(raw: string | undefined): string[] {
+  const scopes = raw?.split(/\s+/).filter(Boolean) ?? []
+  return scopes.length > 0 ? scopes : DEFAULT_MCP_SCOPES
+}
+
 export interface ProtectedResourceConfig {
   /** 保護リソースの正準 URI（＝MCP エンドポイント。例: https://host/api/mcp）。 */
   resource: string
