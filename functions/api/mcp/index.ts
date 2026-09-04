@@ -12,7 +12,7 @@ import type { CloudBackup } from '../../../src/core/backup'
 import { decryptPart, encryptPart, importKey } from '../_lib/crypto'
 import { resolveMcpAuth } from '../_lib/mcp-auth'
 import { handleMcpMessage, type McpDeps } from '../_lib/mcp-server'
-import { wwwAuthenticateBearer } from '../_lib/oauth-metadata'
+import { PRM_WELL_KNOWN_PATH, wwwAuthenticateBearer } from '../_lib/oauth-metadata'
 import { readTemplateManifest } from '../_lib/templates-store'
 
 interface Env {
@@ -48,7 +48,8 @@ const jsonResponse = (data: unknown, status = 200, extraHeaders?: Record<string,
   })
 
 const unauthorized = (request: Request): Response => {
-  const prm = `${new URL(request.url).origin}/api/mcp/oauth-protected-resource`
+  // RFC 9728 の標準パスを案内する（旧 /api/mcp/oauth-protected-resource も同じ内容で残してある）。
+  const prm = `${new URL(request.url).origin}${PRM_WELL_KNOWN_PATH}`
   return jsonResponse({ error: 'unauthorized' }, 401, {
     'WWW-Authenticate': wwwAuthenticateBearer(prm, 'invalid_token'),
   })

@@ -293,8 +293,7 @@ describe('BoardPage（掲示板の一覧）', () => {
     fireEvent.click(screen.getByRole('button', { name: '雑談' }))
     await settle()
 
-    // 0 件の空状態にも同じ導線が出るので、見出し側（先頭）を押す。
-    fireEvent.click(screen.getAllByRole('button', { name: 'スレッドを立てる' })[0] as HTMLElement)
+    fireEvent.click(screen.getByRole('button', { name: 'スレッドを立てる' }))
     fireEvent.change(await screen.findByLabelText('タイトル'), {
       target: { value: '新しく立てたスレ' },
     })

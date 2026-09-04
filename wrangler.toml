@@ -41,16 +41,15 @@ bucket_name = "novel-studio-media-stg"
 # --- MCP OAuth コネクタ（結線時に設定・未設定でも従来 mcp_ トークンは動く）-------
 # Clerk を認可サーバーにするための公開値。Pages の環境変数（本番/preview）に設定する。
 # シークレットではないので [vars] でも可。値は Clerk ダッシュボードの OAuth 設定確定後に投入。
-#   MCP_OAUTH_ISSUER   = **中継先**（上流）Clerk の issuer URL
+#   MCP_OAUTH_ISSUER   = 認可サーバー（Clerk）の issuer URL
 #   MCP_OAUTH_AUDIENCE = このリソースの正準 URI（例: https://<本番ホスト>/api/mcp）
 #   MCP_OAUTH_SCOPES   = 対応スコープ（スペース区切り・任意）
 # 詳細な段取りは memory: mcp-oauth-connector-plan を参照。
 #
-# 注意: クライアントへ名乗る認可サーバーは **このサイト自身のオリジン**であって
-# MCP_OAUTH_ISSUER ではない。ChatGPT は MCP ホストの well-known を直接読み、issuer が
-# そのホストと一致することを求める（RFC 8414 §3.3）ため、窓口 /api/oauth/* を同一オリジンに
-# 置き、そこから MCP_OAUTH_ISSUER へ中継している。値そのものは今までどおりでよい
-# （発行・検証をするのは従来どおり Clerk なので、ダッシュボード側の変更は不要）。
+# 注意: クライアントへ名乗る認可サーバーは **MCP_OAUTH_ISSUER の値そのもの**（＝Clerk）。
+# 一時期このサイト自身のオリジンを名乗らせていたが、認可応答の `iss` を書くのは Clerk のままで
+# RFC 9207 の照合に落ち、ChatGPT が繋がらなくなった（docs/requirement/10-mcp-oauth.md §2-A）。
+# /api/oauth/* の中継は互換のため残してあるが、ディスカバリからは案内しない。
 
 # --- Stripe 直課金（JPY）------------------------------------------------------
 # Clerk Billing（USD 固定）を廃し、認証は Clerk・決済は Stripe 直課金に移行。

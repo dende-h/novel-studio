@@ -20,7 +20,7 @@ export const HOUR_MS = 60 * 60 * 1000
 
 /**
  * 掲示板の操作すべてに掛かる**分あたりの安全弁**。連打・自動化を止めるためだけの数字で、
- * 設計の上限（投稿 10 件/時・スレ 3 本/日）とは別枠にする。
+ * 設計の上限（投稿 10 件/時・スレ 10 本/日）とは別枠にする。
  *
  * `checkRateLimit`（`functions/api/_lib/rate-limit.ts`）の窓は 60 秒なので、ここへ
  * `BOARD_LIMITS.postsPerHour`（＝10）を渡すと「10 件/分＝600 件/時」になり、設計の 60 倍
@@ -83,7 +83,7 @@ export async function postQuotaExceeded(
 ): Promise<Response | null> {
   const posted = await countPostsSince(db, userId, now - HOUR_MS)
   if (posted < BOARD_LIMITS.postsPerHour) return null
-  // スレ 3 本/日 の `too_many_threads` と揃える（画面は error だけで文面を出し分ける）。
+  // スレ 10 本/日 の `too_many_threads` と揃える（画面は error だけで文面を出し分ける）。
   return boardJson({ error: 'too_many_posts' }, 429)
 }
 

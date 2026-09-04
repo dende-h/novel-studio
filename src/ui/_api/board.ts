@@ -121,7 +121,7 @@ export const BOARD_ERROR_MESSAGES: Readonly<Record<string, string>> = {
 
   // --- 上限（数値は public/board-guidelines.html と揃える・D-BOARD-RATE） ---
   too_many_posts: '書き込みは1時間に10件までです。時間をおいてから、もう一度お試しください',
-  too_many_threads: 'スレッドは1日に3本までです。時間をおいてから、もう一度お試しください',
+  too_many_threads: 'スレッドは1日に10本までです。時間をおいてから、もう一度お試しください',
   rate_limited: '短い時間に操作が続きました。1分ほど待ってから、もう一度お試しください',
 
   // --- アンケート ---

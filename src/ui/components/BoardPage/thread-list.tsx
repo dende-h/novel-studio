@@ -5,7 +5,6 @@ import { cn } from '@/lib/utils'
 import { formatCount } from '@/ui/_utils/format'
 import { formatBoardTime, KIND_UI, kindOrder, STATUS_UI } from '@/ui/board/board-ui'
 import { Badge } from '@/ui/components/ui/badge'
-import { Button } from '@/ui/components/ui/button'
 
 /**
  * 掲示板の一覧（設計 09-board §2）。**表示だけ**を担う部品で、
@@ -145,10 +144,6 @@ export interface ThreadListProps {
   kind?: BoardKind | null
   /** 飛び先の作り方を差し替えたいとき */
   hrefOf?: (thread: BoardThread) => string
-  /** スレ立ての導線。渡さなければボタンを出さない（未ログイン時など） */
-  onCreate?: () => void
-  /** 絞り込みを解除する導線。種別で絞ってゼロ件のときだけ使う */
-  onClearKind?: () => void
   className?: string
 }
 
@@ -164,8 +159,6 @@ export function ThreadList({
   now = Date.now(),
   kind = null,
   hrefOf,
-  onCreate,
-  onClearKind,
   className,
 }: ThreadListProps) {
   const pinned = threads.filter((t) => t.pinned)
@@ -173,7 +166,7 @@ export function ThreadList({
   const ordered = [...pinned, ...rest]
 
   if (ordered.length === 0) {
-    return <ThreadListEmpty kind={kind} onCreate={onCreate} onClearKind={onClearKind} />
+    return <ThreadListEmpty kind={kind} />
   }
 
   return (
@@ -192,14 +185,14 @@ export function ThreadList({
 /**
  * 空のときの案内（設計 §2 の過疎対策）。
  *
- * 「まだありません」で終わらせず、**次の一手**を出す。掲示板は最初の 1 本が出るまでが
+ * 「まだありません」で終わらせず、**次の一手**を文で出す。掲示板は最初の 1 本が出るまでが
  * いちばん静かで、そこで引き返されると器そのものが立ち上がらない。
+ *
+ * **ボタンは置かない。** 「スレッドを立てる」も「すべての種別を見る」も、すぐ上の
+ * 見出し行と種別フィルタに同じものがある。同じ操作を近くに二度出すと、押す前に
+ * 「どちらが正しいのか」を考えさせるだけで、増えるのは迷いだけになる。
  */
-function ThreadListEmpty({
-  kind,
-  onCreate,
-  onClearKind,
-}: Pick<ThreadListProps, 'kind' | 'onCreate' | 'onClearKind'>) {
+function ThreadListEmpty({ kind }: Pick<ThreadListProps, 'kind'>) {
   // 絞り込んでいるかは「種別の名前が引けたか」で見る（null と undefined を別に扱わない）。
   const kindLabel = kind ? KIND_UI[kind].label : ''
   const filtered = kindLabel !== ''
@@ -212,18 +205,6 @@ function ThreadListEmpty({
           ? `${kindLabel}のスレッドは、まだ 1 本もありません。`
           : 'うまく動かないところも、あったらいいなと思う機能も、ひとことから書けます。'}
       </p>
-      <div className="flex flex-wrap items-center justify-center gap-2">
-        {onCreate && (
-          <Button type="button" size="sm" onClick={onCreate}>
-            スレッドを立てる
-          </Button>
-        )}
-        {filtered && onClearKind && (
-          <Button type="button" size="sm" variant="outline" onClick={onClearKind}>
-            すべての種別を見る
-          </Button>
-        )}
-      </div>
     </div>
   )
 }

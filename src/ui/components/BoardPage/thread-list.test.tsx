@@ -260,34 +260,26 @@ describe('ThreadList — 並び', () => {
 })
 
 describe('ThreadList — 空のときの案内（設計 §2 の過疎対策）', () => {
-  it('1 本も無いときは次の一手を出す', () => {
-    const onCreate = vi.fn()
-    render(<ThreadList threads={[]} now={NOW} onCreate={onCreate} />)
+  it('1 本も無いときは、書けることを文で伝える', () => {
+    render(<ThreadList threads={[]} now={NOW} />)
     expect(
       screen.getByText(
         'うまく動かないところも、あったらいいなと思う機能も、ひとことから書けます。',
       ),
     ).toBeInTheDocument()
-    const button = screen.getByRole('button', { name: 'スレッドを立てる' })
-    fireEvent.click(button)
-    expect(onCreate).toHaveBeenCalledTimes(1)
   })
 
-  it('絞り込みでゼロ件なら、その種別を名指しして絞り込みを外す道を出す', () => {
-    const onClearKind = vi.fn()
-    render(<ThreadList threads={[]} now={NOW} kind="chat" onClearKind={onClearKind} />)
+  it('絞り込みでゼロ件なら、その種別を名指しする', () => {
+    render(<ThreadList threads={[]} now={NOW} kind="chat" />)
     expect(
       screen.getByText(`${boardKindLabel.chat}のスレッドは、まだ 1 本もありません。`),
     ).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'すべての種別を見る' }))
-    expect(onClearKind).toHaveBeenCalledTimes(1)
   })
 
-  it('導線を渡さなければボタンを出さない（未ログインで書けないとき）', () => {
-    render(<ThreadList threads={[]} now={NOW} />)
+  it('ボタンは置かない（すぐ上の見出しと種別フィルタに同じものがある）', () => {
+    // 同じ操作を近くに二度出すと、押す前に「どちらが正しいのか」を考えさせるだけ。
+    render(<ThreadList threads={[]} now={NOW} kind="chat" />)
     expect(screen.queryByRole('button')).toBeNull()
-    // 案内そのものは残す（何もない画面にしない）
-    expect(screen.getByText(/ひとことから書けます。/)).toBeInTheDocument()
   })
 })
 
