@@ -230,13 +230,17 @@ H が新しく出た。**残りは ChatGPT のコネクタ画面での実地確�
 とくに §2-E の開発者モードの線）。本番（`cotonoha-leaf.org`）は同じ手順で叩けば確かめられるが、
 STG と同じ結果になるはずなので急がない。
 
-**Phase 1（実験・1 デプロイ）**。stg でファサードの**書き換えだけ**を外す。PRM の
-`authorization_servers` を Clerk の issuer に戻し、`/.well-known/oauth-authorization-server` と
-`/.well-known/openid-configuration` の中継をやめる（404 に戻し、クライアントを PRM 経由で
-Clerk へ行かせる）。**`/api/oauth/*` の中継そのものは残す**——既存クライアントがそこを
-token_endpoint として覚えている可能性があり、消すと更新が切れる。合わせて 401 の
-`resource_metadata` を標準パスへ寄せる（§2-D）。確認は 3 つ：ChatGPT が繋がるか、
-Claude の既存接続が生きているか、**トークンの更新が効くか**（§2-H）。
+**Phase 1（実験・1 デプロイ）— 2026-09-04 に実装済み・STG へのデプロイ待ち**。ファサードの**書き換えだけ**を外した。PRM の
+`authorization_servers` は Clerk の issuer を指し、`/.well-known/oauth-authorization-server` と
+`/.well-known/openid-configuration` は **JSON の 404**（HTML に落とさない＝§2-C の堅牢化も同時に果たす）。
+**`/api/oauth/*` の中継そのものは残す**——既存クライアントがそこを token_endpoint として覚えている
+可能性があり、消すと更新が切れる。401 の `resource_metadata` は標準パスへ寄せた（§2-D）。
+`buildFacadeAuthServerMetadata` は使われなくなったので消し、代わりに `functions/_middleware.test.ts` で
+**「自オリジンを認可サーバーとして名乗らない」を機械で固定**した（同じ穴に落ちないため）。
+
+STG へ出したあとの確認は 3 つ：ChatGPT が繋がるか、Claude の既存接続が生きているか、
+**トークンの更新が効くか**（§2-H）。繋がらなかった場合、その失敗自体が「ChatGPT は同一ホストの
+AS メタデータを要求している」という証拠になり、Phase 2 の裏づけになる。
 
 **Phase 2（本命）**。§5 の自前 AS を stg で実装し、ChatGPT・Claude・MCP Inspector の 3 つで通す。
 Claude の既存接続が生きていることを確認してから本番へ。

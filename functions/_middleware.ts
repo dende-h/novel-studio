@@ -1,28 +1,31 @@
 // Cloudflare Pages Functions のミドルウェア。
 // 全リクエスト（静的ファイル含む）の前段で実行される。
 //
-// 役割：OAuth ディスカバリ（RFC 9728 / RFC 8414）を **ルート直下の .well-known で** 返す。
-// ChatGPT などの MCP クライアントは resource_metadata ヘッダを辿らず、リソースドメインの
-// ルート `/.well-known/oauth-protected-resource` を直接叩く。ここが 404 だと、認可画面に
-// 到達する前に接続失敗する。
+// 役割：OAuth ディスカバリ（RFC 9728）を **ルート直下の .well-known で** 返す。
+// MCP クライアントは resource_metadata ヘッダを辿らず、リソースドメインのルート
+// `/.well-known/oauth-protected-resource` を直接叩くことがある。ここが 404 だと、
+// 認可画面に到達する前に接続失敗する。
 //
-// さらに ChatGPT は AS メタデータ／OIDC 設定も **MCP ホスト側の** well-known へ直接叩き、
-// RFC 8414 §3.3 のとおり「引いたホスト＝issuer」を要求する。Clerk のドキュメントをそのまま
-// 中継すると issuer が *.clerk.accounts.dev になって弾かれるため、issuer と窓口を自オリジンへ
-// 書き換えた版を配る（実体は /api/oauth/* が Clerk へ中継する）。
-// トークンを発行・検証するのは従来どおり Clerk なので、発行済みトークンには影響しない。
+// **認可サーバーは自分ではなく Clerk を名乗る**（2026-09・docs/requirement/10-mcp-oauth.md）。
+// 一時期、ChatGPT 対策として issuer と窓口を自オリジンへ書き換えた AS メタデータを配っていたが、
+// これが原因で繋がらなかった。名乗る issuer は自分（このホスト）なのに、認可応答の `iss` を
+// 書くのは Clerk で、そこはこちらを通らない＝ RFC 9207 の照合に必ず落ちる。STG での実測でも
+// 名乗り `https://stg.novel-studio-b2m.pages.dev` に対して飛び先が
+// `https://credible-stork-66.clerk.accounts.dev` だった。よって：
+//   * PRM の `authorization_servers` は **Clerk の issuer** をそのまま指す。
+//   * このホストの `/.well-known/oauth-authorization-server`（と openid-configuration）は
+//     **404 を JSON で返す**。ここに何かを置くと「このホストが認可サーバーだ」と名乗ることになる。
+//   * `/api/oauth/*` の中継は**残す**。既に接続済みのクライアントがそこを token_endpoint として
+//     覚えている可能性があり、消すとトークン更新が黙って切れる。
 //
 // かつて Preview(=stg) をベーシック認証（BASIC_AUTH_USER/PASS）で保護していたが撤去した。
 // ダッシュボードに残った同名の環境変数はもう参照されない（残っていても無害）。
 
-import {
-  buildFacadeAuthServerMetadata,
-  buildProtectedResourceMetadata,
-} from './api/_lib/oauth-metadata'
-import { fetchUpstreamAs, normalizeIssuer } from './api/_lib/oauth-upstream'
+import { buildProtectedResourceMetadata } from './api/_lib/oauth-metadata'
+import { normalizeIssuer } from './api/_lib/oauth-upstream'
 
 interface Env {
-  /** 上流の認可サーバー(Clerk)の issuer URL。窓口の中継先として使う。 */
+  /** 認可サーバー(Clerk)の issuer URL。PRM がクライアントへ案内する先。 */
   MCP_OAUTH_ISSUER?: string
   /** 対応スコープ（スペース区切り・任意）。 */
   MCP_OAUTH_SCOPES?: string
@@ -51,10 +54,15 @@ const jsonDiscovery = (body: string): Response =>
     },
   })
 
-/** ディスカバリを組めないときの応答。誤った内容を配るより落ちて見せる（no-store）。 */
-const discoveryUnavailable = (): Response =>
-  new Response(JSON.stringify({ error: 'temporarily_unavailable' }), {
-    status: 503,
+/**
+ * 「このホストは認可サーバーではない」という応答。
+ * **HTML（SPA や Pages の 404 ページ）に落とさない**のが要点で、落とすと
+ * クライアントからは「壊れた JSON を返すサーバー」に見える（原因の切り分けができなくなる）。
+ * 認可サーバーの在り処は PRM の `authorization_servers` にある。
+ */
+const notAuthorizationServer = (): Response =>
+  new Response(JSON.stringify({ error: 'not_found' }), {
+    status: 404,
     headers: {
       'content-type': 'application/json',
       'cache-control': 'no-store',
@@ -63,7 +71,7 @@ const discoveryUnavailable = (): Response =>
   })
 
 /** OAuth ディスカバリ要求ならレスポンスを返す（該当しなければ null）。 */
-async function oauthDiscovery(context: MiddlewareContext, url: URL): Promise<Response | null> {
+function oauthDiscovery(context: MiddlewareContext, url: URL): Response | null {
   const path = url.pathname
   const isPrm =
     path === '/.well-known/oauth-protected-resource' ||
@@ -78,31 +86,23 @@ async function oauthDiscovery(context: MiddlewareContext, url: URL): Promise<Res
     return new Response(null, { status: 204, headers: DISCOVERY_CORS })
   }
 
+  if (isAsMeta) return notAuthorizationServer()
+
   const issuer = normalizeIssuer(context.env.MCP_OAUTH_ISSUER)
-
-  if (isPrm) {
-    const meta = buildProtectedResourceMetadata({
-      // リソースの正準 URI＝MCP エンドポイント（同一オリジンの /api/mcp）。
-      resource: `${url.origin}/api/mcp`,
-      // 認可サーバーも同一オリジンを名乗る（実体は /api/oauth/* が Clerk へ中継）。
-      // 上流が未設定のときは名乗れないので空にする。
-      authorizationServers: issuer ? [url.origin] : [],
-      scopesSupported: context.env.MCP_OAUTH_SCOPES?.split(/\s+/).filter(Boolean),
-      resourceName: 'コトノハ-leaf-',
-    })
-    return jsonDiscovery(JSON.stringify(meta))
-  }
-
-  // isAsMeta：上流(Clerk)の同名ドキュメントを取り、issuer と窓口を自オリジンへ書き換えて配る。
-  if (!issuer) return null
-  const upstream = await fetchUpstreamAs(issuer, path)
-  if (!upstream) return discoveryUnavailable()
-  return jsonDiscovery(JSON.stringify(buildFacadeAuthServerMetadata(upstream, url.origin)))
+  const meta = buildProtectedResourceMetadata({
+    // リソースの正準 URI＝MCP エンドポイント（同一オリジンの /api/mcp）。
+    resource: `${url.origin}/api/mcp`,
+    // 認可サーバー＝Clerk。未設定のときは名乗れないので空にする。
+    authorizationServers: issuer ? [issuer] : [],
+    scopesSupported: context.env.MCP_OAUTH_SCOPES?.split(/\s+/).filter(Boolean),
+    resourceName: 'コトノハ-leaf-',
+  })
+  return jsonDiscovery(JSON.stringify(meta))
 }
 
 export async function onRequest(context: MiddlewareContext): Promise<Response> {
   const url = new URL(context.request.url)
-  const discovery = await oauthDiscovery(context, url)
+  const discovery = oauthDiscovery(context, url)
   const response = discovery ?? (await context.next())
 
   // SEO：本番の正規ドメインは cotonoha-leaf.org に一本化する。本番デプロイは
