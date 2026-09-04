@@ -331,4 +331,5 @@ uv run .claude/skills/natural-japanese/scripts/lint.py <file>   # 仕事の文�
 | `docs/requirement/09-board.md` | 掲示板（記名式スレッド・お知らせ・アンケート・外部リンクの OGP）の設計と決定表 |
 | `public/board-guidelines.html` | 掲示板ガイドライン（`/board-guidelines` で公開・通報や上限の文言はここと揃える） |
 | `docs/requirement/99-open-questions.md` | 未決事項 |
+| `docs/cloudflare-guide.md` | **Cloudflare の現在地**（2026-09 調査）。Agents SDK・MCP・WebMCP・Browser Run ほか。Pages→Workers 移行や MCP 仕様変更の判断材料は10章と結び |
 | `design/stitch/*/index.html` | 画面のデザインカンプ（+ スクリーンショット） |
