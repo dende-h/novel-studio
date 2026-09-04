@@ -56,6 +56,12 @@ describe('parseScopes（要求してほしいスコープ）', () => {
     expect(DEFAULT_MCP_SCOPES).toContain('offline_access')
   })
 
+  it('既定値に openid を入れない（Clerk が DCR クライアントに許さない）', () => {
+    // 入れると認可の入口で invalid_scope。ChatGPT はここに書いた値をそのまま要求する
+    // ので、ログイン直後に落ちる（10-mcp-oauth.md §2-I の実測）。
+    expect(DEFAULT_MCP_SCOPES).not.toContain('openid')
+  })
+
   it('設定があればそれを使う（空白の連続も潰す）', () => {
     expect(parseScopes('openid  profile\temail')).toEqual(['openid', 'profile', 'email'])
   })

@@ -130,22 +130,36 @@ STG に投げたところ**受理された**ので、この線は消えた。な
 アクセストークンの期限が切れた時点で**繋がっていた接続が黙って死ぬ**。A を直した後に、
 実際にトークン交換まで通して確かめる（→ §7 Phase 1 の確認項目）。
 
-### I. PRM がスコープを黙っていた（実測・Phase 1 後に判明）
+### I. 要求スコープに `openid` が混ざると、ログイン直後に弾かれる（**実測で確定**）
 
-Phase 1 を STG へ出したあと、ChatGPT のコネクタ画面はディスカバリを通過した（DCR を選べる状態まで
-進み、`oauth_config` にエンドポイントが揃った）。それでもログイン後に失敗する。その `oauth_config` に
-答えが出ていた——`base_scopes: null`、`default_scopes: null`。**ChatGPT はスコープ無しで認可を
-求めていた。**
+**Phase 1 のあと ChatGPT はディスカバリを通過した**（コネクタ画面が Clerk のエンドポイントを検出し、
+DCR を選べる状態になった）。それでもログイン後に「接続で問題が発生しました」で落ちる。
+手で認可を通したところ、Clerk が理由を返した。
 
-原因はこちらにある。`MCP_OAUTH_SCOPES` が未設定だと PRM は `scopes_supported` を出さない。
-認可サーバーが何を受け付けるかは AS メタデータに書いてあるが、**この接続に何が要るかを言うのは
-リソース側の仕事**（RFC 9728 §2）。黙っていればクライアントは何も要求できない。
-とくに `offline_access` が付かないとリフレッシュトークンが出ず、§2-H の「DCR の応答から
-`refresh_token` が落ちる」と症状が重なる——**繋がった直後は動き、期限が切れた時点で黙って死ぬ**。
+```
+error=invalid_scope
+error_description=The OAuth 2.0 Client is not allowed to request scope 'openid'.
+iss=https://credible-stork-66.clerk.accounts.dev
+```
 
-対処は既定値を持つこと（`DEFAULT_MCP_SCOPES` = `openid profile email offline_access`。すべて Clerk の
-`scopes_supported` に含まれる）。`MCP_OAUTH_SCOPES` があればそちらが優先される。
-`parseScopes` に寄せ、未設定でも黙らないことをテストで固定した。
+**Clerk は DCR で登録したクライアントに `openid` を許さない。** 登録応答の
+`"scope":"email offline_access profile"` がそのままの意味だった（`openid` が無い）。
+ChatGPT の `oauth_config` は `default_scopes: null` のままだが、`scopes_supported` を
+要求スコープとして送っている。だから **Clerk 由来の 6 個でも、こちらが出した 4 個でも、
+`openid` が入っている限り同じ場所で落ちる**。画面には汎用のエラーしか出ないので、
+外からは原因が見えない。
+
+ここには 2 つの学びがある。ひとつは、**PRM の `scopes_supported` は「使える一覧」ではなく
+「これを要求せよ」という指示として読まれる**こと。1 語間違えると全部落ちる。もうひとつは、
+その値を**認可サーバーが実際にそのクライアントへ許すもの**に揃える必要があること
+（Clerk の AS メタデータが名乗る 6 個は、DCR クライアントに許される 3 つとは違う）。
+
+対処は `DEFAULT_MCP_SCOPES` を Clerk が DCR クライアントへ割り当てる 3 つ
+（`profile email offline_access`）に揃えること。`openid` を入れないことをテストで固定した。
+
+なお、この実測は RFC 9207 の解決も裏づけている——エラー応答に
+`iss=https://credible-stork-66.clerk.accounts.dev` が付き、PRM の `authorization_servers` と一致する。
+Phase 1 前ならここで不一致になっていた。
 
 ---
 
