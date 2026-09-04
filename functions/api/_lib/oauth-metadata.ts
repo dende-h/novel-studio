@@ -18,16 +18,19 @@ export const PRM_WELL_KNOWN_PATH = '/.well-known/oauth-protected-resource/api/mc
 /**
  * クライアントに要求してほしいスコープの既定値（RFC 9728 `scopes_supported`）。
  *
- * **ここを黙っていると、クライアントはスコープ無しで認可を求める。** ChatGPT の
- * `oauth_config` は実際 `default_scopes: null` になっていた（2026-09・10-mcp-oauth.md §2-I）。
- * 認可サーバーが何を受け付けるかは AS メタデータに書いてあるが、**この接続に何が要るかを
- * 言うのはリソース側の仕事**（RFC 9728 §2）。とくに `offline_access` が無いとリフレッシュ
- * トークンが出ず、期限が切れた時点で接続が黙って死ぬ。
+ * **`openid` を入れてはいけない。** Clerk は動的登録（DCR）したクライアントに `openid` を
+ * 許さず、認可の入口で弾く（実測・10-mcp-oauth.md §2-I）：
+ *   `invalid_scope … The OAuth 2.0 Client is not allowed to request scope 'openid'.`
+ * ChatGPT はここに書いた値をそのまま要求するので、1 語間違えるとログイン直後に落ちる。
+ * **Clerk が DCR クライアントへ実際に割り当てる 3 つ**（登録応答の `scope` がこれを返す）に揃える。
  *
- * 値はすべて Clerk の `scopes_supported` に含まれるもの。`MCP_OAUTH_SCOPES` を設定すれば
- * そちらが優先される（増やす・減らすはダッシュボードだけで効く）。
+ * ここを黙っていてもいけない。クライアントは要求すべきスコープをリソース側に聞きに来る
+ * （RFC 9728 §2）。とくに `offline_access` が無いとリフレッシュトークンが出ず、期限が切れた
+ * 時点で接続が黙って死ぬ。
+ *
+ * `MCP_OAUTH_SCOPES` を設定すればそちらが優先される（Clerk の設定を変えたときはここも直す）。
  */
-export const DEFAULT_MCP_SCOPES = ['openid', 'profile', 'email', 'offline_access']
+export const DEFAULT_MCP_SCOPES = ['profile', 'email', 'offline_access']
 
 /** `MCP_OAUTH_SCOPES`（スペース区切り）を読む。未設定・空なら既定値。 */
 export function parseScopes(raw: string | undefined): string[] {
