@@ -43,8 +43,8 @@ afterEach(() => {
   restore = null
 })
 
-describe('/api/oauth/*（認可サーバー窓口）', () => {
-  it('authorize は Clerk へ 302 し、クエリ（PKCE・resource）を素通しする', async () => {
+describe('/api/oauth/*（旧クライアントのための Clerk 中継）', () => {
+  it('cid_ 以外の client_id は Clerk へ 302 し、PKCE・resource を素通しする', async () => {
     const s = stubUpstream(() => new Response('unexpected', { status: 500 }))
     restore = s.restore
     const url =
@@ -60,6 +60,8 @@ describe('/api/oauth/*（認可サーバー窓口）', () => {
     expect(location.searchParams.get('redirect_uri')).toBe('https://chatgpt.com/cb')
     expect(location.searchParams.get('code_challenge')).toBe('abc')
     expect(location.searchParams.get('resource')).toBe('https://stg.example.pages.dev/api/mcp')
+    // 自前の `mcp` を Clerk へ渡すと invalid_scope になるので、互換の値へ差し替える（§2-I）。
+    expect(location.searchParams.get('scope')).toBe('profile email offline_access')
     expect(res.headers.get('cache-control')).toBe('no-store')
   })
 
@@ -127,25 +129,26 @@ describe('/api/oauth/*（認可サーバー窓口）', () => {
     expect(res.headers.get('cache-control')).toBe('no-store')
   })
 
-  it('上流に無い窓口は 503（メタデータにも出していない）', async () => {
+  it('revoke は上流に窓口が無くても 200（存在の有無を漏らさない・RFC 7009）', async () => {
     const s = stubUpstream(() => new Response('unexpected', { status: 500 }))
     restore = s.restore
     const res = await call(
-      new Request('https://stg.example.pages.dev/api/oauth/revoke', { method: 'POST' }),
+      new Request('https://stg.example.pages.dev/api/oauth/revoke', { method: 'POST', body: '' }),
       ['revoke'],
       { MCP_OAUTH_ISSUER: ISSUER },
     )
-    expect(res.status).toBe(503)
+    expect(res.status).toBe(200)
   })
 
-  it('MCP_OAUTH_ISSUER 未設定なら 503・知らない窓口は 404', async () => {
+  it('中継先が無い grant は invalid_grant・知らない窓口は 404', async () => {
     const s = stubUpstream(() => new Response('unexpected', { status: 500 }))
     restore = s.restore
+    // MCP_OAUTH_ISSUER 未設定＝中継先が無い。自前のコード（mcpc_）でもないので断る。
     const unset = await call(
-      new Request('https://stg.example.pages.dev/api/oauth/token', { method: 'POST' }),
+      new Request('https://stg.example.pages.dev/api/oauth/token', { method: 'POST', body: '' }),
       ['token'],
     )
-    expect(unset.status).toBe(503)
+    expect(unset.status).toBe(400)
     const unknown = await call(
       new Request('https://stg.example.pages.dev/api/oauth/nope'),
       ['nope'],

@@ -23,6 +23,7 @@ import { HelpPage } from './components/HelpPage/help-page'
 import { IdeaboxPage } from './components/IdeaboxPage/idea-box-page'
 import { Library } from './components/Library/library'
 import { McpConnectDialog } from './components/McpConnectDialog/mcp-connect-dialog'
+import { OAuthConsentPage } from './components/OAuthConsent/oauth-consent'
 import { ProfileDialog } from './components/ProfileDialog/profile-dialog'
 import { PublishRoute } from './components/PublishPage/publish-route'
 import { RestoreGrace } from './components/RestoreGrace/restore-grace'
@@ -311,6 +312,11 @@ function RootRoutes({ store }: RootProps) {
 
   if (route === '/settings') return <SettingsPage />
   if (route === '/help') return <HelpPage />
+
+  // AI（MCP）からの接続要求に許可を出す画面。`/api/oauth/authorize` がここへ 302 で送る。
+  // 認証・オンボーディングのガードより手前に置く——画面自身がログインと会員判定を出し分けるので、
+  // 途中に別の全画面を挟むと「AI から来たのに知らない画面が出る」になる。
+  if (route.startsWith('/connect')) return <OAuthConsentPage />
 
   // クラウド同期（有料）の案内。かつては未課金のサインイン済みに強制表示していたが、
   // novel platform とアカウントを共有する以上そこへ閉じ込められないため、

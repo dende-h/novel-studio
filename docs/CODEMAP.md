@@ -55,7 +55,7 @@ Cloudflare Pages Functions
 | 課金・会員判定 | `src/core/billing/` + `functions/api/billing/` + `functions/api/_lib/membership.ts` |
 | 無料／有料の線（どの機能をどの状態で出すか） | `src/ui/Root.tsx`（`canUseCreativeTools` ほか）+ `src/ui/auth/derive-status.ts` |
 | AI/MCP 連携（外部から原稿を編集） | `src/core/mcp-edit/index.ts` + `functions/api/_lib/mcp-server.ts` |
-| MCP コネクタの接続（OAuth ディスカバリ・認可の窓口） | `functions/_middleware.ts`（**自オリジンを認可サーバーとして名乗らない**・`_middleware.test.ts` が固定）+ `functions/api/oauth/[[path]].ts`。経緯は `docs/requirement/10-mcp-oauth.md` |
+| MCP コネクタの接続（OAuth・**認可サーバーは自前**） | 純ロジックは `functions/api/_lib/oauth-server.ts`、SQL は `oauth-store.ts`（migration 0010）、窓口は `functions/api/oauth/[[path]].ts`、同意画面は `src/ui/components/OAuthConsent/` ＋ `functions/api/oauth/consent.ts`、ディスカバリは `functions/_middleware.ts`。経緯と決定表は `docs/requirement/10-mcp-oauth.md` |
 | **UI 部品・ヘルパを新規に作りたい** | まず §3「共通部品カタログ」で在庫を確認する（重複作成の防止） |
 | **掲示板**（記名式スレッド・お知らせ・アンケート・通報）の挙動 | 画面は `src/ui/components/BoardPage/`、判断は `src/core/board/`、SQL は `functions/api/_lib/board-store.ts`、窓口は `functions/api/board/` |
 | 掲示板に貼られた外部リンクの OGP（取得可否・画像の許可表） | `src/core/board/link.ts`（判定）+ `functions/api/_lib/board-link-fetch.ts`（取得とキャッシュ） |
@@ -260,12 +260,15 @@ Cloudflare Pages Functions
 
 ## 4. `functions/` — Cloudflare Pages Functions
 
-`functions/_middleware.ts` が `/.well-known/oauth-protected-resource`（RFC 9728）を配り、
-**認可サーバーとして Clerk の issuer を指す**。自オリジンを認可サーバーとして名乗ってはいけない
-（名乗ると認可応答の `iss` を書く Clerk と食い違い、RFC 9207 の照合で ChatGPT が切れる。
-経緯と実測は `docs/requirement/10-mcp-oauth.md`）。このホストの
-`/.well-known/oauth-authorization-server` と `/.well-known/openid-configuration` は **JSON の 404**。
-`/api/oauth/*` の Clerk 中継は、既に接続済みのクライアントのために**残してある**（ディスカバリでは案内しない）。
+**認可サーバーはコトノハ自身**（2026-09 Phase 2）。`functions/_middleware.ts` が
+`/.well-known/oauth-protected-resource`（RFC 9728）と `/.well-known/oauth-authorization-server`
+（RFC 8414・openid-configuration も同じ内容）を配り、どちらも issuer に自オリジンを書く。
+実体は `/api/oauth/*`——**名乗る issuer と、認可応答の `iss` を書く主体が同じ**であることが要
+（食い違う中間形にして ChatGPT が繋がらなくなった。経緯は `docs/requirement/10-mcp-oauth.md` §2-A）。
+**上流（Clerk）の値をメタデータに混ぜない。** Clerk は同意画面が使う身元確認だけに退く。
+
+`client_id` が `cid_` で始まらない要求は**従来どおり Clerk へ中継**する（ファサード時代に
+Clerk へ登録済みのクライアントの互換。消すとトークン更新が黙って切れる）。
 窓口が `/oauth/*` でなく **`/api/oauth/*`** なのは、Service Worker のナビゲーションフォールバックが
 `/api/` だけを除外しているから（`vite.config.ts`）。移すと認可画面がアプリの画面に差し替わる。
 
@@ -294,11 +297,15 @@ Cloudflare Pages Functions
 | `/api/mcp` | リモート MCP（Streamable HTTP・JSON-RPC 2.0） |
 | `/api/mcp/token` | MCP アクセストークン発行（会員のみ） |
 | `/api/mcp/oauth-protected-resource` | RFC 9728 メタデータ |
-| `/api/oauth/*` | Clerk への中継（互換用・`authorize` は 302、`token`/`register` ほかはサーバー側中継）。ディスカバリからは案内しない |
+| `/api/oauth/authorize` | 認可の入口。検査して同意画面（`#/connect`）へ 302。`cid_` 以外は Clerk へ中継 |
+| `/api/oauth/token` | 認可コード／更新トークンの交換（PKCE 検証・更新は回転）。自前のもの以外は Clerk へ中継 |
+| `/api/oauth/register` | 動的クライアント登録（RFC 7591・公開クライアントのみ） |
+| `/api/oauth/revoke` | 失効（RFC 7009） |
+| `/api/oauth/consent` | 同意画面の裏側（GET=表示内容 / POST=許可・拒否 → 飛び先 URL）。Clerk JWT 認証・会員のみ許可 |
 
 `api/_lib/`: `auth`（Clerk 検証・`verifyMember`）, `membership`（**会員判定の単一の真実 = D1 `subscriptions`**）,
 `crypto`（at-rest 暗号化）, `mcp-server`（MCP プロトコル核・約1,100行）, `mcp-auth`, `mcp-token`,
-`oauth-metadata`, `oauth-upstream`（中継先 Clerk の取得）, `stripe`, `rate-limit`, `purge`, `visitor`,
+`oauth-metadata`（PRM）, `oauth-server`（**認可サーバーの純ロジック**）, `oauth-store`（同 SQL）, `oauth-upstream`（中継先 Clerk の取得）, `stripe`, `rate-limit`, `purge`, `visitor`,
 `board-store`（**掲示板の SQL はすべてここ**・行 ⇄ camelCase の変換も）, `board-link-fetch`（OGP の取得とキャッシュ）,
 `staff`（`verifyStaff`＝運営の判定・`board_profiles.role`）, `templates-store`（運営テンプレの R2 キー `_templates/` と目録の読み書き）。
 
@@ -314,6 +321,8 @@ Cloudflare Pages Functions
 **マイグレーション**（`migrations/`）: `0001_init` → `0002_sync_works` → `0003_trash_sync` →
 `0004_mcp_tokens` → `0005_subscriptions` → `0006_activity_sync` → `0007_visitor_days` → `0008_board`（掲示板9テーブル）
 → `0009_board_post_likes`（👍 を投稿単位へ。`board_post_likes` ＋ `board_posts.like_count`・旧 `board_likes` は残す）
+→ `0010_oauth`（自前の認可サーバー。`oauth_clients` / `oauth_requests` / `oauth_codes` / `oauth_tokens`。
+**適用前に配ると、アカウント削除（purge の batch）と MCP の接続解除が落ちる**——順序は migration → デプロイ）
 
 ---
 

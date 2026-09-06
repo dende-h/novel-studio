@@ -3,11 +3,12 @@
  * /api/mcp/token — MCP アクセストークンの管理（会員のみ・Clerk JWT 認証）。
  *   POST   = 新規発行（既存があれば置き換え）。**平文トークンを一度だけ返す**（保存はハッシュのみ）。
  *   GET    = 状態（発行済みか・発行時刻）。平文は返さない（保存していないため）。
- *   DELETE = 失効（AI からのアクセスを止める）。
+ *   DELETE = 失効（`mcp_` トークンと、自前 OAuth で出したトークンの両方を消す）。
  */
 
 import { type ClerkEnv, json, verifyMember } from '../_lib/auth'
 import { generateMcpToken, hashMcpToken } from '../_lib/mcp-token'
+import { deleteUserTokens } from '../_lib/oauth-store'
 
 interface Env extends ClerkEnv {
   DB: D1Database
@@ -57,5 +58,8 @@ export const onRequestDelete: PagesFunction<Env> = async (context) => {
   const { userId } = m
 
   await context.env.DB.prepare('DELETE FROM mcp_tokens WHERE user_id = ?').bind(userId).run()
+  // 自前 OAuth で出したトークンも一緒に切る。画面は「接続を解除」の 1 つしか出しておらず、
+  // 片方だけ残ると「解除したのに AI から読める」になる（同意画面もこれを約束している）。
+  await deleteUserTokens(context.env.DB, userId)
   return json({ ok: true })
 }

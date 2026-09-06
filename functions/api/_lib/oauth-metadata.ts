@@ -1,13 +1,13 @@
 /**
  * OAuth 2.0 Protected Resource Metadata（RFC 9728）とその案内ヘッダの純ロジック。
- * MCP を「OAuth リソースサーバー」として名乗るために使う。認可サーバーは Clerk（別ホスト）。
- * これ自体は Clerk 設定に依存しない（設定値は呼び出し側が config で渡す）。
+ * MCP を「OAuth リソースサーバー」として名乗るために使う。
  *
- * **自オリジンを認可サーバーとして名乗ってはいけない**（2026-09・docs/requirement/10-mcp-oauth.md）。
- * 名乗るとメタデータの issuer は自分になるのに、認可応答の `iss` を書くのは Clerk のままで、
- * RFC 9207 の照合に落ちる（ChatGPT はここで接続を切る）。`authorization_servers` には
- * **Clerk の issuer をそのまま**書き、クライアントを Clerk のメタデータへ辿らせる。
+ * 認可サーバーは**自オリジン**（`oauth-server.ts` が実体・2026-09 の Phase 2）。以前は Clerk を
+ * 指していたが、認可応答が誰にも見えない・触れないことが問題の根だった
+ *（docs/requirement/10-mcp-oauth.md §2-A / §4）。**名乗る issuer と、応答を書く主体は同じにする。**
  */
+
+import { OAUTH_SCOPES } from './oauth-server'
 
 /**
  * RFC 9728 の path-aware な PRM の位置（リソースが `/api/mcp` のとき）。
@@ -18,19 +18,14 @@ export const PRM_WELL_KNOWN_PATH = '/.well-known/oauth-protected-resource/api/mc
 /**
  * クライアントに要求してほしいスコープの既定値（RFC 9728 `scopes_supported`）。
  *
- * **`openid` を入れてはいけない。** Clerk は動的登録（DCR）したクライアントに `openid` を
- * 許さず、認可の入口で弾く（実測・10-mcp-oauth.md §2-I）：
- *   `invalid_scope … The OAuth 2.0 Client is not allowed to request scope 'openid'.`
- * ChatGPT はここに書いた値をそのまま要求するので、1 語間違えるとログイン直後に落ちる。
- * **Clerk が DCR クライアントへ実際に割り当てる 3 つ**（登録応答の `scope` がこれを返す）に揃える。
+ * **認可サーバーが実際に許す語だけを書く。** ここは「使える一覧」ではなく「これを要求せよ」
+ * という指示として読まれるので、1 語間違えると認可の入口で全部落ちる（10-mcp-oauth.md §2-I で
+ * `openid` を書いて実際に踏んだ）。自前の認可サーバーになった今は `OAUTH_SCOPES` が正本。
+ * `offline_access` が無いとリフレッシュトークンを出さないので、外すと期限切れで接続が死ぬ。
  *
- * ここを黙っていてもいけない。クライアントは要求すべきスコープをリソース側に聞きに来る
- * （RFC 9728 §2）。とくに `offline_access` が無いとリフレッシュトークンが出ず、期限が切れた
- * 時点で接続が黙って死ぬ。
- *
- * `MCP_OAUTH_SCOPES` を設定すればそちらが優先される（Clerk の設定を変えたときはここも直す）。
+ * `MCP_OAUTH_SCOPES` を設定すればそちらが優先される。
  */
-export const DEFAULT_MCP_SCOPES = ['profile', 'email', 'offline_access']
+export const DEFAULT_MCP_SCOPES = OAUTH_SCOPES
 
 /** `MCP_OAUTH_SCOPES`（スペース区切り）を読む。未設定・空なら既定値。 */
 export function parseScopes(raw: string | undefined): string[] {
