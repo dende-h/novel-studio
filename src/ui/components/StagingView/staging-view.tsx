@@ -31,6 +31,7 @@ import {
 } from '@/core/game/assets'
 import { type PageContinuity, resolveContinuity } from '@/core/game/continuity'
 import { GAME_FEATURES } from '@/core/game/features'
+import { BLACKOUT_BG_KEY, BLACKOUT_BG_LABEL, blackoutBgSvg } from '@/core/game/presets'
 import { SE_STOP, type SeRepeat } from '@/core/game/sePresets'
 import { SPRITE_POSITION_LABELS } from '@/core/game/stage'
 import {
@@ -66,7 +67,6 @@ import {
   BgHelp,
   BgmHelp,
   ContinuityHelp,
-  HideSpriteHelp,
   SceneBreakHelp,
   SeHelp,
   SpeakerHelp,
@@ -90,7 +90,7 @@ interface StagingViewProps {
   work: Work
   /** エディタで開いている話（初期選択）。 */
   currentEpisodeId: string | null
-  /** 持ち込み背景の置き場所（渡されたときだけ「画像を追加…」が出る）。 */
+  /** 持ち込み背景の置き場所（渡されたときだけ「背景を追加」が出る）。 */
   assetRepo?: GameAssetRepository
 }
 
@@ -103,10 +103,10 @@ const TRANSITIONS: { value: NonNullable<Cue['transition']>; label: string }[] = 
   { value: 'flash', label: '白いフラッシュ' },
 ]
 
-/** 話者セレクトの「自由に入力…」の目印（cue には入らない）。 */
+/** 話者・席セレクトの「自由に入力」の目印（cue には入らない）。 */
 const CUSTOM_SPEAKER = '__custom__'
-/** 背景セレクトの「画像を追加…」の目印（cue には入らない）。 */
-const ADD_IMAGE = '__add_image__'
+/** 立ち絵・背景・BGM の「前の行のまま」を表す選択肢の文言（値は空＝cue に入らない）。 */
+const KEEP_LABEL = '変更しない(前のシーンを引継ぐ)'
 
 /** 効果音キーの表示名（目録 → 組み込み → 予約キー → キーそのもの）。 */
 function seLabelOf(key: string, ses: readonly CatalogSe[]): string {
@@ -126,7 +126,7 @@ function spritesSummary(sprites: readonly SpriteCue[]): string {
   return sprites
     .map((sp) => {
       const seat = sp.pos ? SPRITE_POSITION_LABELS[sp.pos] : '自動'
-      if (!sp.character) return `${seat}:下げる`
+      if (!sp.character) return `${seat}:なし`
       return `${seat}:${sp.character}${sp.expression ? `（${sp.expression}）` : ''}`
     })
     .join('・')
@@ -141,7 +141,7 @@ function seatsSummary(seats: PageContinuity['seats']): string {
 const byPosition = (a: SpriteCue, b: SpriteCue) =>
   SPRITE_POSITIONS.indexOf(a.pos ?? 'c') - SPRITE_POSITIONS.indexOf(b.pos ?? 'c')
 
-/** 席セレクトの「下げる」の目印（cue には `{ pos }` として入る）。 */
+/** 席セレクトの「立ち絵なし」の目印（cue には `{ pos }` として入る）。 */
 const SEAT_OFF = '__off__'
 
 /**
@@ -205,12 +205,13 @@ function laneTitles(
   }
 }
 
-/** 背景キーの表示名（テンプレ／持ち込み。どちらでもなければ undefined）。 */
+/** 背景キーの表示名（ブラックアウト／テンプレ／持ち込み。どれでもなければ undefined）。 */
 function bgLabelOf(
   key: string,
   assets: UserGameAsset[],
   backgrounds: readonly CatalogBackground[],
 ): string | undefined {
+  if (key === BLACKOUT_BG_KEY) return BLACKOUT_BG_LABEL
   const tpl = backgrounds.find((b) => b.key === key)
   if (tpl) return tpl.label
   return assets.find((a) => userAssetKey(a.id) === key)?.name
@@ -223,6 +224,7 @@ function bgPreviewSrc(
   backgrounds: readonly CatalogBackground[],
 ): string | undefined {
   if (!key) return undefined
+  if (key === BLACKOUT_BG_KEY) return `data:image/svg+xml,${encodeURIComponent(blackoutBgSvg())}`
   const tpl = backgrounds.find((b) => b.key === key)
   if (tpl) return templateBgSrc(tpl)
   return assets.find((a) => userAssetKey(a.id) === key)?.dataUrl
@@ -640,8 +642,8 @@ export default function StagingView({ repo, work, currentEpisodeId, assetRepo }:
           }}
           className={SELECT_CLASS}
         >
-          <option value="">（変えない）</option>
-          <option value={SEAT_OFF}>（下げる）</option>
+          <option value="">{KEEP_LABEL}</option>
+          <option value={SEAT_OFF}>立ち絵なし</option>
           {persons.length > 0 ? (
             <optgroup label="用語集の人物">
               {persons.map((p) => (
@@ -666,7 +668,7 @@ export default function StagingView({ repo, work, currentEpisodeId, assetRepo }:
           !seatNameChoices.includes(character) ? (
             <option value={character}>{character}</option>
           ) : null}
-          <option value={CUSTOM_SPEAKER}>（自由に入力…）</option>
+          <option value={CUSTOM_SPEAKER}>自由に入力</option>
         </select>
         {customSeat === pos ? (
           <Input
@@ -698,7 +700,7 @@ export default function StagingView({ repo, work, currentEpisodeId, assetRepo }:
                   }
                   className={SELECT_CLASS}
                 >
-                  <option value="">（指定なし：いまの表情のまま）</option>
+                  <option value="">指定なし(いまの表情のまま)</option>
                   {/* 未登録の表情が付いた既存 cue も選択状態は保つ（勝手に外さない） */}
                   {seat?.expression && !expressions.includes(seat.expression) ? (
                     <option value={seat.expression}>{seat.expression}（この表情は未登録）</option>
@@ -765,7 +767,7 @@ export default function StagingView({ repo, work, currentEpisodeId, assetRepo }:
                     beginImport(spriteInputRef.current)
                   }}
                 >
-                  立ち絵を追加…
+                  立ち絵を追加
                 </Button>
                 <Button
                   type="button"
@@ -774,7 +776,7 @@ export default function StagingView({ repo, work, currentEpisodeId, assetRepo }:
                   className="text-primary"
                   onClick={() => setSpritePickerFor((v) => (v === pos ? null : pos))}
                 >
-                  テンプレから選ぶ…
+                  テンプレから選ぶ
                 </Button>
               </div>
             )}
@@ -1120,8 +1122,8 @@ export default function StagingView({ repo, work, currentEpisodeId, assetRepo }:
                     }}
                     className={SELECT_CLASS}
                   >
-                    <option value="">（なし：名前を出さない）</option>
-                    <option value={MASKED_SPEAKER}>？？？（名前を伏せる）</option>
+                    <option value="">なし(名前を出さない)</option>
+                    <option value={MASKED_SPEAKER}>？？？(名前を伏せる)</option>
                     {persons.length > 0 ? (
                       <optgroup label="用語集の人物">
                         {persons.map((p) => (
@@ -1141,7 +1143,7 @@ export default function StagingView({ repo, work, currentEpisodeId, assetRepo }:
                         ))}
                       </optgroup>
                     ) : null}
-                    <option value={CUSTOM_SPEAKER}>（自由に入力…）</option>
+                    <option value={CUSTOM_SPEAKER}>自由に入力</option>
                   </select>
                   {customSpeaker ? (
                     <Input
@@ -1219,24 +1221,6 @@ export default function StagingView({ repo, work, currentEpisodeId, assetRepo }:
                 />
               </div>
 
-              {assetRepo ? (
-                <div className="flex items-center justify-between gap-3">
-                  <div className="flex items-center gap-1">
-                    <label htmlFor="staging-hide-sprite" className="text-on-surface text-sm">
-                      ここから立ち絵を出さない
-                    </label>
-                    <HideSpriteHelp />
-                  </div>
-                  <Switch
-                    id="staging-hide-sprite"
-                    checked={Boolean(selected.hideSprite)}
-                    onCheckedChange={(on) =>
-                      apply(selected.blockId, { hideSprite: on ? true : undefined })
-                    }
-                  />
-                </div>
-              ) : null}
-
               <div>
                 <div className="mb-2 flex items-center gap-1">
                   <label
@@ -1250,17 +1234,11 @@ export default function StagingView({ repo, work, currentEpisodeId, assetRepo }:
                 <select
                   id="staging-bg"
                   value={selected.bg ?? ''}
-                  onChange={(e) => {
-                    const value = e.target.value
-                    if (value === ADD_IMAGE) {
-                      beginImport(fileInputRef.current)
-                      return
-                    }
-                    apply(selected.blockId, { bg: value || undefined })
-                  }}
+                  onChange={(e) => apply(selected.blockId, { bg: e.target.value || undefined })}
                   className={SELECT_CLASS}
                 >
-                  <option value="">（なし：変えない）</option>
+                  <option value="">{KEEP_LABEL}</option>
+                  <option value={BLACKOUT_BG_KEY}>{BLACKOUT_BG_LABEL}</option>
                   {/* この端末に無い持ち込み画像のキーも選択状態は保つ（勝手に外さない） */}
                   {selected.bg && !bgLabelOf(selected.bg, assets, backgrounds) ? (
                     <option value={selected.bg}>
@@ -1285,17 +1263,30 @@ export default function StagingView({ repo, work, currentEpisodeId, assetRepo }:
                       </option>
                     ))}
                   </optgroup>
-                  {assetRepo ? <option value={ADD_IMAGE}>（画像を追加…）</option> : null}
                 </select>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="mt-2 text-primary"
-                  onClick={() => setBgPickerOpen(true)}
-                >
-                  一覧から選ぶ…
-                </Button>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {assetRepo ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="text-primary"
+                      onClick={() => beginImport(fileInputRef.current)}
+                    >
+                      背景を追加
+                    </Button>
+                  ) : null}
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="text-primary"
+                    aria-label="背景をテンプレから選ぶ"
+                    onClick={() => setBgPickerOpen(true)}
+                  >
+                    テンプレから選ぶ
+                  </Button>
+                </div>
                 <TemplatePicker
                   open={bgPickerOpen}
                   onOpenChange={setBgPickerOpen}
@@ -1377,8 +1368,8 @@ export default function StagingView({ repo, work, currentEpisodeId, assetRepo }:
                     onChange={(e) => apply(selected.blockId, { bgm: e.target.value || undefined })}
                     className={SELECT_CLASS}
                   >
-                    <option value="">（なし：変えない）</option>
-                    <option value={BGM_STOP}>ここで止める（鳴っている曲を消す）</option>
+                    <option value="">{KEEP_LABEL}</option>
+                    <option value={BGM_STOP}>停止する</option>
                     {/* 未知キー（この端末の目録に無い曲等）も選択状態は保つ（勝手に外さない） */}
                     {selected.bgm && selected.bgm !== BGM_STOP && !bgmOf(selected.bgm) ? (
                       <option value={selected.bgm}>{selected.bgm}</option>
@@ -1400,9 +1391,10 @@ export default function StagingView({ repo, work, currentEpisodeId, assetRepo }:
                       variant="outline"
                       size="sm"
                       className="shrink-0 text-primary"
+                      aria-label="BGMをテンプレから選ぶ"
                       onClick={() => setBgmPickerOpen(true)}
                     >
-                      一覧から選ぶ…
+                      テンプレから選ぶ
                     </Button>
                   ) : null}
                 </div>
@@ -1448,8 +1440,8 @@ export default function StagingView({ repo, work, currentEpisodeId, assetRepo }:
                       }}
                       className={SELECT_CLASS}
                     >
-                      <option value="">（なし）</option>
-                      <option value={SE_STOP}>ここで止める（ずっと鳴っている音を消す）</option>
+                      <option value="">なし</option>
+                      <option value={SE_STOP}>停止する(ずっと鳴っている音を消す)</option>
                       {/* 未知キー（この端末の目録に無い音等）も選択状態は保つ（勝手に外さない） */}
                       {selected.se && selected.se !== SE_STOP && !seOf(selected.se) ? (
                         <option value={selected.se}>{selected.se}</option>
@@ -1480,9 +1472,10 @@ export default function StagingView({ repo, work, currentEpisodeId, assetRepo }:
                       variant="outline"
                       size="sm"
                       className="shrink-0 text-primary"
+                      aria-label="効果音をテンプレから選ぶ"
                       onClick={() => setSePickerOpen(true)}
                     >
-                      一覧から選ぶ…
+                      テンプレから選ぶ
                     </Button>
                   </div>
                   <TemplatePicker

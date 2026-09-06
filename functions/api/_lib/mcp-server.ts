@@ -554,12 +554,13 @@ export const MCP_TOOLS = [
               },
               bg: {
                 type: 'string',
-                description: '背景キー（get_staging の「使える背景キー」から。空文字で外す）',
+                description:
+                  '背景キー（get_staging の「使える背景キー」から。"blackout" で真っ黒。空文字で外す）',
               },
               bgm: {
                 type: 'string',
                 description:
-                  'BGM キー（get_staging の「使える BGM キー」から。この行から鳴り始め、次の曲か "stop" まで続く。"stop" で鳴っている曲を止める。空文字で外す）',
+                  'BGM キー（get_staging の「使える BGM キー」から。この行から鳴り始め、次の曲か "stop" まで続く。"stop" で停止。空文字で外す）',
               },
               // 効果音を出さない版（GAME_FEATURES.se＝false）では欄ごと出さない（渡しても mcp-edit が断る）
               ...(GAME_FEATURES.se

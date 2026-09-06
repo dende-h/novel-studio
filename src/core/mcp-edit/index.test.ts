@@ -881,6 +881,19 @@ describe('mcp-edit — 演出譜（set_staging の純ロジック）', () => {
     expect(cleared.stagings[0]?.cues).toHaveLength(0)
   })
 
+  it('bg には予約キー blackout（背景なし）を渡せる', () => {
+    const res = setStagingCues(
+      [],
+      [stagedWork()],
+      'w1',
+      'e1',
+      [{ blockId: 'b2', bg: 'blackout' }],
+      [],
+      100,
+    )
+    expect(res.stagings[0]?.cues).toEqual([{ blockId: 'b2', bg: 'blackout' }])
+  })
+
   it('不正な入力は McpEditError で全体を保存しない（部分適用を残さない）', () => {
     const cases: Array<Parameters<typeof setStagingCues>[4]> = [
       [{ blockId: 'b3', speaker: '灯' }], // 空行（間）宛て

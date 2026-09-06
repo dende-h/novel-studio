@@ -117,6 +117,16 @@ export const PRESET_BACKGROUNDS: PresetBackground[] = PLACES.flatMap(({ place, l
 /** 演出未指定のときの既定背景（かつては「抽象（夜）」。その絵を外したので夜空に寄せる）。 */
 export const DEFAULT_BG_KEY = 'preset:bg/sky-night'
 
+/**
+ * 「背景なし（ブラックアウト）」の予約キー。目録（テンプレ一覧）には無く、演出譜の `Cue.bg` だけが指す。
+ * 書き出しは真っ黒の SVG を同じ経路で載せる（クレジットには載せない）。
+ */
+export const BLACKOUT_BG_KEY = 'blackout'
+export const BLACKOUT_BG_LABEL = '背景なし(ブラックアウト)'
+export const BLACKOUT_TONE: [string, string, string] = ['#05060A', '#05060A', '#05060A']
+export const blackoutBgSvg = (): string =>
+  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" preserveAspectRatio="xMidYMid slice"><rect width="1280" height="720" fill="#05060A"/></svg>'
+
 export function presetBackground(key: string): PresetBackground | undefined {
   return PRESET_BACKGROUNDS.find((p) => p.key === key)
 }

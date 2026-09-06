@@ -453,7 +453,7 @@ export function ExportDialog({
                         className="mt-2 text-primary"
                         onClick={() => setBgPickerOpen(true)}
                       >
-                        一覧から選ぶ…
+                        テンプレから選ぶ
                       </Button>
                       <TemplatePicker
                         open={bgPickerOpen}

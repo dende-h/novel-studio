@@ -10,6 +10,7 @@ import {
 import type { UserGameAsset } from '../game/assets'
 import { DEFAULT_EXPRESSION, spriteExpressionsOf, userAssetKey } from '../game/assets'
 import { GAME_FEATURES } from '../game/features'
+import { BLACKOUT_BG_KEY, BLACKOUT_BG_LABEL } from '../game/presets'
 import { SPRITE_POSITION_LABELS } from '../game/stage'
 import {
   mergeBackgroundCatalog,
@@ -92,6 +93,7 @@ export function stagingToPlainText(
   sections.push(
     [
       '使える背景（bg）キー:',
+      `- ${BLACKOUT_BG_KEY} … ${BLACKOUT_BG_LABEL}（真っ黒にする予約キー）`,
       ...visibleTemplates(mergeBackgroundCatalog(templates)).map((p) => `- ${p.key} … ${p.label}`),
       ...userLines,
     ].join('\n'),
@@ -158,7 +160,7 @@ function cueSummary(cue: Cue): string {
         : `立ち絵=${cue.sprites
             .map((sp) => {
               const seat = sp.pos ? SPRITE_POSITION_LABELS[sp.pos] : '自動'
-              if (!sp.character) return `${seat}:下げる`
+              if (!sp.character) return `${seat}:なし`
               return `${seat}:${sp.character}${sp.expression ? `（${sp.expression}）` : ''}`
             })
             .join('・')}`,

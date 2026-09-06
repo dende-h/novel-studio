@@ -276,7 +276,7 @@ export function SpriteSection({ name, aliases, assetRepo }: SpriteSectionProps) 
             className="text-primary"
             onClick={beginImport}
           >
-            立ち絵を追加…
+            立ち絵を追加
           </Button>
           <Button
             type="button"
@@ -285,7 +285,7 @@ export function SpriteSection({ name, aliases, assetRepo }: SpriteSectionProps) 
             className="text-primary"
             onClick={() => setPickerOpen((v) => !v)}
           >
-            テンプレから選ぶ…
+            テンプレから選ぶ
           </Button>
           <Button
             type="button"
