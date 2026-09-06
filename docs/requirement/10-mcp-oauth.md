@@ -123,12 +123,12 @@ STG に投げたところ**受理された**ので、この線は消えた。な
 `service_documentation` に `https://clerk.com/docs/oauth/scoped-access` がそのまま出ているのも同根で、
 **「上流の申告を、自分の名前で配っている」**という 1 つの設計ミスが 3 か所に出ている。
 
-### H. DCR の応答から `refresh_token` が落ちる（未解明・接続が後で死ぬ疑い）
+### H. DCR の応答から `refresh_token` が落ちる（**否定**・実際には発行される）
 
 登録要求に `grant_types: ["authorization_code", "refresh_token"]` を入れても、Clerk の応答は
-`["authorization_code"]` だけを返す（`scope` には `offline_access` が残る）。更新が本当に効かないなら、
-アクセストークンの期限が切れた時点で**繋がっていた接続が黙って死ぬ**。A を直した後に、
-実際にトークン交換まで通して確かめる（→ §7 Phase 1 の確認項目）。
+`["authorization_code"]` だけを返す。心配していたが、**トークン交換まで通したら
+`refresh_token` は発行された**（`scope` に `offline_access` があるため）。応答の `grant_types` は
+当てにならない、というだけの話だった。
 
 ### I. 要求スコープに `openid` が混ざると、ログイン直後に弾かれる（**実測で確定**）
 
@@ -144,10 +144,11 @@ iss=https://credible-stork-66.clerk.accounts.dev
 
 **Clerk は DCR で登録したクライアントに `openid` を許さない。** 登録応答の
 `"scope":"email offline_access profile"` がそのままの意味だった（`openid` が無い）。
-ChatGPT の `oauth_config` は `default_scopes: null` のままだが、`scopes_supported` を
-要求スコープとして送っている。だから **Clerk 由来の 6 個でも、こちらが出した 4 個でも、
-`openid` が入っている限り同じ場所で落ちる**。画面には汎用のエラーしか出ないので、
-外からは原因が見えない。
+
+**ただし、これが ChatGPT の失敗理由だという確証は無い。** `invalid_scope` を出したのは
+こちらが手で組んだ URL であって、ChatGPT が実際に何を送ったかは観測していない
+（`oauth_config` の `default_scopes` は `null` のまま）。**PRM に Clerk が拒む語を書いては
+いけない**のは独立して正しいので修正は残すが、原因の断定はしない。
 
 ここには 2 つの学びがある。ひとつは、**PRM の `scopes_supported` は「使える一覧」ではなく
 「これを要求せよ」という指示として読まれる**こと。1 語間違えると全部落ちる。もうひとつは、
@@ -156,6 +157,28 @@ ChatGPT の `oauth_config` は `default_scopes: null` のままだが、`scopes_
 
 対処は `DEFAULT_MCP_SCOPES` を Clerk が DCR クライアントへ割り当てる 3 つ
 （`profile email offline_access`）に揃えること。`openid` を入れないことをテストで固定した。
+
+### J. 認可からツール呼び出しまで、手で通すと全部 200（**実測**）
+
+ChatGPT と同じ手順を手元で最後まで通した（`profile email offline_access`・`resource` 付き・
+戻り先は `http://localhost:8765/cb`）。
+
+```
+0. PRM            200   scopes_supported: profile / email / offline_access
+1. 動的登録        201   Clerk が許したスコープ: email offline_access profile
+2. 認可            code 取得・iss は Clerk で一致
+3. トークン交換    200   refresh_token あり・expires_in 86399
+4. MCP initialize  200   serverInfo: novel-studio 1.10.0
+```
+
+**コトノハ側に残っている問題は無い。** OAuth の検証も会員判定も通り（401 でも 403 でもない）、
+Clerk は `resource` を受け付け、リフレッシュトークンも出る。それでも ChatGPT のコネクタは
+失敗するので、**残る差分は ChatGPT が何を違うやり方でやっているか**の一点に絞られた。
+候補は、スコープを送っていない（`default_scopes: null`）、`tools/list` 以降で落ちている、
+GET の SSE ストリーム（こちらは 405）を要求している、あたり。
+
+なお Cloudflare は Python の既定 UA（`Python-urllib/3.x`）を 1010 で弾く。
+手で叩くときは `user-agent` を付けること（コトノハ側・Clerk 側の両方で踏んだ）。
 
 なお、この実測は RFC 9207 の解決も裏づけている——エラー応答に
 `iss=https://credible-stork-66.clerk.accounts.dev` が付き、PRM の `authorization_servers` と一致する。
