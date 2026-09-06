@@ -13,8 +13,8 @@ import type { SeStep } from '../game/sePresets'
  */
 
 /**
- * 立ち絵の舞台の1人ぶん。k=立ち絵キー、p=位置（1人なら c、2人なら l / r）、
- * a=いま話している（明るく表示。無い人物は減光）。
+ * 立ち絵の舞台の1人ぶん。k=立ち絵キー、p=席（l / c / r・3 人まで）、
+ * a=いま話している（明るく表示。a の付いた人物がいるときだけ、ほかを減光する）。
  */
 export interface ScenarioStageEntry {
   k: string
@@ -128,11 +128,11 @@ html,body{height:100%;margin:0;background:#05060A}
 @keyframes kb{from{transform:scale(1) translate(0,0)}to{transform:scale(1.08) translate(-1.2%,.8%)}}
 #sprites{position:absolute;inset:0;pointer-events:none}
 #sprites img{position:absolute;bottom:0;transform:translateX(-50%);height:min(78vh,860px);
-  max-width:min(58vw,560px);object-fit:contain;object-position:bottom center;opacity:1;
+  max-width:min(36vw,520px);object-fit:contain;object-position:bottom center;opacity:1;
   transition:opacity .45s ease,left .5s ease,filter .35s ease}
 #sprites img.p-c{left:50%}
-#sprites img.p-l{left:26%}
-#sprites img.p-r{left:74%}
+#sprites img.p-l{left:22%}
+#sprites img.p-r{left:78%}
 #sprites img.dim{filter:brightness(.55) saturate(.85)}
 #sprites img.in,#sprites img.out{opacity:0}
 @media (prefers-reduced-motion:reduce){#sprites img{transition:opacity .45s ease}}
@@ -322,7 +322,7 @@ html,body{height:100%;margin:0;background:#05060A}
     state.front = state.front === 'A' ? 'B' : 'A'
   }
 
-  // ---- 立ち絵の舞台（最大2人。exporter が話者から stage マーカーへ解決済み） ----
+  // ---- 立ち絵の舞台（席は左・中央・右の 3 つ。exporter が席の指示から stage マーカーへ解決済み） ----
   function stageAt(i) {
     var st = []
     for (var j = 0; j <= i && j < S.pages.length; j++) {
@@ -335,8 +335,10 @@ html,body{height:100%;margin:0;background:#05060A}
     requestAnimationFrame(function () { el.style.transition = '' })
   }
   function applyStage(list, instant) {
-    var want = {}
-    for (var i = 0; i < list.length; i++) want[list[i].k] = list[i]
+    var want = {}, anyActive = false
+    for (var i = 0; i < list.length; i++) { want[list[i].k] = list[i]; if (list[i].a) anyActive = true }
+    // 話している人が舞台にいるときだけ、ほかを減光する（誰も話していなければ全員ふつうの明るさ）
+    function classOf(e) { return 'p-' + e.p + (anyActive && !e.a ? ' dim' : '') }
     // 既存の立ち絵を更新（位置・明暗）、要らなくなった分は退場
     var imgs = spritesEl.querySelectorAll('img')
     for (var j = 0; j < imgs.length; j++) {
@@ -351,7 +353,7 @@ html,body{height:100%;margin:0;background:#05060A}
           ;(function (el) { setTimeout(function () { el.remove() }, 500) })(img)
         }
       } else {
-        img.className = 'p-' + entry.p + (entry.a ? '' : ' dim')
+        img.className = classOf(entry)
         if (instant) noTrans(img)
         delete want[img.getAttribute('data-k')]
       }
@@ -364,7 +366,7 @@ html,body{height:100%;margin:0;background:#05060A}
       el.setAttribute('data-k', k)
       el.src = srcOf(S.sprites[k].src)
       el.alt = S.sprites[k].label
-      el.className = 'p-' + e.p + (e.a ? '' : ' dim') + (instant ? '' : ' in')
+      el.className = classOf(e) + (instant ? '' : ' in')
       spritesEl.appendChild(el)
       if (instant) noTrans(el)
       else {

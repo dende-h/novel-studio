@@ -26,21 +26,52 @@ export const MASKED_SPEAKER = '？？？'
  */
 export const BGM_STOP = 'stop'
 
+/** 立ち絵の席（左・中央・右）。舞台に立てるのは 3 人まで（席の数）。 */
+export const SPRITE_POSITIONS = ['l', 'c', 'r'] as const
+export type SpritePosition = (typeof SPRITE_POSITIONS)[number]
+
+/**
+ * 1 つの席への立ち絵の指示（D-GAME-SPRITE-FREE）。**話者とは独立**で、地の文でもセリフでも付けられる。
+ * - `character` を渡す＝その席にその人物を立たせる（既に別の席にいれば移す）。
+ *   `pos` を省略すると空いている席（中央→左→右）へ。満席なら一番前から立っている人と交代。
+ * - `character` が空で `pos` がある＝その席を下げる。
+ * - `expression` は省略＝その人物が既に立っていればいまの表情のまま、初めて立つなら「通常」。
+ * 席は次の指示か「下げる」か場面の切れ目（hideSprite 含む）まで続く。
+ */
+export const SpriteCueSchema = z.object({
+  pos: z.enum(['l', 'c', 'r']).optional(),
+  character: z.string().optional(),
+  expression: z.string().optional(),
+})
+export type SpriteCue = z.infer<typeof SpriteCueSchema>
+
 export const CueSchema = z.object({
   /** 張り付き先の Block.id。本文は一切書き換えない（アンカーのみ） */
   blockId: z.string(),
-  /** 話者名。辞書 entry の name（= [[名前]] の解決キーと同一） */
+  /**
+   * 話者名（名前枠に出す・セリフの行だけ）。辞書 entry の name（= [[名前]] の解決キーと同一）。
+   * **立ち絵は出さない**（立ち絵は `sprites` で別に指示する・D-GAME-SPRITE-FREE）。
+   * 話者が舞台に立っていれば、その人物だけ明るく出る。
+   */
   speaker: z.string().optional(),
   /**
-   * 表情名。話者の付いた行ではその話者の、そうでなければ登場（appear）する人物の表情。
-   * 立ち絵があるときだけ意味を持つ（無ければ「通常」→最初の1枚に倒す）
+   * この行での立ち絵の指示（席ごと）。省略＝変えない。
+   * 旧式の `appear` / `expression` を持つ cue は `spriteCuesOf` が同じ形に読み替える。
+   */
+  sprites: z.array(SpriteCueSchema).optional(),
+  /**
+   * @deprecated 旧式（2026-09-06 以前）。話者の付いた行ではその話者の、そうでなければ登場（appear）
+   * する人物の表情。いまは `sprites[].expression` を使う。旧データのために読み続ける。
    */
   expression: z.string().optional(),
-  /** 立ち絵の登場（人物名）。この行からその人物の立ち絵が舞台に入る（名前枠は出さない・地の文でも可） */
+  /**
+   * @deprecated 旧式。立ち絵の登場（人物名）。いまは `sprites`（席の指定つき）を使う。
+   * 旧データは「空いている席へ立たせる」指示として読む。
+   */
   appear: z.string().optional(),
   /**
-   * この行から立ち絵を出さない（**次の場面の切れ目まで**）。人物ごと描いた一枚絵の背景に
-   * 立ち絵が重なるのを止めるための欄。話者名（名前枠）は出る。appear で明示すれば戻る。
+   * この行で立ち絵を全員下げ、**次の場面の切れ目まで**出さない区間にする。人物ごと描いた一枚絵の
+   * 背景に立ち絵が重なるのを止めるための欄。話者名（名前枠）は出る。`sprites` で明示すれば戻る。
    */
   hideSprite: z.boolean().optional(),
   /** ここで場面が変わる（背景・BGM の切り替え点）。正本に区切りは復活させない（D-GAME-SCENE-MANUAL） */
@@ -106,6 +137,7 @@ export function patchCue(
   const merged: Cue = { ...current }
   for (const key of [
     'speaker',
+    'sprites',
     'expression',
     'appear',
     'hideSprite',
@@ -219,6 +251,7 @@ export function toPages(blocks: Block[]): GamePage[] {
 
 export interface StagedPage extends GamePage {
   speaker?: string
+  sprites?: SpriteCue[]
   expression?: string
   appear?: string
   hideSprite?: boolean
@@ -242,6 +275,22 @@ export function applyCues(pages: GamePage[], staging?: Staging): StagedPage[] {
     const { blockId: _anchor, ...effects } = cue
     return { ...page, ...effects }
   })
+}
+
+/**
+ * この行の立ち絵の指示。新式の `sprites` があればそれ、無ければ旧式の `appear`（＋話者の無い行の
+ * `expression`）を「空いている席へ立たせる」指示に読み替える。書き出し・続きレーン・MCP の要約が
+ * 同じ読み方をするための 1 箇所。
+ */
+export function spriteCuesOf(
+  cue: Pick<Cue, 'sprites' | 'appear' | 'expression' | 'speaker'>,
+): SpriteCue[] {
+  if (cue.sprites) return cue.sprites
+  if (cue.appear && cue.appear !== MASKED_SPEAKER) {
+    const expression = cue.speaker ? undefined : cue.expression
+    return [{ character: cue.appear, ...(expression ? { expression } : {}) }]
+  }
+  return []
 }
 
 /**
