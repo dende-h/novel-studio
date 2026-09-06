@@ -259,15 +259,17 @@ describe('StagingView（演出エディタ）', () => {
     expect(screen.getByRole('option', { name: '海辺の夕暮れ' })).toBeInTheDocument()
   })
 
-  it('話者を付けたセリフ行で立ち絵を追加できる（表情名つきで保存・話者に自動で紐づく）', async () => {
-    const { repo } = fakeRepo()
+  it('席で人物を選ぶと立ち絵を追加でき、追加した表情がその席に選ばれる（話者は関係ない）', async () => {
+    const { repo, saved } = fakeRepo()
     const { repo: assetRepo, map } = memoryAssetRepo()
     render(
       <StagingView repo={repo} work={makeWork()} currentEpisodeId="e1" assetRepo={assetRepo} />,
     )
     fireEvent.click(await screen.findByText('「——まだ、書いてるんだね」'))
-    fireEvent.change(screen.getByLabelText('話者'), { target: { value: '灯' } })
-    // 話者が付くと立ち絵の案内と追加ボタンが出る
+    fireEvent.change(await screen.findByLabelText('左の立ち絵'), { target: { value: '灯' } })
+    await waitFor(() => expect(saved).toHaveLength(1))
+    expect(saved[0]?.cues[0]).toEqual({ blockId: 'b2', sprites: [{ pos: 'l', character: '灯' }] })
+    // 人物が付くと立ち絵の案内と追加ボタンが出る
     expect(await screen.findByText(/「灯」の立ち絵はまだありません/)).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: '立ち絵を追加…' }))
     const file = new File(['x'], 'akari.png', { type: 'image/png' })
@@ -278,23 +280,29 @@ describe('StagingView（演出エディタ）', () => {
     fireEvent.change(expr, { target: { value: '笑顔' } })
     fireEvent.click(screen.getByRole('button', { name: '追加' }))
     await waitFor(() => expect(map.size).toBe(1))
-    const saved = [...map.values()][0]
-    expect(saved).toMatchObject({
+    expect([...map.values()][0]).toMatchObject({
       kind: 'sprite',
       character: '灯',
       expression: '笑顔',
       name: '灯（笑顔）',
       dataUrl: 'data:image/png;base64,U1A=',
     })
-    // 追加した表情が選択肢に並ぶ
+    // 追加した表情がその席に選ばれ、選択肢にも並ぶ
+    await waitFor(() =>
+      expect(saved[saved.length - 1]?.cues[0]).toEqual({
+        blockId: 'b2',
+        sprites: [{ pos: 'l', character: '灯', expression: '笑顔' }],
+      }),
+    )
     expect(await screen.findByRole('option', { name: '笑顔' })).toBeInTheDocument()
+    expect(screen.getByText('立ち絵 左:灯（笑顔）')).toBeInTheDocument()
   })
 
-  it('話者に立ち絵があると表情を選べて、その場で cue に保存される', async () => {
+  it('席に立てた人物に立ち絵が複数あると表情を選べて、その場で cue に保存される', async () => {
     const { repo, saved } = fakeRepo({
       workId: 'w1',
       episodeId: 'e1',
-      cues: [{ blockId: 'b2', speaker: '灯' }],
+      cues: [{ blockId: 'b2', speaker: '灯', sprites: [{ pos: 'c', character: '灯' }] }],
       updatedAt: 1,
     })
     const { repo: assetRepo } = memoryAssetRepo([
@@ -305,12 +313,20 @@ describe('StagingView（演出エディタ）', () => {
       <StagingView repo={repo} work={makeWork()} currentEpisodeId="e1" assetRepo={assetRepo} />,
     )
     fireEvent.click(await screen.findByText('「——まだ、書いてるんだね」'))
-    const select = await screen.findByLabelText('立ち絵')
+    const select = await screen.findByLabelText('中央の表情')
+    expect(
+      screen.getByRole('option', { name: '（指定なし：いまの表情のまま）' }),
+    ).toBeInTheDocument()
     fireEvent.change(select, { target: { value: '笑顔' } })
     await waitFor(() => expect(saved).toHaveLength(1))
-    expect(saved[0]?.cues[0]).toEqual({ blockId: 'b2', speaker: '灯', expression: '笑顔' })
-    // 一覧の行にも表情が出る
-    expect(await screen.findByText('表情 笑顔')).toBeInTheDocument()
+    expect(saved[0]?.cues[0]).toEqual({
+      blockId: 'b2',
+      speaker: '灯',
+      sprites: [{ pos: 'c', character: '灯', expression: '笑顔' }],
+    })
+    expect(await screen.findByText('立ち絵 中央:灯（笑顔）')).toBeInTheDocument()
+    // 続きレーンには席つきで出る
+    expect(screen.getAllByTitle('立ち絵：中央 灯').length).toBeGreaterThan(0)
   })
 
   it('効果音を選ぶとその場で保存され、一覧の行にラベルが出る', async () => {
@@ -323,7 +339,7 @@ describe('StagingView（演出エディタ）', () => {
     expect(await screen.findByText('効果音 雨')).toBeInTheDocument()
   })
 
-  it('地の文の行で「立ち絵の登場」を選ぶと cue（appear）に保存される', async () => {
+  it('地の文の行でも席に人物を立たせられる（話者は要らない）', async () => {
     const { repo, saved } = fakeRepo()
     const { repo: assetRepo } = memoryAssetRepo([
       { ...memoryAsset('sp1', '灯（通常）'), kind: 'sprite', character: '灯', expression: '通常' },
@@ -332,11 +348,12 @@ describe('StagingView（演出エディタ）', () => {
       <StagingView repo={repo} work={makeWork()} currentEpisodeId="e1" assetRepo={assetRepo} />,
     )
     fireEvent.click(await screen.findByText('灯が振り返った。'))
-    const select = await screen.findByLabelText('立ち絵の登場')
-    fireEvent.change(select, { target: { value: '灯' } })
+    fireEvent.change(await screen.findByLabelText('右の立ち絵'), { target: { value: '灯' } })
     await waitFor(() => expect(saved).toHaveLength(1))
-    expect(saved[0]?.cues[0]).toEqual({ blockId: 'b1', appear: '灯' })
-    expect(await screen.findByText('登場 灯')).toBeInTheDocument()
+    expect(saved[0]?.cues[0]).toEqual({ blockId: 'b1', sprites: [{ pos: 'r', character: '灯' }] })
+    expect(await screen.findByText('立ち絵 右:灯')).toBeInTheDocument()
+    // 次の行まで続く（席つきの説明）
+    expect(screen.getAllByTitle('立ち絵：右 灯')).toHaveLength(3)
   })
 
   it('続きレーンが、効いている範囲ぶんの行に立つ（設定した行だけではない）', async () => {
@@ -451,11 +468,11 @@ describe('StagingView（演出エディタ）', () => {
     expect(await screen.findByText('立ち絵なし')).toBeInTheDocument()
   })
 
-  it('登場させた人物に立ち絵が複数あると、地の文の行でも表情を選べる。人物を外すと表情も外れる', async () => {
+  it('席を「（変えない）」に戻すと、その席の指示（表情ごと）が外れる', async () => {
     const { repo, saved } = fakeRepo({
       workId: 'w1',
       episodeId: 'e1',
-      cues: [{ blockId: 'b1', appear: '灯' }],
+      cues: [{ blockId: 'b1', sprites: [{ pos: 'l', character: '灯', expression: '笑顔' }] }],
       updatedAt: 1,
     })
     const { repo: assetRepo } = memoryAssetRepo([
@@ -466,17 +483,15 @@ describe('StagingView（演出エディタ）', () => {
       <StagingView repo={repo} work={makeWork()} currentEpisodeId="e1" assetRepo={assetRepo} />,
     )
     fireEvent.click(await screen.findByText('灯が振り返った。'))
-    const select = await screen.findByLabelText('立ち絵')
-    expect(screen.getByRole('option', { name: '（指定なし：通常）' })).toBeInTheDocument()
-    fireEvent.change(select, { target: { value: '笑顔' } })
+    expect(await screen.findByLabelText('左の表情')).toHaveValue('笑顔')
+    fireEvent.change(screen.getByLabelText('左の立ち絵'), { target: { value: '' } })
     await waitFor(() => expect(saved).toHaveLength(1))
-    expect(saved[0]?.cues[0]).toEqual({ blockId: 'b1', appear: '灯', expression: '笑顔' })
-    expect(await screen.findByText('表情 笑顔')).toBeInTheDocument()
-
-    // 登場する人物を「（なし）」に戻すと、その人の表情も一緒に外れる
-    fireEvent.change(screen.getByLabelText('立ち絵の登場'), { target: { value: '' } })
+    expect(saved[0]?.cues).toHaveLength(0)
+    // 「（下げる）」はその席だけ下げる指示として残る
+    fireEvent.change(screen.getByLabelText('中央の立ち絵'), { target: { value: '__off__' } })
     await waitFor(() => expect(saved).toHaveLength(2))
-    expect(saved[1]?.cues).toHaveLength(0)
+    expect(saved[1]?.cues[0]).toEqual({ blockId: 'b1', sprites: [{ pos: 'c' }] })
+    expect(await screen.findByText('立ち絵 中央:下げる')).toBeInTheDocument()
   })
 
   it('話者を替えると、前の話者の表情は外れる（表情はその人の絵の名前）', async () => {
@@ -515,26 +530,25 @@ describe('StagingView（演出エディタ）', () => {
     expect(saved[1]?.cues).toHaveLength(0)
   })
 
-  it('立ち絵が1枚も無くても、地の文で登場させる人物を選べる', async () => {
-    // 一言も喋らない人物にも立ち絵を出せること。候補を「立ち絵のある人物」に絞らない
+  it('立ち絵が1枚も無くても、席に人物を選べる（候補を立ち絵のある人物に絞らない）', async () => {
     const { repo, saved } = fakeRepo()
     const { repo: assetRepo } = memoryAssetRepo()
     render(
       <StagingView repo={repo} work={makeWork()} currentEpisodeId="e1" assetRepo={assetRepo} />,
     )
     fireEvent.click(await screen.findByText('灯が振り返った。'))
-    fireEvent.change(await screen.findByLabelText('立ち絵の登場'), { target: { value: '灯' } })
+    fireEvent.change(await screen.findByLabelText('中央の立ち絵'), { target: { value: '灯' } })
 
     await waitFor(() => expect(saved).toHaveLength(1))
-    expect(saved[0]?.cues[0]).toEqual({ blockId: 'b1', appear: '灯' })
+    expect(saved[0]?.cues[0]).toEqual({ blockId: 'b1', sprites: [{ pos: 'c', character: '灯' }] })
     expect(screen.getByText(/「灯」の立ち絵はまだありません/)).toBeInTheDocument()
   })
 
-  it('登場させた人物の立ち絵を、その行から登録できる（話者でなくても）', async () => {
+  it('席に選んだ人物の立ち絵を、その行から登録できる（話者でなくても）', async () => {
     const { repo } = fakeRepo({
       workId: 'w1',
       episodeId: 'e1',
-      cues: [{ blockId: 'b1', appear: '灯' }],
+      cues: [{ blockId: 'b1', sprites: [{ pos: 'c', character: '灯' }] }],
       updatedAt: 1,
     })
     const { repo: assetRepo, map } = memoryAssetRepo()
@@ -549,29 +563,32 @@ describe('StagingView（演出エディタ）', () => {
     expect([...map.values()][0]).toMatchObject({ kind: 'sprite', character: '灯' })
   })
 
-  it('用語集に無い人物も、自由に入力して登場させられる', async () => {
+  it('用語集に無い人物も、自由に入力して席に立たせられる', async () => {
     const { repo, saved } = fakeRepo()
     const { repo: assetRepo } = memoryAssetRepo()
     render(
       <StagingView repo={repo} work={makeWork()} currentEpisodeId="e1" assetRepo={assetRepo} />,
     )
     fireEvent.click(await screen.findByText('灯が振り返った。'))
-    fireEvent.change(await screen.findByLabelText('立ち絵の登場'), {
+    fireEvent.change(await screen.findByLabelText('右の立ち絵'), {
       target: { value: '__custom__' },
     })
-    const input = await screen.findByLabelText('登場する人物の名前を入力')
+    const input = await screen.findByLabelText('右に立たせる人物の名前を入力')
     fireEvent.change(input, { target: { value: '見知らぬ女' } })
     fireEvent.blur(input)
 
     await waitFor(() => expect(saved).toHaveLength(1))
-    expect(saved[0]?.cues[0]).toEqual({ blockId: 'b1', appear: '見知らぬ女' })
+    expect(saved[0]?.cues[0]).toEqual({
+      blockId: 'b1',
+      sprites: [{ pos: 'r', character: '見知らぬ女' }],
+    })
   })
 
-  it('テンプレから選ぶ…でシルエット立ち絵が話者に割り当てられる（tpl- id・枚数に数えない）', async () => {
+  it('テンプレから選ぶ…でシルエット立ち絵が席の人物に割り当てられる（tpl- id・枚数に数えない）', async () => {
     const { repo } = fakeRepo({
       workId: 'w1',
       episodeId: 'e1',
-      cues: [{ blockId: 'b2', speaker: '灯' }],
+      cues: [{ blockId: 'b2', speaker: '灯', sprites: [{ pos: 'c', character: '灯' }] }],
       updatedAt: 1,
     })
     const { repo: assetRepo, map } = memoryAssetRepo()

@@ -234,7 +234,7 @@ describe('持ち込み背景（user:* の同梱）', () => {
   })
 })
 
-describe('立ち絵（話者に自動で紐づく舞台・最大2人）', () => {
+describe('立ち絵（席ごとの指示・話者とは独立・3 人まで）', () => {
   // b1=セリフ / b2=地の文 / b3=セリフ / b4=セリフ / b5=地の文
   const spriteEpisode: Episode = {
     id: 'e9',
@@ -262,17 +262,22 @@ describe('立ち絵（話者に自動で紐づく舞台・最大2人）', () => 
   const saku = sprite('sa-n', 'サク', '通常', 4)
   const opts = { userAssets: [akariNormal, akariSmile, beni, saku] }
 
-  it('1人目は中央でアクティブ。地の文・話者未設定のセリフは据え置き（マーカー無し）', () => {
+  it('話者は立ち絵を呼ばない。席の指示で立ち、話者と同じ人物なら明るい', () => {
+    const only = scenarioOf(
+      buildNovelGameFiles(work, spriteEpisode, staging([{ blockId: 'b1', speaker: '灯' }]), opts),
+    )
+    expect(only.pages.every((p) => p.stage === undefined)).toBe(true)
+    expect(only.sprites).toBeUndefined()
+
     const files = buildNovelGameFiles(
       work,
       spriteEpisode,
-      staging([{ blockId: 'b1', speaker: '灯' }]),
+      staging([{ blockId: 'b1', speaker: '灯', sprites: [{ pos: 'c', character: '灯' }] }]),
       opts,
     )
     const s = scenarioOf(files)
     expect(s.pages[0]?.stage).toEqual([{ k: 'user:ak-n', p: 'c', a: 1 }])
-    expect(s.pages[1]?.stage).toBeUndefined()
-    expect(s.pages[2]?.stage).toBeUndefined()
+    expect(s.pages[1]?.stage).toBeUndefined() // 据え置き（マーカー無し）
     expect(s.sprites?.['user:ak-n']).toEqual({
       src: 'assets/sprite/user-ak-n.webp',
       label: '灯（通常）',
@@ -280,67 +285,111 @@ describe('立ち絵（話者に自動で紐づく舞台・最大2人）', () => 
     const paths = files.map((f) => f.path)
     expect(paths).toContain('assets/sprite/user-ak-n.webp')
     expect(paths).not.toContain('assets/sprite/user-be-n.webp') // 未使用は同梱しない
-    // プレイヤーに立ち絵の舞台がある
     const html = files.find((f) => f.path === 'index.html')?.data as string
     expect(html).toContain('id="sprites"')
   })
 
-  it('表情（cue.expression）はその場で差し替え（席はそのまま）', () => {
+  it('話者が舞台にいなければ誰も明るくしない（全員ふつうの明るさ）', () => {
     const s = scenarioOf(
       buildNovelGameFiles(
         work,
         spriteEpisode,
-        staging([
-          { blockId: 'b1', speaker: '灯' },
-          { blockId: 'b3', speaker: '灯', expression: '笑顔' },
-        ]),
+        staging([{ blockId: 'b1', speaker: 'ベニ', sprites: [{ pos: 'c', character: '灯' }] }]),
         opts,
       ),
     )
-    expect(s.pages[0]?.stage).toEqual([{ k: 'user:ak-n', p: 'c', a: 1 }])
-    expect(s.pages[2]?.stage).toEqual([{ k: 'user:ak-s', p: 'c', a: 1 }])
+    expect(s.pages[0]?.stage).toEqual([{ k: 'user:ak-n', p: 'c' }])
   })
 
-  it('2人目が来ると先客が左へ寄り、右に入る（話している方だけアクティブ）', () => {
+  it('表情は席の指示で差し替わる（席はそのまま）。省略すればいまの表情のまま', () => {
     const s = scenarioOf(
       buildNovelGameFiles(
         work,
         spriteEpisode,
         staging([
-          { blockId: 'b1', speaker: '灯' },
-          { blockId: 'b3', speaker: 'ベニ' },
+          { blockId: 'b1', sprites: [{ pos: 'c', character: '灯', expression: '笑顔' }] },
+          { blockId: 'b3', speaker: '灯', sprites: [{ pos: 'c', character: '灯' }] }, // 表情は据え置き
+          { blockId: 'b4', sprites: [{ character: '灯', expression: '通常' }] }, // 席の省略＝差し替えだけ
         ]),
         opts,
       ),
     )
+    expect(s.pages[0]?.stage).toEqual([{ k: 'user:ak-s', p: 'c' }])
+    expect(s.pages[2]?.stage).toEqual([{ k: 'user:ak-s', p: 'c', a: 1 }])
+    // 話者の無いセリフでは明るさは据え置き（ちらつかせない）
+    expect(s.pages[3]?.stage).toEqual([{ k: 'user:ak-n', p: 'c', a: 1 }])
+  })
+
+  it('席は 3 つ（左・中央・右）。舞台は席順に並び、下げるのはその席だけ', () => {
+    const s = scenarioOf(
+      buildNovelGameFiles(
+        work,
+        spriteEpisode,
+        staging([
+          {
+            blockId: 'b1',
+            sprites: [
+              { pos: 'r', character: 'サク' },
+              { pos: 'l', character: '灯' },
+              { pos: 'c', character: 'ベニ' },
+            ],
+          },
+          { blockId: 'b3', speaker: 'ベニ' }, // 話者は席を動かさず、明るくするだけ
+          { blockId: 'b4', sprites: [{ pos: 'l' }] }, // 左だけ下げる
+        ]),
+        opts,
+      ),
+    )
+    expect(s.pages[0]?.stage).toEqual([
+      { k: 'user:ak-n', p: 'l' },
+      { k: 'user:be-n', p: 'c' },
+      { k: 'user:sa-n', p: 'r' },
+    ])
     expect(s.pages[2]?.stage).toEqual([
       { k: 'user:ak-n', p: 'l' },
-      { k: 'user:be-n', p: 'r', a: 1 },
+      { k: 'user:be-n', p: 'c', a: 1 },
+      { k: 'user:sa-n', p: 'r' },
+    ])
+    expect(s.pages[3]?.stage).toEqual([
+      { k: 'user:be-n', p: 'c', a: 1 }, // 話者の無い行＝明るさは据え置き
+      { k: 'user:sa-n', p: 'r' },
     ])
   })
 
-  it('3人目は「最近話していない方」と交代し、席（左右）を引き継ぐ', () => {
+  it('席を省略すると空いている席（中央→左→右）へ。同じ人物を別の席に指せば移る', () => {
     const s = scenarioOf(
       buildNovelGameFiles(
         work,
         spriteEpisode,
         staging([
-          { blockId: 'b1', speaker: '灯' },
-          { blockId: 'b3', speaker: 'ベニ' },
-          { blockId: 'b4', speaker: 'サク' },
+          { blockId: 'b1', sprites: [{ character: '灯' }] },
+          { blockId: 'b2', sprites: [{ character: 'ベニ' }] },
+          { blockId: 'b3', sprites: [{ pos: 'r', character: '灯' }] },
         ]),
         opts,
       ),
     )
-    expect(s.pages[3]?.stage).toEqual([
-      { k: 'user:sa-n', p: 'l', a: 1 }, // 灯（最近話していない）と交代して左席へ
-      { k: 'user:be-n', p: 'r' },
+    expect(s.pages[0]?.stage).toEqual([{ k: 'user:ak-n', p: 'c' }])
+    expect(s.pages[1]?.stage).toEqual([
+      { k: 'user:be-n', p: 'l' },
+      { k: 'user:ak-n', p: 'c' },
+    ])
+    expect(s.pages[2]?.stage).toEqual([
+      { k: 'user:be-n', p: 'l' },
+      { k: 'user:ak-n', p: 'r' },
     ])
   })
 
-  it('立ち絵の無い話者・？？？のセリフでは退場させず、全員が減光する', () => {
+  it('話者が替われば明るい人物も替わる。？？？や立ち絵の無い話者では全員ふつうの明るさ', () => {
     const base = [
-      { blockId: 'b1', speaker: '灯' },
+      {
+        blockId: 'b1',
+        speaker: '灯',
+        sprites: [
+          { pos: 'l', character: '灯' },
+          { pos: 'r', character: 'ベニ' },
+        ],
+      },
       { blockId: 'b3', speaker: 'ベニ' },
     ]
     for (const third of [
@@ -350,6 +399,14 @@ describe('立ち絵（話者に自動で紐づく舞台・最大2人）', () => 
       const s = scenarioOf(
         buildNovelGameFiles(work, spriteEpisode, staging([...base, third]), opts),
       )
+      expect(s.pages[0]?.stage).toEqual([
+        { k: 'user:ak-n', p: 'l', a: 1 },
+        { k: 'user:be-n', p: 'r' },
+      ])
+      expect(s.pages[2]?.stage).toEqual([
+        { k: 'user:ak-n', p: 'l' },
+        { k: 'user:be-n', p: 'r', a: 1 },
+      ])
       expect(s.pages[3]?.stage).toEqual([
         { k: 'user:ak-n', p: 'l' },
         { k: 'user:be-n', p: 'r' },
@@ -363,7 +420,7 @@ describe('立ち絵（話者に自動で紐づく舞台・最大2人）', () => 
         work,
         spriteEpisode,
         staging([
-          { blockId: 'b1', speaker: '灯' },
+          { blockId: 'b1', sprites: [{ character: '灯' }] },
           { blockId: 'b5', sceneBreak: true },
         ]),
         opts,
@@ -374,7 +431,11 @@ describe('立ち絵（話者に自動で紐づく舞台・最大2人）', () => 
 
   it('立ち絵が無ければシナリオは従来のまま（sprites も stage マーカーも出ない）', () => {
     const s = scenarioOf(
-      buildNovelGameFiles(work, spriteEpisode, staging([{ blockId: 'b1', speaker: '灯' }])),
+      buildNovelGameFiles(
+        work,
+        spriteEpisode,
+        staging([{ blockId: 'b1', speaker: '灯', sprites: [{ character: '灯' }] }]),
+      ),
     )
     expect(s.sprites).toBeUndefined()
     expect(s.pages.every((p) => p.stage === undefined)).toBe(true)
@@ -387,28 +448,58 @@ describe('立ち絵（話者に自動で紐づく舞台・最大2人）', () => 
     expect(s.pages[1]?.bg).toBeUndefined()
   })
 
-  it('登場（appear）：地の文からセリフの前に立ち絵を出せる（明るくはしない）', () => {
+  it('立ち絵の無い人物・？？？の指示は無視して壊さない', () => {
     const s = scenarioOf(
       buildNovelGameFiles(
         work,
         spriteEpisode,
         staging([
-          { blockId: 'b2', appear: '灯' }, // 地の文で登場
-          { blockId: 'b3', speaker: '灯' }, // ここで初めて話す
+          { blockId: 'b1', sprites: [{ character: '灯' }] },
+          { blockId: 'b2', sprites: [{ pos: 'l', character: 'モブ' }] },
+          { blockId: 'b3', sprites: [{ pos: 'r', character: '？？？' }] },
         ]),
         opts,
       ),
     )
-    expect(s.pages[1]?.stage).toEqual([{ k: 'user:ak-n', p: 'c' }]) // 立つが a 無し
-    expect(s.pages[2]?.stage).toEqual([{ k: 'user:ak-n', p: 'c', a: 1 }]) // 話して明るく
+    expect(s.pages[0]?.stage).toEqual([{ k: 'user:ak-n', p: 'c' }])
+    expect(s.pages[1]?.stage).toBeUndefined()
+    expect(s.pages[2]?.stage).toBeUndefined()
+  })
+
+  it('旧式の登場（appear）と表情（expression）も読める（空いている席へ・話者の表情差し替え）', () => {
+    const s = scenarioOf(
+      buildNovelGameFiles(
+        work,
+        spriteEpisode,
+        staging([
+          { blockId: 'b2', appear: '灯', expression: '笑顔' }, // 旧式：地の文で登場
+          { blockId: 'b3', speaker: '灯' }, // 話す＝明るく（席はそのまま）
+          { blockId: 'b4', speaker: '灯', expression: '通常' }, // 旧式：話者の表情差し替え
+        ]),
+        opts,
+      ),
+    )
+    expect(s.pages[1]?.stage).toEqual([{ k: 'user:ak-s', p: 'c' }])
+    expect(s.pages[2]?.stage).toEqual([{ k: 'user:ak-s', p: 'c', a: 1 }])
+    expect(s.pages[3]?.stage).toEqual([{ k: 'user:ak-n', p: 'c', a: 1 }])
   })
 
   it('画面が説明する「効いているもの」と、書き出す中身が一致する（ずれの見張り）', () => {
     // 演出エディタの続きレーンは resolveContinuity で描く。ここがずれると画面が嘘をつく
     const cues = [
-      { blockId: 'b1', speaker: '灯', bg: 'preset:bg/town-night' },
-      { blockId: 'b2', appear: 'ベニ', se: 'preset:se/rain', seRepeat: 'loop' as const },
-      { blockId: 'b3', speaker: 'ベニ' },
+      {
+        blockId: 'b1',
+        speaker: '灯',
+        bg: 'preset:bg/town-night',
+        sprites: [{ pos: 'l' as const, character: '灯' }],
+      },
+      {
+        blockId: 'b2',
+        sprites: [{ character: 'ベニ' }],
+        se: 'preset:se/rain',
+        seRepeat: 'loop' as const,
+      },
+      { blockId: 'b3', speaker: 'ベニ', sprites: [{ pos: 'r' as const, character: 'サク' }] },
       { blockId: 'b4', hideSprite: true },
       { blockId: 'b5', sceneBreak: true, bg: 'preset:bg/room-night' },
     ]
@@ -422,24 +513,23 @@ describe('立ち絵（話者に自動で紐づく舞台・最大2人）', () => 
     let stage: string[] = []
     s.pages.forEach((page, i) => {
       if (page.bg) bg = page.bg
-      if (page.stage) stage = page.stage.map((e) => charOf.get(e.k) ?? e.k)
+      if (page.stage) stage = page.stage.map((e) => `${e.p}:${charOf.get(e.k) ?? e.k}`)
       expect(bg).toBe(continuity[i]?.bg)
-      // 席の並びは exporter の領分なので、顔ぶれだけを突き合わせる
-      expect([...stage].sort()).toEqual([...(continuity[i]?.standing ?? [])].sort())
+      expect(stage).toEqual(continuity[i]?.seats.map((x) => `${x.pos}:${x.character}`))
     })
   })
 
-  it('立ち絵を出さない（hideSprite）：舞台を空にし、次の場面の切れ目まで話者も出さない', () => {
+  it('立ち絵を出さない（hideSprite）：舞台を空にし、次の場面の切れ目まで出さない', () => {
     // 人物ごと描いた一枚絵の背景に立ち絵が重なるのを止める欄（D-GAME-SPRITE-OFF）
     const s = scenarioOf(
       buildNovelGameFiles(
         work,
         spriteEpisode,
         staging([
-          { blockId: 'b1', speaker: '灯' }, // 立つ
+          { blockId: 'b1', speaker: '灯', sprites: [{ character: '灯' }] }, // 立つ
           { blockId: 'b2', hideSprite: true }, // 地の文で下ろす
           { blockId: 'b3', speaker: '灯' }, // 話しても出さない
-          { blockId: 'b4', sceneBreak: true, speaker: '灯' }, // 場面が変われば戻る
+          { blockId: 'b4', sceneBreak: true, speaker: '灯', sprites: [{ character: '灯' }] }, // 場面が変わって出し直す
         ]),
         opts,
       ),
@@ -452,88 +542,21 @@ describe('立ち絵（話者に自動で紐づく舞台・最大2人）', () => 
     expect(s.pages[3]?.stage).toEqual([{ k: 'user:ak-n', p: 'c', a: 1 }])
   })
 
-  it('立ち絵を出さない区間でも、登場（appear）を指定すれば戻る', () => {
+  it('立ち絵を出さない区間でも、席の指示があればその場で戻る', () => {
     const s = scenarioOf(
       buildNovelGameFiles(
         work,
         spriteEpisode,
         staging([
-          { blockId: 'b1', speaker: '灯' },
+          { blockId: 'b1', sprites: [{ character: '灯' }] },
           { blockId: 'b2', hideSprite: true },
-          { blockId: 'b5', appear: '灯' }, // 同じ場面のまま出し直す
+          { blockId: 'b5', sprites: [{ character: '灯' }] }, // 同じ場面のまま出し直す
         ]),
         opts,
       ),
     )
     expect(s.pages[1]?.stage).toEqual([])
     expect(s.pages[4]?.stage).toEqual([{ k: 'user:ak-n', p: 'c' }])
-  })
-
-  it('登場は席の割り当てに従い、既に立っている人物・立ち絵の無い人物・？？？は無視', () => {
-    const s = scenarioOf(
-      buildNovelGameFiles(
-        work,
-        spriteEpisode,
-        staging([
-          { blockId: 'b1', speaker: '灯' },
-          { blockId: 'b2', appear: 'ベニ' }, // 2人目＝左右へ
-          { blockId: 'b5', appear: 'モブ' }, // 立ち絵なし＝据え置き
-        ]),
-        opts,
-      ),
-    )
-    expect(s.pages[1]?.stage).toEqual([
-      { k: 'user:ak-n', p: 'l', a: 1 }, // 灯は話者のまま明るい
-      { k: 'user:be-n', p: 'r' },
-    ])
-    expect(s.pages[4]?.stage).toBeUndefined()
-  })
-
-  it('登場（appear）に表情（expression）を付けると、その表情の絵で立つ', () => {
-    const s = scenarioOf(
-      buildNovelGameFiles(
-        work,
-        spriteEpisode,
-        staging([{ blockId: 'b2', appear: '灯', expression: '笑顔' }]),
-        opts,
-      ),
-    )
-    expect(s.pages[1]?.stage).toEqual([{ k: 'user:ak-s', p: 'c' }])
-    expect(s.sprites?.['user:ak-s']).toBeDefined()
-    expect(s.sprites?.['user:ak-n']).toBeUndefined() // 使っていない表情は同梱しない
-  })
-
-  it('すでに立っている人物への登場は、表情を付けたときだけ差し替わる（付けなければ据え置き）', () => {
-    const s = scenarioOf(
-      buildNovelGameFiles(
-        work,
-        spriteEpisode,
-        staging([
-          { blockId: 'b1', speaker: '灯' }, // 通常で立つ
-          { blockId: 'b2', appear: '灯', expression: '笑顔' }, // 地の文で笑顔に差し替え
-          { blockId: 'b5', appear: '灯' }, // 表情なし＝そのまま（マーカーも出ない）
-        ]),
-        opts,
-      ),
-    )
-    expect(s.pages[0]?.stage).toEqual([{ k: 'user:ak-n', p: 'c', a: 1 }])
-    expect(s.pages[1]?.stage).toEqual([{ k: 'user:ak-s', p: 'c', a: 1 }])
-    expect(s.pages[4]?.stage).toBeUndefined()
-  })
-
-  it('話者の付いた行では、表情は話者のもの（同じ行の登場する人物には効かない）', () => {
-    const s = scenarioOf(
-      buildNovelGameFiles(
-        work,
-        spriteEpisode,
-        staging([{ blockId: 'b1', speaker: '灯', appear: 'ベニ', expression: '笑顔' }]),
-        opts,
-      ),
-    )
-    expect(s.pages[0]?.stage).toEqual([
-      { k: 'user:be-n', p: 'l' }, // 登場（既定の表情）
-      { k: 'user:ak-s', p: 'r', a: 1 }, // 話者が笑顔で話す
-    ])
   })
 })
 
@@ -623,9 +646,12 @@ describe('テンプレ立ち絵（シルエット・preset）', () => {
   }
 
   it('svg のまま同梱され、クレジットに運営素材として載る', () => {
-    const files = buildNovelGameFiles(work, ep, staging([{ blockId: 'b1', speaker: '灯' }]), {
-      userAssets: [tplAsset],
-    })
+    const files = buildNovelGameFiles(
+      work,
+      ep,
+      staging([{ blockId: 'b1', speaker: '灯', sprites: [{ character: '灯' }] }]),
+      { userAssets: [tplAsset] },
+    )
     const s = scenarioOf(files)
     expect(s.pages[0]?.stage).toEqual([{ k: 'user:tpl-1', p: 'c', a: 1 }])
     expect(s.sprites?.['user:tpl-1']?.src).toBe('assets/sprite/user-tpl-1.svg')
@@ -653,10 +679,14 @@ describe('テンプレ立ち絵（シルエット・preset）', () => {
   it('持ち込みの立ち絵はクレジットに載らない', () => {
     const own = { ...tplAsset, key: 'user:own-1', id: 'own-1', preset: undefined }
     const s = scenarioOf(
-      buildNovelGameFiles(work, ep, staging([{ blockId: 'b1', speaker: '灯' }]), {
-        userAssets: [own],
-      }),
+      buildNovelGameFiles(
+        work,
+        ep,
+        staging([{ blockId: 'b1', speaker: '灯', sprites: [{ character: '灯' }] }]),
+        { userAssets: [own] },
+      ),
     )
+    expect(s.pages[0]?.stage).toEqual([{ k: 'user:own-1', p: 'c', a: 1 }])
     expect(s.credits.some((c) => c.label === '立ち絵')).toBe(false)
   })
 })

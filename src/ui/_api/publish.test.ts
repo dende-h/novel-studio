@@ -618,8 +618,18 @@ describe('契約 v5（素材は作品ぶん1回だけ・話は asset:<id> で参
   })
   const novelGame = () => ({
     stagings: [
-      { workId: 'w1', episodeId: 'e1', cues: [{ blockId: 'b1', speaker: '灯' }], updatedAt: 1 },
-      { workId: 'w1', episodeId: 'e2', cues: [{ blockId: 'b1', speaker: '灯' }], updatedAt: 1 },
+      {
+        workId: 'w1',
+        episodeId: 'e1',
+        cues: [{ blockId: 'b1', speaker: '灯', sprites: [{ character: '灯' }] }],
+        updatedAt: 1,
+      },
+      {
+        workId: 'w1',
+        episodeId: 'e2',
+        cues: [{ blockId: 'b1', speaker: '灯', sprites: [{ character: '灯' }] }],
+        updatedAt: 1,
+      },
     ],
     gameAssets: [asset],
   })

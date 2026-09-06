@@ -489,6 +489,78 @@ describe('mcp-edit — 演出譜（set_staging の純ロジック）', () => {
     ).toThrow(/se_repeat/)
   })
 
+  it('sprites は席ごとの指示。人物は立ち絵のある人だけ・表情はその人の絵から・空配列で外す', () => {
+    const assets = [
+      { id: 'sp1', kind: 'sprite', character: '灯', expression: '通常', createdAt: 1 },
+      { id: 'sp2', kind: 'sprite', character: '灯', expression: '笑顔', createdAt: 2 },
+      { id: 'sp3', kind: 'sprite', character: '結', expression: '通常', createdAt: 3 },
+    ]
+    const parsed = parseStagingCueInputs([
+      {
+        block_id: 'b1',
+        sprites: [
+          { position: 'left', character: '灯', expression: '笑顔' },
+          { character: '結' },
+          { position: 'right', character: '' },
+        ],
+      },
+    ])
+    expect(parsed[0]?.sprites).toEqual([
+      { position: 'left', character: '灯', expression: '笑顔' },
+      { position: undefined, character: '結', expression: undefined },
+      { position: 'right', character: '', expression: undefined },
+    ])
+    const res = setStagingCues([], [stagedWork()], 'w1', 'e1', parsed, assets, 100)
+    expect(res.stagings[0]?.cues[0]).toEqual({
+      blockId: 'b1',
+      sprites: [
+        { pos: 'l', character: '灯', expression: '笑顔' },
+        { character: '結' },
+        { pos: 'r' },
+      ],
+    })
+    // 話者を付けても立ち絵の指示は増えない（独立）
+    const withSpeaker = setStagingCues(
+      res.stagings,
+      [stagedWork()],
+      'w1',
+      'e1',
+      [{ blockId: 'b2', speaker: '灯' }],
+      assets,
+      101,
+    )
+    expect(withSpeaker.stagings[0]?.cues[1]).toEqual({ blockId: 'b2', speaker: '灯' })
+    // 空配列で外す
+    const off = setStagingCues(
+      res.stagings,
+      [stagedWork()],
+      'w1',
+      'e1',
+      [{ blockId: 'b1', sprites: [] }],
+      assets,
+      102,
+    )
+    expect(off.stagings[0]?.cues).toHaveLength(0)
+    // 立ち絵の無い人物・未登録の表情・席なしで下げる・知らない席は McpEditError
+    const bad = (sprites: unknown[]) => () =>
+      setStagingCues(
+        [],
+        [stagedWork()],
+        'w1',
+        'e1',
+        parseStagingCueInputs([{ block_id: 'b1', sprites }]),
+        assets,
+        100,
+      )
+    expect(bad([{ character: 'モブ' }])).toThrow(/「モブ」の立ち絵がまだありません/)
+    expect(bad([{ character: '灯', expression: '泣き' }])).toThrow(/使える表情: 通常・笑顔/)
+    expect(bad([{ character: '' }])).toThrow(/position（left \/ center \/ right）を渡してください/)
+    expect(bad([{ position: 'top', character: '灯' }])).toThrow(
+      /position は left \/ center \/ right \/ auto/,
+    )
+    expect(() => parseStagingCueInputs([{ block_id: 'b1', sprites: 'x' }])).toThrow(/配列で渡して/)
+  })
+
   it('hide_sprite（立ち絵を出さない）を付け外しできる', () => {
     const on = setStagingCues(
       [],

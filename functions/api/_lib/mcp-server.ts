@@ -70,7 +70,7 @@ const SERVER_INSTRUCTIONS = [
   '- 世界観設定（get_world / set_world_note）… 作品の決め事・設定ルール・執筆方針を置く',
   '  **作者だけの場所。公開されません。**',
   '- プロット（get_plot / upsert_plot_beat 等）… 幕とビート、プロットライン、伏線、秘密。公開されません。',
-  '- 演出譜（get_staging / set_staging）… サウンドノベル書き出し用の話者・表情・場面の切れ目・背景。',
+  '- 演出譜（get_staging / set_staging）… サウンドノベル書き出し用の話者・立ち絵（席ごと）・場面の切れ目・背景・BGM。',
   '  本文には一切触れない別レコードで、公開されません。',
   '',
   '守ってほしい手順：',
@@ -489,7 +489,7 @@ export const MCP_TOOLS = [
   },
   {
     name: 'set_staging',
-    description: `1 つの話の演出（話者・表情・登場・場面の切れ目・背景・BGM${GAME_FEATURES.se ? '・効果音' : ''}・切り替え方）を行単位でまとめて付ける。本文は一切変わらない。cues の各要素は get_staging の [block_id: …] を指し、渡した項目だけ書き換える（省略＝据え置き・空文字＝削除・clear: true でその行の演出を丸ごと外す）。話者はセリフの行にだけ付けられ、用語集の人物名／？？？（名前を伏せる）／自由な名前が使える。立ち絵は話者から自動で表示され、expression は立ち絵のある人物の表情の指定（話者の付いた行ではその話者・appear だけの行ではその人物）。人物ごと描いた一枚絵の背景では hide_sprite で立ち絵を止められる（次の場面の切れ目まで）。BGM は bgm にキーを付けた行から鳴り始め、次の曲か bgm: "stop" まで続く（場面の切れ目では止まらない）。${GAME_FEATURES.se ? '効果音は se_repeat で 1回／2回／ずっと を選べ、se: "stop" で鳴っている環境音を止める。' : ''}どれか 1 行でもエラーになると全体が保存されない。`,
+    description: `1 つの話の演出（話者・立ち絵・場面の切れ目・背景・BGM${GAME_FEATURES.se ? '・効果音' : ''}・切り替え方）を行単位でまとめて付ける。本文は一切変わらない。cues の各要素は get_staging の [block_id: …] を指し、渡した項目だけ書き換える（省略＝据え置き・空文字＝削除・clear: true でその行の演出を丸ごと外す）。話者はセリフの行にだけ付けられ、用語集の人物名／？？？（名前を伏せる）／自由な名前が使える。**話者は名前枠だけで、立ち絵は出さない**。立ち絵は sprites で席（left / center / right・3 人まで）ごとに人物と表情を指示する（地の文でもセリフでも可・次の指示か場面の切れ目まで立ち続ける・話者が舞台にいればその人だけ明るくなる）。人物ごと描いた一枚絵の背景では hide_sprite で全員下げられる（次の場面の切れ目まで）。BGM は bgm にキーを付けた行から鳴り始め、次の曲か bgm: "stop" まで続く（場面の切れ目では止まらない）。${GAME_FEATURES.se ? '効果音は se_repeat で 1回／2回／ずっと を選べ、se: "stop" で鳴っている環境音を止める。' : ''}どれか 1 行でもエラーになると全体が保存されない。`,
     inputSchema: {
       type: 'object',
       properties: {
@@ -506,20 +506,47 @@ export const MCP_TOOLS = [
                 type: 'string',
                 description: '話者名（セリフの行のみ。？？？で名前を伏せる。空文字で外す）',
               },
+              sprites: {
+                type: 'array',
+                description:
+                  'この行での立ち絵の指示（席ごと・話者とは独立）。指示した席だけ変わる。空配列でこの行の指示を外す',
+                items: {
+                  type: 'object',
+                  properties: {
+                    position: {
+                      type: 'string',
+                      enum: ['left', 'center', 'right', 'auto'],
+                      description:
+                        '席。省略・auto＝空いている席へ（中央→左→右。満席なら一番前から立っている人と交代）',
+                    },
+                    character: {
+                      type: 'string',
+                      description:
+                        '立たせる人物名（get_staging の「立ち絵」一覧にある人物）。空文字で position の席を下げる',
+                    },
+                    expression: {
+                      type: 'string',
+                      description:
+                        '表情（その人物の立ち絵にある表情から。省略＝立っていればそのまま・初めてなら既定の表情）',
+                    },
+                  },
+                  additionalProperties: false,
+                },
+              },
               expression: {
                 type: 'string',
                 description:
-                  '立ち絵の表情（get_staging の「立ち絵」一覧にある表情から。話者の付いたセリフの行ではその話者、appear を付けた行ではその人物の表情。空文字で外す＝既定の表情）',
+                  '旧式（sprites を使う）。舞台に立っている話者の表情を差し替える。空文字で外す',
               },
               appear: {
                 type: 'string',
                 description:
-                  '立ち絵の登場（人物名）。この行からその人物の立ち絵が舞台に入る（名前枠は出さない・地の文にも付けられる）。立ち絵のある人物のみ。空文字で外す',
+                  '旧式（sprites を使う）。人物名を渡すと空いている席に立たせる。空文字で外す',
               },
               hide_sprite: {
                 type: 'boolean',
                 description:
-                  'この行から立ち絵を出さない（次の場面の切れ目まで。人物ごと描いた一枚絵の背景に使う。話者名は出る。false で外す）',
+                  'この行で立ち絵を全員下げ、次の場面の切れ目まで出さない（人物ごと描いた一枚絵の背景に使う。話者名は出る。sprites で明示すれば戻る。false で外す）',
               },
               scene_break: {
                 type: 'boolean',

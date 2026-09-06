@@ -6,6 +6,8 @@ import {
   MASKED_SPEAKER,
   patchCue,
   removeCue,
+  type SpriteCue,
+  type SpritePosition,
   type Staging,
 } from '../game'
 import { type SpriteSource, spriteExpressionsOf, userAssetKey } from '../game/assets'
@@ -802,11 +804,22 @@ export function deletePlotItem(
 // 対象は work×episode の 1 レコード。行（block_id）単位のパッチで、一括置換はさせない
 // （プロットと同じ理由＝AI の一手ミスで全演出が消えないように）。
 
+/** set_staging の sprites 1 件ぶん（席・人物・表情。position は英語の語で受ける）。 */
+export interface StagingSpriteInput {
+  position?: string
+  character?: string
+  expression?: string
+}
+
 /** set_staging の cues 1 件ぶん（キーは JSON 入力の snake_case から変換済み）。 */
 export interface StagingCueInput {
   blockId: string
   speaker?: string
+  /** 席ごとの立ち絵の指示（空配列＝この行の指示を外す） */
+  sprites?: StagingSpriteInput[]
+  /** @deprecated 旧式（sprites を使う）。旧データの読み書きのために残す */
   expression?: string
+  /** @deprecated 旧式（sprites を使う） */
   appear?: string
   hideSprite?: boolean
   sceneBreak?: boolean
@@ -847,9 +860,35 @@ export function parseStagingCueInputs(raw: unknown): StagingCueInput[] {
     if (!blockId) {
       throw new McpEditError(`cues[${i}] に block_id がありません（get_staging の [block_id: …]）`)
     }
+    let sprites: StagingSpriteInput[] | undefined
+    if (o.sprites !== undefined) {
+      if (!Array.isArray(o.sprites)) {
+        throw new McpEditError(`cues[${i}].sprites は配列で渡してください`)
+      }
+      sprites = o.sprites.map((sp, j) => {
+        if (typeof sp !== 'object' || sp === null || Array.isArray(sp)) {
+          throw new McpEditError(`cues[${i}].sprites[${j}] がオブジェクトではありません`)
+        }
+        const so = sp as Record<string, unknown>
+        const sfield = (key: string): string | undefined => {
+          const v = so[key]
+          if (v === undefined) return undefined
+          if (typeof v !== 'string') {
+            throw new McpEditError(`cues[${i}].sprites[${j}].${key} は文字列で渡してください`)
+          }
+          return v
+        }
+        return {
+          position: sfield('position'),
+          character: sfield('character'),
+          expression: sfield('expression'),
+        }
+      })
+    }
     return {
       blockId,
       speaker: field('speaker'),
+      sprites,
       expression: field('expression'),
       appear: field('appear'),
       hideSprite: flag('hide_sprite'),
@@ -865,6 +904,14 @@ export function parseStagingCueInputs(raw: unknown): StagingCueInput[] {
 }
 
 const TRANSITION_CHOICES: readonly string[] = ['fade', 'cut', 'flash']
+/** 立ち絵の席（MCP では英語の語で受け、Cue には l / c / r で持つ）。auto＝空いている席へ。 */
+const SPRITE_POSITION_OF: Record<string, SpritePosition | undefined> = {
+  left: 'l',
+  center: 'c',
+  right: 'r',
+  auto: undefined,
+}
+const SPRITE_POSITION_CHOICES = Object.keys(SPRITE_POSITION_OF)
 /** 効果音の鳴らし方（once は「指定なし」と同じ）。 */
 const SE_REPEAT_CHOICES: readonly string[] = ['once', 'twice', 'loop']
 
@@ -909,6 +956,7 @@ export function setStagingCues(
       // 丸ごと外す（orphan の掃除も兼ねるので、行が消えていても cue があれば通す）。
       if (
         item.speaker !== undefined ||
+        item.sprites !== undefined ||
         item.expression !== undefined ||
         item.appear !== undefined ||
         item.hideSprite !== undefined ||
@@ -955,8 +1003,53 @@ export function setStagingCues(
       }
       patch.speaker = speaker
     }
+    if (item.sprites !== undefined) {
+      // 席ごとの立ち絵。空配列＝この行の指示を外す。人物は立ち絵のある人だけ、表情はその人の絵から
+      const sprites: SpriteCue[] = item.sprites.map((sp, j) => {
+        const where = `block_id "${item.blockId}": sprites[${j}]`
+        const position = emptyToUndef(sp.position) ?? 'auto'
+        if (!SPRITE_POSITION_CHOICES.includes(position)) {
+          throw new McpEditError(
+            `${where}: position は ${SPRITE_POSITION_CHOICES.join(' / ')} のいずれかです`,
+          )
+        }
+        const pos = SPRITE_POSITION_OF[position]
+        const character = emptyToUndef(sp.character)
+        const expression = emptyToUndef(sp.expression)
+        if (!character) {
+          if (!pos) {
+            throw new McpEditError(
+              `${where}: 席を下げるときは position（left / center / right）を渡してください`,
+            )
+          }
+          return { pos }
+        }
+        if (character === MASKED_SPEAKER) {
+          throw new McpEditError(
+            `${where}: ${MASKED_SPEAKER} は立ち絵に使えません（正体を伏せた人物には立ち絵を出さない）`,
+          )
+        }
+        const choices = spriteExpressionsOf(gameAssets, character)
+        if (choices.length === 0) {
+          throw new McpEditError(
+            `「${character}」の立ち絵がまだありません（アプリの「演出」画面で追加できます）`,
+          )
+        }
+        if (expression && !choices.includes(expression)) {
+          throw new McpEditError(
+            `表情 "${expression}" は「${character}」の立ち絵にありません（使える表情: ${choices.join('・')}）`,
+          )
+        }
+        return {
+          ...(pos ? { pos } : {}),
+          character,
+          ...(expression ? { expression } : {}),
+        }
+      })
+      patch.sprites = sprites.length > 0 ? sprites : undefined
+    }
     if (item.expression !== undefined) {
-      // 誰の表情かは併せて付いている話者／登場で決まる（下でまとめて検証する）
+      // 旧式：誰の表情かは併せて付いている話者／登場で決まる（下でまとめて検証する）
       patch.expression = emptyToUndef(item.expression)
     }
     if (item.appear !== undefined) {
@@ -1026,7 +1119,7 @@ export function setStagingCues(
     }
     if (Object.keys(patch).length === 0) {
       throw new McpEditError(
-        `block_id "${item.blockId}": 変更する項目がありません（speaker / expression / appear / hide_sprite / scene_break / bg / bgm /${GAME_FEATURES.se ? ' se / se_repeat /' : ''} transition / clear のいずれかを渡す）`,
+        `block_id "${item.blockId}": 変更する項目がありません（speaker / sprites / hide_sprite / scene_break / bg / bgm /${GAME_FEATURES.se ? ' se / se_repeat /' : ''} transition / clear のいずれかを渡す）`,
       )
     }
     staging = patchCue(staging, item.blockId, patch, now)

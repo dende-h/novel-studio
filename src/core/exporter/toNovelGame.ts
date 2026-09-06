@@ -1,16 +1,10 @@
-import {
-  applyCues,
-  BGM_STOP,
-  MASKED_SPEAKER,
-  plainTextOfBlock,
-  type Staging,
-  toPages,
-} from '../game'
+import { applyCues, BGM_STOP, plainTextOfBlock, type Staging, toPages } from '../game'
 import { gameAssetKey, pickSprite, type UserGameAsset } from '../game/assets'
 import { GAME_FEATURES } from '../game/features'
 import { buildGameCredits, DEFAULT_BG_KEY, presetBackground, presetBgSvg } from '../game/presets'
 import { presetSe, SE_STOP, type SeStep } from '../game/sePresets'
 import { presetSprite } from '../game/spritePresets'
+import { resolveStages } from '../game/stage'
 import { parseTemplateKey } from '../game/templates'
 import { dataUrlMime } from '../image'
 import type { Episode, Inline, Work } from '../schema'
@@ -299,13 +293,11 @@ export function buildNovelGameFiles(
   if (!fallback) throw new Error('既定背景プリセットが見つからない')
   const defaultEntry = resolveBg(opts.defaultBg ?? '') ?? fallback
 
-  // 立ち絵：話者に自動で紐づく舞台（最大2人・1人=中央/2人=左右。cue.expression は表情の指定だけ＝
-  //  話者の付いた行ではその話者の、そうでなければ登場（appear）する人物の表情）。
-  //  - 初登場は中央。2人目が来たら先客が左へ寄り、右に入る。3人目は「最近話していない方」と
-  //    交代し、席（左右）を引き継ぐ。同じ話者の表情替えはその場で差し替え。
-  //  - いま話している人物だけ明るい（a=1）。立ち絵の無い話者・？？？のセリフは**退場させず**
-  //    全員減光（画面外の声として扱う）。話者未設定のセリフ・地の文は据え置き（ちらつかせない）。
-  //  - 場面の切れ目（sceneBreak）で全員退場。
+  // 立ち絵：席（左・中央・右）ごとの指示を resolveStages で解く（演出エディタの続きレーンと同じ関数）。
+  //  - 話者は立ち絵を呼ばない（D-GAME-SPRITE-FREE）。話者が舞台にいればその人だけ明るい（a=1）。
+  //  - 誰も話していない・話者が舞台にいないときは、全員ふつうの明るさ（プレイヤーは a の付いた
+  //    人物がいるときだけ、それ以外を減光する）。
+  //  - 場面の切れ目・「出さない」で全員退場。
   const spriteAssets = (opts.userAssets ?? []).filter(
     (a) => a.kind === 'sprite' && (!inline || a.dataUrl),
   )
@@ -315,6 +307,8 @@ export function buildNovelGameFiles(
         ? `asset:${a.id}`
         : (a.dataUrl ?? '')
       : `assets/sprite/user-${a.id}.${IMAGE_EXT[a.mime] ?? 'img'}`
+  const stages =
+    spriteAssets.length > 0 ? resolveStages(pages, (c) => Boolean(pickSprite(spriteAssets, c))) : []
 
   // 使った背景・立ち絵だけを同梱する（キー→実体の整合は used が単一の真実）
   const used = new Map<string, BgEntry>([[defaultEntry.key, defaultEntry]])
@@ -324,38 +318,7 @@ export function buildNovelGameFiles(
   let current = ''
   /** いま鳴っている BGM のキー（'' ＝ 無音）。同じ曲の指定が続いても載せ直さない */
   let currentBgm = ''
-  interface Standing {
-    key: string
-    char: string
-    pos: 'l' | 'c' | 'r'
-    lastSpoke: number
-  }
-  let standing: Standing[] = []
-  let activeChar: string | null = null
-  /** 立ち絵を出さない区間か（hideSprite で入り、場面の切れ目か明示の登場で出る）。 */
-  let spritesHidden = false
   let lastStageMark = '[]'
-  /** 舞台へ入れる（席の割り当て共通則）。既に立っている人物は表情（key）だけ差し替える。 */
-  const enterStage = (key: string, char: string, at: number): void => {
-    const already = standing.find((s) => s.char === char)
-    if (already) {
-      already.key = key
-      already.lastSpoke = at
-      return
-    }
-    if (standing.length === 0) {
-      standing.push({ key, char, pos: 'c', lastSpoke: at })
-    } else if (standing.length === 1) {
-      const first = standing[0]
-      if (first) first.pos = 'l'
-      standing.push({ key, char, pos: 'r', lastSpoke: at })
-    } else {
-      const out = standing.reduce((a, b) => (a.lastSpoke <= b.lastSpoke ? a : b))
-      out.key = key
-      out.char = char
-      out.lastSpoke = at
-    }
-  }
   const scenarioPages = pages.map((page, index): ScenarioPage => {
     const block = blockById.get(page.blockId)
     const cueEntry = page.bg ? resolveBg(page.bg) : undefined
@@ -367,54 +330,20 @@ export function buildNovelGameFiles(
       if (cueEntry) used.set(cueEntry.key, cueEntry)
     }
     let stage: ScenarioStageEntry[] | undefined
-    if (spriteAssets.length > 0) {
-      if (page.sceneBreak) {
-        standing = []
-        activeChar = null
-        spritesHidden = false
-      }
-      // 立ち絵を出さない（hideSprite）：いま立っている人物も下ろす。人物ごと描いた一枚絵の
-      // 背景に立ち絵を重ねないための欄で、**次の場面の切れ目まで**話者の自動表示も止める。
-      if (page.hideSprite) {
-        standing = []
-        activeChar = null
-        spritesHidden = true
-      }
-      // 登場（appear）：セリフの前から立ち絵を出す。名前枠は出さず、明るくもしない。
-      // 既に立っている人物への appear は据え置き。ただし表情を明示した（expression・話者の無い行）
-      // ときだけは、その表情の絵に差し替える（明示は自動より強い）。
-      // 明示の指定なので、出さない区間もここで終わる（同じ場面でまた出したいときの戻り道）。
-      if (page.appear && page.appear !== MASKED_SPEAKER) {
-        spritesHidden = false
-        const appearExpression = page.speaker ? undefined : page.expression
-        if (appearExpression || !standing.some((s) => s.char === page.appear)) {
-          const chosen = pickSprite(spriteAssets, page.appear, appearExpression)
-          if (chosen) {
-            usedSprites.set(chosen.key, chosen)
-            enterStage(chosen.key, page.appear, index)
-          }
-        }
-      }
-      if (page.kind === 'dialogue' && page.speaker) {
-        const chosen =
-          !spritesHidden && page.speaker !== MASKED_SPEAKER
-            ? pickSprite(spriteAssets, page.speaker, page.expression)
-            : undefined
-        if (!chosen) {
-          activeChar = null
-        } else {
-          usedSprites.set(chosen.key, chosen)
-          enterStage(chosen.key, page.speaker, index)
-          activeChar = page.speaker
-        }
-      }
-      const mark = standing.map(
-        (s): ScenarioStageEntry => ({
-          k: s.key,
-          p: s.pos,
-          ...(s.char === activeChar ? { a: 1 as const } : {}),
-        }),
-      )
+    const step = stages[index]
+    if (step) {
+      const mark = step.seats.flatMap((seat): ScenarioStageEntry[] => {
+        const chosen = pickSprite(spriteAssets, seat.character, seat.expression)
+        if (!chosen) return []
+        usedSprites.set(chosen.key, chosen)
+        return [
+          {
+            k: chosen.key,
+            p: seat.pos,
+            ...(seat.character === step.active ? { a: 1 as const } : {}),
+          },
+        ]
+      })
       const serialized = JSON.stringify(mark)
       if (serialized !== lastStageMark) {
         stage = mark

@@ -10,6 +10,7 @@ import {
 import type { UserGameAsset } from '../game/assets'
 import { DEFAULT_EXPRESSION, spriteExpressionsOf, userAssetKey } from '../game/assets'
 import { GAME_FEATURES } from '../game/features'
+import { SPRITE_POSITION_LABELS } from '../game/stage'
 import {
   mergeBackgroundCatalog,
   mergeBgmCatalog,
@@ -120,7 +121,7 @@ export function stagingToPlainText(
     )
   }
 
-  // 立ち絵は話者から自動で出る。AI が選べるのは表情（expression）と登場（appear）
+  // 立ち絵は話者とは独立に、席ごとの指示（sprites）で出す
   const spriteCharacters = [
     ...new Set(
       gameAssets.filter((a) => a.kind === 'sprite' && a.character).map((a) => a.character),
@@ -134,10 +135,11 @@ export function stagingToPlainText(
       : ['- 立ち絵はまだありません（アプリの「演出」画面で追加できます）']
   sections.push(
     [
-      `立ち絵（話者を付けると自動で表示。表情は expression で指定・省略は「${DEFAULT_EXPRESSION}」。`,
-      'セリフの前から出すには、地の文の行に appear（登場・人物名）を付ける。',
-      'expression は話者の付いた行ではその話者の、appear だけの行ではその人物の表情。',
-      '人物ごと描いた一枚絵の背景では hide_sprite で出さない）:',
+      '立ち絵（話者とは独立。sprites に席ごとの指示を渡す＝',
+      '[{ position: left / center / right / auto, character: 人物名, expression: 表情名 }]。',
+      `3 人まで。指示した席だけ変わり、次の指示か場面の切れ目・hide_sprite まで立ち続ける。`,
+      `表情は省略＝立っていればそのまま、初めてなら「${DEFAULT_EXPRESSION}」。character を空にして position を渡すとその席を下げる。`,
+      '話者を付けても立ち絵は出ない。話者が舞台に立っていればその人だけ明るくなる）:',
       ...spriteLines,
     ].join('\n'),
   )
@@ -149,6 +151,19 @@ export function stagingToPlainText(
 function cueSummary(cue: Cue): string {
   const parts: string[] = []
   if (cue.speaker) parts.push(`話者=${cue.speaker}`)
+  if (cue.sprites) {
+    parts.push(
+      cue.sprites.length === 0
+        ? '立ち絵=指示なし'
+        : `立ち絵=${cue.sprites
+            .map((sp) => {
+              const seat = sp.pos ? SPRITE_POSITION_LABELS[sp.pos] : '自動'
+              if (!sp.character) return `${seat}:下げる`
+              return `${seat}:${sp.character}${sp.expression ? `（${sp.expression}）` : ''}`
+            })
+            .join('・')}`,
+    )
+  }
   if (cue.expression) parts.push(`表情=${cue.expression}`)
   if (cue.appear) parts.push(`登場=${cue.appear}`)
   if (cue.hideSprite) parts.push('立ち絵なし')

@@ -96,15 +96,23 @@ describe('stagingToPlainText（MCP 向け演出譜テキスト）', () => {
     const staging: Staging = {
       workId: 'w1',
       episodeId: 'e1',
-      cues: [{ blockId: 'b2', speaker: '灯', expression: '笑顔' }],
+      cues: [
+        {
+          blockId: 'b2',
+          speaker: '灯',
+          sprites: [{ pos: 'l', character: '灯', expression: '笑顔' }],
+        },
+        { blockId: 'b5', sprites: [{ pos: 'l' }, { character: '灯' }] },
+      ],
       updatedAt: 1,
     }
     const text = stagingToPlainText(work(), episode(), staging, [
       sprite('sp1', '通常', 1),
       sprite('sp2', '笑顔', 2),
     ])
-    expect(text).toContain('【話者=灯／表情=笑顔】')
-    expect(text).toContain('立ち絵（話者を付けると自動で表示')
+    expect(text).toContain('【話者=灯／立ち絵=左:灯（笑顔）】')
+    expect(text).toContain('【立ち絵=左:下げる・自動:灯】')
+    expect(text).toContain('立ち絵（話者とは独立。sprites に席ごとの指示を渡す')
     expect(text).toContain('- 灯 … 表情: 通常／笑顔')
     // 立ち絵は背景キーの一覧には混ざらない
     expect(text).not.toContain('- user:sp1')
@@ -112,9 +120,9 @@ describe('stagingToPlainText（MCP 向け演出譜テキスト）', () => {
     expect(stagingToPlainText(work(), episode(), undefined, [])).toContain('立ち絵はまだありません')
   })
 
-  it('表情は話者の行ではその話者、登場だけの行ではその人物のものだと案内する', () => {
+  it('話者を付けても立ち絵は出ない・席は 3 つ、と案内する', () => {
     expect(stagingToPlainText(work(), episode(), undefined, [])).toContain(
-      'expression は話者の付いた行ではその話者の、appear だけの行ではその人物の表情',
+      '話者を付けても立ち絵は出ない。話者が舞台に立っていればその人だけ明るくなる',
     )
   })
 
