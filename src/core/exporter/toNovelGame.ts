@@ -1,9 +1,15 @@
-import { applyCues, MASKED_SPEAKER, plainTextOfBlock, type Staging, toPages } from '../game'
+import {
+  applyCues,
+  BGM_STOP,
+  MASKED_SPEAKER,
+  plainTextOfBlock,
+  type Staging,
+  toPages,
+} from '../game'
 import { gameAssetKey, pickSprite, type UserGameAsset } from '../game/assets'
 import { GAME_FEATURES } from '../game/features'
 import { buildGameCredits, DEFAULT_BG_KEY, presetBackground, presetBgSvg } from '../game/presets'
 import { presetSe, SE_STOP, type SeStep } from '../game/sePresets'
-import { presetSprite } from '../game/spritePresets'
 import { parseTemplateKey } from '../game/templates'
 import { dataUrlMime } from '../image'
 import type { Episode, Inline, Work } from '../schema'
@@ -43,9 +49,13 @@ export interface NovelGameUserAsset {
   data: Uint8Array
   /**
    * 省略は 'bg'（持ち込み背景しか無かったころの呼び出しと互換）。
-   * 'se' は運営テンプレの効果音ファイル（目録の実体・`preset` 必須・キーは `preset:se/<slug>`）
+   * 'se' は運営テンプレの効果音ファイル（目録の実体・`preset` 必須・キーは `preset:se/<slug>`）、
+   * 'bgm' は運営テンプレの BGM（同じく `preset` 必須・キーは `preset:bgm/<slug>`）
    */
-  kind?: 'bg' | 'sprite' | 'se'
+  kind?: 'bg' | 'sprite' | 'se' | 'bgm'
+  /** BGM のみ：ループ区間（秒・目録のメタデータ）。省略＝曲ぜんたい */
+  loopStart?: number
+  loopEnd?: number
   /** 立ち絵のみ：この立ち絵の人物（Cue.speaker と突き合わせ） */
   character?: string
   /** 立ち絵のみ：表情名（省略は「通常」扱い） */
@@ -269,6 +279,21 @@ export function buildNovelGameFiles(
       : undefined
   }
 
+  // BGM：運営テンプレの曲（目録の実体・`preset` 付き）だけ。組み込みの控えは無い＝未知キーは無視
+  const bgmByKey = new Map(
+    (opts.userAssets ?? [])
+      .filter((a) => a.kind === 'bgm' && (!inline || a.dataUrl))
+      .map((a) => [a.key, a]),
+  )
+  const bgmPathOf = (a: NovelGameUserAsset) => {
+    const tplSlug = a.preset ? parseTemplateKey(a.preset)?.slug : undefined
+    return inline
+      ? inline.externalAssets
+        ? `asset:${a.id}`
+        : (a.dataUrl ?? '')
+      : `assets/bgm/${tplSlug ?? `user-${a.id}`}.${IMAGE_EXT[a.mime] ?? 'bin'}`
+  }
+
   const fallback = resolveBg(DEFAULT_BG_KEY)
   if (!fallback) throw new Error('既定背景プリセットが見つからない')
   const defaultEntry = resolveBg(opts.defaultBg ?? '') ?? fallback
@@ -294,7 +319,10 @@ export function buildNovelGameFiles(
   const used = new Map<string, BgEntry>([[defaultEntry.key, defaultEntry]])
   const usedSprites = new Map<string, NovelGameUserAsset>()
   const usedSes = new Map<string, SeEntry>()
+  const usedBgms = new Map<string, NovelGameUserAsset>()
   let current = ''
+  /** いま鳴っている BGM のキー（'' ＝ 無音）。同じ曲の指定が続いても載せ直さない */
+  let currentBgm = ''
   interface Standing {
     key: string
     char: string
@@ -398,6 +426,22 @@ export function buildNovelGameFiles(
     const stopSe = GAME_FEATURES.se && page.se === SE_STOP
     const se = GAME_FEATURES.se && page.se && !stopSe ? resolveSe(page.se) : undefined
     if (se) usedSes.set(se.key, se)
+    // BGM：曲が変わるページにだけ載せる（背景と同じ扱い＝場面の切れ目では止まらない）。
+    // 「止める」は鳴っているときだけ載せる。未知キー（手元に無い曲）は無視して壊さない
+    let bgm: string | undefined
+    if (page.bgm === BGM_STOP) {
+      if (currentBgm) {
+        bgm = BGM_STOP
+        currentBgm = ''
+      }
+    } else if (page.bgm) {
+      const track = bgmByKey.get(page.bgm)
+      if (track && track.key !== currentBgm) {
+        usedBgms.set(track.key, track)
+        bgm = track.key
+        currentBgm = track.key
+      }
+    }
     return {
       id: page.blockId,
       kind: page.kind,
@@ -409,6 +453,7 @@ export function buildNovelGameFiles(
       ...(stage !== undefined ? { stage } : {}),
       ...(stopSe ? { se: SE_STOP } : se ? { se: se.key } : {}),
       ...(se && page.seRepeat ? { seRepeat: page.seRepeat } : {}),
+      ...(bgm ? { bgm } : {}),
       units: unitsOfInlines(block?.inlines ?? []),
       text: block ? plainTextOfBlock(block) : '',
     }
@@ -416,6 +461,7 @@ export function buildNovelGameFiles(
 
   const usedList = [...used.values()]
   const usedSpriteList = [...usedSprites.values()]
+  const usedBgmList = [...usedBgms.values()]
   const scenario: GameScenario = {
     v: 1,
     workTitle: work.title,
@@ -450,19 +496,31 @@ export function buildNovelGameFiles(
           ),
         }
       : {}),
+    ...(usedBgmList.length > 0
+      ? {
+          bgms: Object.fromEntries(
+            usedBgmList.map((a) => [
+              a.key,
+              {
+                label: a.label,
+                src: bgmPathOf(a),
+                ...(a.loopStart !== undefined ? { loopStart: a.loopStart } : {}),
+                ...(a.loopEnd !== undefined ? { loopEnd: a.loopEnd } : {}),
+              },
+            ]),
+          ),
+        }
+      : {}),
     ...(opts.font ? { fontSrc: FONT_PATH } : inline?.fontHref ? { fontSrc: inline.fontHref } : {}),
     credits: buildGameCredits({
       bgLabels: usedList.filter((e) => e.credit).map((e) => e.label),
       // テンプレ立ち絵だけ運営素材としてクレジットに載せる（重複は畳む）
       spriteLabels: [
-        ...new Set(
-          usedSpriteList
-            .filter((a) => a.preset)
-            .map((a) => (a.preset ? (presetSprite(a.preset)?.label ?? 'シルエット') : '')),
-        ),
-      ].filter(Boolean),
+        ...new Set(usedSpriteList.filter((a) => a.preset).map((a) => templateSpriteLabelOf(a))),
+      ],
       seLabels: [...usedSes.values()].filter((s) => s.steps).map((s) => s.label),
       seFileLabels: [...usedSes.values()].filter((s) => !s.steps).map((s) => s.label),
+      bgmLabels: usedBgmList.map((a) => a.label),
       fontEmbedded: Boolean(opts.font) || Boolean(inline?.fontHref),
     }),
     pages: scenarioPages,
@@ -485,7 +543,22 @@ export function buildNovelGameFiles(
     ...[...usedSes.values()].flatMap((s) =>
       s.path && s.data ? [{ path: s.path, data: s.data }] : [],
     ),
+    ...usedBgmList.map((a) => ({ path: bgmPathOf(a), data: a.data })),
   ]
+}
+
+/**
+ * テンプレ立ち絵のクレジット表記。割り当て時の素材名は `<人物>（<テンプレの表示名>）` なので、
+ * 人物の名前を外して表示名だけを載せる（組み込みの表は無い＝目録の表示名がここに残っている）。
+ * 形が違えば素材名そのもの、無ければキーの slug に倒す。
+ */
+function templateSpriteLabelOf(a: NovelGameUserAsset): string {
+  if (a.character && a.label.startsWith(`${a.character}（`) && a.label.endsWith('）')) {
+    const inner = a.label.slice(a.character.length + 1, -1)
+    if (inner) return inner
+  }
+  if (a.label) return a.label
+  return (a.preset ? parseTemplateKey(a.preset)?.slug : undefined) ?? 'テンプレ立ち絵'
 }
 
 /**
@@ -519,6 +592,8 @@ export function buildNovelGameHtml(
     ...(a.character ? { character: a.character } : {}),
     ...(a.expression ? { expression: a.expression } : {}),
     ...(a.preset ? { preset: a.preset } : {}),
+    ...(a.loopStart !== undefined ? { loopStart: a.loopStart } : {}),
+    ...(a.loopEnd !== undefined ? { loopEnd: a.loopEnd } : {}),
     createdAt: a.createdAt,
     dataUrl: a.dataUrl,
   }))

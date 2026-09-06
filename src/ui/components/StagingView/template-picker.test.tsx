@@ -4,6 +4,7 @@ import { PRESET_SES } from '@/core/game/sePresets'
 import {
   EMPTY_TEMPLATE_MANIFEST,
   mergeBackgroundCatalog,
+  mergeBgmCatalog,
   mergeSeCatalog,
   type TemplateEntry,
 } from '@/core/game/templates'
@@ -11,6 +12,13 @@ import { TemplatePicker } from './template-picker'
 
 const sePlayer = vi.hoisted(() => ({ playCatalogSe: vi.fn(), playPresetSe: vi.fn() }))
 vi.mock('@/ui/_utils/sePlayer', () => sePlayer)
+const bgmPlayer = vi.hoisted(() => ({
+  toggleCatalogBgm: vi.fn(),
+  isCatalogBgmPreviewing: () => false,
+  subscribeBgmPreview: () => () => {},
+  bgmPreviewingUrl: () => null,
+}))
+vi.mock('@/ui/_utils/bgmPlayer', () => bgmPlayer)
 
 const entry = (slug: string, over: Partial<TemplateEntry> = {}): TemplateEntry => ({
   kind: 'bg',
@@ -29,7 +37,7 @@ describe('TemplatePicker', () => {
   it('分類のタブで絞り、選ぶとキーが返って閉じる。非表示は出ない', () => {
     const manifest = {
       ...EMPTY_TEMPLATE_MANIFEST,
-      categories: { bg: { school: '学校' }, sprite: {}, se: {} },
+      categories: { bg: { school: '学校' }, sprite: {}, se: {}, bgm: {} },
       entries: [
         entry('school-hall-day', { label: '学校の廊下（昼）', time: 'day' }),
         entry('school-gate-night', { label: '校門（夜）', time: 'night' }),
@@ -97,6 +105,48 @@ describe('TemplatePicker', () => {
     fireEvent.click(screen.getByRole('button', { name: /強い雨 4\.2 秒/ }))
     expect(onPick).toHaveBeenCalledWith(
       expect.objectContaining({ key: 'preset:se/weather-rain-heavy' }),
+    )
+  })
+
+  it('BGM は一覧（▶ 試聴つき）。曲調で絞れ、長さは 分:秒 で出る', () => {
+    const manifest = {
+      ...EMPTY_TEMPLATE_MANIFEST,
+      categories: { bg: {}, sprite: {}, se: {}, bgm: {} },
+      entries: [
+        entry('bgm-calm-morning', {
+          kind: 'bgm',
+          label: '朝',
+          category: 'calm',
+          mime: 'audio/mpeg',
+          durationMs: 92_000,
+        }),
+        entry('bgm-tense-chase', {
+          kind: 'bgm',
+          label: '追走',
+          category: 'tense',
+          mime: 'audio/mpeg',
+        }),
+      ],
+    }
+    const onPick = vi.fn()
+    render(
+      <TemplatePicker
+        open
+        onOpenChange={() => {}}
+        kind="bgm"
+        items={mergeBgmCatalog(manifest)}
+        manifest={manifest}
+        onPick={onPick}
+      />,
+    )
+    expect(screen.getByRole('tab', { name: /日常/ })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: '朝を試聴' }))
+    expect(bgmPlayer.toggleCatalogBgm).toHaveBeenCalledWith(
+      expect.objectContaining({ key: 'preset:bgm/bgm-calm-morning' }),
+    )
+    fireEvent.click(screen.getByRole('button', { name: /朝 日常 1:32/ }))
+    expect(onPick).toHaveBeenCalledWith(
+      expect.objectContaining({ key: 'preset:bgm/bgm-calm-morning' }),
     )
   })
 })

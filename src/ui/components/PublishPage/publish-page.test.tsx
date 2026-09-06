@@ -299,7 +299,7 @@ describe('話ごとのサウンドノベル', () => {
 
     expect(
       // 効果音を出さない版（GAME_FEATURES.se＝false）の文言
-      await screen.findByText(/話には演出（話者・背景・立ち絵）がまだありません/),
+      await screen.findByText(/話には演出（話者・背景・立ち絵・BGM）がまだありません/),
     ).toBeInTheDocument()
   })
 

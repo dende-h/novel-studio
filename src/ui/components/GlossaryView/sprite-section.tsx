@@ -7,7 +7,7 @@ import {
   importVerdict,
   type UserGameAsset,
 } from '@/core/game/assets'
-import type { CatalogSprite } from '@/core/game/templates'
+import { type CatalogSprite, visibleTemplates } from '@/core/game/templates'
 import type { GameAssetRepository } from '@/core/storage/gameAssetRepository'
 import { gameSpriteToDataUrl } from '@/ui/_utils/imageResizer'
 import { useAuth } from '@/ui/auth/auth-context'
@@ -278,15 +278,17 @@ export function SpriteSection({ name, aliases, assetRepo }: SpriteSectionProps) 
           >
             立ち絵を追加…
           </Button>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="text-primary"
-            onClick={() => setPickerOpen((v) => !v)}
-          >
-            テンプレから選ぶ…
-          </Button>
+          {visibleTemplates(templateSprites).length > 0 ? (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="text-primary"
+              onClick={() => setPickerOpen((v) => !v)}
+            >
+              テンプレから選ぶ…
+            </Button>
+          ) : null}
           <Button
             type="button"
             variant="ghost"

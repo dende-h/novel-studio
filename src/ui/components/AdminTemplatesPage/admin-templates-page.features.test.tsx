@@ -19,6 +19,13 @@ vi.mock('@/ui/_utils/audioMeta', () => ({
   audioDurationMs: async () => 4200,
 }))
 vi.mock('@/ui/_utils/sePlayer', () => ({ playCatalogSe: vi.fn(), playPresetSe: vi.fn() }))
+const bgmPlayer = vi.hoisted(() => ({
+  toggleCatalogBgm: vi.fn(),
+  isCatalogBgmPreviewing: () => false,
+  subscribeBgmPreview: () => () => {},
+  bgmPreviewingUrl: () => null,
+}))
+vi.mock('@/ui/_utils/bgmPlayer', () => bgmPlayer)
 vi.mock('@/ui/_utils/imageResizer', () => ({
   gameBgToDataUrl: async () => ({
     dataUrl: 'data:image/webp;base64,UklGRg==',
@@ -34,7 +41,7 @@ vi.mock('@/ui/_utils/imageResizer', () => ({
 const empty: TemplateManifest = {
   v: 1,
   updatedAt: 1,
-  categories: { bg: {}, sprite: {}, se: {} },
+  categories: { bg: {}, sprite: {}, se: {}, bgm: {} },
   entries: [],
 }
 
@@ -50,6 +57,7 @@ describe('AdminTemplatesPage — 効果音を出さない版（GAME_FEATURES.se�
     render(<AdminTemplatesPage getToken={async () => 'jwt'} />)
     expect(await screen.findByRole('button', { name: /背景（画像 0）/ })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /立ち絵（画像 0）/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /BGM（曲 0）/ })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /効果音/ })).not.toBeInTheDocument()
     expect(screen.queryByText(/分類-音\.mp3/)).not.toBeInTheDocument()
 
@@ -57,11 +65,16 @@ describe('AdminTemplatesPage — 効果音を出さない版（GAME_FEATURES.se�
       target: { files: [new File(['a'], 'weather-rain-heavy.mp3', { type: 'audio/mpeg' })] },
     })
     expect(
-      await screen.findByText(/weather-rain-heavy\.mp3：効果音はいまは受け付けていません/),
+      await screen.findByText(
+        /weather-rain-heavy\.mp3：効果音はいまは受け付けていません（BGM なら/,
+      ),
     ).toBeInTheDocument()
     await waitFor(() => expect(api.adminPutTemplate).not.toHaveBeenCalled())
-    // ファイル選択の窓も音を勧めない（拒むだけでなく、はじめから出さない）
-    expect(screen.getByLabelText('テンプレ画像を選ぶ')).toHaveAttribute('accept', 'image/*')
+    // 音声は BGM のために受け付ける（bgm- で始まらない音声は上で断る）
+    expect(screen.getByLabelText('テンプレ画像を選ぶ')).toHaveAttribute(
+      'accept',
+      'image/*,audio/mpeg,audio/mp4,.mp3,.m4a',
+    )
   })
 
   it('TSV に効果音の行が混ざっていても、下書きに入れずに数えて知らせる', async () => {

@@ -1,7 +1,9 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { FREE_IMPORT_LIMIT, type UserGameAsset } from '@/core/game/assets'
+import { EMPTY_TEMPLATE_MANIFEST, type TemplateEntry } from '@/core/game/templates'
 import type { GameAssetRepository } from '@/core/storage/gameAssetRepository'
+import { setTemplateCatalog } from '@/ui/game/template-catalog'
 import { SpriteSection } from './sprite-section'
 
 // happy-dom は canvas 非対応のため、リサイズは固定値を返す疑似実装に差し替える
@@ -22,8 +24,26 @@ const hostApi = vi.hoisted(() => ({
 vi.mock('@/ui/_api/game-assets', () => hostApi)
 vi.mock('@/ui/_api/game-templates', () => ({
   fetchTemplateManifest: async () => null,
-  fetchTemplateBytes: async () => null,
+  fetchTemplateBytes: async () => ({ bytes: new Uint8Array([1, 2, 3]), mime: 'image/webp' }),
 }))
+
+/** 目録のテンプレ立ち絵（テストごとに差し込み、終わったら消す）。 */
+const spriteTemplate = (slug: string, label: string): TemplateEntry => ({
+  kind: 'sprite',
+  slug,
+  label,
+  category: slug.replace(/^silhouette-/, ''),
+  tone: ['#000000', '#000000', '#000000'],
+  mime: 'image/webp',
+  bytes: 1,
+  hash: 'h',
+  updatedAt: 1,
+})
+
+afterEach(() => {
+  setTemplateCatalog(null)
+  localStorage.removeItem('ns-game-templates')
+})
 
 beforeEach(() => {
   hostApi.listHostedAssets.mockReset().mockResolvedValue([])
@@ -107,7 +127,21 @@ describe('用語集の立ち絵欄（SpriteSection）', () => {
     })
   })
 
-  it('テンプレから選ぶとシルエットが割り当てられ、選び直しは差し替えになる', async () => {
+  it('目録にテンプレ立ち絵が無ければ「テンプレから選ぶ…」は出ない（組み込みのシルエットは無い）', async () => {
+    const { repo } = memoryAssetRepo()
+    render(<SpriteSection name="灯" aliases={[]} assetRepo={repo} />)
+    expect(await screen.findByRole('button', { name: '立ち絵を追加…' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'テンプレから選ぶ…' })).not.toBeInTheDocument()
+  })
+
+  it('テンプレから選ぶと目録の立ち絵が割り当てられ、選び直しは差し替えになる', async () => {
+    setTemplateCatalog({
+      ...EMPTY_TEMPLATE_MANIFEST,
+      entries: [
+        spriteTemplate('silhouette-woman', 'シルエット（女性）'),
+        spriteTemplate('silhouette-girl', 'シルエット（少女）'),
+      ],
+    })
     const { repo, map } = memoryAssetRepo()
     render(<SpriteSection name="灯" aliases={[]} assetRepo={repo} />)
     fireEvent.click(await screen.findByRole('button', { name: 'テンプレから選ぶ…' }))

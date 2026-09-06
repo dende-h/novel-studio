@@ -9,7 +9,7 @@ import {
 } from 'lucide-react'
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { GAME_FEATURES } from '@/core/game/features'
-import { mergeBackgroundCatalog, mergeSeCatalog } from '@/core/game/templates'
+import { mergeBackgroundCatalog, mergeBgmCatalog, mergeSeCatalog } from '@/core/game/templates'
 import {
   MAX_DESCRIPTION_LENGTH,
   PLATFORM_GENRES,
@@ -46,8 +46,10 @@ import { createAssetHostingApi, pullHostedAssets } from '@/ui/game/asset-hosting
 import {
   loadTemplateCatalog,
   resolveTemplateBackgrounds,
+  resolveTemplateBgms,
   resolveTemplateSes,
   templateBgKeysOf,
+  templateBgmKeysOf,
   templateSeKeysOf,
 } from '@/ui/game/template-catalog'
 
@@ -317,17 +319,32 @@ export function PublishPage({
           mergeSeCatalog(manifest),
           { fallback: 'none' },
         )
-        if (templates.missing.length > 0 || templateSes.missing.length > 0) {
+        // BGM（運営のオリジナル曲）も同じ経路で作品ぶん 1 回だけ載せる（音声なので契約 v6）
+        const templateBgms = await resolveTemplateBgms(
+          templateBgmKeysOf(selectedStagings),
+          mergeBgmCatalog(manifest),
+          { fallback: 'none' },
+        )
+        if (
+          templates.missing.length > 0 ||
+          templateSes.missing.length > 0 ||
+          templateBgms.missing.length > 0
+        ) {
           setResult({
             ok: false,
-            message: `テンプレ素材（背景${GAME_FEATURES.se ? '・効果音' : ''}）を取得できませんでした。通信環境を確認して、もう一度お試しください`,
+            message: `テンプレ素材（背景・BGM${GAME_FEATURES.se ? '・効果音' : ''}）を取得できませんでした。通信環境を確認して、もう一度お試しください`,
           })
           setPending(false)
           return
         }
         gameInput = {
           stagings,
-          gameAssets: [...(await gameAssetRepo.list()), ...templates.assets, ...templateSes.assets],
+          gameAssets: [
+            ...(await gameAssetRepo.list()),
+            ...templates.assets,
+            ...templateSes.assets,
+            ...templateBgms.assets,
+          ],
         }
       } else if (work.platform?.novelGame === true) {
         gameInput = { stagings: [], gameAssets: [], enabled: false }
@@ -477,7 +494,7 @@ export function PublishPage({
                 </p>
                 {unstagedGameCount > 0 ? (
                   <p className="mt-1.5 text-[12px] text-on-surface-variant/70 tabular-nums">
-                    そのうち {unstagedGameCount} 話には演出（話者・背景・立ち絵
+                    そのうち {unstagedGameCount} 話には演出（話者・背景・立ち絵・BGM
                     {GAME_FEATURES.se ? '・効果音' : ''}
                     ）がまだありません。黒い画面に本文が出る形で進みます。
                   </p>

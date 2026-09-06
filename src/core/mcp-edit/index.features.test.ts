@@ -52,7 +52,7 @@ describe('mcp-edit — 効果音を出さない版（GAME_FEATURES.se＝false）
 
   it('「変更する項目がありません」の案内に se を載せない', () => {
     expect(() => setStagingCues([], [work()], 'w1', 'e1', [{ blockId: 'b1' }], [], 100)).toThrow(
-      /scene_break \/ bg \/ transition \/ clear/,
+      /scene_break \/ bg \/ bgm \/ transition \/ clear/,
     )
   })
 })

@@ -2,6 +2,7 @@ import { Images, Play, Trash2 } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   applyCues,
+  BGM_STOP,
   type Cue,
   emptyStaging,
   findOrphanCues,
@@ -27,7 +28,13 @@ import {
 import { type PageContinuity, resolveContinuity } from '@/core/game/continuity'
 import { GAME_FEATURES } from '@/core/game/features'
 import { SE_STOP, type SeRepeat } from '@/core/game/sePresets'
-import type { CatalogBackground, CatalogSe, CatalogSprite } from '@/core/game/templates'
+import {
+  type CatalogBackground,
+  type CatalogBgm,
+  type CatalogSe,
+  type CatalogSprite,
+  visibleTemplates,
+} from '@/core/game/templates'
 import { PERSON_CATEGORY } from '@/core/glossary'
 import type { Work } from '@/core/schema'
 import type { GameAssetRepository } from '@/core/storage/gameAssetRepository'
@@ -53,6 +60,7 @@ import { AssetManager, uploadNoticeOf } from './asset-manager'
 import {
   AppearHelp,
   BgHelp,
+  BgmHelp,
   ContinuityHelp,
   HideSpriteHelp,
   SceneBreakHelp,
@@ -62,7 +70,7 @@ import {
   TransitionHelp,
 } from './field-helps'
 import { StagingPreviewDialog } from './preview-dialog'
-import { TemplatePicker } from './template-picker'
+import { BgmPreviewButton, TemplatePicker } from './template-picker'
 
 /**
  * 演出エディタ（サウンドノベルの Staging・G1）。設計は docs/requirement/07-novel-game.md §3。
@@ -102,8 +110,14 @@ function seLabelOf(key: string, ses: readonly CatalogSe[]): string {
   return ses.find((s) => s.key === key)?.label ?? key
 }
 
+/** BGM キーの表示名（目録 → 予約キー → キーそのもの）。 */
+function bgmLabelOf(key: string, bgms: readonly CatalogBgm[]): string {
+  if (key === BGM_STOP) return '止める'
+  return bgms.find((b) => b.key === key)?.label ?? key
+}
+
 /**
- * 続きレーン 1 本ぶん（背景・立ち絵・環境音）。行の左に立ち、**効いている間ずっと**伸びる。
+ * 続きレーン 1 本ぶん（背景・立ち絵・BGM・環境音）。行の左に立ち、**効いている間ずっと**伸びる。
  * 始まった行には頭に点を打つ。何が続いているかは title（ホバー）で言葉にする。
  */
 function ContinuityLane({
@@ -138,6 +152,7 @@ function ContinuityLane({
 const LANE_COLORS = {
   bg: 'bg-forest-600',
   sprite: 'bg-wheat-500',
+  bgm: 'bg-primary/70',
   se: 'bg-on-surface-variant/60',
 } as const
 
@@ -147,8 +162,9 @@ function laneTitles(
   assets: UserGameAsset[],
   backgrounds: readonly CatalogBackground[],
   ses: readonly CatalogSe[],
-): { bg: string; sprite: string; se: string } {
-  if (!cont) return { bg: '', sprite: '', se: '' }
+  bgms: readonly CatalogBgm[],
+): { bg: string; sprite: string; bgm: string; se: string } {
+  if (!cont) return { bg: '', sprite: '', bgm: '', se: '' }
   return {
     bg: `背景：${bgLabelOf(cont.bg, assets, backgrounds) ?? cont.bg}`,
     sprite: cont.hidden
@@ -156,6 +172,7 @@ function laneTitles(
       : cont.standing.length > 0
         ? `立ち絵：${cont.standing.join('・')}`
         : '立ち絵：なし',
+    bgm: cont.bgm ? `BGM：${bgmLabelOf(cont.bgm, bgms)}` : 'BGM：なし',
     se: cont.loopSe ? `環境音：${seLabelOf(cont.loopSe, ses)}` : '環境音：なし',
   }
 }
@@ -210,10 +227,14 @@ export default function StagingView({ repo, work, currentEpisodeId, assetRepo }:
   const [assetError, setAssetError] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   // 運営テンプレの目録（無ければ組み込みの SVG だけ）。表示名・プレビュー・一覧に使う
-  const { backgrounds, sprites, ses, manifest: templateManifest } = useTemplateCatalog()
+  const { backgrounds, sprites, ses, bgms, manifest: templateManifest } = useTemplateCatalog()
   const [bgPickerOpen, setBgPickerOpen] = useState(false)
   const [sePickerOpen, setSePickerOpen] = useState(false)
+  const [bgmPickerOpen, setBgmPickerOpen] = useState(false)
   const seOf = (key: string) => ses.find((s) => s.key === key)
+  const bgmOf = (key: string) => bgms.find((b) => b.key === key)
+  // テンプレ立ち絵は目録だけ（組み込みの控えは無い）。1 枚も無ければ「テンプレから選ぶ」を出さない
+  const hasTemplateSprites = visibleTemplates(sprites).length > 0
   // クラウド保管（R2 ホスティング・会員のみ）。ローカルが正で、クラウドは端末間で運ぶ控え。
   const auth = useAuth()
   const member = auth.status === 'member'
@@ -620,15 +641,17 @@ export default function StagingView({ repo, work, currentEpisodeId, assetRepo }:
             >
               立ち絵を追加…
             </Button>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="text-primary"
-              onClick={() => setSpritePickerOpen((v) => !v)}
-            >
-              テンプレから選ぶ…
-            </Button>
+            {hasTemplateSprites ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="text-primary"
+                onClick={() => setSpritePickerOpen((v) => !v)}
+              >
+                テンプレから選ぶ…
+              </Button>
+            ) : null}
           </div>
         )}
         <TemplatePicker
@@ -685,7 +708,7 @@ export default function StagingView({ repo, work, currentEpisodeId, assetRepo }:
           <div>
             <h2 className="font-serif text-primary text-xl">演出（サウンドノベル）</h2>
             <p className="mt-0.5 text-on-surface-variant text-xs">
-              話者・背景・場面の切れ目を行ごとに付けます。付けた演出は、書き出しの「サウンドノベル」で使われます。本文は変わりません。
+              話者・背景・BGM・場面の切れ目を行ごとに付けます。付けた演出は、書き出しの「サウンドノベル」で使われます。本文は変わりません。
             </p>
           </div>
           <Button
@@ -744,7 +767,7 @@ export default function StagingView({ repo, work, currentEpisodeId, assetRepo }:
                     className="flex items-center justify-between gap-3 rounded border border-outline-variant/30 px-2 py-1.5 text-xs"
                   >
                     <span className="min-w-0 truncate text-on-surface-variant">
-                      {describeCue(cue, assets, backgrounds, ses)}
+                      {describeCue(cue, assets, backgrounds, ses, bgms)}
                     </span>
                     <Button
                       type="button"
@@ -783,6 +806,10 @@ export default function StagingView({ repo, work, currentEpisodeId, assetRepo }:
                   />
                   立ち絵
                 </span>
+                <span className="flex items-center gap-1">
+                  <span className={cn('h-3 w-[3px] rounded-full', LANE_COLORS.bgm)} aria-hidden />
+                  BGM
+                </span>
                 {GAME_FEATURES.se ? (
                   <span className="flex items-center gap-1">
                     <span className={cn('h-3 w-[3px] rounded-full', LANE_COLORS.se)} aria-hidden />
@@ -795,7 +822,7 @@ export default function StagingView({ repo, work, currentEpisodeId, assetRepo }:
                 {staged.map((page, index) => {
                   const active = page.blockId === selectedId
                   const cont = continuity[index]
-                  const titles = laneTitles(cont, assets, backgrounds, ses)
+                  const titles = laneTitles(cont, assets, backgrounds, ses, bgms)
                   const bgLabel = page.bg ? bgLabelOf(page.bg, assets, backgrounds) : undefined
                   const suggested = suggestions.has(page.blockId) && !page.sceneBreak
                   return (
@@ -834,7 +861,7 @@ export default function StagingView({ repo, work, currentEpisodeId, assetRepo }:
                         >
                           {page.kind === 'dialogue' ? 'セリフ' : '地の文'}
                         </span>
-                        {/* 続きレーン：背景・立ち絵・環境音が「どこから どこまで」効いているか */}
+                        {/* 続きレーン：背景・立ち絵・BGM・環境音が「どこから どこまで」効いているか */}
                         <span className="flex shrink-0 gap-1 self-stretch">
                           <ContinuityLane
                             on
@@ -848,6 +875,12 @@ export default function StagingView({ repo, work, currentEpisodeId, assetRepo }:
                             color={LANE_COLORS.sprite}
                             faint={cont?.hidden}
                             title={titles.sprite}
+                          />
+                          <ContinuityLane
+                            on={Boolean(cont?.bgm)}
+                            start={Boolean(cont?.changed.bgm)}
+                            color={LANE_COLORS.bgm}
+                            title={titles.bgm}
                           />
                           {GAME_FEATURES.se ? (
                             <ContinuityLane
@@ -871,6 +904,7 @@ export default function StagingView({ repo, work, currentEpisodeId, assetRepo }:
                               <span>表情 {page.expression}</span>
                             ) : null}
                             {page.hideSprite ? <span>立ち絵なし</span> : null}
+                            {page.bgm ? <span>BGM {bgmLabelOf(page.bgm, bgms)}</span> : null}
                             {GAME_FEATURES.se && page.se ? (
                               <span>
                                 効果音 {seLabelOf(page.se, ses)}
@@ -917,6 +951,7 @@ export default function StagingView({ repo, work, currentEpisodeId, assetRepo }:
                     : selectedCont.standing.length > 0
                       ? `／立ち絵 ${selectedCont.standing.join('・')}`
                       : ''}
+                  {selectedCont.bgm ? `／BGM ${bgmLabelOf(selectedCont.bgm, bgms)}` : ''}
                   {GAME_FEATURES.se && selectedCont.loopSe
                     ? `／環境音 ${seLabelOf(selectedCont.loopSe, ses)}`
                     : ''}
@@ -1250,6 +1285,69 @@ export default function StagingView({ repo, work, currentEpisodeId, assetRepo }:
                 </div>
               ) : null}
 
+              {/* BGM（運営テンプレの曲だけ。次の曲か「止める」まで続く＝場面の切れ目では止まらない） */}
+              <div>
+                <div className="mb-2 flex items-center gap-1">
+                  <label
+                    htmlFor="staging-bgm"
+                    className="text-on-surface-variant text-xs uppercase tracking-wider"
+                  >
+                    BGM
+                  </label>
+                  <BgmHelp />
+                </div>
+                <div className="flex gap-2">
+                  <select
+                    id="staging-bgm"
+                    value={selected.bgm ?? ''}
+                    onChange={(e) => apply(selected.blockId, { bgm: e.target.value || undefined })}
+                    className={SELECT_CLASS}
+                  >
+                    <option value="">（なし：変えない）</option>
+                    <option value={BGM_STOP}>ここで止める（鳴っている曲を消す）</option>
+                    {/* 未知キー（この端末の目録に無い曲等）も選択状態は保つ（勝手に外さない） */}
+                    {selected.bgm && selected.bgm !== BGM_STOP && !bgmOf(selected.bgm) ? (
+                      <option value={selected.bgm}>{selected.bgm}</option>
+                    ) : null}
+                    {bgms
+                      .filter((b) => !b.hidden || b.key === selected.bgm)
+                      .map((b) => (
+                        <option key={b.key} value={b.key}>
+                          {b.label}
+                        </option>
+                      ))}
+                  </select>
+                  {selected.bgm && bgmOf(selected.bgm) ? (
+                    <BgmPreviewButton bgm={bgmOf(selected.bgm) as CatalogBgm} />
+                  ) : null}
+                  {visibleTemplates(bgms).length > 0 ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="shrink-0 text-primary"
+                      onClick={() => setBgmPickerOpen(true)}
+                    >
+                      一覧から選ぶ…
+                    </Button>
+                  ) : null}
+                </div>
+                {bgms.length === 0 ? (
+                  <p className="mt-2 text-[11px] text-on-surface-variant leading-relaxed">
+                    使える曲はまだありません。コトノハが用意した曲が並びます。
+                  </p>
+                ) : null}
+                <TemplatePicker
+                  open={bgmPickerOpen}
+                  onOpenChange={setBgmPickerOpen}
+                  kind="bgm"
+                  items={bgms}
+                  manifest={templateManifest}
+                  selectedKey={selected.bgm}
+                  onPick={(b) => apply(selected.blockId, { bgm: b.key })}
+                />
+              </div>
+
               {/* 効果音（GAME_FEATURES.se が false の版では欄ごと出さない。基盤は残る） */}
               {GAME_FEATURES.se ? (
                 <div>
@@ -1369,6 +1467,7 @@ export default function StagingView({ repo, work, currentEpisodeId, assetRepo }:
         <StagingPreviewDialog
           templateBackgrounds={backgrounds}
           templateSes={ses}
+          templateBgms={bgms}
           open={preview !== null}
           onOpenChange={(o) => setPreview(o ? (preview ?? {}) : null)}
           work={work}
@@ -1400,6 +1499,7 @@ function describeCue(
   assets: UserGameAsset[],
   backgrounds: readonly CatalogBackground[],
   ses: readonly CatalogSe[],
+  bgms: readonly CatalogBgm[],
 ): string {
   const parts: string[] = []
   if (cue.speaker) parts.push(`話者 ${cue.speaker}`)
@@ -1407,7 +1507,7 @@ function describeCue(
   if (cue.appear) parts.push(`登場 ${cue.appear}`)
   if (cue.sceneBreak) parts.push('場面の切れ目')
   if (cue.bg) parts.push(`背景 ${bgLabelOf(cue.bg, assets, backgrounds) ?? cue.bg}`)
-  if (cue.bgm) parts.push('BGM')
+  if (cue.bgm) parts.push(`BGM ${bgmLabelOf(cue.bgm, bgms)}`)
   if (GAME_FEATURES.se && cue.se) parts.push(`効果音 ${seLabelOf(cue.se, ses)}`)
   if (cue.transition) parts.push('切り替え効果')
   return parts.length > 0 ? parts.join('・') : '（内容なし）'

@@ -602,7 +602,7 @@ describe('プレビュー（startAt）', () => {
   })
 })
 
-describe('テンプレ立ち絵（シルエット・preset）', () => {
+describe('テンプレ立ち絵（目録の画像・preset 付き）', () => {
   const tplAsset = {
     key: 'user:tpl-1',
     id: 'tpl-1',
@@ -622,7 +622,7 @@ describe('テンプレ立ち絵（シルエット・preset）', () => {
     blocks: parseEpisodeBody('「おはよう」'),
   }
 
-  it('svg のまま同梱され、クレジットに運営素材として載る', () => {
+  it('実体のまま同梱され、クレジットには素材名から人物名を外した表示名で載る', () => {
     const files = buildNovelGameFiles(work, ep, staging([{ blockId: 'b1', speaker: '灯' }]), {
       userAssets: [tplAsset],
     })
@@ -797,5 +797,142 @@ describe('効果音の音声ファイル（目録の実体・preset 付きの素
     expect(assetIds).toEqual(['tpl-se-weather-rain'])
     const s = scenarioOf([{ path: 'index.html', data: html }])
     expect(s.ses?.['preset:se/weather-rain']?.src).toBe('asset:tpl-se-weather-rain')
+  })
+})
+
+describe('BGM（目録の曲・preset 付きの素材）', () => {
+  const ep: Episode = {
+    id: 'e9',
+    title: '音の話',
+    blocks: parseEpisodeBody('　雨が降りはじめた。\n「——行こうか」\n　やがて、雨はやんだ。'),
+  }
+  const w: Work = { id: 'w1', title: '作品', episodes: [ep] }
+  const morning = {
+    key: 'preset:bgm/bgm-calm-morning',
+    id: 'tpl-bgm-bgm-calm-morning',
+    label: '朝',
+    tone: ['#000000', '#000000', '#000000'] as [string, string, string],
+    mime: 'audio/mpeg',
+    data: new Uint8Array([73, 68, 51]),
+    kind: 'bgm' as const,
+    preset: 'preset:bgm/bgm-calm-morning',
+    dataUrl: 'data:audio/mpeg;base64,SUQz',
+    loopStart: 4.5,
+    loopEnd: 88,
+  }
+  const chase = {
+    ...morning,
+    key: 'preset:bgm/bgm-tense-chase',
+    id: 'tpl-bgm-bgm-tense-chase',
+    label: '追走',
+    preset: 'preset:bgm/bgm-tense-chase',
+    loopStart: undefined,
+    loopEnd: undefined,
+  }
+  const cues = (list: Staging['cues']): Staging => ({
+    workId: 'w1',
+    episodeId: 'e9',
+    cues: list,
+    updatedAt: 1,
+  })
+
+  it('曲が変わるページにだけ載り、使った曲だけ zip に同梱される。ループ区間とクレジットも載る', () => {
+    const files = buildNovelGameFiles(
+      w,
+      ep,
+      cues([
+        { blockId: 'b1', bgm: 'preset:bgm/bgm-calm-morning' },
+        { blockId: 'b2', bgm: 'preset:bgm/bgm-calm-morning', sceneBreak: true }, // 同じ曲＝載せ直さない
+        { blockId: 'b3', bgm: 'preset:bgm/bgm-tense-chase' },
+      ]),
+      { userAssets: [morning, chase] },
+    )
+    const s = scenarioOf(files)
+    expect(s.pages.map((p) => p.bgm)).toEqual([
+      'preset:bgm/bgm-calm-morning',
+      undefined,
+      'preset:bgm/bgm-tense-chase',
+    ])
+    expect(s.bgms).toEqual({
+      'preset:bgm/bgm-calm-morning': {
+        label: '朝',
+        src: 'assets/bgm/bgm-calm-morning.mp3',
+        loopStart: 4.5,
+        loopEnd: 88,
+      },
+      'preset:bgm/bgm-tense-chase': { label: '追走', src: 'assets/bgm/bgm-tense-chase.mp3' },
+    })
+    expect(files.map((f) => f.path)).toEqual(
+      expect.arrayContaining(['assets/bgm/bgm-calm-morning.mp3', 'assets/bgm/bgm-tense-chase.mp3']),
+    )
+    expect(s.credits.find((c) => c.label === 'BGM')?.body).toBe('コトノハ 標準BGM素材（朝・追走）')
+    // 画面（続きレーン）の説明と書き出しが一致する（切れ目をまたいでも同じ曲が続く）
+    const cont = resolveContinuity(
+      applyCues(
+        toPages(ep.blocks),
+        cues([
+          { blockId: 'b1', bgm: 'preset:bgm/bgm-calm-morning' },
+          { blockId: 'b2', bgm: 'preset:bgm/bgm-calm-morning', sceneBreak: true },
+          { blockId: 'b3', bgm: 'preset:bgm/bgm-tense-chase' },
+        ]),
+      ),
+    )
+    expect(cont.map((c) => c.bgm)).toEqual([
+      'preset:bgm/bgm-calm-morning',
+      'preset:bgm/bgm-calm-morning',
+      'preset:bgm/bgm-tense-chase',
+    ])
+  })
+
+  it('「止める」は鳴っているときだけページに載り、手元に無い曲は無視して壊さない', () => {
+    const s = scenarioOf(
+      buildNovelGameFiles(
+        w,
+        ep,
+        cues([
+          { blockId: 'b1', bgm: 'stop' }, // まだ何も鳴っていない＝載せない
+          { blockId: 'b2', bgm: 'preset:bgm/bgm-calm-morning' },
+          { blockId: 'b3', bgm: 'stop' },
+        ]),
+        { userAssets: [morning] },
+      ),
+    )
+    expect(s.pages.map((p) => p.bgm)).toEqual([undefined, 'preset:bgm/bgm-calm-morning', 'stop'])
+    const none = scenarioOf(
+      buildNovelGameFiles(w, ep, cues([{ blockId: 'b1', bgm: 'preset:bgm/nowhere' }])),
+    )
+    expect(none.pages[0]?.bgm).toBeUndefined()
+    expect(none.bgms).toBeUndefined()
+    expect(none.credits.some((c) => c.label === 'BGM')).toBe(false)
+  })
+
+  it('契約 v5 では asset:<id> で参照され、その id が拾われる（投稿は音声なので v6）', () => {
+    const asset = {
+      id: 'tpl-bgm-bgm-calm-morning',
+      kind: 'bgm' as const,
+      name: '朝',
+      dataUrl: 'data:audio/mpeg;base64,SUQz',
+      tone: ['#000000', '#000000', '#000000'] as [string, string, string],
+      preset: 'preset:bgm/bgm-calm-morning',
+      loopStart: 4.5,
+      loopEnd: 88,
+      createdAt: 1,
+    }
+    const { html, assetIds } = buildNovelGamePlayer(
+      w,
+      ep,
+      cues([{ blockId: 'b1', bgm: 'preset:bgm/bgm-calm-morning' }]),
+      { gameAssets: [asset] },
+    )
+    expect(assetIds).toEqual(['tpl-bgm-bgm-calm-morning'])
+    const s = scenarioOf([{ path: 'index.html', data: html }])
+    expect(s.bgms?.['preset:bgm/bgm-calm-morning']).toEqual({
+      label: '朝',
+      src: 'asset:tpl-bgm-bgm-calm-morning',
+      loopStart: 4.5,
+      loopEnd: 88,
+    })
+    // プレイヤーには BGM のあり／なしボタンがある
+    expect(html).toContain('id="btnBgm"')
   })
 })

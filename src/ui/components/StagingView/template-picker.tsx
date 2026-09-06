@@ -1,8 +1,9 @@
-import { Play } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { Play, Square } from 'lucide-react'
+import { useMemo, useState, useSyncExternalStore } from 'react'
 import { seDuration } from '@/core/game/sePresets'
 import {
   type CatalogBackground,
+  type CatalogBgm,
   type CatalogSe,
   type CatalogSprite,
   categoriesOf,
@@ -12,6 +13,12 @@ import {
   visibleTemplates,
 } from '@/core/game/templates'
 import { cn } from '@/lib/utils'
+import {
+  bgmPreviewingUrl,
+  isCatalogBgmPreviewing,
+  subscribeBgmPreview,
+  toggleCatalogBgm,
+} from '@/ui/_utils/bgmPlayer'
 import { playCatalogSe } from '@/ui/_utils/sePlayer'
 import {
   Dialog,
@@ -24,17 +31,45 @@ import {
 import { templateBgSrc, templateSpriteSrc } from '@/ui/game/template-catalog'
 
 /**
- * 運営テンプレ（背景・立ち絵）を分類で絞ってサムネイルから選ぶダイアログ。
- * 演出エディタの背景・立ち絵、書き出しの既定背景、図鑑の立ち絵欄で共用する。
+ * 運営テンプレ（背景・立ち絵・効果音・BGM）を分類で絞って選ぶダイアログ。
+ * 演出エディタの背景・立ち絵・BGM、書き出しの既定背景、図鑑の立ち絵欄で共用する。
  * 一覧は目録の「一覧に出す」ものだけ（非表示は出さない・既存の参照は別途描ける）。
  */
 
-type Item = CatalogBackground | CatalogSprite | CatalogSe
+type Item = CatalogBackground | CatalogSprite | CatalogSe | CatalogBgm
 
 /** 効果音の長さ（秒）。目録の音は測った値、合成はレシピから。 */
 function seSeconds(se: CatalogSe): string | null {
   const ms = se.durationMs ?? (se.builtin ? seDuration(se.builtin) * 1000 : undefined)
   return ms === undefined ? null : `${(ms / 1000).toFixed(1)} 秒`
+}
+
+/** BGM の長さ（分:秒）。 */
+export function bgmDurationLabel(bgm: Pick<CatalogBgm, 'durationMs'>): string | null {
+  if (bgm.durationMs === undefined) return null
+  const total = Math.round(bgm.durationMs / 1000)
+  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`
+}
+
+/** BGM の 1 行（▶／■ の試聴つき）。演出エディタの欄と一覧で同じ形にする。 */
+export function BgmPreviewButton({ bgm }: { bgm: CatalogBgm }) {
+  useSyncExternalStore(subscribeBgmPreview, bgmPreviewingUrl, () => null)
+  const on = isCatalogBgmPreviewing(bgm)
+  return (
+    <button
+      type="button"
+      aria-label={on ? `${bgm.label}の試聴を止める` : `${bgm.label}を試聴`}
+      aria-pressed={on}
+      className={cn(
+        'shrink-0 rounded-md border border-outline-variant/30 p-2 hover:bg-surface-container-high',
+        on ? 'bg-primary/10 text-primary' : 'text-primary',
+      )}
+      disabled={!bgm.entry}
+      onClick={() => toggleCatalogBgm(bgm)}
+    >
+      {on ? <Square className="size-4" aria-hidden /> : <Play className="size-4" aria-hidden />}
+    </button>
+  )
 }
 
 interface TemplatePickerProps<T extends Item> {
@@ -78,7 +113,9 @@ export function TemplatePicker<T extends Item>({
                 ? 'テンプレの背景'
                 : kind === 'sprite'
                   ? 'テンプレの立ち絵'
-                  : 'テンプレの効果音')}
+                  : kind === 'bgm'
+                    ? 'テンプレの BGM'
+                    : 'テンプレの効果音')}
           </DialogTitle>
           <DialogDescription>
             {description ??
@@ -86,7 +123,9 @@ export function TemplatePicker<T extends Item>({
                 ? '分類で絞って選びます。テンプレは枚数に数えません。'
                 : kind === 'sprite'
                   ? '分類で絞って選びます。テンプレの立ち絵は枚数に数えません。'
-                  : '分類で絞って選びます。▶ で試聴できます。')}
+                  : kind === 'bgm'
+                    ? '曲調で絞って選びます。▶ で試聴できます（もう一度押すと止まります）。'
+                    : '分類で絞って選びます。▶ で試聴できます。')}
           </DialogDescription>
         </DialogHeader>
         <DialogBody>
@@ -114,6 +153,37 @@ export function TemplatePicker<T extends Item>({
           ) : null}
           {shown.length === 0 ? (
             <p className="text-on-surface-variant text-sm">選べるテンプレがありません。</p>
+          ) : kind === 'bgm' ? (
+            <ul className="max-h-[60vh] space-y-1 overflow-y-auto pr-1">
+              {shown.map((item) => {
+                const bgm = item as CatalogBgm
+                const selected = item.key === selectedKey
+                const duration = bgmDurationLabel(bgm)
+                return (
+                  <li key={item.key} className="flex items-center gap-2">
+                    <BgmPreviewButton bgm={bgm} />
+                    <button
+                      type="button"
+                      aria-pressed={selected}
+                      className={cn(
+                        'flex flex-1 items-center justify-between rounded-md border px-3 py-2 text-left text-sm hover:bg-surface-container-high',
+                        selected ? 'border-primary' : 'border-outline-variant/30',
+                      )}
+                      onClick={() => {
+                        onPick(item)
+                        onOpenChange(false)
+                      }}
+                    >
+                      <span>{item.label}</span>
+                      <span className="ml-2 text-[11px] text-on-surface-variant">
+                        {categoryLabelOf(manifest, 'bgm', bgm.category)}
+                        {duration ? ` ${duration}` : ''}
+                      </span>
+                    </button>
+                  </li>
+                )
+              })}
+            </ul>
           ) : kind === 'se' ? (
             <ul className="max-h-[60vh] space-y-1 overflow-y-auto pr-1">
               {shown.map((item) => {

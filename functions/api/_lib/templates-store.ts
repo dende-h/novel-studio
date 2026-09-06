@@ -1,6 +1,6 @@
 /// <reference types="@cloudflare/workers-types" />
 /**
- * 運営テンプレ（背景・立ち絵）の R2 上の置き場（D-GAME-TEMPLATE-CMS）。
+ * 運営テンプレ（背景・立ち絵・効果音・BGM）の R2 上の置き場（D-GAME-TEMPLATE-CMS）。
  *
  *   `_templates/manifest.json`            … 目録（src/core/game/templates.ts の TemplateManifest）
  *   `_templates/<kind>/<slug>.<ext>`       … 実体（拡張子は MIME から＝webp/png/jpg/mp3/m4a）

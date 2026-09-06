@@ -25,7 +25,7 @@ type GetToken = () => Promise<string | null>
  * v2 で work.platform、v3 で episodes[].visibility（話ごとの公開状態）、
  * v4 で episodes[].game（サウンドノベルの自己完結プレイヤー HTML）、
  * v5 で work.gameAssets（素材の実体を**作品ぶん1回だけ**送り、話は `asset:<id>` で参照）、
- * v6 で work.gameAssets に**音声**（運営テンプレの効果音ファイル・`data:audio/…`）を追加。
+ * v6 で work.gameAssets に**音声**（運営テンプレの BGM・効果音ファイル・`data:audio/…`）を追加。
  *
  * 使わない機能の版は名乗らない（**最小の版で送る**）。先方が新しい版を知らないあいだも
  * 「本文の更新だけは通る」ようにしておく（新しすぎるバンドルは 409 で弾かれる契約）。
@@ -371,15 +371,15 @@ export async function publishWorkToPlatform(
     }
   }
 
-  // 先方がまだこの版（v4＝サウンドノベル・v6＝効果音ファイル）を知らないときの案内
-  //（supported を添えて返る契約）。v5 までは知っていて v6 だけ知らないなら、効果音を外せば通る
+  // 先方がまだこの版（v4＝サウンドノベル・v6＝音声の素材）を知らないときの案内
+  //（supported を添えて返る契約）。v5 までは知っていて v6 だけ知らないなら、BGM・効果音を外せば通る
   if (payload.error === 'unsupported-schema-version') {
     const supported = typeof payload.supported === 'number' ? payload.supported : 0
     return {
       ok: false,
       message:
         supported >= SCHEMA_VERSION_WITH_SHARED_ASSETS
-          ? '公開先がまだ効果音の素材に対応していません。効果音をテンプレの合成音に戻すか外してから、もう一度お試しください。'
+          ? '公開先がまだ音の素材（BGM・効果音）に対応していません。演出から BGM と効果音を外してから、もう一度お試しください。'
           : '公開先がまだサウンドノベル公開に対応していません。話ごとの「サウンドノベル」をすべて切ってから、もう一度お試しください。',
     }
   }

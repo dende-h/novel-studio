@@ -1,15 +1,15 @@
-import { MASKED_SPEAKER, type StagedPage } from './index'
+import { BGM_STOP, MASKED_SPEAKER, type StagedPage } from './index'
 import { DEFAULT_BG_KEY } from './presets'
 import { SE_STOP } from './sePresets'
 
 /**
  * 「この行では何が効いているか」を行ごとに解く（演出エディタの表示用）。
  *
- * 背景・立ち絵・環境音は**設定した行から先へ続く**。設定した行にしか印が出ないと、
+ * 背景・立ち絵・BGM・環境音は**設定した行から先へ続く**。設定した行にしか印が出ないと、
  * 途中の行を見ている作者には「いま何が出ているのか」「どこまで続くのか」が分からない。
  * ここで解いた結果を、一覧の続きレーンと選択行の「効いているもの」に出す。
  *
- * 規則は書き出し（toNovelGame.ts）とプレイヤー（novelGamePlayer.ts の loopSeAt）に合わせる。
+ * 規則は書き出し（toNovelGame.ts）とプレイヤー（novelGamePlayer.ts の loopSeAt / bgmAt）に合わせる。
  * ずれると画面の説明が嘘になるので、書き出し結果と突き合わせる回帰テストを置いてある。
  */
 
@@ -22,8 +22,10 @@ export interface PageContinuity {
   hidden: boolean
   /** 鳴り続けている環境音のキー */
   loopSe?: string
+  /** 鳴っている BGM のキー（次の曲か「止める」まで。場面の切れ目では止まらない） */
+  bgm?: string
   /** この行で変わったもの（線の起点に印を出す） */
-  changed: { bg: boolean; standing: boolean; loopSe: boolean }
+  changed: { bg: boolean; standing: boolean; loopSe: boolean; bgm: boolean }
 }
 
 /** 舞台に立てる人数（exporter の席と同じ）。 */
@@ -42,6 +44,7 @@ export function resolveContinuity(
   let standing: { char: string; at: number }[] = []
   let hidden = false
   let loopSe: string | undefined
+  let bgm: string | undefined
 
   /** 舞台へ入れる（既にいる人は据え置き・満席なら一番長く話していない人と交代）。 */
   const enter = (char: string, at: number) => {
@@ -64,8 +67,11 @@ export function resolveContinuity(
     const beforeBg = bg
     const beforeStanding = standing.map((s) => s.char).join(' ')
     const beforeLoop = loopSe
+    const beforeBgm = bgm
 
     if (page.bg) bg = page.bg
+    if (page.bgm === BGM_STOP) bgm = undefined
+    else if (page.bgm) bgm = page.bgm
     if (page.sceneBreak) {
       standing = []
       hidden = false
@@ -92,10 +98,12 @@ export function resolveContinuity(
       standing: [...chars],
       hidden,
       ...(loopSe ? { loopSe } : {}),
+      ...(bgm ? { bgm } : {}),
       changed: {
         bg: bg !== beforeBg || i === 0,
         standing: chars.join(' ') !== beforeStanding,
         loopSe: loopSe !== beforeLoop,
+        bgm: bgm !== beforeBgm,
       },
     }
   })

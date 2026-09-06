@@ -1,12 +1,18 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Staging } from '@/core/game'
 import { FREE_IMPORT_LIMIT, HOSTED_ASSET_LIMIT, type UserGameAsset } from '@/core/game/assets'
+import {
+  EMPTY_TEMPLATE_MANIFEST,
+  type TemplateEntry,
+  type TemplateManifest,
+} from '@/core/game/templates'
 import { parseEpisodeBody } from '@/core/parser/parseNotation'
 import type { Work } from '@/core/schema'
 import type { GameAssetRepository } from '@/core/storage/gameAssetRepository'
 import type { StagingRepository } from '@/core/storage/stagingRepository'
 import { AuthContext, type AuthState, GUEST_AUTH_STATE } from '@/ui/auth/auth-context'
+import { setTemplateCatalog } from '@/ui/game/template-catalog'
 import StagingView from './staging-view'
 
 // happy-dom は canvas 非対応のため、リサイズは固定値を返す疑似実装に差し替える
@@ -31,11 +37,40 @@ const hostApi = vi.hoisted(() => ({
 vi.mock('@/ui/_api/game-assets', () => hostApi)
 vi.mock('@/ui/_api/game-templates', () => ({
   fetchTemplateManifest: async () => null,
-  fetchTemplateBytes: async () => null,
+  // 目録の画像の実体（テンプレ立ち絵の割り当てで取りに行く）
+  fetchTemplateBytes: async () => ({ bytes: new Uint8Array([1, 2, 3]), mime: 'image/webp' }),
+}))
+// happy-dom は AudioContext 非対応なので、BGM の試聴は差し替える
+vi.mock('@/ui/_utils/bgmPlayer', () => ({
+  toggleCatalogBgm: vi.fn(),
+  isCatalogBgmPreviewing: () => false,
+  subscribeBgmPreview: () => () => {},
+  bgmPreviewingUrl: () => null,
 }))
 // この版は効果音を隠している（features.ts）。効果音の欄そのものはここで検証し続ける。
 // フラグが落ちているときの振る舞いは staging-view.features.test.tsx
 vi.mock('@/core/game/features', () => ({ GAME_FEATURES: { se: true } }))
+
+/** 運営テンプレの目録（テストごとに差し込み、終わったら消す＝ほかのテストに漏らさない）。 */
+const templateEntry = (over: Partial<TemplateEntry> & Pick<TemplateEntry, 'kind' | 'slug'>) => ({
+  label: '',
+  category: over.slug.split('-')[1] ?? over.slug,
+  tone: ['#000000', '#000000', '#000000'] as [string, string, string],
+  mime: 'image/webp',
+  bytes: 1,
+  hash: 'h',
+  updatedAt: 1,
+  ...over,
+})
+const templateManifest = (entries: TemplateEntry[]): TemplateManifest => ({
+  ...EMPTY_TEMPLATE_MANIFEST,
+  entries,
+})
+
+afterEach(() => {
+  setTemplateCatalog(null)
+  localStorage.removeItem('ns-game-templates')
+})
 
 beforeEach(() => {
   hostApi.listHostedAssets.mockReset().mockResolvedValue([])
@@ -468,7 +503,8 @@ describe('StagingView（演出エディタ）', () => {
     render(<StagingView repo={repo} work={makeWork()} currentEpisodeId="e1" />)
     fireEvent.click(await screen.findByText('「——まだ、書いてるんだね」'))
     expect(screen.getByRole('option', { name: '（なし：名前を出さない）' })).toBeInTheDocument()
-    expect(screen.getByRole('option', { name: '（なし：変えない）' })).toBeInTheDocument()
+    // 背景と BGM の先頭（どちらも「変えない」＝前のまま続く）
+    expect(screen.getAllByRole('option', { name: '（なし：変えない）' })).toHaveLength(2)
 
     fireEvent.change(screen.getByLabelText('話者'), { target: { value: '' } })
     await waitFor(() => expect(saved).toHaveLength(1))
@@ -495,6 +531,11 @@ describe('StagingView（演出エディタ）', () => {
   })
 
   it('登場させた人物の立ち絵を、その行から登録できる（話者でなくても）', async () => {
+    setTemplateCatalog(
+      templateManifest([
+        templateEntry({ kind: 'sprite', slug: 'silhouette-woman', label: 'シルエット（女性）' }),
+      ]),
+    )
     const { repo } = fakeRepo({
       workId: 'w1',
       episodeId: 'e1',
@@ -531,7 +572,33 @@ describe('StagingView（演出エディタ）', () => {
     expect(saved[0]?.cues[0]).toEqual({ blockId: 'b1', appear: '見知らぬ女' })
   })
 
-  it('テンプレから選ぶ…でシルエット立ち絵が話者に割り当てられる（tpl- id・枚数に数えない）', async () => {
+  it('テンプレ立ち絵は目録だけ：目録に無ければ「テンプレから選ぶ…」を出さない（組み込みのシルエットは無い）', async () => {
+    const { repo } = fakeRepo({
+      workId: 'w1',
+      episodeId: 'e1',
+      cues: [{ blockId: 'b2', speaker: '灯' }],
+      updatedAt: 1,
+    })
+    const { repo: assetRepo } = memoryAssetRepo()
+    render(
+      <StagingView repo={repo} work={makeWork()} currentEpisodeId="e1" assetRepo={assetRepo} />,
+    )
+    fireEvent.click(await screen.findByText('「——まだ、書いてるんだね」'))
+    expect(await screen.findByRole('button', { name: '立ち絵を追加…' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'テンプレから選ぶ…' })).not.toBeInTheDocument()
+  })
+
+  it('テンプレから選ぶ…で目録の立ち絵が話者に割り当てられる（tpl- id・枚数に数えない）', async () => {
+    setTemplateCatalog(
+      templateManifest([
+        templateEntry({ kind: 'sprite', slug: 'silhouette-woman', label: 'シルエット（女性）' }),
+        templateEntry({
+          kind: 'sprite',
+          slug: 'silhouette-hood',
+          label: 'シルエット（フードの人）',
+        }),
+      ]),
+    )
     const { repo } = fakeRepo({
       workId: 'w1',
       episodeId: 'e1',
@@ -553,6 +620,7 @@ describe('StagingView（演出エディタ）', () => {
       expression: '通常',
       preset: 'preset:sprite/silhouette-woman',
       name: '灯（シルエット（女性））',
+      dataUrl: 'data:image/webp;base64,AQID',
     })
     expect(saved?.id.startsWith('tpl-')).toBe(true)
     // もう一度別のテンプレを選ぶと差し替え（増えない）
@@ -560,6 +628,50 @@ describe('StagingView（演出エディタ）', () => {
     fireEvent.click(await screen.findByRole('button', { name: /（フードの人）/ }))
     await waitFor(() => expect([...map.values()][0]?.preset).toBe('preset:sprite/silhouette-hood'))
     expect(map.size).toBe(1)
+  })
+
+  it('BGM を選ぶとその場で保存され、一覧の行と続きレーンに曲名が出る。止める行も付けられる', async () => {
+    setTemplateCatalog(
+      templateManifest([
+        templateEntry({
+          kind: 'bgm',
+          slug: 'bgm-calm-morning',
+          category: 'calm',
+          label: '朝',
+          mime: 'audio/mpeg',
+          durationMs: 92_000,
+        }),
+      ]),
+    )
+    const { repo, saved } = fakeRepo()
+    render(<StagingView repo={repo} work={makeWork()} currentEpisodeId="e1" />)
+    fireEvent.click(await screen.findByText('灯が振り返った。'))
+    expect(await screen.findByLabelText('BGM')).toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText('BGM'), {
+      target: { value: 'preset:bgm/bgm-calm-morning' },
+    })
+    await waitFor(() => expect(saved).toHaveLength(1))
+    expect(saved[0]?.cues[0]).toEqual({ blockId: 'b1', bgm: 'preset:bgm/bgm-calm-morning' })
+    expect(await screen.findByText('BGM 朝')).toBeInTheDocument()
+    // 曲は次の行にも続く（場面の切れ目でも止まらない）
+    expect(screen.getAllByTitle('BGM：朝')).toHaveLength(3)
+    // 試聴ボタンが出る
+    expect(screen.getByRole('button', { name: '朝を試聴' })).toBeInTheDocument()
+    // 最後の行で止める
+    fireEvent.click(screen.getByText('場面が変わる。'))
+    fireEvent.change(await screen.findByLabelText('BGM'), { target: { value: 'stop' } })
+    await waitFor(() => expect(saved).toHaveLength(2))
+    expect(saved[1]?.cues).toContainEqual({ blockId: 'b5', bgm: 'stop' })
+    expect(screen.getAllByTitle('BGM：朝')).toHaveLength(2)
+    expect(screen.getAllByTitle('BGM：なし')).toHaveLength(1)
+  })
+
+  it('目録に曲が無ければ、BGM の欄は案内だけ出す（一覧から選ぶは出さない）', async () => {
+    const { repo } = fakeRepo()
+    render(<StagingView repo={repo} work={makeWork()} currentEpisodeId="e1" />)
+    fireEvent.click(await screen.findByText('灯が振り返った。'))
+    expect(await screen.findByLabelText('BGM')).toBeInTheDocument()
+    expect(screen.getByText(/使える曲はまだありません/)).toBeInTheDocument()
   })
 
   it('無料プランは持ち込み 20 枚まで（テンプレは数えない・案内を出してファイル選択を開かない）', async () => {

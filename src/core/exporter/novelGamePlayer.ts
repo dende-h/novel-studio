@@ -43,6 +43,11 @@ export interface ScenarioPage {
   se?: string
   /** 鳴らし方（省略＝1回）。'loop' は次の場面の切れ目か 'stop' まで続く */
   seRepeat?: 2 | 'loop'
+  /**
+   * BGM が変わるページにだけ載る（bgms のキー）。次の曲か `'stop'`（予約キー・鳴っている曲を
+   * 止める）まで鳴り続け、**場面の切れ目では止まらない**（背景と同じ扱い）
+   */
+  bgm?: string
   units: (string | [string, string])[]
   /** 純本文（共有カード・オート送りの読み時間に使う） */
   text: string
@@ -78,6 +83,12 @@ export interface GameScenario {
    * data URL・契約 v5 の `asset:<id>` のいずれか）
    */
   ses?: Record<string, { label: string; steps?: SeStep[]; period?: number; src?: string }>
+  /**
+   * BGM（キー → 音声ファイル）。使われているときだけ載る。`src` は zip のパス・data URL・
+   * 契約 v5 の `asset:<id>` のいずれか。`loopStart` / `loopEnd`（秒）は Web Audio のループ区間
+   * （D-GAME-BGM-LOOP・省略＝曲ぜんたい）
+   */
+  bgms?: Record<string, { label: string; src: string; loopStart?: number; loopEnd?: number }>
   /** 同梱フォント（無ければシステムの明朝で表示） */
   fontSrc?: string
   credits: CreditLine[]
@@ -208,6 +219,7 @@ html,body{height:100%;margin:0;background:#05060A}
   <div id="ovMenu" class="overlay" hidden>
     <h2>メニュー</h2>
     <div class="speed"><span>ゆっくり</span><input id="speed" type="range" min="1" max="5" step="1"><span>はやい</span></div>
+    <button id="btnBgm" class="act" type="button"></button>
     <button id="btnSe" class="act" type="button"></button>
     <button id="btnCard" class="act" type="button">この一文をカードにする</button>
     <button id="btnCredits" class="act" type="button">クレジット</button>
@@ -248,7 +260,7 @@ html,body{height:100%;margin:0;background:#05060A}
   var overlays = { title: $('ovTitle'), log: $('ovLog'), menu: $('ovMenu'), credits: $('ovCredits'), end: $('ovEnd') }
   var SETTINGS_KEY = 'kotonoha:novel-game:settings'
   var SPEEDS = [72, 50, 34, 22, 13] // ゆっくり → はやい（1コマの ms）
-  var settings = { speed: 3, se: true }
+  var settings = { speed: 3, se: true, bgm: true }
   var state = { i: -1, maxSeen: -1, typing: false, timer: 0, unitIdx: 0,
     auto: false, skip: false, front: 'A', bgKey: '', started: false }
 
@@ -267,6 +279,7 @@ html,body{height:100%;margin:0;background:#05060A}
   var stored = loadJson(SETTINGS_KEY)
   if (stored && stored.speed >= 1 && stored.speed <= 5) settings.speed = stored.speed
   if (stored && typeof stored.se === 'boolean') settings.se = stored.se
+  if (stored && typeof stored.bgm === 'boolean') settings.bgm = stored.bgm
 
   function unitHtml(u) { return typeof u === 'string' ? u : u[0] }
   function unitText(u) { return typeof u === 'string' ? u : u[1] }
@@ -370,6 +383,7 @@ html,body{height:100%;margin:0;background:#05060A}
     if (!audioCtx) {
       try { audioCtx = new (window.AudioContext || window.webkitAudioContext)() } catch (e) { return null }
       preloadSes()
+      preloadBgms()
     }
     if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume()
     return audioCtx
@@ -635,6 +649,117 @@ html,body{height:100%;margin:0;background:#05060A}
     if (want) startLoopSe(want)
   }
 
+  // ---- BGM。次の曲か 'stop' まで鳴り続ける（場面の切れ目では止まらない＝背景と同じ扱い） ----
+  // 実体は Web Audio で回す（loopStart / loopEnd＝目録のループ区間・サンプル単位で継ぎ目なし）。
+  // file:// で開いた zip では fetch が通らないので、そのときは <audio loop> に倒す（曲ぜんたいを回す）。
+  var BGM_GAIN = 0.6
+  var wantBgm = null, playingBgm = null, bgmGain = null, bgmSource = null, bgmEl = null
+  var bgmBufs = {}, bgmLoading = {}, bgmFailed = {}
+  function bgmAt(i) {
+    var key = null
+    for (var j = 0; j <= i && j < S.pages.length; j++) {
+      var p = S.pages[j]
+      if (p.bgm === 'stop') key = null
+      else if (p.bgm) key = p.bgm
+    }
+    return key
+  }
+  function loadBgmBuffer(key, cb) {
+    if (bgmBufs[key]) { cb(bgmBufs[key]); return }
+    if (bgmFailed[key]) { cb(null); return }
+    var ctx = ensureAudio()
+    var src = S.bgms && S.bgms[key] ? srcOf(S.bgms[key].src) : ''
+    if (!ctx || !src) { cb(null); return }
+    if (bgmLoading[key]) { bgmLoading[key].push(cb); return }
+    bgmLoading[key] = [cb]
+    var done = function (buf) {
+      if (buf) bgmBufs[key] = buf
+      else bgmFailed[key] = true
+      var cbs = bgmLoading[key] || []
+      delete bgmLoading[key]
+      for (var i = 0; i < cbs.length; i++) cbs[i](buf)
+    }
+    fetch(src)
+      .then(function (r) { return r.arrayBuffer() })
+      .then(function (ab) {
+        return new Promise(function (res, rej) { ctx.decodeAudioData(ab, res, rej) })
+      })
+      .then(done)
+      .catch(function () { done(null) })
+  }
+  /** 使う曲を先に取っておく（最初の 1 曲が遅れないように）。 */
+  function preloadBgms() {
+    if (!S.bgms) return
+    for (var k in S.bgms) loadBgmBuffer(k, function () {})
+  }
+  function stopBgm() {
+    playingBgm = null
+    if (bgmGain && audioCtx) {
+      var g = bgmGain, s = bgmSource
+      try { g.gain.setTargetAtTime(0.0001, audioCtx.currentTime, 0.18) } catch (e) {}
+      setTimeout(function () {
+        try { if (s) s.stop() } catch (e) {}
+        try { g.disconnect() } catch (e) {}
+      }, 900)
+    }
+    bgmGain = null
+    bgmSource = null
+    if (bgmEl) {
+      var el = bgmEl
+      bgmEl = null
+      var steps = 8
+      var fade = setInterval(function () {
+        steps--
+        try { el.volume = Math.max(0, (el.volume - BGM_GAIN / 8)) } catch (e) {}
+        if (steps <= 0) { clearInterval(fade); try { el.pause() } catch (e) {} }
+      }, 90)
+    }
+  }
+  /** 曲ぜんたいを <audio> で回す（Web Audio が使えないとき・file:// の zip）。 */
+  function startBgmElement(key, src) {
+    var el = new Audio()
+    el.loop = true
+    el.volume = BGM_GAIN
+    el.src = src
+    bgmEl = el
+    var p = el.play()
+    if (p && p.catch) p.catch(function () {})
+  }
+  function startBgm(key) {
+    if (!(S.bgms && S.bgms[key])) return
+    var bgm = S.bgms[key]
+    var src = srcOf(bgm.src)
+    if (!src) return
+    playingBgm = key
+    var ctx = ensureAudio()
+    if (!ctx) { startBgmElement(key, src); return }
+    loadBgmBuffer(key, function (buf) {
+      if (playingBgm !== key) return
+      if (!buf) { startBgmElement(key, src); return }
+      var g = ctx.createGain()
+      g.gain.setValueAtTime(0.0001, ctx.currentTime)
+      g.gain.exponentialRampToValueAtTime(BGM_GAIN, ctx.currentTime + 0.8)
+      g.connect(ctx.destination)
+      var s = ctx.createBufferSource()
+      s.buffer = buf
+      s.loop = true
+      var ls = typeof bgm.loopStart === 'number' ? bgm.loopStart : 0
+      var le = typeof bgm.loopEnd === 'number' ? bgm.loopEnd : 0
+      if (le > ls && le <= buf.duration) { s.loopStart = ls; s.loopEnd = le }
+      s.connect(g)
+      s.start(ctx.currentTime + 0.02)
+      bgmGain = g
+      bgmSource = s
+    })
+  }
+  /** 設定（BGM のあり／なし）と、いま鳴っているべき曲を突き合わせる。 */
+  function syncBgm() {
+    var want = settings.bgm ? wantBgm : null
+    if (want === playingBgm) return
+    stopBgm()
+    if (want) startBgm(want)
+  }
+
   // ---- 埋め込み先（grove 等）への通知。単体（zip・file://）では何もしない ----
   function notifyHost(event) {
     try {
@@ -679,6 +804,9 @@ html,body{height:100%;margin:0;background:#05060A}
     }
     wantLoop = loopSeAt(i)
     syncLoopSe()
+    // BGM は「この行で鳴っているべき曲」なので、途中から開いても鳴らす（背景と同じ扱い）
+    wantBgm = bgmAt(i)
+    syncBgm()
     box.hidden = false
     if (p.kind === 'dialogue' && p.speaker) { nameEl.textContent = p.speaker; nameEl.hidden = false }
     else { nameEl.hidden = true }
@@ -895,7 +1023,7 @@ html,body{height:100%;margin:0;background:#05060A}
 
   // ---- 進行 ----
   function start(i) {
-    ensureAudio() // 操作の直後に AudioContext を作り、音声ファイルの効果音を先に取っておく
+    ensureAudio() // 操作の直後に AudioContext を作り、音声ファイル（効果音・BGM）を先に取っておく
     closeOverlays()
     hud.hidden = false
     state.started = true
@@ -906,6 +1034,8 @@ html,body{height:100%;margin:0;background:#05060A}
     toggleAuto(false); toggleSkip(false)
     wantLoop = null
     syncLoopSe()
+    wantBgm = null
+    syncBgm()
     openOverlay('end')
     notifyHost('end')
   }
@@ -941,6 +1071,18 @@ html,body{height:100%;margin:0;background:#05060A}
   $('speed').addEventListener('input', function (e) {
     settings.speed = Number(e.target.value) || 3
     saveJson(SETTINGS_KEY, settings)
+  })
+  function renderBgmButton() {
+    $('btnBgm').textContent = settings.bgm ? 'BGM：あり' : 'BGM：なし'
+  }
+  // BGM を使わないシナリオではボタン自体を出さない
+  if (!S.bgms) $('btnBgm').hidden = true
+  renderBgmButton()
+  $('btnBgm').addEventListener('click', function () {
+    settings.bgm = !settings.bgm
+    saveJson(SETTINGS_KEY, settings)
+    renderBgmButton()
+    syncBgm()
   })
   function renderSeButton() {
     $('btnSe').textContent = settings.se ? '効果音：あり' : '効果音：なし'

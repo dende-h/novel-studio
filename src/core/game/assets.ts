@@ -11,14 +11,14 @@ import { z } from 'zod'
 export const UserGameAssetSchema = z.object({
   id: z.string(),
   /**
-   * 'se' は**運営テンプレの効果音を書き出し・投稿へ運ぶときだけ**の一時的な形（目録の実体を
+   * 'se' / 'bgm' は**運営テンプレの音声を書き出し・投稿へ運ぶときだけ**の一時的な形（目録の実体を
    * 素材の器に載せる・D-GAME-TEMPLATE-CMS）。端末には保存しない＝旧クライアントの IndexedDB に
-   * 未知の kind が現れることはない。将来 'bgm' を足すときもここへ。
+   * 未知の kind が現れることはない。
    */
-  kind: z.enum(['bg', 'sprite', 'se']),
+  kind: z.enum(['bg', 'sprite', 'se', 'bgm']),
   /** 一覧・クレジットに出す表示名（既定はファイル名） */
   name: z.string(),
-  /** リサイズ済み画像（効果音は音声ファイル）の data URL */
+  /** リサイズ済み画像（効果音・BGM は音声ファイル）の data URL */
   dataUrl: z.string().refine((s) => /^data:(image|audio)\//.test(s), 'data URL が必要'),
   /** 上・中・下の3色。共有カードの下地とクロスフェードの間の色に使う（立ち絵では未使用） */
   tone: z.tuple([z.string(), z.string(), z.string()]),
@@ -31,6 +31,9 @@ export const UserGameAssetSchema = z.object({
    * 持ち込み枚数・クラウド保管の枚数どちらにも数えない（無料でも使える）。
    */
   preset: z.string().optional(),
+  /** BGM だけ：ループ区間（秒・目録のメタデータを書き出しへ運ぶ）。省略＝曲ぜんたい */
+  loopStart: z.number().optional(),
+  loopEnd: z.number().optional(),
   createdAt: z.number(),
 })
 export type UserGameAsset = z.infer<typeof UserGameAssetSchema>
@@ -42,9 +45,9 @@ export const userAssetKey = (id: string) => `user:${id}`
 export const isUserAssetKey = (key: string) => key.startsWith('user:')
 
 /**
- * 素材が Cue.bg / defaultBg / Cue.se から指されるキー。テンプレ背景・効果音を素材の形で運ぶとき
- * （目録の実体を書き出し・投稿に載せる経路）は `preset` のキーそのもの＝演出譜は
- * `preset:bg/<slug>` / `preset:se/<slug>` のまま。それ以外は `user:<id>`。
+ * 素材が Cue.bg / defaultBg / Cue.se / Cue.bgm から指されるキー。テンプレ背景・効果音・BGM を
+ * 素材の形で運ぶとき（目録の実体を書き出し・投稿に載せる経路）は `preset` のキーそのもの＝演出譜は
+ * `preset:bg/<slug>` / `preset:se/<slug>` / `preset:bgm/<slug>` のまま。それ以外は `user:<id>`。
  * 立ち絵は話者で引くので常に `user:<id>`。
  */
 export const gameAssetKey = (a: Pick<UserGameAsset, 'id' | 'kind' | 'preset'>): string =>

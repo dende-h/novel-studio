@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { Staging } from '../game'
 import type { UserGameAsset } from '../game/assets'
+import { EMPTY_TEMPLATE_MANIFEST, type TemplateManifest } from '../game/templates'
 import { parseEpisodeBody } from '../parser/parseNotation'
 import type { Episode, Work } from '../schema'
 import { stagingToPlainText } from './stagingToPlainText'
@@ -113,6 +114,39 @@ describe('stagingToPlainText（MCP 向け演出譜テキスト）', () => {
   it('表情は話者の行ではその話者、登場だけの行ではその人物のものだと案内する', () => {
     expect(stagingToPlainText(work(), episode(), undefined, [])).toContain(
       'expression は話者の付いた行ではその話者の、appear だけの行ではその人物の表情',
+    )
+  })
+
+  it('使える BGM キーの一覧が載り、cue の BGM も要約に出る（目録が無ければ案内だけ）', () => {
+    const staging: Staging = {
+      workId: 'w1',
+      episodeId: 'e1',
+      cues: [{ blockId: 'b2', bgm: 'preset:bgm/bgm-calm-morning' }],
+      updatedAt: 1,
+    }
+    const templates: TemplateManifest = {
+      ...EMPTY_TEMPLATE_MANIFEST,
+      entries: [
+        {
+          kind: 'bgm',
+          slug: 'bgm-calm-morning',
+          label: '朝',
+          category: 'calm',
+          tone: ['#000000', '#000000', '#000000'],
+          mime: 'audio/mpeg',
+          bytes: 1,
+          hash: 'h',
+          updatedAt: 1,
+        },
+      ],
+    }
+    const text = stagingToPlainText(work(), episode(), staging, [], templates)
+    expect(text).toContain('使える BGM（bgm）キー')
+    expect(text).toContain('- preset:bgm/bgm-calm-morning … 朝')
+    expect(text).toContain('- stop … 鳴っている BGM をここで止める')
+    expect(text).toContain('【BGM=preset:bgm/bgm-calm-morning】')
+    expect(stagingToPlainText(work(), episode(), undefined, [])).toContain(
+      '使える曲はまだありません',
     )
   })
 

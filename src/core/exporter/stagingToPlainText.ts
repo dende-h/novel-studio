@@ -12,6 +12,7 @@ import { DEFAULT_EXPRESSION, spriteExpressionsOf, userAssetKey } from '../game/a
 import { GAME_FEATURES } from '../game/features'
 import {
   mergeBackgroundCatalog,
+  mergeBgmCatalog,
   mergeSeCatalog,
   type TemplateManifest,
   visibleTemplates,
@@ -67,7 +68,7 @@ export function stagingToPlainText(
 
   const head = [
     `「${episode.title}」の演出譜（付いている演出 ${staging?.cues.length ?? 0} 件）。`,
-    '各行の [block_id] を set_staging に渡して、話者・場面の切れ目・背景を付ける。本文は変わらない。',
+    '各行の [block_id] を set_staging に渡して、話者・場面の切れ目・背景・BGM を付ける。本文は変わらない。',
   ].join('\n')
 
   const sections: string[] = [head]
@@ -92,6 +93,18 @@ export function stagingToPlainText(
       '使える背景（bg）キー:',
       ...visibleTemplates(mergeBackgroundCatalog(templates)).map((p) => `- ${p.key} … ${p.label}`),
       ...userLines,
+    ].join('\n'),
+  )
+
+  // BGM は運営テンプレの曲だけ（目録に無ければ案内だけ）。次の曲か bgm: "stop" まで続く
+  const bgms = visibleTemplates(mergeBgmCatalog(templates))
+  sections.push(
+    [
+      '使える BGM（bgm）キー（この行から鳴り始め、次の曲か bgm: "stop" まで続く。場面の切れ目では止まらない）:',
+      ...(bgms.length > 0
+        ? bgms.map((b) => `- ${b.key} … ${b.label}`)
+        : ['- 使える曲はまだありません（運営がテンプレとして用意した曲だけ選べます）']),
+      '- stop … 鳴っている BGM をここで止める（予約キー）',
     ].join('\n'),
   )
 
