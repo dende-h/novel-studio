@@ -1,7 +1,16 @@
 import { applyCues, BGM_STOP, plainTextOfBlock, type Staging, toPages } from '../game'
 import { gameAssetKey, pickSprite, type UserGameAsset } from '../game/assets'
 import { GAME_FEATURES } from '../game/features'
-import { buildGameCredits, DEFAULT_BG_KEY, presetBackground, presetBgSvg } from '../game/presets'
+import {
+  BLACKOUT_BG_KEY,
+  BLACKOUT_BG_LABEL,
+  BLACKOUT_TONE,
+  blackoutBgSvg,
+  buildGameCredits,
+  DEFAULT_BG_KEY,
+  presetBackground,
+  presetBgSvg,
+} from '../game/presets'
 import { presetSe, SE_STOP, type SeStep } from '../game/sePresets'
 import { presetSprite } from '../game/spritePresets'
 import { resolveStages } from '../game/stage'
@@ -225,6 +234,20 @@ export function buildNovelGameFiles(
         data: user.data,
         // 運営素材（テンプレ由来）だけクレジットに載せる
         credit: Boolean(user.preset),
+      }
+    }
+    // 背景なし（ブラックアウト）：目録に無い予約キー。真っ黒の 1 枚を同じ経路で載せる
+    if (key === BLACKOUT_BG_KEY) {
+      const svg = blackoutBgSvg()
+      return {
+        key,
+        label: BLACKOUT_BG_LABEL,
+        tone: BLACKOUT_TONE,
+        path: inline
+          ? `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`
+          : 'assets/bg/blackout.svg',
+        data: svg,
+        credit: false,
       }
     }
     const preset = presetBackground(key)

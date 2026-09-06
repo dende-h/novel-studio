@@ -110,7 +110,7 @@ export function AssetManager({
 
           {assets.length === 0 ? (
             <p className="p-2 text-on-surface-variant text-sm">
-              持ち込み素材はまだありません。行を選んで、「背景」の（画像を追加…）から追加できます。
+              持ち込み素材はまだありません。行を選んで、「背景」の「背景を追加」から追加できます。
             </p>
           ) : (
             <ul className="max-h-[50vh] space-y-2 overflow-y-auto font-sans">

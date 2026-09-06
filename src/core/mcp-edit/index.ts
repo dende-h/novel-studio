@@ -12,7 +12,7 @@ import {
 } from '../game'
 import { type SpriteSource, spriteExpressionsOf, userAssetKey } from '../game/assets'
 import { GAME_FEATURES } from '../game/features'
-import { presetBackground } from '../game/presets'
+import { BLACKOUT_BG_KEY, presetBackground } from '../game/presets'
 import { presetSe, SE_STOP } from '../game/sePresets'
 import { type FlatNote, MAX_NOTE_DEPTH, rebuildEpisodeNotes } from '../outline'
 import { parseEpisodeBody } from '../parser/parseNotation'
@@ -1061,6 +1061,7 @@ export function setStagingCues(
       const bg = emptyToUndef(item.bg)
       if (
         bg !== undefined &&
+        bg !== BLACKOUT_BG_KEY &&
         !presetBackground(bg) &&
         !userKeys.has(bg) &&
         !templateBgKeys.has(bg)

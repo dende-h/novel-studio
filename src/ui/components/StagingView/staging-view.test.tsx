@@ -226,7 +226,7 @@ describe('StagingView（演出エディタ）', () => {
     })
   })
 
-  it('背景の「画像を追加…」で持ち込み画像が保存され、その行の背景になる', async () => {
+  it('背景の「背景を追加」で持ち込み画像が保存され、その行の背景になる', async () => {
     const { repo, saved } = fakeRepo()
     const assetSaved: UserGameAsset[] = []
     const assetRepo = {
@@ -239,8 +239,8 @@ describe('StagingView（演出エディタ）', () => {
       <StagingView repo={repo} work={makeWork()} currentEpisodeId="e1" assetRepo={assetRepo} />,
     )
     fireEvent.click(await screen.findByText('「——まだ、書いてるんだね」'))
-    // 「画像を追加…」を選んだだけでは保存されない（ファイル選択で保存）
-    fireEvent.change(screen.getByLabelText('背景'), { target: { value: '__add_image__' } })
+    // 「背景を追加」を押しただけでは保存されない（ファイル選択で保存）
+    fireEvent.click(screen.getByRole('button', { name: '背景を追加' }))
     expect(saved).toHaveLength(0)
     const file = new File(['x'], '海辺の夕暮れ.png', { type: 'image/png' })
     fireEvent.change(screen.getByLabelText('背景画像を選ぶ'), { target: { files: [file] } })
@@ -271,7 +271,7 @@ describe('StagingView（演出エディタ）', () => {
     expect(saved[0]?.cues[0]).toEqual({ blockId: 'b2', sprites: [{ pos: 'l', character: '灯' }] })
     // 人物が付くと立ち絵の案内と追加ボタンが出る
     expect(await screen.findByText(/「灯」の立ち絵はまだありません/)).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: '立ち絵を追加…' }))
+    fireEvent.click(screen.getByRole('button', { name: '立ち絵を追加' }))
     const file = new File(['x'], 'akari.png', { type: 'image/png' })
     fireEvent.change(screen.getByLabelText('立ち絵の画像を選ぶ'), { target: { files: [file] } })
     // 画像を選んだだけでは保存されない（表情名を付けて確定）
@@ -314,9 +314,7 @@ describe('StagingView（演出エディタ）', () => {
     )
     fireEvent.click(await screen.findByText('「——まだ、書いてるんだね」'))
     const select = await screen.findByLabelText('中央の表情')
-    expect(
-      screen.getByRole('option', { name: '（指定なし：いまの表情のまま）' }),
-    ).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: '指定なし(いまの表情のまま)' })).toBeInTheDocument()
     fireEvent.change(select, { target: { value: '笑顔' } })
     await waitFor(() => expect(saved).toHaveLength(1))
     expect(saved[0]?.cues[0]).toEqual({
@@ -395,7 +393,7 @@ describe('StagingView（演出エディタ）', () => {
     expect(await screen.findByText(/効果音 雨（ずっと）/)).toBeInTheDocument()
   })
 
-  it('「ここで止める」を選ぶと、鳴らし方の指定も一緒に落ちる', async () => {
+  it('「停止する」を選ぶと、鳴らし方の指定も一緒に落ちる', async () => {
     const { repo, saved } = fakeRepo({
       workId: 'w1',
       episodeId: 'e1',
@@ -418,10 +416,18 @@ describe('StagingView（演出エディタ）', () => {
       <StagingView repo={repo} work={makeWork()} currentEpisodeId="e1" assetRepo={assetRepo} />,
     )
     fireEvent.click(await screen.findByText('「——まだ、書いてるんだね」'))
-    // 効く範囲を知らないと混乱する 2 つは、とくに詳しく出す
-    fireEvent.click(screen.getByRole('button', { name: 'ここから立ち絵を出さないの説明を開く' }))
-    expect(await screen.findByText(/次の「場面が変わる」までです/)).toBeInTheDocument()
-    expect(screen.getByText(/消えるのは絵だけです/)).toBeInTheDocument()
+    // 効く範囲を知らないと混乱する「場面が変わる」は、とくに詳しく出す
+    fireEvent.click(screen.getByRole('button', { name: 'ここから場面が変わるの説明を開く' }))
+    expect(await screen.findByText(/次の「場面が変わる」までが1つの場面です/)).toBeInTheDocument()
+    expect(screen.getByText(/原稿に区切り線や記号が入ることはありません/)).toBeInTheDocument()
+  })
+
+  it('背景の説明に「背景なし(ブラックアウト)」の使い方が載る', async () => {
+    const { repo } = fakeRepo()
+    render(<StagingView repo={repo} work={makeWork()} currentEpisodeId="e1" />)
+    fireEvent.click(await screen.findByText('「——まだ、書いてるんだね」'))
+    fireEvent.click(screen.getByRole('button', { name: '背景の説明を開く' }))
+    expect(await screen.findByText(/画面が真っ黒になります/)).toBeInTheDocument()
   })
 
   it('「この行から見る」でプレビューが開く（書き出しを待たずに確かめられる）', async () => {
@@ -446,11 +452,11 @@ describe('StagingView（演出エディタ）', () => {
     expect(frame.getAttribute('sandbox')).toBe('allow-scripts')
   })
 
-  it('話者の行で「立ち絵を出さない」を入れられる（一枚絵の背景に重ねない）', async () => {
-    const { repo, saved } = fakeRepo({
+  it('「ここから立ち絵を出さない」の欄は無いが、既存の hideSprite は一覧に残る（席の「立ち絵なし」で足りる）', async () => {
+    const { repo } = fakeRepo({
       workId: 'w1',
       episodeId: 'e1',
-      cues: [{ blockId: 'b2', speaker: '灯' }],
+      cues: [{ blockId: 'b2', speaker: '灯', hideSprite: true }],
       updatedAt: 1,
     })
     const { repo: assetRepo } = memoryAssetRepo([
@@ -460,15 +466,28 @@ describe('StagingView（演出エディタ）', () => {
       <StagingView repo={repo} work={makeWork()} currentEpisodeId="e1" assetRepo={assetRepo} />,
     )
     fireEvent.click(await screen.findByText('「——まだ、書いてるんだね」'))
-    fireEvent.click(await screen.findByRole('switch', { name: /ここから立ち絵を出さない/ }))
-
-    await waitFor(() => expect(saved).toHaveLength(1))
-    expect(saved[0]?.cues[0]).toEqual({ blockId: 'b2', speaker: '灯', hideSprite: true })
-    // どこで止めたかが一覧から分かる（分からないと戻せない）
-    expect(await screen.findByText('立ち絵なし')).toBeInTheDocument()
+    expect(await screen.findByLabelText('左の立ち絵')).toBeInTheDocument()
+    expect(screen.queryByRole('switch', { name: /立ち絵を出さない/ })).not.toBeInTheDocument()
+    // 旧データの印は一覧から消えない（データが残っているのに見えなくしない）
+    expect(screen.getByText('立ち絵なし', { selector: 'span' })).toBeInTheDocument()
   })
 
-  it('席を「（変えない）」に戻すと、その席の指示（表情ごと）が外れる', async () => {
+  it('背景に「背景なし(ブラックアウト)」を選ぶと予約キー blackout で保存され、一覧にも出る', async () => {
+    const { repo, saved } = fakeRepo()
+    render(<StagingView repo={repo} work={makeWork()} currentEpisodeId="e1" />)
+    fireEvent.click(await screen.findByText('「——まだ、書いてるんだね」'))
+    expect(screen.getByRole('option', { name: '背景なし(ブラックアウト)' })).toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText('背景'), { target: { value: 'blackout' } })
+    await waitFor(() => expect(saved).toHaveLength(1))
+    expect(saved[0]?.cues[0]).toEqual({ blockId: 'b2', bg: 'blackout' })
+    // 行の印と、選択行の「効いているもの」の両方に出る
+    expect(await screen.findAllByText('背景 背景なし(ブラックアウト)')).toHaveLength(2)
+    expect(
+      screen.getByRole('img', { name: '背景プレビュー: 背景なし(ブラックアウト)' }),
+    ).toBeInTheDocument()
+  })
+
+  it('席を「変更しない(前のシーンを引継ぐ)」に戻すと、その席の指示（表情ごと）が外れる', async () => {
     const { repo, saved } = fakeRepo({
       workId: 'w1',
       episodeId: 'e1',
@@ -487,11 +506,11 @@ describe('StagingView（演出エディタ）', () => {
     fireEvent.change(screen.getByLabelText('左の立ち絵'), { target: { value: '' } })
     await waitFor(() => expect(saved).toHaveLength(1))
     expect(saved[0]?.cues).toHaveLength(0)
-    // 「（下げる）」はその席だけ下げる指示として残る
+    // 「立ち絵なし」はその席だけ下げる指示として残る
     fireEvent.change(screen.getByLabelText('中央の立ち絵'), { target: { value: '__off__' } })
     await waitFor(() => expect(saved).toHaveLength(2))
     expect(saved[1]?.cues[0]).toEqual({ blockId: 'b1', sprites: [{ pos: 'c' }] })
-    expect(await screen.findByText('立ち絵 中央:下げる')).toBeInTheDocument()
+    expect(await screen.findByText('立ち絵 中央:なし')).toBeInTheDocument()
   })
 
   it('話者を替えると、前の話者の表情は外れる（表情はその人の絵の名前）', async () => {
@@ -517,9 +536,13 @@ describe('StagingView（演出エディタ）', () => {
     })
     render(<StagingView repo={repo} work={makeWork()} currentEpisodeId="e1" />)
     fireEvent.click(await screen.findByText('「——まだ、書いてるんだね」'))
-    expect(screen.getByRole('option', { name: '（なし：名前を出さない）' })).toBeInTheDocument()
-    // 背景と BGM の先頭（どちらも「変えない」＝前のまま続く）
-    expect(screen.getAllByRole('option', { name: '（なし：変えない）' })).toHaveLength(2)
+    expect(screen.getByRole('option', { name: 'なし(名前を出さない)' })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: '？？？(名前を伏せる)' })).toBeInTheDocument()
+    // 背景と BGM の先頭（どちらも「変更しない」＝前のまま続く）
+    expect(screen.getAllByRole('option', { name: '変更しない(前のシーンを引継ぐ)' })).toHaveLength(
+      2,
+    )
+    expect(screen.getByRole('option', { name: '停止する' })).toBeInTheDocument()
 
     fireEvent.change(screen.getByLabelText('話者'), { target: { value: '' } })
     await waitFor(() => expect(saved).toHaveLength(1))
@@ -556,7 +579,7 @@ describe('StagingView（演出エディタ）', () => {
       <StagingView repo={repo} work={makeWork()} currentEpisodeId="e1" assetRepo={assetRepo} />,
     )
     fireEvent.click(await screen.findByText('灯が振り返った。'))
-    fireEvent.click(await screen.findByRole('button', { name: 'テンプレから選ぶ…' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'テンプレから選ぶ' }))
     fireEvent.click(await screen.findByRole('button', { name: /（女性）/ }))
 
     await waitFor(() => expect(map.size).toBe(1))
@@ -584,7 +607,7 @@ describe('StagingView（演出エディタ）', () => {
     })
   })
 
-  it('テンプレから選ぶ…でシルエット立ち絵が席の人物に割り当てられる（tpl- id・枚数に数えない）', async () => {
+  it('テンプレから選ぶでシルエット立ち絵が席の人物に割り当てられる（tpl- id・枚数に数えない）', async () => {
     const { repo } = fakeRepo({
       workId: 'w1',
       episodeId: 'e1',
@@ -596,7 +619,7 @@ describe('StagingView（演出エディタ）', () => {
       <StagingView repo={repo} work={makeWork()} currentEpisodeId="e1" assetRepo={assetRepo} />,
     )
     fireEvent.click(await screen.findByText('「——まだ、書いてるんだね」'))
-    fireEvent.click(await screen.findByRole('button', { name: 'テンプレから選ぶ…' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'テンプレから選ぶ' }))
     fireEvent.click(await screen.findByRole('button', { name: /（女性）/ }))
     await waitFor(() => expect(map.size).toBe(1))
     const saved = [...map.values()][0]
@@ -609,7 +632,7 @@ describe('StagingView（演出エディタ）', () => {
     })
     expect(saved?.id.startsWith('tpl-')).toBe(true)
     // もう一度別のテンプレを選ぶと差し替え（増えない）
-    fireEvent.click(screen.getByRole('button', { name: 'テンプレから選ぶ…' }))
+    fireEvent.click(screen.getByRole('button', { name: 'テンプレから選ぶ' }))
     fireEvent.click(await screen.findByRole('button', { name: /（フードの人）/ }))
     await waitFor(() => expect([...map.values()][0]?.preset).toBe('preset:sprite/silhouette-hood'))
     expect(map.size).toBe(1)
@@ -675,7 +698,7 @@ describe('StagingView（演出エディタ）', () => {
       <StagingView repo={repo} work={makeWork()} currentEpisodeId="e1" assetRepo={assetRepo} />,
     )
     fireEvent.click(await screen.findByText('「——まだ、書いてるんだね」'))
-    fireEvent.change(screen.getByLabelText('背景'), { target: { value: '__add_image__' } })
+    fireEvent.click(screen.getByRole('button', { name: '背景を追加' }))
     expect(await screen.findByText(/無料プランでは 20 枚までです/)).toBeInTheDocument()
     expect(map.size).toBe(FREE_IMPORT_LIMIT + 1) // 何も追加されていない
   })
@@ -773,7 +796,7 @@ describe('StagingView（クラウド保管・会員）', () => {
     const { repo: assetRepo } = memoryAssetRepo()
     renderAsMember({ repo, work: makeWork(), currentEpisodeId: 'e1', assetRepo })
     fireEvent.click(await screen.findByText('「——まだ、書いてるんだね」'))
-    fireEvent.change(screen.getByLabelText('背景'), { target: { value: '__add_image__' } })
+    fireEvent.click(screen.getByRole('button', { name: '背景を追加' }))
     const file = new File(['x'], '海辺の夕暮れ.png', { type: 'image/png' })
     fireEvent.change(screen.getByLabelText('背景画像を選ぶ'), { target: { files: [file] } })
     await waitFor(() => expect(hostApi.putHostedAsset).toHaveBeenCalledTimes(1))
@@ -789,7 +812,7 @@ describe('StagingView（クラウド保管・会員）', () => {
     hostApi.putHostedAsset.mockResolvedValue('limit_reached')
     renderAsMember({ repo, work: makeWork(), currentEpisodeId: 'e1', assetRepo })
     fireEvent.click(await screen.findByText('「——まだ、書いてるんだね」'))
-    fireEvent.change(screen.getByLabelText('背景'), { target: { value: '__add_image__' } })
+    fireEvent.click(screen.getByRole('button', { name: '背景を追加' }))
     const file = new File(['x'], '海辺.png', { type: 'image/png' })
     fireEvent.change(screen.getByLabelText('背景画像を選ぶ'), { target: { files: [file] } })
     expect(

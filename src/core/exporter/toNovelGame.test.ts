@@ -93,6 +93,19 @@ describe('buildNovelGameFiles（zip の中身）', () => {
     }
   })
 
+  it('背景なし（blackout）は真っ黒の 1 枚として同梱され、クレジットには載らない', () => {
+    const files = buildNovelGameFiles(work, episode, staging([{ blockId: 'b3', bg: 'blackout' }]))
+    const s = scenarioOf(files)
+    expect(s.pages[1]?.bg).toBe('blackout')
+    expect(s.bgs.blackout).toMatchObject({
+      src: 'assets/bg/blackout.svg',
+      label: '背景なし(ブラックアウト)',
+      tone: ['#05060A', '#05060A', '#05060A'],
+    })
+    expect(files.map((f) => f.path)).toContain('assets/bg/blackout.svg')
+    expect(s.credits.find((c) => c.label === '背景')?.body).not.toContain('ブラックアウト')
+  })
+
   it('話者 cue がシナリオへ載る', () => {
     const s = scenarioOf(
       buildNovelGameFiles(work, episode, staging([{ blockId: 'b3', speaker: '灯' }])),

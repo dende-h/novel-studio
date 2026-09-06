@@ -111,7 +111,7 @@ describe('stagingToPlainText（MCP 向け演出譜テキスト）', () => {
       sprite('sp2', '笑顔', 2),
     ])
     expect(text).toContain('【話者=灯／立ち絵=左:灯（笑顔）】')
-    expect(text).toContain('【立ち絵=左:下げる・自動:灯】')
+    expect(text).toContain('【立ち絵=左:なし・自動:灯】')
     expect(text).toContain('立ち絵（話者とは独立。sprites に席ごとの指示を渡す')
     expect(text).toContain('- 灯 … 表情: 通常／笑顔')
     // 立ち絵は背景キーの一覧には混ざらない
