@@ -979,3 +979,17 @@ describe('BGM（目録の曲・preset 付きの素材）', () => {
     expect(html).toContain('id="btnBgm"')
   })
 })
+
+describe('プレイヤーのメニュー（セーブ・タイトルに戻る）', () => {
+  it('「ここまでを保存」と「タイトルに戻る」がメニューにあり、タイトルへ戻ると quit を親へ合図する', () => {
+    const html = buildNovelGameFiles(work, episode, undefined).find((f) => f.path === 'index.html')
+      ?.data as string
+    expect(html).toContain('id="btnSave"')
+    expect(html).toContain('ここまでを保存')
+    expect(html).toContain('id="btnTitle"')
+    expect(html).toContain('タイトルに戻る')
+    // 保存は自動セーブと同じ席（saveKey）へ書く＝「つづきから」で戻れる
+    expect(html).toContain("notifyHost('quit')")
+    expect(html).toContain('function backToTitle()')
+  })
+})

@@ -97,7 +97,7 @@ Cloudflare Pages Functions
 | `src/core/exporter/toHtml.ts` | 正本 → 安全な HTML（プレビュー兼用・全エスケープ済み。`inlinesToHtml` も公開） |
 | `src/core/markdown/index.ts` | 生テキスト → プレビュー HTML の軽量マークダウン（`markdownToHtml` `stripMarkdown` `InlineRenderer`。行内は既定で parseInlines へ委譲＝[[用語]]・ルビが生きるが、**第3引数で差し替えられる**＝掲示板はここを使う） |
 | `src/core/exporter/toNarou.ts` / `src/core/exporter/toKakuyomu.ts` | 各投稿サイト記法 |
-| `src/core/exporter/toNovelGame.ts` | 正本＋演出譜 → サウンドノベル zip の中身（`buildNovelGameFiles`）と grove 同梱用の自己完結HTML（`buildNovelGameHtml`＝素材 data URL 内包・契約 v4）。プレイヤー（index.html の CSS/JS 一式）は `novelGamePlayer.ts` |
+| `src/core/exporter/toNovelGame.ts` | 正本＋演出譜 → サウンドノベル zip の中身（`buildNovelGameFiles`）と grove 同梱用の自己完結HTML（`buildNovelGameHtml`＝素材 data URL 内包・契約 v4）。プレイヤー（index.html の CSS/JS 一式）は `novelGamePlayer.ts`（メニュー＝速度・BGM・効果音・「ここまでを保存」・一文カード・クレジット・はじめから・「タイトルに戻る」。セーブは `saveKey` の 1 席に自動＋明示、終了は `backToTitle`＝親へ `quit`） |
 | `src/core/exporter/toPlainText.ts` / `plotToPlainText.ts` / `structureToPlainText.ts` / `stagingToPlainText.ts` | AI 投げ込み用の平文（`glossaryToPlainText`、演出譜の `stagingToPlainText` 含む） |
 | `src/core/exporter/blocksToNotation.ts` | 正本 → 記法（往復変換） |
 | `src/core/zip/index.ts` | 依存ゼロの ZIP（store 法）・`crc32` |

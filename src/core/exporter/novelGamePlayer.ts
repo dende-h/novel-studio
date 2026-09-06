@@ -221,11 +221,13 @@ html,body{height:100%;margin:0;background:#05060A}
     <div class="speed"><span>ゆっくり</span><input id="speed" type="range" min="1" max="5" step="1"><span>はやい</span></div>
     <button id="btnBgm" class="act" type="button"></button>
     <button id="btnSe" class="act" type="button"></button>
+    <button id="btnSave" class="act" type="button">ここまでを保存</button>
     <button id="btnCard" class="act" type="button">この一文をカードにする</button>
     <button id="btnCredits" class="act" type="button">クレジット</button>
     <button id="btnRestart" class="act" type="button">はじめから読み直す</button>
+    <button id="btnTitle" class="act" type="button">タイトルに戻る</button>
     <button class="act close" type="button">閉じる</button>
-    <p class="note">読んだところまでは、この端末に自動で保存されます。</p>
+    <p class="note">読んだところまでは、この端末に自動でも保存されます。次に開いたとき「つづきから」で戻れます。</p>
   </div>
   <div id="ovCredits" class="overlay" hidden>
     <h2>クレジット</h2>
@@ -774,12 +776,17 @@ html,body{height:100%;margin:0;background:#05060A}
     } catch (e) {}
   }
 
-  // ---- セーブ（進んだ分だけ自動で） ----
+  // ---- セーブ（進んだ分は自動で。メニューの「ここまでを保存」は同じ席へ明示的に書く） ----
   function save() { saveJson(S.saveKey, { i: state.i, max: state.maxSeen, t: Date.now() }) }
   function loadSave() {
     var d = loadJson(S.saveKey)
     if (d && typeof d.i === 'number' && d.i > 0 && d.i < S.pages.length) return d
     return null
+  }
+  // タイトル画面の「つづきから」を、いまの保存に合わせて出す・隠す
+  function refreshContinue() {
+    saved = loadSave()
+    $('btnContinue').hidden = !saved
   }
 
   // ---- 文字送り（句読点で微小停止、…で長め、間で一拍） ----
@@ -1041,6 +1048,26 @@ html,body{height:100%;margin:0;background:#05060A}
     openOverlay('end')
     notifyHost('end')
   }
+  // 「終了」＝タイトルへ戻る（ブラウザのページは自分を閉じられない）。読んだ位置は保存済みなので「つづきから」で戻れる
+  function backToTitle() {
+    toggleAuto(false); toggleSkip(false)
+    clearTimeout(state.timer)
+    state.typing = false
+    state.started = false
+    wantLoop = null
+    syncLoopSe()
+    wantBgm = null
+    syncBgm()
+    applyStage([], true)
+    hud.hidden = true
+    box.hidden = true
+    nameEl.hidden = true
+    lineEl.innerHTML = ''
+    setBg(bgAt(0), undefined, true)
+    refreshContinue()
+    openOverlay('title')
+    notifyHost('quit')
+  }
 
   // ---- 配線 ----
   var titleOv = overlays.title
@@ -1053,12 +1080,20 @@ html,body{height:100%;margin:0;background:#05060A}
   }
   overlays.end.querySelector('.t-work').textContent = S.workTitle + '「' + S.episodeTitle + '」'
   renderCredits()
-  var saved = loadSave()
-  if (saved) $('btnContinue').hidden = false
+  var saved = null
+  refreshContinue()
   $('btnStart').addEventListener('click', function () { start(0) })
   $('btnContinue').addEventListener('click', function () { start(saved ? saved.i : 0) })
   $('btnAgain').addEventListener('click', function () { start(0) })
   $('btnRestart').addEventListener('click', function () { start(0) })
+  $('btnSave').addEventListener('click', function () {
+    save()
+    refreshContinue()
+    closeOverlays()
+    msg('ここまでを保存しました')
+    resumeFlow()
+  })
+  $('btnTitle').addEventListener('click', backToTitle)
   $('btnAuto').addEventListener('click', function () { toggleAuto() })
   $('btnSkip').addEventListener('click', function () { toggleSkip() })
   $('btnLog').addEventListener('click', openLog)
