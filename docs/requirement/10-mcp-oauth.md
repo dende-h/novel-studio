@@ -1,6 +1,6 @@
 # 10 — MCP の認可は「窓口だけ自分」の折衷をやめる（ChatGPT 対応）
 
-> 2026-09-04 起案・**原因は STG で実測して確定**、直し方は未決定。
+> 2026-09-04 起案 → 2026-09-06 **Phase 2（自前の認可サーバー）を実装**。
 > **窓口だけ自オリジンで実体は Clerk という中間形が原因。名乗る issuer は自分（`…pages.dev`）なのに、
 > 認可の応答を返すのは Clerk（`credible-stork-66.clerk.accounts.dev`）で、そこをコトノハは触れない。
 > しかも「`iss` を返します」という Clerk の申告まで自分の名前で転載している。** 直すには
@@ -302,8 +302,20 @@ STG と同じ結果になるはずなので急がない。
 ログインしたアカウントが STG の `subscriptions` に無い）。手で認可コードを取ってトークン交換まで
 通せば、ChatGPT を介さずにどれかが決まる。
 
-**Phase 2（本命）**。§5 の自前 AS を stg で実装し、ChatGPT・Claude・MCP Inspector の 3 つで通す。
-Claude の既存接続が生きていることを確認してから本番へ。
+**Phase 2（本命）— 2026-09-06 実装済み・STG での検証待ち**。§5 の自前 AS を入れた。
+**踏み切った理由は `iss` の不一致ではなく、見えないこと**——Phase 1 のあとも ChatGPT は
+PRM を読んだ先（Clerk との間）で落ち続け、そこはこちらのログにもブラウザにも映らず、
+同じ操作で結果が変わった（ログイン画面まで行く回と、その手前で落ちる回があった）。
+推測で潰すのをやめ、**全部を自分の側に置いて `wrangler tail` に出す**ことを選んだ。
+
+入ったもの: migration `0010_oauth.sql`（4 表）、`functions/api/_lib/oauth-server.ts`（純ロジック）、
+`oauth-store.ts`（SQL）、`functions/api/oauth/[[path]].ts`（authorize/token/register/revoke）、
+`functions/api/oauth/consent.ts` と `src/ui/components/OAuthConsent/`（同意画面）、
+`mcp-auth.ts` の三系統併存、`/api/mcp/token` の DELETE と purge での失効。
+テストは純ロジック 14 本と、実 SQLite に当てる端から端まで 8 本。
+
+検証は 3 つ：ChatGPT が繋がるか、**Claude の既存接続が切れていないか**（中継を残してあるが、
+実際に確かめる）、`wrangler tail` に認可の各段が出るか（出れば、次に何かあっても見える）。
 
 **Phase 3（後追い）**。接続ダイアログに ChatGPT のタブ、同意画面の文言、`search` / `fetch`（§8-2）。
 
@@ -313,7 +325,7 @@ Claude の既存接続が生きていることを確認してから本番へ。
 
 **1. `/.well-known/openid-configuration` をどう名乗るか。** 自前 AS は OIDC プロバイダではないので、
 OAuth のメタデータをそのまま置くと `jwks_uri` や `id_token_signing_alg_values_supported` を
-欠いた不完全な OIDC 文書になる。**暫定スタンス**：同じ内容を置く。MCP クライアントはここを
+欠いた不完全な OIDC 文書になる。**実装では同じ内容を置いた**。MCP クライアントはここを
 AS メタデータの代替として読むだけで、厳密な OIDC 検証をするクライアントは MCP の文脈にいない。
 実測で弾かれたら 404 に切り替える。
 

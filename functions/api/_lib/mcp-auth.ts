@@ -1,16 +1,24 @@
 /// <reference types="@cloudflare/workers-types" />
 /**
- * MCP エンドポイントの認証解決（二系統）。
- * 1) Clerk 発行の OAuth アクセストークン — Clerk SDK の authenticateRequest(acceptsToken:'oauth_token')
- *    で検証。JWT/opaque どちらの形式でも SDK が吸収する（手書きの JWKS 検証は形式差で失敗するため不採用）。
- *    会員判定はトークンでなく D1 `subscriptions`（Stripe webhook が更新）を照会する。
- * 2) 従来の `mcp_` 長期トークン — 上級者・request-headers 用のフォールバック（互換）。
- * どちらも userId に解決する。read-only 用途。
+ * MCP エンドポイントの認証解決（**三系統の併存**）。順に試し、最初に解けたものを使う。
+ *
+ * 1) `mcp_` 長期トークン — 画面から発行する上級者向け（Genspark 等の Bearer 設定）。
+ * 2) `mcpa_` 自前 OAuth のアクセストークン — 2026-09 の Phase 2 で入った本命
+ *    （`functions/api/oauth/[[path]].ts` が発行・D1 `oauth_tokens`）。
+ * 3) Clerk 発行の OAuth アクセストークン — ファサード時代に繋いだ利用者の互換。
+ *    Clerk SDK の authenticateRequest(acceptsToken:'oauth_token') で検証する
+ *    （手書きの JWKS 検証は JWT/opaque の形式差で失敗するため不採用）。
+ *
+ * **3 を消してはいけない。** 既に接続済みの Claude が持っているトークンがこの経路で、
+ * 消すと次のリフレッシュまで気づかれずに切れる（CLAUDE.md「後方互換性」）。
+ * 会員判定はどの経路でも D1 `subscriptions` を都度照会する（fail-closed）。
  */
 
 import { createClerkClient } from '@clerk/backend'
 import { resolveMcpUser } from './mcp-token'
 import { isActiveMember } from './membership'
+import { hashSecret, isOurs, OAUTH_PREFIX } from './oauth-server'
+import { readToken } from './oauth-store'
 
 /** OAuth 検証＋会員照会に必要な環境変数（既存の Clerk 資格情報を使う）。 */
 export interface McpAuthEnv {
@@ -21,7 +29,8 @@ export interface McpAuthEnv {
 export interface McpPrincipal {
   userId: string
   isMember: boolean
-  via: 'oauth' | 'token'
+  /** どの系統で解けたか（self ＝自前 OAuth・oauth ＝ Clerk 発行・token ＝ mcp_）。 */
+  via: 'self' | 'oauth' | 'token'
 }
 
 /** テスト時に差し替え可能な依存（OAuth 検証・会員照会）。 */
@@ -88,7 +97,14 @@ export async function resolveMcpAuth(
     return { userId, isMember: await checkMember(userId), via: 'token' }
   }
 
-  // 2) Clerk 発行 OAuth アクセストークン。
+  // 2) 自前 OAuth のアクセストークン（D1 の oauth_tokens・期限は読み出し側が見る）。
+  if (isOurs(token, OAUTH_PREFIX.access)) {
+    const found = await readToken(db, await hashSecret(token), 'access', Date.now())
+    if (!found) return null
+    return { userId: found.userId, isMember: await checkMember(found.userId), via: 'self' }
+  }
+
+  // 3) Clerk 発行 OAuth アクセストークン（ファサード時代の互換）。
   const verify = deps?.verifyOAuth ?? verifyOAuthUserId
   const userId = await verify(request, env)
   if (!userId) return null

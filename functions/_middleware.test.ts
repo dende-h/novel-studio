@@ -3,8 +3,9 @@
  * ディスカバリの契約を機械で固定する。ここが崩れると **接続できたクライアントが黙って切れる**——
  * しかもエラーはクライアント側にしか出ないので、こちらからは気づけない。
  *
- * とくに「自オリジンを認可サーバーとして名乗らない」は、名乗った結果 ChatGPT が繋がらなくなった
- * 実績のある一線（docs/requirement/10-mcp-oauth.md §2-A）。回帰したらここで止める。
+ * 一番の勘所は「**名乗る issuer と、認可応答の iss を書く主体を一致させる**」こと。
+ * 一致していない中間形（issuer だけ自オリジン・応答は Clerk）で ChatGPT が繋がらなくなった
+ * 実績がある（docs/requirement/10-mcp-oauth.md §2-A）。上流の値を混ぜないことも合わせて見張る。
  */
 import { describe, expect, it } from 'vitest'
 import { onRequest } from './_middleware'
@@ -27,7 +28,7 @@ const call = (path: string, env: Record<string, string> = {}, method = 'GET', or
   } as unknown as Ctx)
 
 describe('OAuth ディスカバリ', () => {
-  it('PRM は Clerk の issuer を認可サーバーとして指す（自オリジンを名乗らない）', async () => {
+  it('PRM は自オリジンを認可サーバーとして指す（応答を書くのも自分）', async () => {
     for (const path of [
       '/.well-known/oauth-protected-resource',
       '/.well-known/oauth-protected-resource/api/mcp',
@@ -37,17 +38,9 @@ describe('OAuth ディスカバリ', () => {
       expect(res.headers.get('content-type')).toBe('application/json')
       const doc = (await res.json()) as Record<string, unknown>
       expect(doc.resource).toBe(`${ORIGIN}/api/mcp`)
-      expect(doc.authorization_servers).toEqual([ISSUER])
+      expect(doc.authorization_servers).toEqual([ORIGIN])
       expect(doc.bearer_methods_supported).toEqual(['header'])
     }
-  })
-
-  it('末尾スラッシュ付きの issuer も落として指す', async () => {
-    const res = await call('/.well-known/oauth-protected-resource', {
-      MCP_OAUTH_ISSUER: `${ISSUER}/`,
-    })
-    const doc = (await res.json()) as { authorization_servers: string[] }
-    expect(doc.authorization_servers).toEqual([ISSUER])
   })
 
   it('scopes は必ず出す（未設定でも既定値・黙るとクライアントが空で認可を求める）', async () => {
@@ -68,24 +61,27 @@ describe('OAuth ディスカバリ', () => {
     )
   })
 
-  it('issuer 未設定なら認可サーバーを名乗らない（空配列・HTML には落とさない）', async () => {
+  it('Clerk の設定が無くてもディスカバリは成り立つ（自前の認可サーバーなので）', async () => {
     const res = await call('/.well-known/oauth-protected-resource')
     expect(res.status).toBe(200)
     const doc = (await res.json()) as { authorization_servers: string[] }
-    expect(doc.authorization_servers).toEqual([])
+    expect(doc.authorization_servers).toEqual([ORIGIN])
   })
 
-  it('AS メタデータは JSON の 404（自オリジンを認可サーバーとして名乗らない）', async () => {
+  it('AS メタデータは自前のものを配る（openid-configuration にも同じ内容）', async () => {
     for (const path of [
       '/.well-known/oauth-authorization-server',
       '/.well-known/openid-configuration',
     ]) {
       const res = await call(path, { MCP_OAUTH_ISSUER: ISSUER })
-      expect(res.status).toBe(404)
+      expect(res.status).toBe(200)
       expect(res.headers.get('content-type')).toBe('application/json')
-      expect(res.headers.get('cache-control')).toBe('no-store')
-      // 誤って上流の内容や自オリジンの窓口を配っていないこと。
-      expect(await res.text()).not.toContain('issuer')
+      const doc = (await res.json()) as Record<string, unknown>
+      expect(doc.issuer).toBe(ORIGIN)
+      expect(doc.authorization_endpoint).toBe(`${ORIGIN}/api/oauth/authorize`)
+      expect(doc.authorization_response_iss_parameter_supported).toBe(true)
+      // **上流の値を 1 つも混ぜない**（混ぜて壊した実績がある・§2-G）。
+      expect(JSON.stringify(doc)).not.toContain('clerk')
     }
   })
 

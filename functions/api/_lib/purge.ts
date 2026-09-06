@@ -40,7 +40,7 @@ function isNotFound(err: unknown): boolean {
   )
 }
 
-/** クラウドデータ（R2 の `${userId}/` と D1 works/sessions/rate_limits/mcp_tokens/activity）を冪等削除。
+/** クラウドデータ（R2 の `${userId}/` と D1 works/sessions/rate_limits/mcp_tokens/oauth_tokens/activity）を冪等削除。
  *  掲示板だけは消さずに伏せる（下記）。subscriptions 行には触れない
  *（呼び出し側 reaper が完全削除時にまとめて消す）。`now` は省略時に現在時刻。 */
 export async function purgeCloudData(
@@ -69,6 +69,8 @@ export async function purgeCloudData(
     // 素の userId だけ消すとこの行が残る。
     env.DB.prepare('DELETE FROM rate_limits WHERE user_id = ?').bind(`board:${userId}`),
     env.DB.prepare('DELETE FROM mcp_tokens WHERE user_id = ?').bind(userId),
+    // 自前 OAuth のトークン（migration 0010）。消し忘れると、退会後も AI から読める。
+    env.DB.prepare('DELETE FROM oauth_tokens WHERE user_id = ?').bind(userId),
     env.DB.prepare('DELETE FROM activity WHERE user_id = ?').bind(userId),
     // 掲示板は「消さずに伏せる」。投稿を消すと、他の人の返信が虫食いの会話になる
     //（利用規約 第6条の2・docs/requirement/09-board.md D-BOARD-DELETE）。
