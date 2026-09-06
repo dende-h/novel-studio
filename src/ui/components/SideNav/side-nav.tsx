@@ -21,11 +21,11 @@ import {
   Waypoints,
 } from 'lucide-react'
 import type { ComponentType } from 'react'
+import { useEffect, useRef } from 'react'
 import { cn } from '@/lib/utils'
 import { PLATFORM_ORIGIN } from '@/ui/_api/publish'
 import { coverTone } from '@/ui/_utils/cover-tone'
 import { Button } from '@/ui/components/ui/button'
-import { ScrollArea } from '@/ui/components/ui/scroll-area'
 import { ZoomableImage } from '@/ui/components/ui/zoomable-image'
 
 export type NavKey =
@@ -109,9 +109,11 @@ interface NavRowProps {
   active?: boolean
   onClick?: () => void
   disabled?: boolean
+  /** 右端に重ねるアイコンボタンの分だけ余白を空ける */
+  trailingSpace?: boolean
 }
 
-function NavRow({ icon: Icon, label, active, onClick, disabled }: NavRowProps) {
+function NavRow({ icon: Icon, label, active, onClick, disabled, trailingSpace }: NavRowProps) {
   return (
     <button
       type="button"
@@ -125,11 +127,99 @@ function NavRow({ icon: Icon, label, active, onClick, disabled }: NavRowProps) {
           : 'text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface',
         disabled &&
           'cursor-not-allowed opacity-50 hover:bg-transparent hover:text-on-surface-variant',
+        trailingSpace && 'pr-9',
       )}
     >
       <Icon className="size-[15px] shrink-0" />
       <span className="flex-1 truncate">{label}</span>
     </button>
+  )
+}
+
+/** 1 行の高さ（py-2 ＋ 13px 文字）。5 話分でアコーディオンの上限にする。 */
+const EPISODE_ROW_PX = 36
+const EPISODE_VISIBLE_ROWS = 5
+
+interface EpisodeAccordionProps {
+  episodes: EpisodeItem[]
+  currentEpisodeId?: string | null
+  onSelectEpisode?: (id: string) => void
+  onRenameEpisode?: (id: string) => void
+  onDeleteEpisode?: (id: string) => void
+}
+
+/** 「本文を書く」直下の話一覧。5 話分の高さまで伸び、それ以上はスクロールする。 */
+function EpisodeAccordion({
+  episodes,
+  currentEpisodeId,
+  onSelectEpisode,
+  onRenameEpisode,
+  onDeleteEpisode,
+}: EpisodeAccordionProps) {
+  const viewportRef = useRef<HTMLDivElement>(null)
+  // 開いた直後や選択が変わったとき、選択中の話がスクロール外に隠れないようにする。
+  useEffect(() => {
+    const vp = viewportRef.current
+    if (!vp || !currentEpisodeId) return
+    const el = vp.querySelector<HTMLElement>('[aria-current="true"]')
+    el?.scrollIntoView?.({ block: 'nearest' })
+  }, [currentEpisodeId])
+  return (
+    <div className="mt-0.5 ml-[19px] border-outline-variant/30 border-l pl-1.5">
+      <div
+        ref={viewportRef}
+        className="overflow-y-auto"
+        style={{ maxHeight: EPISODE_ROW_PX * EPISODE_VISIBLE_ROWS + 4 }}
+      >
+        <ul aria-label="話一覧" className="space-y-0.5 py-0.5">
+          {episodes.map((e) => {
+            const isCurrent = e.id === currentEpisodeId
+            return (
+              <li key={e.id} className="group relative flex items-center">
+                <button
+                  type="button"
+                  onClick={() => onSelectEpisode?.(e.id)}
+                  aria-current={isCurrent ? 'true' : undefined}
+                  className={cn(
+                    'flex min-w-0 flex-1 items-center gap-2 rounded-md px-2.5 py-2 text-left text-[13px] transition-colors',
+                    isCurrent
+                      ? 'bg-surface-container-lowest font-medium text-primary shadow-xs'
+                      : 'text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface',
+                  )}
+                >
+                  <FileText className="size-[14px] shrink-0" />
+                  <span className="min-w-0 flex-1 truncate">{e.title}</span>
+                </button>
+                {onRenameEpisode || onDeleteEpisode ? (
+                  <span className="absolute right-1.5 flex items-center gap-0.5 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
+                    {onRenameEpisode ? (
+                      <button
+                        type="button"
+                        onClick={() => onRenameEpisode(e.id)}
+                        aria-label={`「${e.title}」のタイトルを変更`}
+                        className="rounded bg-surface-container-low/90 p-1 text-on-surface-variant/70 transition-colors hover:text-primary"
+                      >
+                        <Pencil className="size-3.5" />
+                      </button>
+                    ) : null}
+                    {onDeleteEpisode ? (
+                      <button
+                        type="button"
+                        onClick={() => onDeleteEpisode(e.id)}
+                        aria-label={`「${e.title}」を削除`}
+                        className="rounded bg-surface-container-low/90 p-1 text-on-surface-variant/70 transition-colors hover:text-destructive"
+                      >
+                        <Trash2 className="size-3.5" />
+                      </button>
+                    ) : null}
+                  </span>
+                ) : null}
+              </li>
+            )
+          })}
+        </ul>
+      </div>
+    </div>
   )
 }
 
@@ -166,6 +256,8 @@ export function SideNav({
   // 作品が開いていれば作品モード（戻る＋作品カード＋本文/用語集）、未オープンはライブラリモード。
   const workOpen = workTitle !== undefined
   const workInitial = (workTitle ?? '').trim().charAt(0) || '無'
+  // 話一覧は「本文を書く」を選んでいる間だけ開き、他のメニューでは閉じる。
+  const episodesOpen = active === 'episodes' && !!episodes && episodes.length > 0
   return (
     // 1 ページに nav が複数あるとき（執筆の記録の年タブ等）、支援技術が区別できるよう名前を付ける。
     <nav
@@ -184,55 +276,96 @@ export function SideNav({
             マイライブラリ
           </button>
 
-          {/* 現在の作品カード。onEditWorkMeta があれば作品情報の編集口も兼ねる
-              （プロフィールカードと同じ流儀＝カード全体がボタン＋鉛筆）。 */}
-          {(() => {
-            const body = (
-              <>
-                <span
-                  aria-hidden="true"
-                  className="flex h-11 w-8 shrink-0 items-center justify-center rounded border border-outline-variant/30 font-serif text-[14px] text-on-surface"
-                  style={{ background: coverTone(workTitle ?? '') }}
-                >
-                  {workInitial}
-                </span>
-                <span className="min-w-0 flex-1 text-left">
-                  <span className="line-clamp-2 block font-semibold font-serif text-[13px] text-on-surface leading-normal">
-                    {workTitle}
+          {/* 現在の作品カード。onEditWorkMeta があれば上段が作品情報の編集口を兼ねる
+              （プロフィールカードと同じ流儀＝上段全体がボタン＋鉛筆）。
+              下段はフッターとして「新しいエピソード」を置く。 */}
+          <div className="flex w-full flex-col overflow-hidden rounded-lg border border-outline-variant/30 bg-surface-container-lowest">
+            {(() => {
+              const body = (
+                <>
+                  <span
+                    aria-hidden="true"
+                    className="flex h-11 w-8 shrink-0 items-center justify-center rounded border border-outline-variant/30 font-serif text-[14px] text-on-surface"
+                    style={{ background: coverTone(workTitle ?? '') }}
+                  >
+                    {workInitial}
                   </span>
-                  {workMeta ? (
-                    <span className="mt-0.5 block truncate text-[11px] text-on-surface-variant">
-                      {workMeta}
+                  <span className="min-w-0 flex-1 text-left">
+                    <span className="line-clamp-2 block font-semibold font-serif text-[13px] text-on-surface leading-normal">
+                      {workTitle}
                     </span>
-                  ) : null}
-                </span>
-              </>
-            )
-            const cardClass =
-              'flex w-full gap-2.5 rounded-lg border border-outline-variant/30 bg-surface-container-lowest p-3'
-            return onEditWorkMeta ? (
+                    {workMeta ? (
+                      <span className="mt-0.5 block truncate text-[11px] text-on-surface-variant">
+                        {workMeta}
+                      </span>
+                    ) : null}
+                  </span>
+                </>
+              )
+              const headClass = 'flex w-full gap-2.5 p-3'
+              return onEditWorkMeta ? (
+                <button
+                  type="button"
+                  onClick={onEditWorkMeta}
+                  aria-label="作品情報を編集"
+                  className={cn(
+                    headClass,
+                    'group items-start text-left transition-colors hover:bg-surface-container-low',
+                  )}
+                >
+                  {body}
+                  <Pencil className="size-3.5 shrink-0 text-on-surface-variant/50 transition-colors group-hover:text-primary" />
+                </button>
+              ) : (
+                <div className={headClass}>{body}</div>
+              )
+            })()}
+            {cta ? (
               <button
                 type="button"
-                onClick={onEditWorkMeta}
-                aria-label="作品情報を編集"
-                className={cn(cardClass, 'group items-start text-left hover:border-primary/40')}
+                onClick={cta.onClick}
+                disabled={cta.disabled}
+                className="flex w-full items-center justify-center gap-1.5 border-outline-variant/30 border-t px-3 py-2 font-medium text-[12px] text-on-surface-variant transition-colors hover:bg-surface-container-low hover:text-primary disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent disabled:hover:text-on-surface-variant"
               >
-                {body}
-                <Pencil className="size-3.5 shrink-0 text-on-surface-variant/50 transition-colors group-hover:text-primary" />
+                <Plus className="size-3.5" />
+                {cta.label}
               </button>
-            ) : (
-              <div className={cardClass}>{body}</div>
-            )
-          })()}
+            ) : null}
+          </div>
 
           {/* 作品スコープのナビ */}
           <div className="space-y-0.5">
-            <NavRow
-              icon={PenLine}
-              label="本文を書く"
-              active={active === 'episodes'}
-              onClick={onNavigateEpisodes}
-            />
+            {/* 本文を書く。右端に話の追加アイコン、選択中は直下に話一覧（アコーディオン）。 */}
+            <div className="relative">
+              <NavRow
+                icon={PenLine}
+                label="本文を書く"
+                active={active === 'episodes'}
+                onClick={onNavigateEpisodes}
+                trailingSpace
+              />
+              {cta ? (
+                <button
+                  type="button"
+                  onClick={cta.onClick}
+                  disabled={cta.disabled}
+                  aria-label="エピソードを追加"
+                  title="エピソードを追加"
+                  className="absolute top-1/2 right-1.5 -translate-y-1/2 rounded p-1 text-on-surface-variant/60 transition-colors hover:bg-surface-container-high hover:text-primary disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent disabled:hover:text-on-surface-variant/60"
+                >
+                  <Plus className="size-4" />
+                </button>
+              ) : null}
+            </div>
+            {episodesOpen ? (
+              <EpisodeAccordion
+                episodes={episodes}
+                currentEpisodeId={currentEpisodeId}
+                onSelectEpisode={onSelectEpisode}
+                onRenameEpisode={onRenameEpisode}
+                onDeleteEpisode={onDeleteEpisode}
+              />
+            ) : null}
             <NavRow
               icon={BookMarked}
               label="用語集"
@@ -272,78 +405,6 @@ export function SideNav({
               />
             ) : null}
           </div>
-
-          {/* 草稿（話リスト） */}
-          {episodes && episodes.length > 0 ? (
-            <div className="flex min-h-0 flex-1 flex-col">
-              <div className="shrink-0 px-3 pt-2 pb-1.5 font-medium text-[11px] text-on-surface-variant/60 tracking-widest">
-                草稿
-              </div>
-              <ScrollArea className="min-h-0 flex-1">
-                <ul className="space-y-0.5">
-                  {episodes.map((e) => {
-                    const isCurrent = e.id === currentEpisodeId
-                    return (
-                      <li key={e.id} className="group relative flex items-center">
-                        <button
-                          type="button"
-                          onClick={() => onSelectEpisode?.(e.id)}
-                          aria-current={isCurrent ? 'true' : undefined}
-                          className={cn(
-                            'flex min-w-0 flex-1 items-center gap-2.5 rounded-md px-3 py-2 text-left text-[13px] transition-colors',
-                            isCurrent
-                              ? 'bg-surface-container-lowest font-medium text-primary shadow-xs'
-                              : 'text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface',
-                          )}
-                        >
-                          <FileText className="size-[15px] shrink-0" />
-                          <span className="min-w-0 flex-1 truncate">{e.title}</span>
-                        </button>
-                        {onRenameEpisode || onDeleteEpisode ? (
-                          <span className="absolute right-1.5 flex items-center gap-0.5 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
-                            {onRenameEpisode ? (
-                              <button
-                                type="button"
-                                onClick={() => onRenameEpisode(e.id)}
-                                aria-label={`「${e.title}」のタイトルを変更`}
-                                className="rounded bg-surface-container-low/90 p-1 text-on-surface-variant/70 transition-colors hover:text-primary"
-                              >
-                                <Pencil className="size-3.5" />
-                              </button>
-                            ) : null}
-                            {onDeleteEpisode ? (
-                              <button
-                                type="button"
-                                onClick={() => onDeleteEpisode(e.id)}
-                                aria-label={`「${e.title}」を削除`}
-                                className="rounded bg-surface-container-low/90 p-1 text-on-surface-variant/70 transition-colors hover:text-destructive"
-                              >
-                                <Trash2 className="size-3.5" />
-                              </button>
-                            ) : null}
-                          </span>
-                        ) : null}
-                      </li>
-                    )
-                  })}
-                </ul>
-              </ScrollArea>
-            </div>
-          ) : null}
-
-          {/* 新しいエピソード */}
-          {cta ? (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={cta.onClick}
-              disabled={cta.disabled}
-              className="w-full justify-center gap-1.5 text-on-surface-variant hover:text-primary"
-            >
-              <Plus className="size-4" />
-              {cta.label}
-            </Button>
-          ) : null}
         </>
       ) : (
         <>

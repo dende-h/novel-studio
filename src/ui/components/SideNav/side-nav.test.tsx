@@ -83,6 +83,68 @@ describe('SideNav（サイドバー）', () => {
     expect(screen.queryByRole('button', { name: '「第一話」を削除' })).toBeNull()
   })
 
+  it('話一覧は「本文を書く」選択中だけ開き、他のメニュー選択中は閉じる', () => {
+    const episodes = [
+      { id: 'e1', title: '第一話' },
+      { id: 'e2', title: '第二話' },
+    ]
+    const { rerender } = render(
+      <SideNav {...baseProps} active="episodes" episodes={episodes} currentEpisodeId="e1" />,
+    )
+    expect(screen.getByRole('list', { name: '話一覧' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '第一話' })).toHaveAttribute('aria-current', 'true')
+    expect(screen.getByRole('button', { name: '第二話' })).not.toHaveAttribute('aria-current')
+
+    rerender(<SideNav {...baseProps} active="glossary" episodes={episodes} currentEpisodeId="e1" />)
+    expect(screen.queryByRole('list', { name: '話一覧' })).toBeNull()
+    expect(screen.queryByRole('button', { name: '第一話' })).toBeNull()
+    // 「本文を書く」自体は残り、押せば戻れる
+    expect(screen.getByRole('button', { name: '本文を書く' })).not.toHaveAttribute('aria-current')
+  })
+
+  it('話が 0 件なら「本文を書く」選択中でも話一覧を出さない', () => {
+    render(<SideNav {...baseProps} active="episodes" episodes={[]} />)
+    expect(screen.queryByRole('list', { name: '話一覧' })).toBeNull()
+  })
+
+  it('「本文を書く」右の追加アイコンと作品カード下の「新しいエピソード」は同じ CTA を呼ぶ', () => {
+    const onClick = vi.fn()
+    render(<SideNav {...baseProps} cta={{ label: '新しいエピソード', onClick }} />)
+    fireEvent.click(screen.getByRole('button', { name: 'エピソードを追加' }))
+    expect(onClick).toHaveBeenCalledTimes(1)
+    fireEvent.click(screen.getByRole('button', { name: '新しいエピソード' }))
+    expect(onClick).toHaveBeenCalledTimes(2)
+  })
+
+  it('cta.disabled なら追加アイコンも「新しいエピソード」も押せない', () => {
+    render(
+      <SideNav
+        {...baseProps}
+        cta={{ label: '新しいエピソード', onClick: () => {}, disabled: true }}
+      />,
+    )
+    expect(screen.getByRole('button', { name: 'エピソードを追加' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: '新しいエピソード' })).toBeDisabled()
+  })
+
+  it('作品カード：作品情報の編集と「新しいエピソード」が別々のボタンとして動く', () => {
+    const onEditWorkMeta = vi.fn()
+    const onClick = vi.fn()
+    render(
+      <SideNav
+        {...baseProps}
+        onEditWorkMeta={onEditWorkMeta}
+        cta={{ label: '新しいエピソード', onClick }}
+      />,
+    )
+    fireEvent.click(screen.getByRole('button', { name: '作品情報を編集' }))
+    expect(onEditWorkMeta).toHaveBeenCalledTimes(1)
+    expect(onClick).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', { name: '新しいエピソード' }))
+    expect(onClick).toHaveBeenCalledTimes(1)
+    expect(onEditWorkMeta).toHaveBeenCalledTimes(1)
+  })
+
   it('作品オープン中は「本文を書く」行が active かつ非 disabled', () => {
     render(<SideNav {...baseProps} active="episodes" />)
     const ep = screen.getByRole('button', { name: '本文を書く' })
