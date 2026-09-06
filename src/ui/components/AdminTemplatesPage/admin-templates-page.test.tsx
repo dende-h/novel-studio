@@ -71,6 +71,7 @@ const manifest = (entries: TemplateEntry[]): TemplateManifest => ({
 const getToken = async () => 'jwt'
 
 beforeEach(() => {
+  sessionStorage.clear() // 覚えたタブを次のテストへ持ち越さない
   api.adminFetchTemplates.mockReset()
   api.adminPatchTemplates.mockReset()
   api.adminPutTemplate.mockReset()

@@ -103,6 +103,7 @@ const KIND_TABS: Record<TemplateKind, { label: string; unit: string }> = {
 }
 
 const EMPTY_CATEGORY_DRAFTS: CategoryDrafts = { bg: {}, sprite: {}, se: {}, bgm: {} }
+const TAB_KEY = 'ns-admin-templates-tab'
 
 /** 秒の入力欄 → 数値（空は null＝外す・読めなければ undefined＝据え置き）。 */
 function parseSeconds(raw: string): number | null | undefined {
@@ -115,7 +116,25 @@ function parseSeconds(raw: string): number | null | undefined {
 export function AdminTemplatesPage({ getToken }: AdminTemplatesPageProps) {
   // null ＝ 読込中、'denied' ＝ 取れなかった（staff でない・通信不良）
   const [manifest, setManifest] = useState<TemplateManifest | 'denied' | null>(null)
-  const [tab, setTab] = useState<TemplateKind>('bg')
+  // 開いていたタブは同じセッションの間だけ覚える（作り直されても背景タブへ戻さない）
+  const [tab, setTabState] = useState<TemplateKind>(() => {
+    try {
+      const saved = sessionStorage.getItem(TAB_KEY)
+      return saved && TEMPLATE_KINDS.includes(saved as TemplateKind)
+        ? (saved as TemplateKind)
+        : 'bg'
+    } catch {
+      return 'bg'
+    }
+  })
+  const setTab = (next: TemplateKind) => {
+    setTabState(next)
+    try {
+      sessionStorage.setItem(TAB_KEY, next)
+    } catch {
+      // 覚えられなくても動く
+    }
+  }
   const [drafts, setDrafts] = useState<Record<string, Draft>>({})
   const [categoryDrafts, setCategoryDrafts] = useState<CategoryDrafts>(EMPTY_CATEGORY_DRAFTS)
   const [upload, setUpload] = useState<{ done: number; total: number; current: string } | null>(

@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { act, render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { AuthContext, type AuthState, GUEST_AUTH_STATE } from '@/ui/auth/auth-context'
 import { useIsStaff } from './use-staff'
@@ -65,5 +65,37 @@ describe('useIsStaff', () => {
       </AuthContext.Provider>,
     )
     await waitFor(() => expect(screen.getByText('member')).toBeInTheDocument())
+  })
+
+  it('getToken の参照が変わっても問い合わせ直さず、決まった値を保つ（管理ページを作り直さない）', async () => {
+    board.fetchMe.mockResolvedValue({
+      ok: true,
+      data: { profile: { role: 'staff' }, banned: false, posts: [] },
+    })
+    const { rerender } = render(
+      <AuthContext.Provider value={signedIn}>
+        <Probe enabled />
+      </AuthContext.Provider>,
+    )
+    await waitFor(() => expect(screen.getByText('staff')).toBeInTheDocument())
+    // Clerk のトークン更新のたびに getToken は新しい関数になる
+    await act(async () => {
+      rerender(
+        <AuthContext.Provider value={{ ...signedIn, getToken: async () => 'jwt-2' }}>
+          <Probe enabled />
+        </AuthContext.Provider>,
+      )
+    })
+    expect(screen.getByText('staff')).toBeInTheDocument()
+    expect(board.fetchMe).toHaveBeenCalledTimes(1)
+    // サインインの確定待ちに一瞬戻っても、決まった値は据え置く（null にしない）
+    await act(async () => {
+      rerender(
+        <AuthContext.Provider value={{ ...signedIn, status: 'loading' }}>
+          <Probe enabled />
+        </AuthContext.Provider>,
+      )
+    })
+    expect(screen.getByText('staff')).toBeInTheDocument()
   })
 })
