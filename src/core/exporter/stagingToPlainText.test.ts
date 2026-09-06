@@ -61,7 +61,7 @@ describe('stagingToPlainText（MCP 向け演出譜テキスト）', () => {
     expect(text).toContain('- [block_id: b99] 話者=灯／場面の切れ目')
   })
 
-  it('使える背景キーの一覧（テンプレ24種と持ち込み）が載る', () => {
+  it('使える背景キーの一覧（テンプレ18種と持ち込み）が載る', () => {
     const asset: UserGameAsset = {
       id: 'abc',
       kind: 'bg',
@@ -73,7 +73,8 @@ describe('stagingToPlainText（MCP 向け演出譜テキスト）', () => {
     const text = stagingToPlainText(work(), episode(), undefined, [asset])
     expect(text).toContain('使える背景（bg）キー:')
     expect(text).toContain('- preset:bg/room-day … 室内（昼）')
-    expect(text).toContain('- preset:bg/abstract-night … 抽象（夜）')
+    expect(text).toContain('- preset:bg/sky-night … 空（夜）')
+    expect(text).not.toContain('preset:bg/abstract-night')
     expect(text).toContain('- user:abc … 海辺の夕暮れ（持ち込み画像）')
     // 持ち込みが無いときは案内だけ
     expect(stagingToPlainText(work(), episode(), undefined, [])).toContain(

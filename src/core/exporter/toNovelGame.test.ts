@@ -46,7 +46,7 @@ describe('buildNovelGameFiles（zip の中身）', () => {
     const paths = files.map((f) => f.path)
     expect(paths).toContain('index.html')
     expect(paths).toContain('readme.txt')
-    expect(paths).toContain('assets/bg/abstract-night.svg')
+    expect(paths).toContain('assets/bg/sky-night.svg')
   })
 
   it('シナリオはページ・話者なし・既定背景・セーブキーを持つ', () => {
@@ -80,7 +80,7 @@ describe('buildNovelGameFiles（zip の中身）', () => {
     const paths = files.map((f) => f.path)
     expect(paths).toContain('assets/bg/road-night.svg')
     expect(paths).toContain('assets/bg/room-night.svg')
-    expect(paths).not.toContain('assets/bg/abstract-night.svg')
+    expect(paths).not.toContain('assets/bg/sky-night.svg')
   })
 
   it('未知の背景キー（user:* 等）は無視して壊さない', () => {
@@ -128,7 +128,7 @@ describe('buildNovelGameFiles（zip の中身）', () => {
       buildNovelGameFiles(work, episode, staging([{ blockId: 'b3', bg: 'preset:bg/room-night' }])),
     )
     const bg = s.credits.find((c) => c.label === '背景')
-    expect(bg?.body).toContain('抽象（夜）')
+    expect(bg?.body).toContain('空（夜）')
     expect(bg?.body).toContain('室内（夜）')
   })
 

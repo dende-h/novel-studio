@@ -25,7 +25,7 @@ describe('resolveContinuity（この行で効いているもの）', () => {
   it('背景は設定した行から先へ続く（最初の行は既定背景）', () => {
     const c = resolveContinuity(pagesOf([{ blockId: 'b2', bg: 'preset:bg/town-night' }]))
 
-    expect(c[0]?.bg).toBe('preset:bg/abstract-night') // 既定
+    expect(c[0]?.bg).toBe('preset:bg/sky-night') // 既定
     expect(c[0]?.changed.bg).toBe(true) // 最初の行は起点として印を出す
     expect(c[1]?.bg).toBe('preset:bg/town-night')
     expect(c[1]?.changed.bg).toBe(true)

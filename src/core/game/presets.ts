@@ -1,5 +1,9 @@
 /**
- * 組み込みのテンプレ背景（8場所 × 3時間帯 = 24枚。D-GAME-ASSET-SOURCE）。
+ * 組み込みのテンプレ背景（6場所 × 3時間帯 = 18枚。D-GAME-ASSET-SOURCE）。
+ *
+ * 当初は「暗転」「抽象」を含む 8 場所だったが、素材として使わないため 2026-09-06 に外した
+ *（キー `preset:bg/dark-*` / `abstract-*`）。旧作品の演出譜にそのキーが残っていても、書き出しは
+ * 未知キーとして読み飛ばす（前の背景が続く）＝壊れない。
  *
  * 手続き的なグラデーション SVG で場所と時間帯の「空気」を出す。運営が管理ページから入れた
  * 本画像（WebP 1280×720）は目録（templates.ts）経由で**同じキーに重なる**＝ここは画像が
@@ -10,15 +14,7 @@
  * キーと生成規則だけで、zip へは書き出し時に必要な分だけ入る。
  */
 
-export type GamePlace =
-  | 'room'
-  | 'hallway'
-  | 'town'
-  | 'nature'
-  | 'road'
-  | 'sky'
-  | 'dark'
-  | 'abstract'
+export type GamePlace = 'room' | 'hallway' | 'town' | 'nature' | 'road' | 'sky'
 export type GameTime = 'day' | 'dusk' | 'night'
 
 export interface PresetBackground {
@@ -41,8 +37,6 @@ const PLACES: Array<{ place: GamePlace; label: string }> = [
   { place: 'nature', label: '自然' },
   { place: 'road', label: '道' },
   { place: 'sky', label: '空' },
-  { place: 'dark', label: '暗転' },
-  { place: 'abstract', label: '抽象' },
 ]
 
 const TIMES: Array<{ time: GameTime; label: string }> = [
@@ -90,16 +84,6 @@ const TONES: Record<GamePlace, Record<GameTime, [string, string, string]>> = {
     dusk: ['#4A3C6E', '#C86F4A', '#F1C878'],
     night: ['#0B1230', '#1B2C55', '#2E4470'],
   },
-  dark: {
-    day: ['#26262B', '#1A1A1E', '#101013'],
-    dusk: ['#241D22', '#171216', '#0D0A0C'],
-    night: ['#14161F', '#0C0E15', '#05060A'],
-  },
-  abstract: {
-    day: ['#E8EAF2', '#CBD4E8', '#A9B8D8'],
-    dusk: ['#3E3654', '#7C5A6E', '#C08A6E'],
-    night: ['#141A30', '#232B49', '#3A4568'],
-  },
 }
 
 /** 光源（radial glow）の色。時間帯で決まる。 */
@@ -117,8 +101,6 @@ const GLOW_POS: Record<GamePlace, { cx: number; cy: number; r: number; opacity: 
   nature: { cx: 380, cy: 200, r: 460, opacity: 0.32 },
   road: { cx: 640, cy: 250, r: 400, opacity: 0.22 },
   sky: { cx: 940, cy: 190, r: 480, opacity: 0.45 },
-  dark: { cx: 640, cy: 360, r: 520, opacity: 0.06 },
-  abstract: { cx: 860, cy: 260, r: 500, opacity: 0.3 },
 }
 
 export const PRESET_BACKGROUNDS: PresetBackground[] = PLACES.flatMap(({ place, label }) =>
@@ -132,8 +114,8 @@ export const PRESET_BACKGROUNDS: PresetBackground[] = PLACES.flatMap(({ place, l
   })),
 )
 
-/** 演出未指定のときの既定背景。 */
-export const DEFAULT_BG_KEY = 'preset:bg/abstract-night'
+/** 演出未指定のときの既定背景（かつては「抽象（夜）」。その絵を外したので夜空に寄せる）。 */
+export const DEFAULT_BG_KEY = 'preset:bg/sky-night'
 
 export function presetBackground(key: string): PresetBackground | undefined {
   return PRESET_BACKGROUNDS.find((p) => p.key === key)
@@ -186,14 +168,6 @@ function placeDeco(p: PresetBackground): string {
       return (
         `<ellipse cx="380" cy="300" rx="420" ry="60" fill="${lift}" filter="url(#soft)"/>` +
         `<ellipse cx="900" cy="440" rx="500" ry="70" fill="${lift}" filter="url(#soft)" opacity=".6"/>`
-      )
-    case 'dark':
-      return ''
-    case 'abstract':
-      // 大きな円と斜めの帯
-      return (
-        `<circle cx="320" cy="480" r="260" fill="${lift}" opacity=".35" filter="url(#soft)"/>` +
-        `<polygon points="0,720 1280,300 1280,720" fill="${dimSoft}"/>`
       )
   }
 }

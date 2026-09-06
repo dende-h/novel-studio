@@ -17,7 +17,7 @@ import { PRESET_SPRITE_TONE, PRESET_SPRITES, type PresetSprite } from './spriteP
  * `manifest.json`（この形）で配られる。運営は管理ページから足す・置き換える・非表示にする。
  * キーは `preset:bg/<slug>` / `preset:sprite/<slug>` / `preset:bgm/<slug>`＝**ファイル名がそのまま契約**。
  *
- * 目録が無い・取れない状態でも今までどおり動く：組み込みの SVG（presets.ts の 24 枚と
+ * 目録が無い・取れない状態でも今までどおり動く：組み込みの SVG（presets.ts の 18 枚と
  * spritePresets.ts の 6 種）は目録に画像が無いあいだの**控え**で、画像が当たれば
  * 同じキーのまま本画像に切り替わる（旧作品の参照を壊さない）。BGM は**目録だけ**
  * （組み込みの控えは持たない＝運営のオリジナル曲が入るまで一覧は空）。
@@ -317,7 +317,7 @@ function sortByOrder<T extends { entry?: TemplateEntry }>(list: T[]): T[] {
 }
 
 /**
- * 背景の一覧＝組み込み 24 枚に目録を重ね、目録だけにある絵を後ろに足す。
+ * 背景の一覧＝組み込み 18 枚に目録を重ね、目録だけにある絵を後ろに足す。
  * 組み込みと同じ slug の画像が目録にあれば、キーはそのままに実体だけ画像になる。
  */
 export function mergeBackgroundCatalog(manifest: TemplateManifest | null): CatalogBackground[] {

@@ -32,7 +32,7 @@ export function stagingToPlainText(
   episode: Episode,
   staging: Staging | undefined,
   gameAssets: UserGameAsset[],
-  /** 運営テンプレの目録（無ければ組み込みの 24 枚だけを案内する） */
+  /** 運営テンプレの目録（無ければ組み込みの 18 枚だけを案内する） */
   templates: TemplateManifest | null = null,
 ): string {
   const cueByBlock = new Map((staging?.cues ?? []).map((c) => [c.blockId, c]))
