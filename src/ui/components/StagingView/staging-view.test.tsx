@@ -254,8 +254,7 @@ describe('StagingView（演出エディタ）', () => {
     })
     expect(saved[0]?.cues[0]).toEqual({ blockId: 'b2', bg: `user:${assetSaved[0]?.id}` })
     // 一覧の行と背景セレクトに持ち込み画像の名前が出る
-    // 行の印と、選択行の「効いているもの」の両方に出る
-    expect(await screen.findAllByText('背景 海辺の夕暮れ')).toHaveLength(2)
+    expect(await screen.findByText('背景 海辺の夕暮れ')).toBeInTheDocument()
     expect(screen.getByRole('option', { name: '海辺の夕暮れ' })).toBeInTheDocument()
   })
 
@@ -373,10 +372,10 @@ describe('StagingView（演出エディタ）', () => {
     // 環境音は場面の切れ目まで＝1・2 行目だけ
     expect(screen.getAllByTitle('環境音：雨')).toHaveLength(2)
     expect(screen.getAllByTitle('環境音：なし')).toHaveLength(1)
-    // 選択行の要約でも言葉にする
+    // 選択行の右側には「効いているもの」の要約を出さない（レーンだけで見せる）
     fireEvent.click(screen.getByText('「——まだ、書いてるんだね」'))
-    expect(await screen.findByText(/この行に効いているもの/)).toBeInTheDocument()
-    expect(screen.getByText(/背景 街（夜）／環境音 雨/)).toBeInTheDocument()
+    expect(await screen.findByLabelText('背景')).toBeInTheDocument()
+    expect(screen.queryByText(/この行に効いているもの/)).not.toBeInTheDocument()
   })
 
   it('効果音の鳴らし方を 1回／2回／ずっと から選べる', async () => {
@@ -480,14 +479,13 @@ describe('StagingView（演出エディタ）', () => {
     fireEvent.change(screen.getByLabelText('背景'), { target: { value: 'blackout' } })
     await waitFor(() => expect(saved).toHaveLength(1))
     expect(saved[0]?.cues[0]).toEqual({ blockId: 'b2', bg: 'blackout' })
-    // 行の印と、選択行の「効いているもの」の両方に出る
-    expect(await screen.findAllByText('背景 背景なし(ブラックアウト)')).toHaveLength(2)
+    expect(await screen.findByText('背景 背景なし(ブラックアウト)')).toBeInTheDocument()
     expect(
       screen.getByRole('img', { name: '背景プレビュー: 背景なし(ブラックアウト)' }),
     ).toBeInTheDocument()
   })
 
-  it('席を「変更しない(前のシーンを引継ぐ)」に戻すと、その席の指示（表情ごと）が外れる', async () => {
+  it('席を「変更しない(前の行を引継ぐ)」に戻すと、その席の指示（表情ごと）が外れる', async () => {
     const { repo, saved } = fakeRepo({
       workId: 'w1',
       episodeId: 'e1',
@@ -539,9 +537,7 @@ describe('StagingView（演出エディタ）', () => {
     expect(screen.getByRole('option', { name: 'なし(名前を出さない)' })).toBeInTheDocument()
     expect(screen.getByRole('option', { name: '？？？(名前を伏せる)' })).toBeInTheDocument()
     // 背景と BGM の先頭（どちらも「変更しない」＝前のまま続く）
-    expect(screen.getAllByRole('option', { name: '変更しない(前のシーンを引継ぐ)' })).toHaveLength(
-      2,
-    )
+    expect(screen.getAllByRole('option', { name: '変更しない(前の行を引継ぐ)' })).toHaveLength(2)
     expect(screen.getByRole('option', { name: '停止する' })).toBeInTheDocument()
 
     fireEvent.change(screen.getByLabelText('話者'), { target: { value: '' } })
@@ -727,9 +723,80 @@ describe('StagingView（演出エディタ）', () => {
     })
     render(<StagingView repo={repo} work={makeWork()} currentEpisodeId="e1" />)
     expect(await screen.findByText('行き先を失った演出')).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: /外す/ }))
+    fireEvent.click(screen.getByRole('button', { name: '外す' }))
     await waitFor(() => expect(saved).toHaveLength(1))
     expect(saved[0]?.cues).toHaveLength(0)
+  })
+
+  it('「この行の演出を外す」は確認してから外す（キャンセルなら残る）', async () => {
+    const { repo, saved } = fakeRepo({
+      workId: 'w1',
+      episodeId: 'e1',
+      cues: [{ blockId: 'b2', speaker: '灯', bg: 'preset:bg/town-night' }],
+      updatedAt: 1,
+    })
+    render(<StagingView repo={repo} work={makeWork()} currentEpisodeId="e1" />)
+    fireEvent.click(await screen.findByText('「——まだ、書いてるんだね」'))
+    fireEvent.click(screen.getByRole('button', { name: 'この行の演出を外す' }))
+    expect(await screen.findByText('この行の演出を外しますか？')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'キャンセル' }))
+    await waitFor(() =>
+      expect(screen.queryByText('この行の演出を外しますか？')).not.toBeInTheDocument(),
+    )
+    expect(saved).toHaveLength(0)
+
+    fireEvent.click(screen.getByRole('button', { name: 'この行の演出を外す' }))
+    fireEvent.click(await screen.findByRole('button', { name: '外す' }))
+    await waitFor(() => expect(saved).toHaveLength(1))
+    expect(saved[0]?.cues).toHaveLength(0)
+  })
+
+  it('「この話の演出をすべて外す」は確認してから、行き先を失った分も含めて全部外す', async () => {
+    const { repo, saved } = fakeRepo({
+      workId: 'w1',
+      episodeId: 'e1',
+      cues: [
+        { blockId: 'b2', speaker: '灯' },
+        { blockId: 'b5', bg: 'preset:bg/room-night' },
+        { blockId: 'b99', speaker: '灯' }, // 行き先を失った演出
+      ],
+      updatedAt: 1,
+    })
+    render(<StagingView repo={repo} work={makeWork()} currentEpisodeId="e1" />)
+    await screen.findByText('「——まだ、書いてるんだね」')
+    fireEvent.click(screen.getByRole('button', { name: 'この話の演出をすべて外す' }))
+    expect(await screen.findByText('この話の演出をすべて外しますか？')).toBeInTheDocument()
+    expect(screen.getByText(/演出 3 件をすべて外します/)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'すべて外す' }))
+    await waitFor(() => expect(saved).toHaveLength(1))
+    expect(saved[0]).toMatchObject({ workId: 'w1', episodeId: 'e1', cues: [] })
+    expect(screen.queryByText('行き先を失った演出')).not.toBeInTheDocument()
+    // 何も無くなったら押せない
+    expect(screen.getByRole('button', { name: 'この話の演出をすべて外す' })).toBeDisabled()
+  })
+
+  it('右側の欄は 場面の切れ目 → 背景 → BGM → 話者 → 立ち絵 → この行から見る → 外す の順に並ぶ', async () => {
+    const { repo } = fakeRepo()
+    const { repo: assetRepo } = memoryAssetRepo()
+    render(
+      <StagingView repo={repo} work={makeWork()} currentEpisodeId="e1" assetRepo={assetRepo} />,
+    )
+    fireEvent.click(await screen.findByText('「——まだ、書いてるんだね」'))
+    const scene = await screen.findByLabelText('ここから場面が変わる')
+    const bg = screen.getByLabelText('背景')
+    const bgm = screen.getByLabelText('BGM')
+    const speaker = screen.getByLabelText('話者')
+    const seat = screen.getByLabelText('左の立ち絵')
+    const view = screen.getByRole('button', { name: 'この行から見る' })
+    const clear = screen.getByRole('button', { name: 'この行の演出を外す' })
+    const precedes = (a: Element, b: Element) =>
+      Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING)
+    expect(precedes(scene, bg)).toBe(true)
+    expect(precedes(bg, bgm)).toBe(true)
+    expect(precedes(bgm, speaker)).toBe(true)
+    expect(precedes(speaker, seat)).toBe(true)
+    expect(precedes(seat, view)).toBe(true)
+    expect(precedes(view, clear)).toBe(true)
   })
 })
 

@@ -49,6 +49,7 @@ import { cn } from '@/lib/utils'
 import { gameBgToDataUrl, gameSpriteToDataUrl } from '@/ui/_utils/imageResizer'
 import { playCatalogSe } from '@/ui/_utils/sePlayer'
 import { useAuth } from '@/ui/auth/auth-context'
+import { ConfirmDialog } from '@/ui/components/ConfirmDialog/confirm-dialog'
 import { Button } from '@/ui/components/ui/button'
 import { Input } from '@/ui/components/ui/input'
 import { Switch } from '@/ui/components/ui/switch'
@@ -106,7 +107,7 @@ const TRANSITIONS: { value: NonNullable<Cue['transition']>; label: string }[] = 
 /** 話者・席セレクトの「自由に入力」の目印（cue には入らない）。 */
 const CUSTOM_SPEAKER = '__custom__'
 /** 立ち絵・背景・BGM の「前の行のまま」を表す選択肢の文言（値は空＝cue に入らない）。 */
-const KEEP_LABEL = '変更しない(前のシーンを引継ぐ)'
+const KEEP_LABEL = '変更しない(前の行を引継ぐ)'
 
 /** 効果音キーの表示名（目録 → 組み込み → 予約キー → キーそのもの）。 */
 function seLabelOf(key: string, ses: readonly CatalogSe[]): string {
@@ -120,7 +121,7 @@ function bgmLabelOf(key: string, bgms: readonly CatalogBgm[]): string {
   return bgms.find((b) => b.key === key)?.label ?? key
 }
 
-/** 席ごとの立ち絵の指示を短く言う（一覧の行・orphan・選択行の要約で共用）。 */
+/** 席ごとの立ち絵の指示を短く言う（一覧の行・orphan で共用）。 */
 function spritesSummary(sprites: readonly SpriteCue[]): string {
   if (sprites.length === 0) return '指示なし'
   return sprites
@@ -132,7 +133,7 @@ function spritesSummary(sprites: readonly SpriteCue[]): string {
     .join('・')
 }
 
-/** いま立っている人物を席つきで言う（続きレーンの説明・選択行の要約）。 */
+/** いま立っている人物を席つきで言う（続きレーンの説明）。 */
 function seatsSummary(seats: PageContinuity['seats']): string {
   return seats.map((s) => `${SPRITE_POSITION_LABELS[s.pos]} ${s.character}`).join('・')
 }
@@ -184,7 +185,7 @@ const LANE_COLORS = {
   se: 'bg-on-surface-variant/60',
 } as const
 
-/** 続きレーンの説明（行に出すホバー文言・選択行の要約と同じ言葉を使う）。 */
+/** 続きレーンの説明（行に出すホバー文言）。 */
 function laneTitles(
   cont: PageContinuity | undefined,
   assets: UserGameAsset[],
@@ -279,6 +280,8 @@ export default function StagingView({ repo, work, currentEpisodeId, assetRepo }:
   const [hostedIds, setHostedIds] = useState<Set<string> | null>(null)
   const [hostNotice, setHostNotice] = useState<string | null>(null)
   const [managerOpen, setManagerOpen] = useState(false)
+  // 演出を外す前の確認（'row'＝選択行だけ・'episode'＝この話の全部）。null＝閉じている
+  const [confirmClear, setConfirmClear] = useState<'row' | 'episode' | null>(null)
   // プレビュー（null＝閉じている）。startAt を渡すとその行から始まる
   const [preview, setPreview] = useState<{ startAt?: number } | null>(null)
 
@@ -410,6 +413,7 @@ export default function StagingView({ repo, work, currentEpisodeId, assetRepo }:
     [staged, assets],
   )
   const selectedIndex = staged.findIndex((p) => p.blockId === selectedId)
+  // 席の欄で「いま立っている人物」を知るためだけに引く（前の行から続く分の要約は出さない＝左のレーンで見る）
   const selectedCont = selectedIndex >= 0 ? continuity[selectedIndex] : undefined
   const selected = staged.find((p) => p.blockId === selectedId) ?? null
   const speakerCandidate = useMemo(() => {
@@ -422,6 +426,13 @@ export default function StagingView({ repo, work, currentEpisodeId, assetRepo }:
   const apply = (blockId: string, patch: Parameters<typeof patchCue>[2]) => {
     if (!staging) return
     const next = patchCue(staging, blockId, patch, Date.now())
+    setStaging(next)
+    void repo.save(next)
+  }
+  /** この話の演出を全部外す（行き先を失った分も含む）。本文には触れない。 */
+  const clearAllCues = () => {
+    if (!staging) return
+    const next: Staging = { ...staging, cues: [], updatedAt: Date.now() }
     setStaging(next)
     void repo.save(next)
   }
@@ -851,6 +862,17 @@ export default function StagingView({ repo, work, currentEpisodeId, assetRepo }:
               素材の管理
             </Button>
           ) : null}
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="gap-2 text-destructive"
+            disabled={!episode || !staging || staging.cues.length === 0}
+            onClick={() => setConfirmClear('episode')}
+          >
+            <Trash2 className="size-4" />
+            この話の演出をすべて外す
+          </Button>
           <label className="flex items-center gap-2 text-on-surface-variant text-xs">
             話
             <select
@@ -1061,150 +1083,11 @@ export default function StagingView({ repo, work, currentEpisodeId, assetRepo }:
                 {blockTextById.get(selected.blockId) ?? ''}
               </p>
 
-              {/* この行に効いているもの。前の行から続いている分は、設定欄には出てこない */}
-              {selectedCont ? (
-                <p className="text-[11px] text-on-surface-variant leading-relaxed">
-                  <span className="text-on-surface-variant/70">この行に効いているもの：</span>
-                  背景 {bgLabelOf(selectedCont.bg, assets, backgrounds) ?? selectedCont.bg}
-                  {selectedCont.hidden
-                    ? '／立ち絵 出さない区間'
-                    : selectedCont.seats.length > 0
-                      ? `／立ち絵 ${seatsSummary(selectedCont.seats)}`
-                      : ''}
-                  {selectedCont.bgm ? `／BGM ${bgmLabelOf(selectedCont.bgm, bgms)}` : ''}
-                  {GAME_FEATURES.se && selectedCont.loopSe
-                    ? `／環境音 ${seLabelOf(selectedCont.loopSe, ses)}`
-                    : ''}
-                </p>
-              ) : null}
-
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="w-full gap-2 text-primary"
-                onClick={() =>
-                  setPreview({ startAt: staged.findIndex((p) => p.blockId === selected.blockId) })
-                }
-              >
-                <Play className="size-4" />
-                この行から見る
-              </Button>
-
               {hostNotice ? (
                 <p className="text-on-surface-variant text-xs leading-relaxed">{hostNotice}</p>
               ) : null}
 
-              {selected.kind === 'dialogue' ? (
-                <div>
-                  <div className="mb-2 flex items-center gap-1">
-                    <label
-                      htmlFor="staging-speaker"
-                      className="text-on-surface-variant text-xs uppercase tracking-wider"
-                    >
-                      話者
-                    </label>
-                    <SpeakerHelp />
-                  </div>
-                  <select
-                    id="staging-speaker"
-                    value={customSpeaker ? CUSTOM_SPEAKER : (selected.speaker ?? '')}
-                    onChange={(e) => {
-                      const value = e.target.value
-                      if (value === CUSTOM_SPEAKER) {
-                        // まだ保存しない。下の入力欄で名前を書いたときに保存する
-                        setCustomDraft(selected.speaker ?? '')
-                        setCustomSpeaker(true)
-                        return
-                      }
-                      setCustomSpeaker(false)
-                      setSpeaker(selected.blockId, value || undefined)
-                    }}
-                    className={SELECT_CLASS}
-                  >
-                    <option value="">なし(名前を出さない)</option>
-                    <option value={MASKED_SPEAKER}>？？？(名前を伏せる)</option>
-                    {persons.length > 0 ? (
-                      <optgroup label="用語集の人物">
-                        {persons.map((p) => (
-                          <option key={p.id} value={p.name}>
-                            {p.name}
-                          </option>
-                        ))}
-                      </optgroup>
-                    ) : null}
-                    {/* 自由記述で付けた名前の再利用（用語集の人物と重なる分は上のグループへ） */}
-                    {usedSpeakers.length > 0 ? (
-                      <optgroup label="この作品の演出で使った名前">
-                        {usedSpeakers.map((n) => (
-                          <option key={n} value={n}>
-                            {n}
-                          </option>
-                        ))}
-                      </optgroup>
-                    ) : null}
-                    <option value={CUSTOM_SPEAKER}>自由に入力</option>
-                  </select>
-                  {customSpeaker ? (
-                    <Input
-                      aria-label="話者名を入力"
-                      value={customDraft}
-                      placeholder="表示する名前"
-                      autoFocus
-                      onChange={(e) => setCustomDraft(e.target.value)}
-                      onBlur={() => commitCustomSpeaker(selected.blockId)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') commitCustomSpeaker(selected.blockId)
-                      }}
-                      className="mt-2"
-                    />
-                  ) : null}
-                  {persons.length === 0 ? (
-                    <p className="mt-2 text-[11px] text-on-surface-variant leading-relaxed">
-                      用語集に「人物」を登録すると、ここの候補に並びます。
-                    </p>
-                  ) : null}
-                  {speakerCandidate && speakerCandidate !== selected.speaker ? (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="mt-2 text-primary"
-                      onClick={() => {
-                        setCustomSpeaker(false)
-                        setSpeaker(selected.blockId, speakerCandidate)
-                      }}
-                    >
-                      候補「{speakerCandidate}」を使う
-                    </Button>
-                  ) : null}
-                </div>
-              ) : null}
-
-              {assetRepo ? (
-                <div>
-                  <div className="mb-2 flex items-center gap-1">
-                    <span className="text-on-surface-variant text-xs uppercase tracking-wider">
-                      立ち絵
-                    </span>
-                    <SpriteHelp />
-                  </div>
-                  <div className="space-y-2">{SPRITE_POSITIONS.map(renderSeatEditor)}</div>
-                  <input
-                    ref={spriteInputRef}
-                    type="file"
-                    accept="image/*"
-                    hidden
-                    aria-label="立ち絵の画像を選ぶ"
-                    onChange={(e) => {
-                      const file = e.target.files?.[0]
-                      e.target.value = ''
-                      if (file) void pickSpriteFile(file)
-                    }}
-                  />
-                </div>
-              ) : null}
-
+              {/* 欄の並びは「場面の切れ目 → 背景 → 切り替え方 → BGM → 話者（セリフのみ）→ 立ち絵」。前の行から続いている分は欄には出ない（左のレーンで見る） */}
               <div className="flex items-center justify-between gap-3">
                 <div className="flex items-center gap-1">
                   <label htmlFor="staging-scene" className="text-on-surface text-sm">
@@ -1515,12 +1398,135 @@ export default function StagingView({ repo, work, currentEpisodeId, assetRepo }:
                 </div>
               ) : null}
 
+              {selected.kind === 'dialogue' ? (
+                <div>
+                  <div className="mb-2 flex items-center gap-1">
+                    <label
+                      htmlFor="staging-speaker"
+                      className="text-on-surface-variant text-xs uppercase tracking-wider"
+                    >
+                      話者
+                    </label>
+                    <SpeakerHelp />
+                  </div>
+                  <select
+                    id="staging-speaker"
+                    value={customSpeaker ? CUSTOM_SPEAKER : (selected.speaker ?? '')}
+                    onChange={(e) => {
+                      const value = e.target.value
+                      if (value === CUSTOM_SPEAKER) {
+                        // まだ保存しない。下の入力欄で名前を書いたときに保存する
+                        setCustomDraft(selected.speaker ?? '')
+                        setCustomSpeaker(true)
+                        return
+                      }
+                      setCustomSpeaker(false)
+                      setSpeaker(selected.blockId, value || undefined)
+                    }}
+                    className={SELECT_CLASS}
+                  >
+                    <option value="">なし(名前を出さない)</option>
+                    <option value={MASKED_SPEAKER}>？？？(名前を伏せる)</option>
+                    {persons.length > 0 ? (
+                      <optgroup label="用語集の人物">
+                        {persons.map((p) => (
+                          <option key={p.id} value={p.name}>
+                            {p.name}
+                          </option>
+                        ))}
+                      </optgroup>
+                    ) : null}
+                    {/* 自由記述で付けた名前の再利用（用語集の人物と重なる分は上のグループへ） */}
+                    {usedSpeakers.length > 0 ? (
+                      <optgroup label="この作品の演出で使った名前">
+                        {usedSpeakers.map((n) => (
+                          <option key={n} value={n}>
+                            {n}
+                          </option>
+                        ))}
+                      </optgroup>
+                    ) : null}
+                    <option value={CUSTOM_SPEAKER}>自由に入力</option>
+                  </select>
+                  {customSpeaker ? (
+                    <Input
+                      aria-label="話者名を入力"
+                      value={customDraft}
+                      placeholder="表示する名前"
+                      autoFocus
+                      onChange={(e) => setCustomDraft(e.target.value)}
+                      onBlur={() => commitCustomSpeaker(selected.blockId)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') commitCustomSpeaker(selected.blockId)
+                      }}
+                      className="mt-2"
+                    />
+                  ) : null}
+                  {persons.length === 0 ? (
+                    <p className="mt-2 text-[11px] text-on-surface-variant leading-relaxed">
+                      用語集に「人物」を登録すると、ここの候補に並びます。
+                    </p>
+                  ) : null}
+                  {speakerCandidate && speakerCandidate !== selected.speaker ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="mt-2 text-primary"
+                      onClick={() => {
+                        setCustomSpeaker(false)
+                        setSpeaker(selected.blockId, speakerCandidate)
+                      }}
+                    >
+                      候補「{speakerCandidate}」を使う
+                    </Button>
+                  ) : null}
+                </div>
+              ) : null}
+
+              {assetRepo ? (
+                <div>
+                  <div className="mb-2 flex items-center gap-1">
+                    <span className="text-on-surface-variant text-xs uppercase tracking-wider">
+                      立ち絵
+                    </span>
+                    <SpriteHelp />
+                  </div>
+                  <div className="space-y-2">{SPRITE_POSITIONS.map(renderSeatEditor)}</div>
+                  <input
+                    ref={spriteInputRef}
+                    type="file"
+                    accept="image/*"
+                    hidden
+                    aria-label="立ち絵の画像を選ぶ"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0]
+                      e.target.value = ''
+                      if (file) void pickSpriteFile(file)
+                    }}
+                  />
+                </div>
+              ) : null}
+
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="w-full gap-2 text-primary"
+                onClick={() =>
+                  setPreview({ startAt: staged.findIndex((p) => p.blockId === selected.blockId) })
+                }
+              >
+                <Play className="size-4" />
+                この行から見る
+              </Button>
+
               <Button
                 type="button"
                 variant="ghost"
                 size="sm"
-                className="gap-1 text-destructive"
-                onClick={() => clearCue(selected.blockId)}
+                className="w-full gap-1 text-destructive"
+                onClick={() => setConfirmClear('row')}
               >
                 <Trash2 className="size-4" />
                 この行の演出を外す
@@ -1544,6 +1550,29 @@ export default function StagingView({ repo, work, currentEpisodeId, assetRepo }:
           {...(preview?.startAt !== undefined ? { startAt: preview.startAt } : {})}
         />
       ) : null}
+
+      <ConfirmDialog
+        open={confirmClear === 'row'}
+        onOpenChange={(o) => {
+          if (!o) setConfirmClear(null)
+        }}
+        title="この行の演出を外しますか？"
+        description="この行に付けた話者・背景・BGM・立ち絵などをすべて外します。本文は変わりません。"
+        confirmLabel="外す"
+        onConfirm={() => {
+          if (selected) clearCue(selected.blockId)
+        }}
+      />
+      <ConfirmDialog
+        open={confirmClear === 'episode'}
+        onOpenChange={(o) => {
+          if (!o) setConfirmClear(null)
+        }}
+        title="この話の演出をすべて外しますか？"
+        description={`「${episode?.title ?? ''}」に付けた演出 ${staging?.cues.length ?? 0} 件をすべて外します。本文は変わりません。元に戻せません。`}
+        confirmLabel="すべて外す"
+        onConfirm={clearAllCues}
+      />
 
       {assetRepo ? (
         <AssetManager
