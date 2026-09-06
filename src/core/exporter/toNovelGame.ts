@@ -10,6 +10,7 @@ import { gameAssetKey, pickSprite, type UserGameAsset } from '../game/assets'
 import { GAME_FEATURES } from '../game/features'
 import { buildGameCredits, DEFAULT_BG_KEY, presetBackground, presetBgSvg } from '../game/presets'
 import { presetSe, SE_STOP, type SeStep } from '../game/sePresets'
+import { presetSprite } from '../game/spritePresets'
 import { parseTemplateKey } from '../game/templates'
 import { dataUrlMime } from '../image'
 import type { Episode, Inline, Work } from '../schema'
@@ -548,11 +549,13 @@ export function buildNovelGameFiles(
 }
 
 /**
- * テンプレ立ち絵のクレジット表記。割り当て時の素材名は `<人物>（<テンプレの表示名>）` なので、
- * 人物の名前を外して表示名だけを載せる（組み込みの表は無い＝目録の表示名がここに残っている）。
+ * テンプレ立ち絵のクレジット表記。組み込みのシルエットならその表示名。目録だけの絵は、
+ * 割り当て時の素材名 `<人物>（<テンプレの表示名>）` から人物の名前を外して載せる。
  * 形が違えば素材名そのもの、無ければキーの slug に倒す。
  */
 function templateSpriteLabelOf(a: NovelGameUserAsset): string {
+  const builtin = a.preset ? presetSprite(a.preset) : undefined
+  if (builtin) return builtin.label
   if (a.character && a.label.startsWith(`${a.character}（`) && a.label.endsWith('）')) {
     const inner = a.label.slice(a.character.length + 1, -1)
     if (inner) return inner

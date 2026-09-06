@@ -8,6 +8,7 @@ import {
   type PresetBackground,
 } from './presets'
 import { PRESET_SES, type PresetSe } from './sePresets'
+import { PRESET_SPRITE_TONE, PRESET_SPRITES, type PresetSprite } from './spritePresets'
 
 /**
  * 運営テンプレの**目録**（D-GAME-TEMPLATE-CMS）。
@@ -16,11 +17,10 @@ import { PRESET_SES, type PresetSe } from './sePresets'
  * `manifest.json`（この形）で配られる。運営は管理ページから足す・置き換える・非表示にする。
  * キーは `preset:bg/<slug>` / `preset:sprite/<slug>` / `preset:bgm/<slug>`＝**ファイル名がそのまま契約**。
  *
- * 目録が無い・取れない状態でも今までどおり動く：組み込みの背景 SVG（presets.ts の 24 枚）は
- * 目録に画像が無いあいだの**控え**で、画像が当たれば同じキーのまま本画像に切り替わる
- * （旧作品の参照を壊さない）。立ち絵と BGM は**目録だけ**（組み込みの控えは持たない。
- * 組み込みのシルエット 6 種は 2026-09-06 に外した——割り当て済みの立ち絵は素材レコードが
- * 実体（data URL）を持っているので、そのまま描ける）。
+ * 目録が無い・取れない状態でも今までどおり動く：組み込みの SVG（presets.ts の 24 枚と
+ * spritePresets.ts の 6 種）は目録に画像が無いあいだの**控え**で、画像が当たれば
+ * 同じキーのまま本画像に切り替わる（旧作品の参照を壊さない）。BGM は**目録だけ**
+ * （組み込みの控えは持たない＝運営のオリジナル曲が入るまで一覧は空）。
  *
  * ここは純 TS。取得（fetch）と R2 の読み書きは UI 層／Functions が担う。
  */
@@ -229,15 +229,13 @@ const isGameTime = (s: string): s is GameTime => (TEMPLATE_TIMES as readonly str
 // 表示名
 // ---------------------------------------------------------------------------
 
-/** 立ち絵の人物像の語 → 表示名（`silhouette-woman.png` → 分類 `woman` → 「女性」）。 */
-const SPRITE_WORD_LABELS: Record<string, string> = {
-  woman: '女性',
-  man: '男性',
-  girl: '少女',
-  boy: '少年',
-  elder: '老人',
-  hood: 'フードの人',
-}
+/** 組み込みシルエットの人物像の語 → 表示名（`シルエット（女性）` の中身）。 */
+const SPRITE_WORD_LABELS: Record<string, string> = Object.fromEntries(
+  PRESET_SPRITES.map((p) => [
+    p.slug.replace(/^silhouette-/, ''),
+    p.label.replace(/^シルエット（(.*)）$/, '$1'),
+  ]),
+)
 
 /** BGM の曲調の語 → 表示名（07-novel-game.md §4.3 の 5 種）。目録の表示名があればそちら。 */
 const BGM_MOOD_LABELS: Record<string, string> = {
@@ -307,8 +305,8 @@ export interface CatalogSprite {
   label: string
   category: string
   tone: [string, string, string]
-  /** 目録の実体（立ち絵は目録だけ＝必ずある。旧型の呼び出しと形を揃えるため optional） */
   entry?: TemplateEntry
+  builtin?: PresetSprite
   hidden: boolean
 }
 
@@ -357,14 +355,28 @@ export function mergeBackgroundCatalog(manifest: TemplateManifest | null): Catal
   return sortByOrder(out)
 }
 
-/**
- * 立ち絵の一覧＝**目録だけ**（組み込みの控えは無い）。目録が無ければ空＝「テンプレから選ぶ」に
- * 何も並ばない。運営が管理ページから入れた画像がそのまま一覧になる。
- */
+/** 立ち絵の一覧（組み込みシルエット 6 種＋目録）。 */
 export function mergeSpriteCatalog(manifest: TemplateManifest | null): CatalogSprite[] {
-  const out: CatalogSprite[] = (manifest?.entries ?? [])
-    .filter((e) => e.kind === 'sprite')
-    .map((e) => ({
+  const entries = new Map(
+    (manifest?.entries ?? []).filter((e) => e.kind === 'sprite').map((e) => [e.slug, e]),
+  )
+  const out: CatalogSprite[] = []
+  for (const p of PRESET_SPRITES) {
+    const e = entries.get(p.slug)
+    entries.delete(p.slug)
+    out.push({
+      key: p.key,
+      slug: p.slug,
+      label: e?.label || p.label,
+      category: e?.category || p.slug.replace(/^silhouette-/, ''),
+      tone: e?.tone ?? PRESET_SPRITE_TONE,
+      ...(e ? { entry: e } : {}),
+      builtin: p,
+      hidden: e?.hidden === true,
+    })
+  }
+  for (const e of entries.values()) {
+    out.push({
       key: templateKey('sprite', e.slug),
       slug: e.slug,
       label: e.label || e.slug,
@@ -372,7 +384,8 @@ export function mergeSpriteCatalog(manifest: TemplateManifest | null): CatalogSp
       tone: e.tone,
       entry: e,
       hidden: e.hidden === true,
-    }))
+    })
+  }
   return sortByOrder(out)
 }
 

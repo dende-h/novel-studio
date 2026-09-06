@@ -3,6 +3,7 @@ import type { Staging } from '@/core/game'
 import type { UserGameAsset } from '@/core/game/assets'
 import { GAME_FEATURES } from '@/core/game/features'
 import { presetBgSvg } from '@/core/game/presets'
+import { presetSpriteDataUrl } from '@/core/game/spritePresets'
 import {
   type CatalogBackground,
   type CatalogBgm,
@@ -28,7 +29,7 @@ import { fetchTemplateBytes, fetchTemplateManifest } from '@/ui/_api/game-templa
  *
  * - 起動時ではなく、演出エディタ・書き出し・図鑑の立ち絵欄が最初に開いたときに読む。
  * - 直近の目録は localStorage に控え、取れないとき（オフライン）はそれを使う。
- *   何も無ければ null ＝ 組み込みの背景 SVG だけの一覧になる（立ち絵・BGM は空）。
+ *   何も無ければ null ＝ 組み込み SVG だけの一覧になる（今までどおり動く。BGM は空）。
  * - 実体（WebP・mp3）は使うときに取り、同じ URL は 1 セッション 1 回だけ取る。
  */
 
@@ -141,9 +142,11 @@ export function templateBgSrc(bg: CatalogBackground, variant: TemplateVariant = 
   return svgDataUrl(toneGradientSvg(bg.tone))
 }
 
-/** 一覧に出す立ち絵の src（目録の画像。目録に無い形は空＝描かない）。 */
+/** 一覧に出す立ち絵の src（画像 → 組み込み SVG）。どちらも無いことは無い（目録の項目は画像を持つ）。 */
 export function templateSpriteSrc(sp: CatalogSprite, variant: TemplateVariant = 'full'): string {
-  return sp.entry ? templateUrl(sp.entry, variant) : ''
+  if (sp.entry) return templateUrl(sp.entry, variant)
+  if (sp.builtin) return presetSpriteDataUrl(sp.builtin)
+  return ''
 }
 
 export interface TemplateImage {
@@ -283,11 +286,14 @@ export async function resolveTemplateSes(
   return { assets, missing }
 }
 
-/** テンプレ立ち絵を話者へ割り当てるときの実体（目録の画像）。取れなければ null。 */
+/** テンプレ立ち絵を話者へ割り当てるときの実体（画像 → 組み込み SVG）。取れなければ null。 */
 export async function templateSpriteDataUrl(sp: CatalogSprite): Promise<string | null> {
-  if (!sp.entry) return null
-  const img = await loadTemplateImage(sp.entry)
-  return img ? img.dataUrl : null
+  if (sp.entry) {
+    const img = await loadTemplateImage(sp.entry)
+    if (img) return img.dataUrl
+    return sp.builtin ? presetSpriteDataUrl(sp.builtin) : null
+  }
+  return sp.builtin ? presetSpriteDataUrl(sp.builtin) : null
 }
 
 /** 演出譜が指すテンプレ BGM のキー（重複なし・`preset:bgm/` だけ。予約キー stop は含まない）。 */

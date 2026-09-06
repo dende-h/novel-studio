@@ -531,11 +531,6 @@ describe('StagingView（演出エディタ）', () => {
   })
 
   it('登場させた人物の立ち絵を、その行から登録できる（話者でなくても）', async () => {
-    setTemplateCatalog(
-      templateManifest([
-        templateEntry({ kind: 'sprite', slug: 'silhouette-woman', label: 'シルエット（女性）' }),
-      ]),
-    )
     const { repo } = fakeRepo({
       workId: 'w1',
       episodeId: 'e1',
@@ -572,33 +567,7 @@ describe('StagingView（演出エディタ）', () => {
     expect(saved[0]?.cues[0]).toEqual({ blockId: 'b1', appear: '見知らぬ女' })
   })
 
-  it('テンプレ立ち絵は目録だけ：目録に無ければ「テンプレから選ぶ…」を出さない（組み込みのシルエットは無い）', async () => {
-    const { repo } = fakeRepo({
-      workId: 'w1',
-      episodeId: 'e1',
-      cues: [{ blockId: 'b2', speaker: '灯' }],
-      updatedAt: 1,
-    })
-    const { repo: assetRepo } = memoryAssetRepo()
-    render(
-      <StagingView repo={repo} work={makeWork()} currentEpisodeId="e1" assetRepo={assetRepo} />,
-    )
-    fireEvent.click(await screen.findByText('「——まだ、書いてるんだね」'))
-    expect(await screen.findByRole('button', { name: '立ち絵を追加…' })).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'テンプレから選ぶ…' })).not.toBeInTheDocument()
-  })
-
-  it('テンプレから選ぶ…で目録の立ち絵が話者に割り当てられる（tpl- id・枚数に数えない）', async () => {
-    setTemplateCatalog(
-      templateManifest([
-        templateEntry({ kind: 'sprite', slug: 'silhouette-woman', label: 'シルエット（女性）' }),
-        templateEntry({
-          kind: 'sprite',
-          slug: 'silhouette-hood',
-          label: 'シルエット（フードの人）',
-        }),
-      ]),
-    )
+  it('テンプレから選ぶ…でシルエット立ち絵が話者に割り当てられる（tpl- id・枚数に数えない）', async () => {
     const { repo } = fakeRepo({
       workId: 'w1',
       episodeId: 'e1',
@@ -620,7 +589,6 @@ describe('StagingView（演出エディタ）', () => {
       expression: '通常',
       preset: 'preset:sprite/silhouette-woman',
       name: '灯（シルエット（女性））',
-      dataUrl: 'data:image/webp;base64,AQID',
     })
     expect(saved?.id.startsWith('tpl-')).toBe(true)
     // もう一度別のテンプレを選ぶと差し替え（増えない）

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { PRESET_BACKGROUNDS } from './presets'
 import { PRESET_SES } from './sePresets'
+import { PRESET_SPRITES } from './spritePresets'
 import {
   applyTemplatePatch,
   catalogBackgroundKeys,
@@ -220,8 +221,7 @@ describe('組み込みと目録の合流', () => {
     expect(catalogBackgroundKeys(m).has('preset:bg/room-day')).toBe(true)
   })
 
-  it('立ち絵は目録だけ（組み込みのシルエットは持たない）。目録が無ければ空', () => {
-    expect(mergeSpriteCatalog(null)).toEqual([])
+  it('立ち絵も同じ規則（組み込み 6 種＋目録・人物像の語が分類）', () => {
     const list = mergeSpriteCatalog(
       manifest([
         entry({
@@ -230,18 +230,12 @@ describe('組み込みと目録の合流', () => {
           category: 'knight',
           label: 'シルエット（騎士）',
         }),
-        entry({ kind: 'sprite', slug: 'silhouette-woman', category: 'woman', label: '' }),
       ]),
     )
-    expect(list.map((s) => s.key)).toEqual([
-      'preset:sprite/silhouette-knight',
-      'preset:sprite/silhouette-woman',
-    ])
-    expect(list[0]?.entry).toBeDefined()
-    expect(list[1]?.label).toBe('silhouette-woman') // 表示名が空なら slug
-    // 人物像の語の表示名は表から（目録に無ければ語そのもの）
+    expect(list).toHaveLength(PRESET_SPRITES.length + 1)
+    expect(list[0]?.category).toBe('woman')
+    expect(list[list.length - 1]?.key).toBe('preset:sprite/silhouette-knight')
     expect(categoryLabelOf(null, 'sprite', 'woman')).toBe('女性')
-    expect(categoryLabelOf(null, 'sprite', 'knight')).toBe('knight')
   })
 
   it('分類は出現順に件数つきで並ぶ', () => {

@@ -233,8 +233,6 @@ export default function StagingView({ repo, work, currentEpisodeId, assetRepo }:
   const [bgmPickerOpen, setBgmPickerOpen] = useState(false)
   const seOf = (key: string) => ses.find((s) => s.key === key)
   const bgmOf = (key: string) => bgms.find((b) => b.key === key)
-  // テンプレ立ち絵は目録だけ（組み込みの控えは無い）。1 枚も無ければ「テンプレから選ぶ」を出さない
-  const hasTemplateSprites = visibleTemplates(sprites).length > 0
   // クラウド保管（R2 ホスティング・会員のみ）。ローカルが正で、クラウドは端末間で運ぶ控え。
   const auth = useAuth()
   const member = auth.status === 'member'
@@ -641,17 +639,15 @@ export default function StagingView({ repo, work, currentEpisodeId, assetRepo }:
             >
               立ち絵を追加…
             </Button>
-            {hasTemplateSprites ? (
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="text-primary"
-                onClick={() => setSpritePickerOpen((v) => !v)}
-              >
-                テンプレから選ぶ…
-              </Button>
-            ) : null}
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="text-primary"
+              onClick={() => setSpritePickerOpen((v) => !v)}
+            >
+              テンプレから選ぶ…
+            </Button>
           </div>
         )}
         <TemplatePicker

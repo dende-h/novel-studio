@@ -602,7 +602,7 @@ describe('プレビュー（startAt）', () => {
   })
 })
 
-describe('テンプレ立ち絵（目録の画像・preset 付き）', () => {
+describe('テンプレ立ち絵（シルエット・preset）', () => {
   const tplAsset = {
     key: 'user:tpl-1',
     id: 'tpl-1',
@@ -622,7 +622,7 @@ describe('テンプレ立ち絵（目録の画像・preset 付き）', () => {
     blocks: parseEpisodeBody('「おはよう」'),
   }
 
-  it('実体のまま同梱され、クレジットには素材名から人物名を外した表示名で載る', () => {
+  it('svg のまま同梱され、クレジットに運営素材として載る', () => {
     const files = buildNovelGameFiles(work, ep, staging([{ blockId: 'b1', speaker: '灯' }]), {
       userAssets: [tplAsset],
     })
