@@ -161,7 +161,7 @@ describe('目録の検証（Zod）', () => {
 })
 
 describe('組み込みと目録の合流', () => {
-  it('目録が無ければ組み込み 24 枚がそのまま（画像は無い・非表示も無い）', () => {
+  it('目録が無ければ組み込み 18 枚がそのまま（画像は無い・非表示も無い）', () => {
     const list = mergeBackgroundCatalog(null)
     expect(list).toHaveLength(PRESET_BACKGROUNDS.length)
     expect(list.every((b) => b.builtin && !b.entry && !b.hidden)).toBe(true)
@@ -241,16 +241,7 @@ describe('組み込みと目録の合流', () => {
   it('分類は出現順に件数つきで並ぶ', () => {
     expect(
       categoriesOf(mergeBackgroundCatalog(null)).map((c) => `${c.category}:${c.count}`),
-    ).toEqual([
-      'room:3',
-      'hallway:3',
-      'town:3',
-      'nature:3',
-      'road:3',
-      'sky:3',
-      'dark:3',
-      'abstract:3',
-    ])
+    ).toEqual(['room:3', 'hallway:3', 'town:3', 'nature:3', 'road:3', 'sky:3'])
   })
 })
 

@@ -7,13 +7,15 @@ import {
   presetBgSvg,
 } from './presets'
 
-describe('PRESET_BACKGROUNDS（8場所×3時間帯）', () => {
-  it('24枚あり、キー・slug・ラベルが一意', () => {
-    expect(PRESET_BACKGROUNDS).toHaveLength(24)
+describe('PRESET_BACKGROUNDS（6場所×3時間帯）', () => {
+  it('18枚あり、キー・slug・ラベルが一意（暗転・抽象は 2026-09-06 に外した）', () => {
+    expect(PRESET_BACKGROUNDS).toHaveLength(18)
+    expect(PRESET_BACKGROUNDS.some((p) => p.place === ('dark' as string))).toBe(false)
+    expect(PRESET_BACKGROUNDS.some((p) => p.place === ('abstract' as string))).toBe(false)
     const uniq = (xs: string[]) => new Set(xs).size
-    expect(uniq(PRESET_BACKGROUNDS.map((p) => p.key))).toBe(24)
-    expect(uniq(PRESET_BACKGROUNDS.map((p) => p.slug))).toBe(24)
-    expect(uniq(PRESET_BACKGROUNDS.map((p) => p.label))).toBe(24)
+    expect(uniq(PRESET_BACKGROUNDS.map((p) => p.key))).toBe(18)
+    expect(uniq(PRESET_BACKGROUNDS.map((p) => p.slug))).toBe(18)
+    expect(uniq(PRESET_BACKGROUNDS.map((p) => p.label))).toBe(18)
   })
 
   it('キーは preset:bg/<place>-<time> の形', () => {
@@ -42,7 +44,7 @@ describe('presetBgSvg（テンプレ背景の実体）', () => {
     for (const c of p.tone) expect(svg).toContain(c)
   })
 
-  it('全24枚が生成できる', () => {
+  it('全18枚が生成できる', () => {
     for (const p of PRESET_BACKGROUNDS) {
       expect(presetBgSvg(p)).toContain('</svg>')
     }

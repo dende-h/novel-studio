@@ -57,8 +57,8 @@ describe('TemplatePicker', () => {
         onPick={onPick}
       />,
     )
-    // すべて：組み込み 23（room-day は非表示）＋目録 2
-    expect(screen.getAllByRole('button', { pressed: false }).length).toBe(24)
+    // すべて：組み込み 17（room-day は非表示）＋目録 2（選択中の town-night を除く）
+    expect(screen.getAllByRole('button', { pressed: false }).length).toBe(18)
     expect(screen.getByRole('button', { pressed: true })).toHaveTextContent('街（夜）')
     expect(screen.queryByText('室内（昼）')).not.toBeInTheDocument()
 

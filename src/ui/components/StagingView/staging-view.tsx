@@ -1189,7 +1189,11 @@ export default function StagingView({ repo, work, currentEpisodeId, assetRepo }:
                   <option value="">（なし：変えない）</option>
                   {/* この端末に無い持ち込み画像のキーも選択状態は保つ（勝手に外さない） */}
                   {selected.bg && !bgLabelOf(selected.bg, assets, backgrounds) ? (
-                    <option value={selected.bg}>（この端末に無い画像）</option>
+                    <option value={selected.bg}>
+                      {selected.bg.startsWith('preset:bg/')
+                        ? '（もう使えないテンプレ背景）'
+                        : '（この端末に無い画像）'}
+                    </option>
                   ) : null}
                   {bgAssets.length > 0 ? (
                     <optgroup label="持ち込み">

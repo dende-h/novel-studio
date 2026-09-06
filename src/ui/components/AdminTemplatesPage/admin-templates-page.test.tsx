@@ -88,8 +88,8 @@ describe('AdminTemplatesPage', () => {
     api.adminFetchTemplates.mockResolvedValue(manifest([entry()]))
     render(<AdminTemplatesPage getToken={getToken} />)
     expect(await screen.findByText('town-alley-night')).toBeInTheDocument()
-    // 組み込みの 24 枚も並ぶ（画像なしの印つき・入力は無効）
-    expect(screen.getAllByText('画像なし（組み込みの SVG）').length).toBe(24)
+    // 組み込みの 18 枚も並ぶ（画像なしの印つき・入力は無効）
+    expect(screen.getAllByText('画像なし（組み込みの SVG）').length).toBe(18)
     expect(screen.getByLabelText('room-day の表示名')).toBeDisabled()
     expect(screen.getByLabelText('town-alley-night の表示名')).toHaveValue('路地（夜）')
     expect(screen.getByRole('button', { name: /背景（画像 1）/ })).toBeInTheDocument()

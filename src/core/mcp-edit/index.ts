@@ -881,7 +881,7 @@ export function setStagingCues(
   items: StagingCueInput[],
   gameAssets: readonly SpriteSource[],
   now: number,
-  /** 運営テンプレの目録が知っている背景キー（組み込み 24 枚の外にある絵）。省略＝組み込みだけ */
+  /** 運営テンプレの目録が知っている背景キー（組み込み 18 枚の外にある絵）。省略＝組み込みだけ */
   templateBgKeys: ReadonlySet<string> = new Set(),
   /** 同じく効果音キー（組み込みの合成 12 種の外にある音）。省略＝組み込みだけ */
   templateSeKeys: ReadonlySet<string> = new Set(),
