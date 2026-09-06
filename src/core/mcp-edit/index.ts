@@ -1,4 +1,5 @@
 import {
+  BGM_STOP,
   type Cue,
   classifyBlock,
   emptyStaging,
@@ -810,6 +811,7 @@ export interface StagingCueInput {
   hideSprite?: boolean
   sceneBreak?: boolean
   bg?: string
+  bgm?: string
   se?: string
   seRepeat?: string
   transition?: string
@@ -853,6 +855,7 @@ export function parseStagingCueInputs(raw: unknown): StagingCueInput[] {
       hideSprite: flag('hide_sprite'),
       sceneBreak: flag('scene_break'),
       bg: field('bg'),
+      bgm: field('bgm'),
       se: field('se'),
       seRepeat: field('se_repeat'),
       transition: field('transition'),
@@ -882,6 +885,8 @@ export function setStagingCues(
   templateBgKeys: ReadonlySet<string> = new Set(),
   /** 同じく効果音キー（組み込みの合成 12 種の外にある音）。省略＝組み込みだけ */
   templateSeKeys: ReadonlySet<string> = new Set(),
+  /** 同じく BGM キー（組み込みは無い＝目録に無ければ何も選べない）。省略＝空 */
+  templateBgmKeys: ReadonlySet<string> = new Set(),
 ): { stagings: Staging[]; applied: number; cleared: number } {
   const work = works.find((w) => w.id === workId)
   if (!work) throw new McpEditError(`work_id "${workId}" の作品が見つかりません`)
@@ -909,6 +914,7 @@ export function setStagingCues(
         item.hideSprite !== undefined ||
         item.sceneBreak !== undefined ||
         item.bg !== undefined ||
+        item.bgm !== undefined ||
         item.se !== undefined ||
         item.seRepeat !== undefined ||
         item.transition !== undefined
@@ -972,6 +978,16 @@ export function setStagingCues(
       }
       patch.bg = bg
     }
+    if (item.bgm !== undefined) {
+      const bgm = emptyToUndef(item.bgm)
+      // BGM_STOP は実体を持たない予約キー（鳴っている曲を止める合図）
+      if (bgm !== undefined && bgm !== BGM_STOP && !templateBgmKeys.has(bgm)) {
+        throw new McpEditError(
+          `bgm "${bgm}" は使えません。使える BGM キーは get_staging の一覧で確認してください`,
+        )
+      }
+      patch.bgm = bgm
+    }
     if (item.se !== undefined) {
       const se = emptyToUndef(item.se)
       // 効果音を出さない版（GAME_FEATURES.se＝false）では付けられない（外すのは通す）
@@ -1010,7 +1026,7 @@ export function setStagingCues(
     }
     if (Object.keys(patch).length === 0) {
       throw new McpEditError(
-        `block_id "${item.blockId}": 変更する項目がありません（speaker / expression / appear / hide_sprite / scene_break / bg /${GAME_FEATURES.se ? ' se / se_repeat /' : ''} transition / clear のいずれかを渡す）`,
+        `block_id "${item.blockId}": 変更する項目がありません（speaker / expression / appear / hide_sprite / scene_break / bg / bgm /${GAME_FEATURES.se ? ' se / se_repeat /' : ''} transition / clear のいずれかを渡す）`,
       )
     }
     staging = patchCue(staging, item.blockId, patch, now)

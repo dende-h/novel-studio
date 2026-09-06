@@ -254,6 +254,8 @@ export function buildGameCredits(opts: {
   seLabels?: string[]
   /** 使った効果音（音声ファイル・運営素材）のラベル */
   seFileLabels?: string[]
+  /** 使った BGM（運営のオリジナル曲）のラベル */
+  bgmLabels?: string[]
   fontEmbedded: boolean
 }): CreditLine[] {
   const lines: CreditLine[] = []
@@ -279,6 +281,12 @@ export function buildGameCredits(opts: {
     lines.push({
       label: '効果音素材',
       body: `コトノハ 標準効果音素材（${opts.seFileLabels.join('・')}）`,
+    })
+  }
+  if (opts.bgmLabels && opts.bgmLabels.length > 0) {
+    lines.push({
+      label: 'BGM',
+      body: `コトノハ 標準BGM素材（${opts.bgmLabels.join('・')}）`,
     })
   }
   if (opts.fontEmbedded) {

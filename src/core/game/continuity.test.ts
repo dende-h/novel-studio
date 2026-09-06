@@ -107,6 +107,26 @@ describe('resolveContinuity（この行で効いているもの）', () => {
     expect(c[3]?.changed.loopSe).toBe(true)
   })
 
+  it('BGM は次の曲か「止める」まで鳴り続け、場面の切れ目では止まらない', () => {
+    const c = resolveContinuity(
+      pagesOf([
+        { blockId: 'b1', bgm: 'preset:bgm/bgm-calm-morning' },
+        { blockId: 'b2', sceneBreak: true },
+        { blockId: 'b3', bgm: 'preset:bgm/bgm-tense-chase' },
+        { blockId: 'b5', bgm: 'stop' },
+      ]),
+    )
+    expect(c[0]?.bgm).toBe('preset:bgm/bgm-calm-morning')
+    expect(c[0]?.changed.bgm).toBe(true)
+    expect(c[1]?.bgm).toBe('preset:bgm/bgm-calm-morning') // 切れ目をまたぐ
+    expect(c[1]?.changed.bgm).toBe(false)
+    expect(c[2]?.bgm).toBe('preset:bgm/bgm-tense-chase')
+    expect(c[2]?.changed.bgm).toBe(true)
+    expect(c[3]?.bgm).toBe('preset:bgm/bgm-tense-chase')
+    expect(c[4]?.bgm).toBeUndefined()
+    expect(c[4]?.changed.bgm).toBe(true)
+  })
+
   it('3人目は、いちばん長く話していない人と交代する（席は2つ）', () => {
     const c = resolveContinuity(
       pagesOf([

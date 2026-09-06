@@ -19,6 +19,7 @@ import { glossaryToPlainText, workToPlainText } from '../../../src/core/exporter
 import { GAME_FEATURES } from '../../../src/core/game/features'
 import {
   catalogBackgroundKeys,
+  catalogBgmKeys,
   catalogSeKeys,
   type TemplateManifest,
 } from '../../../src/core/game/templates'
@@ -475,7 +476,7 @@ export const MCP_TOOLS = [
   {
     name: 'get_staging',
     description:
-      '1 つの話の演出譜（サウンドノベル書き出し用の話者・場面の切れ目・背景）を、本文の行ごとの [block_id: …] 付きで返す。話者が未設定のセリフには候補、空行 2 つ以上のあとの行には場面の切れ目の提案が〔提案: …〕として付く（提案は保存されていない）。set_staging の対象 block_id と使える背景キーはここで確認する。',
+      '1 つの話の演出譜（サウンドノベル書き出し用の話者・場面の切れ目・背景・BGM）を、本文の行ごとの [block_id: …] 付きで返す。話者が未設定のセリフには候補、空行 2 つ以上のあとの行には場面の切れ目の提案が〔提案: …〕として付く（提案は保存されていない）。set_staging の対象 block_id と使える背景・BGM のキーはここで確認する。',
     inputSchema: {
       type: 'object',
       properties: {
@@ -488,7 +489,7 @@ export const MCP_TOOLS = [
   },
   {
     name: 'set_staging',
-    description: `1 つの話の演出（話者・表情・登場・場面の切れ目・背景${GAME_FEATURES.se ? '・効果音' : ''}・切り替え方）を行単位でまとめて付ける。本文は一切変わらない。cues の各要素は get_staging の [block_id: …] を指し、渡した項目だけ書き換える（省略＝据え置き・空文字＝削除・clear: true でその行の演出を丸ごと外す）。話者はセリフの行にだけ付けられ、用語集の人物名／？？？（名前を伏せる）／自由な名前が使える。立ち絵は話者から自動で表示され、expression は立ち絵のある人物の表情の指定（話者の付いた行ではその話者・appear だけの行ではその人物）。人物ごと描いた一枚絵の背景では hide_sprite で立ち絵を止められる（次の場面の切れ目まで）。${GAME_FEATURES.se ? '効果音は se_repeat で 1回／2回／ずっと を選べ、se: "stop" で鳴っている環境音を止める。' : ''}どれか 1 行でもエラーになると全体が保存されない。`,
+    description: `1 つの話の演出（話者・表情・登場・場面の切れ目・背景・BGM${GAME_FEATURES.se ? '・効果音' : ''}・切り替え方）を行単位でまとめて付ける。本文は一切変わらない。cues の各要素は get_staging の [block_id: …] を指し、渡した項目だけ書き換える（省略＝据え置き・空文字＝削除・clear: true でその行の演出を丸ごと外す）。話者はセリフの行にだけ付けられ、用語集の人物名／？？？（名前を伏せる）／自由な名前が使える。立ち絵は話者から自動で表示され、expression は立ち絵のある人物の表情の指定（話者の付いた行ではその話者・appear だけの行ではその人物）。人物ごと描いた一枚絵の背景では hide_sprite で立ち絵を止められる（次の場面の切れ目まで）。BGM は bgm にキーを付けた行から鳴り始め、次の曲か bgm: "stop" まで続く（場面の切れ目では止まらない）。${GAME_FEATURES.se ? '効果音は se_repeat で 1回／2回／ずっと を選べ、se: "stop" で鳴っている環境音を止める。' : ''}どれか 1 行でもエラーになると全体が保存されない。`,
     inputSchema: {
       type: 'object',
       properties: {
@@ -527,6 +528,11 @@ export const MCP_TOOLS = [
               bg: {
                 type: 'string',
                 description: '背景キー（get_staging の「使える背景キー」から。空文字で外す）',
+              },
+              bgm: {
+                type: 'string',
+                description:
+                  'BGM キー（get_staging の「使える BGM キー」から。この行から鳴り始め、次の曲か "stop" まで続く。"stop" で鳴っている曲を止める。空文字で外す）',
               },
               // 効果音を出さない版（GAME_FEATURES.se＝false）では欄ごと出さない（渡しても mcp-edit が断る）
               ...(GAME_FEATURES.se
@@ -1014,6 +1020,7 @@ async function callTool(
           now,
           catalogBackgroundKeys(templates),
           catalogSeKeys(templates),
+          catalogBgmKeys(templates),
         )
         next = { ...snap, stagings: res.stagings }
         message = `演出を保存しました（更新 ${res.applied} 行・外した演出 ${res.cleared} 件）。`

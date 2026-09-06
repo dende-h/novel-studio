@@ -171,6 +171,46 @@ describe('GET / PUT / PATCH / DELETE（staff）', () => {
     expect(objects.has(templateObjectKey('se', 'weather-rain-heavy', 'full', 'mp3'))).toBe(true)
   })
 
+  it('BGM は mp3/m4a を受け、ループ区間を持てる。置き換えで省略した区間は据え置き', async () => {
+    const { env, objects } = makeEnv()
+    const res = await call(
+      onRequestPut,
+      env,
+      put('bgm', 'bgm-calm-morning', {
+        dataUrl: MP3,
+        durationMs: 92_000,
+        loopStart: 4.5,
+        loopEnd: 88,
+        label: '朝',
+      }),
+    )
+    expect(res.status).toBe(200)
+    expect((await manifestOf(objects)).entries[0]).toMatchObject({
+      kind: 'bgm',
+      slug: 'bgm-calm-morning',
+      label: '朝',
+      category: 'calm',
+      mime: 'audio/mpeg',
+      durationMs: 92_000,
+      loopStart: 4.5,
+      loopEnd: 88,
+    })
+    expect(objects.has(templateObjectKey('bgm', 'bgm-calm-morning', 'full', 'mp3'))).toBe(true)
+    // 置き換え（区間を渡さない）
+    await call(onRequestPut, env, put('bgm', 'bgm-calm-morning', { dataUrl: MP3 }))
+    const m = await manifestOf(objects)
+    expect(m.entries).toHaveLength(1)
+    expect(m.entries[0]).toMatchObject({ label: '朝', loopStart: 4.5, loopEnd: 88 })
+    // 背景に画像として区間を渡しても付かない
+    await call(
+      onRequestPut,
+      env,
+      put('bg', 'room-day', { dataUrl: WEBP, tone: TONE, loopStart: 1, loopEnd: 2 }),
+    )
+    const bg = (await manifestOf(objects)).entries.find((e) => e.kind === 'bg')
+    expect(bg?.loopStart).toBeUndefined()
+  })
+
   it('種別と中身が合わないものは弾く（効果音に画像・背景に音声・wav）', async () => {
     const { env } = makeEnv()
     expect((await call(onRequestPut, env, put('se', 'door-knock', { dataUrl: WEBP }))).status).toBe(

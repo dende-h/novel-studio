@@ -29,10 +29,17 @@ describe('parseTemplateObjectPath', () => {
       thumb: false,
       ext: 'mp3',
     })
+    expect(parseTemplateObjectPath('bgm/bgm-calm-morning.m4a')).toEqual({
+      kind: 'bgm',
+      slug: 'bgm-calm-morning',
+      thumb: false,
+      ext: 'm4a',
+    })
   })
 
-  it('種別違い・slug の形違い・知らない拡張子・効果音のサムネは null', () => {
-    expect(parseTemplateObjectPath('bgm/rain.mp3')).toBeNull()
+  it('種別違い・slug の形違い・知らない拡張子・音声のサムネは null', () => {
+    expect(parseTemplateObjectPath('video/rain.mp3')).toBeNull()
+    expect(parseTemplateObjectPath('bgm/bgm-calm.thumb.mp3')).toBeNull()
     expect(parseTemplateObjectPath('bg/Room-Day.webp')).toBeNull()
     expect(parseTemplateObjectPath('bg/room-day.gif')).toBeNull()
     expect(parseTemplateObjectPath('se/rain.thumb.mp3')).toBeNull()

@@ -13,19 +13,21 @@ import { PRESET_SPRITE_TONE, PRESET_SPRITES, type PresetSprite } from './spriteP
 /**
  * 運営テンプレの**目録**（D-GAME-TEMPLATE-CMS）。
  *
- * テンプレ背景・立ち絵の実体は R2（`_templates/<kind>/<slug>.webp`）にあり、何があるかは
+ * テンプレ背景・立ち絵・BGM の実体は R2（`_templates/<kind>/<slug>.<ext>`）にあり、何があるかは
  * `manifest.json`（この形）で配られる。運営は管理ページから足す・置き換える・非表示にする。
- * キーは今までどおり `preset:bg/<slug>` / `preset:sprite/<slug>`＝**ファイル名がそのまま契約**。
+ * キーは `preset:bg/<slug>` / `preset:sprite/<slug>` / `preset:bgm/<slug>`＝**ファイル名がそのまま契約**。
  *
  * 目録が無い・取れない状態でも今までどおり動く：組み込みの SVG（presets.ts の 24 枚と
  * spritePresets.ts の 6 種）は目録に画像が無いあいだの**控え**で、画像が当たれば
- * 同じキーのまま本画像に切り替わる（旧作品の参照を壊さない）。
+ * 同じキーのまま本画像に切り替わる（旧作品の参照を壊さない）。BGM は**目録だけ**
+ * （組み込みの控えは持たない＝運営のオリジナル曲が入るまで一覧は空）。
  *
  * ここは純 TS。取得（fetch）と R2 の読み書きは UI 層／Functions が担う。
  */
 
-export type TemplateKind = 'bg' | 'sprite' | 'se'
-export const TEMPLATE_KINDS: readonly TemplateKind[] = ['bg', 'sprite', 'se']
+export type TemplateKind = 'bg' | 'sprite' | 'se' | 'bgm'
+export const TEMPLATE_KINDS: readonly TemplateKind[] = ['bg', 'sprite', 'se', 'bgm']
+const TemplateKindSchema = z.enum(['bg', 'sprite', 'se', 'bgm'])
 export const TEMPLATE_TIMES: readonly GameTime[] = ['day', 'dusk', 'night']
 
 /** ファイル名＝slug の形（小文字英数字とハイフンだけ・先頭末尾にハイフン無し）。 */
@@ -42,7 +44,7 @@ const ToneSchema = z.tuple([
 ])
 
 export const TemplateEntrySchema = z.object({
-  kind: z.enum(['bg', 'sprite', 'se']),
+  kind: TemplateKindSchema,
   slug: z.string(),
   /** 一覧・クレジットに出す表示名（空なら slug から作る） */
   label: z.string(),
@@ -60,8 +62,14 @@ export const TemplateEntrySchema = z.object({
   thumbHash: z.string().optional(),
   /** サムネの MIME（省略＝実体と同じ。WebP を書けない環境では png/jpeg になる） */
   thumbMime: z.string().optional(),
-  /** 効果音だけ：長さ（ミリ秒・投入時にブラウザで測る） */
+  /** 効果音・BGM だけ：長さ（ミリ秒・投入時にブラウザで測る） */
   durationMs: z.number().optional(),
+  /**
+   * BGM だけ：シームレスループの区間（秒）。省略＝曲の頭から終わりまでを回す。
+   * プレイヤーは Web Audio の loopStart / loopEnd へそのまま流す（D-GAME-BGM-LOOP）
+   */
+  loopStart: z.number().optional(),
+  loopEnd: z.number().optional(),
   /** 一覧から外す（既存作品の参照は生かす＝削除ではない） */
   hidden: z.boolean().optional(),
   order: z.number().optional(),
@@ -74,11 +82,17 @@ const CategoryLabels = z.record(z.string(), z.string()).optional().default({})
 export const TemplateManifestSchema = z.object({
   v: z.literal(1),
   updatedAt: z.number().optional().default(0),
-  /** 分類の語 → 表示名（bg・sprite・se で別々）。無い語は組み込みの表か語そのものを出す */
+  /** 分類の語 → 表示名（bg・sprite・se・bgm で別々）。無い語は組み込みの表か語そのものを出す */
   categories: z
-    .object({ bg: CategoryLabels, sprite: CategoryLabels, se: CategoryLabels })
+    .object({
+      bg: CategoryLabels,
+      sprite: CategoryLabels,
+      se: CategoryLabels,
+      /** 旧クライアントが書いた目録には無い（後から足した kind）ので省略可 */
+      bgm: CategoryLabels,
+    })
     .optional()
-    .default(() => ({ bg: {}, sprite: {}, se: {} })),
+    .default(() => ({ bg: {}, sprite: {}, se: {}, bgm: {} })),
   /**
    * 項目は 1 つずつ検証し、読めないもの（将来足す kind など）は**落として続ける**。
    * 目録ぜんたいを弾くと、古いアプリが新しい目録を読んだ瞬間にテンプレが全部消える。
@@ -99,7 +113,7 @@ export type TemplateManifest = z.infer<typeof TemplateManifestSchema>
 export const EMPTY_TEMPLATE_MANIFEST: TemplateManifest = {
   v: 1,
   updatedAt: 0,
-  categories: { bg: {}, sprite: {}, se: {} },
+  categories: { bg: {}, sprite: {}, se: {}, bgm: {} },
   entries: [],
 }
 
@@ -111,7 +125,7 @@ export const templateKey = (kind: TemplateKind, slug: string): string => `preset
 
 /** `preset:bg/<slug>` を分解する。テンプレのキーでなければ null。 */
 export function parseTemplateKey(key: string): { kind: TemplateKind; slug: string } | null {
-  const m = /^preset:(bg|sprite|se)\/(.+)$/.exec(key)
+  const m = /^preset:(bg|sprite|se|bgm)\/(.+)$/.exec(key)
   if (!m || !m[1] || !m[2]) return null
   return { kind: m[1] as TemplateKind, slug: m[2] }
 }
@@ -171,11 +185,14 @@ export interface ParsedTemplateName {
 
 const IMAGE_FILE_RE = /\.(png|webp|jpe?g|avif|gif)$/i
 const AUDIO_FILE_RE = /\.(mp3|m4a|aac|ogg|wav|flac)$/i
+/** BGM のファイル名の先頭の語（`bgm-<分類>-<曲>.mp3`）。これが無い音声は効果音になる */
+export const BGM_FILE_PREFIX = 'bgm'
 
 /**
  * `town-alley-night.png` → 背景・場所 `town`・時間帯 `night`。
  * `silhouette-woman.png` → 立ち絵・人物像 `woman`。
- * `weather-rain-heavy.mp3` → 効果音・分類 `weather`（音声の拡張子で効果音と判定）。
+ * `bgm-calm-morning.mp3` → BGM・分類（曲調）`calm`（音声で先頭の語が `bgm`）。
+ * `weather-rain-heavy.mp3` → 効果音・分類 `weather`（それ以外の音声）。
  * 規則に合わなければ null。
  */
 export function parseTemplateFilename(name: string): ParsedTemplateName | null {
@@ -185,6 +202,11 @@ export function parseTemplateFilename(name: string): ParsedTemplateName | null {
   if (!isTemplateSlug(base)) return null
   const segs = base.split('-')
   if (audio) {
+    if (segs[0] === BGM_FILE_PREFIX) {
+      const category = segs[1]
+      if (!category) return null
+      return { kind: 'bgm', slug: base, category }
+    }
     const category = segs[0]
     if (!category) return null
     return { kind: 'se', slug: base, category }
@@ -215,6 +237,15 @@ const SPRITE_WORD_LABELS: Record<string, string> = Object.fromEntries(
   ]),
 )
 
+/** BGM の曲調の語 → 表示名（07-novel-game.md §4.3 の 5 種）。目録の表示名があればそちら。 */
+const BGM_MOOD_LABELS: Record<string, string> = {
+  calm: '日常',
+  tense: '緊張',
+  sad: '哀愁',
+  resolve: '決意',
+  quiet: '静寂',
+}
+
 /** 組み込みの合成効果音（8 種）が入る分類の語。目録の音は自分の分類（ファイル名の先頭の語）に入る。 */
 export const SE_SYNTH_CATEGORY = 'synth'
 
@@ -224,10 +255,11 @@ export function categoryLabelOf(
   kind: TemplateKind,
   word: string,
 ): string {
-  const custom = manifest?.categories[kind][word]
+  const custom = manifest?.categories[kind]?.[word]
   if (custom) return custom
   if (kind === 'bg') return PRESET_PLACE_LABELS[word as GamePlace] ?? word
   if (kind === 'se') return word === SE_SYNTH_CATEGORY ? '合成' : word
+  if (kind === 'bgm') return BGM_MOOD_LABELS[word] ?? word
   return SPRITE_WORD_LABELS[word] ?? word
 }
 
@@ -235,13 +267,14 @@ export function categoryLabelOf(
 export const timeLabelOf = (time: GameTime): string => PRESET_TIME_LABELS[time]
 
 /**
- * ファイル名から作る既定の表示名（`街（夜）`・`シルエット（女性）`・効果音は分類を除いた語）。
- * 管理ページはあとから直せる。
+ * ファイル名から作る既定の表示名（`街（夜）`・`シルエット（女性）`・効果音と BGM は
+ * 分類を除いた語）。管理ページはあとから直せる。
  */
 export function defaultTemplateLabel(parsed: ParsedTemplateName, categoryLabel: string): string {
   if (parsed.kind === 'sprite') return `シルエット（${categoryLabel}）`
-  if (parsed.kind === 'se') {
-    const rest = parsed.slug.slice(parsed.category.length + 1)
+  if (parsed.kind === 'se' || parsed.kind === 'bgm') {
+    const head = parsed.kind === 'bgm' ? `${BGM_FILE_PREFIX}-${parsed.category}` : parsed.category
+    const rest = parsed.slug.slice(head.length + 1)
     return rest ? rest.replace(/-/g, ' ') : categoryLabel
   }
   return parsed.time ? `${categoryLabel}（${timeLabelOf(parsed.time)}）` : categoryLabel
@@ -433,6 +466,46 @@ export function catalogSeKeys(manifest: TemplateManifest | null): Set<string> {
   return new Set(mergeSeCatalog(manifest).map((s) => s.key))
 }
 
+export interface CatalogBgm {
+  key: string
+  slug: string
+  label: string
+  /** 曲調の語（ファイル名の 2 語目・`bgm-calm-morning` なら `calm`） */
+  category: string
+  /** 目録の実体（BGM は目録だけ＝必ずある。旧型の呼び出しと形を揃えるため optional） */
+  entry?: TemplateEntry
+  hidden: boolean
+  durationMs?: number
+  loopStart?: number
+  loopEnd?: number
+}
+
+/**
+ * BGM の一覧＝**目録だけ**（組み込みの控えは無い。オリジナル曲は運営が管理ページから入れる）。
+ * キーは `preset:bgm/<slug>`。演出譜の `Cue.bgm` はこのキーか、予約キー `stop`（BGM_STOP）を指す。
+ */
+export function mergeBgmCatalog(manifest: TemplateManifest | null): CatalogBgm[] {
+  const out: CatalogBgm[] = (manifest?.entries ?? [])
+    .filter((e) => e.kind === 'bgm')
+    .map((e) => ({
+      key: templateKey('bgm', e.slug),
+      slug: e.slug,
+      label: e.label || e.slug,
+      category: e.category,
+      entry: e,
+      hidden: e.hidden === true,
+      ...(e.durationMs !== undefined ? { durationMs: e.durationMs } : {}),
+      ...(e.loopStart !== undefined ? { loopStart: e.loopStart } : {}),
+      ...(e.loopEnd !== undefined ? { loopEnd: e.loopEnd } : {}),
+    }))
+  return sortByOrder(out)
+}
+
+/** 目録が知っている BGM キー（非表示も含む＝既存の参照を検証で弾かない）。 */
+export function catalogBgmKeys(manifest: TemplateManifest | null): Set<string> {
+  return new Set(mergeBgmCatalog(manifest).map((b) => b.key))
+}
+
 /**
  * 実体を取れないときの控え（tone 3 色の縦グラデーション・1280×720）。
  * 目録だけにある絵は組み込み SVG を持たないので、これで場面の色だけは保つ。
@@ -457,10 +530,13 @@ export const TemplatePutInputSchema = z.object({
     .string()
     .refine((s) => s.startsWith('data:image/'), 'data URL が必要')
     .optional(),
-  /** 効果音は省略可（黒で埋める） */
+  /** 効果音・BGM は省略可（黒で埋める） */
   tone: ToneSchema.optional(),
-  /** 効果音だけ：長さ（ミリ秒） */
+  /** 効果音・BGM だけ：長さ（ミリ秒） */
   durationMs: z.number().int().nonnegative().optional(),
+  /** BGM だけ：ループ区間（秒）。省略＝曲ぜんたい */
+  loopStart: z.number().nonnegative().optional(),
+  loopEnd: z.number().nonnegative().optional(),
   /** 省略＝据え置き（既にあれば）／無ければ slug から作る */
   label: z.string().max(80).optional(),
   category: z.string().max(40).optional(),
@@ -470,7 +546,7 @@ export type TemplatePutInput = z.infer<typeof TemplatePutInputSchema>
 
 /** 目録の項目の書き換え（`PATCH /api/admin/templates`）。渡した項目だけ変える（省略＝据え置き）。 */
 export const TemplateEntryPatchSchema = z.object({
-  kind: z.enum(['bg', 'sprite', 'se']),
+  kind: TemplateKindSchema,
   slug: z.string(),
   label: z.string().max(80).optional(),
   category: z.string().max(40).optional(),
@@ -478,18 +554,19 @@ export const TemplateEntryPatchSchema = z.object({
   time: z.enum(['day', 'dusk', 'night']).nullable().optional(),
   order: z.number().nullable().optional(),
   hidden: z.boolean().optional(),
+  /** BGM だけ：ループ区間（秒）。null ＝ 外す（曲ぜんたいを回す） */
+  loopStart: z.number().nonnegative().nullable().optional(),
+  loopEnd: z.number().nonnegative().nullable().optional(),
 })
 export type TemplateEntryPatch = z.infer<typeof TemplateEntryPatchSchema>
+
+const CategoryPatch = z.record(z.string(), z.string().max(40)).optional()
 
 export const TemplatePatchInputSchema = z.object({
   entries: z.array(TemplateEntryPatchSchema).max(500).optional(),
   /** 分類の表示名（渡した語だけ書き換え・空文字で消す） */
   categories: z
-    .object({
-      bg: z.record(z.string(), z.string().max(40)).optional(),
-      sprite: z.record(z.string(), z.string().max(40)).optional(),
-      se: z.record(z.string(), z.string().max(40)).optional(),
-    })
+    .object({ bg: CategoryPatch, sprite: CategoryPatch, se: CategoryPatch, bgm: CategoryPatch })
     .optional(),
 })
 export type TemplatePatchInput = z.infer<typeof TemplatePatchInputSchema>
@@ -514,6 +591,13 @@ export function applyTemplatePatch(
       if (p.hidden) next.hidden = true
       else delete next.hidden
     }
+    // ループ区間は BGM だけに意味がある（他の kind に来ても保存しない＝ゴミを残さない）
+    if (e.kind === 'bgm') {
+      if (p.loopStart === null) delete next.loopStart
+      else if (p.loopStart !== undefined) next.loopStart = p.loopStart
+      if (p.loopEnd === null) delete next.loopEnd
+      else if (p.loopEnd !== undefined) next.loopEnd = p.loopEnd
+    }
     return next
   })
   const mergeLabels = (base: Record<string, string>, over?: Record<string, string>) => {
@@ -532,6 +616,7 @@ export function applyTemplatePatch(
       bg: mergeLabels(manifest.categories.bg, patch.categories?.bg),
       sprite: mergeLabels(manifest.categories.sprite, patch.categories?.sprite),
       se: mergeLabels(manifest.categories.se, patch.categories?.se),
+      bgm: mergeLabels(manifest.categories.bgm ?? {}, patch.categories?.bgm),
     },
     entries,
   }
@@ -549,7 +634,7 @@ export interface TemplateTsvRow {
 }
 
 /**
- * `新ファイル名<TAB>元ファイル名<TAB>表示名<TAB>場所（人物像）<TAB>…` の行を読む。
+ * `新ファイル名<TAB>元ファイル名<TAB>表示名<TAB>場所（人物像・曲調）<TAB>…` の行を読む。
  * 1 列目がファイル名の規則に合わない行（見出し行など）は skipped に積む。
  * 4 列目は slug と同じ文字種のときだけ分類として採る（日本語で書かれていたら無視）。
  */

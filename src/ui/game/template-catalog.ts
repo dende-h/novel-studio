@@ -6,9 +6,11 @@ import { presetBgSvg } from '@/core/game/presets'
 import { presetSpriteDataUrl } from '@/core/game/spritePresets'
 import {
   type CatalogBackground,
+  type CatalogBgm,
   type CatalogSe,
   type CatalogSprite,
   mergeBackgroundCatalog,
+  mergeBgmCatalog,
   mergeSeCatalog,
   mergeSpriteCatalog,
   type TemplateEntry,
@@ -27,8 +29,8 @@ import { fetchTemplateBytes, fetchTemplateManifest } from '@/ui/_api/game-templa
  *
  * - 起動時ではなく、演出エディタ・書き出し・図鑑の立ち絵欄が最初に開いたときに読む。
  * - 直近の目録は localStorage に控え、取れないとき（オフライン）はそれを使う。
- *   何も無ければ null ＝ 組み込み SVG だけの一覧になる（今までどおり動く）。
- * - 実体（WebP）は使うときに取り、同じ URL は 1 セッション 1 回だけ取る。
+ *   何も無ければ null ＝ 組み込み SVG だけの一覧になる（今までどおり動く。BGM は空）。
+ * - 実体（WebP・mp3）は使うときに取り、同じ URL は 1 セッション 1 回だけ取る。
  */
 
 const CACHE_KEY = 'ns-game-templates'
@@ -106,6 +108,7 @@ export interface TemplateCatalog {
   backgrounds: CatalogBackground[]
   sprites: CatalogSprite[]
   ses: CatalogSe[]
+  bgms: CatalogBgm[]
 }
 
 /** 画面用：目録（無ければ組み込みだけ）を合流済みの一覧で返し、初回に読みに行く。 */
@@ -120,6 +123,7 @@ export function useTemplateCatalog(): TemplateCatalog {
       backgrounds: mergeBackgroundCatalog(m),
       sprites: mergeSpriteCatalog(m),
       ses: mergeSeCatalog(m),
+      bgms: mergeBgmCatalog(m),
     }),
     [m],
   )
@@ -290,4 +294,49 @@ export async function templateSpriteDataUrl(sp: CatalogSprite): Promise<string |
     return sp.builtin ? presetSpriteDataUrl(sp.builtin) : null
   }
   return sp.builtin ? presetSpriteDataUrl(sp.builtin) : null
+}
+
+/** 演出譜が指すテンプレ BGM のキー（重複なし・`preset:bgm/` だけ。予約キー stop は含まない）。 */
+export function templateBgmKeysOf(stagings: readonly Staging[]): string[] {
+  const keys = new Set<string>()
+  for (const s of stagings)
+    for (const c of s.cues) if (c.bgm?.startsWith('preset:bgm/')) keys.add(c.bgm)
+  return [...keys]
+}
+
+/**
+ * 演出譜が指すテンプレ BGM を、書き出し・投稿に載せる素材の形にする（kind 'bgm'・`preset` 付き・
+ * id は `tpl-bgm-<slug>`・ループ区間は目録のメタデータをそのまま運ぶ）。組み込みの控えは無いので、
+ * 取れなかったキーは `fallback: 'none'` で `missing` に積む（投稿は止めて知らせる）／`'omit'` で
+ * 黙って落とす（zip・プレビューは曲が鳴らないだけで壊れない）。
+ */
+export async function resolveTemplateBgms(
+  keys: readonly string[],
+  bgms: readonly CatalogBgm[],
+  opts: { fallback: 'omit' | 'none' },
+): Promise<ResolvedTemplateBackgrounds> {
+  const byKey = new Map(bgms.map((b) => [b.key, b]))
+  const assets: UserGameAsset[] = []
+  const missing: string[] = []
+  for (const key of keys) {
+    const bgm = byKey.get(key)
+    if (!bgm?.entry) continue
+    const file = await loadTemplateImage(bgm.entry)
+    if (file) {
+      assets.push({
+        id: templateAssetId('bgm', bgm.slug),
+        kind: 'bgm',
+        name: bgm.label,
+        dataUrl: file.dataUrl,
+        tone: ['#000000', '#000000', '#000000'],
+        preset: bgm.key,
+        ...(bgm.loopStart !== undefined ? { loopStart: bgm.loopStart } : {}),
+        ...(bgm.loopEnd !== undefined ? { loopEnd: bgm.loopEnd } : {}),
+        createdAt: bgm.entry.updatedAt,
+      })
+      continue
+    }
+    if (opts.fallback === 'none') missing.push(key)
+  }
+  return { assets, missing }
 }

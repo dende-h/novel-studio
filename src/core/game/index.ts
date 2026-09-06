@@ -20,6 +20,12 @@ import type { Block, Episode, GlossaryEntry, Inline } from '../schema'
 /** 正体を伏せた話者の表示名（名前枠に ？？？ と出し、立ち絵も出さない）。 */
 export const MASKED_SPEAKER = '？？？'
 
+/**
+ * `Cue.bgm` の予約キー＝鳴っている BGM をこの行で止める（実体は持たない）。
+ * 効果音の `SE_STOP` と同じ字面。BGM は場面の切れ目では止まらず、次の曲かこれまで続く。
+ */
+export const BGM_STOP = 'stop'
+
 export const CueSchema = z.object({
   /** 張り付き先の Block.id。本文は一切書き換えない（アンカーのみ） */
   blockId: z.string(),
@@ -41,6 +47,10 @@ export const CueSchema = z.object({
   sceneBreak: z.boolean().optional(),
   /** アセットキー（'preset:bg/room-day' 等）。実体は持たない（D-GAME-ASSET-STORE） */
   bg: z.string().optional(),
+  /**
+   * BGM のキー（`preset:bgm/<slug>`＝運営テンプレの曲）。この行から次の曲か `'stop'`（BGM_STOP）まで
+   * 鳴り続ける。**場面の切れ目では止まらない**（背景と同じ扱い＝曲は場面をまたぐことが多い）
+   */
   bgm: z.string().optional(),
   /** 効果音のキー。`'stop'`（SE_STOP）＝鳴っているループをここで止める */
   se: z.string().optional(),

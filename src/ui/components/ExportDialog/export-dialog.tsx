@@ -3,7 +3,7 @@ import { type ComponentType, useId, useState } from 'react'
 import { glossaryToPlainText, workToPlainText } from '@/core/exporter/toPlainText'
 import { gameAssetKey } from '@/core/game/assets'
 import { DEFAULT_BG_KEY } from '@/core/game/presets'
-import { mergeBackgroundCatalog, mergeSeCatalog } from '@/core/game/templates'
+import { mergeBackgroundCatalog, mergeBgmCatalog, mergeSeCatalog } from '@/core/game/templates'
 import { dataUrlMime, decodeDataUrl } from '@/core/image'
 import type { Work } from '@/core/schema'
 import type { GameAssetRepository } from '@/core/storage/gameAssetRepository'
@@ -36,8 +36,10 @@ import { Switch } from '@/ui/components/ui/switch'
 import {
   loadTemplateCatalog,
   resolveTemplateBackgrounds,
+  resolveTemplateBgms,
   resolveTemplateSes,
   templateBgKeysOf,
+  templateBgmKeysOf,
   templateBgSrc,
   templateSeKeysOf,
   useTemplateCatalog,
@@ -196,11 +198,18 @@ export function ExportDialog({
             mergeSeCatalog(manifest),
             { fallback: 'omit' },
           )
+          // BGM も同じ（取れなければ鳴らないだけ・組み込みの控えは無い）
+          const templateBgms = await resolveTemplateBgms(
+            templateBgmKeysOf(staging ? [staging] : []),
+            mergeBgmCatalog(manifest),
+            { fallback: 'omit' },
+          )
           // 持ち込み素材（背景・立ち絵）は手元の全件を渡し、使う分だけ exporter が同梱する
           const userAssets = [
             ...((await gameAssetRepo?.list()) ?? []),
             ...templates.assets,
             ...templateSes.assets,
+            ...templateBgms.assets,
           ].map((a) => ({
             key: gameAssetKey(a),
             id: a.id,
@@ -212,6 +221,8 @@ export function ExportDialog({
             ...(a.character ? { character: a.character } : {}),
             ...(a.expression ? { expression: a.expression } : {}),
             ...(a.preset ? { preset: a.preset } : {}),
+            ...(a.loopStart !== undefined ? { loopStart: a.loopStart } : {}),
+            ...(a.loopEnd !== undefined ? { loopEnd: a.loopEnd } : {}),
             createdAt: a.createdAt,
           }))
           triggerDownload(

@@ -3,13 +3,16 @@ import { PRESET_BACKGROUNDS } from './presets'
 import { PRESET_SES } from './sePresets'
 import { PRESET_SPRITES } from './spritePresets'
 import {
+  applyTemplatePatch,
   catalogBackgroundKeys,
+  catalogBgmKeys,
   categoriesOf,
   categoryLabelOf,
   defaultTemplateLabel,
   EMPTY_TEMPLATE_MANIFEST,
   isTemplateSlug,
   mergeBackgroundCatalog,
+  mergeBgmCatalog,
   mergeSeCatalog,
   mergeSpriteCatalog,
   parseTemplateFilename,
@@ -98,7 +101,8 @@ describe('キー・id・URL', () => {
     })
     expect(parseTemplateKey('preset:se/rain')).toEqual({ kind: 'se', slug: 'rain' })
     expect(parseTemplateKey('user:abc')).toBeNull()
-    expect(parseTemplateKey('preset:bgm/calm')).toBeNull()
+    expect(parseTemplateKey('preset:bgm/bgm-calm')).toEqual({ kind: 'bgm', slug: 'bgm-calm' })
+    expect(parseTemplateKey('preset:video/x')).toBeNull()
   })
 
   it('素材 id は tpl- 前置（枚数に数えない）で、同じ絵なら常に同じ', () => {
@@ -117,7 +121,7 @@ describe('キー・id・URL', () => {
 
 describe('表示名', () => {
   it('分類の表示名は 目録 → 組み込み → 語そのもの の順', () => {
-    const m = manifest([], { categories: { bg: { town: '街なか' }, sprite: {}, se: {} } })
+    const m = manifest([], { categories: { bg: { town: '街なか' }, sprite: {}, se: {}, bgm: {} } })
     expect(categoryLabelOf(m, 'bg', 'town')).toBe('街なか')
     expect(categoryLabelOf(null, 'bg', 'town')).toBe('街')
     expect(categoryLabelOf(null, 'sprite', 'woman')).toBe('女性')
@@ -144,7 +148,7 @@ describe('目録の検証（Zod）', () => {
   it('entries と categories は省略でき、空で埋まる', () => {
     const parsed = TemplateManifestSchema.parse({ v: 1 })
     expect(parsed.entries).toEqual([])
-    expect(parsed.categories).toEqual({ bg: {}, sprite: {}, se: {} })
+    expect(parsed.categories).toEqual({ bg: {}, sprite: {}, se: {}, bgm: {} })
   })
 
   it('tone は #rrggbb だけ（SVG に埋める値なので形を縛る）。壊れた項目は目録から落ちる', () => {
@@ -231,6 +235,7 @@ describe('組み込みと目録の合流', () => {
     expect(list).toHaveLength(PRESET_SPRITES.length + 1)
     expect(list[0]?.category).toBe('woman')
     expect(list[list.length - 1]?.key).toBe('preset:sprite/silhouette-knight')
+    expect(categoryLabelOf(null, 'sprite', 'woman')).toBe('女性')
   })
 
   it('分類は出現順に件数つきで並ぶ', () => {
@@ -329,8 +334,115 @@ describe('目録の寛容な読み方', () => {
   it('読めない項目（将来の kind など）は落として、残りは使う', () => {
     const parsed = TemplateManifestSchema.parse({
       v: 1,
-      entries: [entry({ kind: 'bg', slug: 'a-day' }), { kind: 'bgm', slug: 'x' }, 'garbage'],
+      entries: [entry({ kind: 'bg', slug: 'a-day' }), { kind: 'video', slug: 'x' }, 'garbage'],
     })
     expect(parsed.entries.map((e) => e.slug)).toEqual(['a-day'])
+  })
+})
+
+describe('BGM（kind bgm）', () => {
+  it('bgm-<曲調>-<曲>.mp3 は BGM。分類は曲調、既定の表示名は曲の語', () => {
+    expect(parseTemplateFilename('bgm-calm-morning.mp3')).toEqual({
+      kind: 'bgm',
+      slug: 'bgm-calm-morning',
+      category: 'calm',
+    })
+    expect(parseTemplateFilename('BGM-Tense.m4a')).toEqual({
+      kind: 'bgm',
+      slug: 'bgm-tense',
+      category: 'tense',
+    })
+    expect(parseTemplateFilename('bgm.mp3')).toBeNull() // 曲調が無い
+    expect(
+      defaultTemplateLabel({ kind: 'bgm', slug: 'bgm-calm-morning', category: 'calm' }, '日常'),
+    ).toBe('morning')
+    expect(
+      defaultTemplateLabel({ kind: 'bgm', slug: 'bgm-tense', category: 'tense' }, '緊張'),
+    ).toBe('緊張')
+    expect(categoryLabelOf(null, 'bgm', 'calm')).toBe('日常')
+    expect(
+      categoryLabelOf(
+        manifest([], { categories: { bg: {}, sprite: {}, se: {}, bgm: { calm: '穏やか' } } }),
+        'bgm',
+        'calm',
+      ),
+    ).toBe('穏やか')
+    expect(parseTemplateKey('preset:bgm/bgm-calm-morning')).toEqual({
+      kind: 'bgm',
+      slug: 'bgm-calm-morning',
+    })
+    expect(templateAssetId('bgm', 'bgm-calm-morning')).toBe('tpl-bgm-bgm-calm-morning')
+  })
+
+  it('一覧は目録だけ（組み込みの控えは無い）。長さとループ区間を運ぶ', () => {
+    expect(mergeBgmCatalog(null)).toEqual([])
+    const m = manifest([
+      entry({
+        kind: 'bgm',
+        slug: 'bgm-calm-morning',
+        category: 'calm',
+        label: '朝',
+        mime: 'audio/mpeg',
+        durationMs: 92_000,
+        loopStart: 4.5,
+        loopEnd: 88.25,
+      }),
+      entry({ kind: 'bgm', slug: 'bgm-tense-chase', category: 'tense', hidden: true }),
+    ])
+    const list = mergeBgmCatalog(m)
+    expect(list.map((b) => b.key)).toEqual([
+      'preset:bgm/bgm-calm-morning',
+      'preset:bgm/bgm-tense-chase',
+    ])
+    expect(list[0]).toMatchObject({
+      label: '朝',
+      durationMs: 92_000,
+      loopStart: 4.5,
+      loopEnd: 88.25,
+    })
+    expect(list[1]?.hidden).toBe(true)
+    expect(visibleTemplates(list)).toHaveLength(1)
+    // 非表示もキーとしては残る（既存の演出譜の参照を弾かない）
+    expect(catalogBgmKeys(m).has('preset:bgm/bgm-tense-chase')).toBe(true)
+    expect(
+      templateUrl(entry({ kind: 'bgm', slug: 'bgm-calm-morning', mime: 'audio/mpeg', hash: 'h' })),
+    ).toBe('/game-templates/bgm/bgm-calm-morning.mp3?v=h')
+  })
+
+  it('PATCH でループ区間を付けたり外したりできる（BGM 以外には付かない）', () => {
+    const m = manifest([
+      entry({ kind: 'bgm', slug: 'bgm-calm-morning', category: 'calm', mime: 'audio/mpeg' }),
+      entry({ kind: 'bg', slug: 'room-day' }),
+    ])
+    const on = applyTemplatePatch(
+      m,
+      {
+        entries: [
+          { kind: 'bgm', slug: 'bgm-calm-morning', loopStart: 2, loopEnd: 60 },
+          { kind: 'bg', slug: 'room-day', loopStart: 2, loopEnd: 60 },
+        ],
+        categories: { bgm: { calm: '穏やか' } },
+      },
+      10,
+    )
+    expect(on.entries[0]).toMatchObject({ loopStart: 2, loopEnd: 60, updatedAt: 10 })
+    expect(on.entries[1]?.loopStart).toBeUndefined()
+    expect(on.categories.bgm).toEqual({ calm: '穏やか' })
+    const off = applyTemplatePatch(
+      on,
+      { entries: [{ kind: 'bgm', slug: 'bgm-calm-morning', loopStart: null, loopEnd: null }] },
+      11,
+    )
+    expect(off.entries[0]?.loopStart).toBeUndefined()
+    expect(off.entries[0]?.loopEnd).toBeUndefined()
+  })
+
+  it('旧クライアントが書いた目録（categories に bgm が無い）も読める', () => {
+    const parsed = TemplateManifestSchema.parse({
+      v: 1,
+      categories: { bg: {}, sprite: {}, se: {} },
+      entries: [],
+    })
+    expect(parsed.categories.bgm).toEqual({})
   })
 })

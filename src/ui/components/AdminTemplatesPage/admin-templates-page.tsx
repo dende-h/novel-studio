@@ -4,12 +4,14 @@ import { GAME_FEATURES } from '@/core/game/features'
 import type { GameTime } from '@/core/game/presets'
 import {
   type CatalogBackground,
+  type CatalogBgm,
   type CatalogSe,
   type CatalogSprite,
   categoriesOf,
   categoryLabelOf,
   defaultTemplateLabel,
   mergeBackgroundCatalog,
+  mergeBgmCatalog,
   mergeSeCatalog,
   mergeSpriteCatalog,
   parseTemplateFilename,
@@ -35,6 +37,7 @@ import {
 } from '@/ui/_utils/imageResizer'
 import { playCatalogSe } from '@/ui/_utils/sePlayer'
 import { PageLayout } from '@/ui/components/PageLayout/page-layout'
+import { BgmPreviewButton, bgmDurationLabel } from '@/ui/components/StagingView/template-picker'
 import { Button } from '@/ui/components/ui/button'
 import { Input } from '@/ui/components/ui/input'
 import { Switch } from '@/ui/components/ui/switch'
@@ -42,12 +45,12 @@ import { Textarea } from '@/ui/components/ui/textarea'
 import { setTemplateCatalog, templateBgSrc, templateSpriteSrc } from '@/ui/game/template-catalog'
 
 /**
- * 運営テンプレ（背景・立ち絵・効果音）の管理ページ（`#/admin/templates`・**staff だけ**・D-GAME-TEMPLATE-CMS）。
+ * 運営テンプレ（背景・立ち絵・BGM・効果音）の管理ページ（`#/admin/templates`・**staff だけ**・D-GAME-TEMPLATE-CMS）。
  *
  * - 画像・音声をまとめてドロップすると、ファイル名を命名規則で読んでキーと分類を決め、
  *   画像はブラウザで WebP・サムネ・tone を作り、音声（mp3/m4a）はそのまま長さだけ測って
- *   1 件ずつ送る（同じ名前は置き換え）。
- * - 表示名・分類・時間帯・一覧に出すか は画面で直して「変更を保存」で目録に書く。
+ *   1 件ずつ送る（同じ名前は置き換え）。BGM は `bgm-<曲調>-<曲名>.mp3`。
+ * - 表示名・分類・時間帯・一覧に出すか・BGM のループ区間 は画面で直して「変更を保存」で目録に書く。
  *   改名 AI が返す TSV を貼れば、表示名と分類を一括で入れられる。
  * - 「削除」は無い。一覧から外す（非表示）だけで、既存作品の参照は生かす。
  *
@@ -65,6 +68,9 @@ interface Draft {
   /** null ＝ 時間帯を外す */
   time?: GameTime | null
   hidden?: boolean
+  /** BGM だけ：ループ区間（秒）。null ＝ 外す（曲ぜんたいを回す） */
+  loopStart?: number | null
+  loopEnd?: number | null
 }
 
 type CategoryDrafts = Record<TemplateKind, Record<string, string>>
@@ -86,19 +92,51 @@ const kb = (bytes: number) => `${Math.max(1, Math.round(bytes / 1024))} KB`
 
 /** 管理ページに出す種類。効果音は機能フラグ（GAME_FEATURES.se）が立っているときだけ（基盤は残る） */
 const TEMPLATE_KINDS: readonly TemplateKind[] = GAME_FEATURES.se
-  ? ['bg', 'sprite', 'se']
-  : ['bg', 'sprite']
+  ? ['bg', 'sprite', 'bgm', 'se']
+  : ['bg', 'sprite', 'bgm']
+
+const KIND_TABS: Record<TemplateKind, { label: string; unit: string }> = {
+  bg: { label: '背景', unit: '画像' },
+  sprite: { label: '立ち絵', unit: '画像' },
+  bgm: { label: 'BGM', unit: '曲' },
+  se: { label: '効果音', unit: '音' },
+}
+
+const EMPTY_CATEGORY_DRAFTS: CategoryDrafts = { bg: {}, sprite: {}, se: {}, bgm: {} }
+const TAB_KEY = 'ns-admin-templates-tab'
+
+/** 秒の入力欄 → 数値（空は null＝外す・読めなければ undefined＝据え置き）。 */
+function parseSeconds(raw: string): number | null | undefined {
+  const s = raw.trim()
+  if (s === '') return null
+  const n = Number(s)
+  return Number.isFinite(n) && n >= 0 ? n : undefined
+}
 
 export function AdminTemplatesPage({ getToken }: AdminTemplatesPageProps) {
   // null ＝ 読込中、'denied' ＝ 取れなかった（staff でない・通信不良）
   const [manifest, setManifest] = useState<TemplateManifest | 'denied' | null>(null)
-  const [tab, setTab] = useState<TemplateKind>('bg')
-  const [drafts, setDrafts] = useState<Record<string, Draft>>({})
-  const [categoryDrafts, setCategoryDrafts] = useState<CategoryDrafts>({
-    bg: {},
-    sprite: {},
-    se: {},
+  // 開いていたタブは同じセッションの間だけ覚える（作り直されても背景タブへ戻さない）
+  const [tab, setTabState] = useState<TemplateKind>(() => {
+    try {
+      const saved = sessionStorage.getItem(TAB_KEY)
+      return saved && TEMPLATE_KINDS.includes(saved as TemplateKind)
+        ? (saved as TemplateKind)
+        : 'bg'
+    } catch {
+      return 'bg'
+    }
   })
+  const setTab = (next: TemplateKind) => {
+    setTabState(next)
+    try {
+      sessionStorage.setItem(TAB_KEY, next)
+    } catch {
+      // 覚えられなくても動く
+    }
+  }
+  const [drafts, setDrafts] = useState<Record<string, Draft>>({})
+  const [categoryDrafts, setCategoryDrafts] = useState<CategoryDrafts>(EMPTY_CATEGORY_DRAFTS)
   const [upload, setUpload] = useState<{ done: number; total: number; current: string } | null>(
     null,
   )
@@ -124,8 +162,9 @@ export function AdminTemplatesPage({ getToken }: AdminTemplatesPageProps) {
   const backgrounds = useMemo(() => mergeBackgroundCatalog(current), [current])
   const sprites = useMemo(() => mergeSpriteCatalog(current), [current])
   const ses = useMemo(() => mergeSeCatalog(current), [current])
-  const rows: Array<CatalogBackground | CatalogSprite | CatalogSe> =
-    tab === 'bg' ? backgrounds : tab === 'sprite' ? sprites : ses
+  const bgms = useMemo(() => mergeBgmCatalog(current), [current])
+  const rows: Array<CatalogBackground | CatalogSprite | CatalogSe | CatalogBgm> =
+    tab === 'bg' ? backgrounds : tab === 'sprite' ? sprites : tab === 'bgm' ? bgms : ses
   const groups = useMemo(() => categoriesOf(rows), [rows])
 
   const draftOf = (kind: TemplateKind, slug: string): Draft => drafts[keyOf(kind, slug)] ?? {}
@@ -149,7 +188,9 @@ export function AdminTemplatesPage({ getToken }: AdminTemplatesPageProps) {
     for (const j of jobs) {
       if (!j.parsed) appendLog(`${j.file.name}：名前が規則に合わないので飛ばしました`)
       else if (!TEMPLATE_KINDS.includes(j.parsed.kind)) {
-        appendLog(`${j.file.name}：効果音はいまは受け付けていません（音は後で出す予定）`)
+        appendLog(
+          `${j.file.name}：効果音はいまは受け付けていません（BGM なら bgm-曲調-曲名.mp3 の名前にしてください）`,
+        )
       }
     }
     const good = jobs.filter(
@@ -173,8 +214,9 @@ export function AdminTemplatesPage({ getToken }: AdminTemplatesPageProps) {
               ...(parsed.time ? { time: parsed.time } : {}),
             }
         let body: Parameters<typeof adminPutTemplate>[3]
-        if (kind === 'se') {
+        if (kind === 'se' || kind === 'bgm') {
           // 音声は変換しない（ブラウザにエンコーダが無い）。長さだけ測って添える
+          // （BGM のループ区間は投入後に一覧で打つ＝置き換えでも据え置き）
           const dataUrl = await audioFileToDataUrl(file)
           if (!dataUrl) {
             appendLog(`${file.name}：mp3 か m4a だけ送れます`)
@@ -263,7 +305,7 @@ export function AdminTemplatesPage({ getToken }: AdminTemplatesPageProps) {
     }
     setManifest(next)
     setDrafts({})
-    setCategoryDrafts({ bg: {}, sprite: {}, se: {} })
+    setCategoryDrafts(EMPTY_CATEGORY_DRAFTS)
     setTemplateCatalog(next)
     setNotice('保存しました')
   }
@@ -290,7 +332,7 @@ export function AdminTemplatesPage({ getToken }: AdminTemplatesPageProps) {
   return (
     <PageLayout
       title="テンプレ素材の管理"
-      description="背景と立ち絵のテンプレを足す・置き換える・一覧から外す。ファイル名がそのままキーになります。"
+      description="背景・立ち絵・BGM のテンプレを足す・置き換える・一覧から外す。ファイル名がそのままキーになります。"
       backHref="#/settings"
       backLabel="設定へ戻る"
       wide
@@ -315,8 +357,8 @@ export function AdminTemplatesPage({ getToken }: AdminTemplatesPageProps) {
       >
         <ImagePlus className="mx-auto size-6 text-on-surface-variant" aria-hidden />
         <p className="mt-2 text-on-surface text-sm">
-          {GAME_FEATURES.se ? '画像・音声' : '画像'}をここにまとめてドロップ（背景は{' '}
-          <code>場所-時間帯.png</code>、立ち絵は <code>silhouette-人物像.png</code>
+          画像・音声をここにまとめてドロップ（背景は <code>場所-時間帯.png</code>、立ち絵は{' '}
+          <code>silhouette-人物像.png</code>、BGM は <code>bgm-曲調-曲名.mp3</code>
           {GAME_FEATURES.se ? (
             <>
               、効果音は <code>分類-音.mp3</code>
@@ -325,7 +367,8 @@ export function AdminTemplatesPage({ getToken }: AdminTemplatesPageProps) {
           ）
         </p>
         <p className="mt-1 text-on-surface-variant text-xs">
-          同じ名前を送ると置き換えになります。表示名と分類は、新しい名前にだけ既定値が付きます。
+          同じ名前を送ると置き換えになります。表示名と分類は、新しい名前にだけ既定値が付きます。 BGM
+          は 128kbps・1〜2 分のループ向きの長さにしておくと、書き出しと投稿が重くなりません。
         </p>
         <Button
           type="button"
@@ -340,7 +383,7 @@ export function AdminTemplatesPage({ getToken }: AdminTemplatesPageProps) {
         <input
           ref={fileInputRef}
           type="file"
-          accept={GAME_FEATURES.se ? 'image/*,audio/mpeg,audio/mp4,.mp3,.m4a' : 'image/*'}
+          accept="image/*,audio/mpeg,audio/mp4,.mp3,.m4a"
           multiple
           hidden
           aria-label="テンプレ画像を選ぶ"
@@ -382,8 +425,7 @@ export function AdminTemplatesPage({ getToken }: AdminTemplatesPageProps) {
                 aria-pressed={tab === k}
                 onClick={() => setTab(k)}
               >
-                {k === 'bg' ? '背景' : k === 'sprite' ? '立ち絵' : '効果音'}（
-                {k === 'se' ? '音' : '画像'} {imageCount(k)}）
+                {KIND_TABS[k].label}（{KIND_TABS[k].unit} {imageCount(k)}）
               </button>
             ))}
           </div>
@@ -432,6 +474,13 @@ export function AdminTemplatesPage({ getToken }: AdminTemplatesPageProps) {
                   const hidden = draft.hidden ?? row.hidden
                   const rowTime = 'time' in row ? row.time : undefined
                   const time = draft.time === undefined ? rowTime : draft.time
+                  const bgmRow = tab === 'bgm' ? (row as CatalogBgm) : null
+                  const loopStart =
+                    draft.loopStart === undefined
+                      ? bgmRow?.loopStart
+                      : (draft.loopStart ?? undefined)
+                  const loopEnd =
+                    draft.loopEnd === undefined ? bgmRow?.loopEnd : (draft.loopEnd ?? undefined)
                   return (
                     <li
                       key={row.key}
@@ -440,7 +489,9 @@ export function AdminTemplatesPage({ getToken }: AdminTemplatesPageProps) {
                         hidden && 'opacity-60',
                       )}
                     >
-                      {tab === 'se' ? (
+                      {bgmRow ? (
+                        <BgmPreviewButton bgm={bgmRow} />
+                      ) : tab === 'se' ? (
                         <button
                           type="button"
                           aria-label={`${row.slug} を試聴`}
@@ -469,9 +520,13 @@ export function AdminTemplatesPage({ getToken }: AdminTemplatesPageProps) {
                           {entry ? (
                             <span className="text-on-surface-variant text-[11px]">
                               {kb(entry.bytes)}
-                              {entry.durationMs !== undefined
-                                ? `・${(entry.durationMs / 1000).toFixed(1)} 秒`
-                                : ''}
+                              {bgmRow
+                                ? bgmDurationLabel(bgmRow)
+                                  ? `・${bgmDurationLabel(bgmRow)}`
+                                  : ''
+                                : entry.durationMs !== undefined
+                                  ? `・${(entry.durationMs / 1000).toFixed(1)} 秒`
+                                  : ''}
                             </span>
                           ) : (
                             <span className="rounded bg-surface-container px-1.5 py-0.5 text-[11px] text-on-surface-variant">
@@ -519,6 +574,35 @@ export function AdminTemplatesPage({ getToken }: AdminTemplatesPageProps) {
                                 </option>
                               ))}
                             </select>
+                          ) : null}
+                          {bgmRow ? (
+                            <span className="flex items-center gap-1 text-on-surface-variant text-xs">
+                              ループ
+                              <Input
+                                aria-label={`${row.slug} のループ開始（秒）`}
+                                className="h-8 w-20 text-sm tabular-nums"
+                                inputMode="decimal"
+                                placeholder="開始"
+                                value={loopStart ?? ''}
+                                onChange={(e) => {
+                                  const v = parseSeconds(e.target.value)
+                                  if (v !== undefined) setDraft(tab, row.slug, { loopStart: v })
+                                }}
+                              />
+                              〜
+                              <Input
+                                aria-label={`${row.slug} のループ終了（秒）`}
+                                className="h-8 w-20 text-sm tabular-nums"
+                                inputMode="decimal"
+                                placeholder="終了"
+                                value={loopEnd ?? ''}
+                                onChange={(e) => {
+                                  const v = parseSeconds(e.target.value)
+                                  if (v !== undefined) setDraft(tab, row.slug, { loopEnd: v })
+                                }}
+                              />
+                              秒（空＝曲ぜんたい）
+                            </span>
                           ) : null}
                         </div>
                       </div>

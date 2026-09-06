@@ -1,13 +1,13 @@
 /// <reference types="@cloudflare/workers-types" />
 /**
- * /api/admin/templates — 運営テンプレ（背景・立ち絵・効果音）の管理（D-GAME-TEMPLATE-CMS・**staff だけ**）。
+ * /api/admin/templates — 運営テンプレ（背景・立ち絵・効果音・BGM）の管理（D-GAME-TEMPLATE-CMS・**staff だけ**）。
  *
  *   GET    = 目録（非表示も含む・no-store）
  *   PUT    = `?kind=&slug=` で 1 件を投入・置き換え。body は TemplatePutInput（画像は WebP 化済みの
- *            data URL・効果音は mp3/m4a の data URL）。実体を R2 `_templates/<kind>/<slug>.<ext>`
+ *            data URL・効果音と BGM は mp3/m4a の data URL）。実体を R2 `_templates/<kind>/<slug>.<ext>`
  *            （画像は ＋ `.thumb.<ext>`）に置き、目録の項目を上書きする。
  *            表示名・分類・時間帯は**渡した項目だけ**書き換える（既にある項目は据え置き）。
- *   PATCH  = 目録の項目の書き換え（表示名・分類・時間帯・並び・非表示・分類の表示名）。
+ *   PATCH  = 目録の項目の書き換え（表示名・分類・時間帯・並び・非表示・BGM のループ区間・分類の表示名）。
  *   DELETE = `?kind=&slug=` を非表示にする（一覧から外すだけ。実体と項目は残す＝既存作品の参照を壊さない）。
  *
  * staff でなければすべて **404**（管理の口があることを教えない）。読み口は functions/game-templates/。
@@ -21,6 +21,7 @@ import {
   isTemplateSlug,
   parseTemplateFilename,
   TEMPLATE_EXT_BY_MIME,
+  TEMPLATE_KINDS,
   type TemplateEntry,
   type TemplateKind,
   TemplatePatchInputSchema,
@@ -45,8 +46,14 @@ interface Env extends ClerkEnv {
 export const TEMPLATE_MAX_DATA_URL = 1_500_000
 /** 効果音（mp3/m4a）の data URL の上限。ループ用の環境音でも 20 秒 128kbps で 450KB 前後。 */
 export const TEMPLATE_SE_MAX_DATA_URL = 2_100_000
+/**
+ * BGM（mp3/m4a）の data URL の上限（実体で 6MB 弱＝128kbps なら 6 分）。ループで回す曲なので
+ * 1〜2 分で足りる。投稿（契約 v6）は作品ぶんの素材をまとめて 1 回 20MB に収める必要があるため、
+ * ここを緩めすぎると投稿で当たる。
+ */
+export const TEMPLATE_BGM_MAX_DATA_URL = 8_000_000
 export const TEMPLATE_THUMB_MAX_DATA_URL = 300_000
-const MAX_BODY_BYTES = TEMPLATE_SE_MAX_DATA_URL + TEMPLATE_THUMB_MAX_DATA_URL + 16 * 1024
+const MAX_BODY_BYTES = TEMPLATE_BGM_MAX_DATA_URL + TEMPLATE_THUMB_MAX_DATA_URL + 16 * 1024
 
 const BLACK: [string, string, string] = ['#000000', '#000000', '#000000']
 
@@ -67,10 +74,10 @@ async function requireStaff(context: Ctx): Promise<Response | null> {
 
 function targetOf(request: Request): { kind: TemplateKind; slug: string } | null {
   const q = new URL(request.url).searchParams
-  const kind = q.get('kind')
+  const kind = q.get('kind') ?? ''
   const slug = q.get('slug') ?? ''
-  if ((kind !== 'bg' && kind !== 'sprite' && kind !== 'se') || !isTemplateSlug(slug)) return null
-  return { kind, slug }
+  if (!(TEMPLATE_KINDS as readonly string[]).includes(kind) || !isTemplateSlug(slug)) return null
+  return { kind: kind as TemplateKind, slug }
 }
 
 /** 内容ハッシュ（SHA-256 の先頭 16 桁）。URL の `?v=` に載せて immutable キャッシュを効かせる。 */
@@ -129,7 +136,9 @@ export const onRequestPut: PagesFunction<Env> = async (context) => {
   const target = targetOf(context.request)
   if (!target) return json({ error: 'bad_request' }, 400)
   const { kind, slug } = target
-  const isSe = kind === 'se'
+  // 音声（効果音・BGM）は変換しない・サムネも時間帯も無い。違いは上限とループ区間だけ
+  const isAudio = kind === 'se' || kind === 'bgm'
+  const isSe = isAudio
 
   const raw = await context.request.text()
   if (!raw || raw.length > MAX_BODY_BYTES) return json({ error: 'too_large' }, 413)
@@ -141,7 +150,12 @@ export const onRequestPut: PagesFunction<Env> = async (context) => {
   }
   const input = TemplatePutInputSchema.safeParse(parsedBody)
   if (!input.success) return json({ error: 'bad_request' }, 400)
-  const maxFull = isSe ? TEMPLATE_SE_MAX_DATA_URL : TEMPLATE_MAX_DATA_URL
+  const maxFull =
+    kind === 'bgm'
+      ? TEMPLATE_BGM_MAX_DATA_URL
+      : isSe
+        ? TEMPLATE_SE_MAX_DATA_URL
+        : TEMPLATE_MAX_DATA_URL
   if (input.data.dataUrl.length > maxFull) return json({ error: 'too_large' }, 413)
   if ((input.data.thumbDataUrl?.length ?? 0) > TEMPLATE_THUMB_MAX_DATA_URL) {
     return json({ error: 'too_large' }, 413)
@@ -213,6 +227,13 @@ export const onRequestPut: PagesFunction<Env> = async (context) => {
   const durationMs = isSe ? (input.data.durationMs ?? existing?.durationMs) : undefined
   if (durationMs !== undefined) entry.durationMs = durationMs
   else delete entry.durationMs
+  // ループ区間は BGM だけ。置き換えで曲が変われば区間も変わりうるので、渡されなければ据え置き
+  const loopStart = kind === 'bgm' ? (input.data.loopStart ?? existing?.loopStart) : undefined
+  const loopEnd = kind === 'bgm' ? (input.data.loopEnd ?? existing?.loopEnd) : undefined
+  if (loopStart !== undefined) entry.loopStart = loopStart
+  else delete entry.loopStart
+  if (loopEnd !== undefined) entry.loopEnd = loopEnd
+  else delete entry.loopEnd
 
   const entries = existing
     ? manifest.entries.map((e) => (e.kind === kind && e.slug === slug ? entry : e))

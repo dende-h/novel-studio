@@ -22,6 +22,13 @@ vi.mock('@/ui/_utils/audioMeta', () => ({
   audioDurationMs: async () => 4200,
 }))
 vi.mock('@/ui/_utils/sePlayer', () => ({ playCatalogSe: vi.fn(), playPresetSe: vi.fn() }))
+const bgmPlayer = vi.hoisted(() => ({
+  toggleCatalogBgm: vi.fn(),
+  isCatalogBgmPreviewing: () => false,
+  subscribeBgmPreview: () => () => {},
+  bgmPreviewingUrl: () => null,
+}))
+vi.mock('@/ui/_utils/bgmPlayer', () => bgmPlayer)
 
 // この版は効果音を隠している（features.ts）。効果音タブそのものはここで検証し続ける。
 // フラグが落ちているときの振る舞いは admin-templates-page.features.test.tsx
@@ -57,13 +64,14 @@ const entry = (over: Partial<TemplateEntry> = {}): TemplateEntry => ({
 const manifest = (entries: TemplateEntry[]): TemplateManifest => ({
   v: 1,
   updatedAt: 1,
-  categories: { bg: {}, sprite: {}, se: {} },
+  categories: { bg: {}, sprite: {}, se: {}, bgm: {} },
   entries,
 })
 
 const getToken = async () => 'jwt'
 
 beforeEach(() => {
+  sessionStorage.clear() // 覚えたタブを次のテストへ持ち越さない
   api.adminFetchTemplates.mockReset()
   api.adminPatchTemplates.mockReset()
   api.adminPutTemplate.mockReset()
@@ -91,7 +99,7 @@ describe('AdminTemplatesPage', () => {
     api.adminFetchTemplates.mockResolvedValue(manifest([entry()]))
     api.adminPatchTemplates.mockImplementation(async (_t, patch) => ({
       ...manifest([entry({ label: '裏路地（夜）', hidden: true })]),
-      categories: { bg: patch.categories?.bg ?? {}, sprite: {}, se: {} },
+      categories: { bg: patch.categories?.bg ?? {}, sprite: {}, se: {}, bgm: {} },
     }))
     render(<AdminTemplatesPage getToken={getToken} />)
     const label = await screen.findByLabelText('town-alley-night の表示名')
@@ -171,7 +179,7 @@ describe('AdminTemplatesPage', () => {
     )
     api.adminPatchTemplates.mockImplementation(async (_t, patch) => ({
       ...manifest([]),
-      categories: { bg: {}, sprite: {}, se: patch.categories?.se ?? {} },
+      categories: { bg: {}, sprite: {}, se: patch.categories?.se ?? {}, bgm: {} },
     }))
     render(<AdminTemplatesPage getToken={getToken} />)
     fireEvent.click(await screen.findByRole('button', { name: /効果音（音 1）/ }))
@@ -220,5 +228,65 @@ describe('AdminTemplatesPage', () => {
     expect(await screen.findByText('2 件を送りました')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /効果音（音 1）/ })).toBeInTheDocument()
     expect(screen.getByText(/4\.2 秒/)).toBeInTheDocument()
+  })
+
+  it('BGM タブ：bgm-曲調-曲名.mp3 を入れると曲調の分類で並び、ループ区間を打って保存できる', async () => {
+    api.adminFetchTemplates.mockResolvedValue(manifest([]))
+    api.adminPutTemplate.mockImplementation(async (_t, kind, slug, input) => ({
+      ok: true,
+      entry: entry({
+        kind,
+        slug,
+        label: input.label ?? '',
+        category: input.category ?? slug,
+        mime: 'audio/mpeg',
+        durationMs: input.durationMs,
+        time: undefined,
+      }),
+    }))
+    api.adminPatchTemplates.mockImplementation(async (_t, patch) => ({
+      ...manifest([
+        entry({
+          kind: 'bgm',
+          slug: 'bgm-calm-morning',
+          label: 'morning',
+          category: 'calm',
+          mime: 'audio/mpeg',
+          time: undefined,
+          loopStart: patch.entries?.[0]?.loopStart ?? undefined,
+          loopEnd: patch.entries?.[0]?.loopEnd ?? undefined,
+        }),
+      ]),
+    }))
+    render(<AdminTemplatesPage getToken={getToken} />)
+    fireEvent.click(await screen.findByRole('button', { name: /BGM（曲 0）/ }))
+    fireEvent.change(screen.getByLabelText('テンプレ画像を選ぶ'), {
+      target: { files: [new File(['a'], 'bgm-calm-morning.mp3', { type: 'audio/mpeg' })] },
+    })
+    await waitFor(() => expect(api.adminPutTemplate).toHaveBeenCalledTimes(1))
+    expect(api.adminPutTemplate.mock.calls[0]?.slice(1, 3)).toEqual(['bgm', 'bgm-calm-morning'])
+    expect(api.adminPutTemplate.mock.calls[0]?.[3]).toEqual({
+      dataUrl: 'data:audio/mpeg;base64,SUQz',
+      durationMs: 4200,
+      label: 'morning',
+      category: 'calm',
+    })
+    expect(await screen.findByRole('button', { name: /BGM（曲 1）/ })).toBeInTheDocument()
+    // 曲調の語には表示名の表がある（calm → 日常）
+    expect(screen.getByLabelText('分類「calm」の表示名')).toHaveValue('日常')
+    expect(screen.getByRole('button', { name: 'morningを試聴' })).toBeInTheDocument()
+
+    fireEvent.change(screen.getByLabelText('bgm-calm-morning のループ開始（秒）'), {
+      target: { value: '4.5' },
+    })
+    fireEvent.change(screen.getByLabelText('bgm-calm-morning のループ終了（秒）'), {
+      target: { value: '88' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: '変更を保存' }))
+    await waitFor(() => expect(api.adminPatchTemplates).toHaveBeenCalledTimes(1))
+    expect(api.adminPatchTemplates.mock.calls[0]?.[1]).toEqual({
+      entries: [{ kind: 'bgm', slug: 'bgm-calm-morning', loopStart: 4.5, loopEnd: 88 }],
+    })
+    expect(await screen.findByText('保存しました')).toBeInTheDocument()
   })
 })

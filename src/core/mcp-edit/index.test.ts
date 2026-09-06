@@ -431,6 +431,50 @@ describe('mcp-edit — 演出譜（set_staging の純ロジック）', () => {
     expect(once.stagings[0]?.cues[0]).toEqual({ blockId: 'b2', se: 'preset:se/rain' })
   })
 
+  it('bgm は目録の曲か stop だけ通る（空文字で外す）', () => {
+    const keys = new Set(['preset:bgm/bgm-calm-morning'])
+    const on = setStagingCues(
+      [],
+      [stagedWork()],
+      'w1',
+      'e1',
+      [
+        { blockId: 'b1', bgm: 'preset:bgm/bgm-calm-morning' },
+        { blockId: 'b5', bgm: 'stop' },
+      ],
+      [],
+      100,
+      new Set(),
+      new Set(),
+      keys,
+    )
+    expect(on.stagings[0]?.cues).toEqual([
+      { blockId: 'b1', bgm: 'preset:bgm/bgm-calm-morning' },
+      { blockId: 'b5', bgm: 'stop' },
+    ])
+    expect(() =>
+      setStagingCues(
+        [],
+        [stagedWork()],
+        'w1',
+        'e1',
+        [{ blockId: 'b1', bgm: 'preset:bgm/zzz' }],
+        [],
+        100,
+      ),
+    ).toThrow(/bgm "preset:bgm\/zzz" は使えません/)
+    const off = setStagingCues(
+      on.stagings,
+      [stagedWork()],
+      'w1',
+      'e1',
+      [{ blockId: 'b1', bgm: '' }],
+      [],
+      100,
+    )
+    expect(off.stagings[0]?.cues).toEqual([{ blockId: 'b5', bgm: 'stop' }])
+  })
+
   it('se_repeat に知らない言葉は通さない', () => {
     expect(() =>
       setStagingCues(
