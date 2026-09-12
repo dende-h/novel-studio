@@ -40,7 +40,7 @@
 | `bgm-tense-mystery.mp3` | 謎・思索 | 緊張 | 推理・手がかりの整理 |
 | `bgm-tense-horror.mp3` | 恐怖 | 緊張 | ホラー要素。じわじわ来る怖さ |
 | `bgm-tense-dread.mp3` | 恐怖・切迫 | 緊張 | 何かがすぐそこまで迫っている。逃げ場のない怖さ |
-| `bgm-tense-creep.mp3` | 恐怖・忍び寄る | 緊張 | 狂気を帯びた何かが一歩ずつ近づいてくる怖さ。切迫の前段 |
+| `bgm-tense-creep.mp3` | 恐怖・忍び寄る | 緊張 | 和ホラー。廊下の向こうから何かが一歩ずつ近づいてくる。切迫の前段 |
 | `bgm-scene-sacred.mp3` | 荘厳・神秘 | 場面 | 儀式・超常・世界観の核心 |
 | `bgm-scene-memory.mp3` | 回想・ノスタルジー | 場面 | 過去編・幼少期 |
 | `bgm-scene-hush.mp3` | 静かな緊張 | 場面 | 環境音の代わり。無音に近いが空白にならない |
@@ -168,26 +168,32 @@ Imminent danger horror visual novel BGM, pounding heartbeat drum, relentless low
 ```
 
 ### bgm-tense-creep（恐怖・忍び寄る）
-切迫の「ゆっくり版」に狂気を一滴。**音を増やさない**のが要点で、
-鳴っているのは 4 つだけ：心臓の鼓動（切迫感）／張りっぱなしの高い不協和音（恐怖）／
-半音ずつ上がって頭に戻る低弦（近づく）／調子外れのオルゴールの短い断片がたまに鳴る（狂気）。
-ワルツ・笑い声・鎖・きしみは入れない。隙間（無音）が怖さを作る。
+和ホラー。「迫ってくる」を主役にする。音は少なく、鳴っているものは全部「近づく」に使う。
 
-**本命**：
+迫る感じの出し方（3 つ全部入れる）：
+1. **足音そのもの**：畳・板張りをすり足で歩く音を打楽器にし、一歩ごとに重くする
+2. **距離**：足音を「遠くで反響 → 近くで乾いた音」へ動かす（残響を減らしていく）
+3. **音程**：低い琴の 1 音を半音ずつ上げる
+
+ループの制約（「盛り上げない」）と「迫ってくる」は本来ぶつかるので 2 本用意する。
+
+**A：ループ優先**（8 小節かけて近づき、頭に戻る。ずっと近づき続けて聞こえる）：
 ```
-Minimal horror visual novel BGM, only four elements, slow heavy heartbeat drum as the only rhythm, one high dissonant string note held constantly with tremolo, a low cello line that climbs half step by half step then restarts like something drawing nearer, a detuned music box playing a short broken lullaby fragment only once every few bars then silence, lots of empty space between sounds, sparse, cold, something insane is slowly coming closer, 80 BPM, B flat minor, tension stays high, no build-up, no climax, no jump scare hits, no other instruments, about 1 minute long, starts and ends on the same heartbeat and low B flat, seamless loop, no intro, no outro, consistent mood throughout
+Japanese horror visual novel BGM, minimal, dragging shuffling footsteps on tatami as the only rhythm, each step heavier and closer, over eight bars the footsteps move from far and reverberant to close and dry then reset, a single low koto note plucked and slowly climbing half step by half step, one high dissonant shamisen string scraped and held, a faint dry death-rattle throat sound every few bars, a distant temple bell once, lots of silence between sounds, something is walking down the dark corridor toward you, 76 BPM, B flat minor, no melody, no build-up, no climax, no jump scare hits, no other instruments, about 1 minute long, starts and ends on the same far footsteps and low koto note, seamless loop, no intro, no outro
 ```
 
-**代案**（オルゴールでも音が多いと感じるとき。狂気は「ピアノの 1 音が外れている」だけで出す）：
+**B：迫り優先**（1 分かけて遠くから目の前まで来る。ループの継ぎ目で「遠く」に戻るので、
+短い場面か、次の行で切迫へ繋ぐ前提で使う）：
 ```
-Bare minimal horror visual novel BGM, slow heavy heartbeat drum, one sustained high dissonant violin note with tremolo, low piano single notes repeating like slow footsteps and climbing half step by half step then restarting, every few bars one piano note is wrong and out of tune, nothing else, mostly silence between sounds, cold and wrong, something is coming closer, 80 BPM, B flat minor, tension stays high, no build-up, no climax, no jump scare hits, about 1 minute long, starts and ends on the same heartbeat and low B flat, seamless loop, no intro, no outro, consistent mood throughout
+Japanese horror visual novel BGM, minimal, starts far away and ends right behind you, dragging shuffling footsteps on tatami getting steadily closer and heavier for the whole minute, reverb slowly drying out as it approaches, a single low koto note plucked and rising half step by half step, one high dissonant shamisen string scraped and held, a dry death-rattle throat sound getting closer, creaking wooden floor, lots of silence between sounds, by the end the footsteps are loud and dry and right in front of you, 76 BPM, B flat minor, no melody, no jump scare hits, no other instruments, about 1 minute long, no intro, ends abruptly on the last close footstep
 ```
 
 寄せ方の目安：
-- Suno が勝手に楽器を足してくるなら、Exclude styles に `orchestra, full arrangement, pads, synth, drums kit, melody` を入れる
-- 切迫感が足りないなら心臓の鼓動を `slow heavy heartbeat drum, slightly faster than a resting pulse` にし、テンポを 88 に上げる（それ以上は切迫と被る）
-- 狂気が足りないなら、オルゴールの断片を `only once every few bars` から `every two bars` に増やす。それでも足りなければ `slightly out of time` を添える
-- 切迫と繋げるなら B♭ マイナーと心臓の鼓動を共通にしてあるので、忍び寄る → 切迫の順に置く
+- Suno が勝手に楽器を足してくるなら、Exclude styles に `orchestra, pads, synth, drum kit, melody, western strings` を入れる
+- 「和」が足りないなら `shakuhachi breath` を 1 つ足す（2 つ以上足さない）
+- 「迫る」が足りないなら A の `over eight bars` を `over sixteen bars` にして、動きの幅を広げる
+- 狂気を戻したいなら `death-rattle throat sound` を `a low humming of a nursery song under the breath` にする
+- 切迫と繋げるなら B♭ マイナーを共通にしてあるので、忍び寄る → 切迫の順に置く
 
 ### bgm-scene-sacred（荘厳・神秘）
 ```
