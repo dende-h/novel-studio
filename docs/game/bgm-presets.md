@@ -72,9 +72,22 @@ Plain gentle visual novel BGM, simple solo piano with light acoustic guitar, eas
 - 幼稚になりすぎたら `nursery-like` を `humble` に替える
 
 ### bgm-calm-night（日常・夜）
+切なくしない。短調にすると回想曲になるので**長調**で、「静かで落ち着いているが、寂しくも悲しくもない」夜にする。
+用途は帰り道・部屋・静かな会話。切ない夜は「切ない」「回想」に任せる。
+
+**本命**：
 ```
-Calm nighttime visual novel BGM, soft piano, muted electric guitar, warm pad, light rimshot percussion, quiet evening in a small room, 72 BPM, A minor, intimate and still, no build-up, no climax, about 1 minute long, starts and ends on the same A minor chord, seamless loop, no intro, no outro, consistent mood throughout
+Calm cozy nighttime visual novel BGM, soft piano, muted acoustic guitar, warm pad, light rimshot percussion, quiet evening at home after a good day, relaxed and content, 74 BPM, D major, warm and settled, not sad, not nostalgic, not melancholic, no build-up, no climax, about 1 minute long, starts and ends on the same D major chord, seamless loop, no intro, no outro, consistent mood throughout
 ```
+
+**代案**（もう少し静かに。街灯の下の帰り道）：
+```
+Quiet peaceful night walk visual novel BGM, soft electric piano, gentle acoustic guitar, subtle upright bass, slow easy pulse, walking home under streetlights feeling fine, 70 BPM, G major, calm and comfortable, not sad, not lonely, no build-up, no climax, about 1 minute long, starts and ends on the same G major chord, seamless loop, no intro, no outro, consistent mood throughout
+```
+
+寄せ方の目安：
+- まだ切ないなら Exclude styles に `melancholic, sad, nostalgic, bittersweet, minor key` を入れる
+- 明るすぎて「昼」になったら `warm pad` を `warm low pad` にし、テンポを 68 に落とす
 
 ### bgm-calm-comedy（コメディ）
 ```
