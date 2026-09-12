@@ -35,7 +35,7 @@
 | `bgm-tense-suspense.mp3` | 緊迫・サスペンス | 緊張 | 追跡・時間制限・対峙 |
 | `bgm-tense-battle-1.mp3` | 戦闘1・激しい | 緊張 | 敵との戦い |
 | `bgm-tense-battle-2.mp3` | 戦闘2・激しい | 緊張 | 敵との戦い（別の曲） |
-| `bgm-tense-battle-3.mp3` | 戦闘3・誇り高い | 緊張 | 信念と信念、正義と正義のぶつかり合い。敵ではない相手との戦い |
+| `bgm-tense-battle-3.mp3` | 戦闘3・葛藤 | 緊張 | 信念と信念のぶつかり合い。戦いたくない相手と戦う |
 | `bgm-tense-mystery.mp3` | 謎・思索 | 緊張 | 推理・手がかりの整理 |
 | `bgm-tense-horror.mp3` | 恐怖 | 緊張 | ホラー要素。じわじわ来る怖さ |
 | `bgm-tense-dread.mp3` | 恐怖・切迫 | 緊張 | 何かがすぐそこまで迫っている。逃げ場のない怖さ |
@@ -112,10 +112,15 @@ Tense suspense visual novel BGM, driving staccato strings, ticking percussion, l
 Intense battle visual novel BGM, orchestral hybrid, aggressive strings, taiko and heavy drums, brass stabs, electric guitar accents, epic fight, 150 BPM, D minor, powerful and driving, steady intensity from the first bar, no build-up, no climax, about 1 minute long, starts and ends on the same D minor chord, seamless loop, no intro, no outro, consistent mood throughout
 ```
 
-### bgm-tense-battle-3（戦闘3・誇り高い）
-敵ではなく、信念や正義を持つ者同士がぶつかる曲。激しさより気高さ。
+### bgm-tense-battle-3（戦闘3・葛藤）
+敵ではなく、信念や正義を持つ者同士がぶつかる曲。前向きにしない。ファンファーレ・行進・合唱は入れない。
 ```
-Noble heroic duel visual novel BGM, full orchestra, soaring brass fanfare theme, driving string ostinato, snare and timpani march, choir "ah" pad, two ideals clashing with honor and respect, righteous versus righteous, proud and dignified, not evil, not dark, 132 BPM, E minor with bright major lifts, majestic and steady, no build-up, no climax, about 1 minute long, starts and ends on the same E minor chord, seamless loop, no intro, no outro, consistent mood throughout
+Anguished conflicted duel visual novel BGM, dark orchestral, urgent low cello and viola ostinato, mournful solo violin melody over the drive, dissonant string clashes, heavy timpani hits, no brass fanfare, no march, no choir, fighting someone you do not want to fight, torn between duty and heart, tragic and painful but still fighting, 126 BPM, G minor, restless and unresolved, steady intensity, no build-up, no climax, about 1 minute long, starts and ends on the same G minor chord, seamless loop, no intro, no outro, consistent mood throughout
+```
+
+代案（もっと内省的にしたいとき。ピアノを軸にして戦闘感は弦の刻みだけで保つ）：
+```
+Conflicted battle visual novel BGM, driving piano ostinato in low register, tense string tremolo, sparse timpani, sorrowful violin counter-melody, bitter clash of two beliefs, grief inside the fight, no fanfare, no march, no choir, not heroic, not triumphant, 120 BPM, C sharp minor, unresolved and aching, steady intensity, no build-up, no climax, about 1 minute long, starts and ends on the same C sharp minor chord, seamless loop, no intro, no outro, consistent mood throughout
 ```
 
 ### bgm-tense-mystery（謎・思索）
