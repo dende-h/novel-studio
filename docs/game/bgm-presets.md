@@ -142,9 +142,16 @@ Hopeful determined visual novel BGM, piano and strings, soft snare march, rising
 ```
 
 ### bgm-emotion-finale（感動・大団円）
+前奏を付けない。大団円は「盛り上がった状態」で鳴り始める曲なので、
+**1 拍目からフルオーケストラと主旋律で始める**。ピアノだけの出だし・弦の立ち上がりは否定語で塞ぐ。
+
 ```
-Emotional climactic visual novel BGM, full orchestral strings, piano, gentle brass swell, soft choir pad, tears of joy and resolution, 80 BPM, G major, cinematic and warm, stays at a high emotional level from the start, never harsh, about 1 minute long, starts and ends on the same G major chord, seamless loop, no intro, no outro, consistent mood throughout
+Emotional climactic visual novel BGM that starts immediately at full orchestra with the main melody on the very first beat, no intro, no solo piano opening, no slow string swell at the start, no fade in, full orchestral strings, piano, gentle brass, soft choir pad, tears of joy and resolution, 80 BPM, G major, cinematic and warm, stays at a high emotional level the whole time, never harsh, about 1 minute long, starts and ends on the same G major chord, seamless loop, no outro, consistent mood throughout
 ```
+
+寄せ方の目安：
+- それでも前奏が付くなら Exclude styles に `intro, slow opening, build-up, fade in, piano intro` を入れる
+- ループ用途なら、曲中の一番盛り上がっている小節の頭から 1 分を切り出せば前奏は消える
 
 ### bgm-tense-uneasy（不穏）
 ```
