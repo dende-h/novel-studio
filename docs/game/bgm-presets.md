@@ -261,14 +261,17 @@ Japanese horror film score visual novel BGM, minimal and quiet, dragging bare fo
 ```
 
 **B：迫り優先**（1 分かけて遠くから目の前まで来る。ループの継ぎ目で「遠く」に戻るので、
-短い場面か、次の行で切迫へ繋ぐ前提で使う）：
+短い場面か、次の行で切迫へ繋ぐ前提で使う）。
+**一定にしない**のが要点：足音は同じ間隔で刻まず、数歩→止まる→無音→さらに近くで再開、を繰り返す。
+音量も一方向に増やさず、膨らんでは引く。
 ```
-Japanese horror film score visual novel BGM, minimal and quiet, starts far away and ends right behind you, dragging bare footsteps down a dark hallway getting steadily closer and heavier for the whole minute, reverb slowly drying out as it approaches, a low sub bass drone rising half step by half step, one high thin dissonant string note held with tremolo, a dry death-rattle throat clicking sound getting closer, faint fluorescent light buzz, creaking floor, long silences between sounds, by the end the footsteps are loud and dry and right in front of you, 76 BPM, B flat minor, no melody, no jump scare hits, no other instruments, about 1 minute long, no intro, ends abruptly on the last close footstep
+Japanese horror film score visual novel BGM, minimal 76 BPM in B-flat minor, not steady, not constant: dragging bare footsteps down a dark hallway that walk a few steps then stop, silence for several seconds, then resume suddenly closer and heavier, irregular uneven timing, reverb tightening and drying as it approaches, a rising sub-bass half-step cycle, one tremoloed high dissonant string tone that swells and drops unpredictably, faint fluorescent hum, creaks in the silences, death-rattle clicks that grow close and dry, tension breathes in waves, the final step abrupt and right in front of you, instrumental, no melody, no jump scare hits, about 1 minute long, no intro, ends abruptly on the last close footstep
 ```
 
 寄せ方の目安：
 - Suno が勝手に楽器を足してくるなら、Exclude styles に `orchestra, pads, synth melody, drum kit, melody, koto, shamisen, taiko, ethnic` を入れる
 - 「迫る」が足りないなら A の `over eight bars` を `over sixteen bars` にして、動きの幅を広げる
+- まだ一定に聞こえるなら、B の `silence for several seconds` を `silence for three to six seconds, different each time` にし、Exclude styles に `steady, constant, loop, drone only` を入れる
 - 静かすぎて怖くないなら `faint fluorescent light buzz` を `harsh fluorescent light buzz that cuts out and back` にする
 - 狂気を戻したいなら `death-rattle throat clicking sound` を `a low humming of a nursery song under the breath` にする
 - 切迫と繋げるなら B♭ マイナーを共通にしてあるので、忍び寄る → 切迫の順に置く
