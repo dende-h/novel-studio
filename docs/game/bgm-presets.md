@@ -90,22 +90,24 @@ Quiet peaceful night walk visual novel BGM, soft electric piano, gentle acoustic
 - 明るすぎて「昼」になったら `warm pad` を `warm low pad` にし、テンポを 68 に落とす
 
 ### bgm-calm-comedy（コメディ）
-サーカスにも幼児アニメにもしない。**管楽器（金管・クラリネット・アコーディオン）を入れない**のが要点。
-狙いはアニメの日常コメディ。軽いアコースティックポップに、ピチカートと少し外した合いの手で「ボケ」を作る。
+狙いは**日本のアニメの日常ギャグコメディ**（学園もの・ゆるい掛け合い）。
+決め手は鍵盤ハーモニカ（ピアニカ）とスタッカートのシンセ、ピチカートの「ちゃらーん」。
+サーカス（金管・アコーディオン）・幼児アニメ（木琴・チューバ）・口笛は入れない。
 
-**本命**（軽いアコースティックポップ。掛け合い・ツッコミ向き）：
+**本命**（ピアニカ主役。ゆるい掛け合い・ボケ向き）：
 ```
-Light playful slice-of-life comedy visual novel BGM, acoustic guitar strumming, pizzicato strings, light drum kit with tambourine, simple catchy melody on electric piano, cheeky one-note synth blip as a comic interjection, upbeat and casual, everyday banter between friends, 124 BPM, G major, fun but grounded, no whistling, no brass, no clarinet, no accordion, no circus, no cartoon, no build-up, no climax, about 1 minute long, starts and ends on the same G major chord, seamless loop, no intro, no outro, consistent mood throughout
+Japanese anime slice-of-life gag comedy BGM, melodica (pianica) lead melody, bouncy staccato synth chords, pizzicato strings doing cheeky "cha-rahn" stings, upbeat electric bass, snappy drum kit with rimshots, silly playful mood, quick comedic timing with short pauses, school days banter, 132 BPM, C major, cute but not childish, no whistling, no brass, no clarinet, no accordion, no xylophone, no circus, no build-up, no climax, about 1 minute long, starts and ends on the same C major chord, seamless loop, no intro, no outro, consistent mood throughout
 ```
 
-**代案**（もう少し勢い。ドタバタ・追いかけっこ向き。管楽器は入れない）：
+**代案**（もう少し勢い。ズッコケ・ドタバタ向き。8bit 寄りのシンセで）：
 ```
-Upbeat energetic comedy visual novel BGM, fast acoustic guitar strumming, driving pizzicato strings, tight drum kit with hand claps, bouncy electric bass, quirky short synth lead melody, slapstick chase energy, quick and mischievous, 138 BPM, A major, fun but grounded, no brass, no clarinet, no accordion, no circus, no cartoon, no build-up, no climax, about 1 minute long, starts and ends on the same A major chord, seamless loop, no intro, no outro, consistent mood throughout
+Japanese anime gag comedy BGM, bouncy chiptune-style square synth lead, staccato pizzicato strings, melodica counter-melody, slap electric bass, fast tight drum kit with hand claps, goofy slapstick chase, mischievous and quick, sudden comedic stops, 144 BPM, F major, silly but not childish, no whistling, no brass, no accordion, no xylophone, no circus, no build-up, no climax, about 1 minute long, starts and ends on the same F major chord, seamless loop, no intro, no outro, consistent mood throughout
 ```
 
 寄せ方の目安：
-- まだサーカスや子ども向けに寄るなら Exclude styles に `circus, carnival, polka, cartoon, kids, brass, trumpet, tuba, clarinet, accordion, xylophone, kazoo, whistling` を入れる
-- 「日常・明るい」と区別がつかないなら、`cheeky one-note synth blip as a comic interjection` を `frequent cheeky synth blips and a record-scratch-like stop as comic interjections` に強める
+- Exclude styles には最初から `circus, carnival, polka, brass, trumpet, tuba, clarinet, accordion, xylophone, kazoo, whistling, jazz, lounge` を入れておく
+- コメディ感が足りないなら、先頭を `Japanese anime gag comedy BGM like a school comedy anime,` に替え、`pizzicato strings doing cheeky "cha-rahn" stings` を `frequent pizzicato "cha-rahn" stings and a comedic tuba-free bass slide` にする
+- 「日常・明るい」と区別がつかないなら、`quick comedic timing with short pauses` を `deliberately goofy timing with short pauses and off-beat hits` に強める
 
 ### bgm-emotion-warm（温かい・ほのぼの）
 ```
