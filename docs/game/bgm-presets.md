@@ -245,35 +245,25 @@ Imminent danger horror visual novel BGM, pounding heartbeat drum, relentless low
 ```
 
 ### bgm-tense-creep（恐怖・忍び寄る）
-J ホラー（呪怨・リング系）。和楽器は使わない。静けさ・低い唸り・喉の音・蛍光灯のノイズで作る。
-「迫ってくる」を主役にし、鳴っているものは全部「近づく」に使う。
+**ノベルゲームの BGM として成立する「曲」にする**。足音・蛍光灯・喉の音などの効果音的な作りはやめる
+（それは音楽ではなく SE で、本文を読む BGM に向かない）。
+手本は日本のノベルゲームのホラー曲：暗いシンセパッドに、低いピアノの短い動機が繰り返し乗る。
+「近づく」は、動機が半音ずつ上がって頭に戻る＋ときどき黙って近くで再開する、で出す。
 
-迫る感じの出し方（3 つ全部入れる）：
-1. **足音そのもの**：暗い廊下を裸足で引きずる音を打楽器にし、一歩ごとに重くする
-2. **距離**：足音を「遠くで反響 → 近くで乾いた音」へ動かす（残響を減らしていく）
-3. **音程**：低い弦のうなりを半音ずつ上げる
-
-ループの制約（「盛り上げない」）と「迫ってくる」は本来ぶつかるので 2 本用意する。
-
-**A：ループ優先**（8 小節かけて近づき、頭に戻る。ずっと近づき続けて聞こえる）：
+**本命**（ピアノの動機＋パッド。ループしやすい）：
 ```
-Japanese horror film score visual novel BGM, minimal and quiet, dragging bare footsteps down a dark hallway as the only rhythm, each step heavier and closer, over eight bars the footsteps move from far and reverberant to close and dry then reset, a low sub bass drone slowly rising half step by half step, one high thin dissonant string note held with tremolo, a dry death-rattle throat clicking sound every few bars, faint fluorescent light buzz, long silences between sounds, something is coming down the corridor toward you, 76 BPM, B flat minor, no melody, no build-up, no climax, no jump scare hits, no other instruments, about 1 minute long, starts and ends on the same far footsteps and low drone, seamless loop, no intro, no outro
+Japanese visual novel horror BGM, dark ominous synth pad, a low piano two-note motif repeating slowly and climbing half step by half step over eight bars then restarting like something drawing nearer, sparse deep synth bass pulse, one high thin dissonant string tone held, the motif pauses for a bar of near silence now and then and resumes closer and louder, sparse and eerie, something is walking toward you, 72 BPM, B flat minor, tension stays high, no build-up, no climax, no jump scare hits, no sound effects, no footsteps, instrumental, about 1 minute long, starts and ends on the same low B flat pad and motif, seamless loop, no intro, no outro, consistent mood throughout
 ```
 
-**B：迫り優先**（1 分かけて遠くから目の前まで来る。ループの継ぎ目で「遠く」に戻るので、
-短い場面か、次の行で切迫へ繋ぐ前提で使う）。
-**一定にしない**のが要点：足音は同じ間隔で刻まず、数歩→止まる→無音→さらに近くで再開、を繰り返す。
-音量も一方向に増やさず、膨らんでは引く。
+**代案**（もう少し動きを。ハープシコード風の音で「狂気」を少しだけ）：
 ```
-Japanese horror film score visual novel BGM, minimal 76 BPM in B-flat minor, not steady, not constant: dragging bare footsteps down a dark hallway that walk a few steps then stop, silence for several seconds, then resume suddenly closer and heavier, irregular uneven timing, reverb tightening and drying as it approaches, a rising sub-bass half-step cycle, one tremoloed high dissonant string tone that swells and drops unpredictably, faint fluorescent hum, creaks in the silences, death-rattle clicks that grow close and dry, tension breathes in waves, the final step abrupt and right in front of you, instrumental, no melody, no jump scare hits, about 1 minute long, no intro, ends abruptly on the last close footstep
+Japanese visual novel horror BGM, dark synth pad, low piano motif repeating and rising half step by half step then restarting, a detuned harpsichord-like synth echoing the motif slightly out of time, slow deep bass pulse, high dissonant string tremolo, occasional bar of silence then the motif returns closer, unsettling and creeping, 74 BPM, B flat minor, tension stays high, no build-up, no climax, no jump scare hits, no sound effects, instrumental, about 1 minute long, starts and ends on the same pad and motif, seamless loop, no intro, no outro, consistent mood throughout
 ```
 
 寄せ方の目安：
-- Suno が勝手に楽器を足してくるなら、Exclude styles に `orchestra, pads, synth melody, drum kit, melody, koto, shamisen, taiko, ethnic` を入れる
-- 「迫る」が足りないなら A の `over eight bars` を `over sixteen bars` にして、動きの幅を広げる
-- まだ一定に聞こえるなら、B の `silence for several seconds` を `silence for three to six seconds, different each time` にし、Exclude styles に `steady, constant, loop, drone only` を入れる
-- 静かすぎて怖くないなら `faint fluorescent light buzz` を `harsh fluorescent light buzz that cuts out and back` にする
-- 狂気を戻したいなら `death-rattle throat clicking sound` を `a low humming of a nursery song under the breath` にする
+- Exclude styles には `sound effects, foley, footsteps, ambient noise, drone only, orchestra, cinematic, koto, shamisen, taiko, ethnic` を入れる
+- 「近づく」が足りないなら `over eight bars` を `over sixteen bars` にする
+- 一定すぎるなら `pauses for a bar of near silence now and then` を `pauses for one or two bars of near silence at irregular places` にする
 - 切迫と繋げるなら B♭ マイナーを共通にしてあるので、忍び寄る → 切迫の順に置く
 
 ### bgm-scene-sacred（荘厳・神秘）
