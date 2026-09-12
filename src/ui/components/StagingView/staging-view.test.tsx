@@ -670,7 +670,7 @@ describe('StagingView（演出エディタ）', () => {
     expect(screen.getAllByTitle('BGM：なし')).toHaveLength(1)
   })
 
-  it('目録に曲が無くても、組み込みの枠 18 曲が「準備中」で並び、選ぶと保存されて案内が出る', async () => {
+  it('目録に曲が無くても、組み込みの枠 20 曲が「準備中」で並び、選ぶと保存されて案内が出る', async () => {
     const { repo, saved } = fakeRepo()
     render(<StagingView repo={repo} work={makeWork()} currentEpisodeId="e1" />)
     fireEvent.click(await screen.findByText('灯が振り返った。'))

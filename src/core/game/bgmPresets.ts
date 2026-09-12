@@ -1,5 +1,5 @@
 /**
- * 組み込みの BGM プリセット（18 曲・D-GAME-BGM-PRESETS）。
+ * 組み込みの BGM プリセット（20 曲・D-GAME-BGM-PRESETS）。
  *
  * 効果音（sePresets.ts）と違い、ここに**音の実体は無い**。あるのは「どんな場面に使う何という曲か」
  * という**枠**だけで、実音は運営が管理ページから同じ名前（`<slug>.mp3`）の曲を入れると
@@ -77,8 +77,19 @@ const DEFS: ReadonlyArray<Omit<PresetBgm, 'key'>> = [
     note: '追跡・時間制限・対峙',
   },
   { slug: 'bgm-tense-battle', label: '戦闘・激しい', category: 'tense', note: 'バトル場面' },
-  { slug: 'bgm-tense-mystery', label: '謎・思索', category: 'tense', note: '推理・情報整理' },
-  { slug: 'bgm-tense-horror', label: '恐怖', category: 'tense', note: 'ホラー要素' },
+  { slug: 'bgm-tense-mystery', label: '謎・思索', category: 'tense', note: '推理・手がかりの整理' },
+  {
+    slug: 'bgm-tense-horror',
+    label: '恐怖',
+    category: 'tense',
+    note: 'ホラー要素。じわじわ来る怖さ',
+  },
+  {
+    slug: 'bgm-tense-dread',
+    label: '恐怖・切迫',
+    category: 'tense',
+    note: '何かがすぐそこまで迫っている。逃げ場のない怖さ',
+  },
   // 場面
   {
     slug: 'bgm-scene-sacred',
@@ -97,6 +108,12 @@ const DEFS: ReadonlyArray<Omit<PresetBgm, 'key'>> = [
     label: '静かな緊張',
     category: 'scene',
     note: '環境音の代わり。無音に近いが空白にならない',
+  },
+  {
+    slug: 'bgm-scene-noir',
+    label: 'ムーディ・夜の街',
+    category: 'scene',
+    note: 'バー・探偵事務所・大人の会話',
   },
 ]
 

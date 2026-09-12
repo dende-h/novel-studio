@@ -1,7 +1,7 @@
-# 組み込み BGM プリセット（18 曲）と制作プロンプト
+# 組み込み BGM プリセット（20 曲）と制作プロンプト
 
 演出エディタの BGM 欄に並ぶ枠は `src/core/game/bgmPresets.ts` で決めている。
-ここは、その 18 曲を Suno で作るときのプロンプトと、入れるべきファイル名の控え。
+ここは、その 20 曲を Suno で作るときのプロンプトと、入れるべきファイル名の控え。
 
 ## 入れ方
 
@@ -34,11 +34,13 @@
 | `bgm-tense-uneasy.mp3` | 不穏 | 緊張 | 「何かおかしい」の前触れ |
 | `bgm-tense-suspense.mp3` | 緊迫・サスペンス | 緊張 | 追跡・時間制限・対峙 |
 | `bgm-tense-battle.mp3` | 戦闘・激しい | 緊張 | バトル場面 |
-| `bgm-tense-mystery.mp3` | 謎・思索 | 緊張 | 推理・情報整理 |
-| `bgm-tense-horror.mp3` | 恐怖 | 緊張 | ホラー要素 |
+| `bgm-tense-mystery.mp3` | 謎・思索 | 緊張 | 推理・手がかりの整理 |
+| `bgm-tense-horror.mp3` | 恐怖 | 緊張 | ホラー要素。じわじわ来る怖さ |
+| `bgm-tense-dread.mp3` | 恐怖・切迫 | 緊張 | 何かがすぐそこまで迫っている。逃げ場のない怖さ |
 | `bgm-scene-sacred.mp3` | 荘厳・神秘 | 場面 | 儀式・超常・世界観の核心 |
 | `bgm-scene-memory.mp3` | 回想・ノスタルジー | 場面 | 過去編・幼少期 |
 | `bgm-scene-hush.mp3` | 静かな緊張 | 場面 | 環境音の代わり。無音に近いが空白にならない |
+| `bgm-scene-noir.mp3` | ムーディ・夜の街 | 場面 | バー・探偵事務所・大人の会話 |
 
 ## プロンプト
 
@@ -109,12 +111,17 @@ Intense battle visual novel BGM, orchestral hybrid, aggressive strings, taiko an
 
 ### bgm-tense-mystery（謎・思索）
 ```
-Mysterious contemplative visual novel BGM, jazzy piano chords, upright bass, vibraphone, soft brushed snare, detective deduction and puzzle solving, 100 BPM, B minor, curious and cool, no build-up, no climax, about 1 minute long, starts and ends on the same B minor chord, seamless loop, no intro, no outro, consistent mood throughout
+Puzzle-solving detective visual novel BGM, pizzicato strings, marimba, harpsichord, ticking clock percussion, light woodblock, playful curious deduction, clues falling into place, inquisitive and clever, clockwork feel, 112 BPM, E minor, thinking hard but not dark, no build-up, no climax, about 1 minute long, starts and ends on the same E minor chord, seamless loop, no intro, no outro, consistent mood throughout
 ```
 
 ### bgm-tense-horror（恐怖）
 ```
 Horror visual novel BGM, dark ambient drone, detuned piano, reversed string swells, distant metallic scrapes, breathing sub bass, creeping terror, 50 BPM, unsettling and sparse, no build-up, no climax, no jump scare hits, about 1 minute long, starts and ends on the same low C drone, seamless loop, no intro, no outro, consistent mood throughout
+```
+
+### bgm-tense-dread（恐怖・切迫）
+```
+Imminent danger horror visual novel BGM, pounding heartbeat drum, relentless low ostinato strings, shrieking high string stabs, rising dissonant brass cluster, something is right behind you, panic and no escape, 140 BPM, B flat minor, already at peak intensity from the first bar, stays at peak, no build-up, no release, about 1 minute long, starts and ends on the same low B flat pulse, seamless loop, no intro, no outro, consistent mood throughout
 ```
 
 ### bgm-scene-sacred（荘厳・神秘）
@@ -130,4 +137,9 @@ Nostalgic memory visual novel BGM, music box melody, soft piano, warm vinyl text
 ### bgm-scene-hush（静かな緊張）
 ```
 Quiet minimal visual novel BGM, single sustained synth pad, occasional soft piano note, very sparse, almost silent, held breath before something happens, 48 BPM, C minor, near-ambient, no melody, no build-up, no climax, about 1 minute long, starts and ends on the same C minor pad chord, seamless loop, no intro, no outro, consistent mood throughout
+```
+
+### bgm-scene-noir（ムーディ・夜の街）
+```
+Moody noir visual novel BGM, jazzy piano chords, upright bass, vibraphone, soft brushed snare, smoky bar at midnight, private detective office, cool and unhurried, 96 BPM, B minor, sophisticated and low-key, no build-up, no climax, about 1 minute long, starts and ends on the same B minor chord, seamless loop, no intro, no outro, consistent mood throughout
 ```
