@@ -245,26 +245,33 @@ Imminent danger horror visual novel BGM, pounding heartbeat drum, relentless low
 ```
 
 ### bgm-tense-creep（恐怖・忍び寄る）
-**曲として成立させつつ、悲壮ではなく恐怖、しかも差し迫った緊張感を持たせる**。
-残すもの：調律の狂ったオルゴール（良い味）。
-足すもの：心臓寄りの速い低音の脈（切迫感）、波のように膨らんで引くノイズ（圧）、
-張り詰めていく弦のトレモロ（緊張）。悲壮に寄る旋律・協和した和音は入れない。効果音（足音等）も入れない。
+**この曲だけは「曲ぜんたいをループ」しない。** 「近づく」は時間とともに変わる音なので、
+ループ用の「盛り上げない」指定と両立しない（何度直しても一定に聞こえたのはこれが原因）。
 
-**本命**（オルゴール＋脈＋ノイズ）：
+方針：
+1. 1 分かけて**実際に近づく**曲を作る（遠く・薄い → 近く・濃い・速い）
+2. 管理ページで**ループ区間を最後の 10〜15 秒だけ**に打つ（例：開始 46 秒・終了 60 秒）
+   → 読み始めは遠くから近づいてきて、追い詰めた状態で回り続ける。切迫へ繋ぐと自然
+3. 残すもの：調律の狂ったオルゴール／速い脈／ノイズ／不協和音。悲壮な旋律・効果音は入れない
+
+**本命**（1 分で近づき切る。最後の区間は一定で回せる形にする）：
 ```
-Japanese visual novel horror BGM, urgent and dissonant, not sad, no lyrical melody, a badly out-of-tune music box repeating a tritone two-note pattern mechanically and creeping upward half step by half step then restarting like something drawing nearer, a fast anxious sub-bass pulse like a racing heartbeat underneath, a bed of low static and white noise that swells and recedes in waves getting denser each time, high dissonant string tremolo tightening and shaking, dark cluster synth pad, sudden short low piano hits at irregular places, one bar of near silence now and then before the pattern returns closer and louder, pressure and panic building but never releasing, 88 BPM, B flat minor with tritone and minor second clashes, tension stays high, no build-up, no climax, no jump scare hits, no footsteps, instrumental, about 1 minute long, starts and ends on the same heartbeat pulse and music box pattern, seamless loop, no intro, no outro, consistent mood throughout
+Japanese visual novel horror BGM that gets closer over one minute, dissonant, not sad, no lyrical melody, starts far away, quiet and thin with lots of space, and gradually becomes close, loud, dense and faster, a badly out-of-tune music box repeating a tritone two-note pattern that starts distant and reverberant and ends dry and right in front of you, its pattern creeping upward half step by half step the whole way, a sub-bass heartbeat pulse that starts slow and soft and ends fast and pounding, a bed of static and white noise that grows from a whisper to a roar, high dissonant string tremolo tightening as it approaches, dark cluster synth pad thickening, irregular short silences early on that disappear as it gets close, something is walking toward you and finally stands in front of you, 80 BPM rising in feel, B flat minor with tritone and minor second clashes, no jump scare hits, no footsteps, instrumental, about 1 minute long, no intro, the final 15 seconds stay at full intensity and steady so they can loop, no outro
 ```
 
-**代案**（ノイズをもっと前に。オルゴールがノイズの中から聞こえる）：
+**代案**（ノイズ主導で近づく。オルゴールは終盤だけはっきり）：
 ```
-Japanese visual novel horror BGM, urgent and dissonant, not sad, no lyrical melody, a constant bed of crackling static and white noise with louder bursts, a badly out-of-tune music box tritone pattern heard through the noise and creeping upward half step by half step then restarting, fast anxious sub-bass heartbeat pulse, high dissonant string tremolo, distorted low drone, irregular short silences then everything returns closer and louder, suffocating and panicked, 90 BPM, B flat minor with tritone and minor second clashes, tension stays high, no build-up, no climax, no jump scare hits, no footsteps, instrumental, about 1 minute long, starts and ends on the same heartbeat pulse and music box pattern, seamless loop, no intro, no outro, consistent mood throughout
+Japanese visual novel horror BGM that approaches over one minute, dissonant, not sad, no lyrical melody, begins as faint distant static and a slow soft sub-bass pulse, the static thickens and gets louder and closer every few bars, a badly out-of-tune music box tritone pattern emerges from the noise and grows clearer and drier as it nears, the pulse speeds up into a pounding heartbeat, high dissonant string tremolo builds, dark cluster pad, by the end everything is loud, dry and right in front of you, no jump scare hits, no footsteps, instrumental, about 1 minute long, no intro, the final 15 seconds hold at full intensity and steady so they can loop, no outro
 ```
+
+管理ページでの設定：
+- 投入後、一覧のループ区間に「開始 45〜48 秒・終了 曲の末尾」を打ち、▶ で継ぎ目を確かめる
+- 継ぎ目が目立つなら、開始を 1〜2 秒ずつずらして脈の頭に合わせる
 
 寄せ方の目安：
-- Exclude styles には `sad, melancholic, emotional, lyrical, melody, calm, ambient, slow, foley, footsteps, orchestra, cinematic, koto, shamisen, taiko, ethnic` を入れる
-- 差し迫る感が足りないなら、テンポを 96 に上げて `fast anxious sub-bass pulse` を `fast anxious sub-bass pulse in eighth notes` にする（100 を超えると切迫と被る）
-- ノイズが足りないなら `a bed of low static and white noise` を `a loud bed of static and white noise` にする
-- オルゴールが埋もれるなら `music box` に `clearly audible on top` を添える
+- Exclude styles には `sad, melancholic, lyrical, melody, calm, ambient, steady, constant, foley, footsteps, orchestra, cinematic, koto, shamisen, taiko, ethnic` を入れる
+- 近づき方が急すぎる（すぐ最大になる）なら `gradually` を `very gradually, taking the whole minute` にする
+- 最後の区間が暴れてループしにくいなら `the final 15 seconds stay at full intensity and steady` を `the final 15 seconds repeat the same bar at full intensity` にする
 
 ### bgm-scene-sacred（荘厳・神秘）
 ```
