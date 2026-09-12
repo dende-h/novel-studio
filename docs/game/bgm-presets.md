@@ -254,14 +254,14 @@ Imminent danger horror visual novel BGM, pounding heartbeat drum, relentless low
    → 読み始めは遠くから近づいてきて、追い詰めた状態で回り続ける。切迫へ繋ぐと自然
 3. 残すもの：調律の狂ったオルゴール／速い脈／ノイズ／不協和音。悲壮な旋律・効果音は入れない
 
-**本命**（1 分で近づき切る。最後の区間は一定で回せる形にする）：
+**本命**（1 分で近づき切る。**テンポは変えない**＝近づきは音量・密度・残響だけで出す。最後の区間は一定で回せる形にする）：
 ```
-Japanese visual novel horror BGM that gets closer over one minute, dissonant, not sad, no lyrical melody, starts far away, quiet and thin with lots of space, and gradually becomes close, loud, dense and faster, a badly out-of-tune music box repeating a tritone two-note pattern that starts distant and reverberant and ends dry and right in front of you, its pattern creeping upward half step by half step the whole way, a sub-bass heartbeat pulse that starts slow and soft and ends fast and pounding, a bed of static and white noise that grows from a whisper to a roar, high dissonant string tremolo tightening as it approaches, dark cluster synth pad thickening, irregular short silences early on that disappear as it gets close, something is walking toward you and finally stands in front of you, 80 BPM rising in feel, B flat minor with tritone and minor second clashes, no jump scare hits, no footsteps, instrumental, about 1 minute long, no intro, the final 15 seconds stay at full intensity and steady so they can loop, no outro
+Japanese visual novel horror BGM that gets closer over one minute, slow and heavy, strictly 72 BPM the whole time, tempo never changes, never speeds up, dissonant, not sad, no lyrical melody, starts far away, quiet, thin and reverberant with lots of space, and gradually becomes close, loud, dense and dry without getting faster, a badly out-of-tune music box repeating a tritone two-note pattern that starts distant and echoing and ends dry and right in front of you, its pattern creeping upward half step by half step the whole way, a slow sub-bass heartbeat pulse that stays at the same slow pace but grows from soft to heavy and pounding, a bed of static and white noise that grows from a whisper to a roar, high dissonant string tremolo tightening as it approaches, dark cluster synth pad thickening, irregular short silences early on that disappear as it gets close, something is walking slowly toward you and finally stands in front of you, B flat minor with tritone and minor second clashes, no jump scare hits, no footsteps, instrumental, about 1 minute long, no intro, the final 15 seconds stay at full intensity and steady at the same slow tempo so they can loop, no outro
 ```
 
-**代案**（ノイズ主導で近づく。オルゴールは終盤だけはっきり）：
+**代案**（ノイズ主導で近づく。オルゴールは終盤だけはっきり。こちらもテンポ固定）：
 ```
-Japanese visual novel horror BGM that approaches over one minute, dissonant, not sad, no lyrical melody, begins as faint distant static and a slow soft sub-bass pulse, the static thickens and gets louder and closer every few bars, a badly out-of-tune music box tritone pattern emerges from the noise and grows clearer and drier as it nears, the pulse speeds up into a pounding heartbeat, high dissonant string tremolo builds, dark cluster pad, by the end everything is loud, dry and right in front of you, no jump scare hits, no footsteps, instrumental, about 1 minute long, no intro, the final 15 seconds hold at full intensity and steady so they can loop, no outro
+Japanese visual novel horror BGM that approaches over one minute, slow and heavy, strictly 72 BPM the whole time, tempo never changes, never speeds up, dissonant, not sad, no lyrical melody, begins as faint distant static and a slow soft sub-bass pulse, the static thickens and gets louder and closer every few bars, a badly out-of-tune music box tritone pattern emerges from the noise and grows clearer and drier as it nears, the slow pulse stays slow but grows heavy and pounding, high dissonant string tremolo builds, dark cluster pad, by the end everything is loud, dry and right in front of you but still slow, no jump scare hits, no footsteps, instrumental, about 1 minute long, no intro, the final 15 seconds hold at full intensity and steady at the same slow tempo so they can loop, no outro
 ```
 
 管理ページでの設定：
@@ -269,7 +269,7 @@ Japanese visual novel horror BGM that approaches over one minute, dissonant, not
 - 継ぎ目が目立つなら、開始を 1〜2 秒ずつずらして脈の頭に合わせる
 
 寄せ方の目安：
-- Exclude styles には `sad, melancholic, lyrical, melody, calm, ambient, steady, constant, foley, footsteps, orchestra, cinematic, koto, shamisen, taiko, ethnic` を入れる
+- Exclude styles には `fast, uptempo, accelerando, tempo change, sad, melancholic, lyrical, melody, calm, ambient, foley, footsteps, orchestra, cinematic, koto, shamisen, taiko, ethnic` を入れる（`steady, constant` は外す＝テンポは一定でよい）
 - 近づき方が急すぎる（すぐ最大になる）なら `gradually` を `very gradually, taking the whole minute` にする
 - 最後の区間が暴れてループしにくいなら `the final 15 seconds stay at full intensity and steady` を `the final 15 seconds repeat the same bar at full intensity` にする
 
