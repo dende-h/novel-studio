@@ -54,9 +54,22 @@ Bright cheerful visual novel BGM, acoustic guitar, glockenspiel, light piano, so
 ```
 
 ### bgm-calm-easy（日常・のんびり）
+素朴に。エレピ・ブラシドラム・クラリネット・ジャズコードは入れない（ラウンジ風になる）。
+楽器はアコギとリコーダーと軽い打楽器くらいで、コードは単純な三和音だけ。
+
+**本命**：
 ```
-Relaxed laid-back visual novel BGM, ukulele, soft electric piano, brushed drums, clarinet melody, lazy Sunday afternoon feel, 85 BPM, F major, cozy and unhurried, no build-up, no climax, about 1 minute long, starts and ends on the same F major chord, seamless loop, no intro, no outro, consistent mood throughout
+Simple rustic laid-back visual novel BGM, acoustic guitar strumming, recorder melody, light hand percussion, simple three-chord folk feel, plain and homely, lazy afternoon in the countryside, 84 BPM, F major, simple triads only, no jazz chords, no lounge, not sophisticated, cozy and unhurried, no build-up, no climax, about 1 minute long, starts and ends on the same F major chord, seamless loop, no intro, no outro, consistent mood throughout
 ```
+
+**代案**（もっと素朴に。ピアノだけ）：
+```
+Plain gentle visual novel BGM, simple solo piano with light acoustic guitar, easy nursery-like melody, simple triads, unhurried and homely, quiet afternoon at home, 80 BPM, C major, no jazz chords, no lounge, not sophisticated, no build-up, no climax, about 1 minute long, starts and ends on the same C major chord, seamless loop, no intro, no outro, consistent mood throughout
+```
+
+寄せ方の目安：
+- まだおしゃれなら Exclude styles に `jazz, lounge, bossa nova, lo-fi, electric piano, saxophone, clarinet` を入れる
+- 幼稚になりすぎたら `nursery-like` を `humble` に替える
 
 ### bgm-calm-night（日常・夜）
 ```
