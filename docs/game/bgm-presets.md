@@ -168,26 +168,26 @@ Imminent danger horror visual novel BGM, pounding heartbeat drum, relentless low
 ```
 
 ### bgm-tense-creep（恐怖・忍び寄る）
-切迫の「ゆっくり版」に**狂気**を足したもの。
-近づく足音と、半音ずつ上がって頭に戻る弦（ずっと近づき続けて聞こえるがループできる）は骨格として残し、
-その上に「調子外れの童謡」「壊れたオルゴール」「笑い声の気配」を重ねる。怖さの正体を「人ではないもの」ではなく
-「正気を失った誰か」にする。
+切迫の「ゆっくり版」に狂気を一滴。**音を増やさない**のが要点で、
+鳴っているのは 4 つだけ：心臓の鼓動（切迫感）／張りっぱなしの高い不協和音（恐怖）／
+半音ずつ上がって頭に戻る低弦（近づく）／調子外れのオルゴールの短い断片がたまに鳴る（狂気）。
+ワルツ・笑い声・鎖・きしみは入れない。隙間（無音）が怖さを作る。
 
 **本命**：
 ```
-Deranged stalking horror visual novel BGM, slow heavy footsteps as the percussion, one step every two beats, each step closer, a detuned music box playing a broken childlike lullaby slightly out of tune and out of time, a chromatic string phrase that slowly climbs then restarts like something drawing nearer, high dissonant violin tremolo held constantly, faint distorted giggling and humming textures, warped off-kilter waltz feel underneath, low contrabass drone, madness and glee closing in, unhinged, wrong, 72 BPM, B flat minor, dread stays high, no build-up, no climax, no jump scare hits, about 1 minute long, starts and ends on the same low B flat drone, seamless loop, no intro, no outro, consistent mood throughout
+Minimal horror visual novel BGM, only four elements, slow heavy heartbeat drum as the only rhythm, one high dissonant string note held constantly with tremolo, a low cello line that climbs half step by half step then restarts like something drawing nearer, a detuned music box playing a short broken lullaby fragment only once every few bars then silence, lots of empty space between sounds, sparse, cold, something insane is slowly coming closer, 80 BPM, B flat minor, tension stays high, no build-up, no climax, no jump scare hits, no other instruments, about 1 minute long, starts and ends on the same heartbeat and low B flat, seamless loop, no intro, no outro, consistent mood throughout
 ```
 
-**代案**（オルゴールが可愛くなりすぎるとき。ピアノとささやきで狂気を出す）：
+**代案**（オルゴールでも音が多いと感じるとき。狂気は「ピアノの 1 音が外れている」だけで出す）：
 ```
-Insane creeping horror visual novel BGM, slow heavy footsteps as the percussion, each step closer, an out-of-tune upright piano repeating a cheerful nursery melody wrong, notes bent and stumbling, whispered unintelligible muttering, sudden short shrieking violin glissando, rising chromatic cello line that restarts, low sub bass throb, someone who has lost their mind is coming for you smiling, 70 BPM, B flat minor, unrelenting dread, no build-up, no climax, no jump scare hits, about 1 minute long, starts and ends on the same low B flat drone, seamless loop, no intro, no outro, consistent mood throughout
+Bare minimal horror visual novel BGM, slow heavy heartbeat drum, one sustained high dissonant violin note with tremolo, low piano single notes repeating like slow footsteps and climbing half step by half step then restarting, every few bars one piano note is wrong and out of tune, nothing else, mostly silence between sounds, cold and wrong, something is coming closer, 80 BPM, B flat minor, tension stays high, no build-up, no climax, no jump scare hits, about 1 minute long, starts and ends on the same heartbeat and low B flat, seamless loop, no intro, no outro, consistent mood throughout
 ```
 
 寄せ方の目安：
-- 狂気が足りないなら `warped off-kilter waltz feel underneath` を `lurching 3/4 waltz that keeps stumbling, tempo wobbling` にする
-- 「可愛い」に倒れたら Exclude styles に `cute, whimsical, playful, magical` を入れる
-- 「近づく」感が弱いなら `a chromatic string phrase that slowly climbs then restarts` を `a chromatic string phrase that climbs half step by half step over eight bars then restarts` と具体的にする
-- 切迫と繋げるなら B♭ マイナーを共通にしてあるので、忍び寄る → 切迫の順に置く
+- Suno が勝手に楽器を足してくるなら、Exclude styles に `orchestra, full arrangement, pads, synth, drums kit, melody` を入れる
+- 切迫感が足りないなら心臓の鼓動を `slow heavy heartbeat drum, slightly faster than a resting pulse` にし、テンポを 88 に上げる（それ以上は切迫と被る）
+- 狂気が足りないなら、オルゴールの断片を `only once every few bars` から `every two bars` に増やす。それでも足りなければ `slightly out of time` を添える
+- 切迫と繋げるなら B♭ マイナーと心臓の鼓動を共通にしてあるので、忍び寄る → 切迫の順に置く
 
 ### bgm-scene-sacred（荘厳・神秘）
 ```
