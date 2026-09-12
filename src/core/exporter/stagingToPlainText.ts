@@ -100,7 +100,7 @@ export function stagingToPlainText(
     ].join('\n'),
   )
 
-  // BGM は運営テンプレの曲だけ。組み込みの枠（22 曲）は曲が入るまで「準備中」＝選べるが鳴らない。
+  // BGM は運営テンプレの曲だけ。組み込みの枠（23 曲）は曲が入るまで「準備中」＝選べるが鳴らない。
   // 次の曲か bgm: "stop" まで続く
   const bgms = visibleTemplates(mergeBgmCatalog(templates))
   sections.push(

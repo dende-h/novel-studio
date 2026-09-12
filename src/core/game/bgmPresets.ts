@@ -1,5 +1,5 @@
 /**
- * 組み込みの BGM プリセット（22 曲・D-GAME-BGM-PRESETS）。
+ * 組み込みの BGM プリセット（23 曲・D-GAME-BGM-PRESETS）。
  *
  * 効果音（sePresets.ts）と違い、ここに**音の実体は無い**。あるのは「どんな場面に使う何という曲か」
  * という**枠**だけで、実音は運営が管理ページから同じ名前（`<slug>.mp3`）の曲を入れると
@@ -101,6 +101,12 @@ const DEFS: ReadonlyArray<Omit<PresetBgm, 'key'>> = [
     label: '恐怖・切迫',
     category: 'tense',
     note: '何かがすぐそこまで迫っている。逃げ場のない怖さ',
+  },
+  {
+    slug: 'bgm-tense-creep',
+    label: '恐怖・忍び寄る',
+    category: 'tense',
+    note: 'ゆっくり、確実に近づいてくる怖さ。切迫の前段',
   },
   // 場面
   {

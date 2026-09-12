@@ -1,7 +1,7 @@
-# 組み込み BGM プリセット（22 曲）と制作プロンプト
+# 組み込み BGM プリセット（23 曲）と制作プロンプト
 
 演出エディタの BGM 欄に並ぶ枠は `src/core/game/bgmPresets.ts` で決めている。
-ここは、その 22 曲を Suno で作るときのプロンプトと、入れるべきファイル名の控え。
+ここは、その 23 曲を Suno で作るときのプロンプトと、入れるべきファイル名の控え。
 
 ## 入れ方
 
@@ -39,6 +39,7 @@
 | `bgm-tense-mystery.mp3` | 謎・思索 | 緊張 | 推理・手がかりの整理 |
 | `bgm-tense-horror.mp3` | 恐怖 | 緊張 | ホラー要素。じわじわ来る怖さ |
 | `bgm-tense-dread.mp3` | 恐怖・切迫 | 緊張 | 何かがすぐそこまで迫っている。逃げ場のない怖さ |
+| `bgm-tense-creep.mp3` | 恐怖・忍び寄る | 緊張 | ゆっくり、確実に近づいてくる怖さ。切迫の前段 |
 | `bgm-scene-sacred.mp3` | 荘厳・神秘 | 場面 | 儀式・超常・世界観の核心 |
 | `bgm-scene-memory.mp3` | 回想・ノスタルジー | 場面 | 過去編・幼少期 |
 | `bgm-scene-hush.mp3` | 静かな緊張 | 場面 | 環境音の代わり。無音に近いが空白にならない |
@@ -136,6 +137,12 @@ Horror visual novel BGM, dark ambient drone, detuned piano, reversed string swel
 ### bgm-tense-dread（恐怖・切迫）
 ```
 Imminent danger horror visual novel BGM, pounding heartbeat drum, relentless low ostinato strings, shrieking high string stabs, rising dissonant brass cluster, something is right behind you, panic and no escape, 140 BPM, B flat minor, already at peak intensity from the first bar, stays at peak, no build-up, no release, about 1 minute long, starts and ends on the same low B flat pulse, seamless loop, no intro, no outro, consistent mood throughout
+```
+
+### bgm-tense-creep（恐怖・忍び寄る）
+切迫の「ゆっくり版」。同じ心臓の鼓動を半分のテンポで打ち、迫ってくる感じは低音の反復で保つ。
+```
+Slow creeping horror visual novel BGM, slow heavy heartbeat drum, low cello ostinato repeating one dark phrase, faint dissonant violin harmonics, sub bass swells, distant metallic scrape, something is walking toward you and will not stop, inescapable, patient menace, 70 BPM, B flat minor, tense and heavy, stays at the same level of dread, no build-up, no climax, no jump scare hits, about 1 minute long, starts and ends on the same low B flat pulse, seamless loop, no intro, no outro, consistent mood throughout
 ```
 
 ### bgm-scene-sacred（荘厳・神秘）
