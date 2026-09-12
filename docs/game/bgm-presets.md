@@ -245,28 +245,26 @@ Imminent danger horror visual novel BGM, pounding heartbeat drum, relentless low
 ```
 
 ### bgm-tense-creep（恐怖・忍び寄る）
-**ノベルゲームの BGM として成立する「曲」にしつつ、悲壮ではなく恐怖にする**。
-悲壮に寄る原因は「短調のピアノの旋律＋パッド」＝泣きの型。恐怖にするには：
-- 動機を**旋律にしない**。半音か三全音の 2 音を機械的に反復する（歌わない）
-- パッドを**協和した短三和音にしない**。濁ったクラスターにする
-- 音色を少し「間違った」ものにする（調律の狂ったピアノ・オルゴール・鐘）
-- 効果音（足音・蛍光灯・喉の音）は入れない
+**曲として成立させつつ、悲壮ではなく恐怖、しかも差し迫った緊張感を持たせる**。
+残すもの：調律の狂ったオルゴール（良い味）。
+足すもの：心臓寄りの速い低音の脈（切迫感）、波のように膨らんで引くノイズ（圧）、
+張り詰めていく弦のトレモロ（緊張）。悲壮に寄る旋律・協和した和音は入れない。効果音（足音等）も入れない。
 
-**本命**（不協和な 2 音の反復＋クラスターパッド）：
+**本命**（オルゴール＋脈＋ノイズ）：
 ```
-Japanese visual novel horror BGM, dissonant and cold, not sad, not melancholic, no lyrical melody, a detuned piano repeating two clashing notes a semitone apart in a mechanical rhythm, the pair creeping up half step by half step over eight bars then restarting like something drawing nearer, dark synth pad holding a dissonant cluster instead of a chord, sparse deep bass pulse, a high thin string tone sliding slowly out of tune, a small cracked bell striking once every few bars, the pattern stops for a bar of near silence at irregular places and resumes closer and louder, eerie and wrong, something is walking toward you, 72 BPM, B flat minor with tritone and minor second clashes, tension stays high, no build-up, no climax, no jump scare hits, no sound effects, instrumental, about 1 minute long, starts and ends on the same cluster pad and two-note pattern, seamless loop, no intro, no outro, consistent mood throughout
+Japanese visual novel horror BGM, urgent and dissonant, not sad, no lyrical melody, a badly out-of-tune music box repeating a tritone two-note pattern mechanically and creeping upward half step by half step then restarting like something drawing nearer, a fast anxious sub-bass pulse like a racing heartbeat underneath, a bed of low static and white noise that swells and recedes in waves getting denser each time, high dissonant string tremolo tightening and shaking, dark cluster synth pad, sudden short low piano hits at irregular places, one bar of near silence now and then before the pattern returns closer and louder, pressure and panic building but never releasing, 88 BPM, B flat minor with tritone and minor second clashes, tension stays high, no build-up, no climax, no jump scare hits, no footsteps, instrumental, about 1 minute long, starts and ends on the same heartbeat pulse and music box pattern, seamless loop, no intro, no outro, consistent mood throughout
 ```
 
-**代案**（狂気を少し。調律の狂ったオルゴールが同じ 2 音を追う）：
+**代案**（ノイズをもっと前に。オルゴールがノイズの中から聞こえる）：
 ```
-Japanese visual novel horror BGM, dissonant and cold, not sad, no lyrical melody, low detuned piano repeating a tritone pair mechanically and creeping upward half step by half step then restarting, a badly out-of-tune music box echoing the same two notes slightly late, dark cluster synth pad, slow deep bass pulse, high dissonant string tremolo, one or two bars of near silence at irregular places then the pattern returns closer, wrong and unsettling, 74 BPM, B flat minor with tritone and minor second clashes, tension stays high, no build-up, no climax, no jump scare hits, no sound effects, instrumental, about 1 minute long, starts and ends on the same cluster pad and pattern, seamless loop, no intro, no outro, consistent mood throughout
+Japanese visual novel horror BGM, urgent and dissonant, not sad, no lyrical melody, a constant bed of crackling static and white noise with louder bursts, a badly out-of-tune music box tritone pattern heard through the noise and creeping upward half step by half step then restarting, fast anxious sub-bass heartbeat pulse, high dissonant string tremolo, distorted low drone, irregular short silences then everything returns closer and louder, suffocating and panicked, 90 BPM, B flat minor with tritone and minor second clashes, tension stays high, no build-up, no climax, no jump scare hits, no footsteps, instrumental, about 1 minute long, starts and ends on the same heartbeat pulse and music box pattern, seamless loop, no intro, no outro, consistent mood throughout
 ```
 
 寄せ方の目安：
-- Exclude styles には `sad, melancholic, emotional, lyrical, melody, sound effects, foley, footsteps, orchestra, cinematic, koto, shamisen, taiko, ethnic` を入れる
-- まだ悲壮なら `a detuned piano` を `a badly detuned prepared piano` にし、`dark synth pad holding a dissonant cluster` を `dark synth pad holding a harsh dissonant cluster with a low growl` にする
-- 「近づく」が足りないなら `over eight bars` を `over sixteen bars` にする
-- 切迫と繋げるなら B♭ マイナーを共通にしてあるので、忍び寄る → 切迫の順に置く
+- Exclude styles には `sad, melancholic, emotional, lyrical, melody, calm, ambient, slow, foley, footsteps, orchestra, cinematic, koto, shamisen, taiko, ethnic` を入れる
+- 差し迫る感が足りないなら、テンポを 96 に上げて `fast anxious sub-bass pulse` を `fast anxious sub-bass pulse in eighth notes` にする（100 を超えると切迫と被る）
+- ノイズが足りないなら `a bed of low static and white noise` を `a loud bed of static and white noise` にする
+- オルゴールが埋もれるなら `music box` に `clearly audible on top` を添える
 
 ### bgm-scene-sacred（荘厳・神秘）
 ```
