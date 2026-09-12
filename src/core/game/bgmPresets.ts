@@ -112,7 +112,7 @@ const DEFS: ReadonlyArray<Omit<PresetBgm, 'key'>> = [
     slug: 'bgm-tense-creep',
     label: '恐怖・忍び寄る',
     category: 'tense',
-    note: '和ホラー。廊下の向こうから何かが一歩ずつ近づいてくる。切迫の前段',
+    note: 'Jホラー。暗い廊下の向こうから何かが一歩ずつ近づいてくる。切迫の前段',
   },
   // 場面
   {
