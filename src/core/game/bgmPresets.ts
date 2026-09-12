@@ -85,9 +85,9 @@ const DEFS: ReadonlyArray<Omit<PresetBgm, 'key'>> = [
   },
   {
     slug: 'bgm-tense-battle-3',
-    label: '戦闘3・葛藤',
+    label: '戦闘3・信念',
     category: 'tense',
-    note: '信念と信念のぶつかり合い。戦いたくない相手と戦う',
+    note: '信念と信念のぶつかり合い。誇りと葛藤が半々',
   },
   { slug: 'bgm-tense-mystery', label: '謎・思索', category: 'tense', note: '推理・手がかりの整理' },
   {

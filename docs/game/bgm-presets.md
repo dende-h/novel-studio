@@ -35,7 +35,7 @@
 | `bgm-tense-suspense.mp3` | 緊迫・サスペンス | 緊張 | 追跡・時間制限・対峙 |
 | `bgm-tense-battle-1.mp3` | 戦闘1・激しい | 緊張 | 敵との戦い |
 | `bgm-tense-battle-2.mp3` | 戦闘2・激しい | 緊張 | 敵との戦い（別の曲） |
-| `bgm-tense-battle-3.mp3` | 戦闘3・葛藤 | 緊張 | 信念と信念のぶつかり合い。戦いたくない相手と戦う |
+| `bgm-tense-battle-3.mp3` | 戦闘3・信念 | 緊張 | 信念と信念のぶつかり合い。誇りと葛藤が半々 |
 | `bgm-tense-mystery.mp3` | 謎・思索 | 緊張 | 推理・手がかりの整理 |
 | `bgm-tense-horror.mp3` | 恐怖 | 緊張 | ホラー要素。じわじわ来る怖さ |
 | `bgm-tense-dread.mp3` | 恐怖・切迫 | 緊張 | 何かがすぐそこまで迫っている。逃げ場のない怖さ |
@@ -113,16 +113,23 @@ Tense suspense visual novel BGM, driving staccato strings, ticking percussion, l
 Intense battle visual novel BGM, orchestral hybrid, aggressive strings, taiko and heavy drums, brass stabs, electric guitar accents, epic fight, 150 BPM, D minor, powerful and driving, steady intensity from the first bar, no build-up, no climax, about 1 minute long, starts and ends on the same D minor chord, seamless loop, no intro, no outro, consistent mood throughout
 ```
 
-### bgm-tense-battle-3（戦闘3・葛藤）
-敵ではなく、信念や正義を持つ者同士がぶつかる曲。前向きにしない。ファンファーレ・行進・合唱は入れない。
+### bgm-tense-battle-3（戦闘3・信念）
+敵ではなく、信念や正義を持つ者同士がぶつかる曲。誇りと葛藤を半々に。
+ファンファーレと行進は入れない（タイトル曲になる）が、金管の持続音で気高さは残す。
+
+**本命**（弦の刻みで戦闘、金管の持続音で誇り、ソロヴァイオリンで葛藤の三層）：
 ```
-Anguished conflicted duel visual novel BGM, dark orchestral, urgent low cello and viola ostinato, mournful solo violin melody over the drive, dissonant string clashes, heavy timpani hits, no brass fanfare, no march, no choir, fighting someone you do not want to fight, torn between duty and heart, tragic and painful but still fighting, 126 BPM, G minor, restless and unresolved, steady intensity, no build-up, no climax, about 1 minute long, starts and ends on the same G minor chord, seamless loop, no intro, no outro, consistent mood throughout
+Determined duel visual novel BGM, dark orchestral, driving low string ostinato, sustained noble French horn line, solo violin counter-melody with a bittersweet edge, timpani and low taiko hits, no fanfare, no march, no choir, two beliefs clashing with respect, resolve mixed with pain, dignified but conflicted, 130 BPM, D minor with brief major lifts that fall back to minor, steady intensity, no build-up, no climax, about 1 minute long, starts and ends on the same D minor chord, seamless loop, no intro, no outro, consistent mood throughout
 ```
 
-代案（もっと内省的にしたいとき。ピアノを軸にして戦闘感は弦の刻みだけで保つ）：
+**代案**（もう少し前へ倒したいとき。ホルンの主題を前に出し、葛藤はコードの陰りだけで出す）：
 ```
-Conflicted battle visual novel BGM, driving piano ostinato in low register, tense string tremolo, sparse timpani, sorrowful violin counter-melody, bitter clash of two beliefs, grief inside the fight, no fanfare, no march, no choir, not heroic, not triumphant, 120 BPM, C sharp minor, unresolved and aching, steady intensity, no build-up, no climax, about 1 minute long, starts and ends on the same C sharp minor chord, seamless loop, no intro, no outro, consistent mood throughout
+Proud conflicted battle visual novel BGM, orchestral, urgent string ostinato, strong French horn theme, cello drive, timpani, occasional dissonant string clash under the theme, no fanfare, no march, no choir, honor and doubt in the same fight, resolute but heavy-hearted, 134 BPM, E minor, majestic yet unresolved, steady intensity, no build-up, no climax, about 1 minute long, starts and ends on the same E minor chord, seamless loop, no intro, no outro, consistent mood throughout
 ```
+
+寄せ方の目安：
+- 葛藤に寄りすぎたら `solo violin counter-melody with a bittersweet edge` を `solo violin counter-melody` にし、`brief major lifts` を `frequent major lifts` にする
+- 前向きに寄りすぎたら Exclude styles に `fanfare, march, anthem, triumphant` を入れ、`resolve mixed with pain` を `pain under the resolve` にする
 
 ### bgm-tense-mystery（謎・思索）
 ```
