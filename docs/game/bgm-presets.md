@@ -110,9 +110,16 @@ Japanese anime gag comedy BGM, bouncy chiptune-style square synth lead, staccato
 - 「日常・明るい」と区別がつかないなら、`quick comedic timing with short pauses` を `deliberately goofy timing with short pauses and off-beat hits` に強める
 
 ### bgm-emotion-warm（温かい・ほのぼの）
+前奏を付けない。末尾の `no intro` だけでは Suno が前奏を足すので、
+**先頭に「1 拍目から主旋律と全楽器で始まる」を置き、前奏の型（ピアノだけの出だし・パッドの立ち上がり）を否定語で塞ぐ**。
+
 ```
-Warm heartfelt visual novel BGM, gentle piano melody, acoustic guitar arpeggios, soft strings, subtle music box, feeling of friendship and belonging, 90 BPM, D major, tender and comforting, no build-up, no climax, about 1 minute long, starts and ends on the same D major chord, seamless loop, no intro, no outro, consistent mood throughout
+Warm heartfelt visual novel BGM that starts immediately with the full melody and all instruments on the very first beat, no intro, no solo piano opening, no ambient pad swell at the start, no fade in, gentle piano melody, acoustic guitar arpeggios, soft strings, subtle music box, feeling of friendship and belonging, 90 BPM, D major, tender and comforting, no build-up, no climax, about 1 minute long, starts and ends on the same D major chord, seamless loop, no outro, consistent mood throughout
 ```
+
+寄せ方の目安：
+- それでも前奏が付くなら Exclude styles に `intro, slow opening, ambient intro, fade in, piano intro` を入れる
+- 出だしが薄いテイクは、曲中の一番安定した小節の頭から 1 分を切り出せば前奏は消える（ループ用途なら曲の頭にこだわらなくてよい）
 
 ### bgm-emotion-love（恋愛・甘い）
 ```
