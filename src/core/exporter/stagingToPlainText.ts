@@ -13,6 +13,7 @@ import { GAME_FEATURES } from '../game/features'
 import { BLACKOUT_BG_KEY, BLACKOUT_BG_LABEL } from '../game/presets'
 import { SPRITE_POSITION_LABELS } from '../game/stage'
 import {
+  isBgmReady,
   mergeBackgroundCatalog,
   mergeBgmCatalog,
   mergeSeCatalog,
@@ -99,13 +100,18 @@ export function stagingToPlainText(
     ].join('\n'),
   )
 
-  // BGM は運営テンプレの曲だけ（目録に無ければ案内だけ）。次の曲か bgm: "stop" まで続く
+  // BGM は運営テンプレの曲だけ。組み込みの枠（24 曲）は曲が入るまで「準備中」＝選べるが鳴らない。
+  // 次の曲か bgm: "stop" まで続く
   const bgms = visibleTemplates(mergeBgmCatalog(templates))
   sections.push(
     [
-      '使える BGM（bgm）キー（この行から鳴り始め、次の曲か bgm: "stop" まで続く。場面の切れ目では止まらない）:',
+      '使える BGM（bgm）キー（この行から鳴り始め、次の曲か bgm: "stop" まで続く。場面の切れ目では止まらない。',
+      '「準備中」の曲は選べるが、曲が入るまで書き出し・投稿では鳴らない）:',
       ...(bgms.length > 0
-        ? bgms.map((b) => `- ${b.key} … ${b.label}`)
+        ? bgms.map(
+            (b) =>
+              `- ${b.key} … ${b.label}${b.builtin ? `（${b.builtin.note}）` : ''}${isBgmReady(b) ? '' : '【準備中】'}`,
+          )
         : ['- 使える曲はまだありません（運営がテンプレとして用意した曲だけ選べます）']),
       '- stop … 鳴っている BGM をここで止める（予約キー）',
     ].join('\n'),

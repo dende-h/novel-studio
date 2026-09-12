@@ -8,6 +8,7 @@ import {
   type CatalogSprite,
   categoriesOf,
   categoryLabelOf,
+  isBgmReady,
   type TemplateKind,
   type TemplateManifest,
   visibleTemplates,
@@ -50,6 +51,9 @@ export function bgmDurationLabel(bgm: Pick<CatalogBgm, 'durationMs'>): string | 
   const total = Math.round(bgm.durationMs / 1000)
   return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`
 }
+
+/** 曲の実体がまだ無い枠に付ける印（演出エディタの欄・一覧・管理ページで同じ語）。 */
+export const BGM_PENDING_LABEL = '準備中'
 
 /** BGM の 1 行（▶／■ の試聴つき）。演出エディタの欄と一覧で同じ形にする。 */
 export function BgmPreviewButton({ bgm }: { bgm: CatalogBgm }) {
@@ -174,8 +178,20 @@ export function TemplatePicker<T extends Item>({
                         onOpenChange(false)
                       }}
                     >
-                      <span>{item.label}</span>
-                      <span className="ml-2 text-[11px] text-on-surface-variant">
+                      <span>
+                        {item.label}
+                        {!isBgmReady(bgm) ? (
+                          <span className="ml-2 rounded bg-surface-container px-1.5 py-0.5 text-[11px] text-on-surface-variant">
+                            {BGM_PENDING_LABEL}
+                          </span>
+                        ) : null}
+                        {bgm.builtin ? (
+                          <span className="ml-2 text-[11px] text-on-surface-variant">
+                            {bgm.builtin.note}
+                          </span>
+                        ) : null}
+                      </span>
+                      <span className="ml-2 shrink-0 text-[11px] text-on-surface-variant">
                         {categoryLabelOf(manifest, 'bgm', bgm.category)}
                         {duration ? ` ${duration}` : ''}
                       </span>

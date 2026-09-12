@@ -670,12 +670,20 @@ describe('StagingView（演出エディタ）', () => {
     expect(screen.getAllByTitle('BGM：なし')).toHaveLength(1)
   })
 
-  it('目録に曲が無ければ、BGM の欄は案内だけ出す（一覧から選ぶは出さない）', async () => {
-    const { repo } = fakeRepo()
+  it('目録に曲が無くても、組み込みの枠 24 曲が「準備中」で並び、選ぶと保存されて案内が出る', async () => {
+    const { repo, saved } = fakeRepo()
     render(<StagingView repo={repo} work={makeWork()} currentEpisodeId="e1" />)
     fireEvent.click(await screen.findByText('灯が振り返った。'))
-    expect(await screen.findByLabelText('BGM')).toBeInTheDocument()
-    expect(screen.getByText(/使える曲はまだありません/)).toBeInTheDocument()
+    const select = await screen.findByLabelText('BGM')
+    expect(screen.queryByText(/使える曲はまだありません/)).not.toBeInTheDocument()
+    expect(screen.getByRole('option', { name: '日常・明るい（準備中）' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'BGMをテンプレから選ぶ' })).toBeInTheDocument()
+    fireEvent.change(select, { target: { value: 'preset:bgm/bgm-calm-bright' } })
+    await waitFor(() => expect(saved).toHaveLength(1))
+    expect(saved[0]?.cues[0]).toEqual({ blockId: 'b1', bgm: 'preset:bgm/bgm-calm-bright' })
+    expect(await screen.findByText(/この曲は準備中です/)).toBeInTheDocument()
+    // 実体が無いので試聴は押せない
+    expect(screen.getByRole('button', { name: '日常・明るいを試聴' })).toBeDisabled()
   })
 
   it('無料プランは持ち込み 20 枚まで（テンプレは数えない・案内を出してファイル選択を開かない）', async () => {
