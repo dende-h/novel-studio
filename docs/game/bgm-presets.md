@@ -245,25 +245,27 @@ Imminent danger horror visual novel BGM, pounding heartbeat drum, relentless low
 ```
 
 ### bgm-tense-creep（恐怖・忍び寄る）
-**ノベルゲームの BGM として成立する「曲」にする**。足音・蛍光灯・喉の音などの効果音的な作りはやめる
-（それは音楽ではなく SE で、本文を読む BGM に向かない）。
-手本は日本のノベルゲームのホラー曲：暗いシンセパッドに、低いピアノの短い動機が繰り返し乗る。
-「近づく」は、動機が半音ずつ上がって頭に戻る＋ときどき黙って近くで再開する、で出す。
+**ノベルゲームの BGM として成立する「曲」にしつつ、悲壮ではなく恐怖にする**。
+悲壮に寄る原因は「短調のピアノの旋律＋パッド」＝泣きの型。恐怖にするには：
+- 動機を**旋律にしない**。半音か三全音の 2 音を機械的に反復する（歌わない）
+- パッドを**協和した短三和音にしない**。濁ったクラスターにする
+- 音色を少し「間違った」ものにする（調律の狂ったピアノ・オルゴール・鐘）
+- 効果音（足音・蛍光灯・喉の音）は入れない
 
-**本命**（ピアノの動機＋パッド。ループしやすい）：
+**本命**（不協和な 2 音の反復＋クラスターパッド）：
 ```
-Japanese visual novel horror BGM, dark ominous synth pad, a low piano two-note motif repeating slowly and climbing half step by half step over eight bars then restarting like something drawing nearer, sparse deep synth bass pulse, one high thin dissonant string tone held, the motif pauses for a bar of near silence now and then and resumes closer and louder, sparse and eerie, something is walking toward you, 72 BPM, B flat minor, tension stays high, no build-up, no climax, no jump scare hits, no sound effects, no footsteps, instrumental, about 1 minute long, starts and ends on the same low B flat pad and motif, seamless loop, no intro, no outro, consistent mood throughout
+Japanese visual novel horror BGM, dissonant and cold, not sad, not melancholic, no lyrical melody, a detuned piano repeating two clashing notes a semitone apart in a mechanical rhythm, the pair creeping up half step by half step over eight bars then restarting like something drawing nearer, dark synth pad holding a dissonant cluster instead of a chord, sparse deep bass pulse, a high thin string tone sliding slowly out of tune, a small cracked bell striking once every few bars, the pattern stops for a bar of near silence at irregular places and resumes closer and louder, eerie and wrong, something is walking toward you, 72 BPM, B flat minor with tritone and minor second clashes, tension stays high, no build-up, no climax, no jump scare hits, no sound effects, instrumental, about 1 minute long, starts and ends on the same cluster pad and two-note pattern, seamless loop, no intro, no outro, consistent mood throughout
 ```
 
-**代案**（もう少し動きを。ハープシコード風の音で「狂気」を少しだけ）：
+**代案**（狂気を少し。調律の狂ったオルゴールが同じ 2 音を追う）：
 ```
-Japanese visual novel horror BGM, dark synth pad, low piano motif repeating and rising half step by half step then restarting, a detuned harpsichord-like synth echoing the motif slightly out of time, slow deep bass pulse, high dissonant string tremolo, occasional bar of silence then the motif returns closer, unsettling and creeping, 74 BPM, B flat minor, tension stays high, no build-up, no climax, no jump scare hits, no sound effects, instrumental, about 1 minute long, starts and ends on the same pad and motif, seamless loop, no intro, no outro, consistent mood throughout
+Japanese visual novel horror BGM, dissonant and cold, not sad, no lyrical melody, low detuned piano repeating a tritone pair mechanically and creeping upward half step by half step then restarting, a badly out-of-tune music box echoing the same two notes slightly late, dark cluster synth pad, slow deep bass pulse, high dissonant string tremolo, one or two bars of near silence at irregular places then the pattern returns closer, wrong and unsettling, 74 BPM, B flat minor with tritone and minor second clashes, tension stays high, no build-up, no climax, no jump scare hits, no sound effects, instrumental, about 1 minute long, starts and ends on the same cluster pad and pattern, seamless loop, no intro, no outro, consistent mood throughout
 ```
 
 寄せ方の目安：
-- Exclude styles には `sound effects, foley, footsteps, ambient noise, drone only, orchestra, cinematic, koto, shamisen, taiko, ethnic` を入れる
+- Exclude styles には `sad, melancholic, emotional, lyrical, melody, sound effects, foley, footsteps, orchestra, cinematic, koto, shamisen, taiko, ethnic` を入れる
+- まだ悲壮なら `a detuned piano` を `a badly detuned prepared piano` にし、`dark synth pad holding a dissonant cluster` を `dark synth pad holding a harsh dissonant cluster with a low growl` にする
 - 「近づく」が足りないなら `over eight bars` を `over sixteen bars` にする
-- 一定すぎるなら `pauses for a bar of near silence now and then` を `pauses for one or two bars of near silence at irregular places` にする
 - 切迫と繋げるなら B♭ マイナーを共通にしてあるので、忍び寄る → 切迫の順に置く
 
 ### bgm-scene-sacred（荘厳・神秘）
