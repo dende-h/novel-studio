@@ -2,9 +2,9 @@ import { describe, expect, it } from 'vitest'
 import { PRESET_BGM_CATEGORY_LABELS, PRESET_BGMS, presetBgm, presetBgmBySlug } from './bgmPresets'
 import { parseTemplateFilename } from './templates'
 
-describe('組み込みの BGM プリセット（枠だけ・23 曲）', () => {
-  it('23 曲のキーが一意で、preset:bgm/ の形を持つ', () => {
-    expect(PRESET_BGMS).toHaveLength(23)
+describe('組み込みの BGM プリセット（枠だけ・24 曲）', () => {
+  it('24 曲のキーが一意で、preset:bgm/ の形を持つ', () => {
+    expect(PRESET_BGMS).toHaveLength(24)
     const keys = PRESET_BGMS.map((p) => p.key)
     expect(new Set(keys).size).toBe(keys.length)
     for (const p of PRESET_BGMS) {
@@ -22,11 +22,11 @@ describe('組み込みの BGM プリセット（枠だけ・23 曲）', () => {
     }
   })
 
-  it('4 つの曲調に分かれる（日常 4・感情 6・緊張 9・場面 4）', () => {
+  it('4 つの曲調に分かれる（日常 4・感情 6・緊張 10・場面 4）', () => {
     const count = (c: string) => PRESET_BGMS.filter((p) => p.category === c).length
     expect(count('calm')).toBe(4)
     expect(count('emotion')).toBe(6)
-    expect(count('tense')).toBe(9)
+    expect(count('tense')).toBe(10)
     expect(count('scene')).toBe(4)
   })
 

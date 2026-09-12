@@ -1,7 +1,7 @@
-# 組み込み BGM プリセット（23 曲）と制作プロンプト
+# 組み込み BGM プリセット（24 曲）と制作プロンプト
 
 演出エディタの BGM 欄に並ぶ枠は `src/core/game/bgmPresets.ts` で決めている。
-ここは、その 23 曲を Suno で作るときのプロンプトと、入れるべきファイル名の控え。
+ここは、その 24 曲を Suno で作るときのプロンプトと、入れるべきファイル名の控え。
 
 ## 入れ方
 
@@ -36,10 +36,11 @@
 | `bgm-tense-battle-1.mp3` | 戦闘1・激しい | 緊張 | 敵との戦い |
 | `bgm-tense-battle-2.mp3` | 戦闘2・激しい | 緊張 | 敵との戦い（別の曲） |
 | `bgm-tense-battle-3.mp3` | 戦闘3・信念 | 緊張 | 信念と信念のぶつかり合い。誇りと葛藤が半々 |
+| `bgm-tense-battle-4.mp3` | 戦闘4・悲壮 | 緊張 | 勝ち目の薄い戦い。命を懸ける・散る覚悟 |
 | `bgm-tense-mystery.mp3` | 謎・思索 | 緊張 | 推理・手がかりの整理 |
 | `bgm-tense-horror.mp3` | 恐怖 | 緊張 | ホラー要素。じわじわ来る怖さ |
 | `bgm-tense-dread.mp3` | 恐怖・切迫 | 緊張 | 何かがすぐそこまで迫っている。逃げ場のない怖さ |
-| `bgm-tense-creep.mp3` | 恐怖・忍び寄る | 緊張 | ゆっくり、確実に近づいてくる怖さ。切迫の前段 |
+| `bgm-tense-creep.mp3` | 恐怖・忍び寄る | 緊張 | 足音が一歩ずつ近づいてくる怖さ。切迫の前段 |
 | `bgm-scene-sacred.mp3` | 荘厳・神秘 | 場面 | 儀式・超常・世界観の核心 |
 | `bgm-scene-memory.mp3` | 回想・ノスタルジー | 場面 | 過去編・幼少期 |
 | `bgm-scene-hush.mp3` | 静かな緊張 | 場面 | 環境音の代わり。無音に近いが空白にならない |
@@ -133,6 +134,24 @@ Proud conflicted battle visual novel BGM, explosive from the first bar, urgent d
 - 葛藤に寄りすぎたら `solo violin counter-melody with a bittersweet edge` を `solo violin counter-melody` にし、`brief major lifts` を `frequent major lifts` にする
 - 前向きに寄りすぎたら Exclude styles に `fanfare, march, anthem, triumphant` を入れ、`resolve mixed with pain` を `pain under the resolve` にする
 
+### bgm-tense-battle-4（戦闘4・悲壮）
+戦闘3 の悲壮版。出だしから打ち合うのは同じ。ホルンの誇りを、低い男声合唱と嘆きの弦に置き換える。
+「勝てないと分かっていて剣を抜く」。
+
+**本命**：
+```
+Tragic heroic last stand battle visual novel BGM, hits hard from the very first beat, aggressive fast string ostinato, low male choir chanting solemnly, mournful soaring violin melody above the drive, pounding timpani and taiko, sharp brass stabs in minor, metallic percussion accents like clashing blades, no fanfare, no march, no slow opening, fighting a battle you cannot win, sacrifice and grief and defiance, sorrow without giving up, 136 BPM, C minor, dark and majestic, full intensity throughout, no build-up, no climax, about 1 minute long, starts and ends on the same C minor chord, seamless loop, no intro, no outro, consistent mood throughout
+```
+
+**代案**（合唱が大げさになるとき。合唱を外して、悲壮はチェロの旋律に持たせる）：
+```
+Tragic desperate battle visual novel BGM, explosive from the first bar, driving low string ostinato, weeping cello melody, high string tremolo, pounding timpani and taiko, minor brass stabs, metallic clash accents, no choir, no fanfare, no march, no slow opening, doomed but unbroken, grief in every strike, 134 BPM, G minor, dark and relentless, full intensity throughout, no build-up, no climax, about 1 minute long, starts and ends on the same G minor chord, seamless loop, no intro, no outro, consistent mood throughout
+```
+
+寄せ方の目安：
+- 「悲しい」に寄って戦闘感が落ちたら `aggressive fast string ostinato` を `aggressive fast string ostinato in the front` にし、テンポを 140 に上げる
+- 戦闘3 と区別がつかないなら Exclude styles に `heroic, triumphant, hopeful` を入れる
+
 ### bgm-tense-mystery（謎・思索）
 ```
 Puzzle-solving detective visual novel BGM, pizzicato strings, marimba, harpsichord, ticking clock percussion, light woodblock, playful curious deduction, clues falling into place, inquisitive and clever, clockwork feel, 112 BPM, E minor, thinking hard but not dark, no build-up, no climax, about 1 minute long, starts and ends on the same E minor chord, seamless loop, no intro, no outro, consistent mood throughout
@@ -149,17 +168,24 @@ Imminent danger horror visual novel BGM, pounding heartbeat drum, relentless low
 ```
 
 ### bgm-tense-creep（恐怖・忍び寄る）
-切迫の「ゆっくり版」。テンポは落とすが緊張は落とさない。
-高い弦の不協和音を張りっぱなしにして、低音の一撃を不規則に入れる。「静か」ではなく「息を詰める」。
+切迫の「ゆっくり版」。ポイントは**近づいてくる動き**を音に持たせること。
+一定の間隔で重い足音を打ち、その上で半音ずつ上がる弦のフレーズを繰り返す（上がりきったら
+頭に戻る＝ずっと近づき続けているように聞こえるが、曲としてはループできる）。
 
+**本命**：
 ```
-Slow relentless horror visual novel BGM, slow heavy heartbeat drum, low cello and contrabass ostinato repeating one dark phrase, high dissonant string cluster held constantly with tremolo, sudden irregular low piano and timpani hits, ticking metallic pulse, whispering breath textures, screeching violin harmonics, something is walking toward you and will not stop, suffocating tension, cold sweat, 76 BPM, B flat minor, dread stays high the whole time, no build-up, no climax, no jump scare hits, about 1 minute long, starts and ends on the same low B flat pulse, seamless loop, no intro, no outro, consistent mood throughout
+Stalking horror visual novel BGM, slow heavy footsteps as the percussion, one step every two beats, each step closer and heavier, low contrabass drone, a chromatic string phrase that slowly climbs then restarts like something drawing nearer and nearer, high dissonant violin tremolo held constantly, dragging chain and creaking wood textures, breathing right behind you, predator patiently closing in, 72 BPM, B flat minor, dread stays high, no build-up, no climax, no jump scare hits, about 1 minute long, starts and ends on the same low B flat drone, seamless loop, no intro, no outro, consistent mood throughout
+```
+
+**代案**（足音が効かないとき。低いピアノの反復を足音の代わりにする）：
+```
+Creeping approach horror visual novel BGM, low piano single notes repeating like slow footsteps, each note slightly louder then resetting, rising chromatic cello line, sustained dissonant high strings, sub bass throb, scraping metal, whispered breath, something is coming down the hallway toward you, 70 BPM, B flat minor, unrelenting dread, no build-up, no climax, no jump scare hits, about 1 minute long, starts and ends on the same low B flat note, seamless loop, no intro, no outro, consistent mood throughout
 ```
 
 寄せ方の目安：
-- まだ緩いなら `high dissonant string cluster held constantly with tremolo` を `piercing high dissonant string cluster held constantly with fast tremolo` にし、テンポを 84 に上げる
-- うるさすぎて「恐怖」ではなく「戦闘」になったら `sudden irregular low piano and timpani hits` を外す
-- 切迫と繋げるなら B♭ マイナーと心臓の鼓動を共通にしてあるので、忍び寄る → 切迫の順に置く
+- 「近づく」感が弱いなら `a chromatic string phrase that slowly climbs then restarts` を `a chromatic string phrase that climbs half step by half step over eight bars then restarts` と具体的にする
+- Suno が盛り上がって終わるなら、Exclude styles に `crescendo, climax, drop` を入れる
+- 切迫と繋げるなら B♭ マイナーを共通にしてあるので、忍び寄る → 切迫の順に置く
 
 ### bgm-scene-sacred（荘厳・神秘）
 ```

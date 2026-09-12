@@ -260,8 +260,8 @@ describe('AdminTemplatesPage', () => {
     }))
     render(<AdminTemplatesPage getToken={getToken} />)
     fireEvent.click(await screen.findByRole('button', { name: /BGM（曲 0）/ }))
-    // 組み込みの枠 23 曲が「曲なし」の印つきで並ぶ（入れるべきファイル名が分かる・入力は無効）
-    expect(screen.getAllByText(/曲なし（bgm-.*\.mp3 を投入すると鳴る）/)).toHaveLength(23)
+    // 組み込みの枠 24 曲が「曲なし」の印つきで並ぶ（入れるべきファイル名が分かる・入力は無効）
+    expect(screen.getAllByText(/曲なし（bgm-.*\.mp3 を投入すると鳴る）/)).toHaveLength(24)
     expect(screen.getByText('曲なし（bgm-calm-bright.mp3 を投入すると鳴る）')).toBeInTheDocument()
     expect(screen.getByLabelText('bgm-calm-bright の表示名')).toBeDisabled()
     expect(screen.getByLabelText('分類「emotion」の表示名')).toHaveValue('感情')
