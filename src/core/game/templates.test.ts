@@ -368,7 +368,7 @@ describe('BGM（kind bgm）', () => {
     expect(templateAssetId('bgm', 'bgm-calm-morning')).toBe('tpl-bgm-bgm-calm-morning')
   })
 
-  it('一覧は組み込みの枠 20 曲＋目録。枠は曲が無ければ準備中（entry 無し）、目録だけの曲は後ろに足す。長さとループ区間を運ぶ', () => {
+  it('一覧は組み込みの枠 22 曲＋目録。枠は曲が無ければ準備中（entry 無し）、目録だけの曲は後ろに足す。長さとループ区間を運ぶ', () => {
     // 目録が無ければ枠だけ（全部が準備中・キーは選べる）
     const empty = mergeBgmCatalog(null)
     expect(empty).toHaveLength(PRESET_BGMS.length)
@@ -378,7 +378,7 @@ describe('BGM（kind bgm）', () => {
       label: '日常・明るい',
       category: 'calm',
     })
-    expect(catalogBgmKeys(null).has('preset:bgm/bgm-tense-battle')).toBe(true)
+    expect(catalogBgmKeys(null).has('preset:bgm/bgm-tense-battle-3')).toBe(true)
 
     const m = manifest([
       entry({

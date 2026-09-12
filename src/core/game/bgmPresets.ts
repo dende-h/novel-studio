@@ -1,5 +1,5 @@
 /**
- * 組み込みの BGM プリセット（20 曲・D-GAME-BGM-PRESETS）。
+ * 組み込みの BGM プリセット（22 曲・D-GAME-BGM-PRESETS）。
  *
  * 効果音（sePresets.ts）と違い、ここに**音の実体は無い**。あるのは「どんな場面に使う何という曲か」
  * という**枠**だけで、実音は運営が管理ページから同じ名前（`<slug>.mp3`）の曲を入れると
@@ -76,7 +76,19 @@ const DEFS: ReadonlyArray<Omit<PresetBgm, 'key'>> = [
     category: 'tense',
     note: '追跡・時間制限・対峙',
   },
-  { slug: 'bgm-tense-battle', label: '戦闘・激しい', category: 'tense', note: 'バトル場面' },
+  { slug: 'bgm-tense-battle-1', label: '戦闘1・激しい', category: 'tense', note: '敵との戦い' },
+  {
+    slug: 'bgm-tense-battle-2',
+    label: '戦闘2・激しい',
+    category: 'tense',
+    note: '敵との戦い（別の曲）',
+  },
+  {
+    slug: 'bgm-tense-battle-3',
+    label: '戦闘3・誇り高い',
+    category: 'tense',
+    note: '信念と信念、正義と正義のぶつかり合い。敵ではない相手との戦い',
+  },
   { slug: 'bgm-tense-mystery', label: '謎・思索', category: 'tense', note: '推理・手がかりの整理' },
   {
     slug: 'bgm-tense-horror',

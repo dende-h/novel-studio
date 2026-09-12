@@ -21,7 +21,7 @@ import { PRESET_SPRITE_TONE, PRESET_SPRITES, type PresetSprite } from './spriteP
  * 目録が無い・取れない状態でも今までどおり動く：組み込みの SVG（presets.ts の 18 枚と
  * spritePresets.ts の 6 種）は目録に画像が無いあいだの**控え**で、画像が当たれば
  * 同じキーのまま本画像に切り替わる（旧作品の参照を壊さない）。BGM は**枠だけ**組み込み
- * （bgmPresets.ts の 20 曲。音の実体は持たない＝同じ名前の曲が目録に入るまで「準備中」）。
+ * （bgmPresets.ts の 22 曲。音の実体は持たない＝同じ名前の曲が目録に入るまで「準備中」）。
  *
  * ここは純 TS。取得（fetch）と R2 の読み書きは UI 層／Functions が担う。
  */
@@ -239,7 +239,7 @@ const SPRITE_WORD_LABELS: Record<string, string> = Object.fromEntries(
 )
 
 /**
- * BGM の曲調の語 → 表示名（組み込み 20 曲の 4 分類＋07-novel-game.md §4.3 の旧 5 種）。
+ * BGM の曲調の語 → 表示名（組み込み 22 曲の 4 分類＋07-novel-game.md §4.3 の旧 5 種）。
  * 目録の表示名があればそちら。
  */
 const BGM_MOOD_LABELS: Record<string, string> = {
@@ -482,7 +482,7 @@ export interface CatalogBgm {
   category: string
   /** 目録の実体（音声ファイル）。無ければ組み込みの枠だけ＝鳴らない（準備中） */
   entry?: TemplateEntry
-  /** 組み込みの枠（bgmPresets.ts の 20 曲）。目録だけの曲には無い */
+  /** 組み込みの枠（bgmPresets.ts の 22 曲）。目録だけの曲には無い */
   builtin?: PresetBgm
   hidden: boolean
   durationMs?: number
@@ -494,7 +494,7 @@ export interface CatalogBgm {
 export const isBgmReady = (bgm: Pick<CatalogBgm, 'entry'>): boolean => bgm.entry !== undefined
 
 /**
- * BGM の一覧＝組み込みの枠 20 曲（bgmPresets.ts）に目録の曲を重ね、目録だけにある曲を後ろに足す。
+ * BGM の一覧＝組み込みの枠 22 曲（bgmPresets.ts）に目録の曲を重ね、目録だけにある曲を後ろに足す。
  * 同じ slug の曲が目録にあれば、キーはそのままに実体がファイルになる。枠だけの曲は `entry` が無く、
  * 選べるが鳴らない（書き出し・投稿は読み飛ばす）。
  * キーは `preset:bgm/<slug>`。演出譜の `Cue.bgm` はこのキーか、予約キー `stop`（BGM_STOP）を指す。

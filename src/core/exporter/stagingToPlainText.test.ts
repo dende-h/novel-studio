@@ -154,7 +154,7 @@ describe('stagingToPlainText（MCP 向け演出譜テキスト）', () => {
     expect(text).toContain('- preset:bgm/bgm-calm-morning … 朝')
     expect(text).toContain('- stop … 鳴っている BGM をここで止める')
     expect(text).toContain('【BGM=preset:bgm/bgm-calm-morning】')
-    // 目録が無くても組み込みの枠 20 曲は「準備中」で並ぶ（選べるが鳴らない、と AI にも伝える）
+    // 目録が無くても組み込みの枠 22 曲は「準備中」で並ぶ（選べるが鳴らない、と AI にも伝える）
     const bare = stagingToPlainText(work(), episode(), undefined, [])
     expect(bare).not.toContain('使える曲はまだありません')
     expect(bare).toContain('- preset:bgm/bgm-calm-bright … 日常・明るい（')

@@ -1,7 +1,7 @@
-# 組み込み BGM プリセット（20 曲）と制作プロンプト
+# 組み込み BGM プリセット（22 曲）と制作プロンプト
 
 演出エディタの BGM 欄に並ぶ枠は `src/core/game/bgmPresets.ts` で決めている。
-ここは、その 20 曲を Suno で作るときのプロンプトと、入れるべきファイル名の控え。
+ここは、その 22 曲を Suno で作るときのプロンプトと、入れるべきファイル名の控え。
 
 ## 入れ方
 
@@ -33,7 +33,9 @@
 | `bgm-emotion-finale.mp3` | 感動・大団円 | 感情 | クライマックス後の解決 |
 | `bgm-tense-uneasy.mp3` | 不穏 | 緊張 | 「何かおかしい」の前触れ |
 | `bgm-tense-suspense.mp3` | 緊迫・サスペンス | 緊張 | 追跡・時間制限・対峙 |
-| `bgm-tense-battle.mp3` | 戦闘・激しい | 緊張 | バトル場面 |
+| `bgm-tense-battle-1.mp3` | 戦闘1・激しい | 緊張 | 敵との戦い |
+| `bgm-tense-battle-2.mp3` | 戦闘2・激しい | 緊張 | 敵との戦い（別の曲） |
+| `bgm-tense-battle-3.mp3` | 戦闘3・誇り高い | 緊張 | 信念と信念、正義と正義のぶつかり合い。敵ではない相手との戦い |
 | `bgm-tense-mystery.mp3` | 謎・思索 | 緊張 | 推理・手がかりの整理 |
 | `bgm-tense-horror.mp3` | 恐怖 | 緊張 | ホラー要素。じわじわ来る怖さ |
 | `bgm-tense-dread.mp3` | 恐怖・切迫 | 緊張 | 何かがすぐそこまで迫っている。逃げ場のない怖さ |
@@ -104,9 +106,16 @@ Uneasy ominous visual novel BGM, low drone, sparse dissonant piano notes, subtle
 Tense suspense visual novel BGM, driving staccato strings, ticking percussion, low synth bass pulse, urgent chase and confrontation, 128 BPM, F sharp minor, relentless forward motion, steady intensity, no build-up, no climax, about 1 minute long, starts and ends on the same F sharp minor chord, seamless loop, no intro, no outro, consistent mood throughout
 ```
 
-### bgm-tense-battle（戦闘・激しい）
+### bgm-tense-battle-1 / bgm-tense-battle-2（戦闘1・2・激しい）
+同じプロンプトから 2 テイク（または 1 と 2 で楽器を少し変える）。
 ```
 Intense battle visual novel BGM, orchestral hybrid, aggressive strings, taiko and heavy drums, brass stabs, electric guitar accents, epic fight, 150 BPM, D minor, powerful and driving, steady intensity from the first bar, no build-up, no climax, about 1 minute long, starts and ends on the same D minor chord, seamless loop, no intro, no outro, consistent mood throughout
+```
+
+### bgm-tense-battle-3（戦闘3・誇り高い）
+敵ではなく、信念や正義を持つ者同士がぶつかる曲。激しさより気高さ。
+```
+Noble heroic duel visual novel BGM, full orchestra, soaring brass fanfare theme, driving string ostinato, snare and timpani march, choir "ah" pad, two ideals clashing with honor and respect, righteous versus righteous, proud and dignified, not evil, not dark, 132 BPM, E minor with bright major lifts, majestic and steady, no build-up, no climax, about 1 minute long, starts and ends on the same E minor chord, seamless loop, no intro, no outro, consistent mood throughout
 ```
 
 ### bgm-tense-mystery（謎・思索）
