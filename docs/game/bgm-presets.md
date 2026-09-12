@@ -40,7 +40,7 @@
 | `bgm-tense-mystery.mp3` | 謎・思索 | 緊張 | 推理・手がかりの整理 |
 | `bgm-tense-horror.mp3` | 恐怖 | 緊張 | ホラー要素。じわじわ来る怖さ |
 | `bgm-tense-dread.mp3` | 恐怖・切迫 | 緊張 | 何かがすぐそこまで迫っている。逃げ場のない怖さ |
-| `bgm-tense-creep.mp3` | 恐怖・忍び寄る | 緊張 | 足音が一歩ずつ近づいてくる怖さ。切迫の前段 |
+| `bgm-tense-creep.mp3` | 恐怖・忍び寄る | 緊張 | 狂気を帯びた何かが一歩ずつ近づいてくる怖さ。切迫の前段 |
 | `bgm-scene-sacred.mp3` | 荘厳・神秘 | 場面 | 儀式・超常・世界観の核心 |
 | `bgm-scene-memory.mp3` | 回想・ノスタルジー | 場面 | 過去編・幼少期 |
 | `bgm-scene-hush.mp3` | 静かな緊張 | 場面 | 環境音の代わり。無音に近いが空白にならない |
@@ -168,23 +168,25 @@ Imminent danger horror visual novel BGM, pounding heartbeat drum, relentless low
 ```
 
 ### bgm-tense-creep（恐怖・忍び寄る）
-切迫の「ゆっくり版」。ポイントは**近づいてくる動き**を音に持たせること。
-一定の間隔で重い足音を打ち、その上で半音ずつ上がる弦のフレーズを繰り返す（上がりきったら
-頭に戻る＝ずっと近づき続けているように聞こえるが、曲としてはループできる）。
+切迫の「ゆっくり版」に**狂気**を足したもの。
+近づく足音と、半音ずつ上がって頭に戻る弦（ずっと近づき続けて聞こえるがループできる）は骨格として残し、
+その上に「調子外れの童謡」「壊れたオルゴール」「笑い声の気配」を重ねる。怖さの正体を「人ではないもの」ではなく
+「正気を失った誰か」にする。
 
 **本命**：
 ```
-Stalking horror visual novel BGM, slow heavy footsteps as the percussion, one step every two beats, each step closer and heavier, low contrabass drone, a chromatic string phrase that slowly climbs then restarts like something drawing nearer and nearer, high dissonant violin tremolo held constantly, dragging chain and creaking wood textures, breathing right behind you, predator patiently closing in, 72 BPM, B flat minor, dread stays high, no build-up, no climax, no jump scare hits, about 1 minute long, starts and ends on the same low B flat drone, seamless loop, no intro, no outro, consistent mood throughout
+Deranged stalking horror visual novel BGM, slow heavy footsteps as the percussion, one step every two beats, each step closer, a detuned music box playing a broken childlike lullaby slightly out of tune and out of time, a chromatic string phrase that slowly climbs then restarts like something drawing nearer, high dissonant violin tremolo held constantly, faint distorted giggling and humming textures, warped off-kilter waltz feel underneath, low contrabass drone, madness and glee closing in, unhinged, wrong, 72 BPM, B flat minor, dread stays high, no build-up, no climax, no jump scare hits, about 1 minute long, starts and ends on the same low B flat drone, seamless loop, no intro, no outro, consistent mood throughout
 ```
 
-**代案**（足音が効かないとき。低いピアノの反復を足音の代わりにする）：
+**代案**（オルゴールが可愛くなりすぎるとき。ピアノとささやきで狂気を出す）：
 ```
-Creeping approach horror visual novel BGM, low piano single notes repeating like slow footsteps, each note slightly louder then resetting, rising chromatic cello line, sustained dissonant high strings, sub bass throb, scraping metal, whispered breath, something is coming down the hallway toward you, 70 BPM, B flat minor, unrelenting dread, no build-up, no climax, no jump scare hits, about 1 minute long, starts and ends on the same low B flat note, seamless loop, no intro, no outro, consistent mood throughout
+Insane creeping horror visual novel BGM, slow heavy footsteps as the percussion, each step closer, an out-of-tune upright piano repeating a cheerful nursery melody wrong, notes bent and stumbling, whispered unintelligible muttering, sudden short shrieking violin glissando, rising chromatic cello line that restarts, low sub bass throb, someone who has lost their mind is coming for you smiling, 70 BPM, B flat minor, unrelenting dread, no build-up, no climax, no jump scare hits, about 1 minute long, starts and ends on the same low B flat drone, seamless loop, no intro, no outro, consistent mood throughout
 ```
 
 寄せ方の目安：
+- 狂気が足りないなら `warped off-kilter waltz feel underneath` を `lurching 3/4 waltz that keeps stumbling, tempo wobbling` にする
+- 「可愛い」に倒れたら Exclude styles に `cute, whimsical, playful, magical` を入れる
 - 「近づく」感が弱いなら `a chromatic string phrase that slowly climbs then restarts` を `a chromatic string phrase that climbs half step by half step over eight bars then restarts` と具体的にする
-- Suno が盛り上がって終わるなら、Exclude styles に `crescendo, climax, drop` を入れる
 - 切迫と繋げるなら B♭ マイナーを共通にしてあるので、忍び寄る → 切迫の順に置く
 
 ### bgm-scene-sacred（荘厳・神秘）
