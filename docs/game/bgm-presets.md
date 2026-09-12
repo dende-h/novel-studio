@@ -80,9 +80,9 @@ Plain gentle visual novel BGM, simple solo piano with light acoustic guitar, eas
 Calm cozy nighttime visual novel BGM, soft piano, muted acoustic guitar, warm pad, light rimshot percussion, quiet evening at home after a good day, relaxed and content, 74 BPM, D major, warm and settled, not sad, not nostalgic, not melancholic, no build-up, no climax, about 1 minute long, starts and ends on the same D major chord, seamless loop, no intro, no outro, consistent mood throughout
 ```
 
-**代案**（もう少し静かに。街灯の下の帰り道）：
+**代案**（もう少し静かに。街灯の下の帰り道。歩く速さに合わせて少しだけ速め）：
 ```
-Quiet peaceful night walk visual novel BGM, soft electric piano, gentle acoustic guitar, subtle upright bass, slow easy pulse, walking home under streetlights feeling fine, 70 BPM, G major, calm and comfortable, not sad, not lonely, no build-up, no climax, about 1 minute long, starts and ends on the same G major chord, seamless loop, no intro, no outro, consistent mood throughout
+Quiet peaceful night walk visual novel BGM, soft electric piano, gentle acoustic guitar, subtle upright bass, light steady walking pulse, walking home under streetlights feeling fine, 80 BPM, G major, calm and comfortable, not sad, not lonely, no build-up, no climax, about 1 minute long, starts and ends on the same G major chord, seamless loop, no intro, no outro, consistent mood throughout
 ```
 
 寄せ方の目安：
