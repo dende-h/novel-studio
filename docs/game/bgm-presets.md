@@ -95,7 +95,7 @@ Quiet peaceful night walk visual novel BGM, soft electric piano, gentle acoustic
 
 **本命**（軽いアコースティックポップ。掛け合い・ツッコミ向き）：
 ```
-Light playful slice-of-life comedy visual novel BGM, acoustic guitar strumming, pizzicato strings, light drum kit with tambourine, simple catchy whistling melody, cheeky one-note synth blip as a comic interjection, upbeat and casual, everyday banter between friends, 124 BPM, G major, fun but grounded, no brass, no clarinet, no accordion, no circus, no cartoon, no build-up, no climax, about 1 minute long, starts and ends on the same G major chord, seamless loop, no intro, no outro, consistent mood throughout
+Light playful slice-of-life comedy visual novel BGM, acoustic guitar strumming, pizzicato strings, light drum kit with tambourine, simple catchy melody on electric piano, cheeky one-note synth blip as a comic interjection, upbeat and casual, everyday banter between friends, 124 BPM, G major, fun but grounded, no whistling, no brass, no clarinet, no accordion, no circus, no cartoon, no build-up, no climax, about 1 minute long, starts and ends on the same G major chord, seamless loop, no intro, no outro, consistent mood throughout
 ```
 
 **代案**（もう少し勢い。ドタバタ・追いかけっこ向き。管楽器は入れない）：
@@ -104,7 +104,7 @@ Upbeat energetic comedy visual novel BGM, fast acoustic guitar strumming, drivin
 ```
 
 寄せ方の目安：
-- まだサーカスや子ども向けに寄るなら Exclude styles に `circus, carnival, polka, cartoon, kids, brass, trumpet, tuba, clarinet, accordion, xylophone, kazoo` を入れる
+- まだサーカスや子ども向けに寄るなら Exclude styles に `circus, carnival, polka, cartoon, kids, brass, trumpet, tuba, clarinet, accordion, xylophone, kazoo, whistling` を入れる
 - 「日常・明るい」と区別がつかないなら、`cheeky one-note synth blip as a comic interjection` を `frequent cheeky synth blips and a record-scratch-like stop as comic interjections` に強める
 
 ### bgm-emotion-warm（温かい・ほのぼの）
