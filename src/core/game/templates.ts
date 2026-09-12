@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { PRESET_BGM_CATEGORY_LABELS, PRESET_BGMS, type PresetBgm } from './bgmPresets'
 import {
   type GamePlace,
   type GameTime,
@@ -19,8 +20,8 @@ import { PRESET_SPRITE_TONE, PRESET_SPRITES, type PresetSprite } from './spriteP
  *
  * 目録が無い・取れない状態でも今までどおり動く：組み込みの SVG（presets.ts の 18 枚と
  * spritePresets.ts の 6 種）は目録に画像が無いあいだの**控え**で、画像が当たれば
- * 同じキーのまま本画像に切り替わる（旧作品の参照を壊さない）。BGM は**目録だけ**
- * （組み込みの控えは持たない＝運営のオリジナル曲が入るまで一覧は空）。
+ * 同じキーのまま本画像に切り替わる（旧作品の参照を壊さない）。BGM は**枠だけ**組み込み
+ * （bgmPresets.ts の 18 曲。音の実体は持たない＝同じ名前の曲が目録に入るまで「準備中」）。
  *
  * ここは純 TS。取得（fetch）と R2 の読み書きは UI 層／Functions が担う。
  */
@@ -237,10 +238,12 @@ const SPRITE_WORD_LABELS: Record<string, string> = Object.fromEntries(
   ]),
 )
 
-/** BGM の曲調の語 → 表示名（07-novel-game.md §4.3 の 5 種）。目録の表示名があればそちら。 */
+/**
+ * BGM の曲調の語 → 表示名（組み込み 18 曲の 4 分類＋07-novel-game.md §4.3 の旧 5 種）。
+ * 目録の表示名があればそちら。
+ */
 const BGM_MOOD_LABELS: Record<string, string> = {
-  calm: '日常',
-  tense: '緊張',
+  ...PRESET_BGM_CATEGORY_LABELS,
   sad: '哀愁',
   resolve: '決意',
   quiet: '静寂',
@@ -268,10 +271,15 @@ export const timeLabelOf = (time: GameTime): string => PRESET_TIME_LABELS[time]
 
 /**
  * ファイル名から作る既定の表示名（`街（夜）`・`シルエット（女性）`・効果音と BGM は
- * 分類を除いた語）。管理ページはあとから直せる。
+ * 分類を除いた語。組み込みの枠にある BGM はその曲名）。管理ページはあとから直せる。
  */
 export function defaultTemplateLabel(parsed: ParsedTemplateName, categoryLabel: string): string {
   if (parsed.kind === 'sprite') return `シルエット（${categoryLabel}）`
+  // 組み込みの枠と同じ名前の曲は、枠の曲名をそのまま付ける（管理ページで直せる）
+  if (parsed.kind === 'bgm') {
+    const preset = PRESET_BGMS.find((p) => p.slug === parsed.slug)
+    if (preset) return preset.label
+  }
   if (parsed.kind === 'se' || parsed.kind === 'bgm') {
     const head = parsed.kind === 'bgm' ? `${BGM_FILE_PREFIX}-${parsed.category}` : parsed.category
     const rest = parsed.slug.slice(head.length + 1)
@@ -470,34 +478,62 @@ export interface CatalogBgm {
   key: string
   slug: string
   label: string
-  /** 曲調の語（ファイル名の 2 語目・`bgm-calm-morning` なら `calm`） */
+  /** 曲調の語（ファイル名の 2 語目・`bgm-calm-bright` なら `calm`） */
   category: string
-  /** 目録の実体（BGM は目録だけ＝必ずある。旧型の呼び出しと形を揃えるため optional） */
+  /** 目録の実体（音声ファイル）。無ければ組み込みの枠だけ＝鳴らない（準備中） */
   entry?: TemplateEntry
+  /** 組み込みの枠（bgmPresets.ts の 18 曲）。目録だけの曲には無い */
+  builtin?: PresetBgm
   hidden: boolean
   durationMs?: number
   loopStart?: number
   loopEnd?: number
 }
 
+/** 曲の実体があるか（無ければ選べても鳴らない＝一覧に「準備中」と出す）。 */
+export const isBgmReady = (bgm: Pick<CatalogBgm, 'entry'>): boolean => bgm.entry !== undefined
+
 /**
- * BGM の一覧＝**目録だけ**（組み込みの控えは無い。オリジナル曲は運営が管理ページから入れる）。
+ * BGM の一覧＝組み込みの枠 18 曲（bgmPresets.ts）に目録の曲を重ね、目録だけにある曲を後ろに足す。
+ * 同じ slug の曲が目録にあれば、キーはそのままに実体がファイルになる。枠だけの曲は `entry` が無く、
+ * 選べるが鳴らない（書き出し・投稿は読み飛ばす）。
  * キーは `preset:bgm/<slug>`。演出譜の `Cue.bgm` はこのキーか、予約キー `stop`（BGM_STOP）を指す。
  */
 export function mergeBgmCatalog(manifest: TemplateManifest | null): CatalogBgm[] {
-  const out: CatalogBgm[] = (manifest?.entries ?? [])
-    .filter((e) => e.kind === 'bgm')
-    .map((e) => ({
+  const entries = new Map(
+    (manifest?.entries ?? []).filter((e) => e.kind === 'bgm').map((e) => [e.slug, e]),
+  )
+  const fromEntry = (e: TemplateEntry) => ({
+    ...(e.durationMs !== undefined ? { durationMs: e.durationMs } : {}),
+    ...(e.loopStart !== undefined ? { loopStart: e.loopStart } : {}),
+    ...(e.loopEnd !== undefined ? { loopEnd: e.loopEnd } : {}),
+  })
+  const out: CatalogBgm[] = []
+  for (const p of PRESET_BGMS) {
+    const e = entries.get(p.slug)
+    entries.delete(p.slug)
+    out.push({
+      key: p.key,
+      slug: p.slug,
+      label: e?.label || p.label,
+      category: e?.category || p.category,
+      ...(e ? { entry: e } : {}),
+      builtin: p,
+      hidden: e?.hidden === true,
+      ...(e ? fromEntry(e) : {}),
+    })
+  }
+  for (const e of entries.values()) {
+    out.push({
       key: templateKey('bgm', e.slug),
       slug: e.slug,
       label: e.label || e.slug,
       category: e.category,
       entry: e,
       hidden: e.hidden === true,
-      ...(e.durationMs !== undefined ? { durationMs: e.durationMs } : {}),
-      ...(e.loopStart !== undefined ? { loopStart: e.loopStart } : {}),
-      ...(e.loopEnd !== undefined ? { loopEnd: e.loopEnd } : {}),
-    }))
+      ...fromEntry(e),
+    })
+  }
   return sortByOrder(out)
 }
 

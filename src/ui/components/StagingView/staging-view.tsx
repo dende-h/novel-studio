@@ -39,6 +39,7 @@ import {
   type CatalogBgm,
   type CatalogSe,
   type CatalogSprite,
+  isBgmReady,
   visibleTemplates,
 } from '@/core/game/templates'
 import { PERSON_CATEGORY } from '@/core/glossary'
@@ -75,7 +76,7 @@ import {
   TransitionHelp,
 } from './field-helps'
 import { StagingPreviewDialog } from './preview-dialog'
-import { BgmPreviewButton, TemplatePicker } from './template-picker'
+import { BGM_PENDING_LABEL, BgmPreviewButton, TemplatePicker } from './template-picker'
 
 /**
  * 演出エディタ（サウンドノベルの Staging・G1）。設計は docs/requirement/07-novel-game.md §3。
@@ -1261,7 +1262,7 @@ export default function StagingView({ repo, work, currentEpisodeId, assetRepo }:
                       .filter((b) => !b.hidden || b.key === selected.bgm)
                       .map((b) => (
                         <option key={b.key} value={b.key}>
-                          {b.label}
+                          {isBgmReady(b) ? b.label : `${b.label}（${BGM_PENDING_LABEL}）`}
                         </option>
                       ))}
                   </select>
@@ -1284,6 +1285,12 @@ export default function StagingView({ repo, work, currentEpisodeId, assetRepo }:
                 {bgms.length === 0 ? (
                   <p className="mt-2 text-[11px] text-on-surface-variant leading-relaxed">
                     使える曲はまだありません。コトノハが用意した曲が並びます。
+                  </p>
+                ) : selected.bgm &&
+                  bgmOf(selected.bgm) &&
+                  !isBgmReady(bgmOf(selected.bgm) as CatalogBgm) ? (
+                  <p className="mt-2 text-[11px] text-on-surface-variant leading-relaxed">
+                    この曲は準備中です。曲が入るまで、書き出しと投稿では鳴りません。
                   </p>
                 ) : null}
                 <TemplatePicker

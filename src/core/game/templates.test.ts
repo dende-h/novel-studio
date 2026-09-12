@@ -1,15 +1,18 @@
 import { describe, expect, it } from 'vitest'
+import { PRESET_BGMS } from './bgmPresets'
 import { PRESET_BACKGROUNDS } from './presets'
 import { PRESET_SES } from './sePresets'
 import { PRESET_SPRITES } from './spritePresets'
 import {
   applyTemplatePatch,
+  type CatalogBgm,
   catalogBackgroundKeys,
   catalogBgmKeys,
   categoriesOf,
   categoryLabelOf,
   defaultTemplateLabel,
   EMPTY_TEMPLATE_MANIFEST,
+  isBgmReady,
   isTemplateSlug,
   mergeBackgroundCatalog,
   mergeBgmCatalog,
@@ -365,8 +368,18 @@ describe('BGM（kind bgm）', () => {
     expect(templateAssetId('bgm', 'bgm-calm-morning')).toBe('tpl-bgm-bgm-calm-morning')
   })
 
-  it('一覧は目録だけ（組み込みの控えは無い）。長さとループ区間を運ぶ', () => {
-    expect(mergeBgmCatalog(null)).toEqual([])
+  it('一覧は組み込みの枠 18 曲＋目録。枠は曲が無ければ準備中（entry 無し）、目録だけの曲は後ろに足す。長さとループ区間を運ぶ', () => {
+    // 目録が無ければ枠だけ（全部が準備中・キーは選べる）
+    const empty = mergeBgmCatalog(null)
+    expect(empty).toHaveLength(PRESET_BGMS.length)
+    expect(empty.every((b) => b.builtin && !isBgmReady(b) && !b.hidden)).toBe(true)
+    expect(empty[0]).toMatchObject({
+      key: 'preset:bgm/bgm-calm-bright',
+      label: '日常・明るい',
+      category: 'calm',
+    })
+    expect(catalogBgmKeys(null).has('preset:bgm/bgm-tense-battle')).toBe(true)
+
     const m = manifest([
       entry({
         kind: 'bgm',
@@ -379,20 +392,35 @@ describe('BGM（kind bgm）', () => {
         loopEnd: 88.25,
       }),
       entry({ kind: 'bgm', slug: 'bgm-tense-chase', category: 'tense', hidden: true }),
+      // 枠と同じ名前の曲＝キーそのままに実体が付く（表示名は目録が勝つ・空なら枠の曲名）
+      entry({
+        kind: 'bgm',
+        slug: 'bgm-calm-bright',
+        category: 'calm',
+        label: '',
+        mime: 'audio/mpeg',
+        durationMs: 61_000,
+      }),
     ])
     const list = mergeBgmCatalog(m)
-    expect(list.map((b) => b.key)).toEqual([
+    expect(list.map((b) => b.key).slice(-2)).toEqual([
       'preset:bgm/bgm-calm-morning',
       'preset:bgm/bgm-tense-chase',
     ])
-    expect(list[0]).toMatchObject({
+    expect(list).toHaveLength(PRESET_BGMS.length + 2)
+    const filled = list.find((b) => b.key === 'preset:bgm/bgm-calm-bright')
+    expect(filled).toMatchObject({ label: '日常・明るい', durationMs: 61_000 })
+    expect(filled?.builtin).toBeDefined()
+    expect(isBgmReady(filled as CatalogBgm)).toBe(true)
+    expect(list.at(-2)).toMatchObject({
       label: '朝',
       durationMs: 92_000,
       loopStart: 4.5,
       loopEnd: 88.25,
     })
-    expect(list[1]?.hidden).toBe(true)
-    expect(visibleTemplates(list)).toHaveLength(1)
+    expect(list.at(-2)?.builtin).toBeUndefined()
+    expect(list.at(-1)?.hidden).toBe(true)
+    expect(visibleTemplates(list)).toHaveLength(PRESET_BGMS.length + 1)
     // 非表示もキーとしては残る（既存の演出譜の参照を弾かない）
     expect(catalogBgmKeys(m).has('preset:bgm/bgm-tense-chase')).toBe(true)
     expect(

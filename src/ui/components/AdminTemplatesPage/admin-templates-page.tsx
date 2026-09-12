@@ -49,7 +49,8 @@ import { setTemplateCatalog, templateBgSrc, templateSpriteSrc } from '@/ui/game/
  *
  * - 画像・音声をまとめてドロップすると、ファイル名を命名規則で読んでキーと分類を決め、
  *   画像はブラウザで WebP・サムネ・tone を作り、音声（mp3/m4a）はそのまま長さだけ測って
- *   1 件ずつ送る（同じ名前は置き換え）。BGM は `bgm-<曲調>-<曲名>.mp3`。
+ *   1 件ずつ送る（同じ名前は置き換え）。BGM は `bgm-<曲調>-<曲名>.mp3`。組み込みの枠
+ *   （bgmPresets.ts の 18 曲）は曲が無くても「曲なし」の印つきで並び、同じ名前を入れると埋まる。
  * - 表示名・分類・時間帯・一覧に出すか・BGM のループ区間 は画面で直して「変更を保存」で目録に書く。
  *   改名 AI が返す TSV を貼れば、表示名と分類を一括で入れられる。
  * - 「削除」は無い。一覧から外す（非表示）だけで、既存作品の参照は生かす。
@@ -368,7 +369,8 @@ export function AdminTemplatesPage({ getToken }: AdminTemplatesPageProps) {
         </p>
         <p className="mt-1 text-on-surface-variant text-xs">
           同じ名前を送ると置き換えになります。表示名と分類は、新しい名前にだけ既定値が付きます。 BGM
-          は 128kbps・1〜2 分のループ向きの長さにしておくと、書き出しと投稿が重くなりません。
+          は 128kbps・1〜2 分のループ向きの長さにしておくと、書き出しと投稿が重くなりません。 BGM
+          タブに並ぶ「曲なし」の枠は、その名前の mp3 を入れると鳴るようになります。
         </p>
         <Button
           type="button"
@@ -517,6 +519,11 @@ export function AdminTemplatesPage({ getToken }: AdminTemplatesPageProps) {
                       <div className="min-w-0 flex-1 space-y-1">
                         <div className="flex items-center gap-2">
                           <code className="text-on-surface text-xs">{row.slug}</code>
+                          {bgmRow?.builtin ? (
+                            <span className="text-on-surface-variant text-[11px]">
+                              {bgmRow.builtin.note}
+                            </span>
+                          ) : null}
                           {entry ? (
                             <span className="text-on-surface-variant text-[11px]">
                               {kb(entry.bytes)}
@@ -532,7 +539,9 @@ export function AdminTemplatesPage({ getToken }: AdminTemplatesPageProps) {
                             <span className="rounded bg-surface-container px-1.5 py-0.5 text-[11px] text-on-surface-variant">
                               {tab === 'se'
                                 ? 'ファイルなし（端末で合成）'
-                                : '画像なし（組み込みの SVG）'}
+                                : bgmRow
+                                  ? `曲なし（${row.slug}.mp3 を投入すると鳴る）`
+                                  : '画像なし（組み込みの SVG）'}
                             </span>
                           )}
                         </div>
