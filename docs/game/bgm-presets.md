@@ -220,9 +220,24 @@ Puzzle-solving detective visual novel BGM, pizzicato strings, marimba, harpsicho
 ```
 
 ### bgm-tense-horror（恐怖）
+ノイズと不協和音を主役にする。じわじわ来る怖さ（テンポなし・鼓動なし）。
+「忍び寄る」（足音で近づく）「切迫」（鼓動で追い詰める）とは違い、こちらは**場の空気そのものが壊れている**音。
+
+**本命**（ノイズ＋弦のクラスター）：
 ```
-Horror visual novel BGM, dark ambient drone, detuned piano, reversed string swells, distant metallic scrapes, breathing sub bass, creeping terror, 50 BPM, unsettling and sparse, no build-up, no climax, no jump scare hits, about 1 minute long, starts and ends on the same low C drone, seamless loop, no intro, no outro, consistent mood throughout
+Horror visual novel BGM built on noise and dissonance, low dark drone, harsh dissonant string cluster held with slow tremolo, microtonal detuned violins sliding against each other, bursts of radio static and white noise, tape hiss, crackling and distorted textures, reversed piano notes, tritone intervals, no rhythm, no pulse, no melody, wrong and unstable, creeping terror, atonal, unsettling and dense, no build-up, no climax, no jump scare hits, about 1 minute long, starts and ends on the same low drone and static, seamless loop, no intro, no outro, consistent mood throughout
 ```
+
+**代案**（もっとノイズ寄り。楽器をほぼ無くして、電気的な壊れ方にする）：
+```
+Noise horror visual novel BGM, distorted low drone, granular crackling noise, radio static bursts, feedback squeals kept low in the mix, detuned dissonant synth cluster, glitchy stutters, electrical hum, cold and inhuman, no rhythm, no melody, atonal, dread and unease, no build-up, no climax, no jump scare hits, about 1 minute long, starts and ends on the same distorted drone, seamless loop, no intro, no outro, consistent mood throughout
+```
+
+寄せ方の目安：
+- ノイズが足りないなら `bursts of radio static and white noise` を `constant bed of radio static and white noise with louder bursts` にする
+- 不協和音が足りないなら `tritone intervals` を `tritone and minor second intervals, clashing semitones` にする
+- うるさすぎて読めないなら `dense` を `sparse` にし、`kept low in the mix` を各ノイズに付ける
+- Suno が旋律を付けてくるなら Exclude styles に `melody, piano melody, strings melody, beat, drums` を入れる
 
 ### bgm-tense-dread（恐怖・切迫）
 ```
