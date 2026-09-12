@@ -115,19 +115,21 @@ Intense battle visual novel BGM, orchestral hybrid, aggressive strings, taiko an
 
 ### bgm-tense-battle-3（戦闘3・信念）
 敵ではなく、信念や正義を持つ者同士がぶつかる曲。誇りと葛藤を半々に。
+出だしの 1 小節目から打ち合っている音にする（前奏で溜めない）。
 ファンファーレと行進は入れない（タイトル曲になる）が、金管の持続音で気高さは残す。
 
-**本命**（弦の刻みで戦闘、金管の持続音で誇り、ソロヴァイオリンで葛藤の三層）：
+**本命**（1 小節目から刃が当たる。弦の刻みで戦闘、ホルンで誇り、ソロヴァイオリンで葛藤）：
 ```
-Determined duel visual novel BGM, dark orchestral, driving low string ostinato, sustained noble French horn line, solo violin counter-melody with a bittersweet edge, timpani and low taiko hits, no fanfare, no march, no choir, two beliefs clashing with respect, resolve mixed with pain, dignified but conflicted, 130 BPM, D minor with brief major lifts that fall back to minor, steady intensity, no build-up, no climax, about 1 minute long, starts and ends on the same D minor chord, seamless loop, no intro, no outro, consistent mood throughout
+Fierce determined duel visual novel BGM, hits hard from the very first beat, aggressive fast string ostinato, sharp staccato brass stabs, sustained noble French horn line above, solo violin counter-melody with a bittersweet edge, pounding timpani and taiko, metallic percussion accents like clashing blades, no fanfare, no march, no choir, no slow opening, two beliefs clashing with respect, resolve mixed with pain, dignified but conflicted, 138 BPM, D minor with brief major lifts that fall back to minor, full intensity throughout, no build-up, no climax, about 1 minute long, starts and ends on the same D minor chord, seamless loop, no intro, no outro, consistent mood throughout
 ```
 
 **代案**（もう少し前へ倒したいとき。ホルンの主題を前に出し、葛藤はコードの陰りだけで出す）：
 ```
-Proud conflicted battle visual novel BGM, orchestral, urgent string ostinato, strong French horn theme, cello drive, timpani, occasional dissonant string clash under the theme, no fanfare, no march, no choir, honor and doubt in the same fight, resolute but heavy-hearted, 134 BPM, E minor, majestic yet unresolved, steady intensity, no build-up, no climax, about 1 minute long, starts and ends on the same E minor chord, seamless loop, no intro, no outro, consistent mood throughout
+Proud conflicted battle visual novel BGM, explosive from the first bar, urgent driving string ostinato, strong French horn theme, cello drive, timpani and snare rolls, metallic clash accents, occasional dissonant string clash under the theme, no fanfare, no march, no choir, no slow opening, honor and doubt in the same fight, resolute but heavy-hearted, 140 BPM, E minor, majestic yet unresolved, full intensity throughout, no build-up, no climax, about 1 minute long, starts and ends on the same E minor chord, seamless loop, no intro, no outro, consistent mood throughout
 ```
 
 寄せ方の目安：
+- 出だしが静かなテイクが出たら、Exclude styles に `intro, slow opening, ambient intro` を足す
 - 葛藤に寄りすぎたら `solo violin counter-melody with a bittersweet edge` を `solo violin counter-melody` にし、`brief major lifts` を `frequent major lifts` にする
 - 前向きに寄りすぎたら Exclude styles に `fanfare, march, anthem, triumphant` を入れ、`resolve mixed with pain` を `pain under the resolve` にする
 
@@ -147,10 +149,17 @@ Imminent danger horror visual novel BGM, pounding heartbeat drum, relentless low
 ```
 
 ### bgm-tense-creep（恐怖・忍び寄る）
-切迫の「ゆっくり版」。同じ心臓の鼓動を半分のテンポで打ち、迫ってくる感じは低音の反復で保つ。
+切迫の「ゆっくり版」。テンポは落とすが緊張は落とさない。
+高い弦の不協和音を張りっぱなしにして、低音の一撃を不規則に入れる。「静か」ではなく「息を詰める」。
+
 ```
-Slow creeping horror visual novel BGM, slow heavy heartbeat drum, low cello ostinato repeating one dark phrase, faint dissonant violin harmonics, sub bass swells, distant metallic scrape, something is walking toward you and will not stop, inescapable, patient menace, 70 BPM, B flat minor, tense and heavy, stays at the same level of dread, no build-up, no climax, no jump scare hits, about 1 minute long, starts and ends on the same low B flat pulse, seamless loop, no intro, no outro, consistent mood throughout
+Slow relentless horror visual novel BGM, slow heavy heartbeat drum, low cello and contrabass ostinato repeating one dark phrase, high dissonant string cluster held constantly with tremolo, sudden irregular low piano and timpani hits, ticking metallic pulse, whispering breath textures, screeching violin harmonics, something is walking toward you and will not stop, suffocating tension, cold sweat, 76 BPM, B flat minor, dread stays high the whole time, no build-up, no climax, no jump scare hits, about 1 minute long, starts and ends on the same low B flat pulse, seamless loop, no intro, no outro, consistent mood throughout
 ```
+
+寄せ方の目安：
+- まだ緩いなら `high dissonant string cluster held constantly with tremolo` を `piercing high dissonant string cluster held constantly with fast tremolo` にし、テンポを 84 に上げる
+- うるさすぎて「恐怖」ではなく「戦闘」になったら `sudden irregular low piano and timpani hits` を外す
+- 切迫と繋げるなら B♭ マイナーと心臓の鼓動を共通にしてあるので、忍び寄る → 切迫の順に置く
 
 ### bgm-scene-sacred（荘厳・神秘）
 ```
