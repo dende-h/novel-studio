@@ -90,22 +90,22 @@ Quiet peaceful night walk visual novel BGM, soft electric piano, gentle acoustic
 - 明るすぎて「昼」になったら `warm pad` を `warm low pad` にし、テンポを 68 に落とす
 
 ### bgm-calm-comedy（コメディ）
-子どもっぽくしない。木琴・チューバ・カートゥーン風は外す（幼児アニメになる）。
-狙いは「大人も笑えるドタバタ」＝軽い swing とピチカートで、テンポの良い掛け合いを支える。
+サーカスにも幼児アニメにもしない。**管楽器（金管・クラリネット・アコーディオン）を入れない**のが要点。
+狙いはアニメの日常コメディ。軽いアコースティックポップに、ピチカートと少し外した合いの手で「ボケ」を作る。
 
-**本命**（軽いスウィング。掛け合い・ツッコミ向き）：
+**本命**（軽いアコースティックポップ。掛け合い・ツッコミ向き）：
 ```
-Witty light comedy visual novel BGM, bouncy pizzicato strings, walking upright bass, snappy rimshot and brushed snare, cheeky clarinet and muted trumpet interjections, light swing feel, quick banter and comic timing, playful but grown-up, 128 BPM, G major, not childish, not cartoonish, no xylophone, no tuba, no build-up, no climax, about 1 minute long, starts and ends on the same G major chord, seamless loop, no intro, no outro, consistent mood throughout
+Light playful slice-of-life comedy visual novel BGM, acoustic guitar strumming, pizzicato strings, light drum kit with tambourine, simple catchy whistling melody, cheeky one-note synth blip as a comic interjection, upbeat and casual, everyday banter between friends, 124 BPM, G major, fun but grounded, no brass, no clarinet, no accordion, no circus, no cartoon, no build-up, no climax, about 1 minute long, starts and ends on the same G major chord, seamless loop, no intro, no outro, consistent mood throughout
 ```
 
-**代案**（もう少し勢い。ドタバタ・追いかけっこ向き）：
+**代案**（もう少し勢い。ドタバタ・追いかけっこ向き。管楽器は入れない）：
 ```
-Upbeat quirky comedy visual novel BGM, fast pizzicato strings, punchy brass stabs, accordion, tight drum kit with cowbell accents, slapstick chase energy, mischievous and sharp, 140 BPM, A major, not childish, not cartoonish, no xylophone, no tuba, no build-up, no climax, about 1 minute long, starts and ends on the same A major chord, seamless loop, no intro, no outro, consistent mood throughout
+Upbeat energetic comedy visual novel BGM, fast acoustic guitar strumming, driving pizzicato strings, tight drum kit with hand claps, bouncy electric bass, quirky short synth lead melody, slapstick chase energy, quick and mischievous, 138 BPM, A major, fun but grounded, no brass, no clarinet, no accordion, no circus, no cartoon, no build-up, no climax, about 1 minute long, starts and ends on the same A major chord, seamless loop, no intro, no outro, consistent mood throughout
 ```
 
 寄せ方の目安：
-- まだ子どもっぽいなら Exclude styles に `cartoon, kids, children, nursery, circus, xylophone, tuba, kazoo` を入れる
-- 逆におしゃれに寄ったら `walking upright bass` を外し、`brushed snare` を `snappy snare` にする
+- まだサーカスや子ども向けに寄るなら Exclude styles に `circus, carnival, polka, cartoon, kids, brass, trumpet, tuba, clarinet, accordion, xylophone, kazoo` を入れる
+- 「日常・明るい」と区別がつかないなら、`cheeky one-note synth blip as a comic interjection` を `frequent cheeky synth blips and a record-scratch-like stop as comic interjections` に強める
 
 ### bgm-emotion-warm（温かい・ほのぼの）
 ```
