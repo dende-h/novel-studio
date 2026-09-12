@@ -142,16 +142,23 @@ Hopeful determined visual novel BGM, piano and strings, soft snare march, rising
 ```
 
 ### bgm-emotion-finale（感動・大団円）
-前奏を付けない。大団円は「盛り上がった状態」で鳴り始める曲なので、
-**1 拍目からフルオーケストラと主旋律で始める**。ピアノだけの出だし・弦の立ち上がりは否定語で塞ぐ。
+前奏を付けない。**ノベルゲーム寄りにする**：フルオーケストラ・合唱・金管は映画の音になるので外し、
+ピアノ主役に弦とシンセパッド、軽いドラムで「泣きゲー」のエンディング前の曲にする。
 
+**本命**（ピアノ主役。日本のノベルゲームの感動曲）：
 ```
-Emotional climactic visual novel BGM that starts immediately at full orchestra with the main melody on the very first beat, no intro, no solo piano opening, no slow string swell at the start, no fade in, full orchestral strings, piano, gentle brass, soft choir pad, tears of joy and resolution, 80 BPM, G major, cinematic and warm, stays at a high emotional level the whole time, never harsh, about 1 minute long, starts and ends on the same G major chord, seamless loop, no outro, consistent mood throughout
+Japanese visual novel emotional finale BGM that starts immediately with the main piano melody and full arrangement on the very first beat, no intro, no solo piano opening, no fade in, piano lead melody, warm string section, soft synth pad, light drums and electric bass, acoustic guitar arpeggios, tears of joy and resolution after a long journey, heartfelt and bright, 84 BPM, G major, stays at a high emotional level the whole time, no orchestra, no choir, no brass, no cinematic film score, about 1 minute long, starts and ends on the same G major chord, seamless loop, no outro, consistent mood throughout
+```
+
+**代案**（もう少し静かに。ドラム無しで、余韻のある大団円）：
+```
+Japanese visual novel emotional ending BGM that starts immediately with the main melody on the first beat, no intro, no fade in, piano lead melody, warm strings, soft synth pad, gentle acoustic guitar, no drums, quiet tears and gratitude, everything resolved, 76 BPM, D major, warm and full but never loud, no orchestra, no choir, no brass, no cinematic film score, about 1 minute long, starts and ends on the same D major chord, seamless loop, no outro, consistent mood throughout
 ```
 
 寄せ方の目安：
-- それでも前奏が付くなら Exclude styles に `intro, slow opening, build-up, fade in, piano intro` を入れる
-- ループ用途なら、曲中の一番盛り上がっている小節の頭から 1 分を切り出せば前奏は消える
+- Exclude styles には最初から `orchestra, orchestral, choir, brass, cinematic, epic, trailer, intro, fade in` を入れておく
+- まだ映画っぽいなら `warm string section` を `warm synth strings` にして生オケ感を落とす
+- 「決意・希望」と区別がつかないなら `tears of joy and resolution after a long journey` を `tears of joy, everyone is smiling at the end` に寄せる
 
 ### bgm-tense-uneasy（不穏）
 ```
