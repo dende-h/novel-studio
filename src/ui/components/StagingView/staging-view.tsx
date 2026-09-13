@@ -1204,7 +1204,8 @@ export default function StagingView({ repo, work, currentEpisodeId, assetRepo }:
                 ) : null}
               </div>
 
-              {selected.bg ? (
+              {/* 切り替え方は背景を変える行だけ。場面の切れ目の行は暗転からのフェードで明けるので出さない（値は据え置き） */}
+              {selected.bg && !selected.sceneBreak ? (
                 <div>
                   <div className="mb-2 flex items-center gap-1">
                     <label
@@ -1234,7 +1235,7 @@ export default function StagingView({ repo, work, currentEpisodeId, assetRepo }:
                 </div>
               ) : null}
 
-              {/* BGM（運営テンプレの曲だけ。次の曲か「止める」まで続く＝場面の切れ目では止まらない） */}
+              {/* BGM（運営テンプレの曲だけ。次の曲か「止める」か場面の切れ目（暗転）まで続く） */}
               <div>
                 <div className="mb-2 flex items-center gap-1">
                   <label

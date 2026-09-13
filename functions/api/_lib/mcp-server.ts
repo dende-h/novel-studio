@@ -489,7 +489,7 @@ export const MCP_TOOLS = [
   },
   {
     name: 'set_staging',
-    description: `1 つの話の演出（話者・立ち絵・場面の切れ目・背景・BGM${GAME_FEATURES.se ? '・効果音' : ''}・切り替え方）を行単位でまとめて付ける。本文は一切変わらない。cues の各要素は get_staging の [block_id: …] を指し、渡した項目だけ書き換える（省略＝据え置き・空文字＝削除・clear: true でその行の演出を丸ごと外す）。話者はセリフの行にだけ付けられ、用語集の人物名／？？？（名前を伏せる）／自由な名前が使える。**話者は名前枠だけで、立ち絵は出さない**。立ち絵は sprites で席（left / center / right・3 人まで）ごとに人物と表情を指示する（地の文でもセリフでも可・次の指示か場面の切れ目まで立ち続ける・話者が舞台にいればその人だけ明るくなる）。人物ごと描いた一枚絵の背景では hide_sprite で全員下げられる（次の場面の切れ目まで）。BGM は bgm にキーを付けた行から鳴り始め、次の曲か bgm: "stop" まで続く（場面の切れ目では止まらない）。${GAME_FEATURES.se ? '効果音は se_repeat で 1回／2回／ずっと を選べ、se: "stop" で鳴っている環境音を止める。' : ''}どれか 1 行でもエラーになると全体が保存されない。`,
+    description: `1 つの話の演出（話者・立ち絵・場面の切れ目・背景・BGM${GAME_FEATURES.se ? '・効果音' : ''}・切り替え方）を行単位でまとめて付ける。本文は一切変わらない。cues の各要素は get_staging の [block_id: …] を指し、渡した項目だけ書き換える（省略＝据え置き・空文字＝削除・clear: true でその行の演出を丸ごと外す）。話者はセリフの行にだけ付けられ、用語集の人物名／？？？（名前を伏せる）／自由な名前が使える。**話者は名前枠だけで、立ち絵は出さない**。立ち絵は sprites で席（left / center / right・3 人まで）ごとに人物と表情を指示する（地の文でもセリフでも可・次の指示か場面の切れ目まで立ち続ける・話者が舞台にいればその人だけ明るくなる）。人物ごと描いた一枚絵の背景では hide_sprite で全員下げられる（次の場面の切れ目まで）。scene_break の行は暗転＋間をはさんでフェードで明ける（立ち絵は全員下がり、BGM も止まる）。BGM は bgm にキーを付けた行から鳴り始め、次の曲か bgm: "stop" か場面の切れ目まで続く（切れ目をまたいで鳴らす曲は切れ目の行で選び直す）。${GAME_FEATURES.se ? '効果音は se_repeat で 1回／2回／ずっと を選べ、se: "stop" で鳴っている環境音を止める。' : ''}どれか 1 行でもエラーになると全体が保存されない。`,
     inputSchema: {
       type: 'object',
       properties: {
@@ -550,7 +550,8 @@ export const MCP_TOOLS = [
               },
               scene_break: {
                 type: 'boolean',
-                description: 'ここから場面が変わる（背景の切り替え点。false で外す）',
+                description:
+                  'ここから場面が変わる（暗転して一呼吸おき、この行がフェードで入る。立ち絵は全員下がり、BGM と環境音も止まる。背景はこの行で選んだもの、無ければ前のまま。false で外す）',
               },
               bg: {
                 type: 'string',
@@ -560,7 +561,7 @@ export const MCP_TOOLS = [
               bgm: {
                 type: 'string',
                 description:
-                  'BGM キー（get_staging の「使える BGM キー」から。この行から鳴り始め、次の曲か "stop" まで続く。"stop" で停止。空文字で外す）',
+                  'BGM キー（get_staging の「使える BGM キー」から。この行から鳴り始め、次の曲か "stop" か場面の切れ目まで続く。"stop" で停止。空文字で外す）',
               },
               // 効果音を出さない版（GAME_FEATURES.se＝false）では欄ごと出さない（渡しても mcp-edit が断る）
               ...(GAME_FEATURES.se

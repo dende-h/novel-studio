@@ -29,8 +29,16 @@ export interface ScenarioPage {
   speaker?: string
   /** 直前の空行数（間）。0 は省略 */
   beat?: number
+  /**
+   * ここから場面が変わる＝**暗転＋間**（D-GAME-SCENE-CURTAIN）。幕を下ろして BGM・環境音を絞り、
+   * 一呼吸おいて、このページの背景（bg が無ければ前の背景）と立ち絵を幕の下で組んでからフェードで明ける。
+   * 復元・スキップ中・先頭ページでは暗転を省く。bgm / se のループもここで下りる（bgmAt / loopSeAt）
+   */
   sceneBreak?: boolean
-  /** G0 では背景切替（bg）と同時のときだけ効く。単独 transition の意味論は G1 で決める */
+  /**
+   * G0 では背景切替（bg）と同時のときだけ効く。単独 transition の意味論は G1 で決める。
+   * sceneBreak のページでは暗転からのフェードが優先され、この値は見ない
+   */
   transition?: 'cut' | 'fade' | 'flash'
   /** 背景が切り替わるページにだけ載る（先頭ページには必ず載る） */
   bg?: string
@@ -45,7 +53,7 @@ export interface ScenarioPage {
   seRepeat?: 2 | 'loop'
   /**
    * BGM が変わるページにだけ載る（bgms のキー）。次の曲か `'stop'`（予約キー・鳴っている曲を
-   * 止める）まで鳴り続け、**場面の切れ目では止まらない**（背景と同じ扱い）
+   * 止める）か**場面の切れ目（sceneBreak）まで**鳴り続ける。切れ目の行で選び直した曲は載り直す
    */
   bgm?: string
   units: (string | [string, string])[]
@@ -139,6 +147,8 @@ html,body{height:100%;margin:0;background:#05060A}
 #flash{position:absolute;inset:0;background:#fff;opacity:0;pointer-events:none}
 #flash.on{animation:fl .5s ease-out}
 @keyframes fl{0%{opacity:.9}100%{opacity:0}}
+#curtain{position:absolute;inset:0;background:#000;opacity:0;pointer-events:none;z-index:3;transition:opacity .6s ease}
+#curtain.on{opacity:1}
 #shade{position:absolute;inset:0;background:radial-gradient(120% 95% at 50% 10%,transparent 45%,rgba(0,0,0,.4) 100%);pointer-events:none}
 #hud{position:absolute;top:calc(10px + env(safe-area-inset-top,0px));right:calc(12px + env(safe-area-inset-right,0px));display:flex;gap:2px;z-index:4}
 #hud button{background:none;border:0;padding:6px 8px;cursor:pointer;color:var(--dim);
@@ -192,6 +202,7 @@ html,body{height:100%;margin:0;background:#05060A}
   <div id="sprites"></div>
   <div id="shade"></div>
   <div id="flash"></div>
+  <div id="curtain"></div>
   <div id="hud" hidden>
     <button id="btnAuto" type="button">オート</button>
     <button id="btnSkip" type="button">スキップ</button>
@@ -256,7 +267,7 @@ html,body{height:100%;margin:0;background:#05060A}
   try { A = JSON.parse(document.getElementById('assets').textContent) || {} } catch (e) { A = {} }
   function srcOf(s) { return s && s.slice(0, 6) === 'asset:' ? (A[s.slice(6)] || '') : s }
   function $(id) { return document.getElementById(id) }
-  var bgA = $('bgA'), bgB = $('bgB'), flashEl = $('flash'), hud = $('hud')
+  var bgA = $('bgA'), bgB = $('bgB'), flashEl = $('flash'), curtainEl = $('curtain'), hud = $('hud')
   var spritesEl = $('sprites')
   var box = $('box'), nameEl = $('name'), lineEl = $('line'), nextEl = $('next')
   var overlays = { title: $('ovTitle'), log: $('ovLog'), menu: $('ovMenu'), credits: $('ovCredits'), end: $('ovEnd') }
@@ -264,7 +275,7 @@ html,body{height:100%;margin:0;background:#05060A}
   var SPEEDS = [72, 50, 34, 22, 13] // ゆっくり → はやい（1コマの ms）
   var settings = { speed: 3, se: true, bgm: true }
   var state = { i: -1, maxSeen: -1, typing: false, timer: 0, unitIdx: 0,
-    auto: false, skip: false, front: 'A', bgKey: '', started: false }
+    auto: false, skip: false, front: 'A', bgKey: '', started: false, curtain: false }
 
   function esc(s) {
     return String(s).replace(/[&<>"]/g, function (c) {
@@ -653,7 +664,7 @@ html,body{height:100%;margin:0;background:#05060A}
     if (want) startLoopSe(want)
   }
 
-  // ---- BGM。次の曲か 'stop' まで鳴り続ける（場面の切れ目では止まらない＝背景と同じ扱い） ----
+  // ---- BGM。次の曲か 'stop' か場面の切れ目（暗転）まで鳴り続ける ----
   // 実体は Web Audio で回す（loopStart / loopEnd＝目録のループ区間・サンプル単位で継ぎ目なし）。
   // file:// で開いた zip では fetch が通らないので、そのときは <audio loop> に倒す（曲ぜんたいを回す）。
   var BGM_GAIN = 0.6
@@ -663,6 +674,7 @@ html,body{height:100%;margin:0;background:#05060A}
     var key = null
     for (var j = 0; j <= i && j < S.pages.length; j++) {
       var p = S.pages[j]
+      if (p.sceneBreak) key = null
       if (p.bgm === 'stop') key = null
       else if (p.bgm) key = p.bgm
     }
@@ -797,6 +809,58 @@ html,body{height:100%;margin:0;background:#05060A}
     if ('…‥―—'.indexOf(last) >= 0) return 330
     return 0
   }
+  // ---- 場面の切れ目＝暗転＋間（幕）。幕を下ろして BGM・環境音を絞り、一呼吸おいて次の場面を幕の下で組み、フェードで明ける ----
+  var CURTAIN_OUT = 600, CURTAIN_HOLD = 550, CURTAIN_IN = 800
+  var curtainTimer = 0
+  function setCurtain(on, instant) {
+    curtainEl.style.transitionDuration = instant ? '0s' : (on ? CURTAIN_OUT : CURTAIN_IN) + 'ms'
+    curtainEl.classList.toggle('on', on)
+  }
+  function clearCurtain() {
+    clearTimeout(curtainTimer)
+    curtainTimer = 0
+    state.curtain = false
+    setCurtain(false, true)
+  }
+  function beatOf(p) { return p.beat ? Math.min(760, 280 * p.beat) : 0 }
+  function changeScene(i) {
+    var p = S.pages[i]
+    state.curtain = true
+    state.typing = false
+    nextEl.hidden = true
+    setCurtain(true, false)
+    // 幕が下りるあいだに曲と環境音を絞る（次の場面の曲は幕が上がるときに）
+    wantLoop = null
+    syncLoopSe()
+    wantBgm = null
+    syncBgm()
+    curtainTimer = setTimeout(function () {
+      // 幕の下で次の場面を組む（背景・立ち絵の入れ替えは見せない。文章の枠は空で立てておき、幕と一緒に明ける）
+      setBg(bgAt(i), undefined, true)
+      applyStage(stageAt(i), true)
+      box.hidden = false
+      setName(p)
+      lineEl.innerHTML = ''
+      curtainTimer = setTimeout(function () {
+        // 幕を上げる＝次の場面がフェードで入る。曲・環境音・効果音もここから
+        setCurtain(false, false)
+        if (p.se && p.se !== 'stop' && p.seRepeat !== 'loop') playSe(p.se, p.seRepeat)
+        wantLoop = loopSeAt(i)
+        syncLoopSe()
+        wantBgm = bgmAt(i)
+        syncBgm()
+        curtainTimer = setTimeout(function () {
+          curtainTimer = 0
+          state.curtain = false
+          presentText(i, false, true)
+        }, CURTAIN_IN)
+      }, CURTAIN_HOLD + beatOf(p)) // 本文の空行（間）は暗転の長さに足す
+    }, CURTAIN_OUT)
+  }
+  function setName(p) {
+    if (p.kind === 'dialogue' && p.speaker) { nameEl.textContent = p.speaker; nameEl.hidden = false }
+    else { nameEl.hidden = true }
+  }
   function showPage(i, instant) {
     var p = S.pages[i]
     state.i = i
@@ -804,6 +868,9 @@ html,body{height:100%;margin:0;background:#05060A}
     save()
     notifyHost('progress')
     clearTimeout(state.timer)
+    // 場面の切れ目は暗転＋間。復元（instant）・スキップ中・先頭のページでは幕を使わない
+    if (p.sceneBreak && !instant && !state.skip && i > 0) { changeScene(i); return }
+    if (state.curtain) clearCurtain()
     setBg(bgAt(i), p.bg ? p.transition : undefined, instant)
     applyStage(stageAt(i), instant)
     // 効果音はページ表示の瞬間に鳴らす。復元（instant）・スキップ中は鳴らさない。
@@ -817,8 +884,12 @@ html,body{height:100%;margin:0;background:#05060A}
     wantBgm = bgmAt(i)
     syncBgm()
     box.hidden = false
-    if (p.kind === 'dialogue' && p.speaker) { nameEl.textContent = p.speaker; nameEl.hidden = false }
-    else { nameEl.hidden = true }
+    setName(p)
+    presentText(i, instant, false)
+  }
+  /** 文章を出す（文字送りの開始）。skipBeat＝間は暗転に含めた */
+  function presentText(i, instant, skipBeat) {
+    var p = S.pages[i]
     lineEl.innerHTML = ''
     nextEl.hidden = true
     if (instant || state.skip) {
@@ -828,8 +899,7 @@ html,body{height:100%;margin:0;background:#05060A}
     }
     state.typing = true
     state.unitIdx = 0
-    var beat = p.beat ? Math.min(760, 280 * p.beat) : 0
-    state.timer = setTimeout(tick, beat + 40)
+    state.timer = setTimeout(tick, (skipBeat ? 0 : beatOf(p)) + 40)
   }
   function tick() {
     var p = S.pages[state.i]
@@ -866,12 +936,12 @@ html,body{height:100%;margin:0;background:#05060A}
   }
   // オーバーレイを閉じた・タブへ戻った後に、オート／スキップの進行を張り直す
   function resumeFlow() {
-    if (!state.started || overlayOpen()) return
+    if (!state.started || overlayOpen() || state.curtain) return
     if (state.auto && !state.typing) typingDone()
     if (state.skip) queueSkip()
   }
   function advance() {
-    if (!state.started || overlayOpen()) return
+    if (!state.started || overlayOpen() || state.curtain) return
     if (state.typing) { finishTyping(); return }
     if (state.i + 1 < S.pages.length) showPage(state.i + 1)
     else showEnd()
@@ -881,7 +951,7 @@ html,body{height:100%;margin:0;background:#05060A}
   function toggleAuto(on) {
     state.auto = on === undefined ? !state.auto : on
     $('btnAuto').classList.toggle('on', state.auto)
-    if (state.auto && !state.typing && !overlayOpen()) typingDone()
+    if (state.auto && !state.typing && !overlayOpen() && !state.curtain) typingDone()
     if (state.auto) toggleSkip(false)
   }
   function toggleSkip(on) {
@@ -891,7 +961,11 @@ html,body{height:100%;margin:0;background:#05060A}
     $('btnSkip').classList.toggle('on', state.skip)
     if (state.skip) {
       state.auto = false; $('btnAuto').classList.remove('on')
-      if (state.started && !overlayOpen()) { finishTyping(); queueSkip() }
+      if (state.started && !overlayOpen()) {
+        // 暗転の途中なら幕を畳み、その行をそのまま出してから送る
+        if (state.curtain) { clearCurtain(); showPage(state.i, true); return }
+        finishTyping(); queueSkip()
+      }
     }
   }
 
@@ -1041,6 +1115,7 @@ html,body{height:100%;margin:0;background:#05060A}
   }
   function showEnd() {
     toggleAuto(false); toggleSkip(false)
+    clearCurtain()
     wantLoop = null
     syncLoopSe()
     wantBgm = null
@@ -1052,6 +1127,7 @@ html,body{height:100%;margin:0;background:#05060A}
   function backToTitle() {
     toggleAuto(false); toggleSkip(false)
     clearTimeout(state.timer)
+    clearCurtain()
     state.typing = false
     state.started = false
     wantLoop = null

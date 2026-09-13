@@ -105,7 +105,7 @@ export function stagingToPlainText(
   const bgms = visibleTemplates(mergeBgmCatalog(templates))
   sections.push(
     [
-      '使える BGM（bgm）キー（この行から鳴り始め、次の曲か bgm: "stop" まで続く。場面の切れ目では止まらない。',
+      '使える BGM（bgm）キー（この行から鳴り始め、次の曲か bgm: "stop" か場面の切れ目（暗転）まで続く。切れ目をまたいで鳴らす曲は切れ目の行で選び直す。',
       '「準備中」の曲は選べるが、曲が入るまで書き出し・投稿では鳴らない）:',
       ...(bgms.length > 0
         ? bgms.map(

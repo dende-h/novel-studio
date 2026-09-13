@@ -379,9 +379,11 @@ export function buildNovelGameFiles(
     const stopSe = GAME_FEATURES.se && page.se === SE_STOP
     const se = GAME_FEATURES.se && page.se && !stopSe ? resolveSe(page.se) : undefined
     if (se) usedSes.set(se.key, se)
-    // BGM：曲が変わるページにだけ載せる（背景と同じ扱い＝場面の切れ目では止まらない）。
+    // BGM：曲が変わるページにだけ載せる。場面の切れ目（暗転）では止まる（プレイヤーの bgmAt が
+    // sceneBreak で下ろす＝ページに 'stop' は載せない）ので、切れ目の行で選び直した同じ曲は載せ直す。
     // 「止める」は鳴っているときだけ載せる。未知キー（手元に無い曲）は無視して壊さない
     let bgm: string | undefined
+    if (page.sceneBreak) currentBgm = ''
     if (page.bgm === BGM_STOP) {
       if (currentBgm) {
         bgm = BGM_STOP
