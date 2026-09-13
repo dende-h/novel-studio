@@ -224,6 +224,10 @@ describe('StagingView（演出エディタ）', () => {
       sceneBreak: true,
       bg: 'preset:bg/room-night',
     })
+    // 切れ目の行は暗転からのフェードで明ける＝「切り替え方」は出さない。切れ目を外せば出る
+    expect(screen.queryByLabelText('切り替え方')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('switch', { name: /ここから場面が変わる/ }))
+    expect(await screen.findByLabelText('切り替え方')).toBeInTheDocument()
   })
 
   it('背景の「背景を追加」で持ち込み画像が保存され、その行の背景になる', async () => {
@@ -418,6 +422,7 @@ describe('StagingView（演出エディタ）', () => {
     // 効く範囲を知らないと混乱する「場面が変わる」は、とくに詳しく出す
     fireEvent.click(screen.getByRole('button', { name: 'ここから場面が変わるの説明を開く' }))
     expect(await screen.findByText(/次の「場面が変わる」までが1つの場面です/)).toBeInTheDocument()
+    expect(screen.getByText(/画面が暗転し、一呼吸おいてから/)).toBeInTheDocument()
     expect(screen.getByText(/原稿に区切り線や記号が入ることはありません/)).toBeInTheDocument()
   })
 
@@ -657,7 +662,7 @@ describe('StagingView（演出エディタ）', () => {
     await waitFor(() => expect(saved).toHaveLength(1))
     expect(saved[0]?.cues[0]).toEqual({ blockId: 'b1', bgm: 'preset:bgm/bgm-calm-morning' })
     expect(await screen.findByText('BGM 朝')).toBeInTheDocument()
-    // 曲は次の行にも続く（場面の切れ目でも止まらない）
+    // 曲は次の行にも続く（切れ目の無いこの話では最後まで）
     expect(screen.getAllByTitle('BGM：朝')).toHaveLength(3)
     // 試聴ボタンが出る
     expect(screen.getByRole('button', { name: '朝を試聴' })).toBeInTheDocument()

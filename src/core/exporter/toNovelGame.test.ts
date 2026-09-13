@@ -885,7 +885,7 @@ describe('BGM（目録の曲・preset 付きの素材）', () => {
       ep,
       cues([
         { blockId: 'b1', bgm: 'preset:bgm/bgm-calm-morning' },
-        { blockId: 'b2', bgm: 'preset:bgm/bgm-calm-morning', sceneBreak: true }, // 同じ曲＝載せ直さない
+        { blockId: 'b2', bgm: 'preset:bgm/bgm-calm-morning' }, // 同じ曲＝載せ直さない
         { blockId: 'b3', bgm: 'preset:bgm/bgm-tense-chase' },
       ]),
       { userAssets: [morning, chase] },
@@ -909,13 +909,13 @@ describe('BGM（目録の曲・preset 付きの素材）', () => {
       expect.arrayContaining(['assets/bgm/bgm-calm-morning.mp3', 'assets/bgm/bgm-tense-chase.mp3']),
     )
     expect(s.credits.find((c) => c.label === 'BGM')?.body).toBe('コトノハ 標準BGM素材（朝・追走）')
-    // 画面（続きレーン）の説明と書き出しが一致する（切れ目をまたいでも同じ曲が続く）
+    // 画面（続きレーン）の説明と書き出しが一致する（同じ曲が続く）
     const cont = resolveContinuity(
       applyCues(
         toPages(ep.blocks),
         cues([
           { blockId: 'b1', bgm: 'preset:bgm/bgm-calm-morning' },
-          { blockId: 'b2', bgm: 'preset:bgm/bgm-calm-morning', sceneBreak: true },
+          { blockId: 'b2', bgm: 'preset:bgm/bgm-calm-morning' },
           { blockId: 'b3', bgm: 'preset:bgm/bgm-tense-chase' },
         ]),
       ),
@@ -925,6 +925,58 @@ describe('BGM（目録の曲・preset 付きの素材）', () => {
       'preset:bgm/bgm-calm-morning',
       'preset:bgm/bgm-tense-chase',
     ])
+  })
+
+  it('場面の切れ目（暗転）で曲は下りる。切れ目の行で選び直した同じ曲は載り直す（プレイヤーの bgmAt と揃える）', () => {
+    // 切れ目に曲の指定が無い＝ページには何も載らない（プレイヤーが sceneBreak で下ろす）
+    const dropped = scenarioOf(
+      buildNovelGameFiles(
+        w,
+        ep,
+        cues([
+          { blockId: 'b1', bgm: 'preset:bgm/bgm-calm-morning' },
+          { blockId: 'b2', sceneBreak: true },
+        ]),
+        { userAssets: [morning] },
+      ),
+    )
+    expect(dropped.pages.map((p) => p.bgm)).toEqual([
+      'preset:bgm/bgm-calm-morning',
+      undefined,
+      undefined,
+    ])
+    expect(dropped.pages[1]?.sceneBreak).toBe(true)
+    const cont = resolveContinuity(
+      applyCues(
+        toPages(ep.blocks),
+        cues([
+          { blockId: 'b1', bgm: 'preset:bgm/bgm-calm-morning' },
+          { blockId: 'b2', sceneBreak: true },
+        ]),
+      ),
+    )
+    expect(cont.map((c) => c.bgm)).toEqual(['preset:bgm/bgm-calm-morning', undefined, undefined])
+    // 切れ目の行で同じ曲を選び直す＝新しい場面の曲として載り直す（「止める」は鳴っていないので載らない）
+    const files = buildNovelGameFiles(
+      w,
+      ep,
+      cues([
+        { blockId: 'b1', bgm: 'preset:bgm/bgm-calm-morning' },
+        { blockId: 'b2', bgm: 'preset:bgm/bgm-calm-morning', sceneBreak: true },
+        { blockId: 'b3', bgm: 'stop', sceneBreak: true },
+      ]),
+      { userAssets: [morning] },
+    )
+    const again = scenarioOf(files)
+    expect(again.pages.map((p) => p.bgm)).toEqual([
+      'preset:bgm/bgm-calm-morning',
+      'preset:bgm/bgm-calm-morning',
+      undefined,
+    ])
+    // プレイヤーには暗転の幕がある
+    const html = files.find((f) => f.path === 'index.html')?.data
+    expect(String(html)).toContain('id="curtain"')
+    expect(String(html)).toContain('if (p.sceneBreak) key = null')
   })
 
   it('「止める」は鳴っているときだけページに載り、手元に無い曲は無視して壊さない', () => {

@@ -137,7 +137,7 @@ describe('resolveContinuity（この行で効いているもの）', () => {
     expect(c[3]?.changed.loopSe).toBe(true)
   })
 
-  it('BGM は次の曲か「止める」まで鳴り続け、場面の切れ目では止まらない', () => {
+  it('BGM は次の曲か「止める」か場面の切れ目（暗転）まで鳴り続ける', () => {
     const c = resolveContinuity(
       pagesOf([
         { blockId: 'b1', bgm: 'preset:bgm/bgm-calm-morning' },
@@ -148,13 +148,42 @@ describe('resolveContinuity（この行で効いているもの）', () => {
     )
     expect(c[0]?.bgm).toBe('preset:bgm/bgm-calm-morning')
     expect(c[0]?.changed.bgm).toBe(true)
-    expect(c[1]?.bgm).toBe('preset:bgm/bgm-calm-morning') // 切れ目をまたぐ
-    expect(c[1]?.changed.bgm).toBe(false)
+    expect(c[1]?.bgm).toBeUndefined() // 切れ目の暗転で下りる
+    expect(c[1]?.changed.bgm).toBe(true)
     expect(c[2]?.bgm).toBe('preset:bgm/bgm-tense-chase')
     expect(c[2]?.changed.bgm).toBe(true)
     expect(c[3]?.bgm).toBe('preset:bgm/bgm-tense-chase')
     expect(c[4]?.bgm).toBeUndefined()
     expect(c[4]?.changed.bgm).toBe(true)
+  })
+
+  it('切れ目の行で同じ曲・同じ環境音を選び直せば、新しい場面の起点として鳴り直す（線の起点が付く）', () => {
+    const c = resolveContinuity(
+      pagesOf([
+        {
+          blockId: 'b1',
+          bgm: 'preset:bgm/bgm-calm-morning',
+          se: 'preset:se/rain',
+          seRepeat: 'loop',
+        },
+        {
+          blockId: 'b2',
+          sceneBreak: true,
+          bgm: 'preset:bgm/bgm-calm-morning',
+          se: 'preset:se/rain',
+          seRepeat: 'loop',
+        },
+        { blockId: 'b4', sceneBreak: true },
+      ]),
+    )
+    expect(c[1]?.bgm).toBe('preset:bgm/bgm-calm-morning')
+    expect(c[1]?.changed.bgm).toBe(true)
+    expect(c[1]?.loopSe).toBe('preset:se/rain')
+    expect(c[1]?.changed.loopSe).toBe(true)
+    expect(c[2]?.bgm).toBe('preset:bgm/bgm-calm-morning')
+    expect(c[2]?.changed.bgm).toBe(false)
+    expect(c[3]?.bgm).toBeUndefined()
+    expect(c[3]?.loopSe).toBeUndefined()
   })
 
   it('席を省略した 4 人目は、いちばん前から立っている人と交代する（席は 3 つ）', () => {

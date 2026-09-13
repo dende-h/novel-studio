@@ -22,7 +22,7 @@ export const MASKED_SPEAKER = '？？？'
 
 /**
  * `Cue.bgm` の予約キー＝鳴っている BGM をこの行で止める（実体は持たない）。
- * 効果音の `SE_STOP` と同じ字面。BGM は場面の切れ目では止まらず、次の曲かこれまで続く。
+ * 効果音の `SE_STOP` と同じ字面。BGM は次の曲か、これか、場面の切れ目（暗転）まで続く。
  */
 export const BGM_STOP = 'stop'
 
@@ -74,13 +74,18 @@ export const CueSchema = z.object({
    * 背景に立ち絵が重なるのを止めるための欄。話者名（名前枠）は出る。`sprites` で明示すれば戻る。
    */
   hideSprite: z.boolean().optional(),
-  /** ここで場面が変わる（背景・BGM の切り替え点）。正本に区切りは復活させない（D-GAME-SCENE-MANUAL） */
+  /**
+   * ここで場面が変わる（D-GAME-SCENE-MANUAL・正本に区切りは復活させない）。
+   * プレイヤーは**暗転＋間**を入れる（D-GAME-SCENE-CURTAIN）：幕を下ろして立ち絵・BGM・環境音を下げ、
+   * 一呼吸おいて、この行の背景（無ければ前の背景のまま）と立ち絵を幕の下で組み、フェードで明ける。
+   */
   sceneBreak: z.boolean().optional(),
   /** アセットキー（'preset:bg/room-day' 等）。実体は持たない（D-GAME-ASSET-STORE） */
   bg: z.string().optional(),
   /**
-   * BGM のキー（`preset:bgm/<slug>`＝運営テンプレの曲）。この行から次の曲か `'stop'`（BGM_STOP）まで
-   * 鳴り続ける。**場面の切れ目では止まらない**（背景と同じ扱い＝曲は場面をまたぐことが多い）
+   * BGM のキー（`preset:bgm/<slug>`＝運営テンプレの曲）。この行から次の曲か `'stop'`（BGM_STOP）か
+   * **場面の切れ目（暗転）まで**鳴り続ける（立ち絵・環境音と同じ寿命）。切れ目をまたいで
+   * 鳴らしたい曲は、切れ目の行で選び直す（頭から鳴り直す）
    */
   bgm: z.string().optional(),
   /** 効果音のキー。`'stop'`（SE_STOP）＝鳴っているループをここで止める */
