@@ -2,20 +2,20 @@
 /**
  * /api/mcp/oauth-protected-resource — OAuth 2.0 Protected Resource Metadata（RFC 9728）。
  * MCP を OAuth リソースサーバーとして名乗り、認可サーバーの在り処をクライアントへ示す。
- * 401 応答の WWW-Authenticate から、このドキュメントの URL が案内される（Claude はこの経路）。
+ * 標準パス（/.well-known/oauth-protected-resource/api/mcp）へ寄せたあとも、既に接続済みの
+ * クライアントがこの URL を覚えているので**互換のため残す**。内容は必ず揃えること。
  *
- * 認可サーバーは**自オリジンを名乗る**。窓口の実体は /api/oauth/* が Clerk へ中継する
- * （同一オリジンでないと ChatGPT が弾くため。詳細は functions/_middleware.ts の頭を参照）。
- * ルート直下の /.well-known/oauth-protected-resource と内容を揃えること。
+ * 認可サーバーは **Clerk の issuer をそのまま名乗る**。自オリジンを名乗ると、認可応答の `iss`
+ * （Clerk が書く）と食い違って RFC 9207 の照合に落ちる（docs/requirement/10-mcp-oauth.md §2-A）。
  */
 
-import { buildProtectedResourceMetadata } from '../_lib/oauth-metadata'
+import { buildProtectedResourceMetadata, parseScopes } from '../_lib/oauth-metadata'
 import { normalizeIssuer } from '../_lib/oauth-upstream'
 
 interface Env {
-  /** 上流の認可サーバー(Clerk)の issuer URL。未設定なら認可サーバーを名乗らない。 */
+  /** 認可サーバー(Clerk)の issuer URL。未設定なら認可サーバーを名乗らない。 */
   MCP_OAUTH_ISSUER?: string
-  /** 対応スコープ（スペース区切り・任意）。 */
+  /** 要求してほしいスコープ（スペース区切り・任意。未設定なら DEFAULT_MCP_SCOPES）。 */
   MCP_OAUTH_SCOPES?: string
 }
 
@@ -35,8 +35,8 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
   const meta = buildProtectedResourceMetadata({
     // リソースの正準 URI＝MCP エンドポイント（同一オリジンの /api/mcp）。
     resource: `${url.origin}/api/mcp`,
-    authorizationServers: issuer ? [url.origin] : [],
-    scopesSupported: context.env.MCP_OAUTH_SCOPES?.split(/\s+/).filter(Boolean),
+    authorizationServers: issuer ? [issuer] : [],
+    scopesSupported: parseScopes(context.env.MCP_OAUTH_SCOPES),
     resourceName: 'コトノハ-leaf-',
   })
   return new Response(JSON.stringify(meta), {

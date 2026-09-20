@@ -1,30 +1,30 @@
 // Cloudflare Pages Functions のミドルウェア。
 // 全リクエスト（静的ファイル含む）の前段で実行される。
 //
-// 役割：OAuth ディスカバリ（RFC 9728 / RFC 8414）を **ルート直下の .well-known で** 返す。
-// ChatGPT などの MCP クライアントは resource_metadata ヘッダを辿らず、リソースドメインの
-// ルート `/.well-known/oauth-protected-resource` を直接叩く。ここが 404 だと、認可画面に
-// 到達する前に接続失敗する。
+// 役割：OAuth ディスカバリ（RFC 9728）を **ルート直下の .well-known で** 返す。
+// MCP クライアントは resource_metadata ヘッダを辿らず、リソースドメインのルート
+// `/.well-known/oauth-protected-resource` を直接叩くことがある。ここが 404 だと、
+// 認可画面に到達する前に接続失敗する。
 //
-// さらに ChatGPT は AS メタデータ／OIDC 設定も **MCP ホスト側の** well-known へ直接叩き、
-// RFC 8414 §3.3 のとおり「引いたホスト＝issuer」を要求する。Clerk のドキュメントをそのまま
-// 中継すると issuer が *.clerk.accounts.dev になって弾かれるため、issuer と窓口を自オリジンへ
-// 書き換えた版を配る（実体は /api/oauth/* が Clerk へ中継する）。
-// トークンを発行・検証するのは従来どおり Clerk なので、発行済みトークンには影響しない。
+// **認可サーバーは自分**（2026-09 Phase 2・docs/requirement/10-mcp-oauth.md §4 案3）。
+// 実体は `functions/api/oauth/[[path]].ts`。ここで配るメタデータも、認可応答の `iss` を書くのも
+// 同じ自オリジンなので、RFC 9207 の照合が素直に通る。
+//
+// **一度やって失敗した形**を繰り返さないこと：issuer だけ自オリジンに書き換えて、応答は Clerk に
+// 書かせる（＝こちらを通らない）中間形。あれは必ず不一致になる。名乗るなら、応答も自分で書く。
+// 上流（Clerk）の申告をこのホストの名前で転載するのも同じ穴（§2-G）——**上流の値は混ぜない**。
+//
+// 旧クライアント（Clerk 側に登録がある）のために `/api/oauth/*` の中継は残してある。
+// ディスカバリからは案内しないが、消すとトークン更新が黙って切れる。
 //
 // かつて Preview(=stg) をベーシック認証（BASIC_AUTH_USER/PASS）で保護していたが撤去した。
 // ダッシュボードに残った同名の環境変数はもう参照されない（残っていても無害）。
 
-import {
-  buildFacadeAuthServerMetadata,
-  buildProtectedResourceMetadata,
-} from './api/_lib/oauth-metadata'
-import { fetchUpstreamAs, normalizeIssuer } from './api/_lib/oauth-upstream'
+import { buildProtectedResourceMetadata, parseScopes } from './api/_lib/oauth-metadata'
+import { buildAuthServerMetadata } from './api/_lib/oauth-server'
 
 interface Env {
-  /** 上流の認可サーバー(Clerk)の issuer URL。窓口の中継先として使う。 */
-  MCP_OAUTH_ISSUER?: string
-  /** 対応スコープ（スペース区切り・任意）。 */
+  /** 要求してほしいスコープ（スペース区切り・任意。未設定なら DEFAULT_MCP_SCOPES）。 */
   MCP_OAUTH_SCOPES?: string
 }
 
@@ -51,19 +51,8 @@ const jsonDiscovery = (body: string): Response =>
     },
   })
 
-/** ディスカバリを組めないときの応答。誤った内容を配るより落ちて見せる（no-store）。 */
-const discoveryUnavailable = (): Response =>
-  new Response(JSON.stringify({ error: 'temporarily_unavailable' }), {
-    status: 503,
-    headers: {
-      'content-type': 'application/json',
-      'cache-control': 'no-store',
-      ...DISCOVERY_CORS,
-    },
-  })
-
 /** OAuth ディスカバリ要求ならレスポンスを返す（該当しなければ null）。 */
-async function oauthDiscovery(context: MiddlewareContext, url: URL): Promise<Response | null> {
+function oauthDiscovery(context: MiddlewareContext, url: URL): Response | null {
   const path = url.pathname
   const isPrm =
     path === '/.well-known/oauth-protected-resource' ||
@@ -78,31 +67,24 @@ async function oauthDiscovery(context: MiddlewareContext, url: URL): Promise<Res
     return new Response(null, { status: 204, headers: DISCOVERY_CORS })
   }
 
-  const issuer = normalizeIssuer(context.env.MCP_OAUTH_ISSUER)
+  // 認可サーバーのメタデータ（RFC 8414）。openid-configuration にも同じものを配る——
+  // MCP クライアントはそこを AS メタデータの代替として読むだけで、OIDC として検証しない。
+  if (isAsMeta) return jsonDiscovery(JSON.stringify(buildAuthServerMetadata(url.origin)))
 
-  if (isPrm) {
-    const meta = buildProtectedResourceMetadata({
-      // リソースの正準 URI＝MCP エンドポイント（同一オリジンの /api/mcp）。
-      resource: `${url.origin}/api/mcp`,
-      // 認可サーバーも同一オリジンを名乗る（実体は /api/oauth/* が Clerk へ中継）。
-      // 上流が未設定のときは名乗れないので空にする。
-      authorizationServers: issuer ? [url.origin] : [],
-      scopesSupported: context.env.MCP_OAUTH_SCOPES?.split(/\s+/).filter(Boolean),
-      resourceName: 'コトノハ-leaf-',
-    })
-    return jsonDiscovery(JSON.stringify(meta))
-  }
-
-  // isAsMeta：上流(Clerk)の同名ドキュメントを取り、issuer と窓口を自オリジンへ書き換えて配る。
-  if (!issuer) return null
-  const upstream = await fetchUpstreamAs(issuer, path)
-  if (!upstream) return discoveryUnavailable()
-  return jsonDiscovery(JSON.stringify(buildFacadeAuthServerMetadata(upstream, url.origin)))
+  const meta = buildProtectedResourceMetadata({
+    // リソースの正準 URI＝MCP エンドポイント（同一オリジンの /api/mcp）。
+    resource: `${url.origin}/api/mcp`,
+    // 認可サーバーも自分。名乗りと、認可応答の iss を書く主体が一致している。
+    authorizationServers: [url.origin],
+    scopesSupported: parseScopes(context.env.MCP_OAUTH_SCOPES),
+    resourceName: 'コトノハ-leaf-',
+  })
+  return jsonDiscovery(JSON.stringify(meta))
 }
 
 export async function onRequest(context: MiddlewareContext): Promise<Response> {
   const url = new URL(context.request.url)
-  const discovery = await oauthDiscovery(context, url)
+  const discovery = oauthDiscovery(context, url)
   const response = discovery ?? (await context.next())
 
   // SEO：本番の正規ドメインは cotonoha-leaf.org に一本化する。本番デプロイは

@@ -17,7 +17,8 @@
     "format": "biome format --write .",
     "dev:edge": "wrangler pages dev dist",
     "d1:migrate:local": "wrangler d1 migrations apply novel-studio --local",
-    "d1:migrate:remote": "wrangler d1 migrations apply novel-studio --remote"
+    "d1:migrate:remote": "wrangler d1 migrations apply novel-studio --remote",
+    "templates:copy-to-prod": "node scripts/copy-templates.mjs --from novel-studio-media-stg --to novel-studio-media"
   },
   "dependencies": {
     "@clerk/backend": "3.8.2",

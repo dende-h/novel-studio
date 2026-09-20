@@ -1,0 +1,313 @@
+// @vitest-environment node
+/// <reference types="@cloudflare/workers-types" />
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+
+// Clerk 認証は可変の userId を返すようにモック（null なら未認証）。
+// staff かどうかは D1 フェイクの board_profiles.role で決まる。
+const authState = vi.hoisted(() => ({ userId: 'user_staff' as string | null }))
+vi.mock('@clerk/backend', async () => {
+  const { clerkAuthMock } = await import('../board/board-test-util')
+  return clerkAuthMock(authState)
+})
+
+import type { TemplateManifest } from '../../../src/core/game/templates'
+import { TEMPLATE_MANIFEST_KEY, templateObjectKey } from '../_lib/templates-store'
+import { fakeProfile, makeBoardEnv } from '../board/board-test-util'
+import { makeFakeR2 } from '../sync/sync-test-util'
+import {
+  onRequestDelete,
+  onRequestGet,
+  onRequestPatch,
+  onRequestPut,
+  TEMPLATE_MAX_DATA_URL,
+} from './templates'
+
+function makeEnv() {
+  const { bucket, objects } = makeFakeR2()
+  const env = {
+    ...makeBoardEnv({
+      profiles: [
+        fakeProfile({ user_id: 'user_staff', role: 'staff', name_key: 'staff' }),
+        fakeProfile({ user_id: 'user_member', role: 'member', name_key: 'member' }),
+      ],
+    }),
+    MEDIA: bucket,
+  }
+  return { env, objects }
+}
+
+type Handler = PagesFunction<never>
+const call = (handler: Handler, env: unknown, request: Request): Promise<Response> =>
+  handler({ request, env } as never) as Promise<Response>
+
+const BASE = 'https://x/api/admin/templates'
+const auth = { authorization: 'Bearer x', 'content-type': 'application/json' }
+const WEBP = 'data:image/webp;base64,UklGRg=='
+const MP3 = 'data:audio/mpeg;base64,SUQzBAA='
+const TONE: [string, string, string] = ['#111111', '#222222', '#333333']
+
+const put = (kind: string, slug: string, body: unknown) =>
+  new Request(`${BASE}?kind=${kind}&slug=${slug}`, {
+    method: 'PUT',
+    headers: auth,
+    body: JSON.stringify(body),
+  })
+
+async function manifestOf(objects: Map<string, Uint8Array>): Promise<TemplateManifest> {
+  const raw = objects.get(TEMPLATE_MANIFEST_KEY)
+  if (!raw) throw new Error('目録が無い')
+  return JSON.parse(new TextDecoder().decode(raw)) as TemplateManifest
+}
+
+beforeEach(() => {
+  authState.userId = 'user_staff'
+})
+
+describe('staff 以外は 404（管理の口を教えない）', () => {
+  it('未認証・member はどのメソッドも 404', async () => {
+    const { env } = makeEnv()
+    for (const userId of [null, 'user_member', 'user_unknown']) {
+      authState.userId = userId
+      const get = await call(onRequestGet, env, new Request(BASE, { headers: auth }))
+      expect(get.status).toBe(404)
+      const res = await call(
+        onRequestPut,
+        env,
+        put('bg', 'room-day', { dataUrl: WEBP, tone: TONE }),
+      )
+      expect(res.status).toBe(404)
+    }
+  })
+})
+
+describe('GET / PUT / PATCH / DELETE（staff）', () => {
+  it('目録が無ければ空の目録を no-store で返す', async () => {
+    const { env } = makeEnv()
+    const res = await call(onRequestGet, env, new Request(BASE, { headers: auth }))
+    expect(res.status).toBe(200)
+    expect(res.headers.get('cache-control')).toContain('no-store')
+    expect(await res.json()).toMatchObject({ v: 1, entries: [] })
+  })
+
+  it('PUT は実体を R2 に置き、目録の項目を作る（分類・時間帯はファイル名から）', async () => {
+    const { env, objects } = makeEnv()
+    const res = await call(
+      onRequestPut,
+      env,
+      put('bg', 'town-alley-night', {
+        dataUrl: WEBP,
+        thumbDataUrl: WEBP,
+        tone: TONE,
+        label: '路地（夜）',
+      }),
+    )
+    expect(res.status).toBe(200)
+    const { entry } = (await res.json()) as { entry: Record<string, unknown> }
+    expect(entry).toMatchObject({
+      kind: 'bg',
+      slug: 'town-alley-night',
+      label: '路地（夜）',
+      category: 'town',
+      time: 'night',
+      mime: 'image/webp',
+      bytes: 4,
+    })
+    expect(typeof entry.hash).toBe('string')
+    expect(entry.thumbHash).toBe(entry.hash)
+    expect(objects.has(templateObjectKey('bg', 'town-alley-night'))).toBe(true)
+    expect(objects.has(templateObjectKey('bg', 'town-alley-night', 'thumb'))).toBe(true)
+    const m = await manifestOf(objects)
+    expect(m.entries).toHaveLength(1)
+  })
+
+  it('同じ slug へもう一度 PUT すると置き換え。省略した表示名・分類は据え置き', async () => {
+    const { env, objects } = makeEnv()
+    await call(
+      onRequestPut,
+      env,
+      put('bg', 'room-day', { dataUrl: WEBP, tone: TONE, label: '部屋' }),
+    )
+    const res = await call(
+      onRequestPut,
+      env,
+      put('bg', 'room-day', {
+        dataUrl: 'data:image/png;base64,iVBORw0KGgo=',
+        tone: ['#000000', '#000000', '#000000'],
+      }),
+    )
+    expect(res.status).toBe(200)
+    const m = await manifestOf(objects)
+    expect(m.entries).toHaveLength(1)
+    expect(m.entries[0]).toMatchObject({ label: '部屋', category: 'room', mime: 'image/png' })
+    expect(m.entries[0]?.thumbHash).toBeUndefined()
+    // 拡張子が変わったので旧キー（.webp）は消え、新キー（.png）だけ残る
+    expect(objects.has(templateObjectKey('bg', 'room-day', 'full', 'webp'))).toBe(false)
+    expect(objects.has(templateObjectKey('bg', 'room-day', 'full', 'png'))).toBe(true)
+  })
+
+  it('効果音は mp3/m4a の data URL を受け、長さを持ち、時間帯とサムネは持たない', async () => {
+    const { env, objects } = makeEnv()
+    const res = await call(
+      onRequestPut,
+      env,
+      put('se', 'weather-rain-heavy', {
+        dataUrl: MP3,
+        durationMs: 4200,
+        label: '強い雨',
+      }),
+    )
+    expect(res.status).toBe(200)
+    const m = await manifestOf(objects)
+    expect(m.entries[0]).toMatchObject({
+      kind: 'se',
+      slug: 'weather-rain-heavy',
+      label: '強い雨',
+      category: 'weather',
+      mime: 'audio/mpeg',
+      durationMs: 4200,
+      tone: ['#000000', '#000000', '#000000'],
+    })
+    expect(m.entries[0]?.time).toBeUndefined()
+    expect(objects.has(templateObjectKey('se', 'weather-rain-heavy', 'full', 'mp3'))).toBe(true)
+  })
+
+  it('BGM は mp3/m4a を受け、ループ区間を持てる。置き換えで省略した区間は据え置き', async () => {
+    const { env, objects } = makeEnv()
+    const res = await call(
+      onRequestPut,
+      env,
+      put('bgm', 'bgm-calm-morning', {
+        dataUrl: MP3,
+        durationMs: 92_000,
+        loopStart: 4.5,
+        loopEnd: 88,
+        label: '朝',
+      }),
+    )
+    expect(res.status).toBe(200)
+    expect((await manifestOf(objects)).entries[0]).toMatchObject({
+      kind: 'bgm',
+      slug: 'bgm-calm-morning',
+      label: '朝',
+      category: 'calm',
+      mime: 'audio/mpeg',
+      durationMs: 92_000,
+      loopStart: 4.5,
+      loopEnd: 88,
+    })
+    expect(objects.has(templateObjectKey('bgm', 'bgm-calm-morning', 'full', 'mp3'))).toBe(true)
+    // 置き換え（区間を渡さない）
+    await call(onRequestPut, env, put('bgm', 'bgm-calm-morning', { dataUrl: MP3 }))
+    const m = await manifestOf(objects)
+    expect(m.entries).toHaveLength(1)
+    expect(m.entries[0]).toMatchObject({ label: '朝', loopStart: 4.5, loopEnd: 88 })
+    // 背景に画像として区間を渡しても付かない
+    await call(
+      onRequestPut,
+      env,
+      put('bg', 'room-day', { dataUrl: WEBP, tone: TONE, loopStart: 1, loopEnd: 2 }),
+    )
+    const bg = (await manifestOf(objects)).entries.find((e) => e.kind === 'bg')
+    expect(bg?.loopStart).toBeUndefined()
+  })
+
+  it('種別と中身が合わないものは弾く（効果音に画像・背景に音声・wav）', async () => {
+    const { env } = makeEnv()
+    expect((await call(onRequestPut, env, put('se', 'door-knock', { dataUrl: WEBP }))).status).toBe(
+      400,
+    )
+    expect(
+      (await call(onRequestPut, env, put('bg', 'room-day', { dataUrl: MP3, tone: TONE }))).status,
+    ).toBe(400)
+    expect(
+      (
+        await call(
+          onRequestPut,
+          env,
+          put('se', 'door-knock', { dataUrl: 'data:audio/wav;base64,UklGRg==' }),
+        )
+      ).status,
+    ).toBe(400)
+  })
+
+  it('立ち絵は時間帯を持たない', async () => {
+    const { env, objects } = makeEnv()
+    await call(
+      onRequestPut,
+      env,
+      put('sprite', 'silhouette-knight', { dataUrl: WEBP, tone: TONE, time: 'day' }),
+    )
+    const m = await manifestOf(objects)
+    expect(m.entries[0]).toMatchObject({ kind: 'sprite', category: 'knight' })
+    expect(m.entries[0]?.time).toBeUndefined()
+  })
+
+  it('形の違う slug・画像でない data URL・大きすぎる実体は弾く', async () => {
+    const { env } = makeEnv()
+    expect(
+      (await call(onRequestPut, env, put('bg', 'Room_Day', { dataUrl: WEBP, tone: TONE }))).status,
+    ).toBe(400)
+    expect(
+      (await call(onRequestPut, env, put('se', 'rain', { dataUrl: WEBP, tone: TONE }))).status,
+    ).toBe(400)
+    expect(
+      (
+        await call(
+          onRequestPut,
+          env,
+          put('bg', 'room-day', { dataUrl: 'data:text/plain;base64,SGk=', tone: TONE }),
+        )
+      ).status,
+    ).toBe(400)
+    const huge = `data:image/webp;base64,${'A'.repeat(TEMPLATE_MAX_DATA_URL)}`
+    expect(
+      (await call(onRequestPut, env, put('bg', 'room-day', { dataUrl: huge, tone: TONE }))).status,
+    ).toBe(413)
+  })
+
+  it('PATCH は渡した項目だけ書き換え、分類の表示名も持てる', async () => {
+    const { env, objects } = makeEnv()
+    await call(
+      onRequestPut,
+      env,
+      put('bg', 'room-day', { dataUrl: WEBP, tone: TONE, label: '部屋' }),
+    )
+    const res = await call(
+      onRequestPatch,
+      env,
+      new Request(BASE, {
+        method: 'PATCH',
+        headers: auth,
+        body: JSON.stringify({
+          entries: [{ kind: 'bg', slug: 'room-day', hidden: true, time: null }],
+          categories: { bg: { room: '室内' } },
+        }),
+      }),
+    )
+    expect(res.status).toBe(200)
+    const m = await manifestOf(objects)
+    expect(m.entries[0]).toMatchObject({ label: '部屋', hidden: true })
+    expect(m.entries[0]?.time).toBeUndefined()
+    expect(m.categories.bg).toEqual({ room: '室内' })
+  })
+
+  it('DELETE は非表示にするだけ（実体も項目も残る）。無い項目は 404', async () => {
+    const { env, objects } = makeEnv()
+    await call(onRequestPut, env, put('bg', 'room-day', { dataUrl: WEBP, tone: TONE }))
+    const res = await call(
+      onRequestDelete,
+      env,
+      new Request(`${BASE}?kind=bg&slug=room-day`, { method: 'DELETE', headers: auth }),
+    )
+    expect(res.status).toBe(200)
+    const m = await manifestOf(objects)
+    expect(m.entries[0]?.hidden).toBe(true)
+    expect(objects.has(templateObjectKey('bg', 'room-day'))).toBe(true)
+    const miss = await call(
+      onRequestDelete,
+      env,
+      new Request(`${BASE}?kind=bg&slug=nothing`, { method: 'DELETE', headers: auth }),
+    )
+    expect(miss.status).toBe(404)
+  })
+})

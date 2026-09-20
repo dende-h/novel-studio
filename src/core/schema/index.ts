@@ -164,6 +164,22 @@ export const WorkPlatformSchema = z.object({
 
   // ---- ここから下は コトノハ-grove- との取り決めに無い＝コトノハ-leaf- のローカル専用。
   //      送信時に落とす（src/ui/_api/publish.ts の toBundleWork）。 ----
+  /**
+   * **前回の投稿にサウンドノベル（プレイヤー付きの話）を載せたか**の控え（契約 v4）。
+   * 作品ぜんたいの切り替えは持たない——対象は novelGameEpisodes だけで決まる。この印は
+   * 「載せた実績はあるが、いまは1話も選ばれていない」＝先方へ解除を宣言すべき場合の判定に使う。
+   * ローカル専用で、先方へは episodes[].game の有無として伝わる。
+   */
+  novelGame: z.boolean().optional(),
+  /**
+   * 話ごとのサウンドノベル（話ID → する / しない）。**ここに true がある話だけ**が対象で、
+   * 記録の無い話はしない（`novelGameEpisodeOf`）＝公開は作者の明示的な一手で決まる。
+   *
+   * 話ごとの公開（episodeVisibility）と同じく、先方へは `platform` では無く
+   * episodes[].game の有無として伝わる。こちらでまとめて持つのは、公開先固有の
+   * 設定を Work 直下・Episode 直下へ散らさないため。
+   */
+  novelGameEpisodes: z.record(z.string(), z.boolean()).optional(),
   /** 最後に投稿できた時刻。ライブラリで「投稿済みか」を判定して公開切替を出すのに使う。 */
   lastPublishedAt: z.number().optional(),
   /** 前回の投稿で返ってきた読者ページ／管理画面（コトノハ-grove- の絶対URL）。 */

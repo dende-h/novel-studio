@@ -1,5 +1,6 @@
 // @vitest-environment node
 import { describe, expect, it } from 'vitest'
+import type { Staging } from '@/core/game'
 import type { IdeaNote } from '@/core/idea'
 import type { Plot } from '@/core/plot'
 import { ProfileRepository } from '@/core/profile'
@@ -9,6 +10,7 @@ import { ActivityRepository } from '@/core/storage/activityRepository'
 import { IdeaRepository } from '@/core/storage/ideaRepository'
 import { MemoryStore } from '@/core/storage/memoryStore'
 import { PlotRepository } from '@/core/storage/plotRepository'
+import { StagingRepository } from '@/core/storage/stagingRepository'
 import { StructureRepository } from '@/core/storage/structureRepository'
 import { WorkRepository } from '@/core/storage/workRepository'
 import type { Structure } from '@/core/structure'
@@ -179,6 +181,7 @@ function makeEnv(
   const ideas = new IdeaRepository(store)
   const profile = new ProfileRepository(store)
   const plots = new PlotRepository(store)
+  const stagings = new StagingRepository(store)
   const activityRepo = new ActivityRepository(store)
   const bases = new SyncBaseRepository(store)
   const lost = new Map<string, SyncLostEntry>()
@@ -191,6 +194,7 @@ function makeEnv(
     ideas,
     profile,
     plots,
+    stagings,
     bases,
     saveLost: async (entry) => {
       lost.set(entry.syncId, entry)
@@ -221,6 +225,7 @@ function makeEnv(
     ideas,
     profile,
     plots,
+    stagings,
     activityRepo,
     bases,
     lost,
@@ -577,6 +582,71 @@ describe('プロットの同期（plot:<id>・D-SYNC2-ITEMS の第4種目）', (
     expect(await plots.get('p1')).toBeUndefined()
     expect(lost.get('plot:p1')?.json).toContain('消えるプロット')
     expect(remote.rows.get('plot:p2')?.deleted).toBe(1)
+  })
+})
+
+const mkStaging = (
+  workId: string,
+  episodeId: string,
+  updatedAt: number,
+  speaker = '灯',
+): Staging => ({
+  workId,
+  episodeId,
+  cues: [{ blockId: 'b1', speaker }],
+  updatedAt,
+})
+
+describe('演出譜の同期（staging:<workId>:<episodeId>・D-SYNC2-ITEMS の第5種目）', () => {
+  it('ローカルの演出譜を push し、決定的 id でリモートに載る', async () => {
+    const { stagings, bases, remote, service } = makeEnv()
+    await stagings.put(mkStaging('w1', 'e1', 100))
+    const summary = await service.reconcile()
+    expect(summary?.pushed).toBe(1)
+    expect(remote.rows.get('staging:w1:e1')?.json).toContain('灯')
+    expect(await bases.get('staging:w1:e1')).toBeDefined()
+  })
+
+  it('他端末の演出譜を pull し、updatedAt を刻印せずそのまま保存する', async () => {
+    const remote = makeFakeRemote()
+    await remote.seedItem('staging:w9:e2', JSON.stringify(mkStaging('w9', 'e2', 777, '暁')), 777)
+    const { stagings, service } = makeEnv(remote)
+    const summary = await service.reconcile()
+    expect(summary?.pulled).toBe(1)
+    const got = await stagings.get('w9', 'e2')
+    expect(got?.cues[0]?.speaker).toBe('暁')
+    expect(got?.updatedAt).toBe(777) // put（素通し）＝時計が進まない
+  })
+
+  it('競合はリモートが新しければ synclost へ退避してから採用する', async () => {
+    const { stagings, lost, remote, service } = makeEnv()
+    await stagings.put(mkStaging('w1', 'e1', 100, 'v1'))
+    await service.reconcile()
+    await stagings.put(mkStaging('w1', 'e1', 150, 'ローカル編集'))
+    await remote.seedItem(
+      'staging:w1:e1',
+      JSON.stringify(mkStaging('w1', 'e1', 300, 'リモート編集')),
+      300,
+    )
+    const summary = await service.reconcile()
+    expect(summary?.conflicts).toEqual([{ workId: 'staging:w1:e1', winner: 'remote' }])
+    expect((await stagings.get('w1', 'e1'))?.cues[0]?.speaker).toBe('リモート編集')
+    expect(lost.get('staging:w1:e1')?.json).toContain('ローカル編集')
+  })
+
+  it('削除は両方向へ伝播する（リモート tombstone→synclost 退避つき削除／ローカル削除→purge）', async () => {
+    const { stagings, lost, remote, service } = makeEnv()
+    await stagings.put(mkStaging('w1', 'e1', 100, '消える演出'))
+    await stagings.put(mkStaging('w1', 'e2', 100))
+    await service.reconcile()
+    const row = remote.rows.get('staging:w1:e1')
+    if (!row) throw new Error('seed 失敗')
+    remote.rows.set('staging:w1:e1', { ...row, deleted: 1, json: '', updatedAt: 900 })
+    await stagings.remove('w1', 'e2')
+    await service.reconcile()
+    expect(await stagings.get('w1', 'e1')).toBeUndefined()
+    expect(lost.get('staging:w1:e1')?.json).toContain('消える演出')
+    expect(remote.rows.get('staging:w1:e2')?.deleted).toBe(1)
   })
 })
 

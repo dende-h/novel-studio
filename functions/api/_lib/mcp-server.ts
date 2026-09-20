@@ -13,8 +13,16 @@ import {
   worldPointerLine,
   worldToPlainText,
 } from '../../../src/core/exporter/plotToPlainText'
+import { stagingToPlainText } from '../../../src/core/exporter/stagingToPlainText'
 import { structuresToPlainText } from '../../../src/core/exporter/structureToPlainText'
 import { glossaryToPlainText, workToPlainText } from '../../../src/core/exporter/toPlainText'
+import { GAME_FEATURES } from '../../../src/core/game/features'
+import {
+  catalogBackgroundKeys,
+  catalogBgmKeys,
+  catalogSeKeys,
+  type TemplateManifest,
+} from '../../../src/core/game/templates'
 import {
   addEpisode,
   createWork,
@@ -23,11 +31,13 @@ import {
   deletePlotItem,
   deletePlotWorldNote,
   McpEditError,
+  parseStagingCueInputs,
   parseStructure,
   setEpisode,
   setOutlineNotes,
   setPlotMeta,
   setPlotWorldNote,
+  setStagingCues,
   setWorkMeta,
   upsertGlossaryEntry,
   upsertPlotBeat,
@@ -41,7 +51,7 @@ import { pickPrimaryPlot, WORLD_CUSTOM_SLOT, WORLD_SLOTS } from '../../../src/co
 
 /** クライアントが未指定のときに名乗る MCP プロトコル版（十分に新しい安定版）。 */
 const DEFAULT_PROTOCOL_VERSION = '2025-06-18'
-const SERVER_INFO = { name: 'novel-studio', version: '1.4.2' } as const
+const SERVER_INFO = { name: 'novel-studio', version: '1.10.0' } as const
 
 /**
  * クライアント（AI）へ最初に渡す使い方。MCP の `initialize` が返す標準の instructions。
@@ -60,6 +70,8 @@ const SERVER_INSTRUCTIONS = [
   '- 世界観設定（get_world / set_world_note）… 作品の決め事・設定ルール・執筆方針を置く',
   '  **作者だけの場所。公開されません。**',
   '- プロット（get_plot / upsert_plot_beat 等）… 幕とビート、プロットライン、伏線、秘密。公開されません。',
+  '- 演出譜（get_staging / set_staging）… サウンドノベル書き出し用の話者・立ち絵（席ごと）・場面の切れ目・背景・BGM。',
+  '  本文には一切触れない別レコードで、公開されません。',
   '',
   '守ってほしい手順：',
   '1. 用語集・プロット・本文のいずれかを書き換える前に、まず get_world でこの作品の決め事を読む。',
@@ -462,6 +474,132 @@ export const MCP_TOOLS = [
     },
   },
   {
+    name: 'get_staging',
+    description:
+      '1 つの話の演出譜（サウンドノベル書き出し用の話者・場面の切れ目・背景・BGM）を、本文の行ごとの [block_id: …] 付きで返す。話者が未設定のセリフには候補、空行 2 つ以上のあとの行には場面の切れ目の提案が〔提案: …〕として付く（提案は保存されていない）。set_staging の対象 block_id と使える背景・BGM のキーはここで確認する。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        ...workIdProp,
+        episode_id: { type: 'string', description: 'list_works の各話 id' },
+      },
+      required: ['work_id', 'episode_id'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'set_staging',
+    description: `1 つの話の演出（話者・立ち絵・場面の切れ目・背景・BGM${GAME_FEATURES.se ? '・効果音' : ''}・切り替え方）を行単位でまとめて付ける。本文は一切変わらない。cues の各要素は get_staging の [block_id: …] を指し、渡した項目だけ書き換える（省略＝据え置き・空文字＝削除・clear: true でその行の演出を丸ごと外す）。話者はセリフの行にだけ付けられ、用語集の人物名／？？？（名前を伏せる）／自由な名前が使える。**話者は名前枠だけで、立ち絵は出さない**。立ち絵は sprites で席（left / center / right・3 人まで）ごとに人物と表情を指示する（地の文でもセリフでも可・次の指示か場面の切れ目まで立ち続ける・話者が舞台にいればその人だけ明るくなる）。人物ごと描いた一枚絵の背景では hide_sprite で全員下げられる（次の場面の切れ目まで）。scene_break の行は暗転＋間をはさんでフェードで明ける（立ち絵は全員下がり、BGM も止まる）。BGM は bgm にキーを付けた行から鳴り始め、次の曲か bgm: "stop" か場面の切れ目まで続く（切れ目をまたいで鳴らす曲は切れ目の行で選び直す）。${GAME_FEATURES.se ? '効果音は se_repeat で 1回／2回／ずっと を選べ、se: "stop" で鳴っている環境音を止める。' : ''}どれか 1 行でもエラーになると全体が保存されない。`,
+    inputSchema: {
+      type: 'object',
+      properties: {
+        ...workIdProp,
+        episode_id: { type: 'string', description: 'list_works の各話 id' },
+        cues: {
+          type: 'array',
+          description: '行ごとの演出パッチ（1 件以上）',
+          items: {
+            type: 'object',
+            properties: {
+              block_id: { type: 'string', description: '対象の行（get_staging の [block_id: …]）' },
+              speaker: {
+                type: 'string',
+                description: '話者名（セリフの行のみ。？？？で名前を伏せる。空文字で外す）',
+              },
+              sprites: {
+                type: 'array',
+                description:
+                  'この行での立ち絵の指示（席ごと・話者とは独立）。指示した席だけ変わる。空配列でこの行の指示を外す',
+                items: {
+                  type: 'object',
+                  properties: {
+                    position: {
+                      type: 'string',
+                      enum: ['left', 'center', 'right', 'auto'],
+                      description:
+                        '席。省略・auto＝空いている席へ（中央→左→右。満席なら一番前から立っている人と交代）',
+                    },
+                    character: {
+                      type: 'string',
+                      description:
+                        '立たせる人物名（get_staging の「立ち絵」一覧にある人物）。空文字で position の席を下げる',
+                    },
+                    expression: {
+                      type: 'string',
+                      description:
+                        '表情（その人物の立ち絵にある表情から。省略＝立っていればそのまま・初めてなら既定の表情）',
+                    },
+                  },
+                  additionalProperties: false,
+                },
+              },
+              expression: {
+                type: 'string',
+                description:
+                  '旧式（sprites を使う）。舞台に立っている話者の表情を差し替える。空文字で外す',
+              },
+              appear: {
+                type: 'string',
+                description:
+                  '旧式（sprites を使う）。人物名を渡すと空いている席に立たせる。空文字で外す',
+              },
+              hide_sprite: {
+                type: 'boolean',
+                description:
+                  'この行で立ち絵を全員下げ、次の場面の切れ目まで出さない（人物ごと描いた一枚絵の背景に使う。話者名は出る。sprites で明示すれば戻る。false で外す）',
+              },
+              scene_break: {
+                type: 'boolean',
+                description:
+                  'ここから場面が変わる（暗転して一呼吸おき、この行がフェードで入る。立ち絵は全員下がり、BGM と環境音も止まる。背景はこの行で選んだもの、無ければ前のまま。false で外す）',
+              },
+              bg: {
+                type: 'string',
+                description:
+                  '背景キー（get_staging の「使える背景キー」から。"blackout" で真っ黒。空文字で外す）',
+              },
+              bgm: {
+                type: 'string',
+                description:
+                  'BGM キー（get_staging の「使える BGM キー」から。この行から鳴り始め、次の曲か "stop" か場面の切れ目まで続く。"stop" で停止。空文字で外す）',
+              },
+              // 効果音を出さない版（GAME_FEATURES.se＝false）では欄ごと出さない（渡しても mcp-edit が断る）
+              ...(GAME_FEATURES.se
+                ? {
+                    se: {
+                      type: 'string',
+                      description:
+                        '効果音キー（get_staging の「使える効果音キー」から。その行の表示と同時に鳴る。"stop" で鳴っている環境音を止める。空文字で外す）',
+                    },
+                    se_repeat: {
+                      type: 'string',
+                      enum: ['once', 'twice', 'loop'],
+                      description:
+                        '効果音の鳴らし方（省略・once＝1回。loop は次の場面の切れ目か se: "stop" まで鳴り続ける環境音）',
+                    },
+                  }
+                : {}),
+              transition: {
+                type: 'string',
+                description:
+                  '背景の切り替え方: fade（ゆっくり）/ cut（ぱっと）/ flash（白いフラッシュ）。bg と同じ行に付ける（空文字で外す）',
+              },
+              clear: {
+                type: 'boolean',
+                description:
+                  'true でこの行の演出を丸ごと外す（他の項目と併用不可。行き先を失った演出の掃除にも使う）',
+              },
+            },
+            required: ['block_id'],
+            additionalProperties: false,
+          },
+        },
+      },
+      required: ['work_id', 'episode_id', 'cues'],
+      additionalProperties: false,
+    },
+  },
+  {
     name: 'get_world',
     description:
       '1 作品の世界観設定（作者だけの決め事・設定ルール・執筆方針）を [slot: …, note_id: …] 付きで返す。**用語集・プロット・本文を書き換える前に必ず最初に読むこと。**ここは公開されないので、まだ読者に伏せている情報も書かれている。',
@@ -543,6 +681,8 @@ export interface McpDeps {
   listBackups(): Promise<Array<{ id: string; createdAt: number }>>
   /** 指定バックアップの内容をライブに戻す。 */
   restoreBackup(id: string): Promise<boolean>
+  /** 運営テンプレの目録（背景キーの検証と get_staging の一覧に使う）。無ければ組み込みだけ */
+  loadTemplateManifest?(): Promise<TemplateManifest | null>
   now(): number
   genId(): string
 }
@@ -645,6 +785,7 @@ async function callTool(
     'delete_plot_item',
     'set_world_note',
     'delete_world_note',
+    'set_staging',
   ])
   if (writeTools.has(name ?? '')) {
     if (!snap) {
@@ -896,6 +1037,22 @@ async function callTool(
           plots: deletePlotItem(snap.plots ?? [], workId, kind, str(args, 'item_id') ?? '', now),
         }
         message = '削除しました。'
+      } else if (name === 'set_staging') {
+        const templates = (await deps.loadTemplateManifest?.()) ?? null
+        const res = setStagingCues(
+          snap.stagings ?? [],
+          works,
+          workId,
+          str(args, 'episode_id') ?? '',
+          parseStagingCueInputs(args?.cues),
+          snap.gameAssets ?? [],
+          now,
+          catalogBackgroundKeys(templates),
+          catalogSeKeys(templates),
+          catalogBgmKeys(templates),
+        )
+        next = { ...snap, stagings: res.stagings }
+        message = `演出を保存しました（更新 ${res.applied} 行・外した演出 ${res.cleared} 件）。`
       }
 
       const saved = await deps.saveSnapshot(next)
@@ -915,9 +1072,27 @@ async function callTool(
     name === 'get_glossary' ||
     name === 'get_structures' ||
     name === 'get_plot' ||
-    name === 'get_world'
+    name === 'get_world' ||
+    name === 'get_staging'
   ) {
     if (!work) return text(`work_id "${workId}" の作品が見つかりません。`, true)
+    if (name === 'get_staging') {
+      const episodeId = str(args, 'episode_id') ?? ''
+      const episode = work.episodes.find((e) => e.id === episodeId)
+      if (!episode) return text(`episode_id "${episodeId}" の話が見つかりません。`, true)
+      const staging = (snap?.stagings ?? []).find(
+        (s) => s.workId === workId && s.episodeId === episodeId,
+      )
+      return text(
+        stagingToPlainText(
+          work,
+          episode,
+          staging,
+          snap?.gameAssets ?? [],
+          (await deps.loadTemplateManifest?.()) ?? null,
+        ),
+      )
+    }
     // 本文・構造も「書き換える前に決め事を読む」の対象。1 行の導線を先頭に置く
     // （本体を載せると本文が長いので、取りに行かせる形にする）。
     const primaryPlot = () =>

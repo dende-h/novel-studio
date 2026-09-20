@@ -10,6 +10,12 @@ import type { LocalBackupService } from '@/ui/backup/backup-service'
 import { createEditorStore, type EditorStore } from '@/ui/store/editorStore'
 import { Library } from './library'
 
+// 公開ページが投稿の前に目録を読みに行く（fetch）のを止める＝投稿の fetch だけを数えられる
+vi.mock('@/ui/_api/game-templates', () => ({
+  fetchTemplateManifest: async () => null,
+  fetchTemplateBytes: async () => null,
+}))
+
 const makeStore = (): EditorStore => {
   let n = 0
   const kv = new MemoryStore()
@@ -322,6 +328,59 @@ describe('Library コトノハ-grove- への投稿導線', () => {
       visibility: 'public',
       workUrl: `${PLATFORM_ORIGIN}/works/x`,
     })
+  })
+
+  it('サウンドノベルにする話がある作品は、公開へ戻すときも v4 で送る', async () => {
+    // 作品ぜんたいの切り替えは無い。ここの判断も「話ごとの記録に true があるか」で決まる
+    const LibraryWithPlatform = await loadLibraryWithPlatform()
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ ok: true, published: true, manageUrl: '/dashboard' }), {
+        status: 200,
+      }),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    const store = makeStore()
+    const id = await seedPublishedWork(store, 'draft')
+    await store.openWork(id)
+    await store.createEpisode('第一話')
+    store.setDraft('「おはよう」')
+    await store.save()
+    const episodeId = store.getSnapshot().work?.episodes[0]?.id ?? ''
+    await store.updateWorkMeta(id, {
+      platform: {
+        visibility: 'draft',
+        declaredAllAges: true,
+        declaredOriginal: true,
+        lastPublishedAt: 1,
+        novelGameEpisodes: { [episodeId]: true },
+      },
+    })
+    render(
+      <LibraryWithPlatform
+        store={store}
+        onEnterPublish={() => {}}
+        onEnterEditor={() => {}}
+        localBackup={fakeLocalBackup}
+        isMember={false}
+        onboarded={false}
+        activityRepo={fakeActivityRepo}
+        stagingRepo={{ get: async () => undefined, listByWork: async () => [] }}
+        gameAssetRepo={{ list: async () => [] }}
+      />,
+    )
+
+    fireEvent.click(await screen.findByRole('button', { name: '「投稿済み作」のメニュー' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: '公開する' }))
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledOnce())
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+    const sent = JSON.parse(init.body as string) as {
+      schemaVersion: number
+      work: { episodes: { game?: { html: string } }[] }
+    }
+    expect(sent.schemaVersion).toBe(4)
+    expect(sent.work.episodes[0]?.game?.html).toContain('<!doctype html>')
   })
 
   it('公開中の作品は「非公開（下書き）に戻す」を出し、draft で送り直す', async () => {

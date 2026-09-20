@@ -1,0 +1,1252 @@
+import type { CreditLine } from '../game/presets'
+import type { SeStep } from '../game/sePresets'
+
+/**
+ * サウンドノベルのプレイヤー（zip の index.html）。設計は docs/requirement/07-novel-game.md §5。
+ *
+ * 自己完結を最優先にする——シナリオ JSON・CSS・JS はすべて index.html に埋め、
+ * 外部参照はフォントと背景（assets/ 相対パス）だけ。fetch を使わないので、
+ * サーバ無しで index.html をダブルクリックしても（file://）動く。
+ *
+ * 品質の優先順（D-GAME-QUALITY）: 文字組 ＞ 文字送りの間 ＞ オート/スキップ/ログ/セーブ
+ * ＞ Ken Burns/クロスフェード。この4つをここで全部持つ。縦書きは G0 では持たない。
+ */
+
+/**
+ * 立ち絵の舞台の1人ぶん。k=立ち絵キー、p=席（l / c / r・3 人まで）、
+ * a=いま話している（明るく表示。a の付いた人物がいるときだけ、ほかを減光する）。
+ */
+export interface ScenarioStageEntry {
+  k: string
+  p: 'l' | 'c' | 'r'
+  a?: 1
+}
+
+/** プレイヤーの1メッセージ。units は文字送りの1コマ（HTML 断片、または [HTML, 純文字] の組）。 */
+export interface ScenarioPage {
+  id: string
+  kind: 'dialogue' | 'narration'
+  speaker?: string
+  /** 直前の空行数（間）。0 は省略 */
+  beat?: number
+  /**
+   * ここから場面が変わる＝**暗転＋間**（D-GAME-SCENE-CURTAIN）。幕を下ろして BGM・環境音を絞り、
+   * 一呼吸おいて、このページの背景（bg が無ければ前の背景）と立ち絵を幕の下で組んでからフェードで明ける。
+   * 復元・スキップ中・先頭ページでは暗転を省く。bgm / se のループもここで下りる（bgmAt / loopSeAt）
+   */
+  sceneBreak?: boolean
+  /**
+   * G0 では背景切替（bg）と同時のときだけ効く。単独 transition の意味論は G1 で決める。
+   * sceneBreak のページでは暗転からのフェードが優先され、この値は見ない
+   */
+  transition?: 'cut' | 'fade' | 'flash'
+  /** 背景が切り替わるページにだけ載る（先頭ページには必ず載る） */
+  bg?: string
+  /** 立ち絵の舞台が変わるページにだけ載る（その時点の**全景**。空配列 ＝ 全員退場） */
+  stage?: ScenarioStageEntry[]
+  /**
+   * このページを表示した瞬間に鳴らす効果音のキー（ses のレシピを合成）。
+   * `'stop'` は予約キーで、鳴っているループをここで止める（レシピは持たない）。
+   */
+  se?: string
+  /** 鳴らし方（省略＝1回）。'loop' は次の場面の切れ目か 'stop' まで続く */
+  seRepeat?: 2 | 'loop'
+  /**
+   * BGM が変わるページにだけ載る（bgms のキー）。次の曲か `'stop'`（予約キー・鳴っている曲を
+   * 止める）か**場面の切れ目（sceneBreak）まで**鳴り続ける。切れ目の行で選び直した曲は載り直す
+   */
+  bgm?: string
+  units: (string | [string, string])[]
+  /** 純本文（共有カード・オート送りの読み時間に使う） */
+  text: string
+}
+
+export interface ScenarioBg {
+  /** index.html からの相対パス */
+  src: string
+  label: string
+  /** 上・中・下の3色（共有カードの下地） */
+  tone: [string, string, string]
+}
+
+export interface GameScenario {
+  v: 1
+  workTitle: string
+  episodeTitle: string
+  author?: string
+  /** localStorage のセーブキー（作品×話で一意） */
+  saveKey: string
+  /**
+   * 開いた瞬間に始めるページ番号（**アプリ内プレビュー専用**）。
+   * 書き出し・投稿するプレイヤーには載せない＝読者はいつもタイトル画面から始める。
+   */
+  start?: number
+  defaultBg: string
+  bgs: Record<string, ScenarioBg>
+  /** 立ち絵（キー → 実体パス）。使われているときだけ載る */
+  sprites?: Record<string, { src: string; label: string }>
+  /**
+   * 効果音（キー → 合成レシピ か 音声ファイル）。使われているときだけ載る。
+   * `steps` は端末で合成（組み込み）、`src` は運営テンプレの音声ファイル（zip のパス・
+   * data URL・契約 v5 の `asset:<id>` のいずれか）
+   */
+  ses?: Record<string, { label: string; steps?: SeStep[]; period?: number; src?: string }>
+  /**
+   * BGM（キー → 音声ファイル）。使われているときだけ載る。`src` は zip のパス・data URL・
+   * 契約 v5 の `asset:<id>` のいずれか。`loopStart` / `loopEnd`（秒）は Web Audio のループ区間
+   * （D-GAME-BGM-LOOP・省略＝曲ぜんたい）
+   */
+  bgms?: Record<string, { label: string; src: string; loopStart?: number; loopEnd?: number }>
+  /** 同梱フォント（無ければシステムの明朝で表示） */
+  fontSrc?: string
+  credits: CreditLine[]
+  pages: ScenarioPage[]
+}
+
+function escapeHtml(s: string): string {
+  return s.replace(/[&<>"]/g, (c) =>
+    c === '&' ? '&amp;' : c === '<' ? '&lt;' : c === '>' ? '&gt;' : '&quot;',
+  )
+}
+
+export function buildPlayerHtml(scenario: GameScenario): string {
+  const title = escapeHtml(`${scenario.episodeTitle} — ${scenario.workTitle}`)
+  // JSON を <script> に埋めるため < をエスケープ（</script> による脱出を防ぐ）
+  const json = JSON.stringify(scenario).replace(/</g, '\\u003c')
+  const fontFace = scenario.fontSrc
+    ? `@font-face{font-family:'Shippori Mincho B1';src:url('${scenario.fontSrc}') format('woff2');font-weight:500;font-style:normal;font-display:swap}`
+    : ''
+  return `<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>${title}</title>
+<style>
+${fontFace}
+:root{--gold:#E8C88C;--ink:#EEF2FA;--dim:rgba(233,238,250,.55)}
+html,body{height:100%;margin:0;background:#05060A}
+#stage{position:fixed;inset:0;overflow:hidden;color:var(--ink);
+  font-family:'Shippori Mincho B1','Hiragino Mincho ProN','Yu Mincho','Noto Serif JP',serif;
+  user-select:none;-webkit-user-select:none;-webkit-tap-highlight-color:transparent;
+  touch-action:manipulation}
+.bg{position:absolute;inset:-5%;background-size:cover;background-position:center;opacity:0;
+  transition:opacity .9s ease}
+.bg.kb{animation:kb 38s ease-in-out infinite alternate}
+@keyframes kb{from{transform:scale(1) translate(0,0)}to{transform:scale(1.08) translate(-1.2%,.8%)}}
+#sprites{position:absolute;inset:0;pointer-events:none}
+#sprites img{position:absolute;bottom:0;transform:translateX(-50%);height:min(78vh,860px);
+  max-width:min(36vw,520px);object-fit:contain;object-position:bottom center;opacity:1;
+  transition:opacity .45s ease,left .5s ease,filter .35s ease}
+#sprites img.p-c{left:50%}
+#sprites img.p-l{left:22%}
+#sprites img.p-r{left:78%}
+#sprites img.dim{filter:brightness(.55) saturate(.85)}
+#sprites img.in,#sprites img.out{opacity:0}
+@media (prefers-reduced-motion:reduce){#sprites img{transition:opacity .45s ease}}
+#flash{position:absolute;inset:0;background:#fff;opacity:0;pointer-events:none}
+#flash.on{animation:fl .5s ease-out}
+@keyframes fl{0%{opacity:.9}100%{opacity:0}}
+#curtain{position:absolute;inset:0;background:#000;opacity:0;pointer-events:none;z-index:3;transition:opacity .6s ease}
+#curtain.on{opacity:1}
+#shade{position:absolute;inset:0;background:radial-gradient(120% 95% at 50% 10%,transparent 45%,rgba(0,0,0,.4) 100%);pointer-events:none}
+#hud{position:absolute;top:calc(10px + env(safe-area-inset-top,0px));right:calc(12px + env(safe-area-inset-right,0px));display:flex;gap:2px;z-index:4}
+#hud button{background:none;border:0;padding:6px 8px;cursor:pointer;color:var(--dim);
+  font-family:'Noto Sans JP','Hiragino Sans',sans-serif;font-size:11px;letter-spacing:.14em}
+#hud button.on{color:var(--gold)}
+#hud button.on::after{content:'●';font-size:6px;vertical-align:.35em;margin-left:3px}
+#box{position:absolute;left:calc(4% + env(safe-area-inset-left,0px));right:calc(4% + env(safe-area-inset-right,0px));bottom:calc(4.5% + env(safe-area-inset-bottom,0px));
+  background:rgba(7,11,22,.68);border:1px solid rgba(226,233,250,.16);border-radius:8px;
+  padding:18px clamp(16px,3vw,30px) 20px;max-height:46vh;overflow-y:auto;z-index:2}
+#name{color:var(--gold);letter-spacing:.22em;font-size:clamp(.85rem,1.6vw,1rem);margin:0 0 .5em;font-weight:600}
+#text{margin:0;font-size:clamp(1.02rem,2.2vw,1.42rem);line-height:1.9;min-height:3.8em;font-weight:500;overflow-wrap:anywhere}
+#line em.dots{font-style:normal;text-emphasis:filled dot;-webkit-text-emphasis:filled dot}
+#next{display:inline-block;margin-left:.4em;font-size:.72em;color:var(--gold);animation:bl 1.4s steps(1) infinite}
+@keyframes bl{0%,55%{opacity:1}56%,100%{opacity:.1}}
+.overlay{position:absolute;inset:0;background:rgba(5,8,16,.82);z-index:6;display:flex;
+  flex-direction:column;align-items:center;justify-content:center;text-align:center;
+  padding:28px 20px;overflow-y:auto;-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px)}
+.overlay h2{font-size:1rem;letter-spacing:.3em;color:var(--dim);font-weight:600;margin:0 0 18px}
+.t-work{color:var(--dim);letter-spacing:.2em;font-size:.9rem;margin:0 0 14px}
+.t-ep{font-size:clamp(1.6rem,4.6vw,2.6rem);font-weight:600;letter-spacing:.06em;margin:0 0 10px;line-height:1.5}
+.t-author{color:var(--dim);font-size:.9rem;margin:0 0 34px}
+.t-mark{color:var(--dim);font-size:.72rem;letter-spacing:.12em;margin:40px 0 0}
+.act{display:block;min-width:220px;margin:7px auto;background:none;color:var(--ink);cursor:pointer;
+  border:1px solid rgba(233,238,250,.34);border-radius:999px;padding:.62em 2em;
+  font-family:inherit;font-size:.95rem;letter-spacing:.12em}
+.act:hover{background:rgba(255,255,255,.08)}
+.hint{color:var(--dim);font-size:.78rem;margin:26px 0 0}
+#logBody{width:min(680px,100%);margin:0 auto;text-align:left;flex:1 1 auto;overflow-y:auto}
+.log-item{border-bottom:1px solid rgba(233,238,250,.12);padding:12px 4px}
+.log-name{color:var(--gold);font-size:.82rem;letter-spacing:.18em;display:block;margin-bottom:4px}
+.log-item p{margin:0;line-height:1.85;font-size:.95rem}
+#menu .note,#credits .note{color:var(--dim);font-size:.8rem;line-height:1.9;margin:22px 0 0;max-width:420px}
+.speed{display:flex;align-items:center;gap:10px;margin:0 0 18px;color:var(--dim);font-size:.82rem}
+.speed input{width:180px;accent-color:var(--gold)}
+.credit-line{max-width:560px;margin:0 0 14px;text-align:left}
+.credit-line b{display:block;color:var(--dim);font-size:.74rem;letter-spacing:.2em;font-weight:600;margin-bottom:2px}
+.credit-line span{font-size:.9rem;line-height:1.8}
+#end .fin{font-size:clamp(2rem,6vw,3rem);letter-spacing:.3em;margin:0 0 8px;font-weight:600}
+#msg{position:absolute;left:50%;bottom:14%;transform:translateX(-50%);background:rgba(7,11,22,.85);
+  border:1px solid rgba(226,233,250,.2);border-radius:6px;color:var(--ink);font-size:.85rem;
+  padding:.55em 1.2em;opacity:0;transition:opacity .3s;pointer-events:none;z-index:8;white-space:nowrap}
+#msg.on{opacity:1}
+[hidden]{display:none!important}
+@media (prefers-reduced-motion:reduce){.bg.kb,#next{animation:none}}
+</style>
+</head>
+<body>
+<div id="stage">
+  <div id="bgA" class="bg"></div>
+  <div id="bgB" class="bg"></div>
+  <div id="sprites"></div>
+  <div id="shade"></div>
+  <div id="flash"></div>
+  <div id="curtain"></div>
+  <div id="hud" hidden>
+    <button id="btnAuto" type="button">オート</button>
+    <button id="btnSkip" type="button">スキップ</button>
+    <button id="btnLog" type="button">ログ</button>
+    <button id="btnMenu" type="button">メニュー</button>
+  </div>
+  <div id="box" hidden>
+    <p id="name" hidden></p>
+    <p id="text"><span id="line"></span><span id="next" hidden>▼</span></p>
+  </div>
+  <div id="ovTitle" class="overlay">
+    <p class="t-work"></p>
+    <h1 class="t-ep"></h1>
+    <p class="t-author" hidden></p>
+    <button id="btnContinue" class="act" type="button" hidden>つづきから</button>
+    <button id="btnStart" class="act" type="button">はじめから</button>
+    <p class="hint">タップかクリックで読み進めます</p>
+    <p class="t-mark">コトノハ-leaf-</p>
+  </div>
+  <div id="ovLog" class="overlay" hidden>
+    <h2>ログ</h2>
+    <div id="logBody"></div>
+    <button class="act close" type="button">閉じる</button>
+  </div>
+  <div id="ovMenu" class="overlay" hidden>
+    <h2>メニュー</h2>
+    <div class="speed"><span>ゆっくり</span><input id="speed" type="range" min="1" max="5" step="1"><span>はやい</span></div>
+    <button id="btnBgm" class="act" type="button"></button>
+    <button id="btnSe" class="act" type="button"></button>
+    <button id="btnSave" class="act" type="button">ここまでを保存</button>
+    <button id="btnCard" class="act" type="button">この一文をカードにする</button>
+    <button id="btnCredits" class="act" type="button">クレジット</button>
+    <button id="btnRestart" class="act" type="button">はじめから読み直す</button>
+    <button id="btnTitle" class="act" type="button">タイトルに戻る</button>
+    <button class="act close" type="button">閉じる</button>
+    <p class="note">読んだところまでは、この端末に自動でも保存されます。次に開いたとき「つづきから」で戻れます。</p>
+  </div>
+  <div id="ovCredits" class="overlay" hidden>
+    <h2>クレジット</h2>
+    <div id="creditBody"></div>
+    <button class="act close" type="button">閉じる</button>
+  </div>
+  <div id="ovEnd" class="overlay" hidden>
+    <p class="fin">了</p>
+    <p class="t-work"></p>
+    <button id="btnEndCard" class="act" type="button">一行カードをつくる</button>
+    <button id="btnAgain" class="act" type="button">もう一度読む</button>
+    <button id="btnEndCredits" class="act" type="button">クレジット</button>
+  </div>
+  <div id="msg"></div>
+</div>
+<!-- 素材の実体（キー → data URL）。**配信側が埋める席**（契約 v5）。
+     書き出し・プレビューでは空のまま＝シナリオ側が実体を直接持つ。 -->
+<script id="assets" type="application/json">{}</script>
+<script id="scenario" type="application/json">${json}</script>
+<script>
+(function () {
+  'use strict'
+  var S = JSON.parse(document.getElementById('scenario').textContent)
+  // 素材の実体。'asset:<id>' で参照された分だけここから引く（空なら src がそのまま実体）
+  var A = {}
+  try { A = JSON.parse(document.getElementById('assets').textContent) || {} } catch (e) { A = {} }
+  function srcOf(s) { return s && s.slice(0, 6) === 'asset:' ? (A[s.slice(6)] || '') : s }
+  function $(id) { return document.getElementById(id) }
+  var bgA = $('bgA'), bgB = $('bgB'), flashEl = $('flash'), curtainEl = $('curtain'), hud = $('hud')
+  var spritesEl = $('sprites')
+  var box = $('box'), nameEl = $('name'), lineEl = $('line'), nextEl = $('next')
+  var overlays = { title: $('ovTitle'), log: $('ovLog'), menu: $('ovMenu'), credits: $('ovCredits'), end: $('ovEnd') }
+  var SETTINGS_KEY = 'kotonoha:novel-game:settings'
+  var SPEEDS = [72, 50, 34, 22, 13] // ゆっくり → はやい（1コマの ms）
+  var settings = { speed: 3, se: true, bgm: true }
+  var state = { i: -1, maxSeen: -1, typing: false, timer: 0, unitIdx: 0,
+    auto: false, skip: false, front: 'A', bgKey: '', started: false, curtain: false }
+
+  function esc(s) {
+    return String(s).replace(/[&<>"]/g, function (c) {
+      return c === '&' ? '&amp;' : c === '<' ? '&lt;' : c === '>' ? '&gt;' : '&quot;'
+    })
+  }
+  function loadJson(key) {
+    try { return JSON.parse(localStorage.getItem(key)) } catch (e) { return null }
+  }
+  function saveJson(key, value) {
+    try { localStorage.setItem(key, JSON.stringify(value)) } catch (e) {}
+  }
+
+  var stored = loadJson(SETTINGS_KEY)
+  if (stored && stored.speed >= 1 && stored.speed <= 5) settings.speed = stored.speed
+  if (stored && typeof stored.se === 'boolean') settings.se = stored.se
+  if (stored && typeof stored.bgm === 'boolean') settings.bgm = stored.bgm
+
+  function unitHtml(u) { return typeof u === 'string' ? u : u[0] }
+  function unitText(u) { return typeof u === 'string' ? u : u[1] }
+  function pageHtml(p) { return p.units.map(unitHtml).join('') }
+
+  function overlayOpen() {
+    for (var k in overlays) { if (!overlays[k].hidden) return true }
+    return false
+  }
+  function openOverlay(name) {
+    for (var k in overlays) overlays[k].hidden = k !== name
+  }
+  function closeOverlays() {
+    for (var k in overlays) overlays[k].hidden = true
+  }
+
+  // ---- 背景（二枚のレイヤをクロスフェード。パツンと切り替えない） ----
+  function bgAt(i) {
+    var key = S.defaultBg
+    for (var j = 0; j <= i && j < S.pages.length; j++) { if (S.pages[j].bg) key = S.pages[j].bg }
+    return key
+  }
+  function setBg(key, transition, instant) {
+    if (key === state.bgKey || !S.bgs[key]) return
+    state.bgKey = key
+    var front = state.front === 'A' ? bgA : bgB
+    var back = state.front === 'A' ? bgB : bgA
+    back.style.backgroundImage = 'url("' + srcOf(S.bgs[key].src) + '")'
+    back.classList.remove('kb'); void back.offsetWidth; back.classList.add('kb')
+    if (instant || transition === 'cut' || transition === 'flash') {
+      back.style.transition = 'none'; front.style.transition = 'none'
+      back.style.opacity = '1'; front.style.opacity = '0'
+      requestAnimationFrame(function () { back.style.transition = ''; front.style.transition = '' })
+    } else {
+      back.style.opacity = '1'; front.style.opacity = '0'
+    }
+    if (transition === 'flash') {
+      flashEl.classList.remove('on'); void flashEl.offsetWidth; flashEl.classList.add('on')
+    }
+    state.front = state.front === 'A' ? 'B' : 'A'
+  }
+
+  // ---- 立ち絵の舞台（席は左・中央・右の 3 つ。exporter が席の指示から stage マーカーへ解決済み） ----
+  function stageAt(i) {
+    var st = []
+    for (var j = 0; j <= i && j < S.pages.length; j++) {
+      if (S.pages[j].stage) st = S.pages[j].stage
+    }
+    return st
+  }
+  function noTrans(el) {
+    el.style.transition = 'none'
+    requestAnimationFrame(function () { el.style.transition = '' })
+  }
+  function applyStage(list, instant) {
+    var want = {}, anyActive = false
+    for (var i = 0; i < list.length; i++) { want[list[i].k] = list[i]; if (list[i].a) anyActive = true }
+    // 話している人が舞台にいるときだけ、ほかを減光する（誰も話していなければ全員ふつうの明るさ）
+    function classOf(e) { return 'p-' + e.p + (anyActive && !e.a ? ' dim' : '') }
+    // 既存の立ち絵を更新（位置・明暗）、要らなくなった分は退場
+    var imgs = spritesEl.querySelectorAll('img')
+    for (var j = 0; j < imgs.length; j++) {
+      var img = imgs[j]
+      // 退場アニメ中の分は「もういない」扱い（再入場は新しい img で来る＝すれ違いのクロスフェード）
+      if (img.classList.contains('out')) continue
+      var entry = want[img.getAttribute('data-k')]
+      if (!entry) {
+        if (instant) { img.remove() }
+        else {
+          img.classList.add('out')
+          ;(function (el) { setTimeout(function () { el.remove() }, 500) })(img)
+        }
+      } else {
+        img.className = classOf(entry)
+        if (instant) noTrans(img)
+        delete want[img.getAttribute('data-k')]
+      }
+    }
+    // 新しく入場する分
+    for (var k in want) {
+      if (!(S.sprites && S.sprites[k])) continue
+      var e = want[k]
+      var el = document.createElement('img')
+      el.setAttribute('data-k', k)
+      el.src = srcOf(S.sprites[k].src)
+      el.alt = S.sprites[k].label
+      el.className = classOf(e) + (instant ? '' : ' in')
+      spritesEl.appendChild(el)
+      if (instant) noTrans(el)
+      else {
+        ;(function (node) {
+          requestAnimationFrame(function () {
+            requestAnimationFrame(function () { node.classList.remove('in') })
+          })
+        })(el)
+      }
+    }
+  }
+
+  // ---- 効果音（合成レシピの小型インタプリタ ＋ 音声ファイル） ----
+  var audioCtx = null, noiseBufs = {}, reverbIr = null
+  function ensureAudio() {
+    if (!audioCtx) {
+      try { audioCtx = new (window.AudioContext || window.webkitAudioContext)() } catch (e) { return null }
+      preloadSes()
+      preloadBgms()
+    }
+    if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume()
+    return audioCtx
+  }
+  // 音声ファイルの効果音（src）。取って復号したバッファを覚え、同じ音は 1 回だけ取る。
+  var seBufs = {}, seLoading = {}
+  function loadSeBuffer(key, cb) {
+    if (seBufs[key]) { cb(seBufs[key]); return }
+    var ctx = ensureAudio()
+    var src = S.ses && S.ses[key] ? srcOf(S.ses[key].src) : ''
+    if (!ctx || !src) return
+    if (seLoading[key]) { seLoading[key].push(cb); return }
+    seLoading[key] = [cb]
+    fetch(src)
+      .then(function (r) { return r.arrayBuffer() })
+      .then(function (ab) {
+        return new Promise(function (res, rej) { ctx.decodeAudioData(ab, res, rej) })
+      })
+      .then(function (buf) {
+        seBufs[key] = buf
+        var cbs = seLoading[key] || []
+        delete seLoading[key]
+        for (var i = 0; i < cbs.length; i++) cbs[i](buf)
+      })
+      .catch(function () { delete seLoading[key] })
+  }
+  /** 使う音声ファイルを先に取っておく（最初の 1 音が遅れないように）。 */
+  function preloadSes() {
+    if (!S.ses) return
+    for (var k in S.ses) if (S.ses[k].src) loadSeBuffer(k, function () {})
+  }
+  function playBuffer(ctx, buf, at, dest) {
+    var src = ctx.createBufferSource()
+    src.buffer = buf
+    src.connect(dest)
+    src.start(at)
+    return src
+  }
+  /** ノイズ 3 色（2 秒・ループ）。pink は Paul Kellet の近似、brown は白色の積分。sePlayer.ts と同じ式 */
+  function getNoise(ctx, kind) {
+    if (noiseBufs[kind]) return noiseBufs[kind]
+    var len = ctx.sampleRate * 2
+    var buf = ctx.createBuffer(1, len, ctx.sampleRate)
+    var data = buf.getChannelData(0)
+    var i, w
+    if (kind === 'pink') {
+      var b0 = 0, b1 = 0, b2 = 0, b3 = 0, b4 = 0, b5 = 0, b6 = 0
+      for (i = 0; i < len; i++) {
+        w = Math.random() * 2 - 1
+        b0 = 0.99886 * b0 + w * 0.0555179
+        b1 = 0.99332 * b1 + w * 0.0750759
+        b2 = 0.969 * b2 + w * 0.153852
+        b3 = 0.8665 * b3 + w * 0.3104856
+        b4 = 0.55 * b4 + w * 0.5329522
+        b5 = -0.7616 * b5 - w * 0.016898
+        data[i] = (b0 + b1 + b2 + b3 + b4 + b5 + b6 + w * 0.5362) * 0.11
+        b6 = w * 0.115926
+      }
+    } else if (kind === 'brown') {
+      var last = 0
+      for (i = 0; i < len; i++) {
+        w = Math.random() * 2 - 1
+        last = (last + 0.02 * w) / 1.02
+        data[i] = last * 3.5
+      }
+    } else {
+      for (i = 0; i < len; i++) data[i] = Math.random() * 2 - 1
+    }
+    noiseBufs[kind] = buf
+    return buf
+  }
+  /** 合成した部屋の残響（1.6 秒・指数減衰のノイズ・ステレオ）。 */
+  function getReverbIr(ctx) {
+    if (reverbIr) return reverbIr
+    var len = Math.floor(ctx.sampleRate * 1.6)
+    var buf = ctx.createBuffer(2, len, ctx.sampleRate)
+    for (var ch = 0; ch < 2; ch++) {
+      var data = buf.getChannelData(ch)
+      for (var i = 0; i < len; i++) data[i] = (Math.random() * 2 - 1) * Math.exp((-4.5 * i) / len)
+    }
+    reverbIr = buf
+    return buf
+  }
+  /** レシピ 1 回ぶんを、指定の時刻から dest へ流す（時刻は AudioContext の絶対秒）。 */
+  function scheduleSe(ctx, steps, base, dest) {
+    var reverb = null
+    function getReverb() {
+      if (!reverb) {
+        reverb = ctx.createConvolver()
+        reverb.buffer = getReverbIr(ctx)
+        reverb.connect(dest)
+      }
+      return reverb
+    }
+    for (var i = 0; i < steps.length; i++) {
+      var s = steps[i]
+      var t0 = base + (s.t || 0)
+      var end = t0 + s.d
+      var peak = Math.max(s.g == null ? 0.5 : s.g, 0.001)
+      var src
+      if (s.w === 'noise' || s.w === 'pink' || s.w === 'brown') {
+        src = ctx.createBufferSource()
+        src.buffer = getNoise(ctx, s.w)
+        src.loop = true
+      } else {
+        src = ctx.createOscillator()
+        src.type = s.w
+        src.frequency.setValueAtTime(s.f || 440, t0)
+        if (s.f2) src.frequency.exponentialRampToValueAtTime(s.f2, end)
+      }
+      var node = src
+      if (s.hp) {
+        var hp = ctx.createBiquadFilter()
+        hp.type = 'highpass'
+        hp.frequency.setValueAtTime(s.hp, t0)
+        node.connect(hp)
+        node = hp
+      }
+      if (s.bp) {
+        var bp = ctx.createBiquadFilter()
+        bp.type = 'bandpass'
+        bp.frequency.setValueAtTime(s.bp, t0)
+        if (s.bp2) bp.frequency.exponentialRampToValueAtTime(s.bp2, end)
+        bp.Q.setValueAtTime(s.q == null ? 1 : s.q, t0)
+        node.connect(bp)
+        node = bp
+      }
+      if (s.lp) {
+        var lp = ctx.createBiquadFilter()
+        lp.type = 'lowpass'
+        lp.frequency.setValueAtTime(s.lp, t0)
+        if (s.lp2) lp.frequency.exponentialRampToValueAtTime(s.lp2, end)
+        node.connect(lp)
+        node = lp
+      }
+      // エンベロープ：a 秒で立ち上がり → s 秒保つ → end までに指数減衰
+      var attack = Math.max(0.001, s.a == null ? 0.015 : s.a)
+      var holdUntil = t0 + attack + (s.s || 0)
+      var gain = ctx.createGain()
+      gain.gain.setValueAtTime(0.0001, t0)
+      gain.gain.exponentialRampToValueAtTime(peak, Math.min(t0 + attack, end))
+      if (holdUntil > t0 + attack && holdUntil < end) gain.gain.setValueAtTime(peak, holdUntil)
+      gain.gain.exponentialRampToValueAtTime(0.0001, end)
+      // 音量の揺らぎ（LFO を gain の値に足す）
+      if (s.mf && s.md) {
+        var lfo = ctx.createOscillator()
+        lfo.type = 'sine'
+        lfo.frequency.setValueAtTime(s.mf, t0)
+        var depth = ctx.createGain()
+        depth.gain.setValueAtTime(peak * Math.min(s.md, 0.9), t0)
+        lfo.connect(depth)
+        depth.connect(gain.gain)
+        lfo.start(t0)
+        lfo.stop(end + 0.05)
+      }
+      node.connect(gain)
+      gain.connect(dest)
+      if (s.rv) {
+        var send = ctx.createGain()
+        send.gain.setValueAtTime(Math.min(s.rv, 1), t0)
+        gain.connect(send)
+        send.connect(getReverb())
+      }
+      src.start(t0)
+      src.stop(end + 0.05)
+    }
+  }
+  function seDur(steps) {
+    var max = 0
+    for (var i = 0; i < steps.length; i++) max = Math.max(max, (steps[i].t || 0) + steps[i].d)
+    return Math.max(0.2, max)
+  }
+  /** 1回／2回。ループは startLoopSe が受け持つ（1回ものはループに重ねて鳴らせる）。 */
+  function playSe(key, repeat) {
+    if (!settings.se || !(S.ses && S.ses[key])) return
+    var ctx = ensureAudio()
+    if (!ctx) return
+    var se = S.ses[key]
+    if (se.src) {
+      loadSeBuffer(key, function (buf) {
+        var at = ctx.currentTime + 0.02
+        playBuffer(ctx, buf, at, ctx.destination)
+        if (repeat === 2) playBuffer(ctx, buf, at + buf.duration, ctx.destination)
+      })
+      return
+    }
+    var steps = se.steps
+    var base = ctx.currentTime + 0.02
+    scheduleSe(ctx, steps, base, ctx.destination)
+    if (repeat === 2) scheduleSe(ctx, steps, base + seDur(steps), ctx.destination)
+  }
+
+  // ---- ループする効果音（環境音）。場面の切れ目か 'stop' まで続く ----
+  // タイマーだけで繰り返すと、ずれて継ぎ目が空く。先の数秒ぶんを**絶対時刻で**予約し、
+  // タイマーは「次の予約をしに来る」係にする。止めるのは専用の gain を絞って行う。
+  var wantLoop = null, playingLoop = null, loopGain = null, loopTimer = 0, loopNext = 0, loopSource = null
+  function loopSeAt(i) {
+    var key = null
+    for (var j = 0; j <= i && j < S.pages.length; j++) {
+      var p = S.pages[j]
+      if (p.sceneBreak) key = null
+      if (p.se === 'stop') key = null
+      else if (p.se && p.seRepeat === 'loop') key = p.se
+    }
+    return key
+  }
+  function stopLoopSe() {
+    playingLoop = null
+    clearTimeout(loopTimer)
+    loopTimer = 0
+    if (loopGain && audioCtx) {
+      var g = loopGain, s = loopSource
+      try { g.gain.setTargetAtTime(0.0001, audioCtx.currentTime, 0.06) } catch (e) {}
+      setTimeout(function () {
+        try { if (s) s.stop() } catch (e) {}
+        try { g.disconnect() } catch (e) {}
+      }, 800)
+    }
+    loopGain = null
+    loopSource = null
+  }
+  function startLoopSe(key) {
+    var ctx = ensureAudio()
+    if (!ctx || !(S.ses && S.ses[key])) return
+    var se = S.ses[key]
+    loopGain = ctx.createGain()
+    loopGain.gain.setValueAtTime(1, ctx.currentTime)
+    loopGain.connect(ctx.destination)
+    playingLoop = key
+    if (se.src) {
+      // 音声ファイルは 1 本の source をループさせる（継ぎ目はファイル側で作ってある前提）
+      var gainForKey = loopGain
+      loadSeBuffer(key, function (buf) {
+        if (playingLoop !== key || loopGain !== gainForKey) return
+        var s = ctx.createBufferSource()
+        s.buffer = buf
+        s.loop = true
+        s.connect(gainForKey)
+        s.start(ctx.currentTime + 0.02)
+        loopSource = s
+      })
+      return
+    }
+    var steps = se.steps
+    var period = Math.max(0.2, se.period || seDur(steps))
+    loopNext = ctx.currentTime + 0.02
+    var pump = function () {
+      if (playingLoop !== key) return
+      var until = ctx.currentTime + 4
+      while (loopNext < until) {
+        scheduleSe(ctx, steps, loopNext, loopGain)
+        loopNext += period
+      }
+      loopTimer = setTimeout(pump, 2000)
+    }
+    pump()
+  }
+  /** 設定（効果音のあり／なし）と、いま鳴っているべき音を突き合わせる。 */
+  function syncLoopSe() {
+    var want = settings.se ? wantLoop : null
+    if (want === playingLoop) return
+    stopLoopSe()
+    if (want) startLoopSe(want)
+  }
+
+  // ---- BGM。次の曲か 'stop' か場面の切れ目（暗転）まで鳴り続ける ----
+  // 実体は Web Audio で回す（loopStart / loopEnd＝目録のループ区間・サンプル単位で継ぎ目なし）。
+  // file:// で開いた zip では fetch が通らないので、そのときは <audio loop> に倒す（曲ぜんたいを回す）。
+  var BGM_GAIN = 0.6
+  var wantBgm = null, playingBgm = null, bgmGain = null, bgmSource = null, bgmEl = null
+  var bgmBufs = {}, bgmLoading = {}, bgmFailed = {}
+  function bgmAt(i) {
+    var key = null
+    for (var j = 0; j <= i && j < S.pages.length; j++) {
+      var p = S.pages[j]
+      if (p.sceneBreak) key = null
+      if (p.bgm === 'stop') key = null
+      else if (p.bgm) key = p.bgm
+    }
+    return key
+  }
+  function loadBgmBuffer(key, cb) {
+    if (bgmBufs[key]) { cb(bgmBufs[key]); return }
+    if (bgmFailed[key]) { cb(null); return }
+    var ctx = ensureAudio()
+    var src = S.bgms && S.bgms[key] ? srcOf(S.bgms[key].src) : ''
+    if (!ctx || !src) { cb(null); return }
+    if (bgmLoading[key]) { bgmLoading[key].push(cb); return }
+    bgmLoading[key] = [cb]
+    var done = function (buf) {
+      if (buf) bgmBufs[key] = buf
+      else bgmFailed[key] = true
+      var cbs = bgmLoading[key] || []
+      delete bgmLoading[key]
+      for (var i = 0; i < cbs.length; i++) cbs[i](buf)
+    }
+    fetch(src)
+      .then(function (r) { return r.arrayBuffer() })
+      .then(function (ab) {
+        return new Promise(function (res, rej) { ctx.decodeAudioData(ab, res, rej) })
+      })
+      .then(done)
+      .catch(function () { done(null) })
+  }
+  /** 使う曲を先に取っておく（最初の 1 曲が遅れないように）。 */
+  function preloadBgms() {
+    if (!S.bgms) return
+    for (var k in S.bgms) loadBgmBuffer(k, function () {})
+  }
+  function stopBgm() {
+    playingBgm = null
+    if (bgmGain && audioCtx) {
+      var g = bgmGain, s = bgmSource
+      try { g.gain.setTargetAtTime(0.0001, audioCtx.currentTime, 0.18) } catch (e) {}
+      setTimeout(function () {
+        try { if (s) s.stop() } catch (e) {}
+        try { g.disconnect() } catch (e) {}
+      }, 900)
+    }
+    bgmGain = null
+    bgmSource = null
+    if (bgmEl) {
+      var el = bgmEl
+      bgmEl = null
+      var steps = 8
+      var fade = setInterval(function () {
+        steps--
+        try { el.volume = Math.max(0, (el.volume - BGM_GAIN / 8)) } catch (e) {}
+        if (steps <= 0) { clearInterval(fade); try { el.pause() } catch (e) {} }
+      }, 90)
+    }
+  }
+  /** 曲ぜんたいを <audio> で回す（Web Audio が使えないとき・file:// の zip）。 */
+  function startBgmElement(key, src) {
+    var el = new Audio()
+    el.loop = true
+    el.volume = BGM_GAIN
+    el.src = src
+    bgmEl = el
+    var p = el.play()
+    if (p && p.catch) p.catch(function () {})
+  }
+  function startBgm(key) {
+    if (!(S.bgms && S.bgms[key])) return
+    var bgm = S.bgms[key]
+    var src = srcOf(bgm.src)
+    if (!src) return
+    playingBgm = key
+    var ctx = ensureAudio()
+    if (!ctx) { startBgmElement(key, src); return }
+    loadBgmBuffer(key, function (buf) {
+      if (playingBgm !== key) return
+      if (!buf) { startBgmElement(key, src); return }
+      var g = ctx.createGain()
+      g.gain.setValueAtTime(0.0001, ctx.currentTime)
+      g.gain.exponentialRampToValueAtTime(BGM_GAIN, ctx.currentTime + 0.8)
+      g.connect(ctx.destination)
+      var s = ctx.createBufferSource()
+      s.buffer = buf
+      s.loop = true
+      var ls = typeof bgm.loopStart === 'number' ? bgm.loopStart : 0
+      var le = typeof bgm.loopEnd === 'number' ? bgm.loopEnd : 0
+      if (le > ls && le <= buf.duration) { s.loopStart = ls; s.loopEnd = le }
+      s.connect(g)
+      s.start(ctx.currentTime + 0.02)
+      bgmGain = g
+      bgmSource = s
+    })
+  }
+  /** 設定（BGM のあり／なし）と、いま鳴っているべき曲を突き合わせる。 */
+  function syncBgm() {
+    var want = settings.bgm ? wantBgm : null
+    if (want === playingBgm) return
+    stopBgm()
+    if (want) startBgm(want)
+  }
+
+  // ---- 埋め込み先（grove 等）への通知。単体（zip・file://）では何もしない ----
+  function notifyHost(event) {
+    try {
+      if (window.parent && window.parent !== window) {
+        window.parent.postMessage(
+          { type: 'kotonoha-novel-game', event: event, page: state.i, total: S.pages.length },
+          '*',
+        )
+      }
+    } catch (e) {}
+  }
+
+  // ---- セーブ（進んだ分は自動で。メニューの「ここまでを保存」は同じ席へ明示的に書く） ----
+  function save() { saveJson(S.saveKey, { i: state.i, max: state.maxSeen, t: Date.now() }) }
+  function loadSave() {
+    var d = loadJson(S.saveKey)
+    if (d && typeof d.i === 'number' && d.i > 0 && d.i < S.pages.length) return d
+    return null
+  }
+  // タイトル画面の「つづきから」を、いまの保存に合わせて出す・隠す
+  function refreshContinue() {
+    saved = loadSave()
+    $('btnContinue').hidden = !saved
+  }
+
+  // ---- 文字送り（句読点で微小停止、…で長め、間で一拍） ----
+  function pauseAfter(text) {
+    var last = text.charAt(text.length - 1)
+    if (last === '、') return 140
+    if ('。！？!?」』'.indexOf(last) >= 0) return 240
+    if ('…‥―—'.indexOf(last) >= 0) return 330
+    return 0
+  }
+  // ---- 場面の切れ目＝暗転＋間（幕）。幕を下ろして BGM・環境音を絞り、一呼吸おいて次の場面を幕の下で組み、フェードで明ける ----
+  var CURTAIN_OUT = 600, CURTAIN_HOLD = 550, CURTAIN_IN = 800
+  var curtainTimer = 0
+  function setCurtain(on, instant) {
+    curtainEl.style.transitionDuration = instant ? '0s' : (on ? CURTAIN_OUT : CURTAIN_IN) + 'ms'
+    curtainEl.classList.toggle('on', on)
+  }
+  function clearCurtain() {
+    clearTimeout(curtainTimer)
+    curtainTimer = 0
+    state.curtain = false
+    setCurtain(false, true)
+  }
+  function beatOf(p) { return p.beat ? Math.min(760, 280 * p.beat) : 0 }
+  function changeScene(i) {
+    var p = S.pages[i]
+    state.curtain = true
+    state.typing = false
+    nextEl.hidden = true
+    setCurtain(true, false)
+    // 幕が下りるあいだに曲と環境音を絞る（次の場面の曲は幕が上がるときに）
+    wantLoop = null
+    syncLoopSe()
+    wantBgm = null
+    syncBgm()
+    curtainTimer = setTimeout(function () {
+      // 幕の下で次の場面を組む（背景・立ち絵の入れ替えは見せない。文章の枠は空で立てておき、幕と一緒に明ける）
+      setBg(bgAt(i), undefined, true)
+      applyStage(stageAt(i), true)
+      box.hidden = false
+      setName(p)
+      lineEl.innerHTML = ''
+      curtainTimer = setTimeout(function () {
+        // 幕を上げる＝次の場面がフェードで入る。曲・環境音・効果音もここから
+        setCurtain(false, false)
+        if (p.se && p.se !== 'stop' && p.seRepeat !== 'loop') playSe(p.se, p.seRepeat)
+        wantLoop = loopSeAt(i)
+        syncLoopSe()
+        wantBgm = bgmAt(i)
+        syncBgm()
+        curtainTimer = setTimeout(function () {
+          curtainTimer = 0
+          state.curtain = false
+          presentText(i, false, true)
+        }, CURTAIN_IN)
+      }, CURTAIN_HOLD + beatOf(p)) // 本文の空行（間）は暗転の長さに足す
+    }, CURTAIN_OUT)
+  }
+  function setName(p) {
+    if (p.kind === 'dialogue' && p.speaker) { nameEl.textContent = p.speaker; nameEl.hidden = false }
+    else { nameEl.hidden = true }
+  }
+  function showPage(i, instant) {
+    var p = S.pages[i]
+    state.i = i
+    if (i > state.maxSeen) state.maxSeen = i
+    save()
+    notifyHost('progress')
+    clearTimeout(state.timer)
+    // 場面の切れ目は暗転＋間。復元（instant）・スキップ中・先頭のページでは幕を使わない
+    if (p.sceneBreak && !instant && !state.skip && i > 0) { changeScene(i); return }
+    if (state.curtain) clearCurtain()
+    setBg(bgAt(i), p.bg ? p.transition : undefined, instant)
+    applyStage(stageAt(i), instant)
+    // 効果音はページ表示の瞬間に鳴らす。復元（instant）・スキップ中は鳴らさない。
+    // ループは「この場面で鳴っているべき音」なので、途中から開いても鳴らす（背景と同じ扱い）
+    if (p.se && p.se !== 'stop' && p.seRepeat !== 'loop' && !instant && !state.skip) {
+      playSe(p.se, p.seRepeat)
+    }
+    wantLoop = loopSeAt(i)
+    syncLoopSe()
+    // BGM は「この行で鳴っているべき曲」なので、途中から開いても鳴らす（背景と同じ扱い）
+    wantBgm = bgmAt(i)
+    syncBgm()
+    box.hidden = false
+    setName(p)
+    presentText(i, instant, false)
+  }
+  /** 文章を出す（文字送りの開始）。skipBeat＝間は暗転に含めた */
+  function presentText(i, instant, skipBeat) {
+    var p = S.pages[i]
+    lineEl.innerHTML = ''
+    nextEl.hidden = true
+    if (instant || state.skip) {
+      finishTyping()
+      if (state.skip) queueSkip()
+      return
+    }
+    state.typing = true
+    state.unitIdx = 0
+    state.timer = setTimeout(tick, (skipBeat ? 0 : beatOf(p)) + 40)
+  }
+  function tick() {
+    var p = S.pages[state.i]
+    if (state.unitIdx >= p.units.length) { typingDone(); return }
+    var u = p.units[state.unitIdx++]
+    lineEl.insertAdjacentHTML('beforeend', unitHtml(u))
+    if (box.scrollHeight > box.clientHeight) box.scrollTop = box.scrollHeight
+    var t = unitText(u)
+    state.timer = setTimeout(tick, SPEEDS[settings.speed - 1] * Math.max(1, t.length) + pauseAfter(t))
+  }
+  function finishTyping() {
+    clearTimeout(state.timer)
+    lineEl.innerHTML = pageHtml(S.pages[state.i])
+    if (box.scrollHeight > box.clientHeight) box.scrollTop = box.scrollHeight
+    typingDone()
+  }
+  function typingDone() {
+    state.typing = false
+    nextEl.hidden = false
+    if (state.auto) {
+      clearTimeout(state.timer)
+      state.timer = setTimeout(function () {
+        if (state.auto && !state.typing && !overlayOpen() && !document.hidden) advance()
+      }, 420 + S.pages[state.i].text.length * 26)
+    }
+  }
+  function queueSkip() {
+    clearTimeout(state.timer)
+    state.timer = setTimeout(function () {
+      if (!state.skip || overlayOpen() || document.hidden) return
+      if (state.i + 1 < S.pages.length) showPage(state.i + 1)
+      else { toggleSkip(false); showEnd() }
+    }, 85)
+  }
+  // オーバーレイを閉じた・タブへ戻った後に、オート／スキップの進行を張り直す
+  function resumeFlow() {
+    if (!state.started || overlayOpen() || state.curtain) return
+    if (state.auto && !state.typing) typingDone()
+    if (state.skip) queueSkip()
+  }
+  function advance() {
+    if (!state.started || overlayOpen() || state.curtain) return
+    if (state.typing) { finishTyping(); return }
+    if (state.i + 1 < S.pages.length) showPage(state.i + 1)
+    else showEnd()
+  }
+
+  // ---- オート・スキップ ----
+  function toggleAuto(on) {
+    state.auto = on === undefined ? !state.auto : on
+    $('btnAuto').classList.toggle('on', state.auto)
+    if (state.auto && !state.typing && !overlayOpen() && !state.curtain) typingDone()
+    if (state.auto) toggleSkip(false)
+  }
+  function toggleSkip(on) {
+    var next = on === undefined ? !state.skip : on
+    if (next === state.skip) return
+    state.skip = next
+    $('btnSkip').classList.toggle('on', state.skip)
+    if (state.skip) {
+      state.auto = false; $('btnAuto').classList.remove('on')
+      if (state.started && !overlayOpen()) {
+        // 暗転の途中なら幕を畳み、その行をそのまま出してから送る
+        if (state.curtain) { clearCurtain(); showPage(state.i, true); return }
+        finishTyping(); queueSkip()
+      }
+    }
+  }
+
+  // ---- ログ ----
+  function openLog() {
+    var html = ''
+    for (var j = 0; j <= state.maxSeen && j < S.pages.length; j++) {
+      var p = S.pages[j]
+      html += '<div class="log-item">'
+      if (p.kind === 'dialogue' && p.speaker) html += '<span class="log-name">' + esc(p.speaker) + '</span>'
+      html += '<p>' + pageHtml(p) + '</p></div>'
+    }
+    $('logBody').innerHTML = html
+    openOverlay('log')
+    var body = $('logBody'); body.scrollTop = body.scrollHeight
+  }
+
+  // ---- クレジット（同梱素材から自動生成された一覧を表示するだけ） ----
+  function renderCredits() {
+    var html = ''
+    for (var j = 0; j < S.credits.length; j++) {
+      var c = S.credits[j]
+      html += '<div class="credit-line"><b>' + esc(c.label) + '</b><span>' + esc(c.body) + '</span></div>'
+    }
+    $('creditBody').innerHTML = html
+  }
+
+  // ---- 一行カード（Canvas。サーバ不要・素材に触れない下地なので file:// でも汚染しない） ----
+  function luminance(hex) {
+    var n = parseInt(hex.slice(1), 16)
+    return 0.299 * (n >> 16 & 255) + 0.587 * (n >> 8 & 255) + 0.114 * (n & 255)
+  }
+  function wrapText(ctx, text, maxWidth) {
+    // Array.from＝コードポイント単位。サロゲートペア（絵文字・拡張漢字）を行間で割らない
+    var chars = Array.from(text)
+    var lines = []
+    var line = ''
+    for (var i = 0; i < chars.length; i++) {
+      var ch = chars[i]
+      if (ctx.measureText(line + ch).width > maxWidth && line !== '') { lines.push(line); line = ch }
+      else line += ch
+    }
+    if (line !== '') lines.push(line)
+    return lines
+  }
+  function makeCard() {
+    var p = S.pages[Math.max(0, state.i)]
+    if (!p) return
+    var bg = S.bgs[bgAt(Math.max(0, state.i))] || S.bgs[S.defaultBg]
+    var tone = bg ? bg.tone : ['#141A30', '#232B49', '#3A4568']
+    var W = 1200, H = 630
+    var cv = document.createElement('canvas')
+    cv.width = W; cv.height = H
+    var ctx = cv.getContext('2d')
+    var g = ctx.createLinearGradient(0, 0, 0, H)
+    g.addColorStop(0, tone[0]); g.addColorStop(0.55, tone[1]); g.addColorStop(1, tone[2])
+    ctx.fillStyle = g
+    ctx.fillRect(0, 0, W, H)
+    var v = ctx.createRadialGradient(W / 2, H * 0.42, H * 0.2, W / 2, H * 0.42, W * 0.75)
+    v.addColorStop(0, 'rgba(0,0,0,0)'); v.addColorStop(1, 'rgba(0,0,0,0.34)')
+    ctx.fillStyle = v
+    ctx.fillRect(0, 0, W, H)
+    var dark = luminance(tone[1]) < 150
+    var ink = dark ? '#F2F5FC' : '#1E2430'
+    var sub = dark ? 'rgba(242,245,252,.72)' : 'rgba(30,36,48,.72)'
+    var serif = "'Shippori Mincho B1','Hiragino Mincho ProN','Yu Mincho',serif"
+    ctx.textBaseline = 'alphabetic'
+    ctx.fillStyle = sub
+    ctx.font = '500 26px ' + serif
+    ctx.fillText(S.workTitle, 80, 96)
+    var size = 46
+    var lines
+    while (true) {
+      ctx.font = '500 ' + size + 'px ' + serif
+      lines = wrapText(ctx, p.text, W - 160)
+      if (lines.length <= 4 || size <= 30) break
+      size -= 4
+    }
+    if (lines.length > 4) {
+      lines = lines.slice(0, 4)
+      var lastChars = Array.from(lines[3])
+      lastChars.pop()
+      lines[3] = lastChars.join('') + '…'
+    }
+    ctx.fillStyle = ink
+    var lh = size * 1.9
+    var y0 = H / 2 - ((lines.length - 1) * lh) / 2 + size * 0.35
+    for (var i = 0; i < lines.length; i++) ctx.fillText(lines[i], 80, y0 + i * lh)
+    ctx.fillStyle = sub
+    ctx.font = '500 24px ' + serif
+    var foot = S.episodeTitle + (S.author ? '　' + S.author : '')
+    ctx.fillText(foot, 80, H - 64)
+    ctx.font = '500 20px ' + serif
+    var mark = 'コトノハ-leaf-'
+    ctx.fillText(mark, W - 80 - ctx.measureText(mark).width, H - 64)
+    cv.toBlob(function (blob) {
+      if (!blob) { msg('カードを作れませんでした'); return }
+      shareCard(blob, p)
+    }, 'image/png')
+  }
+  function downloadCard(blob, text) {
+    var a = document.createElement('a')
+    a.href = URL.createObjectURL(blob)
+    a.download = 'card.png'
+    document.body.appendChild(a); a.click(); a.remove()
+    setTimeout(function () { URL.revokeObjectURL(a.href) }, 5000)
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(function () { msg('画像を保存し、本文をコピーしました') }, function () { msg('画像を保存しました') })
+    } else msg('画像を保存しました')
+  }
+  function shareCard(blob, p) {
+    var file
+    try { file = new File([blob], 'card.png', { type: 'image/png' }) } catch (e) { file = null }
+    var text = p.text + ' — ' + S.workTitle + '「' + S.episodeTitle + '」'
+    if (file && navigator.canShare && navigator.canShare({ files: [file] })) {
+      // 共有シートを閉じた（AbortError）ときは何もしない。それ以外の失敗は保存へ倒す
+      navigator.share({ files: [file], text: text }).catch(function (err) {
+        if (!err || err.name !== 'AbortError') downloadCard(blob, text)
+      })
+      return
+    }
+    downloadCard(blob, text)
+  }
+  function card() {
+    var run = function () { makeCard() }
+    if (document.fonts && document.fonts.ready) document.fonts.ready.then(run, run)
+    else run()
+  }
+
+  var msgTimer = 0
+  function msg(text) {
+    var el = $('msg')
+    el.textContent = text
+    el.classList.add('on')
+    clearTimeout(msgTimer)
+    msgTimer = setTimeout(function () { el.classList.remove('on') }, 2600)
+  }
+
+  // ---- 進行 ----
+  function start(i) {
+    ensureAudio() // 操作の直後に AudioContext を作り、音声ファイル（効果音・BGM）を先に取っておく
+    closeOverlays()
+    hud.hidden = false
+    state.started = true
+    if (S.pages.length === 0) { showEnd(); return }
+    showPage(i)
+  }
+  function showEnd() {
+    toggleAuto(false); toggleSkip(false)
+    clearCurtain()
+    wantLoop = null
+    syncLoopSe()
+    wantBgm = null
+    syncBgm()
+    openOverlay('end')
+    notifyHost('end')
+  }
+  // 「終了」＝タイトルへ戻る（ブラウザのページは自分を閉じられない）。読んだ位置は保存済みなので「つづきから」で戻れる
+  function backToTitle() {
+    toggleAuto(false); toggleSkip(false)
+    clearTimeout(state.timer)
+    clearCurtain()
+    state.typing = false
+    state.started = false
+    wantLoop = null
+    syncLoopSe()
+    wantBgm = null
+    syncBgm()
+    applyStage([], true)
+    hud.hidden = true
+    box.hidden = true
+    nameEl.hidden = true
+    lineEl.innerHTML = ''
+    setBg(bgAt(0), undefined, true)
+    refreshContinue()
+    openOverlay('title')
+    notifyHost('quit')
+  }
+
+  // ---- 配線 ----
+  var titleOv = overlays.title
+  titleOv.querySelector('.t-work').textContent = S.workTitle
+  titleOv.querySelector('.t-ep').textContent = S.episodeTitle
+  if (S.author) {
+    var au = titleOv.querySelector('.t-author')
+    au.textContent = S.author
+    au.hidden = false
+  }
+  overlays.end.querySelector('.t-work').textContent = S.workTitle + '「' + S.episodeTitle + '」'
+  renderCredits()
+  var saved = null
+  refreshContinue()
+  $('btnStart').addEventListener('click', function () { start(0) })
+  $('btnContinue').addEventListener('click', function () { start(saved ? saved.i : 0) })
+  $('btnAgain').addEventListener('click', function () { start(0) })
+  $('btnRestart').addEventListener('click', function () { start(0) })
+  $('btnSave').addEventListener('click', function () {
+    save()
+    refreshContinue()
+    closeOverlays()
+    msg('ここまでを保存しました')
+    resumeFlow()
+  })
+  $('btnTitle').addEventListener('click', backToTitle)
+  $('btnAuto').addEventListener('click', function () { toggleAuto() })
+  $('btnSkip').addEventListener('click', function () { toggleSkip() })
+  $('btnLog').addEventListener('click', openLog)
+  $('btnMenu').addEventListener('click', function () {
+    $('speed').value = String(settings.speed)
+    openOverlay('menu')
+  })
+  $('btnCredits').addEventListener('click', function () { openOverlay('credits') })
+  $('btnEndCredits').addEventListener('click', function () { openOverlay('credits') })
+  $('btnCard').addEventListener('click', function () { closeOverlays(); card(); resumeFlow() })
+  $('btnEndCard').addEventListener('click', card)
+  $('speed').addEventListener('input', function (e) {
+    settings.speed = Number(e.target.value) || 3
+    saveJson(SETTINGS_KEY, settings)
+  })
+  function renderBgmButton() {
+    $('btnBgm').textContent = settings.bgm ? 'BGM：あり' : 'BGM：なし'
+  }
+  // BGM を使わないシナリオではボタン自体を出さない
+  if (!S.bgms) $('btnBgm').hidden = true
+  renderBgmButton()
+  $('btnBgm').addEventListener('click', function () {
+    settings.bgm = !settings.bgm
+    saveJson(SETTINGS_KEY, settings)
+    renderBgmButton()
+    syncBgm()
+  })
+  function renderSeButton() {
+    $('btnSe').textContent = settings.se ? '効果音：あり' : '効果音：なし'
+  }
+  // 効果音を使わないシナリオではボタン自体を出さない
+  if (!S.ses) $('btnSe').hidden = true
+  renderSeButton()
+  $('btnSe').addEventListener('click', function () {
+    settings.se = !settings.se
+    saveJson(SETTINGS_KEY, settings)
+    renderSeButton()
+    syncLoopSe()
+    if (settings.se && !playingLoop) playSe(Object.keys(S.ses || {})[0]) // 効きを確かめる試し鳴らし
+  })
+  var closes = document.querySelectorAll('.close')
+  for (var ci = 0; ci < closes.length; ci++) {
+    closes[ci].addEventListener('click', function () {
+      closeOverlays()
+      resumeFlow()
+    })
+  }
+  $('stage').addEventListener('click', function (e) {
+    if (e.target.closest('button') || e.target.closest('.overlay') || e.target.closest('#hud')) return
+    advance()
+  })
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') {
+      if (!overlays.title.hidden || !overlays.end.hidden) return
+      closeOverlays()
+      resumeFlow()
+      return
+    }
+    // フォーカスがボタン等にあるときは奪わない（キーボードだけで HUD を操作できるように）
+    if (e.target && e.target.closest && e.target.closest('button, input, a')) return
+    if ((e.key === 'Enter' || e.key === ' ') && !overlayOpen()) {
+      e.preventDefault()
+      advance()
+    }
+  })
+  document.addEventListener('visibilitychange', function () {
+    if (!document.hidden) resumeFlow()
+  })
+
+  // 先頭ページの背景をタイトル画面の借景にする
+  setBg(bgAt(0), undefined, true)
+
+  // プレビュー（アプリ内）：タイトルを挟まず、指定の行からすぐ始める
+  if (typeof S.start === 'number' && S.start >= 0 && S.start < S.pages.length) start(S.start)
+})()
+</script>
+</body>
+</html>
+`
+}

@@ -25,6 +25,19 @@ const state: BackupState = {
       updatedAt: 30,
     },
   ],
+  stagings: [
+    { workId: 'w1', episodeId: 'e1', cues: [{ blockId: 'b1', speaker: '光' }], updatedAt: 40 },
+  ],
+  gameAssets: [
+    {
+      id: 'ga1',
+      kind: 'bg',
+      name: '自作の教室',
+      dataUrl: 'data:image/webp;base64,SGk=',
+      tone: ['#111111', '#222222', '#333333'],
+      createdAt: 50,
+    },
+  ],
 }
 
 describe('serializeBackup / deserializeBackup（全体バックアップの直列化）', () => {
@@ -83,7 +96,17 @@ describe('serializeBackup / deserializeBackup（全体バックアップの直�
 
   it('空状態も往復できる', () => {
     const json = serializeBackup(
-      { works: [], trash: [], profile: {}, activity: [], ideas: [], structures: [], plots: [] },
+      {
+        works: [],
+        trash: [],
+        profile: {},
+        activity: [],
+        ideas: [],
+        structures: [],
+        plots: [],
+        stagings: [],
+        gameAssets: [],
+      },
       0,
     )
     const back = deserializeBackup(json)

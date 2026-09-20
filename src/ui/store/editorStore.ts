@@ -1,6 +1,7 @@
 import { blocksToNotation } from '../../core/exporter/blocksToNotation'
 import { renameEntry, resolveRef } from '../../core/glossary'
 import { parseEpisodeBody } from '../../core/parser/parseNotation'
+import { reconcileBlockIds } from '../../core/parser/reconcileBlockIds'
 import type { Profile, ProfileRepository } from '../../core/profile'
 import type { Episode, GlossaryEntry, Work, WorkPlatform } from '../../core/schema'
 import type { Snapshot } from '../../core/snapshot'
@@ -156,6 +157,7 @@ export interface EditorStoreDeps {
    */
   structureRepo?: { removeByWork(workId: string): Promise<void> }
   plotRepo?: { removeByWork(workId: string): Promise<void> }
+  stagingRepo?: { removeByWork(workId: string): Promise<void> }
   genId: () => string
   now: () => number
   /** 履歴の集約間隔(ms)。連続編集中はこの間隔内の保存を最新版へ合体し、版の氾濫を防ぐ。 */
@@ -187,6 +189,7 @@ export function createEditorStore({
   activityRepo,
   structureRepo,
   plotRepo,
+  stagingRepo,
   genId,
   now,
   snapshotMinIntervalMs,
@@ -204,13 +207,14 @@ export function createEditorStore({
   }
 
   /**
-   * 作品の完全削除に伴う後始末。履歴（版）に加え、その作品の構造レイヤー・プロットも消す。
-   * 残すと本人には見えないまま端末に溜まり、同期にも載り続けるため。
+   * 作品の完全削除に伴う後始末。履歴（版）に加え、その作品の構造レイヤー・プロット・
+   * 演出譜も消す。残すと本人には見えないまま端末に溜まり、同期にも載り続けるため。
    */
   const purgeWorkArtifacts = async (workId: string) => {
     await snapshotRepo.clear(workId)
     await structureRepo?.removeByWork(workId)
     await plotRepo?.removeByWork(workId)
+    await stagingRepo?.removeByWork(workId)
   }
   const set = (patch: Partial<EditorState>) => {
     state = { ...state, ...patch }
@@ -359,7 +363,8 @@ export function createEditorStore({
     async save() {
       const ep = currentEpisode(state)
       if (!state.work || !ep) return
-      const blocks = parseEpisodeBody(state.draft)
+      // 再パースで振り直された id を旧 blocks から引き継ぐ（演出譜 Staging のアンカー安定化）
+      const blocks = reconcileBlockIds(ep.blocks, parseEpisodeBody(state.draft))
       // 本文に変化が無ければ永続化もスナップショットも行わない（保存の氾濫を防ぐ）
       if (JSON.stringify(ep.blocks) === JSON.stringify(blocks)) {
         set({ dirty: false, status: 'saved' })

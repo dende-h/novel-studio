@@ -221,6 +221,22 @@ describe('editorStore（自前ストア・useSyncExternalStore 用）', () => {
     ).toBe(true)
   })
 
+  it('save は行を挿入しても、変わっていない行の block id を保つ（演出譜アンカーの安定）', async () => {
+    await store.createWork('作')
+    await store.createEpisode('話')
+    store.setDraft('一行目。\n「二行目」\n三行目。')
+    await store.save()
+    const before = store.getSnapshot().work?.episodes[0]?.blocks ?? []
+    expect(before.map((b) => b.id)).toEqual(['b1', 'b2', 'b3'])
+
+    store.setDraft('冒頭に足した。\n一行目。\n「二行目」\n三行目。')
+    await store.save()
+    const after = store.getSnapshot().work?.episodes[0]?.blocks ?? []
+    // 既存3行は位置がずれても旧 id のまま。新行だけ別 id
+    expect(after.slice(1).map((b) => b.id)).toEqual(['b1', 'b2', 'b3'])
+    expect(['b1', 'b2', 'b3']).not.toContain(after[0]?.id)
+  })
+
   it('openEpisode は blocks をカクヨム記法に戻して draft へ（ロスレス往復）', async () => {
     await store.createWork('作')
     await store.createEpisode('話')

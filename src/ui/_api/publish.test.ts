@@ -1,5 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { parseEpisodeBody } from '@/core/parser/parseNotation'
 import type { Work } from '@/core/schema'
+
+// この版は効果音を隠している（features.ts）。音声を載せると v6 を名乗る仕組みはここで検証し続ける
+// （フラグが落ちていると音声は参照されず同梱もされない＝v5 以下のまま）
+vi.mock('@/core/game/features', () => ({ GAME_FEATURES: { se: true } }))
 
 /**
  * platform への直接投稿クライアント。
@@ -407,6 +412,336 @@ describe('publishWorkToPlatform（v2 の公開結果）', () => {
       expect(result.publishBlocked).toBeNull()
       expect(result.workUrl).toBeUndefined()
     }
+  })
+})
+
+describe('契約 v4（サウンドノベル：episodes[].game）', () => {
+  const publicWork = (): Work => ({
+    id: 'w1',
+    title: '作品',
+    episodes: [
+      { id: 'e1', title: '第一話', blocks: parseEpisodeBody('「おはよう」') },
+      { id: 'e2', title: '第二話', blocks: [] },
+    ],
+    platform: {
+      declaredAllAges: true,
+      declaredOriginal: true,
+      visibility: 'public',
+      episodeVisibility: { e2: 'draft' },
+      novelGameEpisodes: { e1: true },
+    },
+  })
+  const novelGame = () => ({
+    stagings: [
+      { workId: 'w1', episodeId: 'e1', cues: [{ blockId: 'b1', speaker: '灯' }], updatedAt: 1 },
+    ],
+    gameAssets: [],
+  })
+
+  it('novelGame を渡すと公開話にだけ game(html) が付き、schemaVersion 4 で送る', async () => {
+    const { publishWorkToPlatform } = await loadModule()
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(new Response(JSON.stringify({ ok: true }), { status: 200 }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await publishWorkToPlatform(async () => 'jwt', publicWork(), novelGame())
+
+    const body = JSON.parse((fetchMock.mock.calls[0] as [string, RequestInit])[1].body as string)
+    expect(body.schemaVersion).toBe(4)
+    const [e1, e2] = body.work.episodes
+    expect(e1.game?.v).toBe(1)
+    expect(typeof e1.game?.html).toBe('string')
+    // プレイヤーは自己完結（シナリオ・素材内包）で、フォントだけ配信側の契約パスを指す
+    expect(e1.game.html).toContain('<!doctype html>')
+    expect(e1.game.html).toContain('/game-assets/fonts/shippori-mincho-b1.woff2')
+    expect(e1.game.html).toContain('data:image/svg+xml') // テンプレ背景は内包
+    expect(e1.game.html).not.toContain('assets/bg/') // ファイル参照は残さない
+    // 演出（話者）が反映されている
+    expect(e1.game.html).toContain('灯')
+    // 下書きの話には作らない（読者に出ない分で太らせない）
+    expect(e2.visibility).toBe('draft')
+    expect(e2.game).toBeUndefined()
+  })
+
+  it('選んでいない話はサウンドノベルにしない（演出を付けてあっても）', async () => {
+    // 調整の途中で演出を付けただけの話が、黙って読者に出ないこと（D-GAME-EPISODE-PICK）
+    const { publishWorkToPlatform } = await loadModule()
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(new Response(JSON.stringify({ ok: true }), { status: 200 }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    // e1 には演出譜あり。ただし話ごとの記録は無い＝作者はまだ選んでいない
+    const work: Work = {
+      ...publicWork(),
+      episodes: [
+        { id: 'e1', title: '第一話', blocks: parseEpisodeBody('「おはよう」') },
+        { id: 'e3', title: '第三話', blocks: parseEpisodeBody('「こんばんは」') },
+      ],
+      platform: { declaredAllAges: true, declaredOriginal: true, visibility: 'public' },
+    }
+    await publishWorkToPlatform(async () => 'jwt', work, novelGame())
+
+    const body = JSON.parse((fetchMock.mock.calls[0] as [string, RequestInit])[1].body as string)
+    expect(body.work.episodes.every((ep: { game?: unknown }) => ep.game === undefined)).toBe(true)
+    // それでも v4 で名乗る＝前に載せたぶんを先方が外せる
+    expect(body.schemaVersion).toBe(4)
+  })
+
+  it('演出の無い話でも、選べばサウンドノベルになる', async () => {
+    const { publishWorkToPlatform } = await loadModule()
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(new Response(JSON.stringify({ ok: true }), { status: 200 }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    // 演出のある e1 を外し、演出の無い e3 を選ぶ（対象は作者の指定だけで決まる）
+    const work: Work = {
+      ...publicWork(),
+      episodes: [
+        { id: 'e1', title: '第一話', blocks: parseEpisodeBody('「おはよう」') },
+        { id: 'e3', title: '第三話', blocks: parseEpisodeBody('「こんばんは」') },
+      ],
+      platform: {
+        declaredAllAges: true,
+        declaredOriginal: true,
+        visibility: 'public',
+        novelGameEpisodes: { e1: false, e3: true },
+      },
+    }
+    await publishWorkToPlatform(async () => 'jwt', work, novelGame())
+
+    const body = JSON.parse((fetchMock.mock.calls[0] as [string, RequestInit])[1].body as string)
+    const [e1, e3] = body.work.episodes
+    expect(e1.game).toBeUndefined()
+    expect(e3.game?.v).toBe(1)
+    // 1話も載らなくなる形でも v4 は名乗る（先方が外したぶんを消せるように）
+    expect(body.schemaVersion).toBe(4)
+    // 話ごとの記録はローカル専用。契約に無いキーは送らない
+    expect(body.work.platform).not.toHaveProperty('novelGameEpisodes')
+  })
+
+  it('novelGame を渡さなければ従来どおり（v3 のまま・game は付かない）', async () => {
+    const { publishWorkToPlatform } = await loadModule()
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(new Response(JSON.stringify({ ok: true }), { status: 200 }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await publishWorkToPlatform(async () => 'jwt', publicWork())
+
+    const body = JSON.parse((fetchMock.mock.calls[0] as [string, RequestInit])[1].body as string)
+    expect(body.schemaVersion).toBe(3)
+    expect(body.work.episodes.every((ep: { game?: unknown }) => ep.game === undefined)).toBe(true)
+  })
+
+  it('enabled:false は v4 のまま game 無しで送る（前回の同梱を先方に消してもらう宣言）', async () => {
+    const { publishWorkToPlatform } = await loadModule()
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(new Response(JSON.stringify({ ok: true }), { status: 200 }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await publishWorkToPlatform(async () => 'jwt', publicWork(), {
+      stagings: [],
+      gameAssets: [],
+      enabled: false,
+    })
+
+    const body = JSON.parse((fetchMock.mock.calls[0] as [string, RequestInit])[1].body as string)
+    expect(body.schemaVersion).toBe(4)
+    expect(body.work.episodes.every((ep: { game?: unknown }) => ep.game === undefined)).toBe(true)
+  })
+
+  it('enabled:false は作品を下書きへ戻す送信でも v4 で届く（OFF が先方に伝わる）', async () => {
+    // ここで v2 に落とすと先方は据え置き＝OFF のまま再公開したとき古いプレイヤーが復活する
+    const { publishWorkToPlatform } = await loadModule()
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(new Response(JSON.stringify({ ok: true }), { status: 200 }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const draft: Work = { ...publicWork(), platform: { visibility: 'draft' } }
+    await publishWorkToPlatform(async () => 'jwt', draft, {
+      stagings: [],
+      gameAssets: [],
+      enabled: false,
+    })
+
+    const body = JSON.parse((fetchMock.mock.calls[0] as [string, RequestInit])[1].body as string)
+    expect(body.schemaVersion).toBe(4)
+    expect(body.work.episodes.every((ep: { game?: unknown }) => ep.game === undefined)).toBe(true)
+  })
+
+  it('下書き作品では novelGame を渡しても game は付かない（v2 のまま）', async () => {
+    const { publishWorkToPlatform } = await loadModule()
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(new Response(JSON.stringify({ ok: true }), { status: 200 }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const draft: Work = { ...publicWork(), platform: { visibility: 'draft' } }
+    await publishWorkToPlatform(async () => 'jwt', draft, novelGame())
+
+    const body = JSON.parse((fetchMock.mock.calls[0] as [string, RequestInit])[1].body as string)
+    expect(body.schemaVersion).toBe(2)
+    expect(body.work.episodes.every((ep: { game?: unknown }) => ep.game === undefined)).toBe(true)
+  })
+})
+
+describe('契約 v5（素材は作品ぶん1回だけ・話は asset:<id> で参照）', () => {
+  const dataUrl = 'data:image/webp;base64,SGkh'
+  const asset = {
+    id: 'a1',
+    kind: 'sprite' as const,
+    name: '灯（通常）',
+    dataUrl,
+    tone: ['#111111', '#222222', '#333333'] as [string, string, string],
+    character: '灯',
+    expression: '通常',
+    createdAt: 1,
+  }
+  const twoEpisodeWork = (): Work => ({
+    id: 'w1',
+    title: '作品',
+    episodes: [
+      { id: 'e1', title: '第一話', blocks: parseEpisodeBody('「おはよう」') },
+      { id: 'e2', title: '第二話', blocks: parseEpisodeBody('「こんばんは」') },
+    ],
+    platform: {
+      declaredAllAges: true,
+      declaredOriginal: true,
+      visibility: 'public',
+      novelGameEpisodes: { e1: true, e2: true },
+    },
+  })
+  const novelGame = () => ({
+    stagings: [
+      {
+        workId: 'w1',
+        episodeId: 'e1',
+        cues: [{ blockId: 'b1', speaker: '灯', sprites: [{ character: '灯' }] }],
+        updatedAt: 1,
+      },
+      {
+        workId: 'w1',
+        episodeId: 'e2',
+        cues: [{ blockId: 'b1', speaker: '灯', sprites: [{ character: '灯' }] }],
+        updatedAt: 1,
+      },
+    ],
+    gameAssets: [asset],
+  })
+
+  it('同じ立ち絵を使う2話でも、実体は1回だけ送る（話は参照だけを持つ）', async () => {
+    const { publishWorkToPlatform } = await loadModule()
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(new Response(JSON.stringify({ ok: true }), { status: 200 }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await publishWorkToPlatform(async () => 'jwt', twoEpisodeWork(), novelGame())
+
+    const body = JSON.parse((fetchMock.mock.calls[0] as [string, RequestInit])[1].body as string)
+    expect(body.schemaVersion).toBe(5)
+    // 実体は作品ぶんに 1 つだけ
+    expect(body.work.gameAssets).toEqual([{ id: 'a1', dataUrl }])
+    for (const ep of body.work.episodes) {
+      expect(ep.game.v).toBe(2)
+      expect(ep.game.assets).toEqual(['a1'])
+      // 話の HTML は参照だけ＝実体を話数ぶん送り直さない
+      expect(ep.game.html).toContain('asset:a1')
+      expect(ep.game.html).not.toContain(dataUrl)
+    }
+  })
+
+  it('効果音の音声（運営テンプレ）を載せるときだけ v6 を名乗る', async () => {
+    const { publishWorkToPlatform } = await loadModule()
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(new Response(JSON.stringify({ ok: true }), { status: 200 }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const se = {
+      id: 'tpl-se-weather-rain',
+      kind: 'se' as const,
+      name: '雨（強）',
+      dataUrl: 'data:audio/mpeg;base64,SUQz',
+      tone: ['#000000', '#000000', '#000000'] as [string, string, string],
+      preset: 'preset:se/weather-rain',
+      createdAt: 1,
+    }
+    await publishWorkToPlatform(async () => 'jwt', twoEpisodeWork(), {
+      stagings: [
+        {
+          workId: 'w1',
+          episodeId: 'e1',
+          cues: [{ blockId: 'b1', se: 'preset:se/weather-rain', seRepeat: 'loop' }],
+          updatedAt: 1,
+        },
+      ],
+      gameAssets: [asset, se],
+    })
+
+    const body = JSON.parse((fetchMock.mock.calls[0] as [string, RequestInit])[1].body as string)
+    expect(body.schemaVersion).toBe(6)
+    // 使った素材だけ（立ち絵は話者が無いので載らない）
+    expect(body.work.gameAssets).toEqual([{ id: 'tpl-se-weather-rain', dataUrl: se.dataUrl }])
+    expect(body.work.episodes[0].game.assets).toEqual(['tpl-se-weather-rain'])
+    expect(body.work.episodes[0].game.html).toContain('asset:tpl-se-weather-rain')
+  })
+
+  it('先方が v5 までしか知らないときは、効果音を外せば通ると案内する', async () => {
+    const { publishWorkToPlatform } = await loadModule()
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ error: 'unsupported-schema-version', supported: 5 }), {
+          status: 409,
+        }),
+      ),
+    )
+    const res = await publishWorkToPlatform(async () => 'jwt', twoEpisodeWork(), novelGame())
+    expect(res.ok).toBe(false)
+    if (res.ok) return
+    expect(res.message).toContain('効果音')
+  })
+
+  it('持ち込み素材を使わない作品は v4 のまま（使わない版は名乗らない）', async () => {
+    const { publishWorkToPlatform } = await loadModule()
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(new Response(JSON.stringify({ ok: true }), { status: 200 }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    // 演出はあるが持ち込み素材は 1 枚も使っていない（テンプレだけ）
+    await publishWorkToPlatform(async () => 'jwt', twoEpisodeWork(), {
+      stagings: novelGame().stagings,
+      gameAssets: [],
+    })
+
+    const body = JSON.parse((fetchMock.mock.calls[0] as [string, RequestInit])[1].body as string)
+    expect(body.schemaVersion).toBe(4)
+    expect(body.work).not.toHaveProperty('gameAssets')
+    expect(body.work.episodes[0].game.v).toBe(1)
+  })
+
+  it('使っていない素材は送らない（手元にあるだけの分で太らせない）', async () => {
+    const { publishWorkToPlatform } = await loadModule()
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(new Response(JSON.stringify({ ok: true }), { status: 200 }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const unused = { ...asset, id: 'a2', character: '出番の無い人' }
+    await publishWorkToPlatform(async () => 'jwt', twoEpisodeWork(), {
+      stagings: novelGame().stagings,
+      gameAssets: [asset, unused],
+    })
+
+    const body = JSON.parse((fetchMock.mock.calls[0] as [string, RequestInit])[1].body as string)
+    expect(body.work.gameAssets).toEqual([{ id: 'a1', dataUrl }])
   })
 })
 

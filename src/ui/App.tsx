@@ -7,8 +7,10 @@ import { parseEpisodeBody } from '@/core/parser/parseNotation'
 import type { GlossaryEntry } from '@/core/schema'
 import { countEpisodeChars, countWorkChars } from '@/core/stats'
 import type { ActivityRepository } from '@/core/storage/activityRepository'
+import type { GameAssetRepository } from '@/core/storage/gameAssetRepository'
 import type { IdeaRepository } from '@/core/storage/ideaRepository'
 import type { PlotRepository } from '@/core/storage/plotRepository'
+import type { StagingRepository } from '@/core/storage/stagingRepository'
 import type { StructureRepository } from '@/core/storage/structureRepository'
 import { cn } from '@/lib/utils'
 import { isPublishAvailable } from '@/ui/_api/publish'
@@ -79,6 +81,10 @@ interface AppProps {
   structureRepo?: StructureRepository
   /** プロット（幕×ビートの物語設計・世界観設定）のリポジトリ。 */
   plotRepo?: PlotRepository
+  /** 演出譜（サウンドノベルの Staging）のリポジトリ。 */
+  stagingRepo?: StagingRepository
+  /** 持ち込みゲーム素材（背景画像）のリポジトリ。 */
+  gameAssetRepo?: GameAssetRepository
   /** 構想の道具（プロット・アウトライン・相関図・マインドマップ）を出すか＝無料アカウント登録で true。 */
   canUseStructure?: boolean
   /** ネタ帳（マインドマップの取り込み用）。 */
@@ -92,6 +98,7 @@ const CorrelationChartView = lazy(
 )
 const OutlineView = lazy(() => import('@/ui/components/OutlineView/outline-view'))
 const PlotView = lazy(() => import('@/ui/components/PlotView/plot-view'))
+const StagingView = lazy(() => import('@/ui/components/StagingView/staging-view'))
 
 /** エディタツールバーの記法ボタン（ショートカットは EditorPane の SHORTCUTS と対応）。 */
 const NOTATION_BUTTONS: { kind: NotationKind; label: string; title: string }[] = [
@@ -151,6 +158,8 @@ export function App({
   activityRepo,
   structureRepo,
   plotRepo,
+  stagingRepo,
+  gameAssetRepo,
   canUseStructure,
   ideaRepo,
 }: AppProps) {
@@ -163,7 +172,7 @@ export function App({
   const [metaOpen, setMetaOpen] = useState(false)
   const [historyOpen, setHistoryOpen] = useState(false)
   const [activeScreen, setActiveScreen] = useState<
-    'episodes' | 'glossary' | 'outline' | 'mindmap' | 'chart' | 'plot'
+    'episodes' | 'glossary' | 'outline' | 'mindmap' | 'chart' | 'plot' | 'staging'
   >('episodes')
   // プレビューの組み方向（日本語小説の標準＝縦書きが既定。ツールバーで切替）。
   const [orientation, setOrientation] = useState<'vertical' | 'horizontal'>('vertical')
@@ -206,6 +215,8 @@ export function App({
   const narrow = useIsNarrow()
   const structureAvailable = Boolean(work && canUseStructure && structureRepo && !narrow)
   const plotAvailable = Boolean(work && canUseStructure && plotRepo && !narrow)
+  // 演出（サウンドノベル）も同じ条件（アカウント登録＝D-GAME-ACCOUNT と同じ線・PC 専用＝D-GAME-PC）。
+  const stagingAvailable = Boolean(work && canUseStructure && stagingRepo && !narrow)
   // 広い画面で構造ツールを開いたまま縮める／回転すると、入口が消えても activeScreen が
   // 残って操作不能な画面に閉じ込められる。CSS では state を戻せないので JS で戻す。
   useEffect(() => {
@@ -214,7 +225,8 @@ export function App({
       (activeScreen === 'outline' ||
         activeScreen === 'mindmap' ||
         activeScreen === 'chart' ||
-        activeScreen === 'plot')
+        activeScreen === 'plot' ||
+        activeScreen === 'staging')
     ) {
       setActiveScreen('episodes')
     }
@@ -374,6 +386,7 @@ export function App({
           onNavigateChart={structureAvailable ? () => setActiveScreen('chart') : undefined}
           onNavigateOutline={structureAvailable ? () => setActiveScreen('outline') : undefined}
           onNavigatePlot={plotAvailable ? () => setActiveScreen('plot') : undefined}
+          onNavigateStaging={stagingAvailable ? () => setActiveScreen('staging') : undefined}
           cta={{
             label: '新しいエピソード',
             onClick: () => setNewEpisodeOpen(true),
@@ -454,7 +467,16 @@ export function App({
         activeScreen を key にしているので、別の画面へ移れば境界は張り直される。
       */}
       <ErrorBoundary key={activeScreen} fallback={(retry) => <ScreenFailure retry={retry} />}>
-        {activeScreen === 'plot' && work && plotRepo ? (
+        {activeScreen === 'staging' && work && stagingRepo ? (
+          <Suspense fallback={<ScreenLoading />}>
+            <StagingView
+              repo={stagingRepo}
+              work={work}
+              currentEpisodeId={state.currentEpisodeId}
+              assetRepo={gameAssetRepo}
+            />
+          </Suspense>
+        ) : activeScreen === 'plot' && work && plotRepo ? (
           <Suspense fallback={<ScreenLoading />}>
             <PlotView
               repo={plotRepo}
@@ -529,6 +551,7 @@ export function App({
             }}
             onDelete={(id) => void store.deleteGlossaryEntry(id)}
             onCreateEntry={createPlainGlossaryEntry}
+            gameAssetRepo={gameAssetRepo}
           />
         ) : episode ? (
           <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col">
@@ -811,6 +834,16 @@ export function App({
             ? () => {
                 setExportOpen(false)
                 setMetaOpen(true)
+              }
+            : undefined
+        }
+        stagingRepo={stagingRepo}
+        gameAssetRepo={gameAssetRepo}
+        onEditStaging={
+          stagingAvailable
+            ? () => {
+                setExportOpen(false)
+                setActiveScreen('staging')
               }
             : undefined
         }

@@ -8,6 +8,8 @@ import {
   LoaderCircle,
 } from 'lucide-react'
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
+import { GAME_FEATURES } from '@/core/game/features'
+import { mergeBackgroundCatalog, mergeBgmCatalog, mergeSeCatalog } from '@/core/game/templates'
 import {
   MAX_DESCRIPTION_LENGTH,
   PLATFORM_GENRES,
@@ -17,11 +19,16 @@ import {
   type WorkPlatform,
 } from '@/core/schema'
 import { countEpisodeChars } from '@/core/stats'
+import type { GameAssetRepository } from '@/core/storage/gameAssetRepository'
+import type { StagingRepository } from '@/core/storage/stagingRepository'
 import { cn } from '@/lib/utils'
 import { type AuthorStatus, fetchAuthorStatus } from '@/ui/_api/author'
 import {
   canPublishPublicly,
   describePublishBlocked,
+  hasStagingCues,
+  type NovelGameBundleInput,
+  novelGameEpisodeOf,
   PLATFORM_ORIGIN,
   type PublishResult,
   publishWorkToPlatform,
@@ -35,6 +42,16 @@ import { Button } from '@/ui/components/ui/button'
 import { Label } from '@/ui/components/ui/label'
 import { Switch } from '@/ui/components/ui/switch'
 import { Textarea } from '@/ui/components/ui/textarea'
+import { createAssetHostingApi, pullHostedAssets } from '@/ui/game/asset-hosting'
+import {
+  loadTemplateCatalog,
+  resolveTemplateBackgrounds,
+  resolveTemplateBgms,
+  resolveTemplateSes,
+  templateBgKeysOf,
+  templateBgmKeysOf,
+  templateSeKeysOf,
+} from '@/ui/game/template-catalog'
 
 /** コトノハ-grove- 上での見え方。契約の `visibility` と同じ 2 値。 */
 type Visibility = 'draft' | 'public'
@@ -57,6 +74,10 @@ interface PublishPageProps {
   /** 戻り先（既定は執筆画面）。 */
   backHref?: string
   backLabel?: string
+  /** 演出譜の置き場所（渡されたときだけ「サウンドノベル」の切り替えが出る・契約 v4）。 */
+  stagingRepo?: Pick<StagingRepository, 'listByWork'>
+  /** ゲーム素材の置き場所（サウンドノベルの背景・立ち絵を同梱するのに使う）。 */
+  gameAssetRepo?: Pick<GameAssetRepository, 'list' | 'save'>
 }
 
 /** 自由タグの入力（読点／カンマ／改行区切り）を配列へ。trim・空除去・重複除去。 */
@@ -110,6 +131,8 @@ export function PublishPage({
   onPersist,
   backHref = '#/write',
   backLabel = '執筆画面へ戻る',
+  stagingRepo,
+  gameAssetRepo,
 }: PublishPageProps) {
   const uid = useId()
   const [description, setDescription] = useState('')
@@ -121,6 +144,10 @@ export function PublishPage({
   const [original, setOriginal] = useState(false)
   const [visibility, setVisibility] = useState<Visibility>('draft')
   const [episodeVisibility, setEpisodeVisibility] = useState<Record<string, Visibility>>({})
+  /** 話ごとのサウンドノベル（話ID → する / しない）。**ここに true がある話だけ**が対象 */
+  const [novelGameEpisodes, setNovelGameEpisodes] = useState<Record<string, boolean>>({})
+  /** 演出を付けてある話のID。選んだ話に演出がまだ無いことを知らせるのに使う */
+  const [stagedEpisodeIds, setStagedEpisodeIds] = useState<Set<string>>(new Set())
 
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [pending, setPending] = useState(false)
@@ -146,8 +173,23 @@ export function PublishPage({
     setOriginal(p?.declaredOriginal === true)
     setVisibility(p?.visibility === 'public' ? 'public' : 'draft')
     setEpisodeVisibility({ ...(p?.episodeVisibility ?? {}) })
+    setNovelGameEpisodes({ ...(p?.novelGameEpisodes ?? {}) })
     setResult(null)
   }, [work])
+
+  // どの話に演出を付けてあるか。**選ぶ材料ではなく知らせる材料**——演出ゼロの話を
+  // 選んでも公開はできる（文字だけで進む）ので、そうなっていることだけ伝える
+  useEffect(() => {
+    if (!work || !stagingRepo) return
+    let alive = true
+    void stagingRepo.listByWork(work.id).then((list) => {
+      if (!alive) return
+      setStagedEpisodeIds(new Set(list.filter(hasStagingCues).map((s) => s.episodeId)))
+    })
+    return () => {
+      alive = false
+    }
+  }, [work, stagingRepo])
 
   // 作者登録が済んでいるかを先に確かめる。投稿を試して 403 で知る作りにはしない。
   useEffect(() => {
@@ -188,6 +230,32 @@ export function PublishPage({
     [episodes, episodeVisibility, visibility],
   )
 
+  /** 行ごとのサウンドノベルの切り替えを出すか（作品が公開のときだけ意味を持つ） */
+  const showGameSwitches = Boolean(stagingRepo && gameAssetRepo) && visibility === 'public'
+
+  /** いま何話がサウンドノベルになるか（公開する話のうち、作者が ON にした話） */
+  const gameCount = useMemo(
+    () =>
+      episodes.filter(
+        (e) =>
+          episodeVisibilityOf(episodeVisibility, e.id, visibility) === 'public' &&
+          novelGameEpisodeOf(novelGameEpisodes, e.id),
+      ).length,
+    [episodes, episodeVisibility, visibility, novelGameEpisodes],
+  )
+
+  /** 選んだ話のうち、まだ演出を付けていない話の数（＝文字だけで進む話） */
+  const unstagedGameCount = useMemo(
+    () =>
+      episodes.filter(
+        (e) =>
+          episodeVisibilityOf(episodeVisibility, e.id, visibility) === 'public' &&
+          novelGameEpisodeOf(novelGameEpisodes, e.id) &&
+          !stagedEpisodeIds.has(e.id),
+      ).length,
+    [episodes, episodeVisibility, visibility, novelGameEpisodes, stagedEpisodeIds],
+  )
+
   /** 送信・保存する投稿設定。画面の入力から毎回作り直す（前回値のマージは古い値を残す）。 */
   const buildPlatform = (): WorkPlatform => {
     const { lastPublishedAt, workUrl, manageUrl } = work?.platform ?? {}
@@ -202,6 +270,11 @@ export function PublishPage({
       // 作品が下書きなら話ごとの記録は送らないが、こちらには残す
       //（下書きへ戻して公開し直したときに、伏せた話が黙って表へ出ないように）
       ...(Object.keys(episodeVisibility).length > 0 ? { episodeVisibility } : {}),
+      // 作品ぜんたいの切り替えは持たない（対象は話ごとの記録だけで決まる）。
+      // この印は「今回の投稿にプレイヤーを載せた」の控え＝次に1話も選ばれなくなったとき、
+      // 先方へ「消してほしい」と宣言すべきかの判断に使う
+      ...(gameCount > 0 ? { novelGame: true } : {}),
+      ...(Object.keys(novelGameEpisodes).length > 0 ? { novelGameEpisodes } : {}),
       ...(lastPublishedAt !== undefined ? { lastPublishedAt } : {}),
       ...(workUrl ? { workUrl } : {}),
       ...(manageUrl ? { manageUrl } : {}),
@@ -215,7 +288,73 @@ export function PublishPage({
 
     const platform = buildPlatform()
     const desc = description.trim()
-    const res = await publishWorkToPlatform(getToken, { ...work, description: desc, platform })
+    // サウンドノベル（契約 v4）：選ばれた話があるときだけ、演出譜と素材を集めてプレイヤーを同梱する。
+    // 前回は載せたのに今回は1話も無いときは v4 で「同梱なし」を宣言し、先方に前回のプレイヤーを
+    // 消してもらう（何も送らないと v3 になり、先方は据え置き＝解除が効かないため）。この宣言は
+    // **下書きへ戻す送信でも出す**——ここで落とすと、解除したまま再公開したとき
+    // 古いプレイヤーが先方で復活する。
+    let gameInput: NovelGameBundleInput | undefined
+    if (stagingRepo && gameAssetRepo) {
+      if (gameCount > 0) {
+        // 別の端末で登録した素材（クラウド保管ぶん）を先に取り込む。
+        // ここを飛ばすと、その端末に無い背景・立ち絵が抜けたプレイヤーを公開してしまう
+        //（作者から見れば「公開したら絵が消えた」になる）。取れなくても公開は止めない
+        await pullHostedAssets(gameAssetRepo, createAssetHostingApi(getToken)).catch(() => null)
+        const stagings = await stagingRepo.listByWork(work.id)
+        // テンプレ背景の画像（目録にある分）は実体を取って、持ち込み素材と同じ形で載せる
+        //（契約 v5＝作品ぶん1回）。選んだ話が使う分だけ見る。取れなければ控えを送らず止める
+        //（先方は画像しか受け取らない＝tone の控えでは弾かれる）
+        const manifest = await loadTemplateCatalog()
+        const selectedStagings = stagings.filter((s) =>
+          novelGameEpisodeOf(novelGameEpisodes, s.episodeId),
+        )
+        const templates = await resolveTemplateBackgrounds(
+          templateBgKeysOf(selectedStagings),
+          mergeBackgroundCatalog(manifest),
+          { fallback: 'none' },
+        )
+        // 効果音の音声ファイルも同じ経路（先方は画像と音声しか受けない＝控えは送らない）
+        const templateSes = await resolveTemplateSes(
+          templateSeKeysOf(selectedStagings),
+          mergeSeCatalog(manifest),
+          { fallback: 'none' },
+        )
+        // BGM（運営のオリジナル曲）も同じ経路で作品ぶん 1 回だけ載せる（音声なので契約 v6）
+        const templateBgms = await resolveTemplateBgms(
+          templateBgmKeysOf(selectedStagings),
+          mergeBgmCatalog(manifest),
+          { fallback: 'none' },
+        )
+        if (
+          templates.missing.length > 0 ||
+          templateSes.missing.length > 0 ||
+          templateBgms.missing.length > 0
+        ) {
+          setResult({
+            ok: false,
+            message: `テンプレ素材（背景・BGM${GAME_FEATURES.se ? '・効果音' : ''}）を取得できませんでした。通信環境を確認して、もう一度お試しください`,
+          })
+          setPending(false)
+          return
+        }
+        gameInput = {
+          stagings,
+          gameAssets: [
+            ...(await gameAssetRepo.list()),
+            ...templates.assets,
+            ...templateSes.assets,
+            ...templateBgms.assets,
+          ],
+        }
+      } else if (work.platform?.novelGame === true) {
+        gameInput = { stagings: [], gameAssets: [], enabled: false }
+      }
+    }
+    const res = await publishWorkToPlatform(
+      getToken,
+      { ...work, description: desc, platform },
+      gameInput,
+    )
 
     if (res.ok) {
       onPersist(work.id, {
@@ -331,7 +470,41 @@ export function PublishPage({
           )}
         </section>
 
-        {/* 2. 話ごとの公開。作品が公開のときだけ意味を持つ */}
+        {/* 2. サウンドノベル（契約 v4）。どの話を対象にするかは下の一覧で選ぶ */}
+        {stagingRepo && gameAssetRepo ? (
+          <section className="rounded-xl border border-outline-variant/40 bg-surface-container-lowest p-5">
+            <h2 className="font-semibold font-serif text-[17px] text-on-surface">サウンドノベル</h2>
+            <p className="mt-1.5 text-[13px] text-on-surface-variant leading-relaxed">
+              コトノハ-grove- に「サウンドノベルで読む」形の読み方を足します。出すのは話ごとです。
+              下の「話ごとの公開」で、この形にする話をひとつずつ選んでください。
+              <strong className="font-semibold">選んでいない話は出ません</strong>
+              ——演出を付けてある話でも、調整の途中なら手元に置いたままにできます。
+              文章での読み方はそのまま残ります。スマートフォンでも遊べます。
+            </p>
+            {visibility !== 'public' ? (
+              <p className="mt-3 text-[12px] text-on-surface-variant/70">
+                作品が下書きのあいだは選べません。上で「公開」を選ぶと操作できます。
+              </p>
+            ) : (
+              <>
+                <p className="mt-3 text-[12px] text-on-surface-variant/70 tabular-nums">
+                  {gameCount === 0
+                    ? 'いまはどの話も選ばれていません。下の一覧で、サウンドノベルにする話を選んでください。'
+                    : `公開する ${publicCount} 話のうち ${gameCount} 話をサウンドノベルにします。`}
+                </p>
+                {unstagedGameCount > 0 ? (
+                  <p className="mt-1.5 text-[12px] text-on-surface-variant/70 tabular-nums">
+                    そのうち {unstagedGameCount} 話には演出（話者・背景・立ち絵・BGM
+                    {GAME_FEATURES.se ? '・効果音' : ''}
+                    ）がまだありません。黒い画面に本文が出る形で進みます。
+                  </p>
+                ) : null}
+              </>
+            )}
+          </section>
+        ) : null}
+
+        {/* 3. 話ごとの公開。作品が公開のときだけ意味を持つ */}
         <section className="rounded-xl border border-outline-variant/40 bg-surface-container-lowest p-5">
           <div className="flex flex-wrap items-baseline justify-between gap-2">
             <h2 className="font-semibold font-serif text-[17px] text-on-surface">話ごとの公開</h2>
@@ -340,9 +513,11 @@ export function PublishPage({
             </span>
           </div>
           <p className="mt-1.5 text-[13px] text-on-surface-variant leading-relaxed">
-            {visibility === 'public'
-              ? '公開しない話は伏せておけます。伏せた話も本文はこちらに残ります。'
-              : '作品が下書きのあいだは変更できません。上で「公開」を選ぶと操作できます。'}
+            {visibility !== 'public'
+              ? '作品が下書きのあいだは変更できません。上で「公開」を選ぶと操作できます。'
+              : showGameSwitches
+                ? '公開しない話は伏せておけます。伏せた話も本文はこちらに残ります。右の「サウンドノベル」を入れた話だけが、遊べる形でも出ます。'
+                : '公開しない話は伏せておけます。伏せた話も本文はこちらに残ります。'}
           </p>
 
           {episodes.length === 0 ? (
@@ -354,6 +529,7 @@ export function PublishPage({
               {episodes.map((ep, index) => {
                 const epVisible =
                   episodeVisibilityOf(episodeVisibility, ep.id, visibility) === 'public'
+                const epGame = novelGameEpisodeOf(novelGameEpisodes, ep.id)
                 return (
                   <li
                     key={ep.id}
@@ -386,6 +562,30 @@ export function PublishPage({
                     </div>
 
                     <div className="flex shrink-0 items-center gap-2">
+                      {/* サウンドノベルにする話を選ぶ。作品の切り替えが ON のときだけ意味を持つ */}
+                      {showGameSwitches && (
+                        <div className="mr-2 flex items-center gap-1.5">
+                          <span
+                            aria-hidden
+                            className={cn(
+                              'font-sans text-[12px]',
+                              epGame && epVisible
+                                ? 'text-on-surface-variant'
+                                : 'text-on-surface-variant/50',
+                            )}
+                          >
+                            サウンドノベル
+                          </span>
+                          <Switch
+                            aria-label={`「${ep.title || '無題'}」をサウンドノベルにする`}
+                            checked={epGame && epVisible}
+                            disabled={!epVisible}
+                            onCheckedChange={(next) =>
+                              setNovelGameEpisodes((prev) => ({ ...prev, [ep.id]: next }))
+                            }
+                          />
+                        </div>
+                      )}
                       {/* 行が並ぶので、状態表示は目で追う用。読み上げには話名入りの aria-label を使う */}
                       <span
                         aria-hidden
@@ -412,7 +612,7 @@ export function PublishPage({
           )}
         </section>
 
-        {/* 3. コトノハ-grove- へ渡す情報 */}
+        {/* 4. コトノハ-grove- へ渡す情報 */}
         <section className="space-y-5 rounded-xl border border-outline-variant/40 bg-surface-container-lowest p-5">
           <h2 className="font-semibold font-serif text-[17px] text-on-surface">
             コトノハ-grove- へ渡す情報
@@ -551,7 +751,7 @@ export function PublishPage({
           </fieldset>
         </section>
 
-        {/* 4. 手元に取り出す（作品まるごと） */}
+        {/* 5. 手元に取り出す（作品まるごと） */}
         <section className="rounded-xl border border-outline-variant/40 bg-surface-container-lowest p-5">
           <h2 className="font-semibold font-serif text-[17px] text-on-surface">作品を書き出す</h2>
           <p className="mt-1.5 text-[13px] text-on-surface-variant leading-relaxed">

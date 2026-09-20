@@ -9,9 +9,9 @@ import type { Plot, PlotBeat, PlotBeatStatus } from '@/core/plot'
  * 違う色・違う言い回しで出ることを防ぐ。React に依存しない純粋な表示ヘルパだけを置く。
  */
 
-/** 用語集カテゴリの絞り込み（固定5種＋旧データの自由入力に緩く一致させる）。 */
-export const PERSON_CATEGORY = /人物|キャラ/
-export const PLACE_CATEGORY = /場所|舞台/
+// 用語集カテゴリの絞り込みは core（glossary）へ移動した（ノベルゲームの話者候補と共有）。
+// 既存の import 先を保つための再輸出。
+export { PERSON_CATEGORY, PLACE_CATEGORY } from '@/core/glossary'
 
 /** 状態チップ（画面設計の「✓ 済／✎ 執筆中／？ 検討中／確定」表記）。 */
 export const STATUS_UI: Record<PlotBeatStatus, { label: string; className: string }> = {

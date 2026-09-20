@@ -23,6 +23,7 @@ import { HelpPage } from './components/HelpPage/help-page'
 import { IdeaboxPage } from './components/IdeaboxPage/idea-box-page'
 import { Library } from './components/Library/library'
 import { McpConnectDialog } from './components/McpConnectDialog/mcp-connect-dialog'
+import { OAuthConsentPage } from './components/OAuthConsent/oauth-consent'
 import { ProfileDialog } from './components/ProfileDialog/profile-dialog'
 import { PublishRoute } from './components/PublishPage/publish-route'
 import { RestoreGrace } from './components/RestoreGrace/restore-grace'
@@ -42,10 +43,13 @@ import {
   usePenName,
   useSaveProfile,
 } from './hooks/use-pen-name'
+import { useIsStaff } from './hooks/use-staff'
 import {
   createDefaultActivityRepository,
+  createDefaultGameAssetRepository,
   createDefaultIdeaRepository,
   createDefaultPlotRepository,
+  createDefaultStagingRepository,
   createDefaultStructureRepository,
 } from './store/createDefaultStore'
 import type { EditorStore } from './store/editorStore'
@@ -63,6 +67,15 @@ const BoardPage = lazy(() =>
 const ThreadView = lazy(() =>
   import('./components/BoardPage/thread-view').then((m) => ({ default: m.ThreadView })),
 )
+/** 運営だけの管理ページ。staff 以外には入口も画面も出さないので、コードも遅延ロードで外に置く。 */
+const AdminTemplatesPage = lazy(() =>
+  import('./components/AdminTemplatesPage/admin-templates-page').then((m) => ({
+    default: m.AdminTemplatesPage,
+  })),
+)
+
+/** 運営テンプレの管理（`#/admin/templates`）。staff のときだけ描く（D-GAME-TEMPLATE-CMS）。 */
+const ADMIN_TEMPLATES_ROUTE = '/admin/templates'
 
 /** 掲示板スレッド詳細のハッシュ接頭辞（`#/board/<id>`）。 */
 const BOARD_THREAD_PREFIX = '/board/'
@@ -117,6 +130,8 @@ function RootRoutes({ store }: RootProps) {
   // 掲示板の表示名の初期候補に使うペンネーム（D-BOARD-NAME は「提案するだけ」）。
   // 購読は外側の `Root` が 1 回だけ行い、ここは配られた値を読む。
   const penName = usePenName()
+  // 運営か（管理ページの URL を開いたときだけ問い合わせる）。null は確定待ち
+  const isStaff = useIsStaff(route === ADMIN_TEMPLATES_ROUTE)
   // 初回のみ保存の仕組みを一度だけ説明する（思想の共有）。立てたら再表示しない。
   const [onboarded, markOnboarded] = useLocalFlag('ns-onboarded')
   const getTokenRef = useRef(getToken)
@@ -165,6 +180,13 @@ function RootRoutes({ store }: RootProps) {
       withSyncTouch(createDefaultPlotRepository(), ['create', 'save', 'remove', 'removeByWork']),
     [],
   )
+  // 演出譜（サウンドノベルの Staging）も同じ。編集は Repository 直書きなので sync-touch で push の契機を作る。
+  const stagingRepo = useMemo(
+    () => withSyncTouch(createDefaultStagingRepository(), ['save', 'remove', 'removeByWork']),
+    [],
+  )
+  // 持ち込みゲーム素材（背景画像）。純ローカル＝同期に載せないので sync-touch は不要。
+  const gameAssetRepo = useMemo(() => createDefaultGameAssetRepository(), [])
   /**
    * 構想の道具（プロット・世界観設定・アウトライン・相関図・マインドマップ）を出すか。
    *
@@ -276,8 +298,25 @@ function RootRoutes({ store }: RootProps) {
 
   // 設定・ヘルプはサイドバー付き本体とは独立した一枚ものページ。認証・オンボーディングに関わらず
   // （狭い画面でも）到達できるよう、法務ページと同じくガードの手前に置く。
+  // 運営テンプレの管理。staff でなければ何も無かったことにして通常の入口へ倒す
+  //（存在を教えない）。確定するまでは読み込み中の受け皿
+  if (route === ADMIN_TEMPLATES_ROUTE && isStaff !== false) {
+    return isStaff === null ? (
+      <PageLoading />
+    ) : (
+      <Suspense fallback={<PageLoading />}>
+        <AdminTemplatesPage getToken={getTokenStable} />
+      </Suspense>
+    )
+  }
+
   if (route === '/settings') return <SettingsPage />
   if (route === '/help') return <HelpPage />
+
+  // AI（MCP）からの接続要求に許可を出す画面。`/api/oauth/authorize` がここへ 302 で送る。
+  // 認証・オンボーディングのガードより手前に置く——画面自身がログインと会員判定を出し分けるので、
+  // 途中に別の全画面を挟むと「AI から来たのに知らない画面が出る」になる。
+  if (route.startsWith('/connect')) return <OAuthConsentPage />
 
   // クラウド同期（有料）の案内。かつては未課金のサインイン済みに強制表示していたが、
   // novel platform とアカウントを共有する以上そこへ閉じ込められないため、
@@ -342,6 +381,8 @@ function RootRoutes({ store }: RootProps) {
         getToken={getTokenStable}
         isSignedIn={isSignedIn}
         onSignIn={available ? openSignIn : undefined}
+        stagingRepo={stagingRepo}
+        gameAssetRepo={gameAssetRepo}
       />
     )
   }
@@ -407,6 +448,8 @@ function RootRoutes({ store }: RootProps) {
           activityRepo={activityRepo}
           structureRepo={structureRepo}
           plotRepo={plotRepo}
+          stagingRepo={stagingRepo}
+          gameAssetRepo={gameAssetRepo}
           canUseStructure={canUseCreativeTools}
           ideaRepo={ideaRepo}
         />
@@ -430,6 +473,8 @@ function RootRoutes({ store }: RootProps) {
           isMember={status === 'member'}
           onboarded={onboarded}
           activityRepo={activityRepo}
+          stagingRepo={stagingRepo}
+          gameAssetRepo={gameAssetRepo}
           // 無料の人向けクラウド導線＝サインアップ（→購読）。Clerk 未構成時はリンクを出さない。
           onOpenCloudPlan={available ? openSignUp : undefined}
         />

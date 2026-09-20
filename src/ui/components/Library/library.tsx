@@ -16,11 +16,15 @@ import { localDateKey, summarize } from '@/core/activity'
 import { decideBackupNudge, type NudgeDecision } from '@/core/nudge/backup-nudge'
 import type { WorkPlatform } from '@/core/schema'
 import type { ActivityRepository } from '@/core/storage/activityRepository'
+import type { GameAssetRepository } from '@/core/storage/gameAssetRepository'
+import type { StagingRepository } from '@/core/storage/stagingRepository'
 import type { WorkSummary } from '@/core/storage/workRepository'
 import { cn } from '@/lib/utils'
 import {
   describePublishBlocked,
+  hasNovelGameEpisodes,
   isPublishAvailable,
+  type NovelGameBundleInput,
   publishWorkToPlatform,
 } from '@/ui/_api/publish'
 import { triggerDownload } from '@/ui/_utils/download'
@@ -94,6 +98,10 @@ interface LibraryProps {
   activityRepo: ActivityRepository
   /** 案内モーダルの「クラウドバックアップを利用する場合はこちら」導線（無料の人向け・未指定なら非表示）。 */
   onOpenCloudPlan?: () => void
+  /** 保存済みの演出譜（サウンドノベル書き出し・公開切替の v4 再送に載せる）。 */
+  stagingRepo?: Pick<StagingRepository, 'get' | 'listByWork'>
+  /** 持ち込み背景（演出が指す分だけ zip・v4 バンドルに同梱される）。 */
+  gameAssetRepo?: Pick<GameAssetRepository, 'list'>
 }
 
 /** データ管理メニューの 1 項目。 */
@@ -151,6 +159,8 @@ export function Library({
   onboarded,
   activityRepo,
   onOpenCloudPlan,
+  stagingRepo,
+  gameAssetRepo,
 }: LibraryProps) {
   const state = useEditorStore(store)
   // コトノハ-grove- への投稿は Clerk JWT で認証する（執筆アカウント＝公開アカウント）。
@@ -267,7 +277,22 @@ export function Library({
         ...work.platform,
         visibility: summary.platform?.visibility === 'public' ? 'draft' : 'public',
       }
-      const res = await publishWorkToPlatform(getToken, { ...work, platform })
+      // サウンドノベルにする話がある作品を公開へ戻すときは、プレイヤーも作り直して v4 で送る。
+      // 渡さないと v3（先方は据え置き）になり、本文だけ新しくプレイヤーが古いまま残る。
+      // 前回は載せたが今は1話も選ばれていない作品でも v4 で送る＝先方が古い分を外せる
+      let gameInput: NovelGameBundleInput | undefined
+      if (
+        platform.visibility === 'public' &&
+        (hasNovelGameEpisodes(platform.novelGameEpisodes) || platform.novelGame === true) &&
+        stagingRepo &&
+        gameAssetRepo
+      ) {
+        gameInput = {
+          stagings: await stagingRepo.listByWork(work.id),
+          gameAssets: await gameAssetRepo.list(),
+        }
+      }
+      const res = await publishWorkToPlatform(getToken, { ...work, platform }, gameInput)
       if (!res.ok) {
         show(res.message)
         return
@@ -551,7 +576,13 @@ export function Library({
         submitLabel="作成"
         onSubmit={(title) => handleCreate(title)}
       />
-      <ExportDialog open={exportOpen} onOpenChange={setExportOpen} work={state.work} />
+      <ExportDialog
+        open={exportOpen}
+        onOpenChange={setExportOpen}
+        work={state.work}
+        stagingRepo={stagingRepo}
+        gameAssetRepo={gameAssetRepo}
+      />
       <BackupDialog
         open={backupOpen}
         onOpenChange={setBackupOpen}

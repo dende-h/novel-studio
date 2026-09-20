@@ -1,0 +1,144 @@
+import { useEffect, useState } from 'react'
+import { buildNovelGameHtml } from '@/core/exporter/toNovelGame'
+import type { Staging } from '@/core/game'
+import type { UserGameAsset } from '@/core/game/assets'
+import type { CatalogBackground, CatalogBgm, CatalogSe } from '@/core/game/templates'
+import type { Episode, Work } from '@/core/schema'
+import { loadGameFontDataUrl } from '@/ui/_utils/game-font'
+import {
+  Dialog,
+  DialogBody,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/ui/components/ui/dialog'
+import {
+  resolveTemplateBackgrounds,
+  resolveTemplateBgms,
+  resolveTemplateSes,
+  templateBgKeysOf,
+  templateBgmKeysOf,
+  templateSeKeysOf,
+} from '@/ui/game/template-catalog'
+
+/**
+ * 演出のプレビュー（アプリ内で遊べる・書き出しや投稿を待たない）。
+ *
+ * 中身は**書き出し・投稿と同じプレイヤー**をその場で組み立てたもの（素材はすべて内包）。
+ * iframe は sandbox（同一オリジンを渡さない）で開く——アプリの保存領域に触れさせないため。
+ * その代わりフォントは実体（data URL）で渡す（同じサイトの URL でも CORS で読めないので）。
+ */
+export function StagingPreviewDialog({
+  open,
+  onOpenChange,
+  work,
+  episode,
+  staging,
+  gameAssets,
+  templateBackgrounds = [],
+  templateSes = [],
+  templateBgms = [],
+  startAt,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  work: Work
+  episode: Episode
+  staging: Staging | undefined
+  gameAssets: UserGameAsset[]
+  /** 運営テンプレの一覧（目録の画像があれば実体を取って同梱する。無ければ組み込み SVG） */
+  templateBackgrounds?: readonly CatalogBackground[]
+  /** 運営テンプレの効果音（目録の音声ファイルがあれば実体を取って同梱する。無ければ合成） */
+  templateSes?: readonly CatalogSe[]
+  /** 運営テンプレの BGM（目録の曲があれば実体を取って同梱する。無ければ鳴らないだけ） */
+  templateBgms?: readonly CatalogBgm[]
+  /** この行から始める（省略＝タイトル画面から）。 */
+  startAt?: number
+}) {
+  const [html, setHtml] = useState<string | null>(null)
+  const [error, setError] = useState(false)
+
+  useEffect(() => {
+    if (!open) {
+      setHtml(null)
+      setError(false)
+      return
+    }
+    let alive = true
+    // テンプレ背景の画像は取れなければ tone の控えに倒す（プレビューは止めない）
+    void Promise.all([
+      loadGameFontDataUrl().catch(() => undefined),
+      resolveTemplateBackgrounds(templateBgKeysOf(staging ? [staging] : []), templateBackgrounds, {
+        fallback: 'gradient',
+      }).catch(() => ({ assets: [] })),
+      resolveTemplateSes(templateSeKeysOf(staging ? [staging] : []), templateSes, {
+        fallback: 'omit',
+      }).catch(() => ({ assets: [] })),
+      resolveTemplateBgms(templateBgmKeysOf(staging ? [staging] : []), templateBgms, {
+        fallback: 'omit',
+      }).catch(() => ({ assets: [] })),
+    ]).then(([fontHref, tpl, tplSe, tplBgm]) => {
+      if (!alive) return
+      try {
+        setHtml(
+          buildNovelGameHtml(work, episode, staging, {
+            ...(fontHref ? { fontHref } : {}),
+            gameAssets: [...gameAssets, ...tpl.assets, ...tplSe.assets, ...tplBgm.assets],
+            ...(startAt !== undefined ? { startAt } : {}),
+          }),
+        )
+      } catch {
+        setError(true)
+      }
+    })
+    return () => {
+      alive = false
+    }
+  }, [
+    open,
+    work,
+    episode,
+    staging,
+    gameAssets,
+    templateBackgrounds,
+    templateSes,
+    templateBgms,
+    startAt,
+  ])
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-4xl">
+        <DialogHeader>
+          <DialogTitle className="font-serif text-on-surface">
+            プレビュー{startAt === undefined ? '' : '（選んだ行から）'}
+          </DialogTitle>
+          <DialogDescription>
+            いまの演出のまま遊べます。書き出し・投稿と同じプレイヤーです。
+          </DialogDescription>
+        </DialogHeader>
+        <DialogBody>
+          {error ? (
+            <p className="text-destructive text-sm">
+              プレビューを作れませんでした。演出を保存し直してから、もう一度お試しください。
+            </p>
+          ) : html === null ? (
+            <p className="text-on-surface-variant text-sm">組み立てています…</p>
+          ) : (
+            <iframe
+              // 同一オリジンを渡さない＝アプリの保存領域（IndexedDB・localStorage）に触れない
+              sandbox="allow-scripts"
+              srcDoc={html}
+              title="サウンドノベルのプレビュー"
+              className="aspect-video w-full rounded-md border border-outline-variant/30 bg-black"
+            />
+          )}
+          <p className="text-[12px] text-on-surface-variant leading-relaxed">
+            ここでの操作は、原稿にも演出にも影響しません。読んだところは記録されません。
+          </p>
+        </DialogBody>
+      </DialogContent>
+    </Dialog>
+  )
+}

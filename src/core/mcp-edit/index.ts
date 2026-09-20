@@ -1,5 +1,22 @@
+import {
+  BGM_STOP,
+  type Cue,
+  classifyBlock,
+  emptyStaging,
+  MASKED_SPEAKER,
+  patchCue,
+  removeCue,
+  type SpriteCue,
+  type SpritePosition,
+  type Staging,
+} from '../game'
+import { type SpriteSource, spriteExpressionsOf, userAssetKey } from '../game/assets'
+import { GAME_FEATURES } from '../game/features'
+import { BLACKOUT_BG_KEY, presetBackground } from '../game/presets'
+import { presetSe, SE_STOP } from '../game/sePresets'
 import { type FlatNote, MAX_NOTE_DEPTH, rebuildEpisodeNotes } from '../outline'
 import { parseEpisodeBody } from '../parser/parseNotation'
+import { reconcileBlockIds } from '../parser/reconcileBlockIds'
 import {
   addBeat,
   addLine,
@@ -89,7 +106,10 @@ export function setEpisode(
       return {
         ...ep,
         ...(patch.title !== undefined ? { title: patch.title } : {}),
-        ...(patch.body !== undefined ? { blocks: parseEpisodeBody(patch.body) } : {}),
+        // 再パースの id は旧 blocks から引き継ぐ（AI が本文を直しても演出譜のアンカーが生きる）
+        ...(patch.body !== undefined
+          ? { blocks: reconcileBlockIds(ep.blocks, parseEpisodeBody(patch.body)) }
+          : {}),
       }
     })
     if (!found) throw new McpEditError(`episode_id "${episodeId}" の話が見つかりません`)
@@ -778,4 +798,383 @@ export function deletePlotItem(
     throw new McpEditError(`foreshadow_id "${itemId}" の伏線が見つかりません`)
   }
   return putPlot(plots, removeForeshadow(plot, itemId), now)
+}
+
+// ---- 演出譜（サウンドノベルの Staging）の編集 ----------------------------------------
+// 対象は work×episode の 1 レコード。行（block_id）単位のパッチで、一括置換はさせない
+// （プロットと同じ理由＝AI の一手ミスで全演出が消えないように）。
+
+/** set_staging の sprites 1 件ぶん（席・人物・表情。position は英語の語で受ける）。 */
+export interface StagingSpriteInput {
+  position?: string
+  character?: string
+  expression?: string
+}
+
+/** set_staging の cues 1 件ぶん（キーは JSON 入力の snake_case から変換済み）。 */
+export interface StagingCueInput {
+  blockId: string
+  speaker?: string
+  /** 席ごとの立ち絵の指示（空配列＝この行の指示を外す） */
+  sprites?: StagingSpriteInput[]
+  /** @deprecated 旧式（sprites を使う）。旧データの読み書きのために残す */
+  expression?: string
+  /** @deprecated 旧式（sprites を使う） */
+  appear?: string
+  hideSprite?: boolean
+  sceneBreak?: boolean
+  bg?: string
+  bgm?: string
+  se?: string
+  seRepeat?: string
+  transition?: string
+  clear?: boolean
+}
+
+/** set_staging の cues 配列（JSON 由来の unknown）を検証して型付ける。 */
+export function parseStagingCueInputs(raw: unknown): StagingCueInput[] {
+  if (!Array.isArray(raw) || raw.length === 0) {
+    throw new McpEditError('cues には 1 件以上の配列を渡してください')
+  }
+  return raw.map((item, i) => {
+    if (typeof item !== 'object' || item === null || Array.isArray(item)) {
+      throw new McpEditError(`cues[${i}] がオブジェクトではありません`)
+    }
+    const o = item as Record<string, unknown>
+    const field = (key: string): string | undefined => {
+      const v = o[key]
+      if (v === undefined) return undefined
+      if (typeof v !== 'string')
+        throw new McpEditError(`cues[${i}].${key} は文字列で渡してください`)
+      return v
+    }
+    const flag = (key: string): boolean | undefined => {
+      const v = o[key]
+      if (v === undefined) return undefined
+      if (typeof v !== 'boolean') {
+        throw new McpEditError(`cues[${i}].${key} は true / false で渡してください`)
+      }
+      return v
+    }
+    const blockId = field('block_id')
+    if (!blockId) {
+      throw new McpEditError(`cues[${i}] に block_id がありません（get_staging の [block_id: …]）`)
+    }
+    let sprites: StagingSpriteInput[] | undefined
+    if (o.sprites !== undefined) {
+      if (!Array.isArray(o.sprites)) {
+        throw new McpEditError(`cues[${i}].sprites は配列で渡してください`)
+      }
+      sprites = o.sprites.map((sp, j) => {
+        if (typeof sp !== 'object' || sp === null || Array.isArray(sp)) {
+          throw new McpEditError(`cues[${i}].sprites[${j}] がオブジェクトではありません`)
+        }
+        const so = sp as Record<string, unknown>
+        const sfield = (key: string): string | undefined => {
+          const v = so[key]
+          if (v === undefined) return undefined
+          if (typeof v !== 'string') {
+            throw new McpEditError(`cues[${i}].sprites[${j}].${key} は文字列で渡してください`)
+          }
+          return v
+        }
+        return {
+          position: sfield('position'),
+          character: sfield('character'),
+          expression: sfield('expression'),
+        }
+      })
+    }
+    return {
+      blockId,
+      speaker: field('speaker'),
+      sprites,
+      expression: field('expression'),
+      appear: field('appear'),
+      hideSprite: flag('hide_sprite'),
+      sceneBreak: flag('scene_break'),
+      bg: field('bg'),
+      bgm: field('bgm'),
+      se: field('se'),
+      seRepeat: field('se_repeat'),
+      transition: field('transition'),
+      clear: flag('clear'),
+    }
+  })
+}
+
+const TRANSITION_CHOICES: readonly string[] = ['fade', 'cut', 'flash']
+/** 立ち絵の席（MCP では英語の語で受け、Cue には l / c / r で持つ）。auto＝空いている席へ。 */
+const SPRITE_POSITION_OF: Record<string, SpritePosition | undefined> = {
+  left: 'l',
+  center: 'c',
+  right: 'r',
+  auto: undefined,
+}
+const SPRITE_POSITION_CHOICES = Object.keys(SPRITE_POSITION_OF)
+/** 効果音の鳴らし方（once は「指定なし」と同じ）。 */
+const SE_REPEAT_CHOICES: readonly string[] = ['once', 'twice', 'loop']
+
+/**
+ * 演出譜へ行単位のパッチをまとめて当てる。渡した項目だけ書き換える
+ * （省略＝据え置き・空文字＝削除・clear で行の演出を丸ごと外す）。
+ * どれか 1 件でも不正なら McpEditError で全体を保存しない（部分適用を残さない）。
+ */
+export function setStagingCues(
+  stagings: Staging[],
+  works: Work[],
+  workId: string,
+  episodeId: string,
+  items: StagingCueInput[],
+  gameAssets: readonly SpriteSource[],
+  now: number,
+  /** 運営テンプレの目録が知っている背景キー（組み込み 18 枚の外にある絵）。省略＝組み込みだけ */
+  templateBgKeys: ReadonlySet<string> = new Set(),
+  /** 同じく効果音キー（組み込みの合成 12 種の外にある音）。省略＝組み込みだけ */
+  templateSeKeys: ReadonlySet<string> = new Set(),
+  /** 同じく BGM キー（組み込みは無い＝目録に無ければ何も選べない）。省略＝空 */
+  templateBgmKeys: ReadonlySet<string> = new Set(),
+): { stagings: Staging[]; applied: number; cleared: number } {
+  const work = works.find((w) => w.id === workId)
+  if (!work) throw new McpEditError(`work_id "${workId}" の作品が見つかりません`)
+  const episode = work.episodes.find((e) => e.id === episodeId)
+  if (!episode) throw new McpEditError(`episode_id "${episodeId}" の話が見つかりません`)
+  const blocks = new Map(episode.blocks.map((b) => [b.id, b]))
+  // 背景キーは持ち込み背景（kind 'bg'）だけ。立ち絵は bg には指せない
+  const userKeys = new Set(
+    gameAssets.filter((a) => (a.kind ?? 'bg') === 'bg').map((a) => userAssetKey(a.id)),
+  )
+
+  let staging =
+    stagings.find((s) => s.workId === workId && s.episodeId === episodeId) ??
+    emptyStaging(workId, episodeId, now)
+  let applied = 0
+  let cleared = 0
+
+  for (const item of items) {
+    if (item.clear === true) {
+      // 丸ごと外す（orphan の掃除も兼ねるので、行が消えていても cue があれば通す）。
+      if (
+        item.speaker !== undefined ||
+        item.sprites !== undefined ||
+        item.expression !== undefined ||
+        item.appear !== undefined ||
+        item.hideSprite !== undefined ||
+        item.sceneBreak !== undefined ||
+        item.bg !== undefined ||
+        item.bgm !== undefined ||
+        item.se !== undefined ||
+        item.seRepeat !== undefined ||
+        item.transition !== undefined
+      ) {
+        throw new McpEditError(`block_id "${item.blockId}": clear: true と他の項目は併用できません`)
+      }
+      const exists =
+        blocks.has(item.blockId) || staging.cues.some((c) => c.blockId === item.blockId)
+      if (!exists) {
+        throw new McpEditError(
+          `block_id "${item.blockId}" の行も演出も見つかりません（get_staging で確認）`,
+        )
+      }
+      staging = removeCue(staging, item.blockId, now)
+      cleared++
+      continue
+    }
+
+    const block = blocks.get(item.blockId)
+    if (!block) {
+      throw new McpEditError(
+        `block_id "${item.blockId}" の行が見つかりません（get_staging で確認）`,
+      )
+    }
+    if (classifyBlock(block) === 'gap') {
+      throw new McpEditError(
+        `block_id "${item.blockId}" は空行（間）です。演出は本文のある行に付けてください`,
+      )
+    }
+
+    const patch: Partial<Omit<Cue, 'blockId'>> = {}
+    if (item.speaker !== undefined) {
+      const speaker = emptyToUndef(item.speaker)
+      if (speaker !== undefined && classifyBlock(block) !== 'dialogue') {
+        throw new McpEditError(
+          `block_id "${item.blockId}" は地の文です。話者はセリフの行にだけ付けられます`,
+        )
+      }
+      patch.speaker = speaker
+    }
+    if (item.sprites !== undefined) {
+      // 席ごとの立ち絵。空配列＝この行の指示を外す。人物は立ち絵のある人だけ、表情はその人の絵から
+      const sprites: SpriteCue[] = item.sprites.map((sp, j) => {
+        const where = `block_id "${item.blockId}": sprites[${j}]`
+        const position = emptyToUndef(sp.position) ?? 'auto'
+        if (!SPRITE_POSITION_CHOICES.includes(position)) {
+          throw new McpEditError(
+            `${where}: position は ${SPRITE_POSITION_CHOICES.join(' / ')} のいずれかです`,
+          )
+        }
+        const pos = SPRITE_POSITION_OF[position]
+        const character = emptyToUndef(sp.character)
+        const expression = emptyToUndef(sp.expression)
+        if (!character) {
+          if (!pos) {
+            throw new McpEditError(
+              `${where}: 席を下げるときは position（left / center / right）を渡してください`,
+            )
+          }
+          return { pos }
+        }
+        if (character === MASKED_SPEAKER) {
+          throw new McpEditError(
+            `${where}: ${MASKED_SPEAKER} は立ち絵に使えません（正体を伏せた人物には立ち絵を出さない）`,
+          )
+        }
+        const choices = spriteExpressionsOf(gameAssets, character)
+        if (choices.length === 0) {
+          throw new McpEditError(
+            `「${character}」の立ち絵がまだありません（アプリの「演出」画面で追加できます）`,
+          )
+        }
+        if (expression && !choices.includes(expression)) {
+          throw new McpEditError(
+            `表情 "${expression}" は「${character}」の立ち絵にありません（使える表情: ${choices.join('・')}）`,
+          )
+        }
+        return {
+          ...(pos ? { pos } : {}),
+          character,
+          ...(expression ? { expression } : {}),
+        }
+      })
+      patch.sprites = sprites.length > 0 ? sprites : undefined
+    }
+    if (item.expression !== undefined) {
+      // 旧式：誰の表情かは併せて付いている話者／登場で決まる（下でまとめて検証する）
+      patch.expression = emptyToUndef(item.expression)
+    }
+    if (item.appear !== undefined) {
+      patch.appear = emptyToUndef(item.appear)
+    }
+    if (item.hideSprite !== undefined) patch.hideSprite = item.hideSprite ? true : undefined
+    if (item.sceneBreak !== undefined) patch.sceneBreak = item.sceneBreak ? true : undefined
+    if (item.bg !== undefined) {
+      const bg = emptyToUndef(item.bg)
+      if (
+        bg !== undefined &&
+        bg !== BLACKOUT_BG_KEY &&
+        !presetBackground(bg) &&
+        !userKeys.has(bg) &&
+        !templateBgKeys.has(bg)
+      ) {
+        throw new McpEditError(
+          `bg "${bg}" は使えません。使える背景キーは get_staging の一覧で確認してください`,
+        )
+      }
+      patch.bg = bg
+    }
+    if (item.bgm !== undefined) {
+      const bgm = emptyToUndef(item.bgm)
+      // BGM_STOP は実体を持たない予約キー（鳴っている曲を止める合図）
+      if (bgm !== undefined && bgm !== BGM_STOP && !templateBgmKeys.has(bgm)) {
+        throw new McpEditError(
+          `bgm "${bgm}" は使えません。使える BGM キーは get_staging の一覧で確認してください`,
+        )
+      }
+      patch.bgm = bgm
+    }
+    if (item.se !== undefined) {
+      const se = emptyToUndef(item.se)
+      // 効果音を出さない版（GAME_FEATURES.se＝false）では付けられない（外すのは通す）
+      if (se !== undefined && !GAME_FEATURES.se) {
+        throw new McpEditError(
+          `block_id "${item.blockId}": 効果音（se）はいまは使えません（空文字で外すことだけできます）`,
+        )
+      }
+      // SE_STOP は実体を持たない予約キー（鳴っているループを止める合図）
+      if (se !== undefined && se !== SE_STOP && !presetSe(se) && !templateSeKeys.has(se)) {
+        throw new McpEditError(
+          `se "${se}" は使えません。使える効果音キーは get_staging の一覧で確認してください`,
+        )
+      }
+      patch.se = se
+    }
+    if (item.seRepeat !== undefined) {
+      const raw = emptyToUndef(item.seRepeat)
+      if (raw !== undefined && !GAME_FEATURES.se) {
+        throw new McpEditError(
+          `block_id "${item.blockId}": 効果音（se_repeat）はいまは使えません（空文字で外すことだけできます）`,
+        )
+      }
+      if (raw !== undefined && !SE_REPEAT_CHOICES.includes(raw)) {
+        throw new McpEditError(`se_repeat は ${SE_REPEAT_CHOICES.join(' / ')} のいずれかです`)
+      }
+      // once は「指定なし」と同じ＝欄を空にする（同じ意味の書き方を2つ残さない）
+      patch.seRepeat = raw === 'twice' ? 2 : raw === 'loop' ? 'loop' : undefined
+    }
+    if (item.transition !== undefined) {
+      const transition = emptyToUndef(item.transition)
+      if (transition !== undefined && !TRANSITION_CHOICES.includes(transition)) {
+        throw new McpEditError(`transition は ${TRANSITION_CHOICES.join(' / ')} のいずれかです`)
+      }
+      patch.transition = transition as Cue['transition']
+    }
+    if (Object.keys(patch).length === 0) {
+      throw new McpEditError(
+        `block_id "${item.blockId}": 変更する項目がありません（speaker / sprites / hide_sprite / scene_break / bg / bgm /${GAME_FEATURES.se ? ' se / se_repeat /' : ''} transition / clear のいずれかを渡す）`,
+      )
+    }
+    staging = patchCue(staging, item.blockId, patch, now)
+    // 背景の切り替え方は背景と一緒でだけ効く（G0 プレイヤーの契約。07 §14）。
+    const merged = staging.cues.find((c) => c.blockId === item.blockId)
+    if (merged?.transition && !merged.bg) {
+      throw new McpEditError(
+        `block_id "${item.blockId}": 切り替え方（transition）は背景（bg）と同じ行に付けてください`,
+      )
+    }
+    // 表情は「立ち絵の出る人物」にだけ意味を持つ（無意味な指定を保存しない）。
+    // 話者の付いた行ではその話者の、そうでなければ登場（appear）する人物の表情（exporter と同じ規則）。
+    if (merged?.expression) {
+      const target = merged.speaker ?? merged.appear
+      if (!target) {
+        throw new McpEditError(
+          `block_id "${item.blockId}": 表情（expression）は話者（speaker）か登場（appear）の付いた行にだけ付けてください`,
+        )
+      }
+      if (target === MASKED_SPEAKER) {
+        throw new McpEditError(
+          `block_id "${item.blockId}": ${MASKED_SPEAKER}（名前を伏せた話者）には立ち絵が出ないため、表情は付けられません`,
+        )
+      }
+      const choices = spriteExpressionsOf(gameAssets, target)
+      if (choices.length === 0) {
+        throw new McpEditError(
+          `「${target}」の立ち絵がまだありません（アプリの「演出」画面で追加できます）`,
+        )
+      }
+      if (!choices.includes(merged.expression)) {
+        throw new McpEditError(
+          `表情 "${merged.expression}" は「${target}」の立ち絵にありません（使える表情: ${choices.join('・')}）`,
+        )
+      }
+    }
+    // 登場（appear）は立ち絵のある人物にだけ意味を持つ（無意味な指定を保存しない）。
+    if (merged?.appear) {
+      if (merged.appear === MASKED_SPEAKER) {
+        throw new McpEditError(
+          `block_id "${item.blockId}": ${MASKED_SPEAKER} は登場（appear）に使えません（正体を伏せた声には立ち絵を出さない）`,
+        )
+      }
+      if (spriteExpressionsOf(gameAssets, merged.appear).length === 0) {
+        throw new McpEditError(
+          `「${merged.appear}」の立ち絵がまだありません（アプリの「演出」画面で追加できます）`,
+        )
+      }
+    }
+    applied++
+  }
+
+  const next = stagings.some((s) => s.workId === workId && s.episodeId === episodeId)
+    ? stagings.map((s) => (s.workId === workId && s.episodeId === episodeId ? staging : s))
+    : [...stagings, staging]
+  return { stagings: next, applied, cleared }
 }

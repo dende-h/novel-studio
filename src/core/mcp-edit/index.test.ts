@@ -1,5 +1,7 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
+import type { Staging } from '../game'
 import { resolveRef } from '../glossary'
+import { parseEpisodeBody } from '../parser/parseNotation'
 import type { Work } from '../schema'
 import { emptyStructure } from '../structure'
 import {
@@ -8,13 +10,19 @@ import {
   deleteGlossaryEntry,
   McpEditError,
   parseOutlineNotes,
+  parseStagingCueInputs,
   parseStructure,
   setEpisode,
   setOutlineNotes,
+  setStagingCues,
   setWorkMeta,
   upsertGlossaryEntry,
   upsertStructure,
 } from './index'
+
+// この版は効果音を隠している（features.ts）。MCP の効果音経路そのものはここで検証し続ける。
+// フラグが落ちているときの振る舞いは index.features.test.ts
+vi.mock('../game/features', () => ({ GAME_FEATURES: { se: true } }))
 
 const work = (): Work => ({
   id: 'w1',
@@ -44,6 +52,20 @@ describe('mcp-edit（MCP 書き込みの純ロジック）', () => {
     const [w] = setEpisode([work()], 'w1', 'e1', { title: '改', body: '本文です' }, 100)
     expect(w?.episodes[0]).toMatchObject({ title: '改' })
     expect(w?.episodes[0]?.blocks.length).toBeGreaterThan(0)
+  })
+
+  it('setEpisode で本文を直しても、変わらない行の block id は引き継がれる', () => {
+    const [w1] = setEpisode([work()], 'w1', 'e1', { body: '一行目。\n「二行目」' }, 100)
+    const before = w1?.episodes[0]?.blocks.map((b) => b.id)
+    const [w2] = setEpisode(
+      w1 ? [w1] : [],
+      'w1',
+      'e1',
+      { body: '前置き。\n一行目。\n「二行目」' },
+      200,
+    )
+    const after = w2?.episodes[0]?.blocks.map((b) => b.id)
+    expect(after?.slice(1)).toEqual(before)
   })
 
   it('addEpisode は末尾に話を追加', () => {
@@ -316,5 +338,648 @@ describe('mcp-edit（MCP 書き込みの純ロジック）', () => {
     expect(upsertStructure([], a).map((s) => s.id)).toEqual(['s1'])
     expect(upsertStructure([a], b)[0]?.title).toBe('改')
     expect(upsertStructure([a], emptyStructure('s2', 'w1', 'mindmap', 0))).toHaveLength(2)
+  })
+})
+
+describe('mcp-edit — 演出譜（set_staging の純ロジック）', () => {
+  // b1=地の文 / b2=セリフ / b3,b4=空行 / b5=地の文
+  const stagedWork = (): Work => ({
+    ...work(),
+    episodes: [
+      {
+        id: 'e1',
+        title: '第一話',
+        blocks: parseEpisodeBody(
+          '　灯が振り返った。\n「まだ書いてるんだね」\n\n\n　場面が変わる。',
+        ),
+      },
+    ],
+  })
+
+  it('parseStagingCueInputs は snake_case を検証して型付ける（不正は McpEditError）', () => {
+    expect(parseStagingCueInputs([{ block_id: 'b2', speaker: '灯', scene_break: true }])).toEqual([
+      {
+        blockId: 'b2',
+        speaker: '灯',
+        expression: undefined,
+        appear: undefined,
+        sceneBreak: true,
+        bg: undefined,
+        se: undefined,
+        transition: undefined,
+        clear: undefined,
+      },
+    ])
+    expect(() => parseStagingCueInputs(undefined)).toThrow(McpEditError)
+    expect(() => parseStagingCueInputs([])).toThrow(McpEditError)
+    expect(() => parseStagingCueInputs([{ speaker: '灯' }])).toThrow(McpEditError)
+    expect(() => parseStagingCueInputs([{ block_id: 'b2', scene_break: 'yes' }])).toThrow(
+      McpEditError,
+    )
+  })
+
+  it('話者・場面の切れ目・背景をまとめて付けられる（新規 Staging を作る）', () => {
+    const res = setStagingCues(
+      [],
+      [stagedWork()],
+      'w1',
+      'e1',
+      [
+        { blockId: 'b2', speaker: '灯' },
+        { blockId: 'b5', sceneBreak: true, bg: 'preset:bg/room-night', transition: 'cut' },
+      ],
+      [],
+      100,
+    )
+    expect(res.applied).toBe(2)
+    expect(res.stagings).toHaveLength(1)
+    expect(res.stagings[0]).toMatchObject({ workId: 'w1', episodeId: 'e1', updatedAt: 100 })
+    expect(res.stagings[0]?.cues).toEqual([
+      { blockId: 'b2', speaker: '灯' },
+      { blockId: 'b5', sceneBreak: true, bg: 'preset:bg/room-night', transition: 'cut' },
+    ])
+  })
+
+  it('se_repeat（鳴らし方）と stop（環境音を止める）を扱える', () => {
+    const on = setStagingCues(
+      [],
+      [stagedWork()],
+      'w1',
+      'e1',
+      [
+        { blockId: 'b2', se: 'preset:se/rain', seRepeat: 'loop' },
+        { blockId: 'b5', se: 'stop' },
+      ],
+      [],
+      100,
+    )
+    expect(on.stagings[0]?.cues).toEqual([
+      { blockId: 'b2', se: 'preset:se/rain', seRepeat: 'loop' },
+      { blockId: 'b5', se: 'stop' },
+    ])
+
+    // once は「指定なし」と同じ＝欄を空にする（同じ意味の書き方を2つ残さない）
+    const once = setStagingCues(
+      on.stagings,
+      [stagedWork()],
+      'w1',
+      'e1',
+      [{ blockId: 'b2', seRepeat: 'once' }],
+      [],
+      200,
+    )
+    expect(once.stagings[0]?.cues[0]).toEqual({ blockId: 'b2', se: 'preset:se/rain' })
+  })
+
+  it('bgm は目録の曲か stop だけ通る（空文字で外す）', () => {
+    const keys = new Set(['preset:bgm/bgm-calm-morning'])
+    const on = setStagingCues(
+      [],
+      [stagedWork()],
+      'w1',
+      'e1',
+      [
+        { blockId: 'b1', bgm: 'preset:bgm/bgm-calm-morning' },
+        { blockId: 'b5', bgm: 'stop' },
+      ],
+      [],
+      100,
+      new Set(),
+      new Set(),
+      keys,
+    )
+    expect(on.stagings[0]?.cues).toEqual([
+      { blockId: 'b1', bgm: 'preset:bgm/bgm-calm-morning' },
+      { blockId: 'b5', bgm: 'stop' },
+    ])
+    expect(() =>
+      setStagingCues(
+        [],
+        [stagedWork()],
+        'w1',
+        'e1',
+        [{ blockId: 'b1', bgm: 'preset:bgm/zzz' }],
+        [],
+        100,
+      ),
+    ).toThrow(/bgm "preset:bgm\/zzz" は使えません/)
+    const off = setStagingCues(
+      on.stagings,
+      [stagedWork()],
+      'w1',
+      'e1',
+      [{ blockId: 'b1', bgm: '' }],
+      [],
+      100,
+    )
+    expect(off.stagings[0]?.cues).toEqual([{ blockId: 'b5', bgm: 'stop' }])
+  })
+
+  it('se_repeat に知らない言葉は通さない', () => {
+    expect(() =>
+      setStagingCues(
+        [],
+        [stagedWork()],
+        'w1',
+        'e1',
+        [{ blockId: 'b2', se: 'preset:se/rain', seRepeat: 'forever' }],
+        [],
+        100,
+      ),
+    ).toThrow(/se_repeat/)
+  })
+
+  it('sprites は席ごとの指示。人物は立ち絵のある人だけ・表情はその人の絵から・空配列で外す', () => {
+    const assets = [
+      { id: 'sp1', kind: 'sprite', character: '灯', expression: '通常', createdAt: 1 },
+      { id: 'sp2', kind: 'sprite', character: '灯', expression: '笑顔', createdAt: 2 },
+      { id: 'sp3', kind: 'sprite', character: '結', expression: '通常', createdAt: 3 },
+    ]
+    const parsed = parseStagingCueInputs([
+      {
+        block_id: 'b1',
+        sprites: [
+          { position: 'left', character: '灯', expression: '笑顔' },
+          { character: '結' },
+          { position: 'right', character: '' },
+        ],
+      },
+    ])
+    expect(parsed[0]?.sprites).toEqual([
+      { position: 'left', character: '灯', expression: '笑顔' },
+      { position: undefined, character: '結', expression: undefined },
+      { position: 'right', character: '', expression: undefined },
+    ])
+    const res = setStagingCues([], [stagedWork()], 'w1', 'e1', parsed, assets, 100)
+    expect(res.stagings[0]?.cues[0]).toEqual({
+      blockId: 'b1',
+      sprites: [
+        { pos: 'l', character: '灯', expression: '笑顔' },
+        { character: '結' },
+        { pos: 'r' },
+      ],
+    })
+    // 話者を付けても立ち絵の指示は増えない（独立）
+    const withSpeaker = setStagingCues(
+      res.stagings,
+      [stagedWork()],
+      'w1',
+      'e1',
+      [{ blockId: 'b2', speaker: '灯' }],
+      assets,
+      101,
+    )
+    expect(withSpeaker.stagings[0]?.cues[1]).toEqual({ blockId: 'b2', speaker: '灯' })
+    // 空配列で外す
+    const off = setStagingCues(
+      res.stagings,
+      [stagedWork()],
+      'w1',
+      'e1',
+      [{ blockId: 'b1', sprites: [] }],
+      assets,
+      102,
+    )
+    expect(off.stagings[0]?.cues).toHaveLength(0)
+    // 立ち絵の無い人物・未登録の表情・席なしで下げる・知らない席は McpEditError
+    const bad = (sprites: unknown[]) => () =>
+      setStagingCues(
+        [],
+        [stagedWork()],
+        'w1',
+        'e1',
+        parseStagingCueInputs([{ block_id: 'b1', sprites }]),
+        assets,
+        100,
+      )
+    expect(bad([{ character: 'モブ' }])).toThrow(/「モブ」の立ち絵がまだありません/)
+    expect(bad([{ character: '灯', expression: '泣き' }])).toThrow(/使える表情: 通常・笑顔/)
+    expect(bad([{ character: '' }])).toThrow(/position（left \/ center \/ right）を渡してください/)
+    expect(bad([{ position: 'top', character: '灯' }])).toThrow(
+      /position は left \/ center \/ right \/ auto/,
+    )
+    expect(() => parseStagingCueInputs([{ block_id: 'b1', sprites: 'x' }])).toThrow(/配列で渡して/)
+  })
+
+  it('hide_sprite（立ち絵を出さない）を付け外しできる', () => {
+    const on = setStagingCues(
+      [],
+      [stagedWork()],
+      'w1',
+      'e1',
+      [{ blockId: 'b2', speaker: '灯', hideSprite: true }],
+      [],
+      100,
+    )
+    expect(on.stagings[0]?.cues).toEqual([{ blockId: 'b2', speaker: '灯', hideSprite: true }])
+
+    const off = setStagingCues(
+      on.stagings,
+      [stagedWork()],
+      'w1',
+      'e1',
+      [{ blockId: 'b2', hideSprite: false }],
+      [],
+      200,
+    )
+    expect(off.stagings[0]?.cues).toEqual([{ blockId: 'b2', speaker: '灯' }])
+  })
+
+  it('パッチ方式：渡した項目だけ書き換え・空文字で削除・clear で丸ごと外す', () => {
+    const initial: Staging = {
+      workId: 'w1',
+      episodeId: 'e1',
+      cues: [
+        { blockId: 'b2', speaker: '灯' },
+        { blockId: 'b5', sceneBreak: true, bg: 'preset:bg/room-night' },
+        { blockId: 'b99', speaker: '消えた行' }, // orphan
+      ],
+      updatedAt: 1,
+    }
+    const res = setStagingCues(
+      [initial],
+      [stagedWork()],
+      'w1',
+      'e1',
+      [
+        { blockId: 'b2', speaker: '？？？' }, // 上書き
+        { blockId: 'b5', bg: '' }, // bg だけ外す（sceneBreak は据え置き）
+        { blockId: 'b99', clear: true }, // orphan の掃除
+      ],
+      [],
+      200,
+    )
+    expect(res.applied).toBe(2)
+    expect(res.cleared).toBe(1)
+    expect(res.stagings[0]?.cues).toEqual([
+      { blockId: 'b2', speaker: '？？？' },
+      { blockId: 'b5', sceneBreak: true },
+    ])
+  })
+
+  it('持ち込み背景のキーは手元の素材（kind bg）にあるものだけ通す', () => {
+    const ok = setStagingCues(
+      [],
+      [stagedWork()],
+      'w1',
+      'e1',
+      [{ blockId: 'b5', bg: 'user:abc' }],
+      [{ id: 'abc', kind: 'bg' }],
+      100,
+    )
+    expect(ok.stagings[0]?.cues[0]?.bg).toBe('user:abc')
+    expect(() =>
+      setStagingCues([], [stagedWork()], 'w1', 'e1', [{ blockId: 'b5', bg: 'user:zzz' }], [], 100),
+    ).toThrow(/使えません/)
+    // 立ち絵（kind 'sprite'）のキーは背景には指せない
+    expect(() =>
+      setStagingCues(
+        [],
+        [stagedWork()],
+        'w1',
+        'e1',
+        [{ blockId: 'b5', bg: 'user:sp1' }],
+        [{ id: 'sp1', kind: 'sprite', character: '灯' }],
+        100,
+      ),
+    ).toThrow(/使えません/)
+  })
+
+  it('表情は「立ち絵のある話者」の付いたセリフの行にだけ付けられる', () => {
+    const sprites = [
+      { id: 'sp1', kind: 'sprite', character: '灯', expression: '通常', createdAt: 1 },
+      { id: 'sp2', kind: 'sprite', character: '灯', expression: '笑顔', createdAt: 2 },
+    ]
+    const ok = setStagingCues(
+      [],
+      [stagedWork()],
+      'w1',
+      'e1',
+      [{ blockId: 'b2', speaker: '灯', expression: '笑顔' }],
+      sprites,
+      100,
+    )
+    expect(ok.stagings[0]?.cues[0]).toEqual({ blockId: 'b2', speaker: '灯', expression: '笑顔' })
+
+    // 話者なし・？？？・地の文・未登録の表情・立ち絵の無い話者は全部エラー
+    expect(() =>
+      setStagingCues(
+        [],
+        [stagedWork()],
+        'w1',
+        'e1',
+        [{ blockId: 'b2', expression: '笑顔' }],
+        sprites,
+        100,
+      ),
+    ).toThrow(/話者/)
+    expect(() =>
+      setStagingCues(
+        [],
+        [stagedWork()],
+        'w1',
+        'e1',
+        [{ blockId: 'b2', speaker: '？？？', expression: '笑顔' }],
+        sprites,
+        100,
+      ),
+    ).toThrow(/立ち絵が出ない/)
+    // 地の文でも、登場（appear）が無ければ誰の表情か決まらない
+    expect(() =>
+      setStagingCues(
+        [],
+        [stagedWork()],
+        'w1',
+        'e1',
+        [{ blockId: 'b1', expression: '笑顔' }],
+        sprites,
+        100,
+      ),
+    ).toThrow(/話者.*登場/)
+    expect(() =>
+      setStagingCues(
+        [],
+        [stagedWork()],
+        'w1',
+        'e1',
+        [{ blockId: 'b2', speaker: '灯', expression: '泣き' }],
+        sprites,
+        100,
+      ),
+    ).toThrow(/使える表情: 通常・笑顔/)
+    expect(() =>
+      setStagingCues(
+        [],
+        [stagedWork()],
+        'w1',
+        'e1',
+        [{ blockId: 'b2', speaker: '影', expression: '通常' }],
+        sprites,
+        100,
+      ),
+    ).toThrow(/立ち絵がまだありません/)
+
+    // 空文字＝表情を外す（既定の表情へ戻す）は常に通る
+    const cleared = setStagingCues(
+      ok.stagings,
+      [stagedWork()],
+      'w1',
+      'e1',
+      [{ blockId: 'b2', expression: '' }],
+      sprites,
+      100,
+    )
+    expect(cleared.stagings[0]?.cues[0]).toEqual({ blockId: 'b2', speaker: '灯' })
+  })
+
+  it('登場（appear）の行にも表情を付けられる（その人物の表情で検証する）', () => {
+    const sprites = [
+      { id: 'sp1', kind: 'sprite', character: '灯', expression: '通常', createdAt: 1 },
+      { id: 'sp2', kind: 'sprite', character: '灯', expression: '笑顔', createdAt: 2 },
+      { id: 'sp3', kind: 'sprite', character: 'ベニ', expression: '通常', createdAt: 3 },
+    ]
+    const ok = setStagingCues(
+      [],
+      [stagedWork()],
+      'w1',
+      'e1',
+      [{ blockId: 'b1', appear: '灯', expression: '笑顔' }],
+      sprites,
+      100,
+    )
+    expect(ok.stagings[0]?.cues[0]).toEqual({ blockId: 'b1', appear: '灯', expression: '笑顔' })
+    // 登場する人物に無い表情は弾く
+    expect(() =>
+      setStagingCues(
+        [],
+        [stagedWork()],
+        'w1',
+        'e1',
+        [{ blockId: 'b1', appear: '灯', expression: '泣き' }],
+        sprites,
+        100,
+      ),
+    ).toThrow(/「灯」の立ち絵にありません/)
+    // 話者の付いた行では、表情は話者のもの（同じ行の登場する人物では検証しない）
+    expect(() =>
+      setStagingCues(
+        [],
+        [stagedWork()],
+        'w1',
+        'e1',
+        [{ blockId: 'b2', speaker: 'ベニ', appear: '灯', expression: '笑顔' }],
+        sprites,
+        100,
+      ),
+    ).toThrow(/「ベニ」の立ち絵にありません/)
+    // 登場だけ外すと表情が宙に浮く＝一緒に外す
+    expect(() =>
+      setStagingCues(
+        ok.stagings,
+        [stagedWork()],
+        'w1',
+        'e1',
+        [{ blockId: 'b1', appear: '' }],
+        sprites,
+        100,
+      ),
+    ).toThrow(/話者.*登場/)
+    const cleared = setStagingCues(
+      ok.stagings,
+      [stagedWork()],
+      'w1',
+      'e1',
+      [{ blockId: 'b1', appear: '', expression: '' }],
+      sprites,
+      100,
+    )
+    expect(cleared.stagings[0]?.cues).toHaveLength(0)
+  })
+
+  it('登場（appear）は立ち絵のある人物にだけ付けられる（地の文でも可）', () => {
+    const sprites = [
+      { id: 'sp1', kind: 'sprite', character: '灯', expression: '通常', createdAt: 1 },
+    ]
+    // 地の文（b1）に登場を付けられる
+    const ok = setStagingCues(
+      [],
+      [stagedWork()],
+      'w1',
+      'e1',
+      [{ blockId: 'b1', appear: '灯' }],
+      sprites,
+      100,
+    )
+    expect(ok.stagings[0]?.cues[0]).toEqual({ blockId: 'b1', appear: '灯' })
+    // ？？？・立ち絵の無い人物はエラー
+    expect(() =>
+      setStagingCues(
+        [],
+        [stagedWork()],
+        'w1',
+        'e1',
+        [{ blockId: 'b1', appear: '？？？' }],
+        sprites,
+        100,
+      ),
+    ).toThrow(/appear/)
+    expect(() =>
+      setStagingCues(
+        [],
+        [stagedWork()],
+        'w1',
+        'e1',
+        [{ blockId: 'b1', appear: '影' }],
+        sprites,
+        100,
+      ),
+    ).toThrow(/立ち絵がまだありません/)
+    // 空文字で外せる
+    const cleared = setStagingCues(
+      ok.stagings,
+      [stagedWork()],
+      'w1',
+      'e1',
+      [{ blockId: 'b1', appear: '' }],
+      sprites,
+      100,
+    )
+    expect(cleared.stagings[0]?.cues).toHaveLength(0)
+  })
+
+  it('効果音（se）はテンプレのキーだけ通る（空文字で外す）', () => {
+    const ok = setStagingCues(
+      [],
+      [stagedWork()],
+      'w1',
+      'e1',
+      [{ blockId: 'b1', se: 'preset:se/rain' }],
+      [],
+      100,
+    )
+    expect(ok.stagings[0]?.cues[0]).toEqual({ blockId: 'b1', se: 'preset:se/rain' })
+    expect(() =>
+      setStagingCues(
+        [],
+        [stagedWork()],
+        'w1',
+        'e1',
+        [{ blockId: 'b1', se: 'preset:se/zzz' }],
+        [],
+        100,
+      ),
+    ).toThrow(/使えません/)
+    const cleared = setStagingCues(
+      ok.stagings,
+      [stagedWork()],
+      'w1',
+      'e1',
+      [{ blockId: 'b1', se: '' }],
+      [],
+      100,
+    )
+    expect(cleared.stagings[0]?.cues).toHaveLength(0)
+  })
+
+  it('bg には予約キー blackout（背景なし）を渡せる', () => {
+    const res = setStagingCues(
+      [],
+      [stagedWork()],
+      'w1',
+      'e1',
+      [{ blockId: 'b2', bg: 'blackout' }],
+      [],
+      100,
+    )
+    expect(res.stagings[0]?.cues).toEqual([{ blockId: 'b2', bg: 'blackout' }])
+  })
+
+  it('不正な入力は McpEditError で全体を保存しない（部分適用を残さない）', () => {
+    const cases: Array<Parameters<typeof setStagingCues>[4]> = [
+      [{ blockId: 'b3', speaker: '灯' }], // 空行（間）宛て
+      [{ blockId: 'b1', speaker: '灯' }], // 地の文に話者
+      [{ blockId: 'b2', bg: 'preset:bg/nowhere' }], // 未知の背景キー
+      [{ blockId: 'b2', transition: 'spin' }], // 未知の切り替え方
+      [{ blockId: 'b5', transition: 'fade' }], // bg の無い行に transition
+      [{ blockId: 'b404', speaker: '灯' }], // 未知の行
+      [{ blockId: 'b2' }], // 変更項目なし
+      [{ blockId: 'b2', clear: true, speaker: '灯' }], // clear と他項目の併用
+      [{ blockId: 'b2', clear: true, appear: '灯' }], // clear と登場の併用
+      [{ blockId: 'b404', clear: true }], // 行も演出も無い clear
+    ]
+    for (const items of cases) {
+      expect(() => setStagingCues([], [stagedWork()], 'w1', 'e1', items, [], 100)).toThrow(
+        McpEditError,
+      )
+    }
+    // 1 件目が成功しても 2 件目のエラーで全体が保存されない
+    expect(() =>
+      setStagingCues(
+        [],
+        [stagedWork()],
+        'w1',
+        'e1',
+        [
+          { blockId: 'b2', speaker: '灯' },
+          { blockId: 'b404', speaker: 'x' },
+        ],
+        [],
+        100,
+      ),
+    ).toThrow(McpEditError)
+  })
+
+  it('未知の作品・話は McpEditError', () => {
+    const items = [{ blockId: 'b2', speaker: '灯' }]
+    expect(() => setStagingCues([], [stagedWork()], 'zzz', 'e1', items, [], 1)).toThrow(
+      McpEditError,
+    )
+    expect(() => setStagingCues([], [stagedWork()], 'w1', 'zzz', items, [], 1)).toThrow(
+      McpEditError,
+    )
+  })
+})
+
+describe('運営テンプレの目録にあるキー（背景・効果音）', () => {
+  const stagedWork = (): Work => ({
+    ...work(),
+    episodes: [
+      {
+        id: 'e1',
+        title: '第一話',
+        blocks: parseEpisodeBody(
+          '　灯が振り返った。\n「まだ書いてるんだね」\n\n\n　場面が変わる。',
+        ),
+      },
+    ],
+  })
+
+  it('目録のキーを渡せば、組み込みの外の背景・効果音も付けられる（渡さなければ弾く）', () => {
+    const res = setStagingCues(
+      [],
+      [stagedWork()],
+      'w1',
+      'e1',
+      [{ blockId: 'b5', bg: 'preset:bg/school-hall-day', se: 'preset:se/weather-rain' }],
+      [],
+      100,
+      new Set(['preset:bg/school-hall-day']),
+      new Set(['preset:se/weather-rain']),
+    )
+    expect(res.stagings[0]?.cues[0]).toMatchObject({
+      bg: 'preset:bg/school-hall-day',
+      se: 'preset:se/weather-rain',
+    })
+    expect(() =>
+      setStagingCues(
+        [],
+        [stagedWork()],
+        'w1',
+        'e1',
+        [{ blockId: 'b5', se: 'preset:se/weather-rain' }],
+        [],
+        100,
+      ),
+    ).toThrow(/使えません/)
   })
 })
