@@ -108,7 +108,7 @@ novel-studio を **本番（production）で実際に動かす**ために必要�
 - [ ] **新しい migration があるリリースは、マージの前に本番 D1 へ適用**：`pnpm d1:migrate:remote`
       （デプロイ用トークンに D1 権限が無いので Actions は適用しない。適用済みの分は wrangler が読み飛ばす）。
 - [ ] **運営テンプレ（背景・立ち絵・BGM・効果音）を stg で足した／直したリリースは、R2 のバケットが
-      本番と stg で別なので、素材を本番へ写す**：`pnpm templates:copy-to-prod`（まず `-- --dry-run` で件数を見る）。
+      本番と stg で別なので、素材を本番へ写す**：`pnpm templates:copy-to-prod`（まず `--dry-run` で件数を見る）。
       `scripts/copy-templates.mjs` が stg の目録 `_templates/manifest.json` と実体を 1 件ずつ
       `wrangler r2 object get/put --remote` で運び、本番の目録は捨てずに合流する（本番だけの項目は残る）。
       wrangler の認証（`pnpm exec wrangler login`）が要る。デプロイの前後どちらでもよい

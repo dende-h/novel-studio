@@ -3,7 +3,7 @@
  * 運営テンプレ（背景・立ち絵・効果音・BGM）を R2 の別バケットへ写す（ふつうは stg → 本番）。
  *
  *   pnpm templates:copy-to-prod            # novel-studio-media-stg → novel-studio-media
- *   pnpm templates:copy-to-prod -- --dry-run
+ *   pnpm templates:copy-to-prod --dry-run   # 何も書かずに件数と対象を出す（`-- --dry-run` でも可）
  *   node scripts/copy-templates.mjs --from <bucket> --to <bucket> [--dry-run] [--manifest <file>]
  *
  * 目録 `_templates/manifest.json` を写し元から読み、そこに載っている実体（＋画像のサムネ）を
@@ -40,6 +40,7 @@ function parseArgs(argv) {
   const opts = { from: 'novel-studio-media-stg', to: 'novel-studio-media', dryRun: false, manifest: '' }
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]
+    if (a === '--') continue // pnpm 10 は `pnpm <script> -- --dry-run` の `--` をそのまま渡してくる
     if (a === '--from') opts.from = argv[++i] ?? ''
     else if (a === '--to') opts.to = argv[++i] ?? ''
     else if (a === '--dry-run') opts.dryRun = true

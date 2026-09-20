@@ -338,7 +338,7 @@ pnpm format         # biome format --write .
 pnpm build          # tsc -b && vite build
 pnpm test:e2e       # Playwright（e2e/smoke.spec.ts, e2e/mobile.spec.ts）
 pnpm d1:migrate:local / :remote
-pnpm templates:copy-to-prod [-- --dry-run]   # 運営テンプレ素材を R2 の stg バケット → 本番へ写す（scripts/copy-templates.mjs・要 wrangler 認証）
+pnpm templates:copy-to-prod [--dry-run]   # 運営テンプレ素材を R2 の stg バケット → 本番へ写す（scripts/copy-templates.mjs・要 wrangler 認証）
 pnpm --dir tools/novel-textlint lint:novel <file>   # 小説原稿の textlint（CI 対象外）
 uv run .claude/skills/natural-japanese/scripts/lint.py <file>   # 仕事の文書の AI 臭 lint（要 uv・CI 対象外）
 ```
