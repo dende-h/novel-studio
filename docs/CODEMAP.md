@@ -69,7 +69,7 @@ Cloudflare Pages Functions
 | ユーザー向け文言（LP・案内・ボタン・エラー等）を書く/直す | `.claude/skills/toc-copy/`（トーン・用語表・マイクロコピーの型） |
 | 小説本文の執筆・推敲（MCP/ローカル） | `.claude/skills/novel-writing/`（執筆制約・レビュー観点） |
 | 小説原稿の機械検査（textlint）のルール・AI臭辞書 | `tools/novel-textlint/`（アプリ本体とは独立。README 参照） |
-| **X の機能紹介動画**（1 機能＝1 本・字幕つき・日次ルーティンで投稿）の台本・録画・投稿 | 台本は `tools/x-tutorial/scenarios/`（並び＝投稿順は `index.ts`・末尾に足す）、録画と字幕の焼き込みは `tools/x-tutorial/lib/stage.ts`（Playwright の `page.screencast`）、X API（OAuth 1.0a・動画アップロード）は `tools/x-tutorial/lib/x-client.ts`。毎日の手順と判断基準は `.claude/skills/x-daily-post/`（アプリ本体とは独立・CI 対象外。README 参照） |
+| **X の機能紹介動画**（1 機能＝1 本・字幕つき・日次ルーティンで投稿）の台本・録画・投稿 | 台本は `tools/x-tutorial/scenarios/`（並び＝投稿順は `index.ts`・末尾に足す）、録画と字幕の焼き込み・無料会員として撮る差し替えは `tools/x-tutorial/lib/stage.ts`（Playwright の `page.screencast`）、台本の共通操作は `tools/x-tutorial/lib/app.ts`、X API（OAuth 1.0a・動画アップロード）は `tools/x-tutorial/lib/x-client.ts`。毎日の手順と判断基準は `.claude/skills/x-daily-post/`（アプリ本体とは独立・CI 対象外。README 参照） |
 | note記事・設計文書・レポートなど仕事の文書を書く/直す | `.claude/skills/natural-japanese/`（coji/natural-japanese の同梱コピー。出自と更新手順は同 `UPSTREAM.md`） |
 
 ---

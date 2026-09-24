@@ -1,9 +1,13 @@
 /**
  * 録画の舞台：ブラウザを立ち上げ、画面を録り、字幕と見出しを重ねる。
  *
- * 字幕は Playwright 1.59+ の page.screencast.showOverlay で「画面の上に HTML を重ねて」
- * 録画へ焼き込む。フォントはアプリが同梱している Noto Sans JP をそのまま使えるので、
- * 実行環境に日本語フォントが無くても文字化けしない（ffmpeg の字幕焼き込みでは要る）。
+ * 録画は Playwright 1.59+ の page.screencast。字幕と見出しカードは、ページに固定配置の要素を
+ * 差し込んで「画面の上に重ねて」録画へ焼き込む。フォントはアプリが同梱している Noto Sans JP を
+ * そのまま使えるので、実行環境に日本語フォントが無くても文字化けしない（ffmpeg の焼き込みでは要る）。
+ *
+ * Playwright の screencast.showOverlay を使わないのは、差し込みに失敗してもエラーを握りつぶして
+ * ログに書くだけで、字幕の抜けた動画が黙って出来上がる（6 回に 1 回ほど起きた）ため。
+ * ここでは差し込めたかを確かめ、失敗したら録画ごと止める。
  */
 import { execFileSync } from 'node:child_process'
 import { existsSync, mkdirSync, rmSync } from 'node:fs'
@@ -85,6 +89,33 @@ const cardHtml = ({ kicker, title, foot = 'コトノハ-leaf-' }: CardText) => `
 
 const wait = (ms: number) => new Promise<void>((r) => setTimeout(r, ms))
 
+const CAPTION_ID = 'x-tutorial-caption'
+const CARD_ID = 'x-tutorial-card'
+
+/**
+ * 字幕・カードの差し込み口（id ごとに 1 枚）。html が空なら消すだけ。React の根（#root）の外、
+ * <html> の直下に置くので、アプリの再描画やハッシュ遷移では消えない。pointer-events:none なので
+ * 下のボタンへのクリックは素通しする（重なっていても台本の操作は止まらない）。
+ */
+async function paint(page: Page, id: string, html: string) {
+  const ok = await page.evaluate(
+    ([id, html]) => {
+      document.getElementById(id)?.remove()
+      if (!html) return true
+      const el = document.createElement('div')
+      el.id = id
+      el.setAttribute('aria-hidden', 'true')
+      el.style.cssText = 'position:fixed;inset:0;pointer-events:none;z-index:2147483647'
+      // 閉じた Shadow DOM に入れて、台本の getByText などが字幕の文字に当たらないようにする。
+      el.attachShadow({ mode: 'closed' }).innerHTML = html
+      document.documentElement.append(el)
+      return el.isConnected && el.getBoundingClientRect().width > 0
+    },
+    [id, html] as const,
+  )
+  if (!ok) throw new Error(`字幕（${id}）を画面に出せなかった`)
+}
+
 /**
  * 無料会員（status 'free'）として撮るための差し替え。開発サーバが配る auth-context.ts の
  * ゲスト既定（GUEST_AUTH_STATE）の status だけを 'free' に書き換える。available は false の
@@ -142,22 +173,15 @@ export async function recordScenario(
     // Web フォントが揃ってから録り始める（最初の数フレームで字形が入れ替わるのを避ける）。
     await page.evaluate(() => document.fonts.ready)
 
-    let current: { dispose: () => Promise<void> } | undefined
-    const clear = async () => {
-      await current?.dispose()
-      current = undefined
-    }
+    const clear = () => paint(page, CAPTION_ID, '')
     const stage: Stage = {
       page,
-      caption: async (text) => {
-        await clear()
-        if (text) current = await page.screencast.showOverlay(captionHtml(text))
-      },
+      caption: (text) => paint(page, CAPTION_ID, text ? captionHtml(text) : ''),
       card: async (text, ms = 2600) => {
         await clear()
-        const d = await page.screencast.showOverlay(cardHtml(text))
+        await paint(page, CARD_ID, cardHtml(text))
         await wait(ms)
-        await d.dispose()
+        await paint(page, CARD_ID, '')
       },
       typeSlow: async (selector, text, delay = 90) => {
         await page.locator(selector).pressSequentially(text, { delay })
