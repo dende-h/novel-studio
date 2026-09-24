@@ -1,5 +1,5 @@
 import { CalendarDays, Flame, PenLine, Share2, Sigma } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import {
   availableYears,
   buildYear,
@@ -11,6 +11,7 @@ import {
 } from '@/core/activity'
 import type { ActivityRepository } from '@/core/storage/activityRepository'
 import { cn } from '@/lib/utils'
+import { heatmapScrollLeft } from '@/ui/components/ActivityPage/heatmap-scroll'
 import {
   buildShareCardData,
   renderShareCard,
@@ -31,6 +32,11 @@ const LEVEL_BG: Record<HeatCell['level'], string> = {
 
 /** 曜日ラベル（日本語）。GitHub と同じく月・水・金だけ表示（0=日）。 */
 const WEEKDAY_LABEL: Record<number, string> = { 1: '月', 3: '水', 5: '金' }
+
+/** 草の寸法（px）。下の className（マス size-3・間隔 gap-1・曜日ラベル列 w-7）と揃える。 */
+const CELL_PX = 12
+const GAP_PX = 4
+const WEEKDAY_COL_PX = 28
 
 const fmtDate = (key: string) =>
   new Date(`${key}T00:00:00`).toLocaleDateString('ja-JP', {
@@ -118,6 +124,27 @@ export function ActivityPage({
   const netByDate = useMemo(() => new Map((days ?? []).map((d) => [d.date, d.net])), [days])
   const heatmap = useMemo(() => buildYear(netByDate, year, today), [netByDate, year, today])
   const labels = useMemo(() => monthLabels(heatmap), [heatmap])
+
+  /**
+   * 今年を表示したら、今日の週が見えるところまで草を横にずらす（狭い画面では秋以降の今日が
+   * 右にはみ出して隠れるため）。読み込み完了時と年の切り替え時に走り、過去の年は左端（1 月）に戻す。
+   * 縦のページスクロールまで動く scrollIntoView は使わず、scrollLeft だけを入れる。
+   */
+  const scrollerRef = useRef<HTMLElement>(null)
+  useLayoutEffect(() => {
+    const el = scrollerRef.current
+    if (!el) return // 読み込み中はカレンダー自体がまだ無い
+    const weekIndex =
+      year === currentYear ? heatmap.findIndex((wk) => wk.some((c) => c.date === today)) : -1
+    el.scrollLeft = heatmapScrollLeft({
+      weekIndex,
+      pitch: CELL_PX + GAP_PX,
+      cell: CELL_PX,
+      leading: WEEKDAY_COL_PX + GAP_PX,
+      viewport: el.clientWidth,
+      content: el.scrollWidth,
+    })
+  }, [heatmap, year, currentYear, today])
 
   const yearStat = useMemo(() => {
     const inYear = (days ?? []).filter((d) => d.date.startsWith(`${year}-`))
@@ -228,7 +255,11 @@ export function ActivityPage({
             {days === null ? (
               <p className="py-8 text-center text-on-surface-variant text-sm">読み込み中…</p>
             ) : (
-              <div className="overflow-x-auto pb-1">
+              <section
+                ref={scrollerRef}
+                aria-label="年間の執筆カレンダー"
+                className="overflow-x-auto pb-1"
+              >
                 <div className="inline-block">
                   {/* 月ラベル（週列に合わせて配置） */}
                   <div className="mb-1 flex gap-1 pl-7 text-on-surface-variant text-xs">
@@ -259,6 +290,7 @@ export function ActivityPage({
                         {week.map((cell) => (
                           <div
                             key={cell.date}
+                            aria-current={cell.date === today ? 'date' : undefined}
                             title={
                               cell.future || cell.outOfRange
                                 ? undefined
@@ -279,7 +311,7 @@ export function ActivityPage({
 
                   <Legend />
                 </div>
-              </div>
+              </section>
             )}
 
             {days !== null && summary.activeDays === 0 && (
@@ -327,7 +359,11 @@ function StatCard({
         >
           {icon}
         </span>
-        <span className="font-sans text-[12px] text-on-surface-variant">{label}</span>
+        {/* 4 列になる最小幅（1024px）ではラベル欄が「今日書いた文字」ぴったりの幅しかなく、
+            端数で「文 / 字」と割れるので折り返さない（はみ出してもカードの余白の内側に収まる）。 */}
+        <span className="whitespace-nowrap font-sans text-[12px] text-on-surface-variant">
+          {label}
+        </span>
       </div>
       <div className="font-serif text-on-surface">
         <span className="text-[24px]">{value}</span>
