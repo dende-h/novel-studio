@@ -1,4 +1,4 @@
-import { addEpisode, createWork, fillBody, openWriter } from '../lib/app.ts'
+import { addEpisode, BODY, createWork, fillBody, openWriter } from '../lib/app.ts'
 import type { Scenario } from '../lib/stage.ts'
 
 const WORK = '月白の庭'
@@ -36,7 +36,10 @@ export const outline: Scenario = {
       await addEpisode(page, ep.title)
       if (ep.body) await fillBody(page, ep.body)
     }
-    await page.getByRole('button', { name: 'アウトライン', exact: true }).waitFor()
+    // 最後に足した（まだ白紙の）話ではなく、書きかけの 1 話目を開いた状態から撮り始める。
+    await page.getByRole('button', { name: 'アウトライン', exact: true }).click()
+    await page.getByRole('button', { name: '本文へ' }).first().click()
+    await page.locator(BODY).waitFor()
   },
   run: async ({ page, caption, card, typeSlow, hold }) => {
     await card({ kicker: '使い方', title: '物語の流れを、アウトラインで' }, 3000)
@@ -48,7 +51,7 @@ export const outline: Scenario = {
     await hold(1000)
 
     await caption('書いた話が、字数や進み具合と一緒に並びます')
-    await hold(2800)
+    await hold(3000)
 
     await caption('話ごとに、構成メモを書き足せます')
     await page.locator(NOTE_INPUT).click()
@@ -88,6 +91,17 @@ export const outline: Scenario = {
 
     await caption('入れ替えた順番は、本文の話順にも反映されます')
     await hold(2800)
+
+    await caption('「本文へ」で、その話をすぐ書き始められます')
+    await hold(1000)
+    // 前へ動かした「庭守の柊」（2 行目・まだ白紙）を開く。
+    await page.getByRole('button', { name: '本文へ' }).nth(1).click()
+    await page.locator(BODY).waitFor()
+    await hold(600)
+    await typeSlow(BODY, '　庭の奥から、低い咳払いが聞こえた。')
+    // 自動保存が済んで「保存済み」に変わるのを見せてから締める。
+    await page.getByText('保存済み').waitFor()
+    await hold(1400)
 
     await caption('')
     await card(
