@@ -56,6 +56,7 @@ import {
   removeLine,
   removeSecret,
   removeSection,
+  type Secret,
   type SecretStatus,
   secretStatus,
   secretsHiddenAt,
@@ -76,6 +77,7 @@ import { pickPrimaryStructure, type StructureNode } from '@/core/structure'
 import { ConfirmDialog } from '@/ui/components/ConfirmDialog/confirm-dialog'
 import { NotationField } from '@/ui/components/NotationField/notation-field'
 import { NotationHelpButton } from '@/ui/components/NotationField/notation-help'
+import { useSerialSave } from '@/ui/hooks/use-serial-save'
 import {
   beatStripeColor,
   fmtCount as fmt,
@@ -130,6 +132,20 @@ const genId = () => crypto.randomUUID()
 const emptyToUndef = (s: string): string | undefined => (s.trim() === '' ? undefined : s.trim())
 
 /**
+ * 最新のプロット上の伏線・秘密へ変更を当てる。描画時点の項目を丸ごと書き戻すと、
+ * 保存待ちの別欄の確定（真相を書いた直後の「最後まで明かさない」等）を古い値で上書きする。
+ * 見つからなければ（削除済み）そのまま返す＝消した項目を生き返らせない。
+ */
+const editForeshadow = (p: Plot, id: string, fn: (f: Foreshadow) => Foreshadow): Plot => {
+  const cur = p.foreshadows.find((x) => x.id === id)
+  return cur ? upsertForeshadow(p, fn(cur)) : p
+}
+const editSecret = (p: Plot, id: string, fn: (s: Secret) => Secret): Plot => {
+  const cur = p.secrets.find((x) => x.id === id)
+  return cur ? upsertSecret(p, fn(cur)) : p
+}
+
+/**
  * プロット（幕×ビートの物語設計）。ビートシート＝カード一覧（左）＋選択ビートの
  * 詳細パネル（右）の 2 カラム。カードをクリックすると右パネルで編集できる。
  * 操作はすべて即時保存（自動同期にもそのまま乗る）。
@@ -150,7 +166,15 @@ export default function PlotView({
   onCreatePlainGlossaryEntry,
   onRefClick,
 }: PlotViewProps) {
-  const [plot, setPlot] = useState<Plot | null>(null)
+  // 変更の共通経路：純関数で変換 → 保存（updatedAt 刻印）→ 表示を保存後の状態に揃える。
+  // fn は描画時点ではなく最新の状態へ当て、保存は直列に流す（欄の blur 確定の保存中に
+  // 次の操作が来ても、古い状態から作った保存が先の確定を上書きしない）。
+  const {
+    value: plot,
+    reset: resetPlot,
+    receive: receivePlot,
+    apply,
+  } = useSerialSave<Plot>((next) => repo.save(next))
   const [loaded, setLoaded] = useState(false)
   const [view, setView] = useState<'sheet' | 'grid' | 'foreshadow' | 'world'>('sheet')
   const [selectedId, setSelectedId] = useState<string | null>(null)
@@ -170,39 +194,29 @@ export default function PlotView({
     let alive = true
     void repo.listByWork(workId).then((list) => {
       if (!alive) return
-      setPlot(pickPrimaryPlot(list) ?? null)
+      resetPlot(pickPrimaryPlot(list) ?? null)
       setLoaded(true)
     })
     return () => {
       alive = false
     }
-  }, [repo, workId])
+  }, [repo, workId, resetPlot])
 
   // 同期の pull がローカルを書き換えたら開いたまま反映する（編集の下書きは入力単位の
   // ローカル state に持っており、確定済みデータの再読込とは衝突しない）。
+  // 保存待ちの変更があるときは取り込まない（マインドマップと同じ。保存が済めば push に乗る）。
   useEffect(() => {
     return subscribeSyncApplied(() => {
       void repo.listByWork(workId).then((list) => {
         const found = pickPrimaryPlot(list)
-        setPlot((cur) =>
+        receivePlot((cur) =>
           cur && found && found.id === cur.id && found.updatedAt === cur.updatedAt
             ? cur
             : (found ?? null),
         )
       })
     })
-  }, [repo, workId])
-
-  // 変更の共通経路：純関数で変換 → 保存（updatedAt 刻印）→ 表示を保存後の状態に揃える。
-  const apply = useCallback(
-    async (fn: (p: Plot) => Plot) => {
-      if (!plot) return
-      const next = fn(plot)
-      if (next === plot) return // no-op（見つからない等）は保存しない
-      setPlot(await repo.save(next))
-    },
-    [plot, repo],
-  )
+  }, [repo, workId, receivePlot])
 
   const onDragEnd = useCallback(
     (e: DragEndEvent) => {
@@ -256,7 +270,7 @@ export default function PlotView({
       <TemplatePicker
         onPick={async (template) => {
           // 決定的 id＝どの端末が作っても同じレコードへ収束（同期レースで増殖しない）。
-          setPlot(await repo.create(workId, template, undefined, singletonPlotId(workId)))
+          resetPlot(await repo.create(workId, template, undefined, singletonPlotId(workId)))
         }}
       />
     )
@@ -875,7 +889,10 @@ function BeatCard({
           <button
             type="button"
             onClick={() =>
-              onApply((p) => updateBeat(p, beat.id, { status: nextBeatStatus(beat.status) }))
+              onApply((p) => {
+                const cur = p.beats.find((b) => b.id === beat.id)
+                return cur ? updateBeat(p, beat.id, { status: nextBeatStatus(cur.status) }) : p
+              })
             }
             title="クリックで状態を切替（検討中→確定→執筆中→済）"
             className={`pointer-events-auto inline-flex items-center rounded-full px-2 py-0.5 font-medium text-[10.5px] transition-colors ${status.className}`}
@@ -1551,7 +1568,9 @@ function ForeshadowView({
         <SelectBox
           value={exists ? (beatId ?? '') : ''}
           onChange={(v) =>
-            onApply((p) => upsertForeshadow(p, { ...f, [key]: v === '' ? undefined : v }))
+            onApply((p) =>
+              editForeshadow(p, f.id, (cur) => ({ ...cur, [key]: v === '' ? undefined : v })),
+            )
           }
           ariaLabel={key === 'plantBeatId' ? '張るビート' : '回収するビート'}
           options={beatOptions}
@@ -1597,7 +1616,8 @@ function ForeshadowView({
                         value={f.title}
                         onCommit={(v) => {
                           const t = v.trim()
-                          if (t !== '') onApply((p) => upsertForeshadow(p, { ...f, title: t }))
+                          if (t !== '')
+                            onApply((p) => editForeshadow(p, f.id, (cur) => ({ ...cur, title: t })))
                         }}
                         ariaLabel="伏線の名前"
                       />
@@ -1729,7 +1749,8 @@ function SecretTable({
                         value={s.title}
                         onCommit={(v) => {
                           const t = v.trim()
-                          if (t !== '') onApply((p) => upsertSecret(p, { ...s, title: t }))
+                          if (t !== '')
+                            onApply((p) => editSecret(p, s.id, (cur) => ({ ...cur, title: t })))
                         }}
                         ariaLabel="秘密の名前"
                       />
@@ -1738,7 +1759,9 @@ function SecretTable({
                       <CommitInput
                         value={s.truth ?? ''}
                         onCommit={(v) =>
-                          onApply((p) => upsertSecret(p, { ...s, truth: emptyToUndef(v) }))
+                          onApply((p) =>
+                            editSecret(p, s.id, (cur) => ({ ...cur, truth: emptyToUndef(v) })),
+                          )
                         }
                         placeholder="本当は何なのか"
                         ariaLabel="秘密の真相"
@@ -1750,12 +1773,12 @@ function SecretTable({
                           value={exists ? (s.revealBeatId ?? '') : ''}
                           onChange={(v) =>
                             onApply((p) =>
-                              upsertSecret(p, {
-                                ...s,
+                              editSecret(p, s.id, (cur) => ({
+                                ...cur,
                                 revealBeatId: v === '' ? undefined : v,
                                 // 明かすビートを決めたら「明かさない」印は下ろす（矛盾を残さない）。
                                 ...(v === '' ? {} : { keepHidden: undefined }),
-                              }),
+                              })),
                             )
                           }
                           ariaLabel="読者に明かすビート"
@@ -1785,7 +1808,10 @@ function SecretTable({
                             type="button"
                             onClick={() =>
                               onApply((p) =>
-                                upsertSecret(p, { ...s, keepHidden: !s.keepHidden || undefined }),
+                                editSecret(p, s.id, (cur) => ({
+                                  ...cur,
+                                  keepHidden: !cur.keepHidden || undefined,
+                                })),
                               )
                             }
                             className="whitespace-nowrap text-[11px] text-primary hover:underline"

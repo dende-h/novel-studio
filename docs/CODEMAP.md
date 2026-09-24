@@ -225,6 +225,7 @@ Cloudflare Pages Functions
 / `useLocalFlag`（localStorage 永続の真偽フラグ） / `usePreferences`（+ `setTheme` `setReadingSize`）
 / `usePenName` `useOpenProfile` `useAccountPenNameSync` `useSaveProfile`（+ `PenNameContext` `ProfileEditContext`・`use-pen-name.ts`）
 / `useBackupMarks`（+ `markLocalBackup` `markCloudBackup` `readBackupMarks`） / `readNudgeAck` `acknowledgeNudge`
+/ `useSerialSave`（`use-serial-save.ts`・最新値へ fn を積み保存を直列化する変更経路。描画時点の値へ当てて保存しない＝プロット画面が使用）
 
 **純関数 `src/ui/_utils/`**（React 非依存のヘルパ。ここに無いものだけ新規作成する）
 
