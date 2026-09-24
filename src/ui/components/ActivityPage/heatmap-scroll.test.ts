@@ -9,10 +9,13 @@ const CONTENT = LEADING + 53 * PITCH - 4 // 876
 
 const base = { pitch: PITCH, cell: CELL, leading: LEADING, content: CONTENT }
 
-/** 今日のマスが見えている範囲 [scrollLeft, scrollLeft + viewport] に収まるか。 */
+/** 左に留めた曜日ラベル列の幅。この下に入ったマスは隠れている。 */
+const WEEKDAY_COL = 28
+
+/** 今日のマスが見えている範囲（左の曜日ラベル列の右〜表示幅の右端）に収まるか。 */
 const todayVisible = (weekIndex: number, viewport: number, scrollLeft: number) => {
   const left = LEADING + weekIndex * PITCH
-  return left >= scrollLeft && left + CELL <= scrollLeft + viewport
+  return left >= scrollLeft + WEEKDAY_COL && left + CELL <= scrollLeft + viewport
 }
 
 describe('heatmapScrollLeft', () => {

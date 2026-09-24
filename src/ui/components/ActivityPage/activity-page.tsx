@@ -262,7 +262,9 @@ export function ActivityPage({
               >
                 <div className="inline-block">
                   {/* 月ラベル（週列に合わせて配置） */}
-                  <div className="mb-1 flex gap-1 pl-7 text-on-surface-variant text-xs">
+                  <div className="mb-1 flex gap-1 text-on-surface-variant text-xs">
+                    {/* 左上の角。曜日ラベル列と同じ幅で左に留め、横スクロールで流れてくる月ラベルを隠す */}
+                    <div className="sticky left-0 z-10 w-7 shrink-0 bg-surface-container-lowest" />
                     {labels.map((m, w) => (
                       <div
                         // biome-ignore lint/suspicious/noArrayIndexKey: 週の並びは固定
@@ -275,8 +277,8 @@ export function ActivityPage({
                   </div>
 
                   <div className="flex gap-1">
-                    {/* 曜日ラベル（月・水・金） */}
-                    <div className="flex w-7 flex-col gap-1 pr-1 text-on-surface-variant text-[10px]">
+                    {/* 曜日ラベル（月・水・金）。横スクロールしても見えるよう左に留める */}
+                    <div className="sticky left-0 z-10 flex w-7 shrink-0 flex-col gap-1 bg-surface-container-lowest pr-1 text-on-surface-variant text-[10px]">
                       {[0, 1, 2, 3, 4, 5, 6].map((d) => (
                         <div key={d} className="flex h-3 items-center">
                           {WEEKDAY_LABEL[d] ?? ''}
