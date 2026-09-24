@@ -97,19 +97,22 @@ export function WorldView({
   }
 
   const commitCustom = (note: WorldNote, patch: { title?: string; body?: string }) => {
-    onApply((p) =>
-      setWorldNote(
+    onApply((p) => {
+      // 渡さなかった欄は最新のプロットの値で埋める（描画時点の値だと、保存待ちの
+      // もう一方の欄の確定を古い値で上書きする）。
+      const cur = (p.world ?? []).find((n) => n.id === note.id) ?? note
+      return setWorldNote(
         p,
         {
           id: note.id,
           slot: WORLD_CUSTOM_SLOT,
-          title: patch.title ?? note.title,
-          body: patch.body ?? note.body,
+          title: patch.title ?? cur.title,
+          body: patch.body ?? cur.body,
         },
         genId(),
         Date.now(),
-      ),
-    )
+      )
+    })
   }
 
   const addCustom = () => {
