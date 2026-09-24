@@ -101,9 +101,13 @@ export const chart: Scenario = {
     const pane = await page.locator('.react-flow__pane').boundingBox()
     if (!pane) throw new Error('相関図のキャンバスが見えない')
     const cx = pane.x + pane.width / 2
-    await dragTo(page, nodeOf(page, '灯'), cx, pane.y + 130)
-    await dragTo(page, nodeOf(page, '朔'), cx - 180, pane.y + 320)
-    await dragTo(page, nodeOf(page, '柊'), cx + 180, pane.y + 320)
+    // 右下のミニマップと下の字幕にかからないよう、少し左上に寄せる。
+    await dragTo(page, nodeOf(page, '灯'), cx - 30, pane.y + 120)
+    await dragTo(page, nodeOf(page, '朔'), cx - 210, pane.y + 290)
+    await dragTo(page, nodeOf(page, '柊'), cx + 150, pane.y + 290)
+    // ノードに乗ったままだと削除ボタン（×）が出たままになるので、何も無いところへ逃がす。
+    const rest = { x: pane.x + pane.width - 60, y: pane.y + 200 }
+    await page.mouse.move(rest.x, rest.y, { steps: 8 })
     await hold(900)
 
     await caption('人物どうしを線でつなぎ、関係を書き込みます')
@@ -114,6 +118,7 @@ export const chart: Scenario = {
     await relation.pressSequentially('幼なじみ', { delay: 140 })
     await hold(500)
     await page.getByRole('button', { name: 'つなぐ', exact: true }).click()
+    await page.mouse.move(rest.x, rest.y, { steps: 8 })
     await hold(1400)
 
     await connect(page, '柊', 't', '灯', 'r')
@@ -121,12 +126,15 @@ export const chart: Scenario = {
     await relation.pressSequentially('見守る', { delay: 140 })
     await hold(400)
     await page.getByRole('button', { name: 'つなぐ', exact: true }).click()
+    await page.mouse.move(rest.x, rest.y, { steps: 8 })
     await hold(1600)
 
     await caption('人物ごとに、色分けもできます')
     await nodeOf(page, '灯').click()
-    await hold(700)
-    await page.getByRole('button', { name: '色: rose' }).click()
+    const rose = page.getByRole('button', { name: '色: rose' })
+    await rose.hover()
+    await hold(900)
+    await rose.click()
     await hold(500)
     await page.locator('.react-flow__pane').click({ position: { x: pane.width - 60, y: 200 } })
     await hold(1800)

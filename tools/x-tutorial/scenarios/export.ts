@@ -90,7 +90,6 @@ export const exportFormats: Scenario = {
     await caption('')
     await hold(2200)
 
-    await caption('')
     await card(
       { kicker: '登録もインストールも不要', title: 'コトノハ-leaf-', foot: '無料の縦書き小説エディタ' },
       3000,

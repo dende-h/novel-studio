@@ -72,8 +72,8 @@ export const plot: Scenario = {
     await page.getByRole('complementary').getByRole('button', { name: '確定', exact: true }).click()
     await hold(2400)
 
-    await caption('伏線は「張る」と「回収」を対にして残せます')
     await page.getByRole('button', { name: /^伏線・秘密/ }).click()
+    await caption('伏線は「張る」と「回収」を対にして残せます')
     await hold(900)
     await page.getByRole('textbox', { name: '伏線を追加' }).click()
     await typeSlow('input[aria-label="伏線を追加"]', '銀の鍵')
@@ -88,8 +88,8 @@ export const plot: Scenario = {
     await caption('回収先まで決まると「回収済」に。回収漏れが一目で分かります')
     await hold(3000)
 
-    await caption('世界観設定は作者だけの控え。\n読者に公開されることはありません')
     await page.getByRole('button', { name: '世界観設定', exact: true }).click()
+    await caption('世界観設定は作者だけの控え。\n読者に公開されることはありません')
     await page.getByRole('button', { name: 'この作品の約束事' }).click()
     await hold(900)
     await page.getByRole('textbox', { name: 'この作品の約束事' }).click()
