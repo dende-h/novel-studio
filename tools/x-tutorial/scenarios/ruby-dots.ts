@@ -1,16 +1,5 @@
+import { BODY, selectWord } from '../lib/app.ts'
 import type { Scenario } from '../lib/stage.ts'
-
-const BODY = 'textarea[aria-label="本文"]'
-
-/** 本文の textarea で、word の最初の出現を選択状態にする（記法ボタンは選択を囲む）。 */
-const selectWord = async (page: import('@playwright/test').Page, word: string) => {
-  await page.locator(BODY).evaluate((el, w) => {
-    const ta = el as HTMLTextAreaElement
-    const at = ta.value.indexOf(w)
-    ta.focus()
-    ta.setSelectionRange(at, at + w.length)
-  }, word)
-}
 
 export const rubyDots: Scenario = {
   id: 'ruby-dots',

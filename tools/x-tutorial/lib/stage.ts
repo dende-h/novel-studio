@@ -8,7 +8,7 @@
 import { execFileSync } from 'node:child_process'
 import { existsSync, mkdirSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
-import { type Browser, chromium, type Page } from '@playwright/test'
+import { type Browser, type BrowserContext, chromium, type Page } from '@playwright/test'
 
 /**
  * 録画の画角。スマホの小さな画面で見られるので、PC レイアウト（本文とプレビューが並ぶ lg＝1024px〜）
@@ -54,6 +54,13 @@ export interface Scenario {
   title: string
   /** 投稿文。280 字（全角は 2 と数える）に収め、URL は入れない（料金とリーチの両面で不利）。 */
   post: string
+  /**
+   * 誰として撮るか。構想の道具（プロット・アウトライン・相関図・マインドマップ）は無料の
+   * アカウント登録で出る機能なので 'free' で撮る（既定 'guest'）。投稿文でもその旨を添える。
+   */
+  as?: 'guest' | 'free'
+  /** 録画を始める前の下ごしらえ（作品や話を作っておく等）。ここは動画に映らない。 */
+  setup?: (page: Page) => Promise<void>
   /** 画面を操作する台本。所要 30〜60 秒を目安に。 */
   run: (stage: Stage) => Promise<void>
 }
@@ -77,6 +84,23 @@ const cardHtml = ({ kicker, title, foot = 'コトノハ-leaf-' }: CardText) => `
 </div>`
 
 const wait = (ms: number) => new Promise<void>((r) => setTimeout(r, ms))
+
+/**
+ * 無料会員（status 'free'）として撮るための差し替え。開発サーバが配る auth-context.ts の
+ * ゲスト既定（GUEST_AUTH_STATE）の status だけを 'free' に書き換える。available は false の
+ * ままなので、ログイン UI も Clerk の読み込みも起きない。アプリのコードには手を入れない。
+ */
+async function actAsFreeAccount(context: BrowserContext) {
+  let patched = false
+  await context.route(/\/src\/ui\/auth\/auth-context\.ts(\?|$)/, async (route) => {
+    const res = await route.fetch()
+    const body = await res.text()
+    const next = body.replace(/status:\s*(["'])guest\1/, 'status: "free"')
+    patched ||= next !== body
+    await route.fulfill({ response: res, body: next })
+  })
+  return { patched: () => patched }
+}
 
 /**
  * 台本を 1 本録って webm を返す。アプリは baseURL で起動済みであること（record.ts が面倒を見る）。
@@ -107,9 +131,14 @@ export async function recordScenario(
         localStorage.setItem('ns-onboarded', '1')
       } catch {}
     })
+    const asFree = scenario.as === 'free' ? await actAsFreeAccount(context) : undefined
     const page = await context.newPage()
     await page.goto('/')
     await page.getByRole('heading', { name: 'マイライブラリ' }).waitFor()
+    if (asFree && !asFree.patched()) {
+      throw new Error('無料会員として撮る差し替えが効かなかった（auth-context.ts の形が変わった？）')
+    }
+    await scenario.setup?.(page)
     // Web フォントが揃ってから録り始める（最初の数フレームで字形が入れ替わるのを避ける）。
     await page.evaluate(() => document.fonts.ready)
 

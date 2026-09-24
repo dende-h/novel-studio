@@ -11,6 +11,7 @@
 node tools/x-tutorial/record.ts --list                 # 台本の一覧
 node tools/x-tutorial/record.ts ruby-dots              # 指定の台本を録る
 node tools/x-tutorial/record.ts --today                # 今日（日本時間）の順番の台本を録る
+node tools/x-tutorial/record.ts tools/x-tutorial/scenarios/<id>.ts   # 並びに入れる前の台本を試し撮り
 node tools/x-tutorial/post.ts out/<id>.mp4 out/<id>.post.txt          # 試運転（送らない）
 node tools/x-tutorial/post.ts out/<id>.mp4 out/<id>.post.txt --live   # 投稿する
 node tools/x-tutorial/post.ts --whoami                 # 認証の確認
@@ -28,6 +29,8 @@ Node 22.18 以降（`.ts` をそのまま実行する）と `ffmpeg`（H.264 が
 |---|---|
 | 録画 | Playwright 1.59+ の `page.screencast`。1024×576 の PC レイアウトで録り、1280×720 に拡大する（スマホで見ても字が読める大きさ） |
 | 字幕 | `screencast.showOverlay` で画面に HTML を重ねて焼き込む。フォントはアプリ同梱の Noto Sans JP |
+| 撮る人 | 既定はゲスト。構想の道具（プロット・アウトライン・相関図・マインドマップ）は無料登録で出る機能なので、台本に `as: 'free'` と書くと、開発サーバが配る `auth-context.ts` のゲスト既定を録画中だけ `free` に差し替えて撮る（ログイン UI は出ない・アプリのコードは変えない） |
+| 下ごしらえ | 台本の `setup` は録画の前に走る（作品や話を作っておく等・動画に映らない）。共通の操作は `lib/app.ts` |
 | 変換 | ffmpeg で H.264 / yuv420p / 30fps / 無音 AAC の mp4 に |
 | 投稿 | X API v2：`/2/media/upload/initialize → append → finalize → 状態確認` → `/2/tweets`。v2 が OAuth 1.0a を拒んだら v1.1（`upload.x.com`）に切り替える |
 | 順番 | `scenarios/index.ts` の並びを、2026-01-01 からの経過日数で回す（状態を持たない） |

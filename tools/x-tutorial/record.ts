@@ -4,6 +4,7 @@
  *   node tools/x-tutorial/record.ts <台本id>     … 指定の台本
  *   node tools/x-tutorial/record.ts --today      … 今日（日本時間）の順番の台本
  *   node tools/x-tutorial/record.ts --list       … 台本の一覧
+ *   node tools/x-tutorial/record.ts <台本.ts>    … 並びに入れる前の台本ファイルを試し撮り
  *
  * 出力（tools/x-tutorial/out/、git 管理外）：
  *   <id>.mp4        … X に上げる動画（H.264・1280×720・30fps）
@@ -17,8 +18,14 @@
 import { type ChildProcess, spawn } from 'node:child_process'
 import { statSync, writeFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
-import { fileURLToPath } from 'node:url'
-import { extractFrames, probeDuration, recordScenario, toMp4 } from './lib/stage.ts'
+import { fileURLToPath, pathToFileURL } from 'node:url'
+import {
+  extractFrames,
+  probeDuration,
+  recordScenario,
+  type Scenario,
+  toMp4,
+} from './lib/stage.ts'
 import { findScenario, pickForDate, SCENARIOS } from './scenarios/index.ts'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
@@ -54,13 +61,26 @@ async function ensureApp(): Promise<ChildProcess | undefined> {
   throw new Error(`アプリが ${BASE_URL} で起動しなかった`)
 }
 
+/** 台本ファイルが export している最初の Scenario を返す。 */
+async function loadScenarioFile(file: string): Promise<Scenario | undefined> {
+  const mod = (await import(pathToFileURL(resolve(file)).href)) as Record<string, unknown>
+  return Object.values(mod).find(
+    (v): v is Scenario => typeof v === 'object' && v !== null && 'run' in v && 'id' in v,
+  )
+}
+
 async function main() {
   const arg = process.argv[2]
   if (!arg || arg === '--list') {
     for (const s of SCENARIOS) console.log(`${s.id}\t${s.title}`)
     return
   }
-  const scenario = arg === '--today' ? pickForDate(new Date()) : findScenario(arg)
+  const scenario =
+    arg === '--today'
+      ? pickForDate(new Date())
+      : arg.endsWith('.ts')
+        ? await loadScenarioFile(arg)
+        : findScenario(arg)
   if (!scenario) throw new Error(`台本 ${arg} が無い（--list で一覧）`)
 
   const app = await ensureApp()
