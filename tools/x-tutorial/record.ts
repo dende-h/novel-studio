@@ -58,6 +58,8 @@ async function ensureApp(): Promise<ChildProcess | undefined> {
     if (await isUp()) return child
     await new Promise((r) => setTimeout(r, 1000))
   }
+  // 起動を諦めるときは、自分で立てたサーバを残さない。
+  if (child.pid) process.kill(-child.pid)
   throw new Error(`アプリが ${BASE_URL} で起動しなかった`)
 }
 
@@ -115,4 +117,12 @@ async function main() {
   }
 }
 
-await main()
+// 落ちたときも最後の行を JSON にする（ルーティンの Claude が理由を読める）。詳細は stderr へ。
+try {
+  await main()
+} catch (e) {
+  console.error(e)
+  const message = e instanceof Error ? e.message.split('\n')[0] : String(e)
+  console.log(JSON.stringify({ id: process.argv[2], problems: [`録画に失敗: ${message}`] }))
+  process.exitCode = 1
+}

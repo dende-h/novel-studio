@@ -27,7 +27,8 @@ node tools/x-tutorial/record.ts --today
 ```
 
 最後の行の JSON（`id` `title` `mp4` `seconds` `postFile` `frames` `problems`）を読む。
-`problems` が空でなければ投稿しない（5 へ）。
+`problems` が空でなければ投稿しない（5 へ）。ただし「録画に失敗」（操作の待ちが時間切れ等）は、
+**録画だけ 1 回撮り直してよい**（録画は外へ何も出さない）。2 回目も落ちたら投稿せず報告する。
 
 ### 3. 目で確かめる（投稿の可否はここで決める）
 
