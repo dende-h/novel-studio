@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { DailyActivity } from '@/core/activity'
 import type { ActivityRepository } from '@/core/storage/activityRepository'
 import { ActivityPage } from './activity-page'
@@ -50,6 +50,51 @@ describe('ActivityPage', () => {
   it('「画像で共有」ボタンがある（記録カードの共有導線）', async () => {
     render(<ActivityPage repo={fakeRepo([])} onNavigateCollection={() => {}} />)
     expect(await screen.findByRole('button', { name: /画像で共有/ })).toBeInTheDocument()
+  })
+})
+
+describe('ActivityPage の年カレンダーの横スクロール', () => {
+  // happy-dom にはレイアウトが無いので、はみ出している状態（表示幅 600px・中身 892px＝54 列）を与える。
+  // 計算そのものは heatmap-scroll.test.ts で固定し、ここは「いつ・どの週で」入れるかの結線を見る。
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date(2026, 8, 25, 12)) // 2026-09-25（2026 年のグリッドの第 38 週）
+    Object.defineProperty(HTMLElement.prototype, 'clientWidth', {
+      configurable: true,
+      get: () => 600,
+    })
+    Object.defineProperty(HTMLElement.prototype, 'scrollWidth', {
+      configurable: true,
+      get: () => 892,
+    })
+  })
+  afterEach(() => {
+    vi.useRealTimers()
+    Reflect.deleteProperty(HTMLElement.prototype, 'clientWidth')
+    Reflect.deleteProperty(HTMLElement.prototype, 'scrollWidth')
+  })
+
+  const scroller = () => screen.getByRole('region', { name: '年間の執筆カレンダー' })
+
+  it('今年を開くと、読み込み完了時に今日の週が見える位置まで横にずれる', async () => {
+    render(<ActivityPage repo={fakeRepo([])} onNavigateCollection={() => {}} />)
+    await screen.findByRole('region', { name: '年間の執筆カレンダー' })
+    // 32 + 38*16 + 12 + 2 列ぶんの余白 32 − 600 = 84
+    expect(scroller().scrollLeft).toBe(84)
+    expect(scroller().querySelector('[aria-current="date"]')).not.toBeNull()
+  })
+
+  it('過去の年へ切り替えると左端に戻り、今年へ戻すと今日の週へ合わせ直す', async () => {
+    const repo = fakeRepo([day('2025-03-01', 300)])
+    render(<ActivityPage repo={repo} onNavigateCollection={() => {}} />)
+    await screen.findByRole('region', { name: '年間の執筆カレンダー' })
+    expect(scroller().scrollLeft).toBe(84)
+
+    fireEvent.click(screen.getByRole('button', { name: '2025' }))
+    expect(scroller().scrollLeft).toBe(0)
+
+    fireEvent.click(screen.getByRole('button', { name: '2026' }))
+    expect(scroller().scrollLeft).toBe(84)
   })
 })
 
