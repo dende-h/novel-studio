@@ -177,6 +177,8 @@ export function GlossaryView({
     if (!draftDirty) return
     const warn = (e: BeforeUnloadEvent) => {
       e.preventDefault()
+      // Safari と古い Chrome は preventDefault だけでは確認を出さない。
+      e.returnValue = ''
     }
     window.addEventListener('beforeunload', warn)
     return () => window.removeEventListener('beforeunload', warn)

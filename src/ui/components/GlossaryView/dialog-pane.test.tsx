@@ -75,6 +75,23 @@ describe('DialogPane（キー操作と保存）', () => {
     expect(box().value).toBe('')
   })
 
+  it('受け付けなかった答え（重複する名前）は入力欄に残り、直して出し直せる', () => {
+    render(
+      <DialogPane
+        entry={entry({ id: 'd', name: '', category: '人物' })}
+        isDraft
+        entries={OTHERS}
+        resolvedNames={new Set()}
+        onChange={() => {}}
+        onToForm={() => {}}
+      />,
+    )
+    fireEvent.change(box(), { target: { value: 'ボブ' } })
+    fireEvent.keyDown(box(), { key: 'Enter' })
+    expect(lastBot()).toMatch(/もうあります/)
+    expect(box().value).toBe('ボブ')
+  })
+
   it('「答える」ボタンでも決定でき、空白だけなら何もしない', () => {
     const { onChange } = setup(entry({ id: 'a', name: 'アリス', category: '人物' }))
     fireEvent.change(box(), { target: { value: '   ' } })

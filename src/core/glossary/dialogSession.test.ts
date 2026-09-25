@@ -383,13 +383,39 @@ describe('再開・直す', () => {
     expect(step.session.pending).toEqual({ kind: 'pick' })
   })
 
-  it('分類が無い・質問の無い分類の既存項目は、まず分類を聞く', () => {
-    const e = entry({ name: '王都', category: '地名' })
+  it('分類が無い・質問の無い分類の既存項目は、まず分類を聞く。残っていた答えは分類を選んだあと並べ直す', () => {
+    const e = entry({ name: '王都', category: '地名', dialog: { where: { text: '北の果て' } } })
     const s = beginSession(e, { draft: false })
     expect(s.pending).toEqual({ kind: 'category' })
     const step = runChip(s, e, 'category', '場所')
     expect(step.entry.category).toBe('場所')
+    expect(step.session.log.some((m) => m.role === 'user' && m.key === 'where')).toBe(true)
     expect(pendingKey(step.session)).toBe('kind')
+  })
+
+  it('beginSession は共通 4 問の印を引き継げる（分類を変えて始め直すとき）', () => {
+    const e = entry({ name: 'ユキ', category: '組織' })
+    const s = beginSession(e, {
+      draft: true,
+      baseMarks: { reading: 'skipped', aliases: 'skipped' },
+    })
+    expect(pendingKey(s)).toBe('blurb')
+  })
+
+  it('登録のために名前を聞き直して答えたあと、登録に失敗しても選び直しへ戻れる', () => {
+    let step: SessionStep = runChip(
+      beginSession(entry({ name: '' }), { draft: true }),
+      entry({ name: '' }),
+      'category',
+      '人物',
+    )
+    step = skipQuestion(step.session, step.entry, false) // name
+    step = runChip(step.session, step.entry, 'finish')
+    step = submitAnswer(step.session, step.entry, 'ユキ')
+    expect(step.effect).toBe('finish')
+    const failed = rejectAnswer(step.session, '「ユキ」は既存の項目と重複しています', step.entry)
+    expect(failed.pending).toEqual({ kind: 'pick' })
+    expect(lastChips(failed).length).toBeGreaterThan(0)
   })
 
   it('「どれを変えますか」で登録に失敗しても、選び直しのチップを出し直す（行き止まりにしない）', () => {

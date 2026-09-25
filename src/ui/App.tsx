@@ -45,9 +45,6 @@ import { useIsNarrow } from '@/ui/hooks/use-narrow'
 import { useOpenProfile } from '@/ui/hooks/use-pen-name'
 import type { EditorStore } from '@/ui/store/editorStore'
 
-/** GlossaryFormValues → フィールドパッチ（写像は用語集画面と共用・glossary-entry-form.tsx）。 */
-const toFieldPatch = formValuesToFieldPatch
-
 interface AppProps {
   store: EditorStore
   /** 入口（ライブラリ）へ戻る */
@@ -275,7 +272,7 @@ export function App({
       if (values.name !== entry.name) {
         await store.renameGlossaryEntry(entry.id, values.name, { rewriteBody: false })
       }
-      await store.updateGlossaryEntry(entry.id, toFieldPatch(values))
+      await store.updateGlossaryEntry(entry.id, formValuesToFieldPatch(values))
     },
     [store],
   )
@@ -543,7 +540,7 @@ export function App({
             getAppearances={getAppearances}
             onCreate={async (input) => (await store.addGlossaryEntry(input)).id}
             onUpdate={async (id, values) => {
-              await store.updateGlossaryEntry(id, toFieldPatch(values))
+              await store.updateGlossaryEntry(id, formValuesToFieldPatch(values))
             }}
             onUpdateDialog={async (id, patch) => {
               // 変わった欄だけ（対話ノートは鍵ごと）。空の畳み方も store が持つ。
@@ -823,7 +820,7 @@ export function App({
         mode="create"
         initial={quickCreateName !== null ? { name: quickCreateName } : undefined}
         onSubmit={async (values) => {
-          await store.addGlossaryEntry({ name: values.name, ...toFieldPatch(values) })
+          await store.addGlossaryEntry({ name: values.name, ...formValuesToFieldPatch(values) })
         }}
         glossary={work?.glossary ?? []}
         onCreateEntry={createPlainGlossaryEntry}

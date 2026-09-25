@@ -236,14 +236,18 @@ const INTRO_DRAFT = [
 ]
 
 /** 対話を始める（開いた項目の状態に合わせて、続きから・あとでから・どれを変えるか）。 */
-export function beginSession(entry: GlossaryEntry, opts: { draft: boolean }): DialogSession {
+export function beginSession(
+  entry: GlossaryEntry,
+  opts: { draft: boolean; baseMarks?: DialogSession['baseMarks'] },
+): DialogSession {
   let s: DialogSession = {
     draft: opts.draft,
     log: [],
     pending: null,
     editingKey: null,
     lastSection: null,
-    baseMarks: {},
+    // 分類を変えて始め直すときは、共通 4 問のスキップ／あとでの印を引き継ぐ（同じことを二度聞かない）。
+    baseMarks: { ...(opts.baseMarks ?? {}) },
   }
   if (opts.draft) {
     for (const t of INTRO_DRAFT) s = say(s, t)
@@ -339,6 +343,8 @@ export function submitAnswer(
       `${text} ですね。基本の質問は ${core} 問です。「種類」の答えによって、あとから枝の問いが加わります。`,
     )
     ns = { ...ns, pending: null }
+    // 分類を変える前の答えが残っていれば（持ち越し・MCP）、並べ直してから続きを聞く。
+    if (dialogStarted(next)) ns = replay(ns, next)
     const first = nextQuestion(next, optsOf(ns))
     return { session: first ? ask(ns, next, first) : askPick(ns, next, null), entry: next }
   }
@@ -471,7 +477,12 @@ function after(
     // 「登録する」のために名前を聞き直していた＝名前が入ったらそのまま登録へ。
     if (ns.pendingFinish && ns.editingKey === 'name' && entry.name.trim() !== '') {
       const { pendingFinish: _f, ...done } = ns
-      return { session: { ...done, editingKey: null }, entry, effect: 'finish' }
+      // 登録に失敗したときに選び直しへ戻れるよう、待ちは「どれを変えますか」にしておく。
+      return {
+        session: { ...done, editingKey: null, pending: { kind: 'pick' } },
+        entry,
+        effect: 'finish',
+      }
     }
     ns = { ...ns, editingKey: null }
     const nu = nextQuestion(entry, o)

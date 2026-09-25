@@ -35,6 +35,13 @@ describe('applyGlossaryFieldPatch', () => {
     expect(applyGlossaryFieldPatch(base(), { reading: 'a' }, 1).thumbnail).toBe(base().thumbnail)
   })
 
+  it('dialogVersion だけのパッチは何も書かない（版は対話ノートと一緒にだけ動く）', () => {
+    const plain: GlossaryEntry = { id: 'p', name: 'x', aliases: [], createdAt: 0, updatedAt: 0 }
+    const next = applyGlossaryFieldPatch(plain, { dialogVersion: 1 }, 1)
+    expect(next.dialogVersion).toBeUndefined()
+    expect(next.dialog).toBeUndefined()
+  })
+
   it('dialogPatch は鍵ごとに重ね、null で消し、空になれば record ごと落とす', () => {
     const merged = applyGlossaryFieldPatch(
       base(),

@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, useState } from 'react'
 import { publicTextOf } from '@/core/glossary'
 import { DIALOG_CATEGORIES, parseAliasInput } from '@/core/glossary/dialog'
+import type { GlossaryFieldPatch } from '@/core/glossary/patch'
 import type { GlossaryEntry } from '@/core/schema'
 import { thumbnailToDataUrl } from '@/ui/_utils/imageResizer'
 import { VisibilityLabel } from '@/ui/components/GlossaryView/visibility-label'
@@ -19,7 +20,6 @@ import {
 import { Input } from '@/ui/components/ui/input'
 import { Label } from '@/ui/components/ui/label'
 import { ZoomableImage } from '@/ui/components/ui/zoomable-image'
-import type { GlossaryFieldPatch } from '@/ui/store/editorStore'
 
 /**
  * 用語集カテゴリの選択肢（プルダウンで固定）。既存データの自由入力値は編集時のみ選択肢に含めて保全する。

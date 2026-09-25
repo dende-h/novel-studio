@@ -35,10 +35,16 @@ export function applyGlossaryFieldPatch(
   patch: GlossaryFieldPatch,
   ts: number,
 ): GlossaryEntry {
-  const { dialogPatch, summary, ...rest } = patch
+  const { dialogPatch, dialogVersion, summary, body, ...rest } = patch
   let updated: GlossaryEntry = { ...cur, ...rest, updatedAt: ts }
   if (patch.thumbnail === '') delete updated.thumbnail
   if ('summary' in patch) updated = withPublicText(updated, summary ?? '')
+  // 旧・詳細（body）を明示的に渡されたときだけ触る（undefined＝落とす）。
+  if ('body' in patch) {
+    if (body === undefined) delete updated.body
+    else updated.body = body
+  }
+  // 版は対話ノートと一緒にだけ動く（dialog の無い項目に版だけ残さない）。
   if (dialogPatch !== undefined) {
     const merged: Record<string, DialogAnswer> = { ...(cur.dialog ?? {}) }
     for (const [key, value] of Object.entries(dialogPatch)) {
@@ -46,7 +52,7 @@ export function applyGlossaryFieldPatch(
       else merged[key] = value
     }
     updated.dialog = merged
-    updated.dialogVersion = patch.dialogVersion ?? cur.dialogVersion ?? DIALOG_VERSION
+    updated.dialogVersion = dialogVersion ?? cur.dialogVersion ?? DIALOG_VERSION
   }
   if (updated.dialog !== undefined && Object.keys(updated.dialog).length === 0) {
     delete updated.dialog

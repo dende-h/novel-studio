@@ -2,6 +2,7 @@ import { MessageSquareText } from 'lucide-react'
 import { useMemo } from 'react'
 import {
   activeDeepQuestionsFor,
+  answerOutOfChoices,
   answerPublic,
   type DialogQuestion,
   type DialogSummary,
@@ -139,7 +140,8 @@ function NoteRow({
   onRefClick?: (name: string) => void
 }) {
   const a = entry.dialog?.[q.key]
-  const text = a?.text.trim() ?? ''
+  // 分類を変えて持ち越した「種類」（今の選択肢に無い）は未回答扱い（ボットが聞き直す）。
+  const text = a && !answerOutOfChoices(q, a) ? a.text.trim() : ''
   const digs = digQuestionsOf(q).filter((d) => (entry.dialog?.[d.key]?.text.trim() ?? '') !== '')
   return (
     <>

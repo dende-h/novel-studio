@@ -3,6 +3,7 @@ import { publicTextOf, withPublicText } from '@/core/glossary'
 import {
   type AnyDialogQuestion,
   activeDeepQuestionsFor,
+  answerOutOfChoices,
   answerPublic,
   answersOf,
   digQuestionsOf,
@@ -102,7 +103,9 @@ export function DialogPane({
     if (saving.current !== 0 || latest === localRef.current) return
     const categoryChanged = (latest.category ?? '') !== (localRef.current.category ?? '')
     setLocal(latest)
-    if (categoryChanged) setSession(beginSession(latest, { draft: isDraft }))
+    if (categoryChanged) {
+      setSession((s) => beginSession(latest, { draft: isDraft, baseMarks: s.baseMarks }))
+    }
   }
   // biome-ignore lint/correctness/useExhaustiveDependencies: prop の entry が変わったときに同期する（関数は ref 経由で最新を読む）
   useEffect(syncFromProp, [entry])
@@ -174,6 +177,7 @@ export function DialogPane({
 
   const q = pendingQuestion(session, local)
   const hint = pendingHint(session)
+  const answeredCount = session.log.filter((m) => m.role === 'user').length
 
   return (
     <section
@@ -210,8 +214,9 @@ export function DialogPane({
       <div className="flex flex-col gap-2 border-outline-variant/30 border-t px-3 pt-2 pb-3">
         {q ? (
           <Composer
-            // 問いが出るたびに欄を作り直す（同じ問いを「直す」で聞き直したときも書きかけを残さない）。
-            key={`${q.key}:${session.log.length}`}
+            // 問いが変わる・答えが受け付けられる・「直す」で聞き直す、のたびに欄を作り直す。
+            // 受け付けなかった答え（重複する名前など）は消さず、直して出し直せる。
+            key={`${q.key}:${answeredCount}:${session.editingKey ?? ''}`}
             question={q}
             required={session.pending?.kind === 'question' && session.pending.required === true}
             entries={entries}
@@ -472,7 +477,7 @@ function SummaryCard({
   for (const q of activeDeepQuestionsFor(entry)) {
     for (const x of [q, ...digQuestionsOf(q)]) {
       const a = answers[x.key]
-      if (!a || a.text.trim() === '') continue
+      if (!a || a.text.trim() === '' || answerOutOfChoices(x, a)) continue
       rows.push({ q: x, text: a.text, pub: answerPublic(x, a) })
     }
   }
