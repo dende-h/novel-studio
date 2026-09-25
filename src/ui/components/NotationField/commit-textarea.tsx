@@ -303,6 +303,8 @@ export function CommitTextarea({
             !e.altKey &&
             !composing.current &&
             !e.nativeEvent.isComposing &&
+            // Safari は変換確定の Enter を isComposing=false・keyCode 229 で出す
+            e.nativeEvent.keyCode !== 229 &&
             !isCoarsePointer()
           ) {
             e.preventDefault()

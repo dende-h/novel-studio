@@ -10,7 +10,14 @@ import {
   resolveRef,
   sortEntries,
 } from '@/core/glossary'
-import { DIALOG_VERSION, dialogProgress, dialogStatusOf } from '@/core/glossary/dialog'
+import {
+  DIALOG_VERSION,
+  type DialogProgress,
+  type DialogStatus,
+  dialogProgress,
+  dialogStatusOf,
+  parseAliasInput,
+} from '@/core/glossary/dialog'
 import type { DialogAnswer, GlossaryEntry } from '@/core/schema'
 import type { GameAssetRepository } from '@/core/storage/gameAssetRepository'
 import { cn } from '@/lib/utils'
@@ -86,8 +93,10 @@ const DIALOG_FILTER = '__dialog_in_progress__'
 
 type PaneTab = 'form' | 'dialog'
 
+/** 下書きは作るたびに別の id にする＝捨てて作り直したとき、編集面と対話が新しく立ち上がる。 */
+let draftSeq = 0
 const newDraft = (name = ''): GlossaryEntry => ({
-  id: DRAFT_ID,
+  id: `${DRAFT_ID}${++draftSeq}`,
   name,
   aliases: [],
   createdAt: 0,
@@ -126,20 +135,29 @@ export function GlossaryView({
   const [deleteTarget, setDeleteTarget] = useState<GlossaryEntry | null>(null)
 
   const categories = useMemo(() => categoriesOf(entries), [entries])
+  // 対話の状態は項目ごとに 1 回だけ計算する（一覧の行・絞り込み・件数が共用）。
+  const dialogStates = useMemo(() => {
+    const map = new Map<string, DialogRowState>()
+    for (const e of entries) {
+      const status = dialogStatusOf(e)
+      map.set(e.id, { status, progress: status === 'inProgress' ? dialogProgress(e) : null })
+    }
+    return map
+  }, [entries])
   const inProgressCount = useMemo(
-    () => entries.filter((e) => dialogStatusOf(e) === 'inProgress').length,
-    [entries],
+    () => entries.filter((e) => dialogStates.get(e.id)?.status === 'inProgress').length,
+    [entries, dialogStates],
   )
   const visible = useMemo(() => {
     const byQuery = entries.filter((e) => matchesQuery(e, query))
     const byCat =
       category === DIALOG_FILTER
-        ? byQuery.filter((e) => dialogStatusOf(e) === 'inProgress')
+        ? byQuery.filter((e) => dialogStates.get(e.id)?.status === 'inProgress')
         : category
           ? byQuery.filter((e) => (e.category ?? '').trim() === category)
           : byQuery
     return sortEntries(byCat)
-  }, [entries, query, category])
+  }, [entries, query, category, dialogStates])
   const resolvedNames = useMemo(() => resolvedNameSet(entries), [entries])
 
   const selected = selectedId ? (entries.find((e) => e.id === selectedId) ?? null) : null
@@ -184,6 +202,7 @@ export function GlossaryView({
 
   /** 下書きを登録する（対話の「用語集に登録する」・フォームの「用語集に登録」）。 */
   const registerDraft = async (d: GlossaryEntry) => {
+    if (d.name.trim() === '') throw new Error('名前を入れると登録できます')
     const id = await onCreate({
       name: d.name.trim(),
       aliases: d.aliases,
@@ -284,6 +303,7 @@ export function GlossaryView({
                   <EntryRow
                     key={entry.id}
                     entry={entry}
+                    dialog={dialogStates.get(entry.id) ?? { status: 'none', progress: null }}
                     active={entry.id === selectedId && draft === null}
                     used={getAppearances(entry).refCount > 0}
                     onClick={() => selectEntry(entry.id)}
@@ -483,20 +503,26 @@ function FilterChip({
  * 左カラムの 1 行（サムネ or 頭文字・名前・分類と使用状況）。対話を始めた項目だけ進み具合を出す
  * （途中＝細いバーと n/m、済み＝✓・D-DLG-LIST）。手を付けていない項目は今までの見た目のまま。
  */
+interface DialogRowState {
+  status: DialogStatus
+  progress: DialogProgress | null
+}
+
 function EntryRow({
   entry,
+  dialog,
   active,
   used,
   onClick,
 }: {
   entry: GlossaryEntry
+  dialog: DialogRowState
   active: boolean
   used: boolean
   onClick: () => void
 }) {
   const initial = entry.name.trim().charAt(0) || '？'
-  const status = dialogStatusOf(entry)
-  const progress = status === 'inProgress' ? dialogProgress(entry) : null
+  const { status, progress } = dialog
   return (
     <li>
       <button
@@ -781,7 +807,7 @@ function EntryEditor({
             <CommitInput
               id={`${uid}-aliases`}
               value={entry.aliases.join('、')}
-              onCommit={(v) => void commitField({ aliases: parseAliases(v) })}
+              onCommit={(v) => void commitField({ aliases: parseAliasInput(v) })}
               placeholder="世界樹、ワールドツリー"
             />
           </div>
@@ -951,16 +977,6 @@ function PaneTabButton({
       {children}
     </button>
   )
-}
-
-/** 別名入力（カンマ／読点／改行区切り）を配列へ。trim・空除去・重複除去。 */
-function parseAliases(raw: string): string[] {
-  const out: string[] = []
-  for (const part of raw.split(/[,、\n]/)) {
-    const a = part.trim()
-    if (a !== '' && !out.includes(a)) out.push(a)
-  }
-  return out
 }
 
 /** blur / Enter で確定する 1 行入力（PremiseInput と同じ流儀・Esc で戻す）。 */

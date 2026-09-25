@@ -6,6 +6,7 @@ import {
   activeQuestionsFor,
   answerPublic,
   answersOf,
+  BASE_QUESTIONS,
   DIALOG_CATEGORIES,
   type DialogQuestion,
   dialogProgress,
@@ -251,9 +252,32 @@ export function beginSession(entry: GlossaryEntry, opts: { draft: boolean }): Di
   return askPick(replay(s, entry), entry, null)
 }
 
-/** 答えを受け付けなかったときの一言（重複する名前など）。問いはそのまま待つ。 */
-export function rejectAnswer(session: DialogSession, message: string): DialogSession {
-  return say({ ...session, log: withoutChips(session.log) }, message)
+/**
+ * 答えを受け付けなかった・保存や登録に失敗したときの一言。待っている状態はそのままにし、
+ * チップで待っていた状態（分類・どれを変えるか・深める）はチップを出し直す＝行き止まりにしない。
+ */
+export function rejectAnswer(
+  session: DialogSession,
+  message: string,
+  entry: GlossaryEntry,
+): DialogSession {
+  const s = say({ ...session, log: withoutChips(session.log) }, message)
+  switch (s.pending?.kind) {
+    case 'category':
+      return chips(
+        s,
+        DIALOG_CATEGORIES.map((c) => ({ label: c, action: 'category', value: c })),
+      )
+    case 'pick':
+      return askPick(s, entry, null)
+    case 'dig-offer':
+      return chips(s, [
+        { label: 'もう少し深める', action: 'dig', value: s.pending.key, primary: true },
+        { label: '次へ', action: 'digskip' },
+      ])
+    default:
+      return s
+  }
 }
 
 /** 答えを受け取る（分類の選択・自由記述・選択肢のどれでも）。 */
@@ -283,7 +307,10 @@ export function submitAnswer(
   const q = questionByKey(entry.category, s.pending.key)
   if (!q) return { session: { ...s, pending: null }, entry }
   if (q.choices && !q.free && !q.choices.includes(text)) {
-    return { session: rejectAnswer(s, `${q.choices.join('・')} から選んでください。`), entry }
+    return {
+      session: rejectAnswer(s, `${q.choices.join('・')} から選んでください。`, entry),
+      entry,
+    }
   }
   // 名前の重複（D-GLOS-UNIQUE）は登録時にも弾かれるが、対話の途中で分かるほうが直しやすい。
   if (q.field === 'name' && ctx.entries) {
@@ -293,7 +320,11 @@ export function submitAnswer(
     )
     if (hit) {
       return {
-        session: rejectAnswer(s, `「${text}」は用語集にもうあります。別の名前を教えてください。`),
+        session: rejectAnswer(
+          s,
+          `「${text}」は用語集にもうあります。別の名前を教えてください。`,
+          entry,
+        ),
         entry,
       }
     }
@@ -467,8 +498,21 @@ export function runChip(
       const nu = nextQuestion(entry, optsOf(s))
       return { session: nu ? ask(s, entry, nu) : s, entry }
     }
-    case 'finish':
-      return { session: { ...session, log: withoutChips(session.log) }, entry, effect: 'finish' }
+    case 'finish': {
+      const s: DialogSession = { ...session, log: withoutChips(session.log) }
+      // 名前が無いと登録できない（@ 参照の解決キー）。スキップやあとでにしていたら、ここで聞き直す。
+      if (entry.name.trim() === '') {
+        const nameQ = BASE_QUESTIONS.find((q) => q.key === 'name')
+        if (!nameQ) return { session: s, entry }
+        const { name: _n, ...marks } = s.baseMarks
+        const ns = say(
+          { ...s, baseMarks: marks, editingKey: 'name' },
+          '名前が無いと登録できません。まず名前を教えてください。',
+        )
+        return { session: ask(ns, entry, nameQ), entry }
+      }
+      return { session: s, entry, effect: 'finish' }
+    }
     case 'toform':
       return { session: { ...session, log: withoutChips(session.log) }, entry, effect: 'toform' }
   }

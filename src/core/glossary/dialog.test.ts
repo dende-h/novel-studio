@@ -380,5 +380,8 @@ describe('後方互換', () => {
     }
     expect(GlossaryEntrySchema.parse(withDialog)).toEqual(withDialog)
     expect(dialogStatusOf({ ...legacy, category: '人物' })).toBe('none')
+    // 質問セットの無い分類は、答えが残っていても「手を付けていない」扱い（分類を選び直せば戻る）
+    expect(dialogStatusOf({ ...withDialog, category: '地名' })).toBe('none')
+    expect(dialogStatusOf({ ...withDialog, category: '人物' })).toBe('inProgress')
   })
 })

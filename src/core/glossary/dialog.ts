@@ -876,34 +876,13 @@ export const DEEP_QUESTIONS: Readonly<Record<string, readonly DialogQuestion[]>>
   ],
 }
 
-export const DIALOG_KINDS: Readonly<Record<string, readonly string[]>> = {
-  場所: ['街・町', '建物・部屋', '学校・職場', '自然', '国・地方', '乗り物・道中'],
-  組織: [
-    '会社・店',
-    '学校・部活・サークル',
-    '役所・国・軍',
-    '宗教・団体',
-    '家族・仲間内',
-    '裏の組織',
-  ],
-  アイテム: [
-    '道具・機械',
-    '衣服・装身具',
-    '書類・記録・データ',
-    '食べ物・薬',
-    '武器',
-    '贈り物・形見',
-  ],
-  生物: ['動物・ペット', '架空の生き物', '植物', '言葉を話す種族'],
-  用語: [
-    '言い回し・スラング',
-    '制度・決まり',
-    '技術・仕組み',
-    '出来事・歴史',
-    '物・素材',
-    '概念・考え方',
-  ],
-}
+/** 「種類」の選択肢（分類ごと）。各分類の `kind` の問いから引く＝正本は DEEP_QUESTIONS ひとつ。 */
+export const DIALOG_KINDS: Readonly<Record<string, readonly string[]>> = Object.fromEntries(
+  Object.entries(DEEP_QUESTIONS).flatMap(([cat, qs]) => {
+    const kind = qs.find((q) => q.key === 'kind')
+    return kind?.choices ? [[cat, kind.choices]] : []
+  }),
+)
 
 export const NAME_FALLBACK: Readonly<Record<string, string>> = {
   人物: 'その人物',
@@ -1079,7 +1058,9 @@ export type DialogStatus = 'none' | 'inProgress' | 'done'
  * done＝ひと通り答えた（任意の問いも答えるかスキップしてあり、あとでも残っていない）。
  */
 export function dialogStatusOf(entry: EntryLike): DialogStatus {
-  if (!dialogStarted(entry)) return 'none'
+  // 質問セットの無い分類（未分類・旧データの自由入力）は、答えが残っていても「手を付けていない」扱い
+  // ＝分類を選び直せば答えごと戻る。
+  if (!dialogStarted(entry) || !hasDialogQuestions(entry.category)) return 'none'
   if (nextQuestion(entry) === undefined && dialogProgress(entry).later === 0) return 'done'
   return 'inProgress'
 }

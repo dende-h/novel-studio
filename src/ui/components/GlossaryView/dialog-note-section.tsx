@@ -1,4 +1,4 @@
-import { BookOpen, Lock, MessageSquareText } from 'lucide-react'
+import { Lock, MessageSquareText } from 'lucide-react'
 import {
   activeDeepQuestionsFor,
   answerPublic,
@@ -10,6 +10,7 @@ import {
 } from '@/core/glossary/dialog'
 import type { GlossaryEntry } from '@/core/schema'
 import { cn } from '@/lib/utils'
+import { VisibilityLabel } from '@/ui/components/GlossaryView/visibility-label'
 import { NotationText } from '@/ui/components/NotationField/notation-text'
 
 /**
@@ -126,7 +127,9 @@ function NoteRow({
           {a?.later ? 'あとで答える' : a?.skipped ? 'スキップ' : '未回答'}
         </dd>
       )}
-      <dd className="m-0">{text && a ? <VisibilityMark isPublic={answerPublic(q, a)} /> : null}</dd>
+      <dd className="m-0">
+        {text && a ? <VisibilityLabel isPublic={answerPublic(q, a)} /> : null}
+      </dd>
       {digs.map((d) => (
         <div key={d.key} className="contents">
           <dt className="pl-4 text-on-surface-variant/70">↳ {d.label}</dt>
@@ -140,26 +143,6 @@ function NoteRow({
         </div>
       ))}
     </>
-  )
-}
-
-function VisibilityMark({ isPublic }: { isPublic: boolean }) {
-  return (
-    <span
-      className={cn(
-        'inline-flex items-center gap-1 whitespace-nowrap rounded-full px-2 py-0.5 text-[10.5px]',
-        isPublic
-          ? 'bg-primary-container text-on-primary-container'
-          : 'bg-secondary-container text-on-secondary-container',
-      )}
-    >
-      {isPublic ? (
-        <BookOpen className="size-2.5" aria-hidden />
-      ) : (
-        <Lock className="size-2.5" aria-hidden />
-      )}
-      {isPublic ? '読者に見せる' : '作者だけ'}
-    </span>
   )
 }
 

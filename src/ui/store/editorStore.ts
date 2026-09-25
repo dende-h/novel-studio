@@ -538,6 +538,8 @@ export function createEditorStore({
     addGlossaryEntry(input) {
       return serializeGlossary(async () => {
         if (!state.work) throw new Error('作品が開かれていません')
+        // 名前は @ 参照の解決キー。空の項目は解決できず一覧で「？」になるだけなので作らない。
+        if (input.name.trim() === '') throw new Error('名前を入れてください')
         const entries = state.work.glossary ?? []
         const ts = now()
         const entry: GlossaryEntry = {

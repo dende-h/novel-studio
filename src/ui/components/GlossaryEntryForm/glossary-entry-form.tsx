@@ -1,6 +1,7 @@
 import { BookOpen, Lock } from 'lucide-react'
 import { useEffect, useId, useRef, useState } from 'react'
 import { publicTextOf } from '@/core/glossary'
+import { parseAliasInput } from '@/core/glossary/dialog'
 import type { DialogAnswer, GlossaryEntry } from '@/core/schema'
 import { thumbnailToDataUrl } from '@/ui/_utils/imageResizer'
 import { CommitTextarea } from '@/ui/components/NotationField/commit-textarea'
@@ -57,16 +58,6 @@ interface GlossaryEntryFormProps {
   glossary?: GlossaryEntry[]
   /** 候補に無い語をその場で用語集に登録する（作成した名前を返す。失敗は null）。 */
   onCreateEntry?: (name: string) => Promise<string | null>
-}
-
-/** 別名入力（カンマ／読点／改行区切り）を配列へ。trim・空除去・重複除去。 */
-function parseAliases(raw: string): string[] {
-  const out: string[] = []
-  for (const part of raw.split(/[,、\n]/)) {
-    const a = part.trim()
-    if (a !== '' && !out.includes(a)) out.push(a)
-  }
-  return out
 }
 
 /**
@@ -148,7 +139,7 @@ export function GlossaryEntryForm({
     try {
       await onSubmit({
         name: name.trim(),
-        aliases: parseAliases(aliases),
+        aliases: parseAliasInput(aliases),
         category: category.trim(),
         reading: reading.trim(),
         summary: summary.trim(),

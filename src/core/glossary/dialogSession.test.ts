@@ -314,9 +314,48 @@ describe('再開・直す', () => {
     expect(pendingKey(step.session)).toBe('kind')
   })
 
+  it('「どれを変えますか」で登録に失敗しても、選び直しのチップを出し直す（行き止まりにしない）', () => {
+    let e = entry({ name: '竜', category: '生物', dialog: { kind: { text: '植物' } } })
+    for (const q of activeDeepQuestionsFor(e)) {
+      if (!e.dialog?.[q.key])
+        e = { ...e, dialog: { ...(e.dialog ?? {}), [q.key]: { text: '', skipped: true } } }
+    }
+    const s = beginSession(e, { draft: false })
+    expect(s.pending).toEqual({ kind: 'pick' })
+    const rejected = rejectAnswer(s, '「竜」は既存の項目と重複しています', e)
+    expect(lastBot(rejected)).toBe('「竜」は既存の項目と重複しています')
+    expect(lastChips(rejected).map((c) => c.action)).toContain('pick')
+    expect(rejected.pending).toEqual({ kind: 'pick' })
+  })
+
+  it('下書きは名前が無いと登録できず、「これで登録する」で名前を聞き直す', () => {
+    let step: SessionStep = runChip(
+      beginSession(entry({ name: '' }), { draft: true }),
+      entry({ name: '' }),
+      'category',
+      '人物',
+    )
+    step = skipQuestion(step.session, step.entry, false) // name をスキップ
+    expect(pendingKey(step.session)).toBe('reading')
+    // 途中で「これで登録する」（あとでの一覧などから）
+    step = runChip(step.session, step.entry, 'finish')
+    expect(step.effect).toBeUndefined()
+    expect(botTexts(step.session)).toContainEqual(
+      '名前が無いと登録できません。まず名前を教えてください。',
+    )
+    expect(pendingKey(step.session)).toBe('name')
+    expect(step.session.baseMarks.name).toBeUndefined()
+    step = submitAnswer(step.session, step.entry, 'ユキ')
+    expect(step.entry.name).toBe('ユキ')
+    // 直したあとは本流（次の未回答）へ
+    expect(pendingKey(step.session)).toBe('reading')
+    // 名前があれば登録できる
+    expect(runChip(step.session, step.entry, 'finish').effect).toBe('finish')
+  })
+
   it('rejectAnswer は問いを待ったまま一言添える／pendingQuestion は待っている問い', () => {
     const e = entry({ name: 'セト', category: '人物' })
-    const s = rejectAnswer(beginSession(e, { draft: false }), '保存に失敗しました')
+    const s = rejectAnswer(beginSession(e, { draft: false }), '保存に失敗しました', e)
     expect(lastBot(s)).toBe('保存に失敗しました')
     expect(pendingQuestion(s, e)?.key).toBe('title')
   })

@@ -31,6 +31,7 @@ import {
 } from '@/core/glossary/dialogSession'
 import type { GlossaryEntry } from '@/core/schema'
 import { cn } from '@/lib/utils'
+import { VisibilityLabel } from '@/ui/components/GlossaryView/visibility-label'
 import {
   CommitTextarea,
   type CommitTextareaHandle,
@@ -97,7 +98,9 @@ export function DialogPane({
     try {
       await onChange(next)
     } catch (e) {
-      setSession((s) => rejectAnswer(s, e instanceof Error ? e.message : '保存に失敗しました'))
+      setSession((s) =>
+        rejectAnswer(s, e instanceof Error ? e.message : '保存に失敗しました', localRef.current),
+      )
     } finally {
       saving.current -= 1
     }
@@ -112,7 +115,9 @@ export function DialogPane({
     if (step.effect === 'toform') onToForm()
     if (step.effect === 'finish' && onFinish) {
       void onFinish(step.entry).catch((e: unknown) => {
-        setSession((s) => rejectAnswer(s, e instanceof Error ? e.message : '登録に失敗しました'))
+        setSession((s) =>
+          rejectAnswer(s, e instanceof Error ? e.message : '登録に失敗しました', localRef.current),
+        )
       })
     }
   }
@@ -450,11 +455,11 @@ function SummaryCard({
         <span className="font-sans text-[12px] text-on-surface-variant/70">{entry.category}</span>
       </h3>
       <div className="mt-2 mb-1">
-        <PillLabel isPublic label="読者に見える" />
+        <VisibilityLabel isPublic label="読者に見える" />
       </div>
       {list(rows.filter((r) => r.pub))}
       <div className="mt-3 mb-1">
-        <PillLabel isPublic={false} label="作者だけ" />
+        <VisibilityLabel isPublic={false} label="作者だけ" />
       </div>
       {list(rows.filter((r) => !r.pub))}
       {isDraft ? null : (
@@ -501,7 +506,7 @@ function VisibilityPill({
 }) {
   if (isFixedVisibility(q)) {
     return (
-      <PillLabel
+      <VisibilityLabel
         isPublic={isPublic}
         label={q.vis === 'public-fixed' ? '読者に見える欄' : '作者だけ（固定）'}
       />
@@ -529,26 +534,6 @@ function VisibilityPill({
       )}
       {isPublic ? '読者に見せる' : '作者だけ'}
     </button>
-  )
-}
-
-function PillLabel({ isPublic, label }: { isPublic: boolean; label: string }) {
-  return (
-    <span
-      className={cn(
-        'inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-medium text-[10.5px]',
-        isPublic
-          ? 'bg-primary-container text-on-primary-container'
-          : 'bg-secondary-container text-on-secondary-container',
-      )}
-    >
-      {isPublic ? (
-        <BookOpen className="size-2.5" aria-hidden />
-      ) : (
-        <Lock className="size-2.5" aria-hidden />
-      )}
-      {label}
-    </span>
   )
 }
 
