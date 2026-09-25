@@ -8,8 +8,8 @@ import {
   BASE_QUESTIONS,
   DIALOG_CATEGORIES,
   type DialogQuestion,
-  dialogProgress,
   dialogStarted,
+  dialogSummaryOf,
   digQuestionsOf,
   hasDialogQuestions,
   isAnswered,
@@ -262,7 +262,7 @@ export function beginSession(entry: GlossaryEntry, opts: { draft: boolean }): Di
   }
   const o = optsOf(s)
   const nu = nextQuestion(entry, o)
-  const p = dialogProgress(entry)
+  const p = dialogSummaryOf(entry).progress
   if (!dialogStarted(entry)) {
     s = push(s, { role: 'card-base' })
     s = say(
@@ -524,7 +524,9 @@ export function pickQuestion(
   const q = questionByKey(entry.category, key)
   // 分類が変わって無くなった問い：待っていた状態のチップを出し直す（行き止まりにしない）。
   if (!q) return { session: reissuePrompt(s, entry), entry }
-  let ns: DialogSession = { ...s, editingKey: key }
+  // 別の問いを直しに行く＝「登録のための名前の聞き直し」は打ち切る（あとで名前を直しても勝手に登録しない）。
+  const { pendingFinish: _f, ...rest } = s
+  let ns: DialogSession = { ...rest, editingKey: key }
   const a = answersOf(entry)[key]
   if (a && a.text.trim() !== '') {
     ns = say(ns, `「${q.label}」は今こうなっています。\n${a.text}\n\n新しい答えを書いてください。`)
@@ -568,14 +570,16 @@ export function runChip(
     case 'digskip':
       return after({ ...session, log: withoutChips(session.log) }, entry)
     case 'resume': {
+      const { pendingFinish: _f, ...rest } = session
       const s: DialogSession = {
-        ...session,
+        ...rest,
         log: withoutChips(session.log),
         editingKey: null,
         pending: null,
       }
       const nu = nextQuestion(entry, optsOf(s))
-      return { session: nu ? ask(s, entry, nu) : s, entry }
+      // つづきが無くなっていたら（同期で埋まった等）選び直しへ＝行き止まりにしない。
+      return { session: nu ? ask(s, entry, nu) : askPick(s, entry, null), entry }
     }
     case 'finish': {
       const s: DialogSession = { ...session, log: withoutChips(session.log) }

@@ -13,7 +13,6 @@ import {
   DIALOG_KINDS,
   DIALOG_VERSION,
   DialogPatchError,
-  dialogProgress,
   dialogRecordDiff,
   dialogStatusOf,
   dialogSummaryOf,
@@ -207,7 +206,7 @@ describe('答えの読み書き', () => {
     expect(isAnswered(later, ageQ)).toBe(false)
     expect(isLater(later, ageQ)).toBe(true)
     expect(nextQuestion(later)?.key).toBe('gender')
-    const p = dialogProgress(later)
+    const p = dialogSummaryOf(later).progress
     expect(p).toMatchObject({ done: 1, later: 1 })
     // 任意の問いは total に数えない（人物：gender/birthday/blood/origin/pride/love/family/memo）
     expect(p.total).toBe(activeDeepQuestionsFor(later).filter((q) => !q.optional).length)

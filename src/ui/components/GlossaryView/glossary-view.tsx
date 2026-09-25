@@ -18,7 +18,8 @@ import {
   parseAliasInput,
 } from '@/core/glossary/dialog'
 import type { DialogSession } from '@/core/glossary/dialogSession'
-import type { DialogAnswer, GlossaryEntry } from '@/core/schema'
+import { applyGlossaryFieldPatch, type GlossaryFieldPatch } from '@/core/glossary/patch'
+import type { GlossaryEntry } from '@/core/schema'
 import type { GameAssetRepository } from '@/core/storage/gameAssetRepository'
 import { cn } from '@/lib/utils'
 import { thumbnailToDataUrl } from '@/ui/_utils/imageResizer'
@@ -31,6 +32,7 @@ import {
 import { GlossaryEntryDetail } from '@/ui/components/GlossaryPeek/entry-detail'
 import { DialogNoteSection } from '@/ui/components/GlossaryView/dialog-note-section'
 import { DialogPane } from '@/ui/components/GlossaryView/dialog-pane'
+import { Pill } from '@/ui/components/GlossaryView/pill'
 import { SpriteSection } from '@/ui/components/GlossaryView/sprite-section'
 import { VisibilityLabel } from '@/ui/components/GlossaryView/visibility-label'
 import { NotationField } from '@/ui/components/NotationField/notation-field'
@@ -39,7 +41,7 @@ import { Button } from '@/ui/components/ui/button'
 import { Input } from '@/ui/components/ui/input'
 import { Label } from '@/ui/components/ui/label'
 import { ZoomableImage } from '@/ui/components/ui/zoomable-image'
-import { applyGlossaryFieldPatch, type NewGlossaryEntry } from '@/ui/store/editorStore'
+import type { NewGlossaryEntry } from '@/ui/store/editorStore'
 
 /**
  * 用語集のメイン画面。**左：項目の一覧（検索・カテゴリ絞り込み）／右：選んだ項目の編集**の
@@ -59,15 +61,11 @@ import { applyGlossaryFieldPatch, type NewGlossaryEntry } from '@/ui/store/edito
  * 狭い画面（md 未満）では一覧と編集を切り替え式にする（選ぶと編集・← で一覧へ戻る）。
  */
 
-/** 対話ペインが保存する差分。渡した欄だけ書き換える（省略＝据え置き）。 */
-export interface GlossaryDialogPatch {
-  /** 対話ノートの鍵ごとの差分（`null`＝その鍵を削除）。他の鍵は据え置き。 */
-  dialogPatch?: Record<string, DialogAnswer | null>
-  dialogVersion?: number
-  category?: string
-  /** 公開情報（まとめの下書きを入れたとき）。旧・詳細（body）は畳む。 */
-  summary?: string
-}
+/** 対話ペインが保存する差分（対話ノートは鍵ごと・分類・公開情報）。渡した欄だけ書き換える。 */
+export type GlossaryDialogPatch = Pick<
+  GlossaryFieldPatch,
+  'dialogPatch' | 'dialogVersion' | 'category' | 'summary'
+>
 
 interface GlossaryViewProps {
   entries: GlossaryEntry[]
@@ -90,10 +88,18 @@ interface GlossaryViewProps {
   /** ゲーム素材の置き場所（渡されたときだけ、人物 entry に「立ち絵」欄が出る。PC 限定）。 */
   gameAssetRepo?: GameAssetRepository
   /**
-   * 登録前の下書きを覚えておく鍵（作品 id）。別の画面へ行って戻っても、同じ作品なら
-   * 書きかけの下書きが残る（画面の中だけ・再読み込みでは消える）。省略すると画面を離れたら消える。
+   * 登録前の下書き（と会話）の持ち場。別の画面へ行って戻っても、同じ作品なら書きかけが残るように
+   * 親（App）が作品ごとに持つ。`keptDraft` で戻し、変わるたびに `onKeepDraft` で渡す（null＝無し）。
+   * 省略すると画面を離れたら消える。
    */
-  draftKey?: string
+  keptDraft?: KeptGlossaryDraft | null
+  onKeepDraft?: (kept: KeptGlossaryDraft | null) => void
+}
+
+/** 登録前の下書きと、その会話（画面を離れて戻ったときに続きから）。 */
+export interface KeptGlossaryDraft {
+  entry: GlossaryEntry
+  session?: DialogSession
 }
 
 /** 下書きの id（登録前の新規項目。一覧には出ない）。 */
@@ -102,9 +108,6 @@ const DRAFT_ID = '__glossary_draft__'
 const DIALOG_FILTER = '__dialog_in_progress__'
 
 type PaneTab = 'form' | 'dialog'
-
-/** 画面を離れても残す下書きと会話（作品 id → 下書き）。登録・破棄で消す。 */
-const keptDrafts = new Map<string, { entry: GlossaryEntry; session?: DialogSession }>()
 
 /** 下書きは作るたびに別の id にする＝捨てて作り直したとき、編集面と対話が新しく立ち上がる。 */
 let draftSeq = 0
@@ -138,39 +141,36 @@ export function GlossaryView({
   onDelete,
   onCreateEntry,
   gameAssetRepo,
-  draftKey,
+  keptDraft,
+  onKeepDraft,
 }: GlossaryViewProps) {
   const [query, setQuery] = useState('')
   const [category, setCategory] = useState<string | null>(null)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   // 新規の下書き（登録するまで保存しない）。選択中は一覧の選択を持たない。
   // 画面を離れて戻ったときは、同じ作品の書きかけを戻す。
-  const [draft, setDraft] = useState<GlossaryEntry | null>(() =>
-    draftKey ? (keptDrafts.get(draftKey)?.entry ?? null) : null,
-  )
+  const [draft, setDraft] = useState<GlossaryEntry | null>(() => keptDraft?.entry ?? null)
   // 戻ってきた下書きの会話（スキップの印・答えの吹き出しごと）。その下書き（id）にだけ使う＝
   // 登録・破棄のあと新しく作った下書きには持ち越さない。
-  const restored = useRef(draftKey ? keptDrafts.get(draftKey) : undefined)
+  const restored = useRef(keptDraft ?? undefined)
   const draftRef = useRef(draft)
   draftRef.current = draft
-  const [tab, setTab] = useState<PaneTab>(() =>
-    draftKey && keptDrafts.has(draftKey) ? 'dialog' : 'form',
-  )
+  const sessionRef = useRef<DialogSession | undefined>(keptDraft?.session)
+  const keepRef = useRef(onKeepDraft)
+  keepRef.current = onKeepDraft
+  const [tab, setTab] = useState<PaneTab>(() => (keptDraft ? 'dialog' : 'form'))
+  // 下書きが変わるたびに親へ渡す（中身が無ければ無し）。
   useEffect(() => {
-    if (!draftKey) return
-    if (draft && draftHasContent(draft)) {
-      keptDrafts.set(draftKey, { ...(keptDrafts.get(draftKey) ?? {}), entry: draft })
-    } else keptDrafts.delete(draftKey)
-  }, [draft, draftKey])
-  const keepDraftSession = useCallback(
-    (session: DialogSession) => {
-      const d = draftRef.current
-      if (!draftKey || !d) return
-      // 下書きがまだ覚えられていない一手目（分類を選んだ直後）でも会話を落とさない。
-      keptDrafts.set(draftKey, { entry: keptDrafts.get(draftKey)?.entry ?? d, session })
-    },
-    [draftKey],
-  )
+    keepRef.current?.(
+      draft && draftHasContent(draft) ? { entry: draft, session: sessionRef.current } : null,
+    )
+  }, [draft])
+  const keepDraftSession = useCallback((session: DialogSession) => {
+    sessionRef.current = session
+    const d = draftRef.current
+    // 下書きがまだ渡されていない一手目（分類を選んだ直後）でも会話を落とさない。
+    if (d && draftHasContent(d)) keepRef.current?.({ entry: d, session })
+  }, [])
   // 書きかけの下書きがあるあいだは、タブを閉じる・再読み込みの前に確認を出す（残らないので）。
   const draftDirty = draft !== null && draftHasContent(draft)
   useEffect(() => {
@@ -323,23 +323,29 @@ export function GlossaryView({
                 className="m-0 flex min-w-0 flex-wrap items-center gap-1 border-0 p-0"
                 aria-label="カテゴリで絞り込み"
               >
-                <FilterChip
+                <Pill
                   label="すべて"
                   active={category === null}
+                  pressed={category === null}
+                  className="px-2.5 text-[11.5px]"
                   onClick={() => setCategory(null)}
                 />
                 {categories.map((c) => (
-                  <FilterChip
+                  <Pill
                     key={c}
                     label={c}
                     active={category === c}
+                    pressed={category === c}
+                    className="px-2.5 text-[11.5px]"
                     onClick={() => setCategory((cur) => (cur === c ? null : c))}
                   />
                 ))}
                 {inProgressCount > 0 ? (
-                  <FilterChip
+                  <Pill
                     label={`対話の途中 ${inProgressCount}`}
                     active={category === DIALOG_FILTER}
+                    pressed={category === DIALOG_FILTER}
+                    className="px-2.5 text-[11.5px]"
                     onClick={() =>
                       setCategory((cur) => (cur === DIALOG_FILTER ? null : DIALOG_FILTER))
                     }
@@ -534,33 +540,6 @@ function valuesOf(e: GlossaryEntry): GlossaryFormValues {
     authorNote: e.authorNote ?? '',
     thumbnail: e.thumbnail ?? '',
   }
-}
-
-function FilterChip({
-  label,
-  active,
-  onClick,
-}: {
-  label: string
-  active: boolean
-  onClick: () => void
-}) {
-  return (
-    <button
-      type="button"
-      aria-pressed={active}
-      onClick={onClick}
-      className={cn(
-        // タッチでは 44px 目安のタップ領域を確保し、ポインタ環境では従来の密度に戻す。
-        'rounded-full border px-2.5 py-2 font-sans text-[11.5px] transition-colors md:py-0.5',
-        active
-          ? 'border-primary bg-primary text-white'
-          : 'border-outline-variant/40 text-on-surface-variant hover:bg-surface-container-high',
-      )}
-    >
-      {label}
-    </button>
-  )
 }
 
 /**

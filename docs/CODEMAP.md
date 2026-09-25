@@ -135,7 +135,7 @@ Cloudflare Pages Functions
 | `activity/` | 執筆記録（`localDateKey` `currentStreak` `buildHeatmap`） |
 | `stats/` | 文字数カウント |
 | `outline/` | アウトラインのメモ木操作（`indentNote` `moveNote` 等） |
-| `glossary/` | 参照解決・出現検索・改名・サジェスト・公開情報の結合（`resolveRef` `renameEntry` `suggestRefs` `publicTextOf` `PERSON_CATEGORY`）。**「対話」**は `dialog.ts`（質問の正本＝付録 A と同内容・`activeQuestionsFor` `nextQuestion` `dialogProgress` `dialogStatusOf` `withDialogAnswer` `toggleAnswerPublic` `draftSummaryFromDialog` `applyDialogPatch` `dialogToPlainText` `questionsToPlainText`）と `dialogSession.ts`（会話ログと待ち状態の純データ・遷移は `{ session, entry }` を返す） |
+| `glossary/` | 参照解決・出現検索・改名・サジェスト・公開情報の結合（`resolveRef` `renameEntry` `suggestRefs` `publicTextOf` `withPublicText`＝公開情報を 1 欄で書く唯一の入口・`PERSON_CATEGORY`）。項目のフィールドパッチは `patch.ts`（`GlossaryFieldPatch` `applyGlossaryFieldPatch`＝store と登録前の下書きが共用。`dialogPatch`＝対話ノートの鍵ごとの差分）。**「対話」**は `dialog.ts`（質問の正本＝付録 A と同内容・`activeQuestionsFor` `nextQuestion` `dialogSummaryOf`（状態と進み具合を 1 回の走査で）`laterQuestionsOf` `withDialogAnswer` `toggleAnswerPublic` `draftSummaryFromDialog` `dialogRecordDiff` `applyDialogPatch` `dialogToPlainText` `questionsToPlainText`）と `dialogSession.ts`（会話ログと待ち状態の純データ・遷移は `{ session, entry }` を返す） |
 
 ### 掲示板（`board/`）— 判断はすべてここ。サーバは呼ぶだけ
 | ファイル | 責務 | 主な export |
@@ -169,7 +169,7 @@ Cloudflare Pages Functions
 ### 画面（`components/` — PascalCase ディレクトリ + kebab ファイル・1ファイル1コンポーネント）
 - **執筆**: `EditorPane/`（textarea + 記法バー + `@` サジェスト + 置換パネル）, `PreviewPane/`, `HistoryPanel/`
 - **作品管理**: `Library/`（カード/リスト・作品メニュー）, `TrashDialog/`, `WorkMetaDialog/`, `TitlePromptDialog/`
-- **用語集**: `GlossaryView/`（左：一覧（対話の進み具合・「対話の途中」チップ）／右：「フォーム｜対話」の二面。`dialog-pane.tsx`＝対話ペイン・`dialog-note-section.tsx`＝フォームの対話ノート・「＋ 新しく登録」は下書きを対話で開き「用語集に登録」で保存）, `GlossaryEntryForm/`（本文からのクイック作成・パネル編集用モーダル）, `GlossaryPeek/`
+- **用語集**: `GlossaryView/`（左：一覧（対話の進み具合・「対話の途中」チップ）／右：「フォーム｜対話」の二面。`dialog-pane.tsx`＝対話ペイン・`dialog-note-section.tsx`＝フォームの対話ノート・`pill.tsx`＝丸いチップ・`visibility-label.tsx`＝「読者に見せる／作者だけ」の印・「＋ 新しく登録」は下書きを対話で開き「用語集に登録」で保存。登録前の下書きは App が作品 id ごとに持つ（`keptDraft`／`onKeepDraft`）＝画面を離れても残る）, `GlossaryEntryForm/`（本文からのクイック作成・パネル編集用モーダル。`formValuesToFieldPatch`＝フォーム値→パッチの写像・`GLOSSARY_CATEGORIES`＝core の `DIALOG_CATEGORIES`）, `GlossaryPeek/`
 - **構想の道具（無料アカウント登録で解禁・遅延ロード）**: `MindmapView/`, `CorrelationChartView/`, `OutlineView/`, `PlotView/`（`plot-view.tsx` ＋ 世界観設定タブ `world-view.tsx`）, `StructureCanvas/`, `StagingView/`（サウンドノベルの演出エディタ：行一覧＋話者/表情/背景/BGM/効果音/場面の切れ目・背景と立ち絵の持ち込み・素材の管理 `asset-manager.tsx`＝一覧/削除/クラウド保管・テンプレの一覧 `template-picker.tsx`＝分類タブ＋サムネイル・書き出しと図鑑でも共用）
 - **執筆画面の右パネル（遅延ロードしない）**: `PlotPeek/`（この話のビート一覧 `plot-peek.tsx` ＋ 読み取り専用のビート詳細 `beat-detail.tsx`）
 - **入出力**: `ExportDialog/`, `ImportDialog/`, `BackupDialog/`, `CloudBackupDialog/`, `AiPullDialog/`

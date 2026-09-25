@@ -1,6 +1,7 @@
 import { blocksToNotation } from '../../core/exporter/blocksToNotation'
-import { renameEntry, resolveRef, withPublicText } from '../../core/glossary'
+import { renameEntry, resolveRef } from '../../core/glossary'
 import { DIALOG_VERSION } from '../../core/glossary/dialog'
+import { applyGlossaryFieldPatch, type GlossaryFieldPatch } from '../../core/glossary/patch'
 import { parseEpisodeBody } from '../../core/parser/parseNotation'
 import { reconcileBlockIds } from '../../core/parser/reconcileBlockIds'
 import type { Profile, ProfileRepository } from '../../core/profile'
@@ -122,55 +123,8 @@ export interface NewGlossaryEntry {
   dialogVersion?: number
 }
 
-/** 辞書 entry のフィールド更新パッチ（name は対象外＝renameGlossaryEntry を使う）。 */
-export interface GlossaryFieldPatch {
-  aliases?: string[]
-  category?: string
-  reading?: string
-  summary?: string
-  body?: string
-  /** 作者だけが見るメモ（公開時に落とす）。 */
-  authorNote?: string
-  /** サムネ画像の data URL。空文字 '' は削除（キーを落とす）、undefined は据え置き。 */
-  thumbnail?: string
-  /**
-   * 対話ノートの**鍵ごと**のパッチ（`null` はその鍵を削除）。対話ペインが使う＝答えた鍵だけを
-   * 書き換え、同期や MCP で届いた他の鍵の答えを巻き込まない。保存中の最新の record に重ねる。
-   */
-  dialogPatch?: Record<string, DialogAnswer | null>
-  dialogVersion?: number
-}
-
-/**
- * 辞書 entry にフィールドパッチを当てる純関数（store の updateGlossaryEntry と、登録前の下書きが共用）。
- * - thumbnail の空文字 '' は削除（undefined＝据え置きと区別）
- * - summary を渡したら旧・詳細（body）は畳む（D-GLOS-PUBLIC-ONE・withPublicText）
- * - dialogPatch は鍵ごとに重ね、null は削除。空になったら record ごと落とす
- */
-export function applyGlossaryFieldPatch(
-  cur: GlossaryEntry,
-  patch: GlossaryFieldPatch,
-  ts: number,
-): GlossaryEntry {
-  const { dialogPatch, summary, ...rest } = patch
-  let updated: GlossaryEntry = { ...cur, ...rest, updatedAt: ts }
-  if (patch.thumbnail === '') delete updated.thumbnail
-  if ('summary' in patch) updated = withPublicText(updated, summary ?? '')
-  if (dialogPatch !== undefined) {
-    const merged: Record<string, DialogAnswer> = { ...(cur.dialog ?? {}) }
-    for (const [key, value] of Object.entries(dialogPatch)) {
-      if (value === null) delete merged[key]
-      else merged[key] = value
-    }
-    updated.dialog = merged
-    updated.dialogVersion = patch.dialogVersion ?? cur.dialogVersion ?? DIALOG_VERSION
-  }
-  if (updated.dialog !== undefined && Object.keys(updated.dialog).length === 0) {
-    delete updated.dialog
-    delete updated.dialogVersion
-  }
-  return updated
-}
+/** 辞書 entry のフィールド更新パッチ（規則は core/glossary/patch。ここは再 export）。 */
+export type { GlossaryFieldPatch } from '../../core/glossary/patch'
 
 /** 作品メタ編集の入力（指定したキーのみ上書き）。 */
 export interface WorkMeta {

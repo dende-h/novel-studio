@@ -1067,11 +1067,6 @@ export interface DialogProgress {
   later: number
 }
 
-/** 進み具合。深掘りの基本の問いだけで数える（共通 4 問・任意の問いは数に入れない）。 */
-export function dialogProgress(entry: EntryLike): DialogProgress {
-  return dialogSummaryOf(entry).progress
-}
-
 export interface DialogSummary {
   status: DialogStatus
   progress: DialogProgress
@@ -1079,7 +1074,10 @@ export interface DialogSummary {
 
 /**
  * 一覧・見出し・対話ノートが使う状態と進み具合を 1 回の走査で返す（項目ごとに何度も歩かない）。
- * status の規則は dialogStatusOf を参照。
+ * progress は深掘りの基本の問いだけで数える（共通 4 問・任意の問いは数に入れない・D-DLG-SKIP）。
+ * status（D-DLG-LIST）：none＝手を付けていない、または分類に質問セットが無い（未分類・旧データの
+ * 自由入力。答えが残っていても分類を選び直せば戻る）／inProgress＝途中／done＝ひと通り答えた
+ * （任意の問いも答えるかスキップしてあり、あとでも残っていない）。
  */
 export function dialogSummaryOf(entry: EntryLike): DialogSummary {
   const deep = activeDeepQuestionsFor(entry)
@@ -1127,13 +1125,8 @@ export function dialogStarted(entry: Pick<GlossaryEntry, 'dialog'>): boolean {
   return Object.keys(entry.dialog ?? {}).length > 0
 }
 
-/**
- * 一覧の印（D-DLG-LIST）。none＝手を付けていない（今の見た目のまま）／inProgress＝途中（バーと n/m）／
- * done＝ひと通り答えた（任意の問いも答えるかスキップしてあり、あとでも残っていない）。
- */
+/** 一覧の印（規則は dialogSummaryOf）。 */
 export function dialogStatusOf(entry: EntryLike): DialogStatus {
-  // 質問セットの無い分類（未分類・旧データの自由入力）は、答えが残っていても「手を付けていない」扱い
-  // ＝分類を選び直せば答えごと戻る（判定の実体は dialogSummaryOf）。
   return dialogSummaryOf(entry).status
 }
 

@@ -29,6 +29,7 @@ import {
 } from '@/core/glossary/dialogSession'
 import type { DialogAnswer, GlossaryEntry } from '@/core/schema'
 import { cn } from '@/lib/utils'
+import { Pill } from '@/ui/components/GlossaryView/pill'
 import { VisibilityLabel } from '@/ui/components/GlossaryView/visibility-label'
 import {
   CommitTextarea,
@@ -249,12 +250,12 @@ function Composer({
     <>
       <div className="flex flex-wrap items-center gap-1.5">
         {q.choices?.map((c) => (
-          <Chip key={c} label={c} onClick={() => onAnswer(c)} />
+          <Pill key={c} label={c} onClick={() => onAnswer(c)} />
         ))}
         {choicesOnly || required ? null : (
-          <Chip label="スキップ" ghost onClick={() => onSkip(false)} />
+          <Pill label="スキップ" ghost onClick={() => onSkip(false)} />
         )}
-        {required ? null : <Chip label="あとで答える" ghost onClick={() => onSkip(true)} />}
+        {required ? null : <Pill label="あとで答える" ghost onClick={() => onSkip(true)} />}
         <span className="ml-auto text-[11px] text-on-surface-variant/60">{visibilityHint(q)}</span>
       </div>
       {choicesOnly ? null : (
@@ -392,11 +393,11 @@ function Message({
           aria-label="選択肢"
         >
           {m.chips.map((c) => (
-            <Chip
+            <Pill
               key={`${c.action}:${c.value ?? ''}`}
               label={c.label}
               note={c.note}
-              primary={c.primary}
+              active={c.primary}
               ghost={c.ghost}
               blank={c.blank}
               onClick={() => onChip(c.action, c.value)}
@@ -571,40 +572,6 @@ function VisibilityPill({
       className="rounded-full transition-opacity hover:opacity-80"
     >
       <VisibilityLabel isPublic={isPublic} className="border border-outline-variant/40" />
-    </button>
-  )
-}
-
-function Chip({
-  label,
-  note,
-  primary,
-  ghost,
-  blank,
-  onClick,
-}: {
-  label: string
-  note?: string
-  primary?: boolean
-  ghost?: boolean
-  blank?: boolean
-  onClick: () => void
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={cn(
-        'rounded-full border px-3 py-1.5 text-[12.5px] transition-colors md:py-1',
-        primary
-          ? 'border-primary bg-primary text-white hover:bg-primary/90'
-          : 'border-outline-variant/40 bg-surface-container-lowest text-on-surface hover:border-primary/50 hover:bg-accent',
-        ghost && 'text-on-surface-variant',
-        blank && 'border-dashed',
-      )}
-    >
-      {label}
-      {note ? <span className="ml-1 text-[10.5px] text-on-surface-variant/70">{note}</span> : null}
     </button>
   )
 }

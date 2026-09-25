@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from 'vitest'
 import type { Appearances } from '@/core/glossary'
 import type { DialogAnswer, GlossaryEntry } from '@/core/schema'
 import type { GlossaryFormValues } from '@/ui/components/GlossaryEntryForm/glossary-entry-form'
-import { GlossaryView } from './glossary-view'
+import { GlossaryView, type KeptGlossaryDraft } from './glossary-view'
 
 // 立ち絵欄が目録を読みに行く（fetch）のを止める（happy-dom は実ネットワークへ出ようとする）
 vi.mock('@/ui/_api/game-templates', () => ({
@@ -83,7 +83,10 @@ const appearances: Record<string, Appearances> = {
  * onApply を受け取るだけのモックだと「作成した項目がその場で選ばれる」「改名が一覧へ出る」
  * を検証できない（world-view.test で学んだ形）。
  */
-function setup(initial: GlossaryEntry[] = ENTRIES, opts: { draftKey?: string } = {}) {
+function setup(
+  initial: GlossaryEntry[] = ENTRIES,
+  opts: { kept?: { current: KeptGlossaryDraft | null } } = {},
+) {
   const calls = {
     onCreate: vi.fn(),
     onUpdate: vi.fn(),
@@ -169,7 +172,10 @@ function setup(initial: GlossaryEntry[] = ENTRIES, opts: { draftKey?: string } =
           calls.onDelete(id)
           setEntries((cur) => cur.filter((e) => e.id !== id))
         }}
-        draftKey={opts.draftKey}
+        keptDraft={opts.kept?.current ?? null}
+        onKeepDraft={(k) => {
+          if (opts.kept) opts.kept.current = k
+        }}
       />
     )
   }
@@ -375,19 +381,29 @@ describe('GlossaryView（左右2カラム：一覧・検索・その場編集）
   })
 
   it('書きかけの下書きは画面を離れて戻っても残る（同じ作品の鍵）', () => {
-    const first = setup(ENTRIES, { draftKey: 'work-1' })
+    const kept = { current: null as KeptGlossaryDraft | null }
+    const first = setup(ENTRIES, { kept })
     fireEvent.click(screen.getByRole('button', { name: '新しく登録' }))
     fireEvent.click(dialogChip('人物'))
     answer('キャロル')
     fireEvent.click(screen.getByRole('button', { name: 'スキップ' })) // 読み
     first.unmount()
-    setup(ENTRIES, { draftKey: 'work-1' })
+    expect(kept.current?.entry.name).toBe('キャロル')
+    setup(ENTRIES, { kept })
     // 対話タブで開き、下書きの名前と会話（スキップの印・続きの問い）が残っている
     expect(screen.getByLabelText('名前')).toHaveValue('キャロル')
     expect(dialogTab()).toHaveAttribute('aria-pressed', 'true')
     expect(lastBot()).toBe(
       '本文で使う別の呼び方はありますか。あだ名や肩書きなど、読点で区切ってください。',
     )
+  })
+
+  it('フォームの対話ノートは、質問セットの無い分類でも残っている答えを表示する', () => {
+    setup([entry({ id: 'y', name: '妖', category: '妖怪', dialog: { title: { text: '山の主' } } })])
+    openEntry('妖')
+    const note = screen.getByRole('region', { name: '対話ノート' })
+    expect(within(note).getByText('山の主')).toBeInTheDocument()
+    expect(within(note).getByText(/カテゴリを選ぶと問いに結びつきます/)).toBeInTheDocument()
   })
 
   it('フォームの対話ノートは、種類を変えて枝から外れた答えも表示する（データの表示場所を無くさない）', () => {

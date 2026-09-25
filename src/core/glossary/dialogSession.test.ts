@@ -430,6 +430,37 @@ describe('再開・直す', () => {
     expect(step.session.pendingFinish).toBeUndefined()
   })
 
+  it('登録のための名前の聞き直し中に別の問いへ行けば、あとで名前を直しても勝手に登録しない', () => {
+    let step: SessionStep = runChip(
+      beginSession(entry({ name: '' }), { draft: true }),
+      entry({ name: '' }),
+      'category',
+      '人物',
+    )
+    step = skipQuestion(step.session, step.entry, false) // name
+    step = submitAnswer(step.session, step.entry, 'ゆき') // reading
+    step = runChip(step.session, step.entry, 'finish') // 名前を聞き直す
+    expect(step.session.pendingFinish).toBe(true)
+    step = pickQuestion(step.session, step.entry, 'reading') // 別の問いを直しに行く
+    expect(step.session.pendingFinish).toBeUndefined()
+    step = submitAnswer(step.session, step.entry, 'ユキ')
+    step = pickQuestion(step.session, step.entry, 'name')
+    step = submitAnswer(step.session, step.entry, 'ユキ')
+    expect(step.effect).toBeUndefined()
+  })
+
+  it('「つづきの質問へ」でつづきが無くなっていれば選び直しへ（行き止まりにしない）', () => {
+    let e = entry({ name: '竜', category: '生物' })
+    const s0 = beginSession(e, { draft: false })
+    // 裏で全部埋まった体（同期）
+    for (const q of activeDeepQuestionsFor(e)) {
+      e = { ...e, dialog: { ...(e.dialog ?? {}), [q.key]: { text: '', skipped: true } } }
+    }
+    const step = runChip(s0, e, 'resume')
+    expect(step.session.pending).toEqual({ kind: 'pick' })
+    expect(lastChips(step.session).length).toBeGreaterThan(0)
+  })
+
   it('rejectAnswer は問いを待ったまま一言添える／pendingQuestion は待っている問い', () => {
     const e = entry({ name: 'セト', category: '人物' })
     const s = rejectAnswer(beginSession(e, { draft: false }), '保存に失敗しました', e)
