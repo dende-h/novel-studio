@@ -228,6 +228,29 @@ describe('深掘りの本流', () => {
     )
   })
 
+  it('追い質問を「あとで」にすると、まとめと選び直しにその追い質問が並ぶ', () => {
+    let e = seto()
+    let s = beginSession(e, { draft: false })
+    while (pendingKey(s) !== 'skill') {
+      const st = skipQuestion(s, e, false)
+      s = st.session
+      e = st.entry
+    }
+    let step = submitAnswer(s, e, '道を覚える')
+    step = runChip(step.session, step.entry, 'dig', 'skill')
+    step = skipQuestion(step.session, step.entry, true) // 追い質問をあとで
+    expect(step.entry.dialog?.skill__why).toEqual({ text: '', later: true })
+    let guard = 0
+    while (step.session.pending?.kind === 'question' && guard++ < 100) {
+      step = skipQuestion(step.session, step.entry, false)
+    }
+    expect(lastBot(step.session)).toMatch(/「あとで」にした答えが 1 つあります/)
+    expect(lastChips(step.session)[0]).toMatchObject({ action: 'pick', value: 'skill__why' })
+    // 選ぶとその追い質問を聞く
+    step = runChip(step.session, step.entry, 'pick', 'skill__why')
+    expect(pendingKey(step.session)).toBe('skill__why')
+  })
+
   it('「次へ」で追い質問を飛ばす', () => {
     let e = seto()
     let s = beginSession(e, { draft: false })

@@ -1096,12 +1096,30 @@ export function dialogSummaryOf(entry: EntryLike): DialogSummary {
       total += 1
       if (answered) done += 1
     }
+    // 追い質問の「あとで」も数える（本流には無いので、ここで拾わないと取り残される）。
+    for (const d of digQuestionsOf(q)) if (isLater(entry, d)) later += 1
   }
   const progress = { done, total, later }
   if (!dialogStarted(entry) || !hasDialogQuestions(entry.category)) {
     return { status: 'none', progress }
   }
   return { status: !pending && later === 0 ? 'done' : 'inProgress', progress }
+}
+
+/**
+ * 「あとで答える」のままの問い（本流の問いと、答えた親の追い質問）。まとめ・選び直し・再開で
+ * 一覧にする。追い質問は本流に無いので、ここで拾わないと二度と聞かれない。
+ */
+export function laterQuestionsOf(
+  entry: EntryLike,
+  opts: AnsweredOptions = {},
+): AnyDialogQuestion[] {
+  const out: AnyDialogQuestion[] = []
+  for (const q of activeQuestionsFor(entry)) {
+    if (isLater(entry, q, opts)) out.push(q)
+    for (const d of digQuestionsOf(q)) if (isLater(entry, d, opts)) out.push(d)
+  }
+  return out
 }
 
 /** 対話を始めているか（対話ノートに何か入っている）。 */
@@ -1292,26 +1310,34 @@ export function applyDialogPatch(entry: GlossaryEntry, patch: DialogPatch): Glos
   const keys = Object.keys(patch)
   if (keys.length === 0) return entry
   const category = entry.category?.trim() ?? ''
-  // 削除（空文字）だけなら分類に質問セットが無くても通す＝古い答えを片づける道を残す。
+  const hasQuestions = hasDialogQuestions(category)
   const textOf = (v: DialogPatchValue | undefined) =>
     typeof v === 'string' ? v : typeof v?.text === 'string' ? v.text : undefined
-  const onlyDeletes = keys.every((k) => textOf(patch[k])?.trim() === '')
-  if (onlyDeletes) {
-    const next: Record<string, DialogAnswer> = { ...(entry.dialog ?? {}) }
-    for (const key of keys) delete next[key]
-    return withDialogRecord(entry, next)
-  }
-  if (!hasDialogQuestions(category)) {
-    throw new DialogPatchError(
-      `分類「${category || '未分類'}」には対話の質問がありません。category を ${DIALOG_CATEGORIES.join('／')} のいずれかにしてください`,
-    )
-  }
   const next: Record<string, DialogAnswer> = { ...(entry.dialog ?? {}) }
   for (const key of keys) {
-    // 削除（空文字）は鍵の検証をしない＝旧鍵・枝から外れた鍵も片づけられる。
+    // 削除（空文字）。残っている鍵は旧鍵・枝から外れた鍵でも消せる（分類に質問セットが無くても）。
+    // 無い鍵を消すときだけ、誤字と共通 4 問の鍵を検める（消したつもりで残る事故を防ぐ）。
     if (textOf(patch[key])?.trim() === '') {
-      delete next[key]
+      if (key in next) {
+        delete next[key]
+        continue
+      }
+      if (BASE_KEYS.includes(key)) {
+        throw new DialogPatchError(
+          `dialog の鍵「${key}」は使えません。名前・読み・別名・公開情報は name／reading／aliases／summary で渡してください`,
+        )
+      }
+      if (hasQuestions && !questionByKey(category, key)) {
+        throw new DialogPatchError(
+          `dialog の鍵「${key}」は分類「${category}」にありません。有効な鍵は get_glossary_questions で確認してください`,
+        )
+      }
       continue
+    }
+    if (!hasQuestions) {
+      throw new DialogPatchError(
+        `分類「${category || '未分類'}」には対話の質問がありません。category を ${DIALOG_CATEGORIES.join('／')} のいずれかにしてください`,
+      )
     }
     if (BASE_KEYS.includes(key)) {
       throw new DialogPatchError(

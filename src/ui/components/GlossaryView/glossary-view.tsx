@@ -1,5 +1,5 @@
 import { ArrowLeft, Plus, Search, Trash2, X } from 'lucide-react'
-import { useEffect, useId, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import {
   type Appearances,
   categoriesOf,
@@ -17,6 +17,7 @@ import {
   dialogSummaryOf,
   parseAliasInput,
 } from '@/core/glossary/dialog'
+import type { DialogSession } from '@/core/glossary/dialogSession'
 import type { DialogAnswer, GlossaryEntry } from '@/core/schema'
 import type { GameAssetRepository } from '@/core/storage/gameAssetRepository'
 import { cn } from '@/lib/utils'
@@ -102,8 +103,8 @@ const DIALOG_FILTER = '__dialog_in_progress__'
 
 type PaneTab = 'form' | 'dialog'
 
-/** 画面を離れても残す下書き（作品 id → 下書き）。登録・破棄で消す。 */
-const keptDrafts = new Map<string, GlossaryEntry>()
+/** 画面を離れても残す下書きと会話（作品 id → 下書き）。登録・破棄で消す。 */
+const keptDrafts = new Map<string, { entry: GlossaryEntry; session?: DialogSession }>()
 
 /** 下書きは作るたびに別の id にする＝捨てて作り直したとき、編集面と対話が新しく立ち上がる。 */
 let draftSeq = 0
@@ -145,16 +146,27 @@ export function GlossaryView({
   // 新規の下書き（登録するまで保存しない）。選択中は一覧の選択を持たない。
   // 画面を離れて戻ったときは、同じ作品の書きかけを戻す。
   const [draft, setDraft] = useState<GlossaryEntry | null>(() =>
-    draftKey ? (keptDrafts.get(draftKey) ?? null) : null,
+    draftKey ? (keptDrafts.get(draftKey)?.entry ?? null) : null,
   )
+  // 戻ってきた下書きの会話（スキップの印・答えの吹き出しごと）。最初の描画でだけ使う。
+  const restoredSession = useRef(draftKey ? keptDrafts.get(draftKey)?.session : undefined)
   const [tab, setTab] = useState<PaneTab>(() =>
     draftKey && keptDrafts.has(draftKey) ? 'dialog' : 'form',
   )
   useEffect(() => {
     if (!draftKey) return
-    if (draft && draftHasContent(draft)) keptDrafts.set(draftKey, draft)
-    else keptDrafts.delete(draftKey)
+    if (draft && draftHasContent(draft)) {
+      keptDrafts.set(draftKey, { ...(keptDrafts.get(draftKey) ?? {}), entry: draft })
+    } else keptDrafts.delete(draftKey)
   }, [draft, draftKey])
+  const keepDraftSession = useCallback(
+    (session: DialogSession) => {
+      if (!draftKey) return
+      const kept = keptDrafts.get(draftKey)
+      if (kept) keptDrafts.set(draftKey, { ...kept, session })
+    },
+    [draftKey],
+  )
   // 書きかけの下書きがあるあいだは、タブを閉じる・再読み込みの前に確認を出す（残らないので）。
   const draftDirty = draft !== null && draftHasContent(draft)
   useEffect(() => {
@@ -404,6 +416,10 @@ export function GlossaryView({
                   if (Object.keys(patch).length > 0) await onUpdateDialog(current.id, patch)
                 }}
                 onRegister={draft ? registerDraft : undefined}
+                initialSession={
+                  draft && restoredSession.current?.draft ? restoredSession.current : undefined
+                }
+                onSessionChange={draft ? keepDraftSession : undefined}
                 onRequestDelete={() => {
                   if (draft) guardDraft(() => setDraft(null))
                   else setDeleteTarget(current)
@@ -645,6 +661,8 @@ function EntryEditor({
   onCommitName,
   onDialogChange,
   onRegister,
+  initialSession,
+  onSessionChange,
   onRequestDelete,
   onCreateEntry,
   onRefClick,
@@ -666,6 +684,9 @@ function EntryEditor({
   onDialogChange: (next: GlossaryEntry, prev: GlossaryEntry) => Promise<void> | void
   /** 下書きの登録（下書きのときだけ）。 */
   onRegister?: (entry: GlossaryEntry) => Promise<void>
+  /** 画面を離れて戻った下書きの会話と、その保存先（下書きのときだけ）。 */
+  initialSession?: DialogSession
+  onSessionChange?: (session: DialogSession) => void
   onRequestDelete: () => void
   onCreateEntry?: (name: string) => Promise<string | null>
   onRefClick: (name: string) => void
@@ -810,6 +831,8 @@ function EntryEditor({
           resolvedNames={resolvedNames}
           onChange={onDialogChange}
           onFinish={onRegister}
+          initialSession={initialSession}
+          onSessionChange={onSessionChange}
           onToForm={() => onTabChange('form')}
           onCreateEntry={onCreateEntry}
           onRefClick={onRefClick}

@@ -379,11 +379,15 @@ describe('GlossaryView（左右2カラム：一覧・検索・その場編集）
     fireEvent.click(screen.getByRole('button', { name: '新しく登録' }))
     fireEvent.click(dialogChip('人物'))
     answer('キャロル')
+    fireEvent.click(screen.getByRole('button', { name: 'スキップ' })) // 読み
     first.unmount()
     setup(ENTRIES, { draftKey: 'work-1' })
-    // 対話タブで開き、下書きの名前が見出しに残っている
+    // 対話タブで開き、下書きの名前と会話（スキップの印・続きの問い）が残っている
     expect(screen.getByLabelText('名前')).toHaveValue('キャロル')
     expect(dialogTab()).toHaveAttribute('aria-pressed', 'true')
+    expect(lastBot()).toBe(
+      '本文で使う別の呼び方はありますか。あだ名や肩書きなど、読点で区切ってください。',
+    )
   })
 
   it('チラ見の「この項目を編集」で下書きを捨てる確認をキャンセルすると、チラ見も下書きも残る', async () => {

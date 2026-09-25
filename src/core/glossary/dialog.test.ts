@@ -16,12 +16,14 @@ import {
   dialogProgress,
   dialogRecordDiff,
   dialogStatusOf,
+  dialogSummaryOf,
   dialogToPlainText,
   digQuestionsOf,
   draftSummaryFromDialog,
   isAnswered,
   isLater,
   kindOf,
+  laterQuestionsOf,
   nextQuestion,
   questionByKey,
   questionsToPlainText,
@@ -352,10 +354,25 @@ describe('applyDialogPatch（MCP と画面が共用するパッチ規則）', ()
     expect(applyDialogPatch(base, { gender: '不明' }).dialog?.gender?.text).toBe('不明')
   })
 
-  it('削除（空文字）は旧鍵・未知の鍵でも通り、更新と混ぜても書ける', () => {
+  it('削除（空文字）は残っている鍵なら旧鍵でも通り、更新と混ぜても書ける。無い鍵の誤字と共通 4 問の鍵はエラー', () => {
     const e = entry({ name: 'x', category: '人物', dialog: { old_key: { text: '昔' } } })
     const next = applyDialogPatch(e, { old_key: '', age: '30' })
     expect(next.dialog).toEqual({ age: { text: '30' } })
+    expect(() => applyDialogPatch(e, { skil: '' })).toThrow(/get_glossary_questions/)
+    expect(() => applyDialogPatch(e, { name: '' })).toThrow(/name／reading/)
+    // 無い鍵でも正しい鍵の削除は何もしない（成功）
+    expect(applyDialogPatch(e, { skill: '' }).dialog).toEqual(e.dialog)
+  })
+
+  it('追い質問の「あとで」も数え、laterQuestionsOf に並ぶ', () => {
+    const e = entry({
+      name: 'セト',
+      category: '人物',
+      dialog: { skill: { text: '道を覚える' }, skill__why: { text: '', later: true } },
+    })
+    expect(dialogSummaryOf(e).progress.later).toBe(1)
+    expect(dialogSummaryOf(e).status).toBe('inProgress')
+    expect(laterQuestionsOf(e).map((q) => q.key)).toEqual(['skill__why'])
   })
 
   it('dialogRecordDiff は変わった鍵だけ（消えた鍵は null）', () => {

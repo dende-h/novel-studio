@@ -15,6 +15,7 @@ import {
   isAnswered,
   isDigQuestion,
   isLater,
+  laterQuestionsOf,
   nextQuestion,
   parseAliasInput,
   questionByKey,
@@ -164,19 +165,31 @@ function askPick(s: DialogSession, entry: GlossaryEntry, lead: string | null): D
   let next = lead ? say(s, lead) : s
   next = { ...next, pending: { kind: 'pick' } }
   const o = optsOf(next)
-  const items: DialogChip[] = activeQuestionsFor(entry)
-    .filter((q) => !(q.field !== undefined && !next.draft))
-    .map((q) => {
-      const later = isLater(entry, q, o)
-      const blank = !isAnswered(entry, q, o) || later
-      return {
-        label: q.label,
-        action: 'pick',
-        value: q.key,
-        blank,
-        ...(later ? { note: 'あとで' } : blank ? { note: '未回答' } : {}),
-      }
+  const items: DialogChip[] = []
+  for (const q of activeQuestionsFor(entry)) {
+    if (q.field !== undefined && !next.draft) continue
+    const later = isLater(entry, q, o)
+    const blank = !isAnswered(entry, q, o) || later
+    items.push({
+      label: q.label,
+      action: 'pick',
+      value: q.key,
+      blank,
+      ...(later ? { note: 'あとで' } : blank ? { note: '未回答' } : {}),
     })
+    // 追い質問は「あとで」にしたものだけ並べる（本流には無いので、ここが戻る道）。
+    for (const d of digQuestionsOf(q)) {
+      if (isLater(entry, d, o)) {
+        items.push({
+          label: `↳ ${d.label}`,
+          action: 'pick',
+          value: d.key,
+          blank: true,
+          note: 'あとで',
+        })
+      }
+    }
+  }
   const nu = nextQuestion(entry, o)
   if (nu) items.push({ label: 'つづきの質問へ', action: 'resume', primary: true })
   items.push(
@@ -216,7 +229,7 @@ function userMessage(q: AnyDialogQuestion, a: DialogAnswer): DialogMessage {
 }
 
 const INTRO_DRAFT = [
-  '新しい項目を作ります。決まった質問を順にお聞きしますので、ひとつずつ答えてください。途中でやめると答えは残りません（登録したあとは「対話をつづける」で再開できます）。',
+  '新しい項目を作ります。決まった質問を順にお聞きしますので、ひとつずつ答えてください。「用語集に登録」するまで保存はされません。ほかの画面へ行って戻るあいだは残りますが、ページを閉じると消えます（登録したあとは「対話をつづける」でいつでも再開できます）。',
   '読者に見せるかどうかは、答えごとに選べます。答えの中で @ か [[ と打つと、用語集の項目を呼び出せます。答えたあとに「もう少し深める」を押すと、追い質問が続きます。',
 ]
 
@@ -234,6 +247,8 @@ export function beginSession(entry: GlossaryEntry, opts: { draft: boolean }): Di
     for (const t of INTRO_DRAFT) s = say(s, t)
     // フォームで先に分類を選んであれば聞かない（同じことを二度聞かない）。
     if (!hasDialogQuestions(entry.category)) return askCategory(s, 'どの分類の項目ですか。')
+    // 答え済みがあれば（画面を離れて戻った下書き）並べ直してから続きを聞く。
+    if (dialogStarted(entry)) s = replay(s, entry)
     const first = nextQuestion(entry, optsOf(s))
     return first ? ask(s, entry, first) : askPick(s, entry, null)
   }
@@ -467,7 +482,7 @@ function after(
   }
   const nu = nextQuestion(entry, o)
   if (nu) return { session: ask(ns, entry, nu), entry }
-  const later = activeQuestionsFor(entry).filter((q) => isLater(entry, q, o))
+  const later = laterQuestionsOf(entry, o)
   ns = say(
     ns,
     later.length > 0
@@ -477,7 +492,7 @@ function after(
   ns = push(ns, { role: 'card' })
   ns = { ...ns, pending: { kind: 'pick' } }
   const items: DialogChip[] = later.map((q) => ({
-    label: q.label,
+    label: `${isDigQuestion(q) ? '↳ ' : ''}${q.label}`,
     action: 'pick',
     value: q.key,
     blank: true,

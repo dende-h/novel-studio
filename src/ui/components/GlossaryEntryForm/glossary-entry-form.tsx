@@ -1,9 +1,9 @@
-import { BookOpen, Lock } from 'lucide-react'
 import { useEffect, useId, useRef, useState } from 'react'
 import { publicTextOf } from '@/core/glossary'
 import { parseAliasInput } from '@/core/glossary/dialog'
 import type { GlossaryEntry } from '@/core/schema'
 import { thumbnailToDataUrl } from '@/ui/_utils/imageResizer'
+import { VisibilityLabel } from '@/ui/components/GlossaryView/visibility-label'
 import { CommitTextarea } from '@/ui/components/NotationField/commit-textarea'
 import { NotationHelpButton } from '@/ui/components/NotationField/notation-help'
 import { Button } from '@/ui/components/ui/button'
@@ -249,10 +249,7 @@ export function GlossaryEntryForm({
               <div className="flex items-center gap-2">
                 <Label htmlFor={`${uid}-summary`} className="gap-2">
                   公開情報（任意）
-                  <span className="inline-flex items-center gap-1 rounded-full bg-primary-container px-2 py-0.5 font-medium text-[10.5px] text-on-primary-container">
-                    <BookOpen className="size-2.5" />
-                    読者に見えます
-                  </span>
+                  <VisibilityLabel isPublic label="読者に見えます" />
                 </Label>
                 <NotationHelpButton />
               </div>
@@ -277,10 +274,7 @@ export function GlossaryEntryForm({
               <div className="flex items-center gap-2">
                 <Label htmlFor={`${uid}-authorNote`} className="gap-2">
                   作者メモ（任意）
-                  <span className="inline-flex items-center gap-1 rounded-full bg-secondary-container px-2 py-0.5 font-medium text-[10.5px] text-on-secondary-container">
-                    <Lock className="size-2.5" />
-                    公開されません
-                  </span>
+                  <VisibilityLabel isPublic={false} label="公開されません" />
                 </Label>
                 <NotationHelpButton />
               </div>

@@ -46,7 +46,6 @@ import { useOpenProfile } from '@/ui/hooks/use-pen-name'
 import type { EditorStore } from '@/ui/store/editorStore'
 
 /** フォーム値の空文字は未設定(undefined)へ畳んでスキーマの任意項目を綺麗に保つ。 */
-const emptyToUndef = (s: string): string | undefined => (s.trim() === '' ? undefined : s)
 
 /** GlossaryFormValues → フィールドパッチ（写像は用語集画面と共用・glossary-entry-form.tsx）。 */
 const toFieldPatch = formValuesToFieldPatch
@@ -538,11 +537,8 @@ export function App({
               await store.updateGlossaryEntry(id, toFieldPatch(values))
             }}
             onUpdateDialog={async (id, patch) => {
-              // 変わった欄だけ（対話ノートは鍵ごと）。旧・詳細（body）の畳み方は store が持つ。
-              await store.updateGlossaryEntry(id, {
-                ...patch,
-                ...(patch.summary !== undefined ? { summary: emptyToUndef(patch.summary) } : {}),
-              })
+              // 変わった欄だけ（対話ノートは鍵ごと）。空の畳み方も store が持つ。
+              await store.updateGlossaryEntry(id, patch)
             }}
             onRename={async (id, newName, opts) => {
               await store.renameGlossaryEntry(id, newName, opts)

@@ -54,10 +54,16 @@ export function DialogPane({
   onCreateEntry,
   onRefClick,
   className,
+  initialSession,
+  onSessionChange,
 }: {
   entry: GlossaryEntry
   /** 新規の下書き（登録するまで保存しない・D-DLG-ENTRY）。 */
   isDraft: boolean
+  /** 画面を離れて戻ったときの会話（下書き）。無ければ最初から。 */
+  initialSession?: DialogSession
+  /** 会話が進むたびに知らせる（親が下書きと一緒に覚えておく）。 */
+  onSessionChange?: (session: DialogSession) => void
   /** 用語集（@／[[ の候補と、名前の重複の検査）。 */
   entries: GlossaryEntry[]
   resolvedNames: Set<string>
@@ -74,9 +80,13 @@ export function DialogPane({
   className?: string
 }) {
   const [local, setLocal] = useState(entry)
-  const [session, setSession] = useState<DialogSession>(() =>
-    beginSession(entry, { draft: isDraft }),
+  const [session, setSession] = useState<DialogSession>(
+    () => initialSession ?? beginSession(entry, { draft: isDraft }),
   )
+  const notifySession = onSessionChange
+  useEffect(() => {
+    notifySession?.(session)
+  }, [session, notifySession])
   const [summaryDraft, setSummaryDraft] = useState<string | null>(null)
   const saving = useRef(0)
   const localRef = useRef(local)
