@@ -1,8 +1,10 @@
-import { BookOpen, Lock } from 'lucide-react'
 import { useEffect, useId, useRef, useState } from 'react'
-import { publicTextOf } from '@/core/glossary'
+import { emptyToUndef, publicTextOf } from '@/core/glossary'
+import { DIALOG_CATEGORIES, parseAliasInput } from '@/core/glossary/dialog'
+import type { GlossaryFieldPatch } from '@/core/glossary/patch'
 import type { GlossaryEntry } from '@/core/schema'
 import { thumbnailToDataUrl } from '@/ui/_utils/imageResizer'
+import { VisibilityLabel } from '@/ui/components/GlossaryView/visibility-label'
 import { CommitTextarea } from '@/ui/components/NotationField/commit-textarea'
 import { NotationHelpButton } from '@/ui/components/NotationField/notation-help'
 import { Button } from '@/ui/components/ui/button'
@@ -24,7 +26,7 @@ import { ZoomableImage } from '@/ui/components/ui/zoomable-image'
  * 「世界観」は置かない：作品全体の設定・決め事はプロットの世界観設定が受け持つ器なので、
  * 同じ言葉が二か所にあると「どちらに書くのか」が毎回迷いになる。
  */
-export const GLOSSARY_CATEGORIES = ['人物', '場所', '組織', '用語', 'アイテム', '生物'] as const
+export const GLOSSARY_CATEGORIES = DIALOG_CATEGORIES
 
 export interface GlossaryFormValues {
   name: string
@@ -37,6 +39,24 @@ export interface GlossaryFormValues {
   authorNote: string
   /** サムネ画像の data URL。空文字 '' は未設定／削除を表す。 */
   thumbnail: string
+}
+
+/**
+ * GlossaryFormValues → フィールドパッチ（name は除外＝改名は別操作）。
+ * 空文字の欄は未設定に畳む。サムネは空文字をそのまま渡す（更新時 '' = 削除指示。作成時は
+ * addGlossaryEntry が空を弾く）。公開情報は summary へ一本化され、旧・詳細（body）の畳み方は
+ * store（applyGlossaryFieldPatch）が持つ。対話ノートはここを通らない＝フォームの確定で消えない。
+ * 用語集画面（保存済みの項目・登録前の下書き）と本文からのクイック編集が同じ写像を使う。
+ */
+export function formValuesToFieldPatch(v: GlossaryFormValues): GlossaryFieldPatch {
+  return {
+    aliases: v.aliases,
+    category: emptyToUndef(v.category),
+    reading: emptyToUndef(v.reading),
+    summary: emptyToUndef(v.summary),
+    authorNote: emptyToUndef(v.authorNote),
+    thumbnail: v.thumbnail,
+  }
 }
 
 interface GlossaryEntryFormProps {
@@ -52,16 +72,6 @@ interface GlossaryEntryFormProps {
   glossary?: GlossaryEntry[]
   /** 候補に無い語をその場で用語集に登録する（作成した名前を返す。失敗は null）。 */
   onCreateEntry?: (name: string) => Promise<string | null>
-}
-
-/** 別名入力（カンマ／読点／改行区切り）を配列へ。trim・空除去・重複除去。 */
-function parseAliases(raw: string): string[] {
-  const out: string[] = []
-  for (const part of raw.split(/[,、\n]/)) {
-    const a = part.trim()
-    if (a !== '' && !out.includes(a)) out.push(a)
-  }
-  return out
 }
 
 /**
@@ -143,7 +153,7 @@ export function GlossaryEntryForm({
     try {
       await onSubmit({
         name: name.trim(),
-        aliases: parseAliases(aliases),
+        aliases: parseAliasInput(aliases),
         category: category.trim(),
         reading: reading.trim(),
         summary: summary.trim(),
@@ -237,10 +247,7 @@ export function GlossaryEntryForm({
               <div className="flex items-center gap-2">
                 <Label htmlFor={`${uid}-summary`} className="gap-2">
                   公開情報（任意）
-                  <span className="inline-flex items-center gap-1 rounded-full bg-primary-container px-2 py-0.5 font-medium text-[10.5px] text-on-primary-container">
-                    <BookOpen className="size-2.5" />
-                    読者に見えます
-                  </span>
+                  <VisibilityLabel isPublic label="読者に見えます" />
                 </Label>
                 <NotationHelpButton />
               </div>
@@ -265,10 +272,7 @@ export function GlossaryEntryForm({
               <div className="flex items-center gap-2">
                 <Label htmlFor={`${uid}-authorNote`} className="gap-2">
                   作者メモ（任意）
-                  <span className="inline-flex items-center gap-1 rounded-full bg-secondary-container px-2 py-0.5 font-medium text-[10.5px] text-on-secondary-container">
-                    <Lock className="size-2.5" />
-                    公開されません
-                  </span>
+                  <VisibilityLabel isPublic={false} label="公開されません" />
                 </Label>
                 <NotationHelpButton />
               </div>
