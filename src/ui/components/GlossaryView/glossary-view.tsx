@@ -12,10 +12,8 @@ import {
 } from '@/core/glossary'
 import {
   DIALOG_VERSION,
-  type DialogProgress,
-  type DialogStatus,
-  dialogProgress,
-  dialogStatusOf,
+  type DialogSummary,
+  dialogSummaryOf,
   parseAliasInput,
 } from '@/core/glossary/dialog'
 import type { DialogAnswer, GlossaryEntry } from '@/core/schema'
@@ -38,6 +36,7 @@ import { Button } from '@/ui/components/ui/button'
 import { Input } from '@/ui/components/ui/input'
 import { Label } from '@/ui/components/ui/label'
 import { ZoomableImage } from '@/ui/components/ui/zoomable-image'
+import type { NewGlossaryEntry } from '@/ui/store/editorStore'
 
 /**
  * 用語集のメイン画面。**左：項目の一覧（検索・カテゴリ絞り込み）／右：選んだ項目の編集**の
@@ -57,19 +56,6 @@ import { ZoomableImage } from '@/ui/components/ui/zoomable-image'
  * 狭い画面（md 未満）では一覧と編集を切り替え式にする（選ぶと編集・← で一覧へ戻る）。
  */
 
-/** 新規作成の入力（対話・フォームのどちらで作っても同じ形で親へ渡す）。 */
-export interface GlossaryCreateInput {
-  name: string
-  aliases?: string[]
-  category?: string
-  reading?: string
-  summary?: string
-  authorNote?: string
-  thumbnail?: string
-  dialog?: Record<string, DialogAnswer>
-  dialogVersion?: number
-}
-
 /** 対話ペインが保存する差分。渡した欄だけ書き換える（省略＝据え置き）。 */
 export interface GlossaryDialogPatch {
   dialog?: Record<string, DialogAnswer>
@@ -85,8 +71,8 @@ interface GlossaryViewProps {
   workTitle?: string
   /** entry の登場話数・参照回数（findAppearances を App が束縛して渡す）。 */
   getAppearances: (entry: GlossaryEntry) => Appearances
-  /** 新規作成。作成した entry の id を返す。重複などは reject。 */
-  onCreate: (input: GlossaryCreateInput) => Promise<string>
+  /** 新規作成（下書きの欄をそのまま渡す。空の欄の畳み方は store が持つ）。作成した entry の id を返す。重複などは reject。 */
+  onCreate: (input: NewGlossaryEntry) => Promise<string>
   onUpdate: (id: string, values: GlossaryFormValues) => Promise<void> | void
   /**
    * 対話ペインからの保存。**変わった欄だけ**のパッチ（対話ノート・分類・公開情報）＝フォームの
@@ -156,11 +142,8 @@ export function GlossaryView({
   const categories = useMemo(() => categoriesOf(entries), [entries])
   // 対話の状態は項目ごとに 1 回だけ計算する（一覧の行・絞り込み・件数が共用）。
   const dialogStates = useMemo(() => {
-    const map = new Map<string, DialogRowState>()
-    for (const e of entries) {
-      const status = dialogStatusOf(e)
-      map.set(e.id, { status, progress: status === 'inProgress' ? dialogProgress(e) : null })
-    }
+    const map = new Map<string, DialogSummary>()
+    for (const e of entries) map.set(e.id, dialogSummaryOf(e))
     return map
   }, [entries])
   const inProgressCount = useMemo(
@@ -181,6 +164,11 @@ export function GlossaryView({
 
   const selected = selectedId ? (entries.find((e) => e.id === selectedId) ?? null) : null
   const current = draft ?? selected
+  // 開いている項目の対話の状態（下書きは一覧に無いので、ここで 1 回だけ計算する）
+  const currentDialog = useMemo(
+    () => (draft ? dialogSummaryOf(draft) : selected ? dialogStates.get(selected.id) : undefined),
+    [draft, selected, dialogStates],
+  )
   const peeked = peekId ? (entries.find((e) => e.id === peekId) ?? null) : null
   // 選択・チラ見していた項目が消えたら（削除・同期）閉じる＝空の面が残らない。
   useEffect(() => {
@@ -225,14 +213,14 @@ export function GlossaryView({
     const id = await onCreate({
       name: d.name.trim(),
       aliases: d.aliases,
-      ...(d.category ? { category: d.category } : {}),
-      ...(d.reading ? { reading: d.reading } : {}),
-      ...(publicTextOf(d) ? { summary: publicTextOf(d) } : {}),
-      ...(d.authorNote ? { authorNote: d.authorNote } : {}),
-      ...(d.thumbnail ? { thumbnail: d.thumbnail } : {}),
-      ...(d.dialog && Object.keys(d.dialog).length > 0
-        ? { dialog: d.dialog, dialogVersion: d.dialogVersion ?? DIALOG_VERSION }
-        : {}),
+      category: d.category,
+      reading: d.reading,
+      // 公開情報は 1 欄（旧・詳細は結合して summary へ）
+      summary: publicTextOf(d) || undefined,
+      authorNote: d.authorNote,
+      thumbnail: d.thumbnail,
+      dialog: d.dialog,
+      dialogVersion: d.dialogVersion,
     })
     setDraft(null)
     setSelectedId(id)
@@ -322,7 +310,7 @@ export function GlossaryView({
                   <EntryRow
                     key={entry.id}
                     entry={entry}
-                    dialog={dialogStates.get(entry.id) ?? { status: 'none', progress: null }}
+                    dialog={dialogStates.get(entry.id) ?? EMPTY_SUMMARY}
                     active={entry.id === selectedId && draft === null}
                     used={getAppearances(entry).refCount > 0}
                     onClick={() => selectEntry(entry.id)}
@@ -347,6 +335,7 @@ export function GlossaryView({
                 isDraft={draft !== null}
                 tab={tab}
                 onTabChange={setTab}
+                dialog={currentDialog ?? EMPTY_SUMMARY}
                 appearances={draft ? { episodeIds: [], refCount: 0 } : getAppearances(current)}
                 entries={entries}
                 resolvedNames={resolvedNames}
@@ -499,7 +488,6 @@ function applyValues(d: GlossaryEntry, v: GlossaryFormValues): GlossaryEntry {
     ...(v.summary ? { summary: v.summary } : { summary: undefined }),
     ...(v.authorNote ? { authorNote: v.authorNote } : { authorNote: undefined }),
     ...(v.thumbnail ? { thumbnail: v.thumbnail } : { thumbnail: undefined }),
-    ...(v.dialog !== undefined ? { dialog: v.dialog } : {}),
   }
 }
 
@@ -534,9 +522,9 @@ function FilterChip({
  * 左カラムの 1 行（サムネ or 頭文字・名前・分類と使用状況）。対話を始めた項目だけ進み具合を出す
  * （途中＝細いバーと n/m、済み＝✓・D-DLG-LIST）。手を付けていない項目は今までの見た目のまま。
  */
-interface DialogRowState {
-  status: DialogStatus
-  progress: DialogProgress | null
+const EMPTY_SUMMARY: DialogSummary = {
+  status: 'none',
+  progress: { done: 0, total: 0, later: 0 },
 }
 
 function EntryRow({
@@ -547,13 +535,14 @@ function EntryRow({
   onClick,
 }: {
   entry: GlossaryEntry
-  dialog: DialogRowState
+  dialog: DialogSummary
   active: boolean
   used: boolean
   onClick: () => void
 }) {
   const initial = entry.name.trim().charAt(0) || '？'
-  const { status, progress } = dialog
+  const { status } = dialog
+  const progress = status === 'inProgress' ? dialog.progress : null
   return (
     <li>
       <button
@@ -625,6 +614,7 @@ function EntryEditor({
   isDraft,
   tab,
   onTabChange,
+  dialog,
   appearances,
   entries,
   resolvedNames,
@@ -642,6 +632,8 @@ function EntryEditor({
   isDraft: boolean
   tab: PaneTab
   onTabChange: (tab: PaneTab) => void
+  /** 対話の状態と進み具合（親が項目ごとに 1 回だけ計算したもの）。 */
+  dialog: DialogSummary
   appearances: Appearances
   entries: GlossaryEntry[]
   resolvedNames: Set<string>
@@ -720,7 +712,7 @@ function EntryEditor({
       : null
 
   const used = appearances.refCount > 0
-  const progress = dialogProgress(entry)
+  const progress = dialog.progress
 
   return (
     <div className="flex flex-col gap-4">
@@ -851,7 +843,6 @@ function EntryEditor({
               <NotationHelpButton />
             </div>
             <NotationField
-              key={publicTextOf(entry) === '' ? 'empty' : 'filled'}
               value={publicTextOf(entry)}
               onCommit={(v) => void commitField({ summary: v.trim() })}
               placeholder="一行の要約から、来歴・見た目などの詳しい説明まで、読者に見せる文をここへ"
@@ -897,6 +888,7 @@ function EntryEditor({
           {/* 対話ノート（見るだけ・直すのは対話から）。 */}
           <DialogNoteSection
             entry={entry}
+            summary={dialog}
             onOpenDialog={() => onTabChange('dialog')}
             resolvedNames={resolvedNames}
             onRefClick={onRefClick}

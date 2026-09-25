@@ -118,6 +118,25 @@ describe('新規の下書き', () => {
     )
   })
 
+  it('別名に区切りだけを書いても答えにせず、書き方を伝えて同じ問いを待つ（ループしない）', () => {
+    let step: SessionStep = runChip(
+      beginSession(entry({ name: 'ユキ' }), { draft: true }),
+      entry({ name: 'ユキ' }),
+      'category',
+      '人物',
+    )
+    step = skipQuestion(step.session, step.entry, false) // reading
+    expect(pendingKey(step.session)).toBe('aliases')
+    step = submitAnswer(step.session, step.entry, '、')
+    expect(step.entry.aliases).toEqual([])
+    expect(lastBot(step.session)).toMatch(/読点/)
+    expect(pendingKey(step.session)).toBe('aliases')
+    expect(step.session.log.filter((m) => m.role === 'user')).toHaveLength(2) // 分類とスキップだけ
+    step = submitAnswer(step.session, step.entry, 'ゆき、雪')
+    expect(step.entry.aliases).toEqual(['ゆき', '雪'])
+    expect(pendingKey(step.session)).toBe('blurb')
+  })
+
   it('名前が先に入っている下書き（未解決の [[用語]] から）は名前を聞かない', () => {
     const step = runChip(
       beginSession(entry({ name: 'ミア' }), { draft: true }),

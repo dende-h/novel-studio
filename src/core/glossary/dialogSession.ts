@@ -17,6 +17,7 @@ import {
   isDigQuestion,
   isLater,
   nextQuestion,
+  parseAliasInput,
   questionByKey,
   questionText,
   withDialogAnswer,
@@ -332,6 +333,17 @@ export function submitAnswer(
         ),
         entry,
       }
+    }
+  }
+  // 別名は読点区切りで配列になる。区切りだけの入力は答えにならず同じ問いが続くので、その場で伝える。
+  if (q.field === 'aliases' && parseAliasInput(text).length === 0) {
+    return {
+      session: rejectAnswer(
+        s,
+        '別名は読点（、）で区切って書いてください。無ければ「スキップ」を押してください。',
+        entry,
+      ),
+      entry,
     }
   }
   const prev = entry.dialog?.[q.key]

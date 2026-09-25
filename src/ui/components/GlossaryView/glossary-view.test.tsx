@@ -118,9 +118,6 @@ function setup(initial: GlossaryEntry[] = ENTRIES) {
                     summary: values.summary || undefined,
                     body: undefined,
                     authorNote: values.authorNote || undefined,
-                    ...(values.dialog !== undefined
-                      ? { dialog: values.dialog, dialogVersion: 1 }
-                      : {}),
                   }
                 : e,
             ),

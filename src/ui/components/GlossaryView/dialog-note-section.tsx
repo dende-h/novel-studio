@@ -1,10 +1,10 @@
 import { MessageSquareText } from 'lucide-react'
+import { useMemo } from 'react'
 import {
   activeDeepQuestionsFor,
   answerPublic,
   type DialogQuestion,
-  dialogProgress,
-  dialogStatusOf,
+  type DialogSummary,
   digQuestionsOf,
   hasDialogQuestions,
 } from '@/core/glossary/dialog'
@@ -20,18 +20,20 @@ import { NotationText } from '@/ui/components/NotationField/notation-text'
  */
 export function DialogNoteSection({
   entry,
+  summary,
   onOpenDialog,
   resolvedNames,
   onRefClick,
 }: {
   entry: GlossaryEntry
+  /** 対話の状態と進み具合（親が計算したもの）。 */
+  summary: DialogSummary
   onOpenDialog: () => void
   resolvedNames: Set<string>
   onRefClick?: (name: string) => void
 }) {
-  const status = dialogStatusOf(entry)
-  const progress = dialogProgress(entry)
-  const questions = activeDeepQuestionsFor(entry)
+  const { status, progress } = summary
+  const questions = useMemo(() => activeDeepQuestionsFor(entry), [entry])
   return (
     <section className="space-y-1.5" aria-label="対話ノート">
       <div className="flex items-center gap-2">

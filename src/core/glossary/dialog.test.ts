@@ -20,6 +20,7 @@ import {
   draftSummaryFromDialog,
   isAnswered,
   isLater,
+  kindOf,
   nextQuestion,
   questionByKey,
   questionsToPlainText,
@@ -106,6 +107,24 @@ describe('質問の正本（付録 A と揃う）', () => {
     // 固定は保存された public を無視する
     expect(answerPublic({ vis: 'private-fixed' }, { public: true })).toBe(false)
     expect(answerPublic({ vis: 'public-fixed' }, { public: false })).toBe(true)
+  })
+
+  it('分類を変えて持ち越した「種類」は今の選択肢に無ければ未回答扱い＝聞き直し、下書き・平文にも載せない', () => {
+    const moved = entry({
+      name: '王都',
+      category: '組織',
+      dialog: { kind: { text: '街・町', public: true } },
+    })
+    expect(kindOf(moved)).toBeUndefined()
+    expect(nextQuestion(moved)?.key).toBe('kind')
+    expect(dialogStatusOf(moved)).toBe('inProgress')
+    expect(draftSummaryFromDialog(moved)).toBe('')
+    expect(dialogToPlainText({ ...moved, dialogVersion: 1 })).toContain(
+      'kind 種類（今の分類の選択肢に無い答え・聞き直す） [読者に見せる]: 街・町',
+    )
+    const fixed = applyDialogPatch(moved, { kind: '役所・国・軍' })
+    expect(kindOf(fixed)).toBe('役所・国・軍')
+    expect(activeQuestionsFor(fixed).map((q) => q.key)).toContain('politics')
   })
 
   it('種類の枝は only で結びつく（組織の政治は 役所・国・軍 のときだけ）', () => {

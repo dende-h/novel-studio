@@ -959,10 +959,25 @@ export function answersOf(entry: EntryLike): Record<string, DialogAnswer> {
   return a
 }
 
-/** 「種類」の答え（枝の条件に使う）。 */
-export function kindOf(entry: Pick<GlossaryEntry, 'dialog'>): string | undefined {
+/** 選択肢だけの問い（種類）で、答えが今の選択肢に無い（分類を変えたあとの持ち越し）。 */
+export function answerOutOfChoices(
+  q: Pick<AnyDialogQuestion, 'choices' | 'free'>,
+  a: Pick<DialogAnswer, 'text'> | undefined,
+): boolean {
+  if (!q.choices || q.free || !a) return false
+  const t = a.text.trim()
+  return t !== '' && !q.choices.includes(t)
+}
+
+/**
+ * 「種類」の答え（枝の条件に使う）。分類を変えて持ち越した、今の分類の選択肢に無い答えは
+ * 無いものとして扱う＝種類を聞き直し、枝の問いが埋もれない。
+ */
+export function kindOf(entry: Pick<GlossaryEntry, 'dialog' | 'category'>): string | undefined {
   const t = entry.dialog?.kind?.text?.trim()
-  return t ? t : undefined
+  if (!t) return undefined
+  const choices = DIALOG_KINDS[entry.category?.trim() ?? '']
+  return choices?.includes(t) ? t : undefined
 }
 
 /** 種類の枝を解いた、いま有効な問いの列（共通 4 問を含む）。 */
@@ -1002,7 +1017,9 @@ export function isAnswered(
     return opts.baseMarks?.[q.key] === 'skipped'
   }
   const a = entry.dialog?.[q.key]
-  return a !== undefined && (a.text.trim() !== '' || a.skipped === true)
+  if (a === undefined) return false
+  if (a.skipped === true) return true
+  return a.text.trim() !== '' && !answerOutOfChoices(q, a)
 }
 
 /** 「あとで答える」にしたままか。 */
@@ -1026,6 +1043,8 @@ export function nextQuestion(
   )
 }
 
+export type DialogStatus = 'none' | 'inProgress' | 'done'
+
 export interface DialogProgress {
   /** 基本の問いのうち答え済み（スキップ含む）。 */
   done: number
@@ -1037,13 +1056,39 @@ export interface DialogProgress {
 
 /** 進み具合。深掘りの基本の問いだけで数える（共通 4 問・任意の問いは数に入れない）。 */
 export function dialogProgress(entry: EntryLike): DialogProgress {
+  return dialogSummaryOf(entry).progress
+}
+
+export interface DialogSummary {
+  status: DialogStatus
+  progress: DialogProgress
+}
+
+/**
+ * 一覧・見出し・対話ノートが使う状態と進み具合を 1 回の走査で返す（項目ごとに何度も歩かない）。
+ * status の規則は dialogStatusOf を参照。
+ */
+export function dialogSummaryOf(entry: EntryLike): DialogSummary {
   const deep = activeDeepQuestionsFor(entry)
-  const core = deep.filter((q) => !q.optional)
-  return {
-    done: core.filter((q) => isAnswered(entry, q)).length,
-    total: core.length,
-    later: deep.filter((q) => isLater(entry, q)).length,
+  let done = 0
+  let total = 0
+  let later = 0
+  let pending = false
+  for (const q of deep) {
+    const answered = isAnswered(entry, q)
+    const isLaterQ = !answered && isLater(entry, q)
+    if (isLaterQ) later += 1
+    if (!answered && !isLaterQ) pending = true
+    if (!q.optional) {
+      total += 1
+      if (answered) done += 1
+    }
   }
+  const progress = { done, total, later }
+  if (!dialogStarted(entry) || !hasDialogQuestions(entry.category)) {
+    return { status: 'none', progress }
+  }
+  return { status: !pending && later === 0 ? 'done' : 'inProgress', progress }
 }
 
 /** 対話を始めているか（対話ノートに何か入っている）。 */
@@ -1051,18 +1096,14 @@ export function dialogStarted(entry: Pick<GlossaryEntry, 'dialog'>): boolean {
   return Object.keys(entry.dialog ?? {}).length > 0
 }
 
-export type DialogStatus = 'none' | 'inProgress' | 'done'
-
 /**
  * 一覧の印（D-DLG-LIST）。none＝手を付けていない（今の見た目のまま）／inProgress＝途中（バーと n/m）／
  * done＝ひと通り答えた（任意の問いも答えるかスキップしてあり、あとでも残っていない）。
  */
 export function dialogStatusOf(entry: EntryLike): DialogStatus {
   // 質問セットの無い分類（未分類・旧データの自由入力）は、答えが残っていても「手を付けていない」扱い
-  // ＝分類を選び直せば答えごと戻る。
-  if (!dialogStarted(entry) || !hasDialogQuestions(entry.category)) return 'none'
-  if (nextQuestion(entry) === undefined && dialogProgress(entry).later === 0) return 'done'
-  return 'inProgress'
+  // ＝分類を選び直せば答えごと戻る（判定の実体は dialogSummaryOf）。
+  return dialogSummaryOf(entry).status
 }
 
 /** ボットが呼びかける名前。未入力なら分類ごとの言い換え（D-DLG-NAME）。 */
@@ -1187,7 +1228,7 @@ export function draftSummaryFromDialog(entry: EntryLike): string {
   for (const q of activeDeepQuestionsFor(entry)) {
     for (const x of [q, ...digQuestionsOf(q)]) {
       const a = entry.dialog?.[x.key]
-      if (!a || a.text.trim() === '' || !answerPublic(x, a)) continue
+      if (!a || a.text.trim() === '' || !answerPublic(x, a) || answerOutOfChoices(x, a)) continue
       const line = `${isDigQuestion(x) ? '↳ ' : ''}${x.label}：${a.text.trim()}`
       if (!present.has(line)) parts.push(line)
     }
@@ -1292,7 +1333,7 @@ export function dialogToPlainText(entry: EntryLike & Pick<GlossaryEntry, 'dialog
   for (const q of activeDeepQuestionsFor(entry)) {
     for (const x of [q, ...digQuestionsOf(q)]) {
       const a = dialog[x.key]
-      if (a) line(x, a)
+      if (a && !answerOutOfChoices(x, a)) line(x, a)
     }
   }
   // いま有効な問いに無い答え：種類を変えて枝から外れたもの（今の種類では聞かない）と、
@@ -1300,7 +1341,11 @@ export function dialogToPlainText(entry: EntryLike & Pick<GlossaryEntry, 'dialog
   for (const [key, a] of Object.entries(dialog)) {
     if (seen.has(key) || a.text.trim() === '') continue
     const q = questionByKey(entry.category, key)
-    const label = q ? `${q.label}（今の種類では聞かない問い）` : '（旧・今の質問セットに無い鍵）'
+    const label = !q
+      ? '（旧・今の質問セットに無い鍵）'
+      : answerOutOfChoices(q, a)
+        ? `${q.label}（今の分類の選択肢に無い答え・聞き直す）`
+        : `${q.label}（今の種類では聞かない問い）`
     const vis = q ? (answerPublic(q, a) ? '読者に見せる' : '作者だけ') : '作者だけ'
     lines.push(`  ${key} ${label} [${vis}]: ${a.text.trim()}`)
   }
