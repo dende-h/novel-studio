@@ -66,15 +66,6 @@ export const EpisodeSchema = z.object({
 export type Episode = z.infer<typeof EpisodeSchema>
 
 /**
- * 用語集の1項目（@参照の解決先）。P1。作品ごと（Work 相乗り）。
- * name + aliases が解決キー（trim 後の完全一致）。reading はサジェスト/ソート用で解決対象外。
- *
- * **この器は コトノハ-grove- へ送られる**（読者は初出の話まで読むと項目が開く＝段階公開）。
- * よって summary / body は「いずれ読者が読む文」であり、まだ伏せている真相や執筆の決め事は
- * ここへ書かない。項目ごとの内緒話は `authorNote`（公開時に落とす）、作品全体の決め事は
- * プロットの世界観設定（`Plot.world`）が受け持つ。
- */
-/**
  * 用語集の「対話」（一問一答）の答え 1 つ（11-glossary-dialog.md §2）。
  * `text` が空のときは「スキップ／あとで」の印としてだけ使い、公開・下書きには使わない。
  */
@@ -89,6 +80,15 @@ export const DialogAnswerSchema = z.object({
 })
 export type DialogAnswer = z.infer<typeof DialogAnswerSchema>
 
+/**
+ * 用語集の1項目（@参照の解決先）。P1。作品ごと（Work 相乗り）。
+ * name + aliases が解決キー（trim 後の完全一致）。reading はサジェスト/ソート用で解決対象外。
+ *
+ * **この器は コトノハ-grove- へ送られる**（読者は初出の話まで読むと項目が開く＝段階公開）。
+ * よって summary / body は「いずれ読者が読む文」であり、まだ伏せている真相や執筆の決め事は
+ * ここへ書かない。項目ごとの内緒話は `authorNote`（公開時に落とす）、作品全体の決め事は
+ * プロットの世界観設定（`Plot.world`）が受け持つ。
+ */
 export const GlossaryEntrySchema = z.object({
   id: z.string(),
   name: z.string(),

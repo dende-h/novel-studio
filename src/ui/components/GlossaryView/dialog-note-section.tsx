@@ -7,6 +7,7 @@ import {
   type DialogSummary,
   digQuestionsOf,
   hasDialogQuestions,
+  questionByKey,
 } from '@/core/glossary/dialog'
 import type { GlossaryEntry } from '@/core/schema'
 import { cn } from '@/lib/utils'
@@ -34,6 +35,20 @@ export function DialogNoteSection({
 }) {
   const { status, progress } = summary
   const questions = useMemo(() => activeDeepQuestionsFor(entry), [entry])
+  // 今の問いの列に無い答え（種類を変えて枝から外れた・質問セットから消えた鍵）。データは残るので、
+  // 表示場所も残す（CLAUDE.md「欄の出力先を無くさない」）。
+  const inactive = useMemo(() => {
+    const active = new Set(
+      questions.flatMap((q) => [q.key, ...digQuestionsOf(q).map((d) => d.key)]),
+    )
+    return Object.entries(entry.dialog ?? {})
+      .filter(([key, a]) => !active.has(key) && a.text.trim() !== '')
+      .map(([key, a]) => ({
+        key,
+        label: questionByKey(entry.category, key)?.label ?? key,
+        text: a.text,
+      }))
+  }, [entry, questions])
   return (
     <section className="space-y-1.5" aria-label="対話ノート">
       <div className="flex items-center gap-2">
@@ -87,6 +102,26 @@ export function DialogNoteSection({
                 />
               ))}
             </dl>
+            {inactive.length > 0 ? (
+              <div className="mt-3 border-outline-variant/30 border-t pt-2">
+                <p className="mb-1 text-[11px] text-on-surface-variant/70">
+                  今の種類では聞かない答え（残してあります。種類を戻すと元の場所に出ます）
+                </p>
+                <dl className="m-0 grid grid-cols-[8em_1fr] items-start gap-x-2.5 gap-y-1 text-[12.5px]">
+                  {inactive.map((row) => (
+                    <div key={row.key} className="contents">
+                      <dt className="text-on-surface-variant/60">{row.label}</dt>
+                      <NotationText
+                        text={row.text}
+                        resolvedNames={resolvedNames}
+                        onRefClick={onRefClick}
+                        className="m-0 whitespace-pre-wrap text-on-surface-variant"
+                      />
+                    </div>
+                  ))}
+                </dl>
+              </div>
+            ) : null}
           </>
         )}
       </div>

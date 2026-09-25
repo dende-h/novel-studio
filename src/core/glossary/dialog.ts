@@ -1432,7 +1432,13 @@ export function dialogToPlainText(entry: EntryLike & Pick<GlossaryEntry, 'dialog
   // いま有効な問いに無い答え：種類を変えて枝から外れたもの（今の種類では聞かない）と、
   // 質問セットから消えた鍵（旧）。どちらも現役の答えと区別できる印を付ける。
   for (const [key, a] of Object.entries(dialog)) {
-    if (seen.has(key) || a.text.trim() === '') continue
+    if (seen.has(key)) continue
+    if (a.text.trim() === '') {
+      // 枝から外れた問いのスキップ／あとでも印として残す（画面の「あとで」の数と食い違わない）。
+      if (a.later) later.push(key)
+      else if (a.skipped) skipped.push(key)
+      continue
+    }
     const q = questionByKey(entry.category, key)
     const label = !q
       ? '（旧・今の質問セットに無い鍵）'

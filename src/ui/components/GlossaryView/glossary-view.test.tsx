@@ -390,6 +390,21 @@ describe('GlossaryView（左右2カラム：一覧・検索・その場編集）
     )
   })
 
+  it('フォームの対話ノートは、種類を変えて枝から外れた答えも表示する（データの表示場所を無くさない）', () => {
+    setup([
+      entry({
+        id: 'r',
+        name: '街道',
+        category: '場所',
+        dialog: { kind: { text: '自然' }, route: { text: '北から南へ' } },
+      }),
+    ])
+    openEntry('街道')
+    const note = screen.getByRole('region', { name: '対話ノート' })
+    expect(within(note).getByText('北から南へ')).toBeInTheDocument()
+    expect(within(note).getByText(/今の種類では聞かない答え/)).toBeInTheDocument()
+  })
+
   it('チラ見の「この項目を編集」で下書きを捨てる確認をキャンセルすると、チラ見も下書きも残る', async () => {
     setup()
     fireEvent.click(screen.getByRole('button', { name: '新しく登録' }))

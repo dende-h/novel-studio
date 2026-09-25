@@ -93,6 +93,8 @@ export interface DialogSession {
   lastSection: string | null
   /** 下書きで共通 4 問をスキップ／あとでにした印。 */
   baseMarks: Record<string, 'skipped' | 'later'>
+  /** 「登録する」を押したが名前が無く、名前を聞き直している＝答えたらそのまま登録へ進む。 */
+  pendingFinish?: true
 }
 
 export type SessionEffect = 'finish' | 'toform'
@@ -466,6 +468,11 @@ function after(
   let ns: DialogSession = { ...s, pending: null }
   const o = optsOf(ns)
   if (ns.editingKey) {
+    // 「登録する」のために名前を聞き直していた＝名前が入ったらそのまま登録へ。
+    if (ns.pendingFinish && ns.editingKey === 'name' && entry.name.trim() !== '') {
+      const { pendingFinish: _f, ...done } = ns
+      return { session: { ...done, editingKey: null }, entry, effect: 'finish' }
+    }
     ns = { ...ns, editingKey: null }
     const nu = nextQuestion(entry, o)
     if (nu) {
@@ -578,7 +585,7 @@ export function runChip(
         if (!nameQ) return { session: s, entry }
         const { name: _n, ...marks } = s.baseMarks
         const ns = say(
-          { ...s, baseMarks: marks, editingKey: 'name' },
+          { ...s, baseMarks: marks, editingKey: 'name', pendingFinish: true },
           '名前が無いと登録できません。まず名前を教えてください。',
         )
         const asked = ask(ns, entry, nameQ)

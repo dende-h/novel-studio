@@ -425,10 +425,9 @@ describe('再開・直す', () => {
     expect(step.session.baseMarks.name).toBeUndefined()
     step = submitAnswer(step.session, step.entry, 'ユキ')
     expect(step.entry.name).toBe('ユキ')
-    // 直したあとは本流（次の未回答）へ
-    expect(pendingKey(step.session)).toBe('reading')
-    // 名前があれば登録できる
-    expect(runChip(step.session, step.entry, 'finish').effect).toBe('finish')
+    // 「登録する」のために聞き直した名前なので、答えたらそのまま登録へ進む
+    expect(step.effect).toBe('finish')
+    expect(step.session.pendingFinish).toBeUndefined()
   })
 
   it('rejectAnswer は問いを待ったまま一言添える／pendingQuestion は待っている問い', () => {

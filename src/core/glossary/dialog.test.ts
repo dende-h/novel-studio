@@ -442,6 +442,9 @@ describe('平文', () => {
     expect(dialogToPlainText(place)).toContain(
       'route どこからどこへ（今の種類では聞かない問い） [読者に見せる]: 北から南へ',
     )
+    // 枝から外れた問いのあとで／スキップも印に残す
+    const marks = { ...place, dialog: { kind: { text: '自然' }, route: { text: '', later: true } } }
+    expect(dialogToPlainText(marks)).toContain('あとで: route')
     expect(text).toContain('（スキップ: birthday ／ あとで: rival）')
     expect(dialogToPlainText(entry({ name: 'x' }))).toBe('')
     // 質問セットの無い分類：鍵を「旧」扱いにせず、分類を付けるよう案内する

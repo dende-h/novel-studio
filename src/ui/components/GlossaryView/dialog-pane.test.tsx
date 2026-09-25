@@ -175,7 +175,7 @@ describe('DialogPane（キー操作と保存）', () => {
     expect(screen.queryByRole('button', { name: 'あとで答える' })).toBeNull()
     fireEvent.change(box(), { target: { value: 'ミア' } })
     fireEvent.keyDown(box(), { key: 'Enter' })
-    fireEvent.click(screen.getByRole('button', { name: 'これで登録する' }))
+    // 名前が入れば、そのまま登録へ進む（もう一度ボタンを探させない）
     expect(onFinish).toHaveBeenCalledWith(expect.objectContaining({ name: 'ミア' }))
   })
 

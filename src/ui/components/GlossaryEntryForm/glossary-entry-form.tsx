@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, useState } from 'react'
 import { publicTextOf } from '@/core/glossary'
-import { parseAliasInput } from '@/core/glossary/dialog'
+import { DIALOG_CATEGORIES, parseAliasInput } from '@/core/glossary/dialog'
 import type { GlossaryEntry } from '@/core/schema'
 import { thumbnailToDataUrl } from '@/ui/_utils/imageResizer'
 import { VisibilityLabel } from '@/ui/components/GlossaryView/visibility-label'
@@ -26,7 +26,7 @@ import type { GlossaryFieldPatch } from '@/ui/store/editorStore'
  * 「世界観」は置かない：作品全体の設定・決め事はプロットの世界観設定が受け持つ器なので、
  * 同じ言葉が二か所にあると「どちらに書くのか」が毎回迷いになる。
  */
-export const GLOSSARY_CATEGORIES = ['人物', '場所', '組織', '用語', 'アイテム', '生物'] as const
+export const GLOSSARY_CATEGORIES = DIALOG_CATEGORIES
 
 export interface GlossaryFormValues {
   name: string

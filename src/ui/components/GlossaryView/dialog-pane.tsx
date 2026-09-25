@@ -125,6 +125,8 @@ export function DialogPane({
       // ほかの保存が同時に走っているときは戻さない（そちらの答えまで消してしまう）＝一言だけ添える。
       const message = e instanceof Error ? e.message : '保存に失敗しました'
       if (saving.current === 1) {
+        // ref も同時に戻す＝直後の syncFromProp が「分類が変わった」と見て台本を作り直さない。
+        localRef.current = prev
         setLocal(prev)
         setSession(rejectAnswer(beginSession(prev, { draft: isDraft }), message, prev))
       } else {
@@ -207,7 +209,8 @@ export function DialogPane({
       <div className="flex flex-col gap-2 border-outline-variant/30 border-t px-3 pt-2 pb-3">
         {q ? (
           <Composer
-            key={q.key}
+            // 問いが出るたびに欄を作り直す（同じ問いを「直す」で聞き直したときも書きかけを残さない）。
+            key={`${q.key}:${session.log.length}`}
             question={q}
             required={session.pending?.kind === 'question' && session.pending.required === true}
             entries={entries}

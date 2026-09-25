@@ -148,8 +148,11 @@ export function GlossaryView({
   const [draft, setDraft] = useState<GlossaryEntry | null>(() =>
     draftKey ? (keptDrafts.get(draftKey)?.entry ?? null) : null,
   )
-  // 戻ってきた下書きの会話（スキップの印・答えの吹き出しごと）。最初の描画でだけ使う。
-  const restoredSession = useRef(draftKey ? keptDrafts.get(draftKey)?.session : undefined)
+  // 戻ってきた下書きの会話（スキップの印・答えの吹き出しごと）。その下書き（id）にだけ使う＝
+  // 登録・破棄のあと新しく作った下書きには持ち越さない。
+  const restored = useRef(draftKey ? keptDrafts.get(draftKey) : undefined)
+  const draftRef = useRef(draft)
+  draftRef.current = draft
   const [tab, setTab] = useState<PaneTab>(() =>
     draftKey && keptDrafts.has(draftKey) ? 'dialog' : 'form',
   )
@@ -161,9 +164,10 @@ export function GlossaryView({
   }, [draft, draftKey])
   const keepDraftSession = useCallback(
     (session: DialogSession) => {
-      if (!draftKey) return
-      const kept = keptDrafts.get(draftKey)
-      if (kept) keptDrafts.set(draftKey, { ...kept, session })
+      const d = draftRef.current
+      if (!draftKey || !d) return
+      // 下書きがまだ覚えられていない一手目（分類を選んだ直後）でも会話を落とさない。
+      keptDrafts.set(draftKey, { entry: keptDrafts.get(draftKey)?.entry ?? d, session })
     },
     [draftKey],
   )
@@ -417,7 +421,9 @@ export function GlossaryView({
                 }}
                 onRegister={draft ? registerDraft : undefined}
                 initialSession={
-                  draft && restoredSession.current?.draft ? restoredSession.current : undefined
+                  draft && restored.current?.entry.id === draft.id
+                    ? restored.current.session
+                    : undefined
                 }
                 onSessionChange={draft ? keepDraftSession : undefined}
                 onRequestDelete={() => {
