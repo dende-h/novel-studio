@@ -929,15 +929,28 @@ export function digQuestionsOf(parent: DialogQuestion): DialogDigQuestion[] {
 }
 
 /** 鍵から問いを引く（追い質問も含む）。無ければ undefined。 */
+const questionIndexCache = new Map<string, Map<string, AnyDialogQuestion>>()
+
+/** 分類ごとの「鍵 → 問い」の索引（追い質問も含む）。質問セットは不変なので分類ごとに 1 回だけ作る。 */
+export function questionIndexFor(category: string | undefined): Map<string, AnyDialogQuestion> {
+  const cat = category?.trim() ?? ''
+  const hit = questionIndexCache.get(cat)
+  if (hit) return hit
+  const index = new Map<string, AnyDialogQuestion>()
+  for (const q of allQuestionsFor(cat)) {
+    index.set(q.key, q)
+    for (const d of digQuestionsOf(q)) index.set(d.key, d)
+  }
+  questionIndexCache.set(cat, index)
+  return index
+}
+
+/** 鍵から問いを引く（追い質問も含む）。無ければ undefined。 */
 export function questionByKey(
   category: string | undefined,
   key: string,
 ): AnyDialogQuestion | undefined {
-  for (const q of allQuestionsFor(category)) {
-    if (q.key === key) return q
-    for (const d of digQuestionsOf(q)) if (d.key === key) return d
-  }
-  return undefined
+  return questionIndexFor(category).get(key)
 }
 
 type EntryLike = Pick<
@@ -1255,6 +1268,15 @@ export function applyDialogPatch(entry: GlossaryEntry, patch: DialogPatch): Glos
   const keys = Object.keys(patch)
   if (keys.length === 0) return entry
   const category = entry.category?.trim() ?? ''
+  // 削除（空文字）だけなら分類に質問セットが無くても通す＝古い答えを片づける道を残す。
+  const textOf = (v: DialogPatchValue | undefined) =>
+    typeof v === 'string' ? v : typeof v?.text === 'string' ? v.text : undefined
+  const onlyDeletes = keys.every((k) => textOf(patch[k])?.trim() === '')
+  if (onlyDeletes) {
+    const next: Record<string, DialogAnswer> = { ...(entry.dialog ?? {}) }
+    for (const key of keys) delete next[key]
+    return withDialogRecord(entry, next)
+  }
   if (!hasDialogQuestions(category)) {
     throw new DialogPatchError(
       `分類「${category || '未分類'}」には対話の質問がありません。category を ${DIALOG_CATEGORIES.join('／')} のいずれかにしてください`,
@@ -1313,6 +1335,18 @@ export function dialogToPlainText(entry: EntryLike & Pick<GlossaryEntry, 'dialog
   const dialog = entry.dialog
   if (!dialog || Object.keys(dialog).length === 0) return ''
   const lines: string[] = [`対話ノート（v${entry.dialogVersion ?? '?'}）:`]
+  if (!hasDialogQuestions(entry.category)) {
+    // 分類に質問セットが無い（未分類・旧データの自由入力）。答えは残っているが、鍵の意味は
+    // 分類を付けるまで引けない＝旧鍵と混同させない案内を先頭に置く。
+    lines.push(
+      `  （分類「${entry.category?.trim() || '未分類'}」には質問セットがありません。category を ${DIALOG_CATEGORIES.join('／')} のいずれかにすると、答えが問いに結びつきます）`,
+    )
+    for (const [key, a] of Object.entries(dialog)) {
+      if (a.text.trim() === '') continue
+      lines.push(`  ${key} [${a.public ? '読者に見せる' : '作者だけ'}]: ${a.text.trim()}`)
+    }
+    return lines.join('\n')
+  }
   const seen = new Set<string>()
   const skipped: string[] = []
   const later: string[] = []

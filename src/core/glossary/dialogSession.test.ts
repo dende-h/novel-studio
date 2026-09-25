@@ -293,6 +293,27 @@ describe('再開・直す', () => {
     expect(pendingKey(step.session)).toBe('gender')
   })
 
+  it('「直す」中のスキップ・あとでは「そのままにします」＝答えを消さない', () => {
+    const e = entry({
+      name: 'セト',
+      category: '人物',
+      dialog: { title: { text: '案内人', public: true } },
+    })
+    let step = pickQuestion(beginSession(e, { draft: false }), e, 'title')
+    step = skipQuestion(step.session, step.entry, false)
+    expect(step.entry.dialog?.title).toEqual({ text: '案内人', public: true })
+    expect(botTexts(step.session)).toContainEqual('そのままにします。')
+    expect(step.session.editingKey).toBeNull()
+    expect(pendingKey(step.session)).toBe('age') // 本流へ戻る
+  })
+
+  it('知らない分類や空の答えはチップを出し直して待つ（行き止まりにしない）', () => {
+    const s0 = beginSession(entry({ name: '' }), { draft: true })
+    const step = runChip(s0, entry({ name: '' }), 'category', '神器')
+    expect(step.session.pending).toEqual({ kind: 'category' })
+    expect(lastChips(step.session).map((c) => c.value)).toContain('人物')
+  })
+
   it('直すときは追い質問の誘いを出さない', () => {
     const e = entry({ name: 'セト', category: '人物', dialog: { skill: { text: '料理' } } })
     let step = pickQuestion(beginSession(e, { draft: false }), e, 'skill')

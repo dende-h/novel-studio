@@ -16,7 +16,6 @@ import {
 import {
   beginSession,
   type ChipAction,
-  type DialogChip,
   type DialogMessage,
   type DialogSession,
   pendingHint,
@@ -83,14 +82,20 @@ export function DialogPane({
   const saving = useRef(0)
   const localRef = useRef(local)
   localRef.current = local
+  const entryRef = useRef(entry)
+  entryRef.current = entry
   // 保存が終わって prop が追いついたら、それを手元にする（フォーム側の編集・同期の取り込みも拾う）。
-  // 分類がよそ（フォームのカテゴリ）で変わったら、質問セットが変わるので台本を最初から始め直す。
-  useEffect(() => {
-    if (saving.current !== 0 || entry === localRef.current) return
-    const categoryChanged = (entry.category ?? '') !== (localRef.current.category ?? '')
-    setLocal(entry)
-    if (categoryChanged) setSession(beginSession(entry, { draft: isDraft }))
-  }, [entry, isDraft])
+  // 分類がよそ（フォームのカテゴリ・同期）で変わったら、質問セットが変わるので台本を最初から始め直す。
+  // 保存中は採らず、保存が終わった時点でもう一度見る（保存中に届いた変更を取りこぼさない）。
+  const syncFromProp = () => {
+    const latest = entryRef.current
+    if (saving.current !== 0 || latest === localRef.current) return
+    const categoryChanged = (latest.category ?? '') !== (localRef.current.category ?? '')
+    setLocal(latest)
+    if (categoryChanged) setSession(beginSession(latest, { draft: isDraft }))
+  }
+  // biome-ignore lint/correctness/useExhaustiveDependencies: prop の entry が変わったときに同期する（関数は ref 経由で最新を読む）
+  useEffect(syncFromProp, [entry])
   const answers = useMemo(() => answersOf(local), [local])
 
   const logRef = useRef<HTMLDivElement>(null)
@@ -106,11 +111,14 @@ export function DialogPane({
     try {
       await onChange(next, prev)
     } catch (e) {
-      setSession((s) =>
-        rejectAnswer(s, e instanceof Error ? e.message : '保存に失敗しました', localRef.current),
-      )
+      // 保存できなかった変更を手元に残すと、以後の差分がそこを基準にして二度と保存されない。
+      // 保存前の項目へ戻し、台本もそこから始め直す（答え済みは並び直し、失敗した問いから続く）。
+      const message = e instanceof Error ? e.message : '保存に失敗しました'
+      setLocal(prev)
+      setSession(rejectAnswer(beginSession(prev, { draft: isDraft }), message, prev))
     } finally {
       saving.current -= 1
+      syncFromProp()
     }
   }
 
@@ -368,9 +376,13 @@ function Message({
           aria-label="選択肢"
         >
           {m.chips.map((c) => (
-            <ChipButton
+            <Chip
               key={`${c.action}:${c.value ?? ''}`}
-              chip={c}
+              label={c.label}
+              note={c.note}
+              primary={c.primary}
+              ghost={c.ghost}
+              blank={c.blank}
               onClick={() => onChip(c.action, c.value)}
             />
           ))}
@@ -552,19 +564,6 @@ function VisibilityPill({
       )}
       {isPublic ? '読者に見せる' : '作者だけ'}
     </button>
-  )
-}
-
-function ChipButton({ chip, onClick }: { chip: DialogChip; onClick: () => void }) {
-  return (
-    <Chip
-      label={chip.label}
-      note={chip.note}
-      primary={chip.primary}
-      ghost={chip.ghost}
-      blank={chip.blank}
-      onClick={onClick}
-    />
   )
 }
 

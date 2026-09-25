@@ -133,11 +133,13 @@ export interface GlossaryFieldPatch {
   authorNote?: string
   /** サムネ画像の data URL。空文字 '' は削除（キーを落とす）、undefined は据え置き。 */
   thumbnail?: string
-  /**
-   * 対話ノート（丸ごと差し替え・undefined は据え置き）。対話ペインは答えるたびに
-   * 手元で更新した record 全体を渡す（鍵ごとのパッチ規則は core/glossary/dialog）。
-   */
+  /** 対話ノート（丸ごと差し替え・undefined は据え置き）。 */
   dialog?: Record<string, DialogAnswer>
+  /**
+   * 対話ノートの**鍵ごと**のパッチ（`null` はその鍵を削除）。対話ペインが使う＝答えた鍵だけを
+   * 書き換え、同期や MCP で届いた他の鍵の答えを巻き込まない。保存中の最新の record に重ねる。
+   */
+  dialogPatch?: Record<string, DialogAnswer | null>
   dialogVersion?: number
 }
 
@@ -588,11 +590,24 @@ export function createEditorStore({
           }
         }
         const ts = now()
-        const updated: GlossaryEntry = { ...cur, ...patch, updatedAt: ts }
+        const { dialogPatch, ...rest } = patch
+        const updated: GlossaryEntry = { ...cur, ...rest, updatedAt: ts }
         // thumbnail は空文字 '' を「削除」とする（undefined＝据え置きと区別）。
         if (patch.thumbnail === '') delete updated.thumbnail
+        // 公開情報は 1 欄（D-GLOS-PUBLIC-ONE）：summary を書いたら旧・詳細（body）はここで畳む。
+        if (patch.summary !== undefined) delete updated.body
+        // 対話ノートの鍵ごとのパッチは、いまの record（同期で増えた鍵も含む）に重ねる。
+        if (dialogPatch !== undefined) {
+          const merged: Record<string, DialogAnswer> = { ...(cur.dialog ?? {}) }
+          for (const [key, value] of Object.entries(dialogPatch)) {
+            if (value === null) delete merged[key]
+            else merged[key] = value
+          }
+          updated.dialog = merged
+          updated.dialogVersion = patch.dialogVersion ?? cur.dialogVersion ?? DIALOG_VERSION
+        }
         // 対話ノートが空になったら record ごと落とす（「対話を始めていない」に戻る）。
-        if (patch.dialog !== undefined && Object.keys(patch.dialog).length === 0) {
+        if (updated.dialog !== undefined && Object.keys(updated.dialog).length === 0) {
           delete updated.dialog
           delete updated.dialogVersion
         }

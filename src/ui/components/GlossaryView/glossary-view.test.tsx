@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { useState } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 import type { Appearances } from '@/core/glossary'
-import type { GlossaryEntry } from '@/core/schema'
+import type { DialogAnswer, GlossaryEntry } from '@/core/schema'
 import type { GlossaryFormValues } from '@/ui/components/GlossaryEntryForm/glossary-entry-form'
 import { GlossaryView } from './glossary-view'
 
@@ -27,6 +27,19 @@ function entry(p: Partial<GlossaryEntry> & { id: string; name: string }): Glossa
     createdAt: 0,
     updatedAt: 0,
   }
+}
+
+/** 鍵ごとのパッチを record に重ねる（store の updateGlossaryEntry と同じ規則）。 */
+function mergeDialog(
+  cur: Record<string, DialogAnswer>,
+  patch: Record<string, DialogAnswer | null>,
+): Record<string, DialogAnswer> {
+  const out = { ...cur }
+  for (const [k, v] of Object.entries(patch)) {
+    if (v === null) delete out[k]
+    else out[k] = v
+  }
+  return out
 }
 
 /** 対話の答えの欄に書いて Enter で決定する（IME 変換中でない Enter）。 */
@@ -130,8 +143,11 @@ function setup(initial: GlossaryEntry[] = ENTRIES) {
               e.id === id
                 ? {
                     ...e,
-                    ...(patch.dialog !== undefined
-                      ? { dialog: patch.dialog, dialogVersion: patch.dialogVersion }
+                    ...(patch.dialogPatch !== undefined
+                      ? {
+                          dialog: mergeDialog(e.dialog ?? {}, patch.dialogPatch),
+                          dialogVersion: patch.dialogVersion,
+                        }
                       : {}),
                     ...(patch.category !== undefined
                       ? { category: patch.category || undefined }
@@ -282,7 +298,7 @@ describe('GlossaryView（左右2カラム：一覧・検索・その場編集）
     // 対話の保存は変わった欄（対話ノート）だけのパッチ＝フォームの他の欄を巻き込まない
     await waitFor(() =>
       expect(onUpdateDialog).toHaveBeenCalledWith('b', {
-        dialog: { title: { text: '灯台守', public: true } },
+        dialogPatch: { title: { text: '灯台守', public: true } },
         dialogVersion: 1,
       }),
     )
@@ -299,7 +315,7 @@ describe('GlossaryView（左右2カラム：一覧・検索・その場編集）
     await waitFor(() =>
       expect(onUpdateDialog).toHaveBeenLastCalledWith(
         'b',
-        expect.objectContaining({ dialog: { title: { text: '灯台守', public: false } } }),
+        expect.objectContaining({ dialogPatch: { title: { text: '灯台守', public: false } } }),
       ),
     )
     // 「直す」はその問いだけ聞き直し、答えると本流へ戻る
@@ -310,7 +326,7 @@ describe('GlossaryView（左右2カラム：一覧・検索・その場編集）
     await waitFor(() =>
       expect(onUpdateDialog).toHaveBeenLastCalledWith(
         'b',
-        expect.objectContaining({ dialog: { title: { text: '元・灯台守', public: false } } }),
+        expect.objectContaining({ dialogPatch: { title: { text: '元・灯台守', public: false } } }),
       ),
     )
     // フォームに戻ると対話ノートに答えが並ぶ

@@ -549,12 +549,10 @@ export function App({
               await store.updateGlossaryEntry(id, toFieldPatch(values))
             }}
             onUpdateDialog={async (id, patch) => {
-              // 変わった欄だけ。公開情報を入れたときは旧・詳細（body）を畳む（D-GLOS-PUBLIC-ONE）。
+              // 変わった欄だけ（対話ノートは鍵ごと）。旧・詳細（body）の畳み方は store が持つ。
               await store.updateGlossaryEntry(id, {
                 ...patch,
-                ...(patch.summary !== undefined
-                  ? { summary: emptyToUndef(patch.summary), body: undefined }
-                  : {}),
+                ...(patch.summary !== undefined ? { summary: emptyToUndef(patch.summary) } : {}),
               })
             }}
             onRename={async (id, newName, opts) => {

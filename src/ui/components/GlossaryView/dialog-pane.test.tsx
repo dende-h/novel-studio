@@ -102,21 +102,20 @@ describe('DialogPane（キー操作と保存）', () => {
     expect(within(pane()).getByRole('link', { name: 'ボブ' })).toBeInTheDocument()
   })
 
-  it('保存に失敗すると対話の中で知らせ、次の答えは手元の項目から続く', async () => {
+  it('保存に失敗すると対話の中で知らせ、保存前の状態から失敗した問いを聞き直す', async () => {
     const { onChange } = setup(entry({ id: 'a', name: 'アリス', category: '人物' }), {
       failOnce: true,
     })
     fireEvent.change(box(), { target: { value: '灯台守' } })
     fireEvent.keyDown(box(), { key: 'Enter' })
     await waitFor(() => expect(lastBot()).toBe('保存に失敗しました（テスト）'))
-    // 問いは次（年齢）へ進んでいる＝失敗しても会話は止めない
-    fireEvent.change(box(), { target: { value: '十七' } })
+    // 保存できなかった答えは手元にも残さず、同じ問い（役職）を待つ＝次に答えたぶんが正しく保存される
+    fireEvent.change(box(), { target: { value: '灯台守（再）' } })
     fireEvent.keyDown(box(), { key: 'Enter' })
     expect(onChange).toHaveBeenLastCalledWith(
-      expect.objectContaining({
-        dialog: { title: { text: '灯台守', public: true }, age: { text: '十七', public: true } },
-      }),
+      expect.objectContaining({ dialog: { title: { text: '灯台守（再）', public: true } } }),
     )
+    await waitFor(() => expect(lastBot()).toBe('アリスの年齢か、年の頃を教えてください。'))
   })
 
   it('ひと通り答えたまとめで「読者に見せる」の答えから公開情報の下書きを作り、欄に入れられる', async () => {

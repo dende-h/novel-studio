@@ -295,9 +295,10 @@ export function submitAnswer(
 ): SessionStep {
   const text = rawText.trim()
   const s: DialogSession = { ...session, log: withoutChips(session.log) }
-  if (text === '' || !s.pending) return { session: s, entry }
+  // 受け付けない入力（空・知らない分類）はチップを出し直して待つ＝行き止まりにしない。
+  if (text === '' || !s.pending) return { session: reissuePrompt(s, entry), entry }
   if (s.pending.kind === 'category') {
-    if (!hasDialogQuestions(text)) return { session: s, entry }
+    if (!hasDialogQuestions(text)) return { session: reissuePrompt(s, entry), entry }
     const next = { ...entry, category: text }
     let ns = push(s, { role: 'user', text })
     const core = activeQuestionsFor(next).filter((q) => !q.optional && q.field === undefined).length
@@ -309,7 +310,7 @@ export function submitAnswer(
     const first = nextQuestion(next, optsOf(ns))
     return { session: first ? ask(ns, next, first) : askPick(ns, next, null), entry: next }
   }
-  if (s.pending.kind !== 'question') return { session: s, entry }
+  if (s.pending.kind !== 'question') return { session: reissuePrompt(s, entry), entry }
   const q = questionByKey(entry.category, s.pending.key)
   if (!q) return { session: { ...s, pending: null }, entry }
   if (q.choices && !q.free && !q.choices.includes(text)) {
@@ -390,6 +391,10 @@ export function skipQuestion(
   }
   const q = questionByKey(entry.category, s.pending.key)
   if (!q) return { session: { ...s, pending: null }, entry }
+  // 「直す」で聞き直しているときのスキップ・あとでは「そのままにする」＝答えを消さない。
+  if (s.editingKey === q.key && (answersOf(entry)[q.key]?.text.trim() ?? '') !== '') {
+    return after(say(s, 'そのままにします。'), entry)
+  }
   let next = entry
   let ns = s
   if (q.field !== undefined) {

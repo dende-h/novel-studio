@@ -58,7 +58,8 @@ import type { NewGlossaryEntry } from '@/ui/store/editorStore'
 
 /** 対話ペインが保存する差分。渡した欄だけ書き換える（省略＝据え置き）。 */
 export interface GlossaryDialogPatch {
-  dialog?: Record<string, DialogAnswer>
+  /** 対話ノートの鍵ごとの差分（`null`＝その鍵を削除）。他の鍵は据え置き。 */
+  dialogPatch?: Record<string, DialogAnswer | null>
   dialogVersion?: number
   category?: string
   /** 公開情報（まとめの下書きを入れたとき）。旧・詳細（body）は畳む。 */
@@ -354,8 +355,11 @@ export function GlossaryView({
                   }
                   const patch: GlossaryDialogPatch = {}
                   if (next.dialog !== prev.dialog) {
-                    patch.dialog = next.dialog ?? {}
-                    patch.dialogVersion = DIALOG_VERSION
+                    const diff = dialogDiff(prev.dialog ?? {}, next.dialog ?? {})
+                    if (Object.keys(diff).length > 0) {
+                      patch.dialogPatch = diff
+                      patch.dialogVersion = DIALOG_VERSION
+                    }
                   }
                   if ((next.category ?? '') !== (prev.category ?? '')) {
                     patch.category = next.category ?? ''
@@ -461,6 +465,28 @@ export function GlossaryView({
       />
     </div>
   )
+}
+
+/** 対話ノートの鍵ごとの差分（変わった鍵だけ。消えた鍵は null）。 */
+function dialogDiff(
+  prev: Record<string, DialogAnswer>,
+  next: Record<string, DialogAnswer>,
+): Record<string, DialogAnswer | null> {
+  const out: Record<string, DialogAnswer | null> = {}
+  for (const [key, a] of Object.entries(next)) {
+    const b = prev[key]
+    if (
+      !b ||
+      b.text !== a.text ||
+      b.public !== a.public ||
+      b.skipped !== a.skipped ||
+      b.later !== a.later
+    ) {
+      out[key] = a
+    }
+  }
+  for (const key of Object.keys(prev)) if (!(key in next)) out[key] = null
+  return out
 }
 
 /** 現在値から GlossaryFormValues を組む（1 フィールドずつ差し替えて確定する土台）。 */

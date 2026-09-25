@@ -343,6 +343,17 @@ describe('applyDialogPatch（MCP と画面が共用するパッチ規則）', ()
     expect(applyDialogPatch(base, { gender: '不明' }).dialog?.gender?.text).toBe('不明')
   })
 
+  it('削除（空文字）だけなら、質問セットの無い分類でも通る＝古い答えを片づけられる', () => {
+    const legacy = entry({
+      name: 'x',
+      category: '地名',
+      dialog: { title: { text: 'a' }, secret: { text: 'b' } },
+    })
+    const next = applyDialogPatch(legacy, { title: '' })
+    expect(next.dialog).toEqual({ secret: { text: 'b' } })
+    expect(() => applyDialogPatch(legacy, { title: '', secret: 'c' })).toThrow(/分類/)
+  })
+
   it('固定の問いに public を渡しても無視する（エラーにしない）', () => {
     const next = applyDialogPatch(base, { secret: { text: '帳', public: true } })
     expect(next.dialog?.secret).toEqual({ text: '帳' })
@@ -390,6 +401,13 @@ describe('平文', () => {
     )
     expect(text).toContain('（スキップ: birthday ／ あとで: rival）')
     expect(dialogToPlainText(entry({ name: 'x' }))).toBe('')
+    // 質問セットの無い分類：鍵を「旧」扱いにせず、分類を付けるよう案内する
+    const uncategorized = dialogToPlainText(
+      entry({ name: 'y', dialogVersion: 1, dialog: { title: { text: '案内人', public: true } } }),
+    )
+    expect(uncategorized).toContain('分類「未分類」には質問セットがありません')
+    expect(uncategorized).toContain('  title [読者に見せる]: 案内人')
+    expect(uncategorized).not.toContain('旧')
   })
 
   it('questionsToPlainText は分類ごとに鍵・見出し・問い・既定・条件を出す', () => {
