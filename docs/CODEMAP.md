@@ -367,6 +367,7 @@ uv run .claude/skills/natural-japanese/scripts/lint.py <file>   # 仕事の文�
 | `docs/game/bgm-presets.md` | 組み込み BGM 24 曲のファイル名・用途と Suno 用の制作プロンプト（管理ページへ入れる手順つき） |
 | `docs/requirement/09-board.md` | 掲示板（記名式スレッド・お知らせ・アンケート・外部リンクの OGP）の設計と決定表 |
 | `docs/requirement/10-mcp-oauth.md` | MCP の OAuth（ChatGPT で繋がらない原因の実測と診断・Phase 1 の撤去・自前 認可サーバーの設計案） |
+| `docs/requirement/11-glossary-dialog.md` | 用語集の「対話」（一問一答で項目を育てる）の決定表・`GlossaryEntry.dialog` の形・MCP 契約（`get_glossary` の出力、`upsert_glossary_entry` の `dialog` パッチ、`get_glossary_questions`）・質問の正本（付録 A） |
 | `public/board-guidelines.html` | 掲示板ガイドライン（`/board-guidelines` で公開・通報や上限の文言はここと揃える） |
 | `docs/requirement/99-open-questions.md` | 未決事項 |
 | `design/stitch/*/index.html` | 画面のデザインカンプ（+ スクリーンショット） |
