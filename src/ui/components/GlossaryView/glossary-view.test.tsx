@@ -38,6 +38,8 @@ const answer = (text: string) => {
 /** 対話ペインの中の分類・選択肢チップ（左の絞り込みチップと同名なので区画で絞る）。 */
 const dialogChip = (name: string) =>
   within(screen.getByRole('region', { name: '対話' })).getByRole('button', { name })
+/** 見出し横の「対話 n/m」タブ（対話ノート区画の「対話で深める」とは別）。 */
+const dialogTab = () => screen.getByRole('button', { name: /^対話 (–|\d+\/\d+)$/ })
 const lastBot = () => {
   const pane = screen.getByRole('region', { name: '対話' })
   const bubbles = pane.querySelectorAll('.rounded-bl-md')
@@ -72,6 +74,7 @@ function setup(initial: GlossaryEntry[] = ENTRIES) {
   const calls = {
     onCreate: vi.fn(),
     onUpdate: vi.fn(),
+    onUpdateDialog: vi.fn(),
     onRename: vi.fn(),
     onDelete: vi.fn(),
   }
@@ -117,6 +120,27 @@ function setup(initial: GlossaryEntry[] = ENTRIES) {
                     authorNote: values.authorNote || undefined,
                     ...(values.dialog !== undefined
                       ? { dialog: values.dialog, dialogVersion: 1 }
+                      : {}),
+                  }
+                : e,
+            ),
+          )
+        }}
+        onUpdateDialog={async (id, patch) => {
+          calls.onUpdateDialog(id, patch)
+          setEntries((cur) =>
+            cur.map((e) =>
+              e.id === id
+                ? {
+                    ...e,
+                    ...(patch.dialog !== undefined
+                      ? { dialog: patch.dialog, dialogVersion: patch.dialogVersion }
+                      : {}),
+                    ...(patch.category !== undefined
+                      ? { category: patch.category || undefined }
+                      : {}),
+                    ...(patch.summary !== undefined
+                      ? { summary: patch.summary || undefined, body: undefined }
                       : {}),
                   }
                 : e,
@@ -251,22 +275,21 @@ describe('GlossaryView（左右2カラム：一覧・検索・その場編集）
   })
 
   it('既存の項目はフォームで開き、「対話」に切り替えると深掘りから聞いて一問ずつ保存される', async () => {
-    const { onUpdate } = setup()
+    const { onUpdate, onUpdateDialog } = setup()
     openEntry('ボブ')
     expect(screen.getByRole('button', { name: 'フォーム' })).toHaveAttribute('aria-pressed', 'true')
     // 対話ノート区画（見るだけ）から対話を開ける
     fireEvent.click(screen.getByRole('button', { name: '対話で深める' }))
     expect(lastBot()).toBe('ボブの役職や肩書き、立場を教えてください。')
     answer('灯台守')
+    // 対話の保存は変わった欄（対話ノート）だけのパッチ＝フォームの他の欄を巻き込まない
     await waitFor(() =>
-      expect(onUpdate).toHaveBeenCalledWith(
-        'b',
-        expect.objectContaining({
-          dialog: { title: { text: '灯台守', public: true } },
-          category: '人物', // 他の欄は据え置き
-        }),
-      ),
+      expect(onUpdateDialog).toHaveBeenCalledWith('b', {
+        dialog: { title: { text: '灯台守', public: true } },
+        dialogVersion: 1,
+      }),
     )
+    expect(onUpdate).not.toHaveBeenCalled()
     expect(lastBot()).toBe('ボブの年齢か、年の頃を教えてください。')
     // 一覧に進み具合が出て、「対話の途中」で絞れる
     const row = screen.getByRole('button', { name: '「ボブ」を編集' })
@@ -277,7 +300,7 @@ describe('GlossaryView（左右2カラム：一覧・検索・その場編集）
     // 公開の印を押すと作者だけに戻り、保存される
     fireEvent.click(screen.getByRole('button', { name: '読者に見せる（押すと作者だけに戻す）' }))
     await waitFor(() =>
-      expect(onUpdate).toHaveBeenLastCalledWith(
+      expect(onUpdateDialog).toHaveBeenLastCalledWith(
         'b',
         expect.objectContaining({ dialog: { title: { text: '灯台守', public: false } } }),
       ),
@@ -288,7 +311,7 @@ describe('GlossaryView（左右2カラム：一覧・検索・その場編集）
     answer('元・灯台守')
     expect(lastBot()).toBe('ボブの年齢か、年の頃を教えてください。')
     await waitFor(() =>
-      expect(onUpdate).toHaveBeenLastCalledWith(
+      expect(onUpdateDialog).toHaveBeenLastCalledWith(
         'b',
         expect.objectContaining({ dialog: { title: { text: '元・灯台守', public: false } } }),
       ),
@@ -298,6 +321,23 @@ describe('GlossaryView（左右2カラム：一覧・検索・その場編集）
     const note = screen.getByRole('region', { name: '対話ノート' })
     expect(within(note).getByText('元・灯台守')).toBeInTheDocument()
     expect(within(note).getByRole('button', { name: '対話をつづける' })).toBeInTheDocument()
+  })
+
+  it('対話で分類を選ぶと分類だけのパッチで保存され、フォームでカテゴリを変えると台本を始め直す', async () => {
+    const { onUpdateDialog } = setup([entry({ id: 't', name: '王都', category: '地名' })])
+    openEntry('王都')
+    fireEvent.click(dialogTab())
+    // 質問セットの無い分類＝まず分類を聞く
+    expect(lastBot()).toMatch(/分類を選ぶと/)
+    fireEvent.click(dialogChip('場所'))
+    await waitFor(() => expect(onUpdateDialog).toHaveBeenCalledWith('t', { category: '場所' }))
+    expect(lastBot()).toBe('王都はどんな種類の場所ですか。')
+    // フォームでカテゴリを変える → 対話に戻ると新しい分類で最初から
+    fireEvent.click(screen.getByRole('button', { name: 'フォーム' }))
+    fireEvent.change(screen.getByLabelText('カテゴリ'), { target: { value: '組織' } })
+    fireEvent.click(dialogTab())
+    await waitFor(() => expect(lastBot()).toBe('王都はどんな種類の集まりですか。'))
+    expect(screen.getByRole('button', { name: '会社・店' })).toBeInTheDocument()
   })
 
   it('対話の途中で別の項目を選ぶと会話が消えるが、次に開くと続きから聞く', () => {

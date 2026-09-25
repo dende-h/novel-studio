@@ -1,5 +1,5 @@
 import { BookOpen, Lock } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { publicTextOf } from '@/core/glossary'
 import {
   type AnyDialogQuestion,
@@ -29,7 +29,7 @@ import {
   submitAnswer,
   visibilityHint,
 } from '@/core/glossary/dialogSession'
-import type { GlossaryEntry } from '@/core/schema'
+import type { DialogAnswer, GlossaryEntry } from '@/core/schema'
 import { cn } from '@/lib/utils'
 import { VisibilityLabel } from '@/ui/components/GlossaryView/visibility-label'
 import {
@@ -63,8 +63,11 @@ export function DialogPane({
   /** 用語集（@／[[ の候補と、名前の重複の検査）。 */
   entries: GlossaryEntry[]
   resolvedNames: Set<string>
-  /** 答え・分類・公開の扱いが変わるたびに呼ぶ（既存は保存、下書きは親の state 更新）。 */
-  onChange: (next: GlossaryEntry) => Promise<void> | void
+  /**
+   * 答え・分類・公開の扱い・公開情報（下書きを入れた）が変わるたびに呼ぶ。`prev` はその直前の
+   * 手元の項目＝親は差分（変わった欄）だけを保存し、他の欄を巻き込まない。
+   */
+  onChange: (next: GlossaryEntry, prev: GlossaryEntry) => Promise<void> | void
   /** 下書きの「用語集に登録する」。失敗（重複など）は reject し、対話の中にそのまま出す。 */
   onFinish?: (entry: GlossaryEntry) => Promise<void>
   onToForm: () => void
@@ -81,9 +84,14 @@ export function DialogPane({
   const localRef = useRef(local)
   localRef.current = local
   // 保存が終わって prop が追いついたら、それを手元にする（フォーム側の編集・同期の取り込みも拾う）。
+  // 分類がよそ（フォームのカテゴリ）で変わったら、質問セットが変わるので台本を最初から始め直す。
   useEffect(() => {
-    if (saving.current === 0 && entry !== localRef.current) setLocal(entry)
-  }, [entry])
+    if (saving.current !== 0 || entry === localRef.current) return
+    const categoryChanged = (entry.category ?? '') !== (localRef.current.category ?? '')
+    setLocal(entry)
+    if (categoryChanged) setSession(beginSession(entry, { draft: isDraft }))
+  }, [entry, isDraft])
+  const answers = useMemo(() => answersOf(local), [local])
 
   const logRef = useRef<HTMLDivElement>(null)
   const logLength = session.log.length
@@ -93,10 +101,10 @@ export function DialogPane({
     if (el) el.scrollTop = el.scrollHeight
   }, [logLength])
 
-  const persist = async (next: GlossaryEntry) => {
+  const persist = async (next: GlossaryEntry, prev: GlossaryEntry) => {
     saving.current += 1
     try {
-      await onChange(next)
+      await onChange(next, prev)
     } catch (e) {
       setSession((s) =>
         rejectAnswer(s, e instanceof Error ? e.message : '保存に失敗しました', localRef.current),
@@ -110,7 +118,7 @@ export function DialogPane({
     setSession(step.session)
     if (step.entry !== local) {
       setLocal(step.entry)
-      void persist(step.entry)
+      void persist(step.entry, local)
     }
     if (step.effect === 'toform') onToForm()
     if (step.effect === 'finish' && onFinish) {
@@ -129,7 +137,7 @@ export function DialogPane({
     const next = toggleAnswerPublic(local, key)
     if (next === local) return
     setLocal(next)
-    void persist(next)
+    void persist(next, local)
   }
   const applySummaryDraft = () => {
     if (summaryDraft === null) return
@@ -139,7 +147,7 @@ export function DialogPane({
       : rest
     setLocal(next)
     setSummaryDraft(null)
-    void persist(next)
+    void persist(next, local)
   }
 
   const q = pendingQuestion(session, local)
@@ -164,6 +172,7 @@ export function DialogPane({
             key={i}
             message={m}
             entry={local}
+            answers={answers}
             isDraft={isDraft}
             resolvedNames={resolvedNames}
             onRefClick={onRefClick}
@@ -181,6 +190,7 @@ export function DialogPane({
           <Composer
             key={q.key}
             question={q}
+            required={session.pending?.kind === 'question' && session.pending.required === true}
             entries={entries}
             onCreateEntry={onCreateEntry}
             onAnswer={(text) => apply(submitAnswer(session, local, text, ctx))}
@@ -197,12 +207,15 @@ export function DialogPane({
 /** 答えの入力欄（選択肢はチップ・自由記述は Enter で決定・スキップとあとで）。 */
 function Composer({
   question: q,
+  required,
   entries,
   onCreateEntry,
   onAnswer,
   onSkip,
 }: {
   question: AnyDialogQuestion
+  /** スキップ・あとでにできない（登録に名前が要るときの聞き直し）。 */
+  required: boolean
   entries: GlossaryEntry[]
   onCreateEntry?: (name: string) => Promise<string | null>
   onAnswer: (text: string) => void
@@ -216,8 +229,10 @@ function Composer({
         {q.choices?.map((c) => (
           <Chip key={c} label={c} onClick={() => onAnswer(c)} />
         ))}
-        {choicesOnly ? null : <Chip label="スキップ" ghost onClick={() => onSkip(false)} />}
-        <Chip label="あとで答える" ghost onClick={() => onSkip(true)} />
+        {choicesOnly || required ? null : (
+          <Chip label="スキップ" ghost onClick={() => onSkip(false)} />
+        )}
+        {required ? null : <Chip label="あとで答える" ghost onClick={() => onSkip(true)} />}
         <span className="ml-auto text-[11px] text-on-surface-variant/60">{visibilityHint(q)}</span>
       </div>
       {choicesOnly ? null : (
@@ -260,6 +275,7 @@ function Composer({
 function Message({
   message: m,
   entry,
+  answers,
   isDraft,
   resolvedNames,
   onRefClick,
@@ -272,6 +288,8 @@ function Message({
 }: {
   message: DialogMessage
   entry: GlossaryEntry
+  /** answersOf(entry)（ログの吹き出しごとに作り直さない）。 */
+  answers: Record<string, DialogAnswer>
   isDraft: boolean
   resolvedNames: Set<string>
   onRefClick?: (name: string) => void
@@ -303,7 +321,7 @@ function Message({
       }
       const key = m.key
       const q = questionByKey(entry.category, key)
-      const a = answersOf(entry)[key]
+      const a = answers[key]
       const blank = m.skipped || m.later
       return (
         <div className="flex max-w-[82%] flex-col items-end self-end">

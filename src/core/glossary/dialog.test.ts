@@ -261,6 +261,14 @@ describe('答えの読み書き', () => {
     expect(draftSummaryFromDialog(e)).toBe(
       '案内人。\n役職・肩書き：案内人\n特技：道を覚える\n↳ どうして身についたか：迷えば帰れない',
     )
+    // 下書きを入れたあとにもう一度作っても、同じ行を重ねない（新しい答えだけ足す）
+    const applied = { ...e, summary: draftSummaryFromDialog(e) }
+    expect(draftSummaryFromDialog(applied)).toBe(applied.summary)
+    const more = {
+      ...applied,
+      dialog: { ...applied.dialog, gap: { text: '実は泣き虫', public: true } },
+    }
+    expect(draftSummaryFromDialog(more)).toBe(`${applied.summary}\nギャップ：実は泣き虫`)
   })
 })
 
@@ -350,7 +358,17 @@ describe('平文', () => {
     expect(text).toContain('skill__why ↳どうして身についたか [読者に見せる]: 迷えば帰れない')
     expect(text).toContain('value 譲れないもの [作者だけ]: 約束')
     expect(text).toContain('secret 秘密 [作者だけ・固定]: 帳')
-    expect(text).toContain('old_key （旧） [作者だけ]: 昔の答え')
+    expect(text).toContain('old_key （旧・今の質問セットに無い鍵） [作者だけ]: 昔の答え')
+    // 種類を変えて枝から外れた答えは、現役の答えと区別できる印で残す
+    const place = entry({
+      name: '街道',
+      category: '場所',
+      dialogVersion: 1,
+      dialog: { kind: { text: '自然' }, route: { text: '北から南へ' } },
+    })
+    expect(dialogToPlainText(place)).toContain(
+      'route どこからどこへ（今の種類では聞かない問い） [読者に見せる]: 北から南へ',
+    )
     expect(text).toContain('（スキップ: birthday ／ あとで: rival）')
     expect(dialogToPlainText(entry({ name: 'x' }))).toBe('')
   })

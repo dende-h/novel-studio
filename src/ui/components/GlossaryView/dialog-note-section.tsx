@@ -1,4 +1,4 @@
-import { Lock, MessageSquareText } from 'lucide-react'
+import { MessageSquareText } from 'lucide-react'
 import {
   activeDeepQuestionsFor,
   answerPublic,
@@ -36,10 +36,10 @@ export function DialogNoteSection({
     <section className="space-y-1.5" aria-label="対話ノート">
       <div className="flex items-center gap-2">
         <h2 className="font-medium text-[13px] text-on-surface">対話ノート</h2>
-        <span className="inline-flex items-center gap-1 rounded-full bg-secondary-container px-2 py-0.5 font-medium text-[10.5px] text-on-secondary-container">
-          <Lock className="size-2.5" aria-hidden />
-          「読者に見せる」にした答えも、まだ投稿には載りません
-        </span>
+        <VisibilityLabel
+          isPublic={false}
+          label="「読者に見せる」にした答えも、まだ投稿には載りません"
+        />
       </div>
       <div className="rounded-lg border border-outline-variant/30 bg-surface-container-lowest px-3.5 py-3">
         {!hasDialogQuestions(entry.category) ? (

@@ -147,6 +147,39 @@ describe('DialogPane（キー操作と保存）', () => {
     expect(onToForm).toHaveBeenCalled()
   })
 
+  it('名前を飛ばして「用語集に登録する」を押すと名前を聞き直し、スキップとあとでは出ない', () => {
+    const onFinish = vi.fn(async () => {})
+    render(
+      <DialogPane
+        entry={entry({ id: 'd', name: '', category: '人物' })}
+        isDraft
+        entries={OTHERS}
+        resolvedNames={new Set()}
+        onChange={() => {}}
+        onFinish={onFinish}
+        onToForm={() => {}}
+      />,
+    )
+    // 下書き：分類は先に入っているが台本は分類から聞く
+    fireEvent.click(screen.getByRole('button', { name: '人物' }))
+    fireEvent.click(screen.getByRole('button', { name: 'スキップ' })) // 名前
+    let guard = 0
+    while (screen.queryByRole('button', { name: 'スキップ' }) && guard++ < 60) {
+      fireEvent.click(screen.getByRole('button', { name: 'スキップ' }))
+      const dig = screen.queryByRole('button', { name: '次へ' })
+      if (dig) fireEvent.click(dig)
+    }
+    fireEvent.click(screen.getByRole('button', { name: '用語集に登録する' }))
+    expect(onFinish).not.toHaveBeenCalled()
+    expect(lastBot()).toBe('まず、名前を教えてください。')
+    expect(screen.queryByRole('button', { name: 'スキップ' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'あとで答える' })).toBeNull()
+    fireEvent.change(box(), { target: { value: 'ミア' } })
+    fireEvent.keyDown(box(), { key: 'Enter' })
+    fireEvent.click(screen.getByRole('button', { name: 'これで登録する' }))
+    expect(onFinish).toHaveBeenCalledWith(expect.objectContaining({ name: 'ミア' }))
+  })
+
   it('種類だけの問い（場所）は選択肢のチップだけで、入力欄とスキップを出さない', () => {
     setup(entry({ id: 'p', name: '王都', category: '場所' }))
     expect(lastBot()).toBe('王都はどんな種類の場所ですか。')

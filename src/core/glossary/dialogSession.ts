@@ -75,7 +75,8 @@ export type DialogMessage =
   | { role: 'card' }
 
 export type DialogPending =
-  | { kind: 'question'; key: string }
+  /** required＝スキップ・あとでにできない（登録に名前が要るときの聞き直し）。 */
+  | { kind: 'question'; key: string; required?: true }
   | { kind: 'category' }
   | { kind: 'pick' }
   | { kind: 'dig-offer'; key: string }
@@ -261,7 +262,11 @@ export function rejectAnswer(
   message: string,
   entry: GlossaryEntry,
 ): DialogSession {
-  const s = say({ ...session, log: withoutChips(session.log) }, message)
+  return reissuePrompt(say({ ...session, log: withoutChips(session.log) }, message), entry)
+}
+
+/** チップで待っていた状態のチップを出し直す（問いを待つ状態はそのまま）。 */
+function reissuePrompt(s: DialogSession, entry: GlossaryEntry): DialogSession {
   switch (s.pending?.kind) {
     case 'category':
       return chips(
@@ -365,6 +370,12 @@ export function skipQuestion(
 ): SessionStep {
   const s: DialogSession = { ...session, log: withoutChips(session.log) }
   if (s.pending?.kind !== 'question') return { session: s, entry }
+  if (s.pending.required) {
+    return {
+      session: rejectAnswer(s, '名前は登録に必要です。名前を教えてください。', entry),
+      entry,
+    }
+  }
   const q = questionByKey(entry.category, s.pending.key)
   if (!q) return { session: { ...s, pending: null }, entry }
   let next = entry
@@ -444,7 +455,8 @@ export function pickQuestion(
 ): SessionStep {
   const s: DialogSession = { ...session, log: withoutChips(session.log) }
   const q = questionByKey(entry.category, key)
-  if (!q) return { session: s, entry }
+  // 分類が変わって無くなった問い：待っていた状態のチップを出し直す（行き止まりにしない）。
+  if (!q) return { session: reissuePrompt(s, entry), entry }
   let ns: DialogSession = { ...s, editingKey: key }
   const a = answersOf(entry)[key]
   if (a && a.text.trim() !== '') {
@@ -484,7 +496,7 @@ export function runChip(
       const s: DialogSession = { ...session, log: withoutChips(session.log), pending: null }
       const parent = value ? questionByKey(entry.category, value) : undefined
       const first = parent ? digQuestionsOf(parent)[0] : undefined
-      return { session: first ? ask(s, entry, first) : s, entry }
+      return first ? { session: ask(s, entry, first), entry } : after(s, entry)
     }
     case 'digskip':
       return after({ ...session, log: withoutChips(session.log) }, entry)
@@ -509,7 +521,11 @@ export function runChip(
           { ...s, baseMarks: marks, editingKey: 'name' },
           '名前が無いと登録できません。まず名前を教えてください。',
         )
-        return { session: ask(ns, entry, nameQ), entry }
+        const asked = ask(ns, entry, nameQ)
+        return {
+          session: { ...asked, pending: { kind: 'question', key: nameQ.key, required: true } },
+          entry,
+        }
       }
       return { session: s, entry, effect: 'finish' }
     }

@@ -1182,11 +1182,14 @@ export function draftSummaryFromDialog(entry: EntryLike): string {
   const parts: string[] = []
   const pub = publicTextOf(entry)
   if (pub !== '') parts.push(pub)
+  // 一度入れた行はもう公開情報にある＝二度目の下書きで同じ行を重ねない。
+  const present = new Set(pub.split('\n').map((l) => l.trim()))
   for (const q of activeDeepQuestionsFor(entry)) {
     for (const x of [q, ...digQuestionsOf(q)]) {
       const a = entry.dialog?.[x.key]
       if (!a || a.text.trim() === '' || !answerPublic(x, a)) continue
-      parts.push(`${isDigQuestion(x) ? '↳ ' : ''}${x.label}：${a.text.trim()}`)
+      const line = `${isDigQuestion(x) ? '↳ ' : ''}${x.label}：${a.text.trim()}`
+      if (!present.has(line)) parts.push(line)
     }
   }
   return parts.join('\n')
@@ -1292,12 +1295,14 @@ export function dialogToPlainText(entry: EntryLike & Pick<GlossaryEntry, 'dialog
       if (a) line(x, a)
     }
   }
+  // いま有効な問いに無い答え：種類を変えて枝から外れたもの（今の種類では聞かない）と、
+  // 質問セットから消えた鍵（旧）。どちらも現役の答えと区別できる印を付ける。
   for (const [key, a] of Object.entries(dialog)) {
     if (seen.has(key) || a.text.trim() === '') continue
     const q = questionByKey(entry.category, key)
-    lines.push(
-      `  ${key} ${q ? q.label : '（旧）'} [${q ? (answerPublic(q, a) ? '読者に見せる' : '作者だけ') : '作者だけ'}]: ${a.text.trim()}`,
-    )
+    const label = q ? `${q.label}（今の種類では聞かない問い）` : '（旧・今の質問セットに無い鍵）'
+    const vis = q ? (answerPublic(q, a) ? '読者に見せる' : '作者だけ') : '作者だけ'
+    lines.push(`  ${key} ${label} [${vis}]: ${a.text.trim()}`)
   }
   const tail: string[] = []
   if (skipped.length > 0) tail.push(`スキップ: ${skipped.join(', ')}`)

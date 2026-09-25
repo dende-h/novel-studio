@@ -1,4 +1,4 @@
-import { ArrowLeft, BookOpen, Lock, Plus, Search, Trash2, X } from 'lucide-react'
+import { ArrowLeft, Plus, Search, Trash2, X } from 'lucide-react'
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import {
   type Appearances,
@@ -31,6 +31,7 @@ import { GlossaryEntryDetail } from '@/ui/components/GlossaryPeek/entry-detail'
 import { DialogNoteSection } from '@/ui/components/GlossaryView/dialog-note-section'
 import { DialogPane } from '@/ui/components/GlossaryView/dialog-pane'
 import { SpriteSection } from '@/ui/components/GlossaryView/sprite-section'
+import { VisibilityLabel } from '@/ui/components/GlossaryView/visibility-label'
 import { NotationField } from '@/ui/components/NotationField/notation-field'
 import { NotationHelpButton } from '@/ui/components/NotationField/notation-help'
 import { Button } from '@/ui/components/ui/button'
@@ -69,6 +70,15 @@ export interface GlossaryCreateInput {
   dialogVersion?: number
 }
 
+/** 対話ペインが保存する差分。渡した欄だけ書き換える（省略＝据え置き）。 */
+export interface GlossaryDialogPatch {
+  dialog?: Record<string, DialogAnswer>
+  dialogVersion?: number
+  category?: string
+  /** 公開情報（まとめの下書きを入れたとき）。旧・詳細（body）は畳む。 */
+  summary?: string
+}
+
 interface GlossaryViewProps {
   entries: GlossaryEntry[]
   /** 開いている作品のタイトル（サブタイトル表示用・任意）。 */
@@ -78,6 +88,11 @@ interface GlossaryViewProps {
   /** 新規作成。作成した entry の id を返す。重複などは reject。 */
   onCreate: (input: GlossaryCreateInput) => Promise<string>
   onUpdate: (id: string, values: GlossaryFormValues) => Promise<void> | void
+  /**
+   * 対話ペインからの保存。**変わった欄だけ**のパッチ（対話ノート・分類・公開情報）＝フォームの
+   * 他の欄や同期で届いた値を巻き込まない（CLAUDE.md「1欄だけの更新で他の欄を落とさない」）。
+   */
+  onUpdateDialog: (id: string, patch: GlossaryDialogPatch) => Promise<void> | void
   onRename: (id: string, newName: string, opts: { rewriteBody: boolean }) => Promise<void> | void
   onDelete: (id: string) => void
   /** サジェストの「＋ 用語集に登録」（名前だけのクイック作成・作成した名前を返す）。 */
@@ -108,8 +123,11 @@ const draftHasContent = (d: GlossaryEntry) =>
   d.name.trim() !== '' ||
   d.category !== undefined ||
   Object.keys(d.dialog ?? {}).length > 0 ||
+  !!d.reading ||
+  d.aliases.length > 0 ||
   !!d.summary ||
-  !!d.authorNote
+  !!d.authorNote ||
+  !!d.thumbnail
 
 export function GlossaryView({
   entries,
@@ -117,6 +135,7 @@ export function GlossaryView({
   getAppearances,
   onCreate,
   onUpdate,
+  onUpdateDialog,
   onRename,
   onDelete,
   onCreateEntry,
@@ -339,9 +358,21 @@ export function GlossaryView({
                   if (draft) setDraft((d) => (d ? { ...d, name } : d))
                   else await onRename(current.id, name, { rewriteBody: false })
                 }}
-                onDialogChange={async (next) => {
-                  if (draft) setDraft(next)
-                  else await onUpdate(current.id, { ...valuesOf(next), dialog: next.dialog ?? {} })
+                onDialogChange={async (next, prev) => {
+                  if (draft) {
+                    setDraft(next)
+                    return
+                  }
+                  const patch: GlossaryDialogPatch = {}
+                  if (next.dialog !== prev.dialog) {
+                    patch.dialog = next.dialog ?? {}
+                    patch.dialogVersion = DIALOG_VERSION
+                  }
+                  if ((next.category ?? '') !== (prev.category ?? '')) {
+                    patch.category = next.category ?? ''
+                  }
+                  if (publicTextOf(next) !== publicTextOf(prev)) patch.summary = publicTextOf(next)
+                  if (Object.keys(patch).length > 0) await onUpdateDialog(current.id, patch)
                 }}
                 onRegister={draft ? registerDraft : undefined}
                 onRequestDelete={() => {
@@ -616,8 +647,8 @@ function EntryEditor({
   resolvedNames: Set<string>
   onCommitValues: (values: GlossaryFormValues) => Promise<void> | void
   onCommitName: (name: string) => Promise<void> | void
-  /** 対話ペインが項目を進めたとき（答え・分類・公開の扱い・下書きの公開情報）。 */
-  onDialogChange: (next: GlossaryEntry) => Promise<void> | void
+  /** 対話ペインが項目を進めたとき（答え・分類・公開の扱い・下書きの公開情報）。prev は直前の手元の項目。 */
+  onDialogChange: (next: GlossaryEntry, prev: GlossaryEntry) => Promise<void> | void
   /** 下書きの登録（下書きのときだけ）。 */
   onRegister?: (entry: GlossaryEntry) => Promise<void>
   onRequestDelete: () => void
@@ -816,10 +847,7 @@ function EntryEditor({
           <section className="space-y-1.5">
             <div className="flex items-center gap-2">
               <h2 className="font-medium text-[13px] text-on-surface">公開情報</h2>
-              <span className="inline-flex items-center gap-1 rounded-full bg-primary-container px-2 py-0.5 font-medium text-[10.5px] text-on-primary-container">
-                <BookOpen className="size-2.5" aria-hidden />
-                読者に見えます
-              </span>
+              <VisibilityLabel isPublic label="読者に見えます" />
               <NotationHelpButton />
             </div>
             <NotationField
@@ -846,10 +874,7 @@ function EntryEditor({
           <section className="space-y-1.5">
             <div className="flex items-center gap-2">
               <h2 className="font-medium text-[13px] text-on-surface">作者メモ</h2>
-              <span className="inline-flex items-center gap-1 rounded-full bg-secondary-container px-2 py-0.5 font-medium text-[10.5px] text-on-secondary-container">
-                <Lock className="size-2.5" aria-hidden />
-                公開されません
-              </span>
+              <VisibilityLabel isPublic={false} label="公開されません" />
               <NotationHelpButton />
             </div>
             <NotationField
