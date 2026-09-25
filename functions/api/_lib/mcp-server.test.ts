@@ -109,7 +109,7 @@ describe('handleMcpMessage — プロトコル', () => {
     ).toBeNull()
   })
 
-  it('tools/list は 29 ツール（読み7・書き19・バックアップ3）', async () => {
+  it('tools/list は 30 ツール（読み8・書き19・バックアップ3）', async () => {
     const res = (await handleMcpMessage(
       { jsonrpc: '2.0', id: 1, method: 'tools/list' },
       deps(),
@@ -117,7 +117,7 @@ describe('handleMcpMessage — プロトコル', () => {
       result: { tools: { name: string }[] }
     }
     const names = res.result.tools.map((t) => t.name)
-    expect(MCP_TOOLS).toHaveLength(29)
+    expect(MCP_TOOLS).toHaveLength(30)
     expect(names).toContain('get_staging')
     expect(names).toContain('set_staging')
     expect(names).toContain('upsert_secret')
@@ -681,6 +681,104 @@ describe('世界観設定ツール（get_world / set_world_note / delete_world_n
     const text = contentText(await handleMcpMessage(call('get_glossary', { work_id: 'w1' }), d))
     expect(text).toContain('作者メモ（非公開）')
     expect(text).toContain('正体は管理AI')
+  })
+
+  it('get_glossary_questions は作品に依らず質問セットを返す（分類で絞れる）', async () => {
+    const all = contentText(await handleMcpMessage(call('get_glossary_questions', {}), deps()))
+    expect(all).toContain('## 人物')
+    expect(all).toContain('## 用語')
+    expect(all).toContain('set_world_note')
+    const org = contentText(
+      await handleMcpMessage(call('get_glossary_questions', { category: '組織' }), deps()),
+    )
+    expect(org).toContain('- kind｜種類｜')
+    expect(org).not.toContain('## 人物')
+    // スナップショットが無くても答える
+    const none = contentText(
+      await handleMcpMessage(call('get_glossary_questions', { category: '人物' }), deps()),
+    )
+    expect(none).toContain('- skill｜特技｜')
+  })
+
+  it('upsert の dialog は鍵ごとにパッチし、get_glossary に対話ノートとして出る', async () => {
+    const { deps: d, get } = makeDeps(snapshot([work()]))
+    await handleMcpMessage(
+      call('upsert_glossary_entry', {
+        work_id: 'w1',
+        id: 'g1',
+        name: 'アカリ',
+        category: '人物',
+        dialog: {
+          title: '灯台守',
+          value: { text: '火を絶やさない', public: true },
+          secret: '正体',
+        },
+      }),
+      d,
+    )
+    const saved = () => get()?.works[0]?.glossary?.[0]
+    expect(saved()?.dialog).toEqual({
+      title: { text: '灯台守' },
+      value: { text: '火を絶やさない', public: true },
+      secret: { text: '正体' },
+    })
+    expect(saved()?.dialogVersion).toBe(1)
+    const text = contentText(await handleMcpMessage(call('get_glossary', { work_id: 'w1' }), d))
+    expect(text).toContain('対話ノート（v1）')
+    expect(text).toContain('title 役職・肩書き [読者に見せる]: 灯台守')
+    expect(text).toContain('secret 秘密 [作者だけ・固定]: 正体')
+    // dialog を省略した更新は対話ノートを落とさない／空文字はその答えだけ削除
+    await handleMcpMessage(
+      call('upsert_glossary_entry', { work_id: 'w1', id: 'g1', name: 'アカリ', reading: 'あかり' }),
+      d,
+    )
+    expect(Object.keys(saved()?.dialog ?? {})).toEqual(['title', 'value', 'secret'])
+    await handleMcpMessage(
+      call('upsert_glossary_entry', {
+        work_id: 'w1',
+        id: 'g1',
+        name: 'アカリ',
+        dialog: { title: '' },
+      }),
+      d,
+    )
+    expect(saved()?.dialog?.title).toBeUndefined()
+    expect(saved()?.dialog?.value).toBeDefined()
+  })
+
+  it('upsert の dialog は未知の鍵・共通 4 問の鍵・選択肢外の種類・形の違う値を isError で返す', async () => {
+    const { deps: d, get } = makeDeps(snapshot([work()]))
+    const bad = async (dialog: unknown) =>
+      handleMcpMessage(
+        call('upsert_glossary_entry', {
+          work_id: 'w1',
+          id: 'g1',
+          name: 'アカリ',
+          category: '人物',
+          dialog,
+        }),
+        d,
+      )
+    expect(isError(await bad({ skil: 'x' }))).toBe(true)
+    expect(contentText(await bad({ skil: 'x' }))).toContain('get_glossary_questions')
+    expect(isError(await bad({ name: 'x' }))).toBe(true)
+    expect(isError(await bad({ title: { public: true } }))).toBe(true)
+    expect(isError(await bad({ title: { text: 'x', public: 'yes' } }))).toBe(true)
+    expect(isError(await bad('x'))).toBe(true)
+    // 場所の種類は選択肢のいずれか
+    const res = await handleMcpMessage(
+      call('upsert_glossary_entry', {
+        work_id: 'w1',
+        name: '街',
+        category: '場所',
+        dialog: { kind: '惑星' },
+      }),
+      d,
+    )
+    expect(isError(res)).toBe(true)
+    // エラーのときは何も書かれない
+    expect(get()?.works[0]?.glossary).toHaveLength(1)
+    expect(get()?.works[0]?.glossary?.[0]?.dialog).toBeUndefined()
   })
 })
 

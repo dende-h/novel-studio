@@ -46,6 +46,7 @@ Cloudflare Pages Functions
 | 保存・自動保存・undo・開いている作品の状態 | `src/ui/store/editorStore.ts` |
 | データの永続化・スキーマ移行 | `src/core/storage/*Repository.ts` |
 | 用語集（`@`参照の解決先・**コトノハ-grove- へ送られる**）の挙動 | `src/core/glossary/index.ts` + `src/ui/components/GlossaryView/` |
+| 用語集の**「対話」**（一問一答で項目を育てる・D-DLG-*）を変える：質問セット・公開の既定・進み具合・MCP の `dialog` | 質問の正本と純ロジックは `src/core/glossary/dialog.ts`（`BASE_QUESTIONS` `DEEP_QUESTIONS` `DIALOG_KINDS`・`applyDialogPatch`＝MCP と画面が共用するパッチ規則・`dialogToPlainText` `questionsToPlainText`）、ボットの台本は `dialogSession.ts`（`beginSession` `submitAnswer` `skipQuestion` `pickQuestion` `runChip`）。画面は `GlossaryView/dialog-pane.tsx`（会話ログ＋入力欄・答えるたびに保存）と `dialog-note-section.tsx`（フォーム側の「対話ノート」＝見るだけ）。答えの器は `GlossaryEntry.dialog`（公開バンドルからは落とす＝`publish.ts` の `toBundleGlossary`）。質問を足す・消すときは `DIALOG_VERSION` を上げ、鍵は消さない |
 | 世界観設定（作者専用・**公開されない**）の挙動 | `src/core/plot/index.ts`（`WORLD_SLOTS` ほか）+ `src/ui/components/PlotView/world-view.tsx` |
 | `@`/`[[` サジェストの挙動 | 判定・候補は `src/core/glossary/index.ts`、見た目は `src/ui/components/EditorPane/ref-suggest.tsx`、本文以外の入力欄は `src/ui/components/NotationField/` |
 | プロット（幕×ビート・伏線・秘密） | `src/core/plot/index.ts` + `src/ui/components/PlotView/plot-view.tsx` |
@@ -80,7 +81,7 @@ Cloudflare Pages Functions
 ### データ定義
 | モジュール | 責務 | 主な export |
 |---|---|---|
-| `schema/` | **正本 block スキーマ（Zod）**。全データの型の源 | `Block` `Inline` `Episode` `Work` `GlossaryEntry`（`authorNote` は公開時に落とす） `WorkPlatform` `PLATFORM_GENRES` |
+| `schema/` | **正本 block スキーマ（Zod）**。全データの型の源 | `Block` `Inline` `Episode` `Work` `GlossaryEntry`（`authorNote`・`dialog` は公開時に落とす） `DialogAnswer` `WorkPlatform` `PLATFORM_GENRES` |
 | `plot/` | プロット（幕/ライン/ビート/伏線/秘密）＋**世界観設定**（`Plot.world`・作者専用） | `PlotSection` `PlotLine` `PlotBeat` `Foreshadow` `Secret` / `beatsInStoryOrder` `sectionOfBeat` `linesOfBeat` `foreshadowsOfBeat` `secretsHiddenAt` / `WorldNote` `WORLD_SLOTS` `WORLD_CUSTOM_SLOT` `worldNoteLabel` `worldNotesInOrder` `setWorldNote` `removeWorldNote` |
 | `structure/` | 構造レイヤー（outline/chart/mindmap）のノード・辺 | `StructureNode` `StructureEdge` `StructureKind` `emptyStructure` `addNode` `pickPrimaryStructure` |
 | `idea/` | ネタ帳のメモ | `IdeaNote` `normalizeIdeaText` |
@@ -98,7 +99,7 @@ Cloudflare Pages Functions
 | `src/core/markdown/index.ts` | 生テキスト → プレビュー HTML の軽量マークダウン（`markdownToHtml` `stripMarkdown` `InlineRenderer`。行内は既定で parseInlines へ委譲＝[[用語]]・ルビが生きるが、**第3引数で差し替えられる**＝掲示板はここを使う） |
 | `src/core/exporter/toNarou.ts` / `src/core/exporter/toKakuyomu.ts` | 各投稿サイト記法 |
 | `src/core/exporter/toNovelGame.ts` | 正本＋演出譜 → サウンドノベル zip の中身（`buildNovelGameFiles`）と grove 同梱用の自己完結HTML（`buildNovelGameHtml`＝素材 data URL 内包・契約 v4）。プレイヤー（index.html の CSS/JS 一式）は `novelGamePlayer.ts`（メニュー＝速度・BGM・効果音・「ここまでを保存」・一文カード・クレジット・はじめから・「タイトルに戻る」。セーブは `saveKey` の 1 席に自動＋明示、終了は `backToTitle`＝親へ `quit`） |
-| `src/core/exporter/toPlainText.ts` / `plotToPlainText.ts` / `structureToPlainText.ts` / `stagingToPlainText.ts` | AI 投げ込み用の平文（`glossaryToPlainText`、演出譜の `stagingToPlainText` 含む） |
+| `src/core/exporter/toPlainText.ts` / `plotToPlainText.ts` / `structureToPlainText.ts` / `stagingToPlainText.ts` | AI 投げ込み用の平文（`glossaryToPlainText`＝作者メモと対話ノートも鍵つきで出す、演出譜の `stagingToPlainText` 含む） |
 | `src/core/exporter/blocksToNotation.ts` | 正本 → 記法（往復変換） |
 | `src/core/zip/index.ts` | 依存ゼロの ZIP（store 法）・`crc32` |
 | `bundle/` `folder/` | 全作品バンドル JSON / フォルダ形式の入出力 |
@@ -134,7 +135,7 @@ Cloudflare Pages Functions
 | `activity/` | 執筆記録（`localDateKey` `currentStreak` `buildHeatmap`） |
 | `stats/` | 文字数カウント |
 | `outline/` | アウトラインのメモ木操作（`indentNote` `moveNote` 等） |
-| `glossary/` | 参照解決・出現検索・改名・サジェスト・公開情報の結合（`resolveRef` `renameEntry` `suggestRefs` `publicTextOf` `PERSON_CATEGORY`） |
+| `glossary/` | 参照解決・出現検索・改名・サジェスト・公開情報の結合（`resolveRef` `renameEntry` `suggestRefs` `publicTextOf` `PERSON_CATEGORY`）。**「対話」**は `dialog.ts`（質問の正本＝付録 A と同内容・`activeQuestionsFor` `nextQuestion` `dialogProgress` `dialogStatusOf` `withDialogAnswer` `toggleAnswerPublic` `draftSummaryFromDialog` `applyDialogPatch` `dialogToPlainText` `questionsToPlainText`）と `dialogSession.ts`（会話ログと待ち状態の純データ・遷移は `{ session, entry }` を返す） |
 
 ### 掲示板（`board/`）— 判断はすべてここ。サーバは呼ぶだけ
 | ファイル | 責務 | 主な export |
@@ -168,7 +169,7 @@ Cloudflare Pages Functions
 ### 画面（`components/` — PascalCase ディレクトリ + kebab ファイル・1ファイル1コンポーネント）
 - **執筆**: `EditorPane/`（textarea + 記法バー + `@` サジェスト + 置換パネル）, `PreviewPane/`, `HistoryPanel/`
 - **作品管理**: `Library/`（カード/リスト・作品メニュー）, `TrashDialog/`, `WorkMetaDialog/`, `TitlePromptDialog/`
-- **用語集**: `GlossaryView/`（左：一覧／右：その場編集の二枚看板）, `GlossaryEntryForm/`（本文からのクイック作成・パネル編集用モーダル）, `GlossaryPeek/`
+- **用語集**: `GlossaryView/`（左：一覧（対話の進み具合・「対話の途中」チップ）／右：「フォーム｜対話」の二面。`dialog-pane.tsx`＝対話ペイン・`dialog-note-section.tsx`＝フォームの対話ノート・「＋ 新しく登録」は下書きを対話で開き「用語集に登録」で保存）, `GlossaryEntryForm/`（本文からのクイック作成・パネル編集用モーダル）, `GlossaryPeek/`
 - **構想の道具（無料アカウント登録で解禁・遅延ロード）**: `MindmapView/`, `CorrelationChartView/`, `OutlineView/`, `PlotView/`（`plot-view.tsx` ＋ 世界観設定タブ `world-view.tsx`）, `StructureCanvas/`, `StagingView/`（サウンドノベルの演出エディタ：行一覧＋話者/表情/背景/BGM/効果音/場面の切れ目・背景と立ち絵の持ち込み・素材の管理 `asset-manager.tsx`＝一覧/削除/クラウド保管・テンプレの一覧 `template-picker.tsx`＝分類タブ＋サムネイル・書き出しと図鑑でも共用）
 - **執筆画面の右パネル（遅延ロードしない）**: `PlotPeek/`（この話のビート一覧 `plot-peek.tsx` ＋ 読み取り専用のビート詳細 `beat-detail.tsx`）
 - **入出力**: `ExportDialog/`, `ImportDialog/`, `BackupDialog/`, `CloudBackupDialog/`, `AiPullDialog/`
@@ -209,7 +210,7 @@ Cloudflare Pages Functions
 | 破壊操作の確認 | `ConfirmDialog`（`src/ui/components/ConfirmDialog/confirm-dialog.tsx`） | `window.confirm()` |
 | 文字列の入力を求める | `TitlePromptDialog`（`src/ui/components/TitlePromptDialog/title-prompt-dialog.tsx`） | `window.prompt()` |
 | 描画例外の受け止め | `ErrorBoundary`（`src/ui/components/ErrorBoundary/error-boundary.tsx`） | — |
-| `@`/`[[` の用語集サジェスト付き入力欄（blur 確定） | `CommitTextarea`（`src/ui/components/NotationField/commit-textarea.tsx`） | 生の `<textarea>` ＋ 自前サジェスト |
+| `@`/`[[` の用語集サジェスト付き入力欄（blur 確定。`onSubmit` を渡すと Enter で決定＝対話の答え） | `CommitTextarea`（`src/ui/components/NotationField/commit-textarea.tsx`） | 生の `<textarea>` ＋ 自前サジェスト |
 | 記法つき入力（書く／プレビュー切替・マークダウン描画・`[[用語]]` クリック委譲） | `NotationField`（`src/ui/components/NotationField/notation-field.tsx`） | 画面ごとのプレビュー自作 |
 | 記法つきテキストの読み取り専用表示（マークダウン描画・`[[用語]]` クリック委譲） | `NotationText`（`src/ui/components/NotationField/notation-text.tsx`） | 画面ごとに `markdownToHtml()` を直に描く自前配線 |
 | **入力欄の説明（ラベル横のⓘ＋ダイアログ）** | `FieldHelp`（`src/ui/components/FieldHelp/field-help.tsx`） | 欄の下に説明文を並べる（画面が説明で埋まる） |
@@ -305,7 +306,7 @@ Clerk へ登録済みのクライアントの互換。消すとトークン更�
 | `/api/oauth/consent` | 同意画面の裏側（GET=表示内容 / POST=許可・拒否 → 飛び先 URL）。Clerk JWT 認証・会員のみ許可 |
 
 `api/_lib/`: `auth`（Clerk 検証・`verifyMember`）, `membership`（**会員判定の単一の真実 = D1 `subscriptions`**）,
-`crypto`（at-rest 暗号化）, `mcp-server`（MCP プロトコル核・約1,100行）, `mcp-auth`, `mcp-token`,
+`crypto`（at-rest 暗号化）, `mcp-server`（MCP プロトコル核・約1,200行。用語集の対話は `get_glossary_questions`＝作品に依らない読み口と `upsert_glossary_entry` の `dialog`＝`dialogPatchOf` で形を検め core の `applyDialogPatch` へ）, `mcp-auth`, `mcp-token`,
 `oauth-metadata`（PRM）, `oauth-server`（**認可サーバーの純ロジック**）, `oauth-store`（同 SQL）, `oauth-upstream`（中継先 Clerk の取得）, `stripe`, `rate-limit`, `purge`, `visitor`,
 `board-store`（**掲示板の SQL はすべてここ**・行 ⇄ camelCase の変換も）, `board-link-fetch`（OGP の取得とキャッシュ）,
 `staff`（`verifyStaff`＝運営の判定・`board_profiles.role`）, `templates-store`（運営テンプレの R2 キー `_templates/` と目録の読み書き）。

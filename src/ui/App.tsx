@@ -3,6 +3,7 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } fro
 import { localDateKey } from '@/core/activity'
 import { blocksToHtml } from '@/core/exporter/toHtml'
 import { findAppearances, resolvedNameSet, resolveRef } from '@/core/glossary'
+import { DIALOG_VERSION } from '@/core/glossary/dialog'
 import { parseEpisodeBody } from '@/core/parser/parseNotation'
 import type { GlossaryEntry } from '@/core/schema'
 import { countEpisodeChars, countWorkChars } from '@/core/stats'
@@ -59,6 +60,9 @@ const toFieldPatch = (v: GlossaryFormValues) => ({
   authorNote: emptyToUndef(v.authorNote),
   // サムネは空文字をそのまま渡す（更新時 '' = 削除指示。作成時は addGlossaryEntry が空を弾く）。
   thumbnail: v.thumbnail,
+  // 対話ノートは対話ペインが渡したときだけ差し替える（キーごと省く＝据え置き。undefined を
+  // 入れると store の spread で消えてしまう）。
+  ...(v.dialog !== undefined ? { dialog: v.dialog, dialogVersion: DIALOG_VERSION } : {}),
 })
 
 interface AppProps {
@@ -542,7 +546,7 @@ export function App({
             entries={work.glossary ?? []}
             workTitle={work.title}
             getAppearances={getAppearances}
-            onCreate={async (name) => (await store.addGlossaryEntry({ name })).id}
+            onCreate={async (input) => (await store.addGlossaryEntry(input)).id}
             onUpdate={async (id, values) => {
               await store.updateGlossaryEntry(id, toFieldPatch(values))
             }}

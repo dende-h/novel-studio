@@ -1,7 +1,7 @@
 import { BookOpen, Lock } from 'lucide-react'
 import { useEffect, useId, useRef, useState } from 'react'
 import { publicTextOf } from '@/core/glossary'
-import type { GlossaryEntry } from '@/core/schema'
+import type { DialogAnswer, GlossaryEntry } from '@/core/schema'
 import { thumbnailToDataUrl } from '@/ui/_utils/imageResizer'
 import { CommitTextarea } from '@/ui/components/NotationField/commit-textarea'
 import { NotationHelpButton } from '@/ui/components/NotationField/notation-help'
@@ -37,6 +37,11 @@ export interface GlossaryFormValues {
   authorNote: string
   /** サムネ画像の data URL。空文字 '' は未設定／削除を表す。 */
   thumbnail: string
+  /**
+   * 対話ノート（用語集画面の対話ペインだけが渡す・丸ごと差し替え）。
+   * 省略＝据え置き。このダイアログは触らない。
+   */
+  dialog?: Record<string, DialogAnswer>
 }
 
 interface GlossaryEntryFormProps {

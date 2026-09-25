@@ -177,9 +177,12 @@ test('@サジェストは狭幅ではキーボード直上のバーで出る', a
   // 用語集に用語を1件用意する
   await openNav(page)
   await page.getByRole('button', { name: '用語集', exact: true }).click()
+  // 「新しく登録」は対話で開く。ここでは名前だけ要るのでフォームに切り替えて登録する
   await page.getByRole('button', { name: '新しく登録' }).click()
+  await page.getByRole('button', { name: 'フォーム', exact: true }).click()
   await page.getByLabel('名前').fill('アリス')
-  await page.getByRole('button', { name: '作成', exact: true }).click()
+  await page.getByLabel('名前').blur()
+  await page.getByRole('button', { name: '用語集に登録', exact: true }).click()
   // 作成した項目がその場で選ばれ、編集面に開く（マスター・ディテール）
   await expect(page.getByLabel('項目の編集').getByLabel('名前')).toHaveValue('アリス')
 
@@ -210,8 +213,10 @@ test('記法バーの参照で空枠を置いてから候補確定しても括�
   await openNav(page)
   await page.getByRole('button', { name: '用語集', exact: true }).click()
   await page.getByRole('button', { name: '新しく登録' }).click()
+  await page.getByRole('button', { name: 'フォーム', exact: true }).click()
   await page.getByLabel('名前').fill('ユグドラシル')
-  await page.getByRole('button', { name: '作成', exact: true }).click()
+  await page.getByLabel('名前').blur()
+  await page.getByRole('button', { name: '用語集に登録', exact: true }).click()
   // 作成した項目がその場で選ばれ、編集面に開く（マスター・ディテール）
   await expect(page.getByLabel('項目の編集').getByLabel('名前')).toHaveValue('ユグドラシル')
   await openNav(page)
@@ -267,9 +272,12 @@ test('記法バー：フォーカス中だけ出て、選択を囲む。@サジ�
   // 候補が出る状態を作る（候補 0 件ならサジェスト自体が開かないため用語を1件登録する）
   await openNav(page)
   await page.getByRole('button', { name: '用語集', exact: true }).click()
+  // 「新しく登録」は対話で開く。ここでは名前だけ要るのでフォームに切り替えて登録する
   await page.getByRole('button', { name: '新しく登録' }).click()
+  await page.getByRole('button', { name: 'フォーム', exact: true }).click()
   await page.getByLabel('名前').fill('アリス')
-  await page.getByRole('button', { name: '作成', exact: true }).click()
+  await page.getByLabel('名前').blur()
+  await page.getByRole('button', { name: '用語集に登録', exact: true }).click()
   // 作成した項目がその場で選ばれ、編集面に開く（マスター・ディテール）
   await expect(page.getByLabel('項目の編集').getByLabel('名前')).toHaveValue('アリス')
   await openNav(page)

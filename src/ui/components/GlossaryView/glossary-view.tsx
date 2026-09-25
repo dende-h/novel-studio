@@ -10,7 +10,8 @@ import {
   resolveRef,
   sortEntries,
 } from '@/core/glossary'
-import type { GlossaryEntry } from '@/core/schema'
+import { DIALOG_VERSION, dialogProgress, dialogStatusOf } from '@/core/glossary/dialog'
+import type { DialogAnswer, GlossaryEntry } from '@/core/schema'
 import type { GameAssetRepository } from '@/core/storage/gameAssetRepository'
 import { cn } from '@/lib/utils'
 import { thumbnailToDataUrl } from '@/ui/_utils/imageResizer'
@@ -20,19 +21,12 @@ import {
   type GlossaryFormValues,
 } from '@/ui/components/GlossaryEntryForm/glossary-entry-form'
 import { GlossaryEntryDetail } from '@/ui/components/GlossaryPeek/entry-detail'
+import { DialogNoteSection } from '@/ui/components/GlossaryView/dialog-note-section'
+import { DialogPane } from '@/ui/components/GlossaryView/dialog-pane'
 import { SpriteSection } from '@/ui/components/GlossaryView/sprite-section'
 import { NotationField } from '@/ui/components/NotationField/notation-field'
 import { NotationHelpButton } from '@/ui/components/NotationField/notation-help'
 import { Button } from '@/ui/components/ui/button'
-import {
-  Dialog,
-  DialogBody,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/ui/components/ui/dialog'
 import { Input } from '@/ui/components/ui/input'
 import { Label } from '@/ui/components/ui/label'
 import { ZoomableImage } from '@/ui/components/ui/zoomable-image'
@@ -48,16 +42,34 @@ import { ZoomableImage } from '@/ui/components/ui/zoomable-image'
  * 編集対象は切り替えない＝書いている場所を失わない。切り替えたいときはチラ見の
  * 「この項目を編集」か、左の一覧・検索から。
  *
+ * 右ペインは「フォーム｜対話」の二面（11-glossary-dialog.md）。対話は決まった質問に一問ずつ
+ * 答えて項目を育てる入口で、「＋ 新しく登録」は対話で開く（D-DLG-ENTRY）。新規は**下書き**として
+ * 手元に置き、「用語集に登録」で初めて保存する。既存の項目はフォームで開く（今までの操作は変えない）。
+ *
  * 狭い画面（md 未満）では一覧と編集を切り替え式にする（選ぶと編集・← で一覧へ戻る）。
  */
+
+/** 新規作成の入力（対話・フォームのどちらで作っても同じ形で親へ渡す）。 */
+export interface GlossaryCreateInput {
+  name: string
+  aliases?: string[]
+  category?: string
+  reading?: string
+  summary?: string
+  authorNote?: string
+  thumbnail?: string
+  dialog?: Record<string, DialogAnswer>
+  dialogVersion?: number
+}
+
 interface GlossaryViewProps {
   entries: GlossaryEntry[]
   /** 開いている作品のタイトル（サブタイトル表示用・任意）。 */
   workTitle?: string
   /** entry の登場話数・参照回数（findAppearances を App が束縛して渡す）。 */
   getAppearances: (entry: GlossaryEntry) => Appearances
-  /** 新規作成（名前だけで作る）。作成した entry の id を返す。重複などは reject。 */
-  onCreate: (name: string) => Promise<string>
+  /** 新規作成。作成した entry の id を返す。重複などは reject。 */
+  onCreate: (input: GlossaryCreateInput) => Promise<string>
   onUpdate: (id: string, values: GlossaryFormValues) => Promise<void> | void
   onRename: (id: string, newName: string, opts: { rewriteBody: boolean }) => Promise<void> | void
   onDelete: (id: string) => void
@@ -66,6 +78,29 @@ interface GlossaryViewProps {
   /** ゲーム素材の置き場所（渡されたときだけ、人物 entry に「立ち絵」欄が出る。PC 限定）。 */
   gameAssetRepo?: GameAssetRepository
 }
+
+/** 下書きの id（登録前の新規項目。一覧には出ない）。 */
+const DRAFT_ID = '__glossary_draft__'
+/** 「対話の途中」の絞り込み（分類チップの末尾・D-DLG-LIST）。 */
+const DIALOG_FILTER = '__dialog_in_progress__'
+
+type PaneTab = 'form' | 'dialog'
+
+const newDraft = (name = ''): GlossaryEntry => ({
+  id: DRAFT_ID,
+  name,
+  aliases: [],
+  createdAt: 0,
+  updatedAt: 0,
+})
+
+/** 下書きに何か書いてあるか（捨てるときに確認する）。 */
+const draftHasContent = (d: GlossaryEntry) =>
+  d.name.trim() !== '' ||
+  d.category !== undefined ||
+  Object.keys(d.dialog ?? {}).length > 0 ||
+  !!d.summary ||
+  !!d.authorNote
 
 export function GlossaryView({
   entries,
@@ -81,36 +116,89 @@ export function GlossaryView({
   const [query, setQuery] = useState('')
   const [category, setCategory] = useState<string | null>(null)
   const [selectedId, setSelectedId] = useState<string | null>(null)
-  // 新規作成ダイアログ。文字列は名前のプリフィル（プレビューの未解決 [[用語]] クリックから）。
-  const [createOpen, setCreateOpen] = useState<string | null>(null)
+  // 新規の下書き（登録するまで保存しない）。選択中は一覧の選択を持たない。
+  const [draft, setDraft] = useState<GlossaryEntry | null>(null)
+  const [tab, setTab] = useState<PaneTab>('form')
+  // 書きかけの下書きを捨てて別の操作へ進む確認（進む先を持つ）。
+  const [discardThen, setDiscardThen] = useState<(() => void) | null>(null)
   // プレビューの [[用語]] クリックで開くチラ見ドロワーの対象。
   const [peekId, setPeekId] = useState<string | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<GlossaryEntry | null>(null)
 
   const categories = useMemo(() => categoriesOf(entries), [entries])
+  const inProgressCount = useMemo(
+    () => entries.filter((e) => dialogStatusOf(e) === 'inProgress').length,
+    [entries],
+  )
   const visible = useMemo(() => {
     const byQuery = entries.filter((e) => matchesQuery(e, query))
-    const byCat = category ? byQuery.filter((e) => (e.category ?? '').trim() === category) : byQuery
+    const byCat =
+      category === DIALOG_FILTER
+        ? byQuery.filter((e) => dialogStatusOf(e) === 'inProgress')
+        : category
+          ? byQuery.filter((e) => (e.category ?? '').trim() === category)
+          : byQuery
     return sortEntries(byCat)
   }, [entries, query, category])
   const resolvedNames = useMemo(() => resolvedNameSet(entries), [entries])
 
   const selected = selectedId ? (entries.find((e) => e.id === selectedId) ?? null) : null
+  const current = draft ?? selected
   const peeked = peekId ? (entries.find((e) => e.id === peekId) ?? null) : null
   // 選択・チラ見していた項目が消えたら（削除・同期）閉じる＝空の面が残らない。
   useEffect(() => {
     if (selectedId && !entries.some((e) => e.id === selectedId)) setSelectedId(null)
-  }, [selectedId, entries])
-  useEffect(() => {
     if (peekId && !entries.some((e) => e.id === peekId)) setPeekId(null)
-  }, [peekId, entries])
+  }, [entries, selectedId, peekId])
+  // 「対話の途中」が空になったら絞り込みを解く（チップも消えるので）。
+  useEffect(() => {
+    if (category === DIALOG_FILTER && inProgressCount === 0) setCategory(null)
+  }, [category, inProgressCount])
 
-  // プレビューの [[用語]] クリック：居る項目は右のチラ見で開く（編集対象は切り替えない＝
-  // 書いている場所を失わない）。無い語は名前入りで新規作成へ。
+  /** 書きかけの下書きがあれば確認してから進む。 */
+  const guardDraft = (go: () => void) => {
+    if (draft && draftHasContent(draft)) setDiscardThen(() => go)
+    else go()
+  }
+  const selectEntry = (id: string) =>
+    guardDraft(() => {
+      setDraft(null)
+      setSelectedId(id)
+      setTab('form')
+    })
+  /** 「＋ 新しく登録」＝対話で開く（名前が先に決まっているときはそれを入れて）。 */
+  const startDraft = (name = '') =>
+    guardDraft(() => {
+      setDraft(newDraft(name))
+      setSelectedId(null)
+      setTab('dialog')
+      setPeekId(null)
+    })
+
+  /** プレビューの [[用語]] クリック：解決済み→チラ見、未解決→その名前で新規の下書きへ。 */
   const jumpToRef = (name: string) => {
-    const target = resolveRef(name, entries)
-    if (target) setPeekId(target.id)
-    else setCreateOpen(name)
+    const hit = resolveRef(name, entries)
+    if (hit) setPeekId(hit.id)
+    else startDraft(name.trim())
+  }
+
+  /** 下書きを登録する（対話の「用語集に登録する」・フォームの「用語集に登録」）。 */
+  const registerDraft = async (d: GlossaryEntry) => {
+    const id = await onCreate({
+      name: d.name.trim(),
+      aliases: d.aliases,
+      ...(d.category ? { category: d.category } : {}),
+      ...(d.reading ? { reading: d.reading } : {}),
+      ...(publicTextOf(d) ? { summary: publicTextOf(d) } : {}),
+      ...(d.authorNote ? { authorNote: d.authorNote } : {}),
+      ...(d.thumbnail ? { thumbnail: d.thumbnail } : {}),
+      ...(d.dialog && Object.keys(d.dialog).length > 0
+        ? { dialog: d.dialog, dialogVersion: d.dialogVersion ?? DIALOG_VERSION }
+        : {}),
+    })
+    setDraft(null)
+    setSelectedId(id)
+    setTab('form')
   }
 
   return (
@@ -132,15 +220,16 @@ export function GlossaryView({
         </header>
 
         <div className="flex min-h-0 flex-1 items-stretch gap-6">
-          {/* 左：検索・絞り込み・項目一覧。狭幅では選択中は隠して編集面に譲る。 */}
+          {/* 左：検索・絞り込み・項目一覧。狭幅では選択中（下書き含む）は隠して編集面に譲る。 */}
           <nav
             aria-label="用語集の項目"
             className={cn(
               'w-full flex-col gap-2.5 pb-6 md:flex md:w-[17rem] md:shrink-0',
-              selected ? 'hidden' : 'flex',
+              current ? 'hidden' : 'flex',
             )}
           >
-            <Button onClick={() => setCreateOpen('')} size="sm" className="w-full gap-1.5">
+            {/* 「＋ 新しく登録」は対話で開く（D-DLG-ENTRY）。 */}
+            <Button onClick={() => startDraft()} size="sm" className="w-full gap-1.5">
               <Plus className="size-4" />
               新しく登録
             </Button>
@@ -154,7 +243,7 @@ export function GlossaryView({
                 className="h-9 pl-8 text-[13px]"
               />
             </div>
-            {categories.length > 0 ? (
+            {categories.length > 0 || inProgressCount > 0 ? (
               <fieldset
                 className="m-0 flex min-w-0 flex-wrap items-center gap-1 border-0 p-0"
                 aria-label="カテゴリで絞り込み"
@@ -172,6 +261,15 @@ export function GlossaryView({
                     onClick={() => setCategory((cur) => (cur === c ? null : c))}
                   />
                 ))}
+                {inProgressCount > 0 ? (
+                  <FilterChip
+                    label={`対話の途中 ${inProgressCount}`}
+                    active={category === DIALOG_FILTER}
+                    onClick={() =>
+                      setCategory((cur) => (cur === DIALOG_FILTER ? null : DIALOG_FILTER))
+                    }
+                  />
+                ) : null}
               </fieldset>
             ) : null}
             {visible.length === 0 ? (
@@ -186,36 +284,56 @@ export function GlossaryView({
                   <EntryRow
                     key={entry.id}
                     entry={entry}
-                    active={entry.id === selectedId}
+                    active={entry.id === selectedId && draft === null}
                     used={getAppearances(entry).refCount > 0}
-                    onClick={() => setSelectedId(entry.id)}
+                    onClick={() => selectEntry(entry.id)}
                   />
                 ))}
               </ul>
             )}
           </nav>
 
-          {/* 右：選んだ項目の編集面。狭幅では未選択のとき隠して一覧に譲る。 */}
+          {/* 右：選んだ項目（または新規の下書き）の編集面。狭幅では未選択のとき隠して一覧に譲る。 */}
           <section
             aria-label="項目の編集"
             className={cn(
               'min-h-0 min-w-0 flex-1 flex-col overflow-y-auto pb-10 md:flex',
-              selected ? 'flex' : 'hidden',
+              current ? 'flex' : 'hidden',
             )}
           >
-            {selected ? (
+            {current ? (
               <EntryEditor
-                key={selected.id}
-                entry={selected}
-                appearances={getAppearances(selected)}
+                key={current.id}
+                entry={current}
+                isDraft={draft !== null}
+                tab={tab}
+                onTabChange={setTab}
+                appearances={draft ? { episodeIds: [], refCount: 0 } : getAppearances(current)}
                 entries={entries}
                 resolvedNames={resolvedNames}
-                onUpdate={onUpdate}
-                onRename={onRename}
-                onRequestDelete={() => setDeleteTarget(selected)}
+                onCommitValues={async (values) => {
+                  if (draft) setDraft((d) => (d ? applyValues(d, values) : d))
+                  else await onUpdate(current.id, values)
+                }}
+                onCommitName={async (name) => {
+                  if (draft) setDraft((d) => (d ? { ...d, name } : d))
+                  else await onRename(current.id, name, { rewriteBody: false })
+                }}
+                onDialogChange={async (next) => {
+                  if (draft) setDraft(next)
+                  else await onUpdate(current.id, { ...valuesOf(next), dialog: next.dialog ?? {} })
+                }}
+                onRegister={draft ? registerDraft : undefined}
+                onRequestDelete={() => {
+                  if (draft) guardDraft(() => setDraft(null))
+                  else setDeleteTarget(current)
+                }}
                 onCreateEntry={onCreateEntry}
                 onRefClick={jumpToRef}
-                onBack={() => setSelectedId(null)}
+                onBack={() => {
+                  if (draft) guardDraft(() => setDraft(null))
+                  else setSelectedId(null)
+                }}
                 assetRepo={gameAssetRepo}
               />
             ) : (
@@ -259,7 +377,7 @@ export function GlossaryView({
                 appearances={getAppearances(peeked)}
                 editLabel="この項目を編集"
                 onEdit={() => {
-                  setSelectedId(peeked.id)
+                  selectEntry(peeked.id)
                   setPeekId(null)
                 }}
               />
@@ -268,16 +386,20 @@ export function GlossaryView({
         </aside>
       ) : null}
 
-      {/* 新規作成（名前だけ決めて、続きは編集面で書く） */}
-      <CreateEntryDialog
-        open={createOpen !== null}
-        initialName={createOpen ?? ''}
+      {/* 書きかけの下書きを捨てる確認 */}
+      <ConfirmDialog
+        open={discardThen !== null}
         onOpenChange={(o) => {
-          if (!o) setCreateOpen(null)
+          if (!o) setDiscardThen(null)
         }}
-        onCreate={async (name) => {
-          const id = await onCreate(name)
-          setSelectedId(id)
+        title="書きかけの項目を捨てますか？"
+        description="まだ登録していない項目です。捨てると、対話で答えた内容は残りません。"
+        confirmLabel="捨てる"
+        onConfirm={() => {
+          const go = discardThen
+          setDiscardThen(null)
+          setDraft(null)
+          go?.()
         }}
       />
       {/* 削除確認 */}
@@ -299,6 +421,35 @@ export function GlossaryView({
       />
     </div>
   )
+}
+
+/** 現在値から GlossaryFormValues を組む（1 フィールドずつ差し替えて確定する土台）。 */
+function valuesOf(e: GlossaryEntry): GlossaryFormValues {
+  return {
+    name: e.name,
+    aliases: e.aliases,
+    category: e.category ?? '',
+    reading: e.reading ?? '',
+    // 公開情報は概要＋旧・詳細の結合＝一度でも保存すれば summary へ一本化される。
+    summary: publicTextOf(e),
+    authorNote: e.authorNote ?? '',
+    thumbnail: e.thumbnail ?? '',
+  }
+}
+
+/** フォームの値を下書きへ写す（保存経路の toFieldPatch と同じ規則：空は未設定・旧 body は畳む）。 */
+function applyValues(d: GlossaryEntry, v: GlossaryFormValues): GlossaryEntry {
+  const { body: _body, ...rest } = d
+  return {
+    ...rest,
+    aliases: v.aliases,
+    ...(v.category ? { category: v.category } : { category: undefined }),
+    ...(v.reading ? { reading: v.reading } : { reading: undefined }),
+    ...(v.summary ? { summary: v.summary } : { summary: undefined }),
+    ...(v.authorNote ? { authorNote: v.authorNote } : { authorNote: undefined }),
+    ...(v.thumbnail ? { thumbnail: v.thumbnail } : { thumbnail: undefined }),
+    ...(v.dialog !== undefined ? { dialog: v.dialog } : {}),
+  }
 }
 
 function FilterChip({
@@ -328,7 +479,10 @@ function FilterChip({
   )
 }
 
-/** 左カラムの 1 行（サムネ or 頭文字・名前・分類と使用状況）。 */
+/**
+ * 左カラムの 1 行（サムネ or 頭文字・名前・分類と使用状況）。対話を始めた項目だけ進み具合を出す
+ * （途中＝細いバーと n/m、済み＝✓・D-DLG-LIST）。手を付けていない項目は今までの見た目のまま。
+ */
 function EntryRow({
   entry,
   active,
@@ -341,6 +495,8 @@ function EntryRow({
   onClick: () => void
 }) {
   const initial = entry.name.trim().charAt(0) || '？'
+  const status = dialogStatusOf(entry)
+  const progress = status === 'inProgress' ? dialogProgress(entry) : null
   return (
     <li>
       <button
@@ -376,6 +532,25 @@ function EntryRow({
           <span className="truncate text-[10.5px] text-on-surface-variant/70">
             {[entry.category ?? '未分類', used ? '' : '未使用'].filter(Boolean).join(' ・ ')}
           </span>
+          {progress ? (
+            <span className="mt-0.5 flex items-center gap-1.5 text-[10.5px] text-on-surface-variant">
+              <span
+                className="h-1 w-24 overflow-hidden rounded-full bg-surface-container-high"
+                aria-hidden
+              >
+                <span
+                  className="block h-full bg-primary"
+                  style={{
+                    width: `${progress.total > 0 ? Math.round((progress.done / progress.total) * 100) : 0}%`,
+                  }}
+                />
+              </span>
+              対話 {progress.done}/{progress.total}
+              {progress.later > 0 ? `・あとで ${progress.later}` : ''}
+            </span>
+          ) : status === 'done' ? (
+            <span className="mt-0.5 text-[10.5px] text-primary">✓ 対話済み</span>
+          ) : null}
         </span>
       </button>
     </li>
@@ -386,14 +561,20 @@ function EntryRow({
  * 右カラムの編集面。モーダルの「保存する」は無く、各フィールドが blur（欄を離れる）で
  * その場で確定する＝世界観設定と同じ書き味。名前・別名の衝突（D-GLOS-UNIQUE）は
  * reject をここで受けてエラー表示し、入力は保つ（打ち直せる）。
+ * 見出し横の「フォーム｜対話」で二面を行き来する。対話は一度開いたら隠すだけ（会話の途中を保つ）。
  */
 function EntryEditor({
   entry,
+  isDraft,
+  tab,
+  onTabChange,
   appearances,
   entries,
   resolvedNames,
-  onUpdate,
-  onRename,
+  onCommitValues,
+  onCommitName,
+  onDialogChange,
+  onRegister,
   onRequestDelete,
   onCreateEntry,
   onRefClick,
@@ -401,11 +582,18 @@ function EntryEditor({
   assetRepo,
 }: {
   entry: GlossaryEntry
+  isDraft: boolean
+  tab: PaneTab
+  onTabChange: (tab: PaneTab) => void
   appearances: Appearances
   entries: GlossaryEntry[]
   resolvedNames: Set<string>
-  onUpdate: (id: string, values: GlossaryFormValues) => Promise<void> | void
-  onRename: (id: string, newName: string, opts: { rewriteBody: boolean }) => Promise<void> | void
+  onCommitValues: (values: GlossaryFormValues) => Promise<void> | void
+  onCommitName: (name: string) => Promise<void> | void
+  /** 対話ペインが項目を進めたとき（答え・分類・公開の扱い・下書きの公開情報）。 */
+  onDialogChange: (next: GlossaryEntry) => Promise<void> | void
+  /** 下書きの登録（下書きのときだけ）。 */
+  onRegister?: (entry: GlossaryEntry) => Promise<void>
   onRequestDelete: () => void
   onCreateEntry?: (name: string) => Promise<string | null>
   onRefClick: (name: string) => void
@@ -415,23 +603,17 @@ function EntryEditor({
   const uid = useId()
   const [error, setError] = useState<string | null>(null)
   const [imageBusy, setImageBusy] = useState(false)
-
-  /** 現在値から GlossaryFormValues を組む（1 フィールドずつ差し替えて確定する土台）。 */
-  const valuesOf = (e: GlossaryEntry): GlossaryFormValues => ({
-    name: e.name,
-    aliases: e.aliases,
-    category: e.category ?? '',
-    reading: e.reading ?? '',
-    // 公開情報は概要＋旧・詳細の結合＝一度でも保存すれば summary へ一本化される。
-    summary: publicTextOf(e),
-    authorNote: e.authorNote ?? '',
-    thumbnail: e.thumbnail ?? '',
-  })
+  const [registering, setRegistering] = useState(false)
+  // 対話は最初に開いたときに始める（それまでは台本も作らない）。以後はタブを切り替えても隠すだけ。
+  const [dialogOpened, setDialogOpened] = useState(tab === 'dialog')
+  useEffect(() => {
+    if (tab === 'dialog') setDialogOpened(true)
+  }, [tab])
 
   const commitField = async (patch: Partial<GlossaryFormValues>) => {
     setError(null)
     try {
-      await onUpdate(entry.id, { ...valuesOf(entry), ...patch })
+      await onCommitValues({ ...valuesOf(entry), ...patch })
     } catch (e) {
       setError(e instanceof Error ? e.message : '保存に失敗しました')
     }
@@ -441,7 +623,7 @@ function EntryEditor({
     if (name === entry.name) return
     setError(null)
     try {
-      await onRename(entry.id, name, { rewriteBody: false })
+      await onCommitName(name)
     } catch (e) {
       setError(e instanceof Error ? e.message : '名前の変更に失敗しました')
     }
@@ -460,6 +642,19 @@ function EntryEditor({
     }
   }
 
+  const register = async () => {
+    if (!onRegister || registering) return
+    setRegistering(true)
+    setError(null)
+    try {
+      await onRegister(entry)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '登録に失敗しました')
+    } finally {
+      setRegistering(false)
+    }
+  }
+
   // 既存データに固定リスト外のカテゴリ（旧・自由入力）があれば選択肢に含めて保全する。
   const legacyCategory =
     (entry.category ?? '') !== '' &&
@@ -468,6 +663,7 @@ function EntryEditor({
       : null
 
   const used = appearances.refCount > 0
+  const progress = dialogProgress(entry)
 
   return (
     <div className="flex flex-col gap-4">
@@ -481,24 +677,50 @@ function EntryEditor({
         一覧へ
       </button>
 
-      {/* 名前＋削除。名前は blur で確定（旧名は自動で別名に残り、本文の参照は解決され続ける）。 */}
+      {/* 名前＋フォーム｜対話＋削除。名前は blur で確定（旧名は自動で別名に残り、本文の参照は解決され続ける）。 */}
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
-          <NameInput value={entry.name} onCommit={(v) => void commitName(v)} />
+          <NameInput
+            value={entry.name}
+            placeholder={isDraft ? '新しい項目（名前は対話でも決められます）' : undefined}
+            allowEmpty={isDraft}
+            onCommit={(v) => void commitName(v)}
+          />
           <p className="mt-1 text-[11px] text-on-surface-variant/60">
-            名前を変えても、旧名は自動で別名に残り本文中の参照はそのまま解決されます ・{' '}
-            {used ? `${appearances.episodeIds.length}話・${appearances.refCount}回 登場` : '未使用'}
+            {isDraft
+              ? '新しい項目です。対話でもフォームでも書けます。登録するまで保存されません。'
+              : `名前を変えても、旧名は自動で別名に残り本文中の参照はそのまま解決されます ・ ${
+                  used
+                    ? `${appearances.episodeIds.length}話・${appearances.refCount}回 登場`
+                    : '未使用'
+                }`}
           </p>
         </div>
-        <button
-          type="button"
-          onClick={onRequestDelete}
-          aria-label={`「${entry.name}」を削除`}
-          className="flex shrink-0 items-center gap-1 rounded-md px-2 py-1.5 text-[12px] text-on-surface-variant/70 transition-colors hover:bg-error-container hover:text-destructive"
-        >
-          <Trash2 className="size-3.5" aria-hidden />
-          削除
-        </button>
+        <div className="flex shrink-0 items-center gap-2">
+          <fieldset
+            className="m-0 inline-flex overflow-hidden rounded-md border border-outline-variant/40 bg-surface-container-lowest p-0"
+            aria-label="フォームと対話の切り替え"
+          >
+            <PaneTabButton active={tab === 'form'} onClick={() => onTabChange('form')}>
+              フォーム
+            </PaneTabButton>
+            <PaneTabButton active={tab === 'dialog'} onClick={() => onTabChange('dialog')}>
+              対話
+              <span className="ml-1 text-[10.5px] opacity-80">
+                {progress.total > 0 ? `${progress.done}/${progress.total}` : '–'}
+              </span>
+            </PaneTabButton>
+          </fieldset>
+          <button
+            type="button"
+            onClick={onRequestDelete}
+            aria-label={isDraft ? '書きかけを捨てる' : `「${entry.name}」を削除`}
+            className="flex shrink-0 items-center gap-1 rounded-md px-2 py-1.5 text-[12px] text-on-surface-variant/70 transition-colors hover:bg-error-container hover:text-destructive"
+          >
+            <Trash2 className="size-3.5" aria-hidden />
+            {isDraft ? '捨てる' : '削除'}
+          </button>
+        </div>
       </div>
 
       {error ? (
@@ -507,154 +729,227 @@ function EntryEditor({
         </p>
       ) : null}
 
-      {/* メタ情報（読み・カテゴリ・別名・サムネ）。狭幅で 2 列固定にすると潰れるので 1 列へ落とす。 */}
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <div className="space-y-1.5">
-          <Label htmlFor={`${uid}-reading`}>読み（任意）</Label>
-          <CommitInput
-            id={`${uid}-reading`}
-            value={entry.reading ?? ''}
-            onCommit={(v) => void commitField({ reading: v.trim() })}
-            placeholder="ゆぐどらしる"
-          />
-        </div>
-        <div className="space-y-1.5">
-          <Label htmlFor={`${uid}-category`}>カテゴリ</Label>
-          <select
-            id={`${uid}-category`}
-            value={entry.category ?? ''}
-            onChange={(e) => void commitField({ category: e.target.value })}
-            className="h-9 w-full rounded-md border border-input bg-surface-container-lowest px-3 font-sans text-base text-on-surface outline-none transition-colors focus:border-primary md:text-sm"
-          >
-            <option value="">未分類</option>
-            {GLOSSARY_CATEGORIES.map((c) => (
-              <option key={c} value={c}>
-                {c}
-              </option>
-            ))}
-            {legacyCategory ? <option value={legacyCategory}>{legacyCategory}</option> : null}
-          </select>
-        </div>
-      </div>
-      <div className="space-y-1.5">
-        <Label htmlFor={`${uid}-aliases`}>別名（読点区切り・任意）</Label>
-        <CommitInput
-          id={`${uid}-aliases`}
-          value={entry.aliases.join('、')}
-          onCommit={(v) => void commitField({ aliases: parseAliases(v) })}
-          placeholder="世界樹、ワールドツリー"
-        />
-      </div>
-
-      {/* 公開情報（読者に見える）。記法つき＝@ / [[ サジェストとプレビュー。 */}
-      <section className="space-y-1.5">
-        <div className="flex items-center gap-2">
-          <h2 className="font-medium text-[13px] text-on-surface">公開情報</h2>
-          <span className="inline-flex items-center gap-1 rounded-full bg-primary-container px-2 py-0.5 font-medium text-[10.5px] text-on-primary-container">
-            <BookOpen className="size-2.5" aria-hidden />
-            読者に見えます
-          </span>
-          <NotationHelpButton />
-        </div>
-        <NotationField
-          value={publicTextOf(entry)}
-          onCommit={(v) => void commitField({ summary: v.trim() })}
-          placeholder="一行の要約から、来歴・見た目などの詳しい説明まで、読者に見せる文をここへ"
-          ariaLabel="公開情報"
+      {/* 対話（一度開いたら隠すだけ＝会話の途中を保つ）。 */}
+      {dialogOpened ? (
+        <DialogPane
+          entry={entry}
+          isDraft={isDraft}
+          entries={entries}
           resolvedNames={resolvedNames}
-          glossary={entries}
+          onChange={onDialogChange}
+          onFinish={onRegister}
+          onToForm={() => onTabChange('form')}
           onCreateEntry={onCreateEntry}
           onRefClick={onRefClick}
-          textareaClassName="min-h-36 text-[13.5px]"
+          className={tab === 'dialog' ? undefined : 'hidden'}
         />
-        <p className="text-[11px] text-on-surface-variant/60 leading-relaxed">
-          コトノハ-grove-
-          へ投稿すると読者にも見えます（その用語が出てくる話まで読んだ読者だけに開きます）。 @
-          または [[ で他の用語を呼び出せます。プレビューの緑の語はクリックで右にチラ見が開きます。
-        </p>
-      </section>
+      ) : null}
 
-      {/* 作者メモ（非公開）。 */}
-      <section className="space-y-1.5">
-        <div className="flex items-center gap-2">
-          <h2 className="font-medium text-[13px] text-on-surface">作者メモ</h2>
-          <span className="inline-flex items-center gap-1 rounded-full bg-secondary-container px-2 py-0.5 font-medium text-[10.5px] text-on-secondary-container">
-            <Lock className="size-2.5" aria-hidden />
-            公開されません
-          </span>
-          <NotationHelpButton />
-        </div>
-        <NotationField
-          value={entry.authorNote ?? ''}
-          onCommit={(v) => void commitField({ authorNote: v.trim() })}
-          placeholder="この人物の正体、この場所で後に起きること——まだ読者に見せないこと"
-          ariaLabel="作者メモ"
-          resolvedNames={resolvedNames}
-          glossary={entries}
-          onCreateEntry={onCreateEntry}
-          onRefClick={onRefClick}
-          textareaClassName="min-h-24 text-[13.5px]"
-        />
-        <p className="text-[11px] text-on-surface-variant/60 leading-relaxed">
-          この欄だけは投稿時に取り除かれます。作品全体の決め事や設定ルールは、プロットの
-          「世界観設定」へ書くとまとまります。
-        </p>
-      </section>
-
-      {/* サムネイル。 */}
-      <section className="space-y-1.5">
-        <Label htmlFor={`${uid}-thumbnail`}>サムネイル画像（任意）</Label>
-        <div className="flex items-center gap-3">
-          {entry.thumbnail ? (
-            <ZoomableImage
-              src={entry.thumbnail}
-              alt={`${entry.name}のサムネイル`}
-              className="size-16 rounded-md border border-outline-variant/30 object-cover"
-            />
-          ) : (
-            <div className="flex size-16 shrink-0 items-center justify-center rounded-md border border-outline-variant/30 border-dashed text-on-surface-variant/40 text-xs">
-              なし
+      {tab === 'form' ? (
+        <>
+          {/* メタ情報（読み・カテゴリ・別名・サムネ）。狭幅で 2 列固定にすると潰れるので 1 列へ落とす。 */}
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <Label htmlFor={`${uid}-reading`}>読み（任意）</Label>
+              <CommitInput
+                id={`${uid}-reading`}
+                value={entry.reading ?? ''}
+                onCommit={(v) => void commitField({ reading: v.trim() })}
+                placeholder="ゆぐどらしる"
+              />
             </div>
-          )}
-          <div className="flex min-w-0 flex-col gap-1.5">
-            <input
-              id={`${uid}-thumbnail`}
-              type="file"
-              accept="image/*"
-              onChange={(e) => {
-                void onPickImage(e.target.files?.[0])
-                e.target.value = ''
-              }}
-              className="block w-full text-on-surface-variant text-sm file:mr-3 file:rounded-md file:border-0 file:bg-secondary file:px-3 file:py-1.5 file:font-medium file:text-secondary-foreground file:text-sm hover:file:bg-secondary/80"
-            />
-            <div className="flex items-center gap-3 text-on-surface-variant/70 text-xs">
-              <span>{imageBusy ? '処理中…' : '正方形に切り抜いて保存'}</span>
-              {entry.thumbnail ? (
-                <button
-                  type="button"
-                  onClick={() => void commitField({ thumbnail: '' })}
-                  className="text-destructive hover:underline"
-                >
-                  削除
-                </button>
-              ) : null}
+            <div className="space-y-1.5">
+              <Label htmlFor={`${uid}-category`}>カテゴリ</Label>
+              <select
+                id={`${uid}-category`}
+                value={entry.category ?? ''}
+                onChange={(e) => void commitField({ category: e.target.value })}
+                className="h-9 w-full rounded-md border border-input bg-surface-container-lowest px-3 font-sans text-base text-on-surface outline-none transition-colors focus:border-primary md:text-sm"
+              >
+                <option value="">未分類</option>
+                {GLOSSARY_CATEGORIES.map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
+                {legacyCategory ? <option value={legacyCategory}>{legacyCategory}</option> : null}
+              </select>
             </div>
           </div>
-        </div>
-      </section>
+          <div className="space-y-1.5">
+            <Label htmlFor={`${uid}-aliases`}>別名（読点区切り・任意）</Label>
+            <CommitInput
+              id={`${uid}-aliases`}
+              value={entry.aliases.join('、')}
+              onCommit={(v) => void commitField({ aliases: parseAliases(v) })}
+              placeholder="世界樹、ワールドツリー"
+            />
+          </div>
 
-      {/* 立ち絵（人物のみ・PC 限定＝作る作業なので D-GAME-PC。実体は素材層で Work には入らない）。 */}
-      {assetRepo && PERSON_CATEGORY.test(entry.category ?? '') ? (
-        <div className="max-lg:hidden">
-          <SpriteSection
-            key={entry.name}
-            name={entry.name}
-            aliases={entry.aliases}
-            assetRepo={assetRepo}
+          {/* 公開情報（読者に見える）。記法つき＝@ / [[ サジェストとプレビュー。 */}
+          <section className="space-y-1.5">
+            <div className="flex items-center gap-2">
+              <h2 className="font-medium text-[13px] text-on-surface">公開情報</h2>
+              <span className="inline-flex items-center gap-1 rounded-full bg-primary-container px-2 py-0.5 font-medium text-[10.5px] text-on-primary-container">
+                <BookOpen className="size-2.5" aria-hidden />
+                読者に見えます
+              </span>
+              <NotationHelpButton />
+            </div>
+            <NotationField
+              key={publicTextOf(entry) === '' ? 'empty' : 'filled'}
+              value={publicTextOf(entry)}
+              onCommit={(v) => void commitField({ summary: v.trim() })}
+              placeholder="一行の要約から、来歴・見た目などの詳しい説明まで、読者に見せる文をここへ"
+              ariaLabel="公開情報"
+              resolvedNames={resolvedNames}
+              glossary={entries}
+              onCreateEntry={onCreateEntry}
+              onRefClick={onRefClick}
+              textareaClassName="min-h-36 text-[13.5px]"
+            />
+            <p className="text-[11px] text-on-surface-variant/60 leading-relaxed">
+              コトノハ-grove-
+              へ投稿すると読者にも見えます（その用語が出てくる話まで読んだ読者だけに開きます）。 @
+              または [[
+              で他の用語を呼び出せます。プレビューの緑の語はクリックで右にチラ見が開きます。
+            </p>
+          </section>
+
+          {/* 作者メモ（非公開）。 */}
+          <section className="space-y-1.5">
+            <div className="flex items-center gap-2">
+              <h2 className="font-medium text-[13px] text-on-surface">作者メモ</h2>
+              <span className="inline-flex items-center gap-1 rounded-full bg-secondary-container px-2 py-0.5 font-medium text-[10.5px] text-on-secondary-container">
+                <Lock className="size-2.5" aria-hidden />
+                公開されません
+              </span>
+              <NotationHelpButton />
+            </div>
+            <NotationField
+              value={entry.authorNote ?? ''}
+              onCommit={(v) => void commitField({ authorNote: v.trim() })}
+              placeholder="この人物の正体、この場所で後に起きること——まだ読者に見せないこと"
+              ariaLabel="作者メモ"
+              resolvedNames={resolvedNames}
+              glossary={entries}
+              onCreateEntry={onCreateEntry}
+              onRefClick={onRefClick}
+              textareaClassName="min-h-24 text-[13.5px]"
+            />
+            <p className="text-[11px] text-on-surface-variant/60 leading-relaxed">
+              この欄だけは投稿時に取り除かれます。作品全体の決め事や設定ルールは、プロットの
+              「世界観設定」へ書くとまとまります。
+            </p>
+          </section>
+
+          {/* 対話ノート（見るだけ・直すのは対話から）。 */}
+          <DialogNoteSection
+            entry={entry}
+            onOpenDialog={() => onTabChange('dialog')}
+            resolvedNames={resolvedNames}
+            onRefClick={onRefClick}
           />
-        </div>
+
+          {/* サムネイル。 */}
+          <section className="space-y-1.5">
+            <Label htmlFor={`${uid}-thumbnail`}>サムネイル画像（任意）</Label>
+            <div className="flex items-center gap-3">
+              {entry.thumbnail ? (
+                <ZoomableImage
+                  src={entry.thumbnail}
+                  alt={`${entry.name}のサムネイル`}
+                  className="size-16 rounded-md border border-outline-variant/30 object-cover"
+                />
+              ) : (
+                <div className="flex size-16 shrink-0 items-center justify-center rounded-md border border-outline-variant/30 border-dashed text-on-surface-variant/40 text-xs">
+                  なし
+                </div>
+              )}
+              <div className="flex min-w-0 flex-col gap-1.5">
+                <input
+                  id={`${uid}-thumbnail`}
+                  type="file"
+                  accept="image/*"
+                  onChange={(e) => {
+                    void onPickImage(e.target.files?.[0])
+                    e.target.value = ''
+                  }}
+                  className="block w-full text-on-surface-variant text-sm file:mr-3 file:rounded-md file:border-0 file:bg-secondary file:px-3 file:py-1.5 file:font-medium file:text-secondary-foreground file:text-sm hover:file:bg-secondary/80"
+                />
+                <div className="flex items-center gap-3 text-on-surface-variant/70 text-xs">
+                  <span>{imageBusy ? '処理中…' : '正方形に切り抜いて保存'}</span>
+                  {entry.thumbnail ? (
+                    <button
+                      type="button"
+                      onClick={() => void commitField({ thumbnail: '' })}
+                      className="text-destructive hover:underline"
+                    >
+                      削除
+                    </button>
+                  ) : null}
+                </div>
+              </div>
+            </div>
+          </section>
+
+          {/* 立ち絵（人物のみ・PC 限定＝作る作業なので D-GAME-PC。実体は素材層で Work には入らない）。 */}
+          {!isDraft && assetRepo && PERSON_CATEGORY.test(entry.category ?? '') ? (
+            <div className="max-lg:hidden">
+              <SpriteSection
+                key={entry.name}
+                name={entry.name}
+                aliases={entry.aliases}
+                assetRepo={assetRepo}
+              />
+            </div>
+          ) : null}
+
+          {/* 下書きの登録。名前が無いと登録できない（@ 参照の解決キー）。 */}
+          {isDraft ? (
+            <div className="flex items-center justify-end gap-3">
+              {entry.name.trim() === '' ? (
+                <span className="text-[11.5px] text-on-surface-variant/70">
+                  名前を入れると登録できます
+                </span>
+              ) : null}
+              <Button
+                type="button"
+                onClick={() => void register()}
+                disabled={entry.name.trim() === '' || registering || imageBusy}
+              >
+                用語集に登録
+              </Button>
+            </div>
+          ) : null}
+        </>
       ) : null}
     </div>
+  )
+}
+
+/** 「フォーム｜対話」の切替ボタン。 */
+function PaneTabButton({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean
+  onClick: () => void
+  children: React.ReactNode
+}) {
+  return (
+    <button
+      type="button"
+      aria-pressed={active}
+      onClick={onClick}
+      className={cn(
+        'px-3 py-1.5 text-[12.5px] transition-colors md:py-1',
+        active ? 'bg-primary text-white' : 'text-on-surface hover:bg-surface-container-high',
+      )}
+    >
+      {children}
+    </button>
   )
 }
 
@@ -706,8 +1001,18 @@ function CommitInput({
   )
 }
 
-/** 名前の入力（blur で確定・空は元へ戻す）。見出しの見た目のまま編集できる。 */
-function NameInput({ value, onCommit }: { value: string; onCommit: (v: string) => void }) {
+/** 名前の入力（blur で確定・空は元へ戻す。下書きでは空のままにできる）。見出しの見た目のまま編集できる。 */
+function NameInput({
+  value,
+  onCommit,
+  placeholder,
+  allowEmpty = false,
+}: {
+  value: string
+  onCommit: (v: string) => void
+  placeholder?: string
+  allowEmpty?: boolean
+}) {
   const [draft, setDraft] = useState(value)
   const focused = useRef(false)
   useEffect(() => {
@@ -723,7 +1028,7 @@ function NameInput({ value, onCommit }: { value: string; onCommit: (v: string) =
       onBlur={() => {
         focused.current = false
         const v = draft.trim()
-        if (v === '') setDraft(value)
+        if (v === '' && !allowEmpty) setDraft(value)
         else if (v !== value) onCommit(v)
       }}
       onKeyDown={(e) => {
@@ -731,99 +1036,8 @@ function NameInput({ value, onCommit }: { value: string; onCommit: (v: string) =
         if (e.key === 'Escape') setDraft(value)
       }}
       aria-label="名前"
+      placeholder={placeholder}
       className="w-full rounded-md bg-transparent px-1 font-semibold font-serif text-[20px] text-on-surface outline-none transition-colors hover:bg-surface-container-high focus:bg-surface-container-high"
     />
-  )
-}
-
-/**
- * 新規作成ダイアログ（名前だけ）。読み・分類・説明は作成後の編集面でそのまま書ける。
- * 重複（D-GLOS-UNIQUE）は onCreate の reject を受けてダイアログ内に表示する。
- */
-function CreateEntryDialog({
-  open,
-  initialName,
-  onOpenChange,
-  onCreate,
-}: {
-  open: boolean
-  initialName: string
-  onOpenChange: (open: boolean) => void
-  onCreate: (name: string) => Promise<void>
-}) {
-  const [name, setName] = useState('')
-  const [error, setError] = useState<string | null>(null)
-  const [busy, setBusy] = useState(false)
-  // 開いた瞬間だけ初期化（表示中に親が再レンダーされても入力を巻き戻さない）。
-  const initialRef = useRef(initialName)
-  initialRef.current = initialName
-  useEffect(() => {
-    if (!open) return
-    setName(initialRef.current)
-    setError(null)
-    setBusy(false)
-  }, [open])
-
-  const submit = async () => {
-    const v = name.trim()
-    if (v === '' || busy) return
-    setBusy(true)
-    setError(null)
-    try {
-      await onCreate(v)
-      onOpenChange(false)
-    } catch (e) {
-      setError(e instanceof Error ? e.message : '作成に失敗しました')
-      setBusy(false)
-    }
-  }
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-sm">
-        <DialogHeader>
-          <DialogTitle className="font-serif text-on-surface">用語集に登録</DialogTitle>
-          <DialogDescription className="sr-only">
-            名前を決めて項目を作成します。説明などは作成後にそのまま書けます。
-          </DialogDescription>
-        </DialogHeader>
-        <form
-          onSubmit={(e) => {
-            e.preventDefault()
-            void submit()
-          }}
-          className="flex min-h-0 flex-1 flex-col gap-4"
-        >
-          <DialogBody>
-            <div className="space-y-2">
-              <Label htmlFor="glossary-create-name">名前</Label>
-              <Input
-                id="glossary-create-name"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="例：ユグドラシル"
-                autoFocus
-              />
-              <p className="text-[11.5px] text-on-surface-variant/70">
-                読み・カテゴリ・説明は、作成したあとそのまま書けます。
-              </p>
-            </div>
-            {error ? (
-              <p role="alert" className="text-destructive text-sm">
-                {error}
-              </p>
-            ) : null}
-          </DialogBody>
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-              キャンセル
-            </Button>
-            <Button type="submit" disabled={name.trim() === '' || busy}>
-              作成
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
   )
 }

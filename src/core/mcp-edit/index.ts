@@ -14,6 +14,7 @@ import { type SpriteSource, spriteExpressionsOf, userAssetKey } from '../game/as
 import { GAME_FEATURES } from '../game/features'
 import { BLACKOUT_BG_KEY, presetBackground } from '../game/presets'
 import { presetSe, SE_STOP } from '../game/sePresets'
+import { applyDialogPatch, type DialogPatch, DialogPatchError } from '../glossary/dialog'
 import { type FlatNote, MAX_NOTE_DEPTH, rebuildEpisodeNotes } from '../outline'
 import { parseEpisodeBody } from '../parser/parseNotation'
 import { reconcileBlockIds } from '../parser/reconcileBlockIds'
@@ -245,6 +246,11 @@ export function upsertGlossaryEntry(
     summary?: string
     body?: string
     authorNote?: string
+    /**
+     * 対話ノートのパッチ（11-glossary-dialog.md §5.2）。鍵ごとに渡した答えだけ書き換え、
+     * 省略＝据え置き・空文字＝削除。規則は画面と共用の applyDialogPatch。
+     */
+    dialog?: DialogPatch
   },
   newId: string,
   now: number,
@@ -312,12 +318,24 @@ export function upsertGlossaryEntry(
       ...(authorNote !== undefined ? { authorNote } : {}),
       // サムネは MCP から操作できない＝更新で既存の画像を落とさない。
       ...(prev?.thumbnail ? { thumbnail: prev.thumbnail } : {}),
+      // 対話ノートは dialog を渡したときだけパッチする（下で）。渡さなければ丸ごと据え置き。
+      ...(prev?.dialog ? { dialog: prev.dialog } : {}),
+      ...(prev?.dialogVersion !== undefined ? { dialogVersion: prev.dialogVersion } : {}),
       createdAt: prev?.createdAt ?? now,
       updatedAt: now,
     }
+    let withDialog = entry
+    if (input.dialog !== undefined) {
+      try {
+        withDialog = applyDialogPatch(entry, input.dialog)
+      } catch (e) {
+        if (e instanceof DialogPatchError) throw new McpEditError(e.message)
+        throw e
+      }
+    }
     const nextGlossary = prev
-      ? glossary.map((g) => (g.id === entryId ? entry : g))
-      : [...glossary, entry]
+      ? glossary.map((g) => (g.id === entryId ? withDialog : g))
+      : [...glossary, withDialog]
     return { ...w, glossary: nextGlossary, updatedAt: now }
   })
 }
