@@ -40,6 +40,8 @@ describe('applyGlossaryFieldPatch', () => {
     const next = applyGlossaryFieldPatch(plain, { dialogVersion: 1 }, 1)
     expect(next.dialogVersion).toBeUndefined()
     expect(next.dialog).toBeUndefined()
+    // 対話ノートがある項目なら版だけ上げられる
+    expect(applyGlossaryFieldPatch(base(), { dialogVersion: 2 }, 1).dialogVersion).toBe(2)
   })
 
   it('dialogPatch は鍵ごとに重ね、null で消し、空になれば record ごと落とす', () => {

@@ -144,7 +144,7 @@ describe('新規の下書き', () => {
     expect(pendingKey(step.session)).toBe('blurb')
   })
 
-  it('名前が先に入っている下書き（未解決の [[用語]] から）は名前を聞かない', () => {
+  it('名前が先に入っている下書き（未解決の [[用語]] から）は名前を聞かず、まとまりの案内は残りで言う', () => {
     const step = runChip(
       beginSession(entry({ name: 'ミア' }), { draft: true }),
       entry({ name: 'ミア' }),
@@ -152,6 +152,10 @@ describe('新規の下書き', () => {
       '人物',
     )
     expect(pendingKey(step.session)).toBe('reading')
+    expect(botTexts(step.session)).toContainEqual('ここから「基本」について 残り 3 問です。')
+    // ログの id は一意で、聞き直しで吹き出しを差し替えても重ならない
+    const ids = step.session.log.map((m) => m.id)
+    expect(new Set(ids).size).toBe(ids.length)
   })
 })
 

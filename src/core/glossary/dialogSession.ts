@@ -57,7 +57,9 @@ export interface DialogChip {
   note?: string
 }
 
-export type DialogMessage =
+/** ログの 1 件。`id` は会話の中で一意（画面の key。並び替え・消去があっても安定）。 */
+export type DialogMessage = { id: number } & DialogMessageBody
+export type DialogMessageBody =
   | { role: 'bot'; text: string }
   /** 答えの吹き出し。`key` が無いものは分類の選択（直す・公開の印を持たない）。 */
   | {
@@ -95,6 +97,8 @@ export interface DialogSession {
   baseMarks: Record<string, 'skipped' | 'later'>
   /** 「登録する」を押したが名前が無く、名前を聞き直している＝答えたらそのまま登録へ進む。 */
   pendingFinish?: true
+  /** 次に振るログの id。 */
+  nextId: number
 }
 
 export type SessionEffect = 'finish' | 'toform'
@@ -110,16 +114,15 @@ const optsOf = (s: DialogSession): AnsweredOptions => ({ draft: s.draft, baseMar
 
 /** チップは常に「いまの問いかけ」なので、次の遷移で消す。 */
 const withoutChips = (log: DialogMessage[]) => log.filter((m) => m.role !== 'chips')
-const say = (s: DialogSession, text: string): DialogSession => ({
+const push = (s: DialogSession, m: DialogMessageBody): DialogSession => ({
   ...s,
-  log: [...s.log, { role: 'bot', text }],
+  log: [...s.log, { id: s.nextId, ...m }],
+  nextId: s.nextId + 1,
 })
-const push = (s: DialogSession, m: DialogMessage): DialogSession => ({ ...s, log: [...s.log, m] })
+const say = (s: DialogSession, text: string): DialogSession => push(s, { role: 'bot', text })
 /** 答えの吹き出しは鍵ごとに 1 つ＝聞き直したら前の吹き出しを消して、最新だけ残す。 */
-const pushAnswer = (s: DialogSession, m: DialogMessage & { role: 'user'; key: string }) => ({
-  ...s,
-  log: [...s.log.filter((x) => !(x.role === 'user' && x.key === m.key)), m],
-})
+const pushAnswer = (s: DialogSession, m: DialogMessageBody & { role: 'user'; key: string }) =>
+  push({ ...s, log: s.log.filter((x) => !(x.role === 'user' && x.key === m.key)) }, m)
 const chips = (s: DialogSession, items: DialogChip[]): DialogSession =>
   push(s, { role: 'chips', chips: items })
 
@@ -146,15 +149,19 @@ function askCategory(s: DialogSession, lead: string): DialogSession {
 function ask(s: DialogSession, entry: GlossaryEntry, q: AnyDialogQuestion): DialogSession {
   let next = s
   if (!isDigQuestion(q) && !s.editingKey && q.section !== s.lastSection) {
-    // 数は進み具合と同じ「基本の問い」で言う。任意があれば添える。
+    // 数は進み具合と同じ「基本の問い」で言い、任意があれば添える。答え済み（名前が先に入っている・
+    // 途中から）があれば「残り」で言う＝これから聞く数と合う。
+    const o = optsOf(s)
     const inSection = activeQuestionsFor(entry).filter((x) => x.section === q.section)
-    const core = inSection.filter((x) => !x.optional).length
-    const optional = inSection.length - core
+    const core = inSection.filter((x) => !x.optional)
+    const remaining = core.filter((x) => !isAnswered(entry, x, o) && !isLater(entry, x, o)).length
+    const optional = inSection.length - core.length
+    const count = remaining < core.length ? `残り ${remaining} 問` : `${core.length} 問`
     next = say(
       next,
       optional > 0
-        ? `ここから「${q.section}」について ${core} 問です（ほかに任意が ${optional} 問）。`
-        : `ここから「${q.section}」について ${core} 問です。`,
+        ? `ここから「${q.section}」について ${count}です（ほかに任意が ${optional} 問）。`
+        : `ここから「${q.section}」について ${count}です。`,
     )
     next = { ...next, lastSection: q.section }
   }
@@ -218,7 +225,7 @@ function replay(s: DialogSession, entry: GlossaryEntry): DialogSession {
   return next
 }
 
-function userMessage(q: AnyDialogQuestion, a: DialogAnswer): DialogMessage {
+function userMessage(q: AnyDialogQuestion, a: DialogAnswer): DialogMessageBody {
   return {
     role: 'user',
     key: q.key,
@@ -248,6 +255,7 @@ export function beginSession(
     lastSection: null,
     // 分類を変えて始め直すときは、共通 4 問のスキップ／あとでの印を引き継ぐ（同じことを二度聞かない）。
     baseMarks: { ...(opts.baseMarks ?? {}) },
+    nextId: 1,
   }
   if (opts.draft) {
     for (const t of INTRO_DRAFT) s = say(s, t)

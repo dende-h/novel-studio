@@ -54,6 +54,10 @@ export function applyGlossaryFieldPatch(
     updated.dialog = merged
     updated.dialogVersion = dialogVersion ?? cur.dialogVersion ?? DIALOG_VERSION
   }
+  // 版だけの更新は、対話ノートがある項目にだけ効く（無い項目に版だけ残さない）。
+  if (dialogPatch === undefined && dialogVersion !== undefined && updated.dialog !== undefined) {
+    updated.dialogVersion = dialogVersion
+  }
   if (updated.dialog !== undefined && Object.keys(updated.dialog).length === 0) {
     delete updated.dialog
     delete updated.dialogVersion

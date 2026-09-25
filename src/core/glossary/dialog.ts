@@ -1125,11 +1125,6 @@ export function dialogStarted(entry: Pick<GlossaryEntry, 'dialog'>): boolean {
   return Object.keys(entry.dialog ?? {}).length > 0
 }
 
-/** 一覧の印（規則は dialogSummaryOf）。 */
-export function dialogStatusOf(entry: EntryLike): DialogStatus {
-  return dialogSummaryOf(entry).status
-}
-
 /** ボットが呼びかける名前。未入力なら分類ごとの言い換え（D-DLG-NAME）。 */
 export function resolveName(entry: Pick<GlossaryEntry, 'name' | 'category'>): string {
   const n = entry.name.trim()

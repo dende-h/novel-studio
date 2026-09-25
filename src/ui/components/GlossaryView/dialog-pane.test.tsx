@@ -22,7 +22,10 @@ function entry(p: Partial<GlossaryEntry> & { id: string; name: string }): Glossa
 const OTHERS = [entry({ id: 'x', name: 'ボブ', category: '人物' })]
 
 /** onChange を反映して描き直す stateful なハーネス。 */
-function setup(initial: GlossaryEntry, opts: { draft?: boolean; failOnce?: boolean } = {}) {
+function setup(
+  initial: GlossaryEntry,
+  opts: { draft?: boolean; failOnce?: boolean; hold?: () => Promise<void> } = {},
+) {
   const onChange = vi.fn()
   const onToForm = vi.fn()
   let failed = false
@@ -34,8 +37,9 @@ function setup(initial: GlossaryEntry, opts: { draft?: boolean; failOnce?: boole
         isDraft={opts.draft ?? false}
         entries={[e, ...OTHERS]}
         resolvedNames={new Set(['ボブ'])}
-        onChange={async (next) => {
-          onChange(next)
+        onChange={async (next, prev) => {
+          onChange(next, prev)
+          if (opts.hold) await opts.hold()
           if (opts.failOnce && !failed) {
             failed = true
             throw new Error('保存に失敗しました（テスト）')
@@ -69,6 +73,7 @@ describe('DialogPane（キー操作と保存）', () => {
     fireEvent.keyDown(box(), { key: 'Enter' })
     expect(onChange).toHaveBeenCalledWith(
       expect.objectContaining({ dialog: { title: { text: '灯台守', public: true } } }),
+      expect.anything(),
     )
     // 次の問いへ移ると欄は空で新しく出る
     expect(lastBot()).toBe('アリスの年齢か、年の頃を教えてください。')
@@ -90,6 +95,35 @@ describe('DialogPane（キー操作と保存）', () => {
     fireEvent.keyDown(box(), { key: 'Enter' })
     expect(lastBot()).toMatch(/もうあります/)
     expect(box().value).toBe('ボブ')
+  })
+
+  it('保存が同時に走っても、差分は最後に保存できた状態を基準に取る（先の保存が落ちても答えが残る）', async () => {
+    let release: () => void = () => {}
+    const gate = new Promise<void>((r) => {
+      release = r
+    })
+    const { onChange } = setup(entry({ id: 'a', name: 'アリス', category: '人物' }), {
+      hold: () => gate,
+    })
+    fireEvent.change(box(), { target: { value: '灯台守' } })
+    fireEvent.keyDown(box(), { key: 'Enter' })
+    fireEvent.change(box(), { target: { value: '十七' } })
+    fireEvent.keyDown(box(), { key: 'Enter' })
+    // 2 回目の保存の基準（prev）は、まだ保存が終わっていない 1 回目ではなく元の項目
+    expect(onChange).toHaveBeenCalledTimes(2)
+    expect(onChange.mock.calls[1]?.[1]).toMatchObject({ dialog: undefined })
+    expect(onChange.mock.calls[1]?.[0]).toMatchObject({
+      dialog: { title: { text: '灯台守', public: true }, age: { text: '十七', public: true } },
+    })
+    release()
+    await waitFor(() => expect(lastBot()).not.toBe(''))
+  })
+
+  it('Esc を押しても書きかけの答えは消えない', () => {
+    setup(entry({ id: 'a', name: 'アリス', category: '人物' }))
+    fireEvent.change(box(), { target: { value: '灯台守' } })
+    fireEvent.keyDown(box(), { key: 'Escape' })
+    expect(box().value).toBe('灯台守')
   })
 
   it('「答える」ボタンでも決定でき、空白だけなら何もしない', () => {
@@ -114,6 +148,7 @@ describe('DialogPane（キー操作と保存）', () => {
     fireEvent.keyDown(box(), { key: 'Enter' })
     expect(onChange).toHaveBeenCalledWith(
       expect.objectContaining({ dialog: { title: { text: '相棒は [[ボブ]]', public: true } } }),
+      expect.anything(),
     )
     // 答えの吹き出しでは [[ボブ]] がリンクになる
     expect(within(pane()).getByRole('link', { name: 'ボブ' })).toBeInTheDocument()
@@ -131,6 +166,7 @@ describe('DialogPane（キー操作と保存）', () => {
     fireEvent.keyDown(box(), { key: 'Enter' })
     expect(onChange).toHaveBeenLastCalledWith(
       expect.objectContaining({ dialog: { title: { text: '灯台守（再）', public: true } } }),
+      expect.anything(),
     )
     await waitFor(() => expect(lastBot()).toBe('アリスの年齢か、年の頃を教えてください。'))
   })
@@ -157,6 +193,7 @@ describe('DialogPane（キー操作と保存）', () => {
     await waitFor(() =>
       expect(onChange).toHaveBeenLastCalledWith(
         expect.objectContaining({ summary: '主人公。\n役職・肩書き：灯台守' }),
+        expect.anything(),
       ),
     )
     fireEvent.click(screen.getByRole('button', { name: 'フォームで確かめる' }))

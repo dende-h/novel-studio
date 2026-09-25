@@ -14,7 +14,6 @@ import {
   DIALOG_VERSION,
   DialogPatchError,
   dialogRecordDiff,
-  dialogStatusOf,
   dialogSummaryOf,
   dialogToPlainText,
   digQuestionsOf,
@@ -119,7 +118,7 @@ describe('質問の正本（付録 A と揃う）', () => {
     })
     expect(kindOf(moved)).toBeUndefined()
     expect(nextQuestion(moved)?.key).toBe('kind')
-    expect(dialogStatusOf(moved)).toBe('inProgress')
+    expect(dialogSummaryOf(moved).status).toBe('inProgress')
     expect(draftSummaryFromDialog(moved)).toBe('')
     expect(dialogToPlainText({ ...moved, dialogVersion: 1 })).toContain(
       'kind 種類（今の分類の選択肢に無い答え・聞き直す） [読者に見せる]: 街・町',
@@ -210,8 +209,8 @@ describe('答えの読み書き', () => {
     expect(p).toMatchObject({ done: 1, later: 1 })
     // 任意の問いは total に数えない（人物：gender/birthday/blood/origin/pride/love/family/memo）
     expect(p.total).toBe(activeDeepQuestionsFor(later).filter((q) => !q.optional).length)
-    expect(dialogStatusOf(e)).toBe('none')
-    expect(dialogStatusOf(later)).toBe('inProgress')
+    expect(dialogSummaryOf(e).status).toBe('none')
+    expect(dialogSummaryOf(later).status).toBe('inProgress')
   })
 
   it('全部答えるかスキップし、あとでが無ければ done', () => {
@@ -228,7 +227,7 @@ describe('答えの読み書き', () => {
       if (!isAnswered(e, q)) e = withDialogAnswer(e, q, { text: '', skipped: true })
     }
     expect(nextQuestion(e)).toBeUndefined()
-    expect(dialogStatusOf(e)).toBe('done')
+    expect(dialogSummaryOf(e).status).toBe('done')
   })
 
   it('resolveName は名前か分類ごとの言い換え、questionText は名前を差し込む', () => {
@@ -484,9 +483,9 @@ describe('後方互換', () => {
       dialogVersion: 1,
     }
     expect(GlossaryEntrySchema.parse(withDialog)).toEqual(withDialog)
-    expect(dialogStatusOf({ ...legacy, category: '人物' })).toBe('none')
+    expect(dialogSummaryOf({ ...legacy, category: '人物' }).status).toBe('none')
     // 質問セットの無い分類は、答えが残っていても「手を付けていない」扱い（分類を選び直せば戻る）
-    expect(dialogStatusOf({ ...withDialog, category: '地名' })).toBe('none')
-    expect(dialogStatusOf({ ...withDialog, category: '人物' })).toBe('inProgress')
+    expect(dialogSummaryOf({ ...withDialog, category: '地名' }).status).toBe('none')
+    expect(dialogSummaryOf({ ...withDialog, category: '人物' }).status).toBe('inProgress')
   })
 })

@@ -285,7 +285,9 @@ export function CommitTextarea({
               return
             }
           }
-          if (e.key === 'Escape') {
+          // Esc で元に戻すのは blur 確定の欄だけ。Enter 決定の欄（対話の答え）は書きかけを消さない
+          //（IME の取り消しや癖の Esc で答えが丸ごと消えないように）。
+          if (e.key === 'Escape' && !onSubmit && !composing.current) {
             setDraft(value)
             sent.current = value
           }

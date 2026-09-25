@@ -422,7 +422,8 @@ export function GlossaryView({
                     }
                   }
                   if ((next.category ?? '') !== (prev.category ?? '')) {
-                    patch.category = next.category ?? ''
+                    // 空は未設定（formValuesToFieldPatch と同じ畳み方）
+                    patch.category = next.category?.trim() || undefined
                   }
                   if (publicTextOf(next) !== publicTextOf(prev)) patch.summary = publicTextOf(next)
                   if (Object.keys(patch).length > 0) await onUpdateDialog(current.id, patch)

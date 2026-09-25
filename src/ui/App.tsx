@@ -30,7 +30,7 @@ import {
   type GlossaryFormValues,
 } from '@/ui/components/GlossaryEntryForm/glossary-entry-form'
 import { GlossaryPeek } from '@/ui/components/GlossaryPeek/glossary-peek'
-import { GlossaryView, type KeptGlossaryDraft } from '@/ui/components/GlossaryView/glossary-view'
+import { GlossaryView } from '@/ui/components/GlossaryView/glossary-view'
 import { HistoryPanel } from '@/ui/components/HistoryPanel/history-panel'
 import { PlotPeek } from '@/ui/components/PlotPeek/plot-peek'
 import { PreviewPane } from '@/ui/components/PreviewPane/preview-pane'
@@ -44,6 +44,7 @@ import { useEditorStore } from '@/ui/hooks/use-editor-store'
 import { useIsNarrow } from '@/ui/hooks/use-narrow'
 import { useOpenProfile } from '@/ui/hooks/use-pen-name'
 import type { EditorStore } from '@/ui/store/editorStore'
+import { getKeptGlossaryDraft, setKeptGlossaryDraft } from '@/ui/store/glossaryDraftStore'
 
 interface AppProps {
   store: EditorStore
@@ -167,8 +168,6 @@ export function App({
   const [replaceOpen, setReplaceOpen] = useState(false)
   // 用語集パネル（この話に登場＋選択 entry のチラ見）。@参照クリックでも開く。
   const [glossaryPanelOpen, setGlossaryPanelOpen] = useState(false)
-  // 用語集の登録前の下書き（作品 id ごと）。画面を切り替えても書きかけを保つ。
-  const [glossaryDrafts, setGlossaryDrafts] = useState<Record<string, KeptGlossaryDraft>>({})
   // 「この話のプロット」パネル（episodeRef が現在話のビート＋実字数/予定字数の進捗）。
   const [plotPanelOpen, setPlotPanelOpen] = useState(false)
   // パネル等からプロット画面へ飛ぶときの着地ビート（PlotView が消費して null に戻す）。
@@ -527,16 +526,9 @@ export function App({
           <GlossaryView
             entries={work.glossary ?? []}
             workTitle={work.title}
-            keptDraft={glossaryDrafts[work.id] ?? null}
-            onKeepDraft={(kept) => {
-              const workId = work.id
-              setGlossaryDrafts((cur) => {
-                if (kept) return cur[workId] === kept ? cur : { ...cur, [workId]: kept }
-                if (!(workId in cur)) return cur
-                const { [workId]: _drop, ...rest } = cur
-                return rest
-              })
-            }}
+            // 登録前の下書きは別ルート（投稿・設定）へ行っても残す＝App の外に置く
+            keptDraft={getKeptGlossaryDraft(work.id)}
+            onKeepDraft={(kept) => setKeptGlossaryDraft(work.id, kept)}
             getAppearances={getAppearances}
             onCreate={async (input) => (await store.addGlossaryEntry(input)).id}
             onUpdate={async (id, values) => {

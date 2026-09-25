@@ -95,6 +95,9 @@ export function DialogPane({
   localRef.current = local
   const entryRef = useRef(entry)
   entryRef.current = entry
+  // 最後に保存が終わった（または prop から採った）項目。差分はここを基準に取る＝同時に走った
+  // 保存の一つが失敗しても、次の保存がその答えを含めて送る。
+  const savedRef = useRef(entry)
   // 保存が終わって prop が追いついたら、それを手元にする（フォーム側の編集・同期の取り込みも拾う）。
   // 分類がよそ（フォームのカテゴリ・同期）で変わったら、質問セットが変わるので台本を最初から始め直す。
   // 保存中は採らず、保存が終わった時点でもう一度見る（保存中に届いた変更を取りこぼさない）。
@@ -102,6 +105,7 @@ export function DialogPane({
     const latest = entryRef.current
     if (saving.current !== 0 || latest === localRef.current) return
     const categoryChanged = (latest.category ?? '') !== (localRef.current.category ?? '')
+    savedRef.current = latest
     setLocal(latest)
     if (categoryChanged) {
       setSession((s) => beginSession(latest, { draft: isDraft, baseMarks: s.baseMarks }))
@@ -119,20 +123,24 @@ export function DialogPane({
     if (el) el.scrollTop = el.scrollHeight
   }, [logLength])
 
-  const persist = async (next: GlossaryEntry, prev: GlossaryEntry) => {
+  const persist = async (next: GlossaryEntry) => {
     saving.current += 1
+    const base = savedRef.current
     try {
-      await onChange(next, prev)
+      await onChange(next, base)
+      savedRef.current = next
     } catch (e) {
       // 保存できなかった変更を手元に残すと、以後の差分がそこを基準にして二度と保存されない。
       // 保存前の項目へ戻し、台本もそこから始め直す（答え済みは並び直し、失敗した問いから続く）。
       // ほかの保存が同時に走っているときは戻さない（そちらの答えまで消してしまう）＝一言だけ添える。
       const message = e instanceof Error ? e.message : '保存に失敗しました'
       if (saving.current === 1) {
-        // ref も同時に戻す＝直後の syncFromProp が「分類が変わった」と見て台本を作り直さない。
-        localRef.current = prev
-        setLocal(prev)
-        setSession(rejectAnswer(beginSession(prev, { draft: isDraft }), message, prev))
+        // 保存できた最後の状態へ戻す。ref も同時に戻す＝直後の syncFromProp が「分類が変わった」と
+        // 見て台本を作り直さない。
+        const back = base
+        localRef.current = back
+        setLocal(back)
+        setSession(rejectAnswer(beginSession(back, { draft: isDraft }), message, back))
       } else {
         setSession((s) => rejectAnswer(s, message, localRef.current))
       }
@@ -146,7 +154,7 @@ export function DialogPane({
     setSession(step.session)
     if (step.entry !== local) {
       setLocal(step.entry)
-      void persist(step.entry, local)
+      void persist(step.entry)
     }
     if (step.effect === 'toform') onToForm()
     if (step.effect === 'finish' && onFinish) {
@@ -165,14 +173,14 @@ export function DialogPane({
     const next = toggleAnswerPublic(local, key)
     if (next === local) return
     setLocal(next)
-    void persist(next, local)
+    void persist(next)
   }
   const applySummaryDraft = () => {
     if (summaryDraft === null) return
     const next = withPublicText(local, summaryDraft)
     setLocal(next)
     setSummaryDraft(null)
-    void persist(next, local)
+    void persist(next)
   }
 
   const q = pendingQuestion(session, local)
@@ -192,10 +200,9 @@ export function DialogPane({
         className="flex min-h-0 flex-1 flex-col gap-2.5 overflow-y-auto px-3.5 pt-4 pb-2"
         aria-live="polite"
       >
-        {session.log.map((m, i) => (
+        {session.log.map((m) => (
           <Message
-            // biome-ignore lint/suspicious/noArrayIndexKey: ログは末尾にしか増えない
-            key={i}
+            key={m.id}
             message={m}
             entry={local}
             answers={answers}
