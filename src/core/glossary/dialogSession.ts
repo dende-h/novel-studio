@@ -143,8 +143,16 @@ function askCategory(s: DialogSession, lead: string): DialogSession {
 function ask(s: DialogSession, entry: GlossaryEntry, q: AnyDialogQuestion): DialogSession {
   let next = s
   if (!isDigQuestion(q) && !s.editingKey && q.section !== s.lastSection) {
-    const n = activeQuestionsFor(entry).filter((x) => x.section === q.section).length
-    next = say(next, `ここから「${q.section}」について ${n} 問です。`)
+    // 数は進み具合と同じ「基本の問い」で言う。任意があれば添える。
+    const inSection = activeQuestionsFor(entry).filter((x) => x.section === q.section)
+    const core = inSection.filter((x) => !x.optional).length
+    const optional = inSection.length - core
+    next = say(
+      next,
+      optional > 0
+        ? `ここから「${q.section}」について ${core} 問です（ほかに任意が ${optional} 問）。`
+        : `ここから「${q.section}」について ${core} 問です。`,
+    )
     next = { ...next, lastSection: q.section }
   }
   next = say(next, `${isDigQuestion(q) ? '↳ ' : ''}${questionText(q, entry)}`)

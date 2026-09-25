@@ -161,6 +161,11 @@ describe('深掘りの本流', () => {
   it('既存の項目は「フォームの情報」のカードを出して深掘りから聞く', () => {
     const s = beginSession(seto(), { draft: false })
     expect(s.log[0]?.role).toBe('card-base')
+    // 問数は進み具合と同じ「基本の問い」で言い、まとまりの案内も基本と任意を分ける
+    expect(botTexts(s)).toContainEqual(expect.stringMatching(/基本の質問は 25 問です/))
+    expect(botTexts(s)).toContainEqual(
+      'ここから「プロフィール」について 5 問です（ほかに任意が 4 問）。',
+    )
     expect(lastBot(s)).toMatch(/^セトの役職や肩書き/)
     expect(pendingKey(s)).toBe('title')
   })

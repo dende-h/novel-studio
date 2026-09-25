@@ -83,7 +83,7 @@ const appearances: Record<string, Appearances> = {
  * onApply を受け取るだけのモックだと「作成した項目がその場で選ばれる」「改名が一覧へ出る」
  * を検証できない（world-view.test で学んだ形）。
  */
-function setup(initial: GlossaryEntry[] = ENTRIES) {
+function setup(initial: GlossaryEntry[] = ENTRIES, opts: { draftKey?: string } = {}) {
   const calls = {
     onCreate: vi.fn(),
     onUpdate: vi.fn(),
@@ -169,11 +169,12 @@ function setup(initial: GlossaryEntry[] = ENTRIES) {
           calls.onDelete(id)
           setEntries((cur) => cur.filter((e) => e.id !== id))
         }}
+        draftKey={opts.draftKey}
       />
     )
   }
-  render(<Harness />)
-  return calls
+  const view = render(<Harness />)
+  return { ...calls, unmount: view.unmount, rerender: () => view.rerender(<Harness />) }
 }
 
 const openEntry = (name: string) =>
@@ -371,6 +372,34 @@ describe('GlossaryView（左右2カラム：一覧・検索・その場編集）
     // 選択肢と自由記述の両方が出る
     expect(screen.getByRole('button', { name: '男' })).toBeInTheDocument()
     expect(screen.getByLabelText('答え')).toBeInTheDocument()
+  })
+
+  it('書きかけの下書きは画面を離れて戻っても残る（同じ作品の鍵）', () => {
+    const first = setup(ENTRIES, { draftKey: 'work-1' })
+    fireEvent.click(screen.getByRole('button', { name: '新しく登録' }))
+    fireEvent.click(dialogChip('人物'))
+    answer('キャロル')
+    first.unmount()
+    setup(ENTRIES, { draftKey: 'work-1' })
+    // 対話タブで開き、下書きの名前が見出しに残っている
+    expect(screen.getByLabelText('名前')).toHaveValue('キャロル')
+    expect(dialogTab()).toHaveAttribute('aria-pressed', 'true')
+  })
+
+  it('チラ見の「この項目を編集」で下書きを捨てる確認をキャンセルすると、チラ見も下書きも残る', async () => {
+    setup()
+    fireEvent.click(screen.getByRole('button', { name: '新しく登録' }))
+    fireEvent.click(dialogChip('人物'))
+    answer('キャロル')
+    answer('きゃろる') // 読み
+    fireEvent.click(screen.getByRole('button', { name: 'スキップ' })) // 別名
+    answer('[[アリス]]の友人。') // 公開情報＝吹き出しの [[アリス]] がリンクになる
+    fireEvent.click(await screen.findByRole('link', { name: 'アリス' }))
+    const peek = await screen.findByRole('complementary', { name: '用語のチラ見' })
+    fireEvent.click(within(peek).getByRole('button', { name: 'この項目を編集' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'キャンセル' }))
+    expect(screen.getByRole('complementary', { name: '用語のチラ見' })).toBeInTheDocument()
+    expect(screen.getByLabelText('名前')).toHaveValue('キャロル')
   })
 
   it('書きかけの下書きから別の項目へ移るときは確認し、捨てると一覧の項目が開く', async () => {

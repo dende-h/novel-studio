@@ -409,7 +409,7 @@ describe('平文', () => {
       },
     })
     const text = dialogToPlainText(e)
-    expect(text).toContain('対話ノート（v1）')
+    expect(text).toContain('対話ノート（非公開・v1）')
     expect(text).toContain('title 役職・肩書き [読者に見せる]: 案内人')
     expect(text).toContain('skill__why ↳どうして身についたか [読者に見せる]: 迷えば帰れない')
     expect(text).toContain('value 譲れないもの [作者だけ]: 約束')

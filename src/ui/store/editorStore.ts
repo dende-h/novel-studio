@@ -1,5 +1,5 @@
 import { blocksToNotation } from '../../core/exporter/blocksToNotation'
-import { renameEntry, resolveRef } from '../../core/glossary'
+import { renameEntry, resolveRef, withPublicText } from '../../core/glossary'
 import { DIALOG_VERSION } from '../../core/glossary/dialog'
 import { parseEpisodeBody } from '../../core/parser/parseNotation'
 import { reconcileBlockIds } from '../../core/parser/reconcileBlockIds'
@@ -139,6 +139,37 @@ export interface GlossaryFieldPatch {
    */
   dialogPatch?: Record<string, DialogAnswer | null>
   dialogVersion?: number
+}
+
+/**
+ * 辞書 entry にフィールドパッチを当てる純関数（store の updateGlossaryEntry と、登録前の下書きが共用）。
+ * - thumbnail の空文字 '' は削除（undefined＝据え置きと区別）
+ * - summary を渡したら旧・詳細（body）は畳む（D-GLOS-PUBLIC-ONE・withPublicText）
+ * - dialogPatch は鍵ごとに重ね、null は削除。空になったら record ごと落とす
+ */
+export function applyGlossaryFieldPatch(
+  cur: GlossaryEntry,
+  patch: GlossaryFieldPatch,
+  ts: number,
+): GlossaryEntry {
+  const { dialogPatch, summary, ...rest } = patch
+  let updated: GlossaryEntry = { ...cur, ...rest, updatedAt: ts }
+  if (patch.thumbnail === '') delete updated.thumbnail
+  if ('summary' in patch) updated = withPublicText(updated, summary ?? '')
+  if (dialogPatch !== undefined) {
+    const merged: Record<string, DialogAnswer> = { ...(cur.dialog ?? {}) }
+    for (const [key, value] of Object.entries(dialogPatch)) {
+      if (value === null) delete merged[key]
+      else merged[key] = value
+    }
+    updated.dialog = merged
+    updated.dialogVersion = patch.dialogVersion ?? cur.dialogVersion ?? DIALOG_VERSION
+  }
+  if (updated.dialog !== undefined && Object.keys(updated.dialog).length === 0) {
+    delete updated.dialog
+    delete updated.dialogVersion
+  }
+  return updated
 }
 
 /** 作品メタ編集の入力（指定したキーのみ上書き）。 */
@@ -588,27 +619,7 @@ export function createEditorStore({
           }
         }
         const ts = now()
-        const { dialogPatch, ...rest } = patch
-        const updated: GlossaryEntry = { ...cur, ...rest, updatedAt: ts }
-        // thumbnail は空文字 '' を「削除」とする（undefined＝据え置きと区別）。
-        if (patch.thumbnail === '') delete updated.thumbnail
-        // 公開情報は 1 欄（D-GLOS-PUBLIC-ONE）：summary を書いたら旧・詳細（body）はここで畳む。
-        if (patch.summary !== undefined) delete updated.body
-        // 対話ノートの鍵ごとのパッチは、いまの record（同期で増えた鍵も含む）に重ねる。
-        if (dialogPatch !== undefined) {
-          const merged: Record<string, DialogAnswer> = { ...(cur.dialog ?? {}) }
-          for (const [key, value] of Object.entries(dialogPatch)) {
-            if (value === null) delete merged[key]
-            else merged[key] = value
-          }
-          updated.dialog = merged
-          updated.dialogVersion = patch.dialogVersion ?? cur.dialogVersion ?? DIALOG_VERSION
-        }
-        // 対話ノートが空になったら record ごと落とす（「対話を始めていない」に戻る）。
-        if (updated.dialog !== undefined && Object.keys(updated.dialog).length === 0) {
-          delete updated.dialog
-          delete updated.dialogVersion
-        }
+        const updated = applyGlossaryFieldPatch(cur, patch, ts)
         const work: Work = {
           ...state.work,
           glossary: entries.map((e) => (e.id === id ? updated : e)),

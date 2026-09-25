@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { publicTextOf } from '@/core/glossary'
+import { publicTextOf, withPublicText } from '@/core/glossary'
 import {
   type AnyDialogQuestion,
   activeDeepQuestionsFor,
@@ -112,9 +112,14 @@ export function DialogPane({
     } catch (e) {
       // 保存できなかった変更を手元に残すと、以後の差分がそこを基準にして二度と保存されない。
       // 保存前の項目へ戻し、台本もそこから始め直す（答え済みは並び直し、失敗した問いから続く）。
+      // ほかの保存が同時に走っているときは戻さない（そちらの答えまで消してしまう）＝一言だけ添える。
       const message = e instanceof Error ? e.message : '保存に失敗しました'
-      setLocal(prev)
-      setSession(rejectAnswer(beginSession(prev, { draft: isDraft }), message, prev))
+      if (saving.current === 1) {
+        setLocal(prev)
+        setSession(rejectAnswer(beginSession(prev, { draft: isDraft }), message, prev))
+      } else {
+        setSession((s) => rejectAnswer(s, message, localRef.current))
+      }
     } finally {
       saving.current -= 1
       syncFromProp()
@@ -148,10 +153,7 @@ export function DialogPane({
   }
   const applySummaryDraft = () => {
     if (summaryDraft === null) return
-    const { body: _body, ...rest } = local
-    const next: GlossaryEntry = summaryDraft.trim()
-      ? { ...rest, summary: summaryDraft.trim() }
-      : rest
+    const next = withPublicText(local, summaryDraft)
     setLocal(next)
     setSummaryDraft(null)
     void persist(next, local)
@@ -420,6 +422,7 @@ function Message({
       return (
         <SummaryCard
           entry={entry}
+          answers={answers}
           isDraft={isDraft}
           resolvedNames={resolvedNames}
           onRefClick={onRefClick}
@@ -434,6 +437,7 @@ function Message({
 /** ひと通り答えたあとの「まとめ」（読者に見える答え／作者だけの答え・公開情報の下書き）。 */
 function SummaryCard({
   entry,
+  answers,
   isDraft,
   resolvedNames,
   onRefClick,
@@ -442,6 +446,7 @@ function SummaryCard({
   onApplySummaryDraft,
 }: {
   entry: GlossaryEntry
+  answers: Record<string, DialogAnswer>
   isDraft: boolean
   resolvedNames: Set<string>
   onRefClick?: (name: string) => void
@@ -449,7 +454,6 @@ function SummaryCard({
   onMakeSummaryDraft: () => void
   onApplySummaryDraft: () => void
 }) {
-  const answers = answersOf(entry)
   const rows: { q: AnyDialogQuestion; text: string; pub: boolean }[] = []
   for (const q of activeDeepQuestionsFor(entry)) {
     for (const x of [q, ...digQuestionsOf(q)]) {

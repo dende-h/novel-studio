@@ -94,7 +94,7 @@ GlossaryEntrySchema = GlossaryEntrySchema.extend({
   読み: せと / 別名: 案内人さん
   公開情報: 境の街の案内人。
   作者メモ: …
-  対話ノート（v1）:
+  対話ノート（非公開・v1）:
     kind: —（人物には無し）
     title 役職・肩書き [読者に見せる]: 境の街の案内人
     skill 特技 [読者に見せる]: 道を一度で覚える

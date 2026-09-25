@@ -38,6 +38,20 @@ export function publicTextOf(entry: Pick<GlossaryEntry, 'summary' | 'body'>): st
 }
 
 /**
+ * 公開情報を 1 欄で書き込む（D-GLOS-PUBLIC-ONE）。summary へ入れ、旧「詳細」（body）は畳む。
+ * 空文字なら summary も持たない。公開情報を書く経路（画面の欄・対話の答え・下書きの反映・
+ * store のパッチ）はすべてここを通す＝畳み方が経路ごとにずれない。
+ */
+export function withPublicText<T extends Pick<GlossaryEntry, 'summary' | 'body'>>(
+  entry: T,
+  text: string,
+): T {
+  const { summary: _summary, body: _body, ...rest } = entry
+  const t = text.trim()
+  return (t === '' ? rest : { ...rest, summary: t }) as T
+}
+
+/**
  * 解決済み @参照名の集合を作る（プレビューの blocksToHtml(blocks, set) 用）。
  * 各 entry の name ＋ aliases を trim して非空のものだけ収める（resolveRef と同じ突合キー）。
  * これに含まれる名前を持つ ref が「解決」、含まれないものが「未解決」（点線）になる。

@@ -25,6 +25,7 @@ import { ReplacePanel } from '@/ui/components/EditorPane/replace-panel'
 import { ErrorBoundary } from '@/ui/components/ErrorBoundary/error-boundary'
 import { ExportDialog } from '@/ui/components/ExportDialog/export-dialog'
 import {
+  formValuesToFieldPatch,
   GlossaryEntryForm,
   type GlossaryFormValues,
 } from '@/ui/components/GlossaryEntryForm/glossary-entry-form'
@@ -47,21 +48,8 @@ import type { EditorStore } from '@/ui/store/editorStore'
 /** フォーム値の空文字は未設定(undefined)へ畳んでスキーマの任意項目を綺麗に保つ。 */
 const emptyToUndef = (s: string): string | undefined => (s.trim() === '' ? undefined : s)
 
-/** GlossaryFormValues → updateGlossaryEntry のフィールドパッチ（name は除外＝改名は別操作）。 */
-const toFieldPatch = (v: GlossaryFormValues) => ({
-  aliases: v.aliases,
-  category: emptyToUndef(v.category),
-  reading: emptyToUndef(v.reading),
-  summary: emptyToUndef(v.summary),
-  // 公開情報は summary へ一本化（D-GLOS-PUBLIC-ONE）。旧・詳細（body）は保存のたびに畳む
-  // （フォームは publicTextOf で結合した文を summary として返してくる）。
-  body: undefined,
-  authorNote: emptyToUndef(v.authorNote),
-  // サムネは空文字をそのまま渡す（更新時 '' = 削除指示。作成時は addGlossaryEntry が空を弾く）。
-  thumbnail: v.thumbnail,
-  // 対話ノート（dialog）はここを通らない＝フォームの確定で消えない。対話ペインは onUpdateDialog で
-  // 変わった欄だけを渡す。
-})
+/** GlossaryFormValues → フィールドパッチ（写像は用語集画面と共用・glossary-entry-form.tsx）。 */
+const toFieldPatch = formValuesToFieldPatch
 
 interface AppProps {
   store: EditorStore
@@ -543,6 +531,7 @@ export function App({
           <GlossaryView
             entries={work.glossary ?? []}
             workTitle={work.title}
+            draftKey={work.id}
             getAppearances={getAppearances}
             onCreate={async (input) => (await store.addGlossaryEntry(input)).id}
             onUpdate={async (id, values) => {

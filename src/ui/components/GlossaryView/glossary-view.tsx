@@ -23,6 +23,7 @@ import { cn } from '@/lib/utils'
 import { thumbnailToDataUrl } from '@/ui/_utils/imageResizer'
 import { ConfirmDialog } from '@/ui/components/ConfirmDialog/confirm-dialog'
 import {
+  formValuesToFieldPatch,
   GLOSSARY_CATEGORIES,
   type GlossaryFormValues,
 } from '@/ui/components/GlossaryEntryForm/glossary-entry-form'
@@ -37,7 +38,7 @@ import { Button } from '@/ui/components/ui/button'
 import { Input } from '@/ui/components/ui/input'
 import { Label } from '@/ui/components/ui/label'
 import { ZoomableImage } from '@/ui/components/ui/zoomable-image'
-import type { NewGlossaryEntry } from '@/ui/store/editorStore'
+import { applyGlossaryFieldPatch, type NewGlossaryEntry } from '@/ui/store/editorStore'
 
 /**
  * 用語集のメイン画面。**左：項目の一覧（検索・カテゴリ絞り込み）／右：選んだ項目の編集**の
@@ -87,6 +88,11 @@ interface GlossaryViewProps {
   onCreateEntry?: (name: string) => Promise<string | null>
   /** ゲーム素材の置き場所（渡されたときだけ、人物 entry に「立ち絵」欄が出る。PC 限定）。 */
   gameAssetRepo?: GameAssetRepository
+  /**
+   * 登録前の下書きを覚えておく鍵（作品 id）。別の画面へ行って戻っても、同じ作品なら
+   * 書きかけの下書きが残る（画面の中だけ・再読み込みでは消える）。省略すると画面を離れたら消える。
+   */
+  draftKey?: string
 }
 
 /** 下書きの id（登録前の新規項目。一覧には出ない）。 */
@@ -95,6 +101,9 @@ const DRAFT_ID = '__glossary_draft__'
 const DIALOG_FILTER = '__dialog_in_progress__'
 
 type PaneTab = 'form' | 'dialog'
+
+/** 画面を離れても残す下書き（作品 id → 下書き）。登録・破棄で消す。 */
+const keptDrafts = new Map<string, GlossaryEntry>()
 
 /** 下書きは作るたびに別の id にする＝捨てて作り直したとき、編集面と対話が新しく立ち上がる。 */
 let draftSeq = 0
@@ -128,13 +137,34 @@ export function GlossaryView({
   onDelete,
   onCreateEntry,
   gameAssetRepo,
+  draftKey,
 }: GlossaryViewProps) {
   const [query, setQuery] = useState('')
   const [category, setCategory] = useState<string | null>(null)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   // 新規の下書き（登録するまで保存しない）。選択中は一覧の選択を持たない。
-  const [draft, setDraft] = useState<GlossaryEntry | null>(null)
-  const [tab, setTab] = useState<PaneTab>('form')
+  // 画面を離れて戻ったときは、同じ作品の書きかけを戻す。
+  const [draft, setDraft] = useState<GlossaryEntry | null>(() =>
+    draftKey ? (keptDrafts.get(draftKey) ?? null) : null,
+  )
+  const [tab, setTab] = useState<PaneTab>(() =>
+    draftKey && keptDrafts.has(draftKey) ? 'dialog' : 'form',
+  )
+  useEffect(() => {
+    if (!draftKey) return
+    if (draft && draftHasContent(draft)) keptDrafts.set(draftKey, draft)
+    else keptDrafts.delete(draftKey)
+  }, [draft, draftKey])
+  // 書きかけの下書きがあるあいだは、タブを閉じる・再読み込みの前に確認を出す（残らないので）。
+  const draftDirty = draft !== null && draftHasContent(draft)
+  useEffect(() => {
+    if (!draftDirty) return
+    const warn = (e: BeforeUnloadEvent) => {
+      e.preventDefault()
+    }
+    window.addEventListener('beforeunload', warn)
+    return () => window.removeEventListener('beforeunload', warn)
+  }, [draftDirty])
   // 書きかけの下書きを捨てて別の操作へ進む確認（進む先を持つ）。
   const [discardThen, setDiscardThen] = useState<(() => void) | null>(null)
   // プレビューの [[用語]] クリックで開くチラ見ドロワーの対象。
@@ -192,6 +222,7 @@ export function GlossaryView({
       setDraft(null)
       setSelectedId(id)
       setTab('form')
+      setPeekId(null)
     })
   /** 「＋ 新しく登録」＝対話で開く（名前が先に決まっているときはそれを入れて）。 */
   const startDraft = (name = '') =>
@@ -342,8 +373,12 @@ export function GlossaryView({
                 entries={entries}
                 resolvedNames={resolvedNames}
                 onCommitValues={async (values) => {
-                  if (draft) setDraft((d) => (d ? applyValues(d, values) : d))
-                  else await onUpdate(current.id, values)
+                  // 下書きは保存済みの項目と同じ写像・同じ畳み方で手元の entry に当てる。
+                  if (draft) {
+                    setDraft((d) =>
+                      d ? applyGlossaryFieldPatch(d, formValuesToFieldPatch(values), 0) : d,
+                    )
+                  } else await onUpdate(current.id, values)
                 }}
                 onCommitName={async (name) => {
                   if (draft) setDraft((d) => (d ? { ...d, name } : d))
@@ -421,10 +456,7 @@ export function GlossaryView({
                 entry={peeked}
                 appearances={getAppearances(peeked)}
                 editLabel="この項目を編集"
-                onEdit={() => {
-                  selectEntry(peeked.id)
-                  setPeekId(null)
-                }}
+                onEdit={() => selectEntry(peeked.id)}
               />
             </div>
           </div>
@@ -479,20 +511,6 @@ function valuesOf(e: GlossaryEntry): GlossaryFormValues {
     summary: publicTextOf(e),
     authorNote: e.authorNote ?? '',
     thumbnail: e.thumbnail ?? '',
-  }
-}
-
-/** フォームの値を下書きへ写す（保存経路の toFieldPatch と同じ規則：空は未設定・旧 body は畳む）。 */
-function applyValues(d: GlossaryEntry, v: GlossaryFormValues): GlossaryEntry {
-  const { body: _body, ...rest } = d
-  return {
-    ...rest,
-    aliases: v.aliases,
-    ...(v.category ? { category: v.category } : { category: undefined }),
-    ...(v.reading ? { reading: v.reading } : { reading: undefined }),
-    ...(v.summary ? { summary: v.summary } : { summary: undefined }),
-    ...(v.authorNote ? { authorNote: v.authorNote } : { authorNote: undefined }),
-    ...(v.thumbnail ? { thumbnail: v.thumbnail } : { thumbnail: undefined }),
   }
 }
 

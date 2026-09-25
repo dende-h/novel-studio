@@ -1,5 +1,5 @@
 import type { DialogAnswer, GlossaryEntry } from '../schema'
-import { publicTextOf } from './index'
+import { publicTextOf, withPublicText } from './index'
 
 /**
  * 用語集の「対話」（一問一答で項目を育てる・11-glossary-dialog.md）の**純データと純ロジック**。
@@ -1204,9 +1204,7 @@ export function withDialogAnswer(
         return { ...entry, aliases: parseAliasInput(text) }
       case 'summary':
         // 公開情報は 1 欄（D-GLOS-PUBLIC-ONE）＝旧・詳細は畳む。
-        return text === ''
-          ? omit(omit(entry, 'summary'), 'body')
-          : { ...omit(entry, 'body'), summary: text }
+        return withPublicText(entry, text)
     }
   }
   return withDialogRecord(entry, { ...(entry.dialog ?? {}), [q.key]: normalizeAnswer(q, answer) })
@@ -1361,7 +1359,8 @@ const VIS_LABEL: Record<DialogVisibility, string> = {
 export function dialogToPlainText(entry: EntryLike & Pick<GlossaryEntry, 'dialogVersion'>): string {
   const dialog = entry.dialog
   if (!dialog || Object.keys(dialog).length === 0) return ''
-  const lines: string[] = [`対話ノート（v${entry.dialogVersion ?? '?'}）:`]
+  // 見出しに「非公開」を添える＝作者メモと同じく、コピーした先で公開の器と混ざらない。
+  const lines: string[] = [`対話ノート（非公開・v${entry.dialogVersion ?? '?'}）:`]
   if (!hasDialogQuestions(entry.category)) {
     // 分類に質問セットが無い（未分類・旧データの自由入力）。答えは残っているが、鍵の意味は
     // 分類を付けるまで引けない＝旧鍵と混同させない案内を先頭に置く。

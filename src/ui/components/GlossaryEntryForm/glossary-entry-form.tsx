@@ -19,6 +19,7 @@ import {
 import { Input } from '@/ui/components/ui/input'
 import { Label } from '@/ui/components/ui/label'
 import { ZoomableImage } from '@/ui/components/ui/zoomable-image'
+import type { GlossaryFieldPatch } from '@/ui/store/editorStore'
 
 /**
  * 用語集カテゴリの選択肢（プルダウンで固定）。既存データの自由入力値は編集時のみ選択肢に含めて保全する。
@@ -38,6 +39,26 @@ export interface GlossaryFormValues {
   authorNote: string
   /** サムネ画像の data URL。空文字 '' は未設定／削除を表す。 */
   thumbnail: string
+}
+
+const emptyToUndef = (s: string): string | undefined => (s.trim() === '' ? undefined : s)
+
+/**
+ * GlossaryFormValues → フィールドパッチ（name は除外＝改名は別操作）。
+ * 空文字の欄は未設定に畳む。サムネは空文字をそのまま渡す（更新時 '' = 削除指示。作成時は
+ * addGlossaryEntry が空を弾く）。公開情報は summary へ一本化され、旧・詳細（body）の畳み方は
+ * store（applyGlossaryFieldPatch）が持つ。対話ノートはここを通らない＝フォームの確定で消えない。
+ * 用語集画面（保存済みの項目・登録前の下書き）と本文からのクイック編集が同じ写像を使う。
+ */
+export function formValuesToFieldPatch(v: GlossaryFormValues): GlossaryFieldPatch {
+  return {
+    aliases: v.aliases,
+    category: emptyToUndef(v.category),
+    reading: emptyToUndef(v.reading),
+    summary: emptyToUndef(v.summary),
+    authorNote: emptyToUndef(v.authorNote),
+    thumbnail: v.thumbnail,
+  }
 }
 
 interface GlossaryEntryFormProps {

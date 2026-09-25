@@ -724,7 +724,7 @@ describe('世界観設定ツール（get_world / set_world_note / delete_world_n
     })
     expect(saved()?.dialogVersion).toBe(1)
     const text = contentText(await handleMcpMessage(call('get_glossary', { work_id: 'w1' }), d))
-    expect(text).toContain('対話ノート（v1）')
+    expect(text).toContain('対話ノート（非公開・v1）')
     expect(text).toContain('title 役職・肩書き [読者に見せる]: 灯台守')
     expect(text).toContain('secret 秘密 [作者だけ・固定]: 正体')
     // dialog を省略した更新は対話ノートを落とさない／空文字はその答えだけ削除

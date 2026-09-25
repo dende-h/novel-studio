@@ -19,7 +19,6 @@ const isSuggestTrigger = (ch: string) => ch === '@' || ch === '＠'
 export interface CommitTextareaHandle {
   /** いまの内容を onSubmit へ渡す（空白だけなら何もしない）。 */
   submit: () => void
-  focus: () => void
 }
 
 /** タッチ端末（指で打つ）では Enter を改行のままにする（D-DLG-KEYS）。 */
@@ -220,10 +219,7 @@ export function CommitTextarea({
   latest.current = { draft, commit, submit }
   useEffect(() => {
     if (!controlRef) return
-    controlRef.current = {
-      submit: () => latest.current.submit(),
-      focus: () => ref.current?.focus(),
-    }
+    controlRef.current = { submit: () => latest.current.submit() }
     return () => {
       controlRef.current = null
     }
