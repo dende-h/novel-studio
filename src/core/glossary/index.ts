@@ -37,6 +37,11 @@ export function publicTextOf(entry: Pick<GlossaryEntry, 'summary' | 'body'>): st
   return parts.join('\n\n')
 }
 
+/** 空文字（空白だけ）は未設定に畳む（任意の欄の書き込みで共用。画面のフォームと MCP が同じ規則）。 */
+export function emptyToUndef(s: string | undefined): string | undefined {
+  return s === undefined || s.trim() === '' ? undefined : s
+}
+
 /**
  * 公開情報を 1 欄で書き込む（D-GLOS-PUBLIC-ONE）。summary へ入れ、旧「詳細」（body）は畳む。
  * 空文字なら summary も持たない。公開情報を書く経路（画面の欄・対話の答え・下書きの反映・

@@ -185,7 +185,6 @@ export function DialogPane({
 
   const q = pendingQuestion(session, local)
   const hint = pendingHint(session)
-  const answeredCount = session.log.filter((m) => m.role === 'user').length
 
   return (
     <section
@@ -221,9 +220,9 @@ export function DialogPane({
       <div className="flex flex-col gap-2 border-outline-variant/30 border-t px-3 pt-2 pb-3">
         {q ? (
           <Composer
-            // 問いが変わる・答えが受け付けられる・「直す」で聞き直す、のたびに欄を作り直す。
+            // 問いを出すたび（台本の promptId）に欄を作り直す＝次の問いは空で始まり、
             // 受け付けなかった答え（重複する名前など）は消さず、直して出し直せる。
-            key={`${q.key}:${answeredCount}:${session.editingKey ?? ''}`}
+            key={session.promptId}
             question={q}
             required={session.pending?.kind === 'question' && session.pending.required === true}
             entries={entries}

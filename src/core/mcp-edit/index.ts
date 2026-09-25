@@ -14,6 +14,7 @@ import { type SpriteSource, spriteExpressionsOf, userAssetKey } from '../game/as
 import { GAME_FEATURES } from '../game/features'
 import { BLACKOUT_BG_KEY, presetBackground } from '../game/presets'
 import { presetSe, SE_STOP } from '../game/sePresets'
+import { emptyToUndef } from '../glossary'
 import { applyDialogPatch, type DialogPatch, DialogPatchError } from '../glossary/dialog'
 import { type FlatNote, MAX_NOTE_DEPTH, rebuildEpisodeNotes } from '../outline'
 import { parseEpisodeBody } from '../parser/parseNotation'
@@ -61,8 +62,6 @@ import {
 export class McpEditError extends Error {}
 
 /** 空文字は未設定(undefined)へ畳む（スキーマの任意項目を綺麗に保つ）。 */
-const emptyToUndef = (s: string | undefined): string | undefined =>
-  s === undefined || s.trim() === '' ? undefined : s
 
 function updateWork(works: Work[], workId: string, fn: (w: Work) => Work): Work[] {
   let found = false

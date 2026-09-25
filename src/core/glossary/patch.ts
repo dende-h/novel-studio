@@ -44,7 +44,6 @@ export function applyGlossaryFieldPatch(
     if (body === undefined) delete updated.body
     else updated.body = body
   }
-  // 版は対話ノートと一緒にだけ動く（dialog の無い項目に版だけ残さない）。
   if (dialogPatch !== undefined) {
     const merged: Record<string, DialogAnswer> = { ...(cur.dialog ?? {}) }
     for (const [key, value] of Object.entries(dialogPatch)) {
@@ -52,11 +51,10 @@ export function applyGlossaryFieldPatch(
       else merged[key] = value
     }
     updated.dialog = merged
-    updated.dialogVersion = dialogVersion ?? cur.dialogVersion ?? DIALOG_VERSION
   }
-  // 版だけの更新は、対話ノートがある項目にだけ効く（無い項目に版だけ残さない）。
-  if (dialogPatch === undefined && dialogVersion !== undefined && updated.dialog !== undefined) {
-    updated.dialogVersion = dialogVersion
+  // 版は対話ノートと一緒にだけ動く（dialog の無い項目に版だけ残さない）。
+  if (updated.dialog !== undefined) {
+    updated.dialogVersion = dialogVersion ?? updated.dialogVersion ?? DIALOG_VERSION
   }
   if (updated.dialog !== undefined && Object.keys(updated.dialog).length === 0) {
     delete updated.dialog

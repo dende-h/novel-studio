@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState } from 'react'
-import { publicTextOf } from '@/core/glossary'
+import { emptyToUndef, publicTextOf } from '@/core/glossary'
 import { DIALOG_CATEGORIES, parseAliasInput } from '@/core/glossary/dialog'
 import type { GlossaryFieldPatch } from '@/core/glossary/patch'
 import type { GlossaryEntry } from '@/core/schema'
@@ -40,8 +40,6 @@ export interface GlossaryFormValues {
   /** サムネ画像の data URL。空文字 '' は未設定／削除を表す。 */
   thumbnail: string
 }
-
-const emptyToUndef = (s: string): string | undefined => (s.trim() === '' ? undefined : s)
 
 /**
  * GlossaryFormValues → フィールドパッチ（name は除外＝改名は別操作）。

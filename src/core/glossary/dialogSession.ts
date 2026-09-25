@@ -99,6 +99,8 @@ export interface DialogSession {
   pendingFinish?: true
   /** 次に振るログの id。 */
   nextId: number
+  /** 問いを出した回数。画面は入力欄をこれで作り直す（問いが出るたびに空で、拒否では残す）。 */
+  promptId: number
 }
 
 export type SessionEffect = 'finish' | 'toform'
@@ -136,13 +138,13 @@ export function pendingQuestion(
 }
 
 /** 分類を聞く（新規・分類が対話の質問を持たないとき）。 */
+const categoryChips = (): DialogChip[] =>
+  DIALOG_CATEGORIES.map((c) => ({ label: c, action: 'category', value: c }))
+
 function askCategory(s: DialogSession, lead: string): DialogSession {
   let next = say(s, lead)
   next = { ...next, pending: { kind: 'category' } }
-  return chips(
-    next,
-    DIALOG_CATEGORIES.map((c) => ({ label: c, action: 'category', value: c })),
-  )
+  return chips(next, categoryChips())
 }
 
 /** 1 問を聞く（まとまりの切り替わりで案内・名前を差し込む・追い質問は ↳）。 */
@@ -166,7 +168,7 @@ function ask(s: DialogSession, entry: GlossaryEntry, q: AnyDialogQuestion): Dial
     next = { ...next, lastSection: q.section }
   }
   next = say(next, `${isDigQuestion(q) ? '↳ ' : ''}${questionText(q, entry)}`)
-  return { ...next, pending: { kind: 'question', key: q.key } }
+  return { ...next, pending: { kind: 'question', key: q.key }, promptId: next.promptId + 1 }
 }
 
 /** どれを変えるかを選ばせる（全問答え済み・あとでの答え・直すの入口）。 */
@@ -186,15 +188,18 @@ function askPick(s: DialogSession, entry: GlossaryEntry, lead: string | null): D
       blank,
       ...(later ? { note: 'あとで' } : blank ? { note: '未回答' } : {}),
     })
-    // 追い質問は「あとで」にしたものだけ並べる（本流には無いので、ここが戻る道）。
-    for (const d of digQuestionsOf(q)) {
-      if (isLater(entry, d, o)) {
+    // 追い質問は本流に無いので、ここが戻る道。答えた親の追い質問で、まだ答えていないもの
+    // （「次へ」で飛ばした・あとでにした）を並べる。答え済みは親の「直す」から辿れる。
+    if (isAnswered(entry, q, o) && !isLater(entry, q, o)) {
+      for (const d of digQuestionsOf(q)) {
+        if (isAnswered(entry, d, o)) continue
+        const dLater = isLater(entry, d, o)
         items.push({
           label: `↳ ${d.label}`,
           action: 'pick',
           value: d.key,
           blank: true,
-          note: 'あとで',
+          note: dLater ? 'あとで' : '深める',
         })
       }
     }
@@ -256,6 +261,7 @@ export function beginSession(
     // 分類を変えて始め直すときは、共通 4 問のスキップ／あとでの印を引き継ぐ（同じことを二度聞かない）。
     baseMarks: { ...(opts.baseMarks ?? {}) },
     nextId: 1,
+    promptId: 0,
   }
   if (opts.draft) {
     for (const t of INTRO_DRAFT) s = say(s, t)
@@ -314,10 +320,7 @@ export function rejectAnswer(
 function reissuePrompt(s: DialogSession, entry: GlossaryEntry): DialogSession {
   switch (s.pending?.kind) {
     case 'category':
-      return chips(
-        s,
-        DIALOG_CATEGORIES.map((c) => ({ label: c, action: 'category', value: c })),
-      )
+      return chips(s, categoryChips())
     case 'pick':
       return askPick(s, entry, null)
     case 'dig-offer':
@@ -365,17 +368,18 @@ export function submitAnswer(
       entry,
     }
   }
-  // 名前の重複（D-GLOS-UNIQUE）は登録時にも弾かれるが、対話の途中で分かるほうが直しやすい。
-  if (q.field === 'name' && ctx.entries) {
-    const hit = resolveRef(
-      text,
-      ctx.entries.filter((e) => e.id !== entry.id),
-    )
-    if (hit) {
+  // 名前・別名の重複（D-GLOS-UNIQUE）は登録時にも弾かれるが、対話の途中で分かるほうが直しやすい。
+  if ((q.field === 'name' || q.field === 'aliases') && ctx.entries) {
+    const others = ctx.entries.filter((e) => e.id !== entry.id)
+    const keys = q.field === 'name' ? [text] : parseAliasInput(text)
+    const hit = keys.find((k) => resolveRef(k, others) !== undefined)
+    if (hit !== undefined) {
       return {
         session: rejectAnswer(
           s,
-          `「${text}」は用語集にもうあります。別の名前を教えてください。`,
+          q.field === 'name'
+            ? `「${hit}」は用語集にもうあります。別の名前を教えてください。`
+            : `「${hit}」は用語集にもうあります。別名から外すか、別の呼び方にしてください。`,
           entry,
         ),
         entry,

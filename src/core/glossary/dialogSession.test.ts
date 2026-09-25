@@ -255,6 +255,44 @@ describe('深掘りの本流', () => {
     expect(pendingKey(step.session)).toBe('skill__why')
   })
 
+  it('別名の重複もその場で断る', () => {
+    const others = [entry({ id: 'x', name: 'アリス', category: '人物' })]
+    let step: SessionStep = runChip(
+      beginSession(entry({ name: 'セト' }), { draft: true }),
+      entry({ name: 'セト' }),
+      'category',
+      '人物',
+    )
+    step = skipQuestion(step.session, step.entry, false) // reading
+    step = submitAnswer(step.session, step.entry, '部長、アリス', { entries: others })
+    expect(step.entry.aliases).toEqual([])
+    expect(lastBot(step.session)).toMatch(/「アリス」は用語集にもうあります/)
+    expect(pendingKey(step.session)).toBe('aliases')
+  })
+
+  it('「次へ」で飛ばした追い質問は、選び直しの一覧から「深める」として辿れる', () => {
+    let e = seto()
+    let s = beginSession(e, { draft: false })
+    while (pendingKey(s) !== 'skill') {
+      const st = skipQuestion(s, e, false)
+      s = st.session
+      e = st.entry
+    }
+    let step = submitAnswer(s, e, '料理')
+    step = runChip(step.session, step.entry, 'digskip')
+    let guard = 0
+    while (step.session.pending?.kind === 'question' && guard++ < 100) {
+      step = skipQuestion(step.session, step.entry, false)
+    }
+    step = runChip(step.session, step.entry, 'reopen')
+    const dig = lastChips(step.session).find((c) => c.value === 'skill__why')
+    expect(dig).toMatchObject({ action: 'pick', note: '深める' })
+    step = runChip(step.session, step.entry, 'pick', 'skill__why')
+    expect(pendingKey(step.session)).toBe('skill__why')
+    // 問いを出すたびに promptId が進む（入力欄の作り直しの合図）
+    expect(step.session.promptId).toBeGreaterThan(0)
+  })
+
   it('「次へ」で追い質問を飛ばす', () => {
     let e = seto()
     let s = beginSession(e, { draft: false })

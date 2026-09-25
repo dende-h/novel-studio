@@ -922,6 +922,7 @@ function EntryEditor({
           {/* 対話ノート（見るだけ・直すのは対話から）。 */}
           <DialogNoteSection
             entry={entry}
+            isDraft={isDraft}
             summary={dialog}
             onOpenDialog={() => onTabChange('dialog')}
             resolvedNames={resolvedNames}
