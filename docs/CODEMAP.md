@@ -227,6 +227,7 @@ Cloudflare Pages Functions
 / `useLocalFlag`（localStorage 永続の真偽フラグ） / `usePreferences`（+ `setTheme` `setReadingSize`）
 / `usePenName` `useOpenProfile` `useAccountPenNameSync` `useSaveProfile`（+ `PenNameContext` `ProfileEditContext`・`use-pen-name.ts`）
 / `useBackupMarks`（+ `markLocalBackup` `markCloudBackup` `readBackupMarks`） / `readNudgeAck` `acknowledgeNudge`
+/ `useSerialSave`（`use-serial-save.ts`・最新値へ fn を積み保存を直列化する変更経路。描画時点の値へ当てて保存しない＝プロット画面が使用）
 
 **純関数 `src/ui/_utils/`**（React 非依存のヘルパ。ここに無いものだけ新規作成する）
 
@@ -240,6 +241,7 @@ Cloudflare Pages Functions
 | `sePlayer.ts` | `playPresetSe`（合成SEのアプリ内試聴。レシピ解釈はプレイヤー側 `novelGamePlayer.ts` と揃える契約） |
 | `imageResizer.ts` | `coverToDataUrl` `thumbnailToDataUrl` `gameBgToDataUrl`（持ち込み背景＝長辺1280 WebP＋tone 3色） `gameSpriteToDataUrl`（立ち絵＝長辺1080・透過保持） |
 | `caretCoordinates.ts` | `getCaretCoordinates`（textarea のキャレット座標） |
+| `focus-when-ready.ts` | `focusWhenReady`（見えてフォーカスを得るまで rAF で数フレーム focus() を試し直す・取り消し関数を返す。React Flow の未計測ノード＝visibility:hidden 向け。マインドマップが使用） |
 | `cover-tone.ts` | `coverTone` `COVER_TONES` |
 
 **クラス名の結合**: `cn()`（`src/lib/utils.ts` = clsx + tailwind-merge）。自前で文字列連結しない。
@@ -249,7 +251,7 @@ Cloudflare Pages Functions
 | ディレクトリ | 責務 |
 |---|---|
 | `_api/` | サーバ呼び出しの薄いクライアント（`sync` `backup` `billing` `publish` `author` `mcp` `board` `game-assets` `game-templates`＝目録/実体の取得と staff の管理 API） |
-| `_utils/` | 純関数（`caretCoordinates` `imageResizer` `exporters` `download` `format` `clipboard` `cover-tone` `audioMeta`＝音声ファイルの data URL 化と長さ計測・`sePlayer`＝効果音の試聴・`bgmPlayer`＝BGM の試聴（Web Audio・ループ区間つき・トグルで 1 曲だけ）） |
+| `_utils/` | 純関数（`caretCoordinates` `focus-when-ready` `imageResizer` `exporters` `download` `format` `clipboard` `cover-tone` `audioMeta`＝音声ファイルの data URL 化と長さ計測・`sePlayer`＝効果音の試聴・`bgmPlayer`＝BGM の試聴（Web Audio・ループ区間つき・トグルで 1 曲だけ）） |
 | `hooks/` | React ライフサイクル依存のみ（`use-autosave` `use-auto-sync` `use-auto-backup` `use-live-snapshot` `use-preferences` `use-narrow` `use-keyboard-inset` `use-pen-name` `use-staff`＝運営か・`enabled` のときだけ `/api/board/me` を見る 等） |
 | `sync/` | 同期クライアント。`src/ui/sync/sync-service.ts` が本体（約800行）・`sync-gate` `sync-status` `sync-touch` |
 | `src/ui/backup/backup-service.ts` | クラウド全体バックアップの実行 |

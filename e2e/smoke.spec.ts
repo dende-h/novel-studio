@@ -1,4 +1,4 @@
-import { expect, type Page, test } from '@playwright/test'
+import { expect, type Locator, type Page, test } from '@playwright/test'
 
 // 初回のみ出る保存の仕組みの説明（FirstRunDialog）は、新規コンテキストの各テストで毎回
 // 前面に出て見出しを覆い・クリックを奪う。アプリ起動前に「表示済み」フラグ（use-local-flag の
@@ -411,4 +411,55 @@ test('起動後に module script が失敗しても自動再読み込みが走�
   // 最初の 1 回（goto）以外にナビゲーションが起きていない＝再読み込みループしていない
   expect(navigations).toBe(1)
   await expect(page.getByRole('heading', { name: 'マイライブラリ' })).toBeVisible()
+})
+
+/** 要素の中心でいちばん上に描かれているのがその要素自身か（何かの下に隠れていないか）。 */
+const drawnOnTop = (target: Locator) =>
+  target.evaluate((el) => {
+    const r = el.getBoundingClientRect()
+    return document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2) === el
+  })
+
+/**
+ * 執筆の記録の年カレンダーは 1 年ぶんの週列を横に並べるので、PC レイアウトの最小幅
+ * （ビューポート 1024px・サイドバー 248px）では右にはみ出す。以前は常に左端（1 月）で開き、
+ * 秋以降は今日のマスが画面外に隠れていた。今年を開いたら今日のマスが見える範囲に入ることと、
+ * 横にずれても曜日ラベルが左端に残ること、縦のページスクロールまでは動かさないことを固定する。
+ */
+test('1024px 幅で今年の執筆の記録を開くと、今日のマスが横スクロールの見える範囲に入る', async ({
+  page,
+}) => {
+  // 秋の日付に固定する（年の前半だと直す前から見えていて検証にならない）
+  await page.clock.setFixedTime(new Date('2026-10-20T12:00:00'))
+  await page.setViewportSize({ width: 1024, height: 768 })
+  await page.goto('/#/activity')
+
+  const calendar = page.getByRole('region', { name: '年間の執筆カレンダー' })
+  const todayCell = calendar.locator('[aria-current="date"]')
+  await expect(todayCell).toHaveCount(1)
+
+  // 前提：この幅ではカレンダーが横にはみ出している
+  const overflows = await calendar.evaluate((el) => el.scrollWidth > el.clientWidth)
+  expect(overflows).toBe(true)
+
+  const area = await calendar.boundingBox()
+  const cell = await todayCell.boundingBox()
+  if (!area || !cell) throw new Error('カレンダーか今日のマスが描画されていない')
+  expect(cell.x).toBeGreaterThanOrEqual(area.x)
+  expect(cell.x + cell.width).toBeLessThanOrEqual(area.x + area.width)
+  // 左に留めた曜日ラベル列の下に隠れていない
+  expect(await drawnOnTop(todayCell)).toBe(true)
+
+  // 横にずれても曜日ラベルは左端に残り、流れてくるマスに覆われない（列を sticky で留めている）
+  expect(await calendar.evaluate((el) => el.scrollLeft)).toBeGreaterThan(0)
+  const monday = calendar.getByText('月', { exact: true })
+  const mondayBox = await monday.boundingBox()
+  if (!mondayBox) throw new Error('曜日ラベルが描画されていない')
+  expect(mondayBox.x).toBeGreaterThanOrEqual(area.x)
+  expect(mondayBox.x + mondayBox.width).toBeLessThanOrEqual(area.x + 28)
+  expect(await drawnOnTop(monday)).toBe(true)
+
+  // 縦のページスクロールは動かしていない（scrollIntoView を使わない）
+  const pageScrollTop = await page.evaluate(() => document.querySelector('main > div')?.scrollTop)
+  expect(pageScrollTop).toBe(0)
 })

@@ -1,6 +1,7 @@
 import { Handle, type NodeProps, Position } from '@xyflow/react'
 import { MoreHorizontal, Plus, Trash2 } from 'lucide-react'
 import { createContext, useContext, useEffect, useRef, useState } from 'react'
+import { focusWhenReady } from '@/ui/_utils/focus-when-ready'
 
 /** マインドマップの操作をノードへ渡すコンテキスト（＋で子を生やす・入力・削除）。 */
 export interface MindmapActions {
@@ -64,9 +65,15 @@ function MindmapNode({ id, data }: NodeProps) {
   // ⋯ メニュー（削除など）。＋ボタンと離し、削除は2ステップにして誤操作を防ぐ。
   const [menuOpen, setMenuOpen] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
+  // IME 変換中か（CommitTextarea と同じく compositionstart/end で持つ）。
+  const composing = useRef(false)
 
+  // 生やした直後の枝へ入力を移す。React Flow は寸法を測るまでノードを visibility:hidden で
+  // 隠し、隠れた要素への focus() は空振りするので、見えるまで数フレーム試し直す。
+  // preventScroll：画面外の枝でも外枠をスクロールさせない（React Flow が 0 へ戻すのでちらつくだけ）。
   useEffect(() => {
-    if (ctx?.focusId === id) inputRef.current?.focus()
+    if (ctx?.focusId !== id) return
+    return focusWhenReady(() => inputRef.current, { focusOptions: { preventScroll: true } })
   }, [ctx?.focusId, id])
 
   // メニュー外のクリックで閉じる（開いた瞬間のクリックで閉じないよう次ティックで登録）。
@@ -98,9 +105,19 @@ function MindmapNode({ id, data }: NodeProps) {
             setText(e.target.value)
             ctx?.onLabelChange(id, e.target.value)
           }}
+          onCompositionStart={() => {
+            composing.current = true
+          }}
+          onCompositionEnd={() => {
+            composing.current = false
+          }}
           onKeyDown={(e) => {
             // Enter で子を生やす（中心は右へ、枝は自分の向きへ）。RF のショートカットを奪われないよう伝播を止める。
-            if (e.key === 'Enter') {
+            // 変換を確定する Enter では生やさない。Safari は compositionend を keydown より先に送り、
+            // isComposing も false になるため、keyCode 229（IME が処理中のキー）でも見分ける。
+            const imeEnter =
+              composing.current || e.nativeEvent.isComposing || e.nativeEvent.keyCode === 229
+            if (e.key === 'Enter' && !imeEnter) {
               e.preventDefault()
               ctx?.onAddChild(id, mySide)
             }
