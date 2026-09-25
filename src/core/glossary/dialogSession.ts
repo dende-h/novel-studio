@@ -2,7 +2,6 @@ import type { DialogAnswer, GlossaryEntry } from '../schema'
 import {
   type AnsweredOptions,
   type AnyDialogQuestion,
-  activeDeepQuestionsFor,
   activeQuestionsFor,
   answerPublic,
   answersOf,
@@ -113,6 +112,11 @@ const say = (s: DialogSession, text: string): DialogSession => ({
   log: [...s.log, { role: 'bot', text }],
 })
 const push = (s: DialogSession, m: DialogMessage): DialogSession => ({ ...s, log: [...s.log, m] })
+/** 答えの吹き出しは鍵ごとに 1 つ＝聞き直したら前の吹き出しを消して、最新だけ残す。 */
+const pushAnswer = (s: DialogSession, m: DialogMessage & { role: 'user'; key: string }) => ({
+  ...s,
+  log: [...s.log.filter((x) => !(x.role === 'user' && x.key === m.key)), m],
+})
 const chips = (s: DialogSession, items: DialogChip[]): DialogSession =>
   push(s, { role: 'chips', chips: items })
 
@@ -220,7 +224,10 @@ export function beginSession(entry: GlossaryEntry, opts: { draft: boolean }): Di
   }
   if (opts.draft) {
     for (const t of INTRO_DRAFT) s = say(s, t)
-    return askCategory(s, 'どの分類の項目ですか。')
+    // フォームで先に分類を選んであれば聞かない（同じことを二度聞かない）。
+    if (!hasDialogQuestions(entry.category)) return askCategory(s, 'どの分類の項目ですか。')
+    const first = nextQuestion(entry, optsOf(s))
+    return first ? ask(s, entry, first) : askPick(s, entry, null)
   }
   if (!hasDialogQuestions(entry.category)) {
     return askCategory(
@@ -235,7 +242,7 @@ export function beginSession(entry: GlossaryEntry, opts: { draft: boolean }): Di
     s = push(s, { role: 'card-base' })
     s = say(
       s,
-      `${entry.name} の名前・読み・別名・公開情報は入っているので、その先から聞きます。${activeDeepQuestionsFor(entry).length} 問です。読者に見せるかどうかは、答えごとに選べます。`,
+      `${entry.name} の名前・読み・別名・公開情報は入っているので、その先から聞きます。基本の質問は ${p.total} 問です（任意の問いは数に入れません）。読者に見せるかどうかは、答えごとに選べます。`,
     )
     return nu ? ask(s, entry, nu) : askPick(s, entry, null)
   }
@@ -352,7 +359,7 @@ export function submitAnswer(
     text,
     ...(q.field === undefined ? { public: answerPublic(q, prev) } : {}),
   })
-  let ns = push(s, {
+  let ns = pushAnswer(s, {
     role: 'user',
     key: q.key,
     label: q.label,
@@ -393,7 +400,7 @@ export function skipQuestion(
   if (!q) return { session: { ...s, pending: null }, entry }
   // 「直す」で聞き直しているときのスキップ・あとでは「そのままにする」＝答えを消さない。
   if (s.editingKey === q.key && (answersOf(entry)[q.key]?.text.trim() ?? '') !== '') {
-    return after(say(s, 'そのままにします。'), entry)
+    return after(say(s, 'そのままにします。'), entry, { silent: true })
   }
   let next = entry
   let ns = s
@@ -405,7 +412,7 @@ export function skipQuestion(
       ...(later ? { later: true } : { skipped: true }),
     })
   }
-  ns = push(ns, {
+  ns = pushAnswer(ns, {
     role: 'user',
     key: q.key,
     label: q.label,
@@ -428,13 +435,26 @@ function afterDig(s: DialogSession, entry: GlossaryEntry, q: AnyDialogQuestion):
 }
 
 /** 1 問済んだあとの本流（直す→戻る／次の問い／ひと通り済んだらまとめ）。 */
-function after(s: DialogSession, entry: GlossaryEntry): SessionStep {
+function after(
+  s: DialogSession,
+  entry: GlossaryEntry,
+  opts: { silent?: boolean } = {},
+): SessionStep {
   let ns: DialogSession = { ...s, pending: null }
   const o = optsOf(ns)
   if (ns.editingKey) {
     ns = { ...ns, editingKey: null }
     const nu = nextQuestion(entry, o)
-    if (nu) return { session: ask(say(ns, '直しました。つづきを聞きます。'), entry, nu), entry }
+    if (nu) {
+      return {
+        session: ask(
+          opts.silent ? say(ns, 'つづきを聞きます。') : say(ns, '直しました。つづきを聞きます。'),
+          entry,
+          nu,
+        ),
+        entry,
+      }
+    }
     return { session: askPick(ns, entry, 'ほかに変えますか。'), entry }
   }
   const nu = nextQuestion(entry, o)

@@ -70,6 +70,13 @@ describe('新規の下書き', () => {
     expect(pendingKey(s)).toBe('name')
   })
 
+  it('フォームで先に分類を選んだ下書きは、分類を聞き直さず最初の問いから', () => {
+    const e = entry({ name: 'ユキ', category: '人物' })
+    const s = beginSession(e, { draft: true })
+    expect(s.pending).toEqual({ kind: 'question', key: 'reading' })
+    expect(botTexts(s).some((t) => t.includes('どの分類'))).toBe(false)
+  })
+
   it('知らない分類は受け付けない', () => {
     const s0 = beginSession(entry({ name: '' }), { draft: true })
     const { session: s, entry: e } = submitAnswer(s0, entry({ name: '' }), '地名')
@@ -288,6 +295,8 @@ describe('再開・直す', () => {
     expect(pendingKey(step.session)).toBe('title')
     step = submitAnswer(step.session, step.entry, '境の街の案内人')
     expect(step.entry.dialog?.title?.text).toBe('境の街の案内人')
+    // 吹き出しは鍵ごとに 1 つ＝前の答えの吹き出しは消え、最新だけ残る
+    expect(step.session.log.filter((m) => m.role === 'user' && m.key === 'title')).toHaveLength(1)
     expect(step.session.editingKey).toBeNull()
     expect(botTexts(step.session)).toContainEqual('直しました。つづきを聞きます。')
     expect(pendingKey(step.session)).toBe('gender')
@@ -303,6 +312,7 @@ describe('再開・直す', () => {
     step = skipQuestion(step.session, step.entry, false)
     expect(step.entry.dialog?.title).toEqual({ text: '案内人', public: true })
     expect(botTexts(step.session)).toContainEqual('そのままにします。')
+    expect(botTexts(step.session)).not.toContainEqual('直しました。つづきを聞きます。')
     expect(step.session.editingKey).toBeNull()
     expect(pendingKey(step.session)).toBe('age') // 本流へ戻る
   })

@@ -14,6 +14,7 @@ import {
   DIALOG_VERSION,
   DialogPatchError,
   dialogProgress,
+  dialogRecordDiff,
   dialogStatusOf,
   dialogToPlainText,
   digQuestionsOf,
@@ -288,6 +289,14 @@ describe('答えの読み書き', () => {
       dialog: { ...applied.dialog, gap: { text: '実は泣き虫', public: true } },
     }
     expect(draftSummaryFromDialog(more)).toBe(`${applied.summary}\nギャップ：実は泣き虫`)
+    // 複数行の答えも、入れたあとの二度目で重ねない
+    const multi = entry({
+      name: 'x',
+      category: '人物',
+      dialog: { title: { text: '部長\n二行目' } },
+    })
+    const once = { ...multi, summary: draftSummaryFromDialog(multi) }
+    expect(draftSummaryFromDialog(once)).toBe(once.summary)
   })
 })
 
@@ -341,6 +350,23 @@ describe('applyDialogPatch（MCP と画面が共用するパッチ規則）', ()
     )
     // 自由記述も可の選択肢は外れ値を受ける
     expect(applyDialogPatch(base, { gender: '不明' }).dialog?.gender?.text).toBe('不明')
+  })
+
+  it('削除（空文字）は旧鍵・未知の鍵でも通り、更新と混ぜても書ける', () => {
+    const e = entry({ name: 'x', category: '人物', dialog: { old_key: { text: '昔' } } })
+    const next = applyDialogPatch(e, { old_key: '', age: '30' })
+    expect(next.dialog).toEqual({ age: { text: '30' } })
+  })
+
+  it('dialogRecordDiff は変わった鍵だけ（消えた鍵は null）', () => {
+    const prev = { a: { text: '1' }, b: { text: '2', public: true }, c: { text: '3' } }
+    const next = { a: { text: '1' }, b: { text: '2', public: false }, d: { text: '4' } }
+    expect(dialogRecordDiff(prev, next)).toEqual({
+      b: { text: '2', public: false },
+      d: { text: '4' },
+      c: null,
+    })
+    expect(dialogRecordDiff(undefined, undefined)).toEqual({})
   })
 
   it('削除（空文字）だけなら、質問セットの無い分類でも通る＝古い答えを片づけられる', () => {
@@ -407,6 +433,11 @@ describe('平文', () => {
     )
     expect(uncategorized).toContain('分類「未分類」には質問セットがありません')
     expect(uncategorized).toContain('  title [読者に見せる]: 案内人')
+    expect(
+      dialogToPlainText(
+        entry({ name: 'z', dialogVersion: 1, dialog: { title: { text: '案内人' } } }),
+      ),
+    ).toContain('  title [公開の既定（分類を付けてから決まる）]: 案内人')
     expect(uncategorized).not.toContain('旧')
   })
 

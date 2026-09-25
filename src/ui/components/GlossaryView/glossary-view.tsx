@@ -13,6 +13,7 @@ import {
 import {
   DIALOG_VERSION,
   type DialogSummary,
+  dialogRecordDiff,
   dialogSummaryOf,
   parseAliasInput,
 } from '@/core/glossary/dialog'
@@ -355,7 +356,7 @@ export function GlossaryView({
                   }
                   const patch: GlossaryDialogPatch = {}
                   if (next.dialog !== prev.dialog) {
-                    const diff = dialogDiff(prev.dialog ?? {}, next.dialog ?? {})
+                    const diff = dialogRecordDiff(prev.dialog, next.dialog)
                     if (Object.keys(diff).length > 0) {
                       patch.dialogPatch = diff
                       patch.dialogVersion = DIALOG_VERSION
@@ -465,28 +466,6 @@ export function GlossaryView({
       />
     </div>
   )
-}
-
-/** 対話ノートの鍵ごとの差分（変わった鍵だけ。消えた鍵は null）。 */
-function dialogDiff(
-  prev: Record<string, DialogAnswer>,
-  next: Record<string, DialogAnswer>,
-): Record<string, DialogAnswer | null> {
-  const out: Record<string, DialogAnswer | null> = {}
-  for (const [key, a] of Object.entries(next)) {
-    const b = prev[key]
-    if (
-      !b ||
-      b.text !== a.text ||
-      b.public !== a.public ||
-      b.skipped !== a.skipped ||
-      b.later !== a.later
-    ) {
-      out[key] = a
-    }
-  }
-  for (const key of Object.keys(prev)) if (!(key in next)) out[key] = null
-  return out
 }
 
 /** 現在値から GlossaryFormValues を組む（1 フィールドずつ差し替えて確定する土台）。 */

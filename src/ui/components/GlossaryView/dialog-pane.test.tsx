@@ -159,8 +159,8 @@ describe('DialogPane（キー操作と保存）', () => {
         onToForm={() => {}}
       />,
     )
-    // 下書き：分類は先に入っているが台本は分類から聞く
-    fireEvent.click(screen.getByRole('button', { name: '人物' }))
+    // 下書き：分類が先に入っているので、分類は聞かず名前から
+    expect(lastBot()).toBe('まず、名前を教えてください。')
     fireEvent.click(screen.getByRole('button', { name: 'スキップ' })) // 名前
     let guard = 0
     while (screen.queryByRole('button', { name: 'スキップ' }) && guard++ < 60) {

@@ -50,8 +50,9 @@ export function DialogNoteSection({
           </p>
         ) : status === 'none' ? (
           <div className="rounded-md bg-accent px-3 py-2.5 text-[12.5px] text-on-surface leading-relaxed">
-            この{entry.category}の深掘りは、まだ答えていません。対話は {questions.length}{' '}
-            問、ひとつずつ答えられます。名前・読み・別名・公開情報はもう入っているので、そこは聞きません。
+            この{entry.category}の深掘りは、まだ答えていません。基本の質問は {progress.total}{' '}
+            問（ほかに任意の問いが {questions.length - progress.total}{' '}
+            問）、ひとつずつ答えられます。名前・読み・別名・公開情報はもう入っているので、そこは聞きません。
             <div className="mt-2">
               <OpenButton primary onClick={onOpenDialog}>
                 対話で深める

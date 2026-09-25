@@ -1,4 +1,3 @@
-import { BookOpen, Lock } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { publicTextOf } from '@/core/glossary'
 import {
@@ -330,7 +329,9 @@ function Message({
       const key = m.key
       const q = questionByKey(entry.category, key)
       const a = answers[key]
-      const blank = m.skipped || m.later
+      // 吹き出しは今の答えを映す（ログの印は、答えが欄に無い下書きの共通 4 問のときだけ使う）。
+      const later = a ? a.later === true && a.text.trim() === '' : m.later === true
+      const blank = a ? a.text.trim() === '' : true
       return (
         <div className="flex max-w-[82%] flex-col items-end self-end">
           <span className="mx-1.5 mb-0.5 text-[11px] text-on-surface-variant/70">
@@ -339,7 +340,7 @@ function Message({
           </span>
           {blank ? (
             <div className="rounded-2xl rounded-br-md border border-outline-variant/40 border-dashed px-3.5 py-2 text-[13px] text-on-surface-variant/70">
-              {m.later ? 'あとで答える' : 'スキップ'}
+              {later ? 'あとで答える' : 'スキップ'}
             </div>
           ) : (
             <NotationText
@@ -550,19 +551,9 @@ function VisibilityPill({
       aria-label={
         isPublic ? '読者に見せる（押すと作者だけに戻す）' : '作者だけ（押すと読者に見せる）'
       }
-      className={cn(
-        'inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10.5px] transition-colors',
-        isPublic
-          ? 'border-primary/30 bg-primary-container text-on-primary-container hover:bg-primary-container/70'
-          : 'border-outline-variant/40 bg-secondary-container text-on-secondary-container hover:bg-secondary-container/70',
-      )}
+      className="rounded-full transition-opacity hover:opacity-80"
     >
-      {isPublic ? (
-        <BookOpen className="size-2.5" aria-hidden />
-      ) : (
-        <Lock className="size-2.5" aria-hidden />
-      )}
-      {isPublic ? '読者に見せる' : '作者だけ'}
+      <VisibilityLabel isPublic={isPublic} className="border border-outline-variant/40" />
     </button>
   )
 }

@@ -133,8 +133,6 @@ export interface GlossaryFieldPatch {
   authorNote?: string
   /** サムネ画像の data URL。空文字 '' は削除（キーを落とす）、undefined は据え置き。 */
   thumbnail?: string
-  /** 対話ノート（丸ごと差し替え・undefined は据え置き）。 */
-  dialog?: Record<string, DialogAnswer>
   /**
    * 対話ノートの**鍵ごと**のパッチ（`null` はその鍵を削除）。対話ペインが使う＝答えた鍵だけを
    * 書き換え、同期や MCP で届いた他の鍵の答えを巻き込まない。保存中の最新の record に重ねる。

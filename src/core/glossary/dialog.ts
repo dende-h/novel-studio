@@ -1236,17 +1236,43 @@ export function draftSummaryFromDialog(entry: EntryLike): string {
   const parts: string[] = []
   const pub = publicTextOf(entry)
   if (pub !== '') parts.push(pub)
-  // 一度入れた行はもう公開情報にある＝二度目の下書きで同じ行を重ねない。
-  const present = new Set(pub.split('\n').map((l) => l.trim()))
+  // 一度入れた答えはもう公開情報にある＝二度目の下書きで同じ答え（複数行でも）を重ねない。
   for (const q of activeDeepQuestionsFor(entry)) {
     for (const x of [q, ...digQuestionsOf(q)]) {
       const a = entry.dialog?.[x.key]
       if (!a || a.text.trim() === '' || !answerPublic(x, a) || answerOutOfChoices(x, a)) continue
       const line = `${isDigQuestion(x) ? '↳ ' : ''}${x.label}：${a.text.trim()}`
-      if (!present.has(line)) parts.push(line)
+      if (!pub.includes(line)) parts.push(line)
     }
   }
   return parts.join('\n')
+}
+
+/**
+ * 対話ノートの鍵ごとの差分（変わった鍵だけ。消えた鍵は null）。画面の対話ペインが「答えた鍵だけ」を
+ * 保存するために使う＝store が最新の record に重ねる（同期や MCP で増えた他の鍵を巻き込まない）。
+ */
+export function dialogRecordDiff(
+  prev: Record<string, DialogAnswer> | undefined,
+  next: Record<string, DialogAnswer> | undefined,
+): Record<string, DialogAnswer | null> {
+  const before = prev ?? {}
+  const after = next ?? {}
+  const out: Record<string, DialogAnswer | null> = {}
+  for (const [key, a] of Object.entries(after)) {
+    const b = before[key]
+    if (
+      !b ||
+      b.text !== a.text ||
+      b.public !== a.public ||
+      b.skipped !== a.skipped ||
+      b.later !== a.later
+    ) {
+      out[key] = a
+    }
+  }
+  for (const key of Object.keys(before)) if (!(key in after)) out[key] = null
+  return out
 }
 
 // ---- MCP と画面が共用するパッチ規則（§5.2） ----
@@ -1284,6 +1310,11 @@ export function applyDialogPatch(entry: GlossaryEntry, patch: DialogPatch): Glos
   }
   const next: Record<string, DialogAnswer> = { ...(entry.dialog ?? {}) }
   for (const key of keys) {
+    // 削除（空文字）は鍵の検証をしない＝旧鍵・枝から外れた鍵も片づけられる。
+    if (textOf(patch[key])?.trim() === '') {
+      delete next[key]
+      continue
+    }
     if (BASE_KEYS.includes(key)) {
       throw new DialogPatchError(
         `dialog の鍵「${key}」は使えません。名前・読み・別名・公開情報は name／reading／aliases／summary で渡してください`,
@@ -1301,10 +1332,6 @@ export function applyDialogPatch(entry: GlossaryEntry, patch: DialogPatch): Glos
       throw new DialogPatchError(`dialog の「${key}」は文字列か { text, public } で渡してください`)
     }
     const text = value.text.trim()
-    if (text === '') {
-      delete next[key]
-      continue
-    }
     if (q.choices && !q.free && !q.choices.includes(text)) {
       throw new DialogPatchError(
         `「${q.label}」（${key}）は ${q.choices.join('／')} のいずれかです（「${text}」は選べません）`,
@@ -1343,7 +1370,14 @@ export function dialogToPlainText(entry: EntryLike & Pick<GlossaryEntry, 'dialog
     )
     for (const [key, a] of Object.entries(dialog)) {
       if (a.text.trim() === '') continue
-      lines.push(`  ${key} [${a.public ? '読者に見せる' : '作者だけ'}]: ${a.text.trim()}`)
+      // 公開の既定は問いごとに決まる＝分類が無いあいだは「既定」としか言えない。
+      const vis =
+        a.public === undefined
+          ? '公開の既定（分類を付けてから決まる）'
+          : a.public
+            ? '読者に見せる'
+            : '作者だけ'
+      lines.push(`  ${key} [${vis}]: ${a.text.trim()}`)
     }
     return lines.join('\n')
   }
