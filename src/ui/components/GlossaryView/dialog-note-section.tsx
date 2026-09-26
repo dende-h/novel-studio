@@ -1,4 +1,4 @@
-import { MessageSquareText, Pencil } from 'lucide-react'
+import { ChevronRight, MessageSquareText, Pencil } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import {
   type AnyDialogQuestion,
@@ -80,91 +80,136 @@ export function DialogNoteSection({
         }
       })
   }, [entry, questions])
+  // 畳んだ状態は端末に覚える（項目を切り替えるたびに開き直さない）。
+  const [open, setOpen] = useState(readNoteOpen)
+  const badge = !hasDialogQuestions(entry.category)
+    ? null
+    : status === 'none'
+      ? '未着手'
+      : status === 'done'
+        ? '✓ 対話済み'
+        : `対話 ${progress.done}/${progress.total}`
   return (
-    <section className="space-y-1.5" aria-label="対話ノート">
-      <div className="flex items-center gap-2">
-        <h2 className="font-medium text-[13px] text-on-surface">対話ノート</h2>
-        <VisibilityLabel
-          isPublic={false}
-          label="「読者に見せる」にした答えも、まだ投稿には載りません"
-        />
-      </div>
-      <div className="rounded-lg border border-outline-variant/30 bg-surface-container-lowest px-3.5 py-3">
-        {!hasDialogQuestions(entry.category) ? (
-          <>
-            <p className="rounded-md bg-accent px-3 py-2.5 text-[12.5px] text-on-surface leading-relaxed">
-              カテゴリを選ぶと、そのカテゴリの質問が並びます。対話タブからも選べます。
-            </p>
-            <InactiveAnswers
-              rows={inactive}
-              lead="残っている答え（カテゴリを選ぶと問いに結びつきます）"
-              resolvedNames={resolvedNames}
-              onRefClick={onRefClick}
-            />
-          </>
-        ) : status === 'none' ? (
-          <div className="rounded-md bg-accent px-3 py-2.5 text-[12.5px] text-on-surface leading-relaxed">
-            この{entry.category}の深掘りは、まだ答えていません。基本の質問は {progress.total}{' '}
-            問（ほかに任意の問いが {questions.length - progress.total}{' '}
-            問）、ひとつずつ答えられます。
-            {askBase
-              ? '名前・読み・別名・公開情報も、対話の最初に聞きます。'
-              : emptyBase.length > 0
-                ? `${emptyBase.map((q) => q.label).join('・')}が空いているので、対話の最初に聞きます。`
-                : '名前・読み・別名・公開情報はもう入っているので、そこは聞きません。'}
-            <div className="mt-2">
-              <OpenButton primary onClick={onOpenDialog}>
-                対話で深める
-              </OpenButton>
-            </div>
-          </div>
-        ) : (
-          <>
-            <div className="mb-2 flex flex-wrap items-center gap-2.5">
-              <span className="font-medium text-[13px] text-on-surface">
-                対話 {progress.done}/{progress.total}
-              </span>
-              {progress.later > 0 ? (
-                <span className="rounded-full bg-secondary-container px-2 py-0.5 text-[10.5px] text-on-secondary-container">
-                  あとで {progress.later}
-                </span>
-              ) : null}
-              <div className="ml-auto">
-                <OpenButton primary={status === 'inProgress'} onClick={onOpenDialog}>
-                  {status === 'inProgress' ? '対話をつづける' : '対話で直す'}
-                </OpenButton>
-              </div>
-            </div>
-            <dl className="m-0 grid grid-cols-[8em_minmax(0,1fr)_auto] items-start gap-x-2.5 gap-y-1.5 text-[13px]">
-              {questions.map((q) => (
-                <NoteRow
-                  key={q.key}
-                  question={q}
-                  entry={entry}
-                  onAnswer={onAnswer}
-                  onToggleVisibility={onToggleVisibility}
-                  glossary={glossary}
-                  onCreateEntry={onCreateEntry}
+    <section aria-label="対話ノート">
+      <details
+        open={open}
+        onToggle={(e) => {
+          const next = e.currentTarget.open
+          setOpen(next)
+          writeNoteOpen(next)
+        }}
+        className="group/note"
+      >
+        <summary className="flex cursor-pointer select-none list-none items-center gap-2 py-0.5 [&::-webkit-details-marker]:hidden">
+          <ChevronRight
+            className="size-3.5 shrink-0 text-on-surface-variant transition-transform group-open/note:rotate-90"
+            aria-hidden
+          />
+          <h2 className="font-medium text-[13px] text-on-surface">対話ノート</h2>
+          {badge ? (
+            <span className="rounded-full bg-surface-container-high px-2 py-0.5 text-[10.5px] text-on-surface-variant">
+              {badge}
+            </span>
+          ) : null}
+          <VisibilityLabel
+            isPublic={false}
+            label="「読者に見せる」にした答えも、まだ投稿には載りません"
+          />
+        </summary>
+        <div className="mt-1.5 space-y-1.5">
+          <div className="rounded-lg border border-outline-variant/30 bg-surface-container-lowest px-3.5 py-3">
+            {!hasDialogQuestions(entry.category) ? (
+              <>
+                <p className="rounded-md bg-accent px-3 py-2.5 text-[12.5px] text-on-surface leading-relaxed">
+                  カテゴリを選ぶと、そのカテゴリの質問が並びます。対話タブからも選べます。
+                </p>
+                <InactiveAnswers
+                  rows={inactive}
+                  lead="残っている答え（カテゴリを選ぶと問いに結びつきます）"
                   resolvedNames={resolvedNames}
                   onRefClick={onRefClick}
                 />
-              ))}
-            </dl>
-            <InactiveAnswers
-              rows={inactive}
-              lead="今の種類では聞かない答え・前の質問セットの答え（残してあります）"
-              resolvedNames={resolvedNames}
-              onRefClick={onRefClick}
-            />
-          </>
-        )}
-      </div>
-      <p className="text-[11px] text-on-surface-variant/60 leading-relaxed">
-        対話の答えです。ここでも直せます（欄を離れると保存・印を押すと公開の扱いが切り替わります）。対話タブでは同じ答えを一問ずつ聞かれます。名前・読み・別名・公開情報は上の欄がそのまま最初の
-        4 問の答えです。
-      </p>
+              </>
+            ) : status === 'none' ? (
+              <div className="rounded-md bg-accent px-3 py-2.5 text-[12.5px] text-on-surface leading-relaxed">
+                この{entry.category}の深掘りは、まだ答えていません。基本の質問は {progress.total}{' '}
+                問（ほかに任意の問いが {questions.length - progress.total}{' '}
+                問）、ひとつずつ答えられます。
+                {askBase
+                  ? '名前・読み・別名・公開情報も、対話の最初に聞きます。'
+                  : emptyBase.length > 0
+                    ? `${emptyBase.map((q) => q.label).join('・')}が空いているので、対話の最初に聞きます。`
+                    : '名前・読み・別名・公開情報はもう入っているので、そこは聞きません。'}
+                <div className="mt-2">
+                  <OpenButton primary onClick={onOpenDialog}>
+                    対話で深める
+                  </OpenButton>
+                </div>
+              </div>
+            ) : (
+              <>
+                {/* 進み具合は見出し（畳んでも見える）に出す。ここは「あとで」の数とボタンだけ。 */}
+                <div className="mb-2 flex flex-wrap items-center gap-2.5">
+                  {progress.later > 0 ? (
+                    <span className="rounded-full bg-secondary-container px-2 py-0.5 text-[10.5px] text-on-secondary-container">
+                      あとで {progress.later}
+                    </span>
+                  ) : null}
+                  <div className="ml-auto">
+                    <OpenButton primary={status === 'inProgress'} onClick={onOpenDialog}>
+                      {status === 'inProgress' ? '対話をつづける' : '対話で直す'}
+                    </OpenButton>
+                  </div>
+                </div>
+                <dl className="m-0 grid grid-cols-[8em_minmax(0,1fr)_auto] items-start gap-x-2.5 gap-y-1.5 text-[13px]">
+                  {questions.map((q) => (
+                    <NoteRow
+                      key={q.key}
+                      question={q}
+                      entry={entry}
+                      onAnswer={onAnswer}
+                      onToggleVisibility={onToggleVisibility}
+                      glossary={glossary}
+                      onCreateEntry={onCreateEntry}
+                      resolvedNames={resolvedNames}
+                      onRefClick={onRefClick}
+                    />
+                  ))}
+                </dl>
+                <InactiveAnswers
+                  rows={inactive}
+                  lead="今の種類では聞かない答え・前の質問セットの答え（残してあります）"
+                  resolvedNames={resolvedNames}
+                  onRefClick={onRefClick}
+                />
+              </>
+            )}
+          </div>
+          <p className="text-[11px] text-on-surface-variant/60 leading-relaxed">
+            対話の答えです。ここでも直せます（欄を離れると保存・印を押すと公開の扱いが切り替わります）。対話タブでは同じ答えを一問ずつ聞かれます。名前・読み・別名・公開情報は上の欄がそのまま最初の
+            4 問の答えです。
+          </p>
+        </div>
+      </details>
     </section>
   )
+}
+
+const NOTE_OPEN_KEY = 'ns-glossary-note-open'
+/** 対話ノートを開いているか（端末に覚える。読めなければ開いた状態）。 */
+function readNoteOpen(): boolean {
+  try {
+    return localStorage.getItem(NOTE_OPEN_KEY) !== '0'
+  } catch {
+    return true
+  }
+}
+function writeNoteOpen(open: boolean): void {
+  try {
+    localStorage.setItem(NOTE_OPEN_KEY, open ? '1' : '0')
+  } catch {
+    // 端末に覚えられなくても畳む操作は効く
+  }
 }
 
 /** 1 問ぶんの行（見出し・答えの欄・公開の印）。答え済みは見出しを濃く、未回答は薄く。 */
