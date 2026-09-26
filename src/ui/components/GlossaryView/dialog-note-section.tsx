@@ -147,9 +147,8 @@ export function DialogNoteSection({
             </>
           ) : status === 'none' ? (
             <div className="rounded-md bg-accent px-3 py-2.5 text-[12.5px] text-on-surface leading-relaxed">
-              この{entry.category}の深掘りは、まだ答えていません。基本の質問は {progress.total}{' '}
-              問（ほかに任意の問いが {questions.length - progress.total}{' '}
-              問）、ひとつずつ答えられます。
+              この{entry.category}の深掘りは、まだ答えていません。質問は {progress.total}{' '}
+              問、ひとつずつ答えられます。
               {askBase
                 ? '名前・読み・別名・公開情報も、対話の最初に聞きます。'
                 : emptyBase.length > 0
@@ -226,10 +225,10 @@ export function DialogNoteSection({
 }
 
 const NOTE_OPEN_KEY = 'ns-glossary-note-open'
-/** 対話ノートを開いているか（端末に覚える。読めなければ開いた状態）。 */
+/** 対話ノートを開いているか（端末に覚える。初期値と読めないときは畳んだ状態）。 */
 function readNoteOpen(): boolean {
   try {
-    return localStorage.getItem(NOTE_OPEN_KEY) !== '0'
+    return localStorage.getItem(NOTE_OPEN_KEY) === '1'
   } catch {
     return true
   }
@@ -320,9 +319,6 @@ function NoteLine({
         )}
       >
         {label}
-        {!dig && q.optional ? (
-          <span className="ml-1 font-normal text-[10px] text-on-surface-variant/60">任意</span>
-        ) : null}
       </dt>
       <dd className="m-0 min-w-0">
         {choicesOnly ? (

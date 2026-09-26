@@ -101,8 +101,7 @@ export interface DialogQuestion {
   vis: DialogVisibility
   /** 共通 4 問だけが持つ。答えは `dialog` ではなくこの欄へ入る。 */
   field?: DialogField
-  /** 任意の問い（進み具合に数えない・D-DLG-SKIP）。 */
-  optional?: boolean
+  /** 入力欄の例（すべての自由記述の問いに付ける＝何を書けばよいか迷わない）。 */
   placeholder?: string
   /** 選択肢（チップ）。`free` が無ければ選択肢からだけ選ぶ（種類）。 */
   choices?: readonly string[]
@@ -175,6 +174,7 @@ export const DEEP_QUESTIONS: Readonly<Record<string, readonly DialogQuestion[]>>
       section: 'プロフィール',
       label: '役職・肩書き',
       q: '{名前}の役職や肩書き、立場を教えてください。',
+      placeholder: '例：灯台守。町では「番人」と呼ばれる',
       vis: 'switch-public',
     },
     {
@@ -182,6 +182,7 @@ export const DEEP_QUESTIONS: Readonly<Record<string, readonly DialogQuestion[]>>
       section: 'プロフィール',
       label: '年齢',
       q: '{名前}の年齢か、年の頃を教えてください。',
+      placeholder: '例：十七歳。見た目は二十歳くらい',
       vis: 'switch-public',
     },
     {
@@ -189,8 +190,8 @@ export const DEEP_QUESTIONS: Readonly<Record<string, readonly DialogQuestion[]>>
       section: 'プロフィール',
       label: '性別',
       q: '{名前}の性別を教えてください。',
+      placeholder: '例：選ぶか、自由に書く',
       vis: 'switch-public',
-      optional: true,
       choices: ['男', '女', 'その他'],
       free: true,
     },
@@ -199,16 +200,16 @@ export const DEEP_QUESTIONS: Readonly<Record<string, readonly DialogQuestion[]>>
       section: 'プロフィール',
       label: '誕生日',
       q: '{名前}の誕生日はいつですか。',
+      placeholder: '例：霜月の三日。本人は祝わない',
       vis: 'switch-public',
-      optional: true,
     },
     {
       key: 'blood',
       section: 'プロフィール',
       label: '血液型',
       q: '{名前}の血液型は。',
+      placeholder: '例：選ぶか、自由に書く',
       vis: 'switch-public',
-      optional: true,
       choices: ['A', 'B', 'O', 'AB', '不明'],
       free: true,
     },
@@ -217,14 +218,15 @@ export const DEEP_QUESTIONS: Readonly<Record<string, readonly DialogQuestion[]>>
       section: 'プロフィール',
       label: '出身',
       q: '{名前}はどこの出身ですか。',
+      placeholder: '例：北の港町。十歳で王都へ',
       vis: 'switch-public',
-      optional: true,
     },
     {
       key: 'history',
       section: 'プロフィール',
       label: '生い立ち・経歴',
       q: '{名前}の生い立ちや、これまでの経歴を教えてください。',
+      placeholder: '例：漁師の家に生まれ、十五で家を出た。今は灯台に住み込み',
       vis: 'switch-public',
     },
     {
@@ -232,6 +234,7 @@ export const DEEP_QUESTIONS: Readonly<Record<string, readonly DialogQuestion[]>>
       section: 'プロフィール',
       label: '個性',
       q: '{名前}の性格や個性を、一言で言うとどんな人ですか。',
+      placeholder: '例：口は悪いが、頼まれると断れない',
       vis: 'switch-public',
     },
     {
@@ -239,9 +242,15 @@ export const DEEP_QUESTIONS: Readonly<Record<string, readonly DialogQuestion[]>>
       section: 'プロフィール',
       label: '特技',
       q: '{名前}の特技や、得意なことはありますか。',
+      placeholder: '例：星を見て時刻を当てる',
       vis: 'switch-public',
       dig: [
-        { key: 'why', label: 'どうして身についたか', q: 'どうしてそれが得意になったのですか。' },
+        {
+          key: 'why',
+          label: 'どうして身についたか',
+          q: 'どうしてそれが得意になったのですか。',
+          placeholder: '例：灯台で夜番を続けるうちに',
+        },
       ],
     },
     {
@@ -267,7 +276,14 @@ export const DEEP_QUESTIONS: Readonly<Record<string, readonly DialogQuestion[]>>
       q: '{名前}の表情や行動、身体の動作に出る癖などはありますか。',
       vis: 'switch',
       placeholder: '例：考えるとき、爪を噛む',
-      dig: [{ key: 'why', label: 'どうして癖がついたか', q: 'どうしてその癖がついたのですか。' }],
+      dig: [
+        {
+          key: 'why',
+          label: 'どうして癖がついたか',
+          q: 'どうしてその癖がついたのですか。',
+          placeholder: '例：子どものころ、母に叱られた癖で',
+        },
+      ],
     },
     {
       key: 'speech_first',
@@ -298,12 +314,14 @@ export const DEEP_QUESTIONS: Readonly<Record<string, readonly DialogQuestion[]>>
       section: '心の中',
       label: '譲れないもの',
       q: '{名前}の信条、こだわり、流儀など、譲れないものはありますか。',
+      placeholder: '例：借りは必ず返す',
       vis: 'switch',
       dig: [
         {
           key: 'why',
           label: 'きっかけ・理由',
           q: 'それを大切にするようになった、きっかけや理由はありますか。',
+          placeholder: '例：父が借金を残して死んだから',
         },
       ],
     },
@@ -312,30 +330,55 @@ export const DEEP_QUESTIONS: Readonly<Record<string, readonly DialogQuestion[]>>
       section: '心の中',
       label: '好きなこと',
       q: '{名前}の好きなこと、好きなものを教えてください。',
+      placeholder: '例：雨の音。甘いもの',
       vis: 'switch',
-      dig: [{ key: 'why', label: 'どうして好きに', q: 'どうしてそれが好きになったのですか。' }],
+      dig: [
+        {
+          key: 'why',
+          label: 'どうして好きに',
+          q: 'どうしてそれが好きになったのですか。',
+          placeholder: '例：雨の日だけ父が家にいたから',
+        },
+      ],
     },
     {
       key: 'dislike',
       section: '心の中',
       label: '嫌いなこと',
       q: '{名前}の嫌いなこと、苦手なものを教えてください。',
+      placeholder: '例：嘘。大きな声',
       vis: 'switch',
-      dig: [{ key: 'why', label: 'どうして嫌いに', q: 'どうしてそれが嫌いになったのですか。' }],
+      dig: [
+        {
+          key: 'why',
+          label: 'どうして嫌いに',
+          q: 'どうしてそれが嫌いになったのですか。',
+          placeholder: '例：嘘で家族を失ったから',
+        },
+      ],
     },
     {
       key: 'fear',
       section: '心の中',
       label: '怖いもの',
       q: '{名前}がいちばん怖いものは何ですか。',
+      placeholder: '例：暗い水の底',
       vis: 'switch',
-      dig: [{ key: 'why', label: 'どうして怖いのか', q: 'どうしてそれが怖くなったのですか。' }],
+      dig: [
+        {
+          key: 'why',
+          label: 'どうして怖いのか',
+          q: 'どうしてそれが怖くなったのですか。',
+          placeholder: '例：幼いころ、船から落ちたから',
+        },
+      ],
     },
     {
       key: 'flaw',
       section: '心の中',
       label: '欠点',
       q: '{名前}の欠点や、つい繰り返してしまう失敗はありますか。',
+      placeholder: '例：意地を張って助けを求められない',
       vis: 'switch',
     },
     {
@@ -343,6 +386,7 @@ export const DEEP_QUESTIONS: Readonly<Record<string, readonly DialogQuestion[]>>
       section: '心の中',
       label: 'ギャップ',
       q: '{名前}の見た目や評判と、中身が違うところはありますか。',
+      placeholder: '例：無愛想に見えて、猫には甘い',
       vis: 'switch',
     },
     {
@@ -350,14 +394,15 @@ export const DEEP_QUESTIONS: Readonly<Record<string, readonly DialogQuestion[]>>
       section: '心の中',
       label: '誇り',
       q: '{名前}が自分で誇りに思っていることは何ですか。',
+      placeholder: '例：一度も灯を絶やしたことがない',
       vis: 'switch',
-      optional: true,
     },
     {
       key: 'daily',
       section: '暮らし',
       label: 'ふだんの一日',
       q: '{名前}のふだんの一日は、どんなふうに過ぎますか。',
+      placeholder: '例：昼は眠り、夕方に起きて灯をともす。夜明けに交代',
       vis: 'switch',
     },
     {
@@ -365,6 +410,7 @@ export const DEEP_QUESTIONS: Readonly<Record<string, readonly DialogQuestion[]>>
       section: '暮らし',
       label: '仕事・役目の中身',
       q: '{名前}は何をして暮らしていますか。仕事や役目の中身を、具体的にひとつ。',
+      placeholder: '例：灯台の灯を守り、霧の夜は鐘を鳴らす',
       vis: 'switch',
     },
     {
@@ -380,6 +426,7 @@ export const DEEP_QUESTIONS: Readonly<Record<string, readonly DialogQuestion[]>>
       section: '関係',
       label: '敵対している相手',
       q: '{名前}と敵対している相手はいますか。[[名前]] で人物につながります。',
+      placeholder: '例：[[港の役人]]。灯台の廃止を進めている',
       vis: 'switch',
     },
     {
@@ -387,6 +434,7 @@ export const DEEP_QUESTIONS: Readonly<Record<string, readonly DialogQuestion[]>>
       section: '関係',
       label: 'ライバル',
       q: '{名前}のライバルや、張り合う相手はいますか。',
+      placeholder: '例：[[隣町の灯台守]]。腕を張り合う',
       vis: 'switch',
     },
     {
@@ -394,22 +442,23 @@ export const DEEP_QUESTIONS: Readonly<Record<string, readonly DialogQuestion[]>>
       section: '関係',
       label: '恋愛',
       q: '{名前}が恋をしている相手や、恋人はいますか。[[名前]] で人物につながります。',
+      placeholder: '例：[[ミア]]。本人はまだ気づいていない',
       vis: 'switch',
-      optional: true,
     },
     {
       key: 'family',
       section: '関係',
       label: '家族',
       q: '{名前}に家族はいますか。どんな関係ですか。',
+      placeholder: '例：母と妹。父は幼いころに死んだ',
       vis: 'switch',
-      optional: true,
     },
     {
       key: 'secret',
       section: '秘密',
       label: '秘密',
       q: '{名前}には、誰にも言えない秘密がありますか。',
+      placeholder: '例：じつは沈んだ船の生き残り',
       vis: 'private-fixed',
     },
     {
@@ -417,8 +466,8 @@ export const DEEP_QUESTIONS: Readonly<Record<string, readonly DialogQuestion[]>>
       section: 'その他',
       label: 'その他',
       q: 'ほかに書き留めておきたい情報があれば、自由に記述してください。',
+      placeholder: '例：ほかに決めてあることを、何でも',
       vis: 'switch',
-      optional: true,
     },
   ],
   場所: [
@@ -435,6 +484,7 @@ export const DEEP_QUESTIONS: Readonly<Record<string, readonly DialogQuestion[]>>
       section: 'プロフィール',
       label: '所在',
       q: '{名前}はどこにあって、どうやって行きますか。',
+      placeholder: '例：王都から馬で二日。北の街道の終わり',
       vis: 'switch-public',
     },
     {
@@ -442,6 +492,7 @@ export const DEEP_QUESTIONS: Readonly<Record<string, readonly DialogQuestion[]>>
       section: 'プロフィール',
       label: 'どこからどこへ',
       q: '{名前}はどこからどこへ向かいますか。',
+      placeholder: '例：港町から山あいの村へ',
       vis: 'switch-public',
       only: ['乗り物・道中'],
     },
@@ -450,6 +501,7 @@ export const DEEP_QUESTIONS: Readonly<Record<string, readonly DialogQuestion[]>>
       section: 'プロフィール',
       label: '成り立ち',
       q: '{名前}はどのようにしてできた場所ですか。いつ、誰が、なぜ。',
+      placeholder: '例：百年前、難破した船乗りたちが築いた',
       vis: 'switch-public',
     },
     {
@@ -457,14 +509,15 @@ export const DEEP_QUESTIONS: Readonly<Record<string, readonly DialogQuestion[]>>
       section: 'プロフィール',
       label: '名前の由来',
       q: '{名前}という名前の由来はありますか。',
+      placeholder: '例：霧の深い日に船が着いたことから',
       vis: 'switch-public',
-      optional: true,
     },
     {
       key: 'looks',
       section: '姿',
       label: '外観・特徴',
       q: '{名前}の外観や特徴、規模、まわりの風景などを簡単に教えてください。',
+      placeholder: '例：石造りの家が斜面に並ぶ。いつも潮の匂い',
       vis: 'switch',
     },
     {
@@ -472,6 +525,7 @@ export const DEEP_QUESTIONS: Readonly<Record<string, readonly DialogQuestion[]>>
       section: '人と決まり',
       label: '治安・雰囲気・人々',
       q: '{名前}の治安や雰囲気、そこにいる人々の過ごし方を教えてください。[[名前]] で人物につながります。',
+      placeholder: '例：よそ者に冷たいが、[[酒場の女将]] は面倒見がいい',
       vis: 'switch',
     },
     {
@@ -479,6 +533,7 @@ export const DEEP_QUESTIONS: Readonly<Record<string, readonly DialogQuestion[]>>
       section: '人と決まり',
       label: '決まり',
       q: '{名前}だけの決まり、戒律、法律、ルール、タブー、マナーなどはありますか。',
+      placeholder: '例：夜は灯を消してはいけない',
       vis: 'switch',
     },
     {
@@ -486,6 +541,7 @@ export const DEEP_QUESTIONS: Readonly<Record<string, readonly DialogQuestion[]>>
       section: '秘密',
       label: '秘密',
       q: '{名前}について、読者に伏せていることはありますか。',
+      placeholder: '例：地下に旧王家の隠し通路がある',
       vis: 'private-fixed',
     },
     {
@@ -493,8 +549,8 @@ export const DEEP_QUESTIONS: Readonly<Record<string, readonly DialogQuestion[]>>
       section: 'その他',
       label: 'その他',
       q: 'ほかに書き留めておきたい情報があれば、自由に記述してください。',
+      placeholder: '例：ほかに決めてあることを、何でも',
       vis: 'switch',
-      optional: true,
     },
   ],
   組織: [
@@ -518,6 +574,7 @@ export const DEEP_QUESTIONS: Readonly<Record<string, readonly DialogQuestion[]>>
       section: 'プロフィール',
       label: '目的と始まり',
       q: '{名前}は何のための集まりで、どのように始まりましたか。',
+      placeholder: '例：航路を守るため、船主たちが金を出し合って始めた',
       vis: 'switch-public',
     },
     {
@@ -525,14 +582,15 @@ export const DEEP_QUESTIONS: Readonly<Record<string, readonly DialogQuestion[]>>
       section: 'プロフィール',
       label: '名前の由来',
       q: '{名前}という名前の由来はありますか。',
+      placeholder: '例：初代の船の名から',
       vis: 'switch-public',
-      optional: true,
     },
     {
       key: 'overview',
       section: 'プロフィール',
       label: '概要',
       q: '簡単に{名前}の概要を教えてください。',
+      placeholder: '例：港の商人と船乗りの組合。会員は三十人ほど',
       vis: 'switch-public',
     },
     {
@@ -540,6 +598,7 @@ export const DEEP_QUESTIONS: Readonly<Record<string, readonly DialogQuestion[]>>
       section: '顔ぶれ',
       label: '序列・役職',
       q: '{名前}に序列や役職などはありますか。',
+      placeholder: '例：頭領・番頭・平の三段。頭領は選挙で決める',
       vis: 'switch',
     },
     {
@@ -547,14 +606,15 @@ export const DEEP_QUESTIONS: Readonly<Record<string, readonly DialogQuestion[]>>
       section: '顔ぶれ',
       label: '入り方・抜け方',
       q: '{名前}にはどうすれば入れますか。抜けるとどうなりますか。',
+      placeholder: '例：会員二人の推薦で入れる。抜けると港で仕事ができない',
       vis: 'switch',
-      optional: true,
     },
     {
       key: 'rule',
       section: '決まりと関係',
       label: '決まり',
       q: '{名前}の決まり、戒律、ルール、タブーなどはありますか。破ると何が起きますか。',
+      placeholder: '例：仲間の船を見捨てない。破れば追放',
       vis: 'switch',
     },
     {
@@ -562,6 +622,7 @@ export const DEEP_QUESTIONS: Readonly<Record<string, readonly DialogQuestion[]>>
       section: '決まりと関係',
       label: '対立と味方',
       q: '{名前}と対立している相手や、味方・後ろ盾はいますか。',
+      placeholder: '例：[[港の役人]] とは対立、[[灯台守]] は味方',
       vis: 'switch',
     },
     {
@@ -569,6 +630,7 @@ export const DEEP_QUESTIONS: Readonly<Record<string, readonly DialogQuestion[]>>
       section: '決まりと関係',
       label: '世間の見え方',
       q: '{名前}は世間からどう見られていますか。',
+      placeholder: '例：頼りになるが、裏で密輸もしていると噂される',
       vis: 'switch',
     },
     {
@@ -576,6 +638,7 @@ export const DEEP_QUESTIONS: Readonly<Record<string, readonly DialogQuestion[]>>
       section: '信じるもの',
       label: '教えと儀式',
       q: '{名前}の主な教えと、日々の行いや儀式を教えてください。',
+      placeholder: '例：海の神に朝夕の祈り。月に一度、灯をともす儀式',
       vis: 'switch',
       only: ['宗教・団体'],
     },
@@ -584,6 +647,7 @@ export const DEEP_QUESTIONS: Readonly<Record<string, readonly DialogQuestion[]>>
       section: '政治',
       label: '統治のしくみ',
       q: '{名前}の政治のしくみを教えてください。誰が、どうやって治めていますか。',
+      placeholder: '例：長老会が決め、族長が執行する',
       vis: 'switch',
       only: ['役所・国・軍'],
     },
@@ -592,6 +656,7 @@ export const DEEP_QUESTIONS: Readonly<Record<string, readonly DialogQuestion[]>>
       section: '政治',
       label: '制度',
       q: '{名前}の法律、税、軍、身分などの制度はありますか。',
+      placeholder: '例：塩に税。成人男子は三年の兵役',
       vis: 'switch',
       only: ['役所・国・軍'],
     },
@@ -600,6 +665,7 @@ export const DEEP_QUESTIONS: Readonly<Record<string, readonly DialogQuestion[]>>
       section: '秘密',
       label: '秘密',
       q: '{名前}について、読者に伏せていることや、内側の火種はありますか。',
+      placeholder: '例：頭領は密輸の元締め',
       vis: 'private-fixed',
     },
     {
@@ -607,8 +673,8 @@ export const DEEP_QUESTIONS: Readonly<Record<string, readonly DialogQuestion[]>>
       section: 'その他',
       label: 'その他',
       q: 'ほかに書き留めておきたい情報があれば、自由に記述してください。',
+      placeholder: '例：ほかに決めてあることを、何でも',
       vis: 'switch',
-      optional: true,
     },
   ],
   用語: [
@@ -640,6 +706,7 @@ export const DEEP_QUESTIONS: Readonly<Record<string, readonly DialogQuestion[]>>
       section: 'プロフィール',
       label: '意味と例文',
       q: '{名前}は何を指す言葉ですか。厳密な範囲と、使い方の例文を教えてください。',
+      placeholder: '例：灯台の灯が消えること。「今夜は帳が落ちた」',
       vis: 'switch-public',
     },
     {
@@ -647,6 +714,7 @@ export const DEEP_QUESTIONS: Readonly<Record<string, readonly DialogQuestion[]>>
       section: '使われ方',
       label: '使う人と場面',
       q: '{名前}は誰が、どんな場面で使う言葉ですか。口にしてはいけない相手や場面があれば、それも。',
+      placeholder: '例：船乗りだけが使う。陸の人の前では言わない',
       vis: 'switch',
     },
     {
@@ -654,14 +722,15 @@ export const DEEP_QUESTIONS: Readonly<Record<string, readonly DialogQuestion[]>>
       section: '使われ方',
       label: '由来と近い言葉',
       q: '{名前}の由来や、似た言葉・反対の言葉があれば教えてください。[[名前]] で用語につながります。',
+      placeholder: '例：古い船乗り言葉から。反対は [[灯り]]',
       vis: 'switch',
-      optional: true,
     },
     {
       key: 'effect',
       section: '仕組み',
       label: 'できること・できないこと',
       q: '{名前}で何ができて、何ができませんか。代償や条件があれば、それも。',
+      placeholder: '例：夜の間だけ姿を隠せる。朝には必ず解ける',
       vis: 'switch',
       only: ['技術・仕組み'],
     },
@@ -679,6 +748,7 @@ export const DEEP_QUESTIONS: Readonly<Record<string, readonly DialogQuestion[]>>
       section: '出来事',
       label: 'きっかけ',
       q: '{名前}のきっかけは何でしたか。',
+      placeholder: '例：嵐で灯台の油が切れた',
       vis: 'switch',
       only: ['出来事・歴史'],
     },
@@ -687,6 +757,7 @@ export const DEEP_QUESTIONS: Readonly<Record<string, readonly DialogQuestion[]>>
       section: '出来事',
       label: 'まず',
       q: 'まず何が起きましたか。',
+      placeholder: '例：三隻の船が岬に乗り上げた',
       vis: 'switch',
       only: ['出来事・歴史'],
     },
@@ -695,6 +766,7 @@ export const DEEP_QUESTIONS: Readonly<Record<string, readonly DialogQuestion[]>>
       section: '出来事',
       label: 'それから',
       q: 'それで、どうなりましたか。',
+      placeholder: '例：町の人が総出で救助に出た',
       vis: 'switch',
       only: ['出来事・歴史'],
     },
@@ -703,6 +775,7 @@ export const DEEP_QUESTIONS: Readonly<Record<string, readonly DialogQuestion[]>>
       section: '出来事',
       label: '最後に',
       q: '最後に、どう終わりましたか。',
+      placeholder: '例：灯台守が責めを負って町を去った',
       vis: 'switch',
       only: ['出来事・歴史'],
     },
@@ -711,6 +784,7 @@ export const DEEP_QUESTIONS: Readonly<Record<string, readonly DialogQuestion[]>>
       section: '出来事',
       label: '語られ方',
       q: '{名前}は人々に、どう語り継がれていますか。',
+      placeholder: '例：子どもへの戒めとして語られる',
       vis: 'switch',
       only: ['出来事・歴史'],
     },
@@ -719,6 +793,7 @@ export const DEEP_QUESTIONS: Readonly<Record<string, readonly DialogQuestion[]>>
       section: 'ずれ',
       label: 'よくある誤解',
       q: '{名前}について、よくある誤解や、作中でのずれはありますか。',
+      placeholder: '例：灯台守のせいだと信じられているが、本当は役人の怠慢',
       vis: 'switch',
     },
     {
@@ -726,6 +801,7 @@ export const DEEP_QUESTIONS: Readonly<Record<string, readonly DialogQuestion[]>>
       section: '秘密',
       label: '秘密',
       q: '{名前}について、読者に伏せていることはありますか。',
+      placeholder: '例：油を抜いたのは [[港の役人]]',
       vis: 'private-fixed',
     },
     {
@@ -733,8 +809,8 @@ export const DEEP_QUESTIONS: Readonly<Record<string, readonly DialogQuestion[]>>
       section: 'その他',
       label: 'その他',
       q: 'ほかに書き留めておきたい情報があれば、自由に記述してください。',
+      placeholder: '例：ほかに決めてあることを、何でも',
       vis: 'switch',
-      optional: true,
     },
   ],
   アイテム: [
@@ -758,6 +834,7 @@ export const DEEP_QUESTIONS: Readonly<Record<string, readonly DialogQuestion[]>>
       section: 'プロフィール',
       label: '見た目と素材',
       q: '{名前}の見た目や素材、手触り、傷や銘などを簡単に教えてください。',
+      placeholder: '例：手のひらほどの真鍮の懐中時計。蓋に傷',
       vis: 'switch-public',
     },
     {
@@ -765,6 +842,7 @@ export const DEEP_QUESTIONS: Readonly<Record<string, readonly DialogQuestion[]>>
       section: 'プロフィール',
       label: '書いてあること',
       q: '{名前}には何が書いてありますか。誰が読めますか。',
+      placeholder: '例：航路の暗号。船乗りにしか読めない',
       vis: 'switch-public',
       only: ['書類・記録・データ'],
     },
@@ -773,14 +851,15 @@ export const DEEP_QUESTIONS: Readonly<Record<string, readonly DialogQuestion[]>>
       section: 'プロフィール',
       label: '名前の由来',
       q: '{名前}という名前の由来はありますか。',
+      placeholder: '例：作った職人の名から',
       vis: 'switch-public',
-      optional: true,
     },
     {
       key: 'power',
       section: '力',
       label: 'できること・できないこと',
       q: '{名前}で何ができて、何ができませんか。使うための条件や代償があれば、それも。',
+      placeholder: '例：霧の中でも方角が分かる。持ち主の記憶を少しずつ削る',
       vis: 'switch',
     },
     {
@@ -788,6 +867,7 @@ export const DEEP_QUESTIONS: Readonly<Record<string, readonly DialogQuestion[]>>
       section: '来歴',
       label: '由来と持ち主の変遷',
       q: '{名前}は誰が、なぜ作り、これまで誰の手を渡ってきましたか。',
+      placeholder: '例：初代灯台守が作り、代々の灯台守へ',
       vis: 'switch',
     },
     {
@@ -795,6 +875,7 @@ export const DEEP_QUESTIONS: Readonly<Record<string, readonly DialogQuestion[]>>
       section: '来歴',
       label: '誰から誰へ',
       q: '{名前}は誰から誰へ渡されたものですか。どんな場面で。',
+      placeholder: '例：父から娘へ。家を出る朝に',
       vis: 'switch',
       only: ['贈り物・形見'],
     },
@@ -811,6 +892,7 @@ export const DEEP_QUESTIONS: Readonly<Record<string, readonly DialogQuestion[]>>
       section: '秘密',
       label: '秘密',
       q: '{名前}について、読者に伏せていることはありますか。',
+      placeholder: '例：本物はもう失われ、今あるのは写し',
       vis: 'private-fixed',
     },
     {
@@ -818,8 +900,8 @@ export const DEEP_QUESTIONS: Readonly<Record<string, readonly DialogQuestion[]>>
       section: 'その他',
       label: 'その他',
       q: 'ほかに書き留めておきたい情報があれば、自由に記述してください。',
+      placeholder: '例：ほかに決めてあることを、何でも',
       vis: 'switch',
-      optional: true,
     },
   ],
   生物: [
@@ -836,6 +918,7 @@ export const DEEP_QUESTIONS: Readonly<Record<string, readonly DialogQuestion[]>>
       section: 'プロフィール',
       label: '見た目と大きさ',
       q: '{名前}の見た目や大きさ、動きや声などを簡単に教えてください。',
+      placeholder: '例：犬ほどの大きさ。青白い鱗で、鈴のような声',
       vis: 'switch-public',
     },
     {
@@ -843,14 +926,15 @@ export const DEEP_QUESTIONS: Readonly<Record<string, readonly DialogQuestion[]>>
       section: 'プロフィール',
       label: '名前の由来',
       q: '{名前}という名前の由来はありますか。',
+      placeholder: '例：鳴き声が鈴に似ているから',
       vis: 'switch-public',
-      optional: true,
     },
     {
       key: 'habitat',
       section: '生態',
       label: '棲みかと習性',
       q: '{名前}はどこに棲み、何を食べ、どう暮らしていますか。数や寿命も分かれば。',
+      placeholder: '例：岬の岩場。魚を食べ、群れで暮らす。寿命は三十年ほど',
       vis: 'switch',
     },
     {
@@ -858,6 +942,7 @@ export const DEEP_QUESTIONS: Readonly<Record<string, readonly DialogQuestion[]>>
       section: '力と弱点',
       label: '人と違うところ・弱点',
       q: '{名前}の人と違う力や危ないところ、弱点はありますか。',
+      placeholder: '例：霧を呼べる。火を嫌う',
       vis: 'switch',
     },
     {
@@ -865,6 +950,7 @@ export const DEEP_QUESTIONS: Readonly<Record<string, readonly DialogQuestion[]>>
       section: '力と弱点',
       label: '出会うと',
       q: '{名前}に出会った人はどうなりますか。',
+      placeholder: '例：たいてい逃げられる。目を合わせると眠くなる',
       vis: 'switch',
       only: ['架空の生き物'],
     },
@@ -873,6 +959,7 @@ export const DEEP_QUESTIONS: Readonly<Record<string, readonly DialogQuestion[]>>
       section: '人との関わり',
       label: '人との関わり',
       q: '{名前}は人とどう関わっていますか。言い伝えや迷信があれば、それも。',
+      placeholder: '例：船乗りは守り神と呼ぶ。見ると嵐が来るという迷信',
       vis: 'switch',
       only: ['動物・ペット', '架空の生き物', '植物'],
     },
@@ -881,6 +968,7 @@ export const DEEP_QUESTIONS: Readonly<Record<string, readonly DialogQuestion[]>>
       section: '種族の暮らし',
       label: '暮らしと価値観',
       q: '{名前}はどこでどう暮らし、何を大切にしていますか。',
+      placeholder: '例：岩場の集落で、長老を中心に暮らす。約束を何より重んじる',
       vis: 'switch',
       only: ['言葉を話す種族'],
     },
@@ -889,6 +977,7 @@ export const DEEP_QUESTIONS: Readonly<Record<string, readonly DialogQuestion[]>>
       section: '種族の暮らし',
       label: '人との関係',
       q: '{名前}は人や、ほかの種族とどう付き合っていますか。',
+      placeholder: '例：人とは物々交換だけ。[[港の商人]] が窓口',
       vis: 'switch',
       only: ['言葉を話す種族'],
     },
@@ -897,8 +986,8 @@ export const DEEP_QUESTIONS: Readonly<Record<string, readonly DialogQuestion[]>>
       section: '種族の暮らし',
       label: '言葉と名前',
       q: '{名前}の言葉や、名前の付け方に特徴はありますか。',
+      placeholder: '例：名前は生まれた日の潮の名から付ける',
       vis: 'switch',
-      optional: true,
       only: ['言葉を話す種族'],
     },
     {
@@ -906,6 +995,7 @@ export const DEEP_QUESTIONS: Readonly<Record<string, readonly DialogQuestion[]>>
       section: '秘密',
       label: '秘密',
       q: '{名前}について、読者に伏せていることはありますか。',
+      placeholder: '例：じつは人の言葉が分かる',
       vis: 'private-fixed',
     },
     {
@@ -913,8 +1003,8 @@ export const DEEP_QUESTIONS: Readonly<Record<string, readonly DialogQuestion[]>>
       section: 'その他',
       label: 'その他',
       q: 'ほかに書き留めておきたい情報があれば、自由に記述してください。',
+      placeholder: '例：ほかに決めてあることを、何でも',
       vis: 'switch',
-      optional: true,
     },
   ],
 }
@@ -1105,11 +1195,11 @@ export function nextQuestion(
 export type DialogStatus = 'none' | 'inProgress' | 'done'
 
 export interface DialogProgress {
-  /** 基本の問いのうち答え済み（スキップ含む）。 */
+  /** 深掘りの問いのうち答え済み（スキップ含む）。 */
   done: number
-  /** 基本の問いの数（任意は数えない・D-DLG-SKIP）。 */
+  /** 深掘りの問いの数（共通 4 問は数えない）。 */
   total: number
-  /** 「あとで」のままの問いの数（任意も数える）。 */
+  /** 「あとで」のままの問いの数（旧データ）。 */
   later: number
 }
 
@@ -1120,10 +1210,10 @@ export interface DialogSummary {
 
 /**
  * 一覧・見出し・対話ノートが使う状態と進み具合を 1 回の走査で返す（項目ごとに何度も歩かない）。
- * progress は深掘りの基本の問いだけで数える（共通 4 問・任意の問いは数に入れない・D-DLG-SKIP）。
+ * progress は深掘りの問いで数える（共通 4 問は数に入れない・D-DLG-SKIP）。
  * status（D-DLG-LIST）：none＝手を付けていない、または分類に質問セットが無い（未分類・旧データの
  * 自由入力。答えが残っていても分類を選び直せば戻る）／inProgress＝途中／done＝ひと通り答えた
- * （任意の問いも答えるかスキップしてあり、あとでも残っていない）。
+ * （どの問いも答えるかスキップしてあり、あとでも残っていない）。
  */
 export function dialogSummaryOf(entry: EntryLike): DialogSummary {
   const deep = activeDeepQuestionsFor(entry)
@@ -1136,10 +1226,8 @@ export function dialogSummaryOf(entry: EntryLike): DialogSummary {
     const isLaterQ = !answered && isLater(entry, q)
     if (isLaterQ) later += 1
     if (!answered && !isLaterQ) pending = true
-    if (!q.optional) {
-      total += 1
-      if (answered) done += 1
-    }
+    total += 1
+    if (answered) done += 1
     // 追い質問の「あとで」も数える（本流には無いので、ここで拾わないと取り残される）。
     for (const d of digQuestionsOf(q)) if (isLater(entry, d)) later += 1
   }
@@ -1175,13 +1263,13 @@ export function resolveName(entry: Pick<GlossaryEntry, 'name' | 'category'>): st
   return NAME_FALLBACK[entry.category?.trim() ?? ''] ?? 'それ'
 }
 
-/** ボットの言葉（名前を差し込み、任意の問いには「（任意）」を添える）。 */
+/** ボットの言葉（名前を差し込む）。 */
 export function questionText(
   q: AnyDialogQuestion,
   entry: Pick<GlossaryEntry, 'name' | 'category'>,
 ): string {
   const text = q.q.replace(/\{名前\}/g, resolveName(entry))
-  return q.optional ? `${text}（任意）` : text
+  return text
 }
 
 /** 公開の既定（D-DLG-VIS）。 */
@@ -1548,7 +1636,6 @@ export function questionsToPlainText(category?: string): string {
         lines.push(`### ${section}`)
       }
       const meta = [
-        q.optional ? '任意' : '基本',
         VIS_LABEL[q.vis],
         q.choices
           ? `選択肢: ${q.choices.join('／')}${q.free ? '（自由記述も可）' : ''}`

@@ -224,8 +224,8 @@ describe('答えの読み書き', () => {
     expect(nextQuestion(later)?.key).toBe('gender')
     const p = dialogSummaryOf(later).progress
     expect(p).toMatchObject({ done: 1, later: 1 })
-    // 任意の問いは total に数えない（人物：gender/birthday/blood/origin/pride/love/family/memo）
-    expect(p.total).toBe(activeDeepQuestionsFor(later).filter((q) => !q.optional).length)
+    // 必須と任意の区分は無い＝深掘りの問いを全部数える
+    expect(p.total).toBe(activeDeepQuestionsFor(later).length)
     expect(dialogSummaryOf(e).status).toBe('none')
     expect(dialogSummaryOf(later).status).toBe('inProgress')
   })
@@ -258,9 +258,8 @@ describe('答えの読み書き', () => {
     )
     const pride = questionByKey('人物', 'pride')
     if (!pride) throw new Error('質問が見つからない')
-    expect(questionText(pride, entry({ name: '', category: '人物' }))).toMatch(
-      /^その人物.*（任意）$/,
-    )
+    expect(questionText(pride, entry({ name: '', category: '人物' }))).toMatch(/^その人物/)
+    expect(questionText(pride, entry({ name: '', category: '人物' }))).not.toContain('任意')
   })
 
   it('toggleAnswerPublic は切り替えられる問いだけ反転し、固定と未回答は変えない', () => {

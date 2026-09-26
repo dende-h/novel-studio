@@ -154,20 +154,12 @@ function askCategory(s: DialogSession, lead: string): DialogSession {
 function ask(s: DialogSession, entry: GlossaryEntry, q: AnyDialogQuestion): DialogSession {
   let next = s
   if (!isDigQuestion(q) && !s.editingKey && q.section !== s.lastSection) {
-    // 数は進み具合と同じ「基本の問い」で言い、任意があれば添える。答え済み（名前が先に入っている・
-    // 途中から）があれば「残り」で言う＝これから聞く数と合う。
+    // 答え済み（名前が先に入っている・途中から）があれば「残り」で言う＝これから聞く数と合う。
     const o = optsOf(s)
     const inSection = activeQuestionsFor(entry).filter((x) => x.section === q.section)
-    const core = inSection.filter((x) => !x.optional)
-    const remaining = core.filter((x) => !isAnswered(entry, x, o) && !isLater(entry, x)).length
-    const optional = inSection.length - core.length
-    const count = remaining < core.length ? `残り ${remaining} 問` : `${core.length} 問`
-    next = say(
-      next,
-      optional > 0
-        ? `ここから「${q.section}」について ${count}です（ほかに任意が ${optional} 問）。`
-        : `ここから「${q.section}」について ${count}です。`,
-    )
+    const remaining = inSection.filter((x) => !isAnswered(entry, x, o) && !isLater(entry, x)).length
+    const count = remaining < inSection.length ? `残り ${remaining} 問` : `${inSection.length} 問`
+    next = say(next, `ここから「${q.section}」について ${count}です。`)
     next = { ...next, lastSection: q.section }
   }
   next = say(next, `${isDigQuestion(q) ? '↳ ' : ''}${questionText(q, entry)}`)
@@ -303,7 +295,7 @@ export function beginSession(
     s = push(s, { role: 'card-base' })
     s = say(
       s,
-      `${entry.name} の名前・読み・別名・公開情報は入っているので、その先から聞きます。基本の質問は ${p.total} 問です（任意の問いは数に入れません）。読者に見せるかどうかは、答えごとに選べます。答えるたびに保存されます。`,
+      `${entry.name} の名前・読み・別名・公開情報は入っているので、その先から聞きます。質問は ${p.total} 問です。読者に見せるかどうかは、答えごとに選べます。答えるたびに保存されます。`,
     )
     return nu ? ask(s, entry, nu) : askPick(s, entry, null)
   }
@@ -366,10 +358,10 @@ export function submitAnswer(
     if (!hasDialogQuestions(text)) return { session: reissuePrompt(s, entry), entry }
     const next = { ...entry, category: text }
     let ns = push(s, { role: 'user', text })
-    const core = activeQuestionsFor(next).filter((q) => !q.optional && q.field === undefined).length
+    const core = activeQuestionsFor(next).filter((q) => q.field === undefined).length
     ns = say(
       ns,
-      `${text} ですね。基本の質問は ${core} 問です。「種類」の答えによって、あとから枝の問いが加わります。`,
+      `${text} ですね。質問は ${core} 問です。「種類」の答えによって、あとから枝の問いが加わります。`,
     )
     ns = { ...ns, pending: null }
     // 分類を変える前の答えが残っていれば（持ち越し・MCP）、並べ直してから続きを聞く。

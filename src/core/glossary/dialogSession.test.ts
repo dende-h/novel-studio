@@ -70,9 +70,7 @@ describe('新しい項目（名前を答えると登録される）', () => {
     )
     expect(e.category).toBe('人物')
     expect(s.log.some((m) => m.role === 'chips')).toBe(false)
-    expect(botTexts(s)).toContainEqual(
-      expect.stringMatching(/^人物 ですね。基本の質問は \d+ 問です/),
-    )
+    expect(botTexts(s)).toContainEqual(expect.stringMatching(/^人物 ですね。質問は \d+ 問です/))
     expect(botTexts(s)).toContainEqual('ここから「基本」について 4 問です。')
     expect(pendingKey(s)).toBe('name')
   })
@@ -203,10 +201,8 @@ describe('深掘りの本流', () => {
   it('既存の項目は「フォームの情報」のカードを出して深掘りから聞く', () => {
     const s = begin(seto())
     expect(s.log[0]?.role).toBe('card-base')
-    expect(botTexts(s)).toContainEqual(expect.stringMatching(/基本の質問は 23 問です/))
-    expect(botTexts(s)).toContainEqual(
-      'ここから「プロフィール」について 5 問です（ほかに任意が 4 問）。',
-    )
+    expect(botTexts(s)).toContainEqual(expect.stringMatching(/質問は 31 問です/))
+    expect(botTexts(s)).toContainEqual('ここから「プロフィール」について 9 問です。')
     expect(lastBot(s)).toMatch(/^セトの役職や肩書き/)
     expect(pendingKey(s)).toBe('title')
   })

@@ -890,7 +890,7 @@ function EntryEditor({
           {/* メタ情報（読み・カテゴリ・別名・サムネ）。狭幅で 2 列固定にすると潰れるので 1 列へ落とす。 */}
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="space-y-1.5">
-              <Label htmlFor={`${uid}-reading`}>読み（任意）</Label>
+              <Label htmlFor={`${uid}-reading`}>読み</Label>
               <CommitInput
                 id={`${uid}-reading`}
                 value={entry.reading ?? ''}
@@ -917,7 +917,7 @@ function EntryEditor({
             </div>
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor={`${uid}-aliases`}>別名（読点区切り・任意）</Label>
+            <Label htmlFor={`${uid}-aliases`}>別名（読点区切り）</Label>
             <CommitInput
               id={`${uid}-aliases`}
               value={entry.aliases.join('、')}
@@ -992,7 +992,7 @@ function EntryEditor({
 
           {/* サムネイル。 */}
           <section className="space-y-1.5">
-            <Label htmlFor={`${uid}-thumbnail`}>サムネイル画像（任意）</Label>
+            <Label htmlFor={`${uid}-thumbnail`}>サムネイル画像</Label>
             <div className="flex items-center gap-3">
               {entry.thumbnail ? (
                 <ZoomableImage

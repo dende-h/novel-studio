@@ -206,7 +206,7 @@ export function GlossaryEntryForm({
             {/* 狭幅で 2 列固定にすると読み・カテゴリとも入力欄が潰れるので 1 列へ落とす。 */}
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="space-y-2">
-                <Label htmlFor={`${uid}-reading`}>読み（任意）</Label>
+                <Label htmlFor={`${uid}-reading`}>読み</Label>
                 <Input
                   id={`${uid}-reading`}
                   value={reading}
@@ -233,7 +233,7 @@ export function GlossaryEntryForm({
               </div>
             </div>
             <div className="space-y-2">
-              <Label htmlFor={`${uid}-aliases`}>別名（読点区切り・任意）</Label>
+              <Label htmlFor={`${uid}-aliases`}>別名（読点区切り）</Label>
               <Input
                 id={`${uid}-aliases`}
                 value={aliases}
@@ -246,14 +246,14 @@ export function GlossaryEntryForm({
                   フォーカス移譲とぶつかる）。 */}
               <div className="flex items-center gap-2">
                 <Label htmlFor={`${uid}-summary`} className="gap-2">
-                  公開情報（任意）
+                  公開情報
                   <VisibilityLabel isPublic label="読者に見えます" />
                 </Label>
                 <NotationHelpButton />
               </div>
               <CommitTextarea
                 id={`${uid}-summary`}
-                ariaLabel="公開情報（任意）"
+                ariaLabel="公開情報"
                 value={summary}
                 onCommit={setSummary}
                 placeholder="一行の要約から、来歴・見た目などの詳しい説明まで、読者に見せる文をここへ"
@@ -271,14 +271,14 @@ export function GlossaryEntryForm({
             <div className="space-y-2">
               <div className="flex items-center gap-2">
                 <Label htmlFor={`${uid}-authorNote`} className="gap-2">
-                  作者メモ（任意）
+                  作者メモ
                   <VisibilityLabel isPublic={false} label="公開されません" />
                 </Label>
                 <NotationHelpButton />
               </div>
               <CommitTextarea
                 id={`${uid}-authorNote`}
-                ariaLabel="作者メモ（任意）"
+                ariaLabel="作者メモ"
                 value={authorNote}
                 onCommit={setAuthorNote}
                 placeholder="この人物の正体、この場所で後に起きること——まだ読者に見せないこと"

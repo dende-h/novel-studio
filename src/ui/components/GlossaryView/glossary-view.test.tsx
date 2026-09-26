@@ -186,8 +186,8 @@ describe('GlossaryView（左右2カラム：一覧・検索・その場編集）
     expect(screen.getByText('人物 ・ 未使用')).toBeInTheDocument() // ボブ
     openEntry('アリス')
     expect(screen.getByLabelText('名前')).toHaveValue('アリス')
-    expect(screen.getByLabelText('読み（任意）')).toHaveValue('ありす')
-    expect(screen.getByLabelText('別名（読点区切り・任意）')).toHaveValue('Alice')
+    expect(screen.getByLabelText('読み')).toHaveValue('ありす')
+    expect(screen.getByLabelText('別名（読点区切り）')).toHaveValue('Alice')
     expect(screen.getByText(/2話・5回 登場/)).toBeInTheDocument()
   })
 
@@ -398,7 +398,7 @@ describe('GlossaryView（左右2カラム：一覧・検索・その場編集）
     fireEvent.click(screen.getByRole('button', { name: 'スキップ' })) // reading
     fireEvent.click(screen.getByRole('button', { name: 'スキップ' })) // aliases
     fireEvent.click(screen.getByRole('button', { name: 'スキップ' })) // blurb
-    expect(lastBot()).toBe('キャロルの性別を教えてください。（任意）')
+    expect(lastBot()).toBe('キャロルの性別を教えてください。')
     // 選択肢と自由記述の両方が出る
     expect(screen.getByRole('button', { name: '男' })).toBeInTheDocument()
     expect(screen.getByLabelText('答え')).toBeInTheDocument()
@@ -563,21 +563,20 @@ describe('GlossaryView（左右2カラム：一覧・検索・その場編集）
     openEntry('キャロル')
     const note = () => screen.getByRole('region', { name: '対話ノート' })
     expect(within(note()).getByText(/^対話 1\/\d+$/)).toBeInTheDocument()
-    expect(within(note()).queryByRole('button', { name: '対話ノートをすべて見る' })).toBeNull()
-    // 畳む：行と「対話をつづける」は残り、下端の「すべて見る」で開ける
-    fireEvent.click(within(note()).getByRole('button', { name: '対話ノートを畳む' }))
-    expect(localStorage.getItem('ns-glossary-note-open')).toBe('0')
+    // 初期は畳んだ状態：行と「対話をつづける」は残り、下端の「すべて見る」で開ける
+    expect(within(note()).getByRole('button', { name: '対話ノートを開く' })).toBeInTheDocument()
     expect(within(note()).getByRole('button', { name: '対話をつづける' })).toBeInTheDocument()
     expect(within(note()).getByRole('button', { name: '年齢を書く' })).toBeInTheDocument()
     fireEvent.click(within(note()).getByRole('button', { name: '対話ノートをすべて見る' }))
     expect(localStorage.getItem('ns-glossary-note-open')).toBe('1')
     expect(within(note()).getByRole('button', { name: '対話ノートを畳む' })).toBeInTheDocument()
-    fireEvent.click(within(note()).getByRole('button', { name: '対話ノートを畳む' }))
+    expect(within(note()).queryByRole('button', { name: '対話ノートをすべて見る' })).toBeNull()
     unmount()
-    // 次に開いたときは畳まれたまま（未着手は短いので薄くしない）
+    // 次に開いたときは開いたまま（端末に覚える）。未着手は短いので畳んでも薄くしない
     setup([entry({ id: 'c', name: 'キャロル', category: '人物' })])
     openEntry('キャロル')
-    expect(within(note()).getByRole('button', { name: '対話ノートを開く' })).toBeInTheDocument()
+    expect(within(note()).getByRole('button', { name: '対話ノートを畳む' })).toBeInTheDocument()
+    fireEvent.click(within(note()).getByRole('button', { name: '対話ノートを畳む' }))
     expect(within(note()).getByText('未着手')).toBeInTheDocument()
     expect(within(note()).queryByRole('button', { name: '対話ノートをすべて見る' })).toBeNull()
     localStorage.removeItem('ns-glossary-note-open')
