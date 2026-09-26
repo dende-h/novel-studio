@@ -550,7 +550,7 @@ describe('GlossaryView（左右2カラム：一覧・検索・その場編集）
     expect(screen.queryByRole('button', { name: '「名前」の答えを直す' })).toBeNull()
   })
 
-  it('フォームの対話ノートは畳めて、畳んだ状態を端末に覚える（見出しに進み具合）', () => {
+  it('フォームの対話ノートは畳めて、畳んでも先頭（ボタンと数行）は見え、畳んだ状態を端末に覚える', () => {
     localStorage.removeItem('ns-glossary-note-open')
     const { unmount } = setup([
       entry({
@@ -561,23 +561,25 @@ describe('GlossaryView（左右2カラム：一覧・検索・その場編集）
       }),
     ])
     openEntry('キャロル')
-    const note = screen.getByRole('region', { name: '対話ノート' })
-    const details = note.querySelector('details') as HTMLDetailsElement
-    expect(details.open).toBe(true)
-    expect(within(note).getByText(/^対話 1\/\d+$/)).toBeInTheDocument()
-    // 畳む（ブラウザが open を切り替えて toggle を発火する）
-    details.open = false
-    fireEvent(details, new Event('toggle'))
+    const note = () => screen.getByRole('region', { name: '対話ノート' })
+    expect(within(note()).getByText(/^対話 1\/\d+$/)).toBeInTheDocument()
+    expect(within(note()).queryByRole('button', { name: '対話ノートをすべて見る' })).toBeNull()
+    // 畳む：行と「対話をつづける」は残り、下端の「すべて見る」で開ける
+    fireEvent.click(within(note()).getByRole('button', { name: '対話ノートを畳む' }))
     expect(localStorage.getItem('ns-glossary-note-open')).toBe('0')
+    expect(within(note()).getByRole('button', { name: '対話をつづける' })).toBeInTheDocument()
+    expect(within(note()).getByRole('button', { name: '年齢を書く' })).toBeInTheDocument()
+    fireEvent.click(within(note()).getByRole('button', { name: '対話ノートをすべて見る' }))
+    expect(localStorage.getItem('ns-glossary-note-open')).toBe('1')
+    expect(within(note()).getByRole('button', { name: '対話ノートを畳む' })).toBeInTheDocument()
+    fireEvent.click(within(note()).getByRole('button', { name: '対話ノートを畳む' }))
     unmount()
-    // 次に開いたときは畳まれたまま
+    // 次に開いたときは畳まれたまま（未着手は短いので薄くしない）
     setup([entry({ id: 'c', name: 'キャロル', category: '人物' })])
     openEntry('キャロル')
-    const again = screen.getByRole('region', { name: '対話ノート' }).querySelector('details')
-    expect((again as HTMLDetailsElement).open).toBe(false)
-    expect(
-      within(screen.getByRole('region', { name: '対話ノート' })).getByText('未着手'),
-    ).toBeInTheDocument()
+    expect(within(note()).getByRole('button', { name: '対話ノートを開く' })).toBeInTheDocument()
+    expect(within(note()).getByText('未着手')).toBeInTheDocument()
+    expect(within(note()).queryByRole('button', { name: '対話ノートをすべて見る' })).toBeNull()
     localStorage.removeItem('ns-glossary-note-open')
   })
 
