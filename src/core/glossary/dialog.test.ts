@@ -159,12 +159,12 @@ describe('答えの読み書き', () => {
     const e = entry({ name: 'セト', category: '人物' })
     expect(nextQuestion(e)?.key).toBe('title')
     // 下書きは名前から
-    expect(nextQuestion(e, { draft: true })?.key).toBe('reading')
-    expect(nextQuestion(entry({ name: '', category: '人物' }), { draft: true })?.key).toBe('name')
+    expect(nextQuestion(e, { askBase: true })?.key).toBe('reading')
+    expect(nextQuestion(entry({ name: '', category: '人物' }), { askBase: true })?.key).toBe('name')
     // 下書きのスキップは印で表す
     expect(
       nextQuestion(entry({ name: '', category: '人物' }), {
-        draft: true,
+        askBase: true,
         baseMarks: { name: 'skipped', reading: 'skipped', aliases: 'skipped', blurb: 'later' },
       })?.key,
     ).toBe('title')

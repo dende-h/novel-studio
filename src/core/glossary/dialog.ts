@@ -12,7 +12,7 @@ import { publicTextOf, withPublicText } from './index'
  */
 
 /** 質問セットの版。質問を足したり消したりしたら上げ、旧データの答えは鍵で残す（§2）。 */
-export const DIALOG_VERSION = 1
+export const DIALOG_VERSION = 2
 
 /**
  * 公開の既定（D-DLG-VIS）。
@@ -188,19 +188,12 @@ export const DEEP_QUESTIONS: Readonly<Record<string, readonly DialogQuestion[]>>
       ],
     },
     {
-      key: 'looks_first',
+      key: 'looks',
       section: '見た目',
-      label: '目に留まるところ',
-      q: '{名前}の特徴や、目に留まるところはどこですか。',
+      label: '見た目の特徴',
+      q: '{名前}の見た目の特徴を教えてください。体格、髪色や瞳、目に留まるところなど。',
       vis: 'switch',
-      placeholder: '例：左手の手袋。夏でも外さない',
-    },
-    {
-      key: 'looks_body',
-      section: '見た目',
-      label: '背格好',
-      q: '{名前}の体格、髪色や瞳などの背格好を教えてください。',
-      vis: 'switch',
+      placeholder: '例：小柄で日に焼けている。左手の手袋を夏でも外さない',
     },
     {
       key: 'looks_wear',
@@ -226,13 +219,6 @@ export const DEEP_QUESTIONS: Readonly<Record<string, readonly DialogQuestion[]>>
       q: '{名前}の一人称は何ですか。相手によって変わるなら、それも教えてください。',
       vis: 'switch',
       placeholder: '例：「俺」。母の前でだけ「僕」',
-    },
-    {
-      key: 'speech_second',
-      section: '話し方',
-      label: '人の呼び方',
-      q: '{名前}は人をどう呼びますか。呼び捨て、さん付け、あだ名など、呼び方の癖を教えてください。',
-      vis: 'switch',
     },
     {
       key: 'speech_tone',
@@ -1013,8 +999,11 @@ export function activeDeepQuestionsFor(entry: EntryLike): DialogQuestion[] {
 export type BaseMarks = Readonly<Record<string, 'skipped' | 'later' | undefined>>
 
 export interface AnsweredOptions {
-  /** 新規の下書きか。既存の項目は共通 4 問を聞かない（D-DLG-EXISTING）＝答え済みとして扱う。 */
-  draft?: boolean
+  /**
+   * 共通 4 問（名前・読み・別名・公開情報）も対話で聞くか。新しく作った項目では聞き、
+   * 既存の項目は聞かない（D-DLG-EXISTING）＝答え済みとして扱う。
+   */
+  askBase?: boolean
   baseMarks?: BaseMarks
 }
 
@@ -1025,7 +1014,7 @@ export function isAnswered(
   opts: AnsweredOptions = {},
 ): boolean {
   if (q.field !== undefined) {
-    if (!opts.draft) return true
+    if (!opts.askBase) return true
     if (answersOf(entry)[q.key] !== undefined) return true
     return opts.baseMarks?.[q.key] === 'skipped'
   }
@@ -1041,7 +1030,7 @@ export function isLater(
   q: AnyDialogQuestion,
   opts: AnsweredOptions = {},
 ): boolean {
-  if (q.field !== undefined) return opts.draft === true && opts.baseMarks?.[q.key] === 'later'
+  if (q.field !== undefined) return opts.askBase === true && opts.baseMarks?.[q.key] === 'later'
   const a = entry.dialog?.[q.key]
   return a !== undefined && a.later === true && a.text.trim() === ''
 }

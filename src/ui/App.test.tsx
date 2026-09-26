@@ -127,8 +127,7 @@ describe('App（エディタ結合：本文/プレビュー・自動保存・履
     fireEvent.click(screen.getByRole('button', { name: 'フォーム' }))
     const name = screen.getByLabelText('名前')
     fireEvent.change(name, { target: { value: 'アリス' } })
-    fireEvent.blur(name)
-    fireEvent.click(screen.getByRole('button', { name: '用語集に登録' }))
+    fireEvent.blur(name) // 名前を入れた時点で登録される
     // 作成した項目がその場で選ばれ、編集面に開く（一覧の行にも出る）
     await waitFor(() => expect(screen.getByLabelText('名前')).toHaveValue('アリス'))
     expect(screen.getByRole('button', { name: '「アリス」を編集' })).toBeInTheDocument()

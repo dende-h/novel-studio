@@ -158,7 +158,6 @@ Cloudflare Pages Functions
 | `src/ui/Root.tsx` | **ハッシュルーティングの分岐点**（下表）。リポジトリ生成と会員判定の配線 |
 | `src/ui/App.tsx` | 執筆画面本体（`#/write`）。エディタ・プレビュー・用語集・履歴パネルの統括。**約840行 / 最も密度が高い** |
 | `src/ui/store/editorStore.ts` | 自前ストア。`getSnapshot`/`subscribe` + 作品・話・用語集・ゴミ箱・プロフィールの全操作 |
-| `src/ui/store/glossaryDraftStore.ts` | 用語集の登録前の下書き（と対話の会話）の置き場（作品 id ごと・端末には保存しない） |
 | `src/ui/store/createDefaultStore.ts` | 本番のリポジトリ配線 |
 | `src/ui/hooks/use-editor-store.ts` | `useSyncExternalStore` の薄いラッパ |
 
@@ -170,7 +169,7 @@ Cloudflare Pages Functions
 ### 画面（`components/` — PascalCase ディレクトリ + kebab ファイル・1ファイル1コンポーネント）
 - **執筆**: `EditorPane/`（textarea + 記法バー + `@` サジェスト + 置換パネル）, `PreviewPane/`, `HistoryPanel/`
 - **作品管理**: `Library/`（カード/リスト・作品メニュー）, `TrashDialog/`, `WorkMetaDialog/`, `TitlePromptDialog/`
-- **用語集**: `GlossaryView/`（左：一覧（対話の進み具合・「対話の途中」チップ）／右：「フォーム｜対話」の二面。`dialog-pane.tsx`＝対話ペイン・`dialog-note-section.tsx`＝フォームの対話ノート・`pill.tsx`＝丸いチップ・`visibility-label.tsx`＝「読者に見せる／作者だけ」の印・「＋ 新しく登録」は下書きを対話で開き「用語集に登録」で保存。登録前の下書きは `src/ui/store/glossaryDraftStore.ts` が作品 id ごとに持つ（`keptDraft`／`onKeepDraft` で受け渡し）＝別のルートへ行って戻っても残る・ページを閉じると消える）, `GlossaryEntryForm/`（本文からのクイック作成・パネル編集用モーダル。`formValuesToFieldPatch`＝フォーム値→パッチの写像・`GLOSSARY_CATEGORIES`＝core の `DIALOG_CATEGORIES`）, `GlossaryPeek/`
+- **用語集**: `GlossaryView/`（左：一覧（対話の進み具合・「対話の途中」チップ）／右：「フォーム｜対話」の二面。`dialog-pane.tsx`＝対話ペイン・`dialog-note-section.tsx`＝フォームの対話ノート・`pill.tsx`＝丸いチップ・`visibility-label.tsx`＝「読者に見せる／作者だけ」の印・「＋ 新しく登録」は下書きを対話で開き「用語集に登録」で保存。新しい項目は名前を答えた時点で登録され、会話は登録された項目へ引き継ぐ（`markSaved`・`initialSession`）。対話ノートはフォームからも直せる）, `GlossaryEntryForm/`（本文からのクイック作成・パネル編集用モーダル。`formValuesToFieldPatch`＝フォーム値→パッチの写像・`GLOSSARY_CATEGORIES`＝core の `DIALOG_CATEGORIES`）, `GlossaryPeek/`
 - **構想の道具（無料アカウント登録で解禁・遅延ロード）**: `MindmapView/`, `CorrelationChartView/`, `OutlineView/`, `PlotView/`（`plot-view.tsx` ＋ 世界観設定タブ `world-view.tsx`）, `StructureCanvas/`, `StagingView/`（サウンドノベルの演出エディタ：行一覧＋話者/表情/背景/BGM/効果音/場面の切れ目・背景と立ち絵の持ち込み・素材の管理 `asset-manager.tsx`＝一覧/削除/クラウド保管・テンプレの一覧 `template-picker.tsx`＝分類タブ＋サムネイル・書き出しと図鑑でも共用）
 - **執筆画面の右パネル（遅延ロードしない）**: `PlotPeek/`（この話のビート一覧 `plot-peek.tsx` ＋ 読み取り専用のビート詳細 `beat-detail.tsx`）
 - **入出力**: `ExportDialog/`, `ImportDialog/`, `BackupDialog/`, `CloudBackupDialog/`, `AiPullDialog/`
@@ -211,7 +210,7 @@ Cloudflare Pages Functions
 | 破壊操作の確認 | `ConfirmDialog`（`src/ui/components/ConfirmDialog/confirm-dialog.tsx`） | `window.confirm()` |
 | 文字列の入力を求める | `TitlePromptDialog`（`src/ui/components/TitlePromptDialog/title-prompt-dialog.tsx`） | `window.prompt()` |
 | 描画例外の受け止め | `ErrorBoundary`（`src/ui/components/ErrorBoundary/error-boundary.tsx`） | — |
-| `@`/`[[` の用語集サジェスト付き入力欄（blur 確定。`onSubmit` を渡すと Enter で決定＝対話の答え） | `CommitTextarea`（`src/ui/components/NotationField/commit-textarea.tsx`） | 生の `<textarea>` ＋ 自前サジェスト |
+| `@`/`[[` の用語集サジェスト付き入力欄（blur 確定。`onSubmit` を渡すと Enter で決定＝対話の答え・`suggestAbove` で候補を上に開く） | `CommitTextarea`（`src/ui/components/NotationField/commit-textarea.tsx`） | 生の `<textarea>` ＋ 自前サジェスト |
 | 記法つき入力（書く／プレビュー切替・マークダウン描画・`[[用語]]` クリック委譲） | `NotationField`（`src/ui/components/NotationField/notation-field.tsx`） | 画面ごとのプレビュー自作 |
 | 記法つきテキストの読み取り専用表示（マークダウン描画・`[[用語]]` クリック委譲） | `NotationText`（`src/ui/components/NotationField/notation-text.tsx`） | 画面ごとに `markdownToHtml()` を直に描く自前配線 |
 | **入力欄の説明（ラベル横のⓘ＋ダイアログ）** | `FieldHelp`（`src/ui/components/FieldHelp/field-help.tsx`） | 欄の下に説明文を並べる（画面が説明で埋まる） |

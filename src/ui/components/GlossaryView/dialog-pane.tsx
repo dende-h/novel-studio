@@ -47,35 +47,37 @@ import { NotationText } from '@/ui/components/NotationField/notation-text'
  */
 export function DialogPane({
   entry,
-  isDraft,
+  unsaved,
+  askBase = false,
   entries,
   resolvedNames,
   onChange,
-  onFinish,
   onToForm,
   onCreateEntry,
   onRefClick,
   className,
   initialSession,
-  onSessionChange,
 }: {
   entry: GlossaryEntry
-  /** 新規の下書き（登録するまで保存しない・D-DLG-ENTRY）。 */
-  isDraft: boolean
-  /** 画面を離れて戻ったときの会話（下書き）。無ければ最初から。 */
+  /** まだ用語集に登録していない新しい項目（名前を答えると登録される・D-DLG-ENTRY）。 */
+  unsaved: boolean
+  /** 登録済みだが共通 4 問（読み・別名・公開情報）も聞く（名前だけで作った直後）。 */
+  askBase?: boolean
+  /** 引き継ぐ会話（名前を答えて登録された項目で、同じ会話を続ける）。無ければ最初から。 */
   initialSession?: DialogSession
-  /** 会話が進むたびに知らせる（親が下書きと一緒に覚えておく）。 */
-  onSessionChange?: (session: DialogSession) => void
   /** 用語集（@／[[ の候補と、名前の重複の検査）。 */
   entries: GlossaryEntry[]
   resolvedNames: Set<string>
   /**
    * 答え・分類・公開の扱い・公開情報（下書きを入れた）が変わるたびに呼ぶ。`prev` はその直前の
-   * 手元の項目＝親は差分（変わった欄）だけを保存し、他の欄を巻き込まない。
+   * 手元の項目＝親は差分（変わった欄）だけを保存し、他の欄を巻き込まない。`session` はそのときの
+   * 会話＝名前を答えて登録するとき、親が登録された項目へ会話を引き継ぐ。
    */
-  onChange: (next: GlossaryEntry, prev: GlossaryEntry) => Promise<void> | void
-  /** 下書きの「用語集に登録する」。失敗（重複など）は reject し、対話の中にそのまま出す。 */
-  onFinish?: (entry: GlossaryEntry) => Promise<void>
+  onChange: (
+    next: GlossaryEntry,
+    prev: GlossaryEntry,
+    session: DialogSession,
+  ) => Promise<void> | void
   onToForm: () => void
   onCreateEntry?: (name: string) => Promise<string | null>
   onRefClick?: (name: string) => void
@@ -83,12 +85,10 @@ export function DialogPane({
 }) {
   const [local, setLocal] = useState(entry)
   const [session, setSession] = useState<DialogSession>(
-    () => initialSession ?? beginSession(entry, { draft: isDraft }),
+    () => initialSession ?? beginSession(entry, { askBase: unsaved || askBase, unsaved }),
   )
-  const notifySession = onSessionChange
-  useEffect(() => {
-    notifySession?.(session)
-  }, [session, notifySession])
+  const sessionRef = useRef(session)
+  sessionRef.current = session
   const [summaryDraft, setSummaryDraft] = useState<string | null>(null)
   const saving = useRef(0)
   const localRef = useRef(local)
@@ -108,7 +108,9 @@ export function DialogPane({
     savedRef.current = latest
     setLocal(latest)
     if (categoryChanged) {
-      setSession((s) => beginSession(latest, { draft: isDraft, baseMarks: s.baseMarks }))
+      setSession((s) =>
+        beginSession(latest, { askBase: s.askBase, unsaved: s.unsaved, baseMarks: s.baseMarks }),
+      )
     }
   }
   // biome-ignore lint/correctness/useExhaustiveDependencies: prop の entry が変わったときに同期する（関数は ref 経由で最新を読む）
@@ -123,11 +125,11 @@ export function DialogPane({
     if (el) el.scrollTop = el.scrollHeight
   }, [logLength])
 
-  const persist = async (next: GlossaryEntry) => {
+  const persist = async (next: GlossaryEntry, session: DialogSession) => {
     saving.current += 1
     const base = savedRef.current
     try {
-      await onChange(next, base)
+      await onChange(next, base, session)
       savedRef.current = next
     } catch (e) {
       // 保存できなかった変更を手元に残すと、以後の差分がそこを基準にして二度と保存されない。
@@ -140,7 +142,13 @@ export function DialogPane({
         const back = base
         localRef.current = back
         setLocal(back)
-        setSession(rejectAnswer(beginSession(back, { draft: isDraft }), message, back))
+        setSession((s) =>
+          rejectAnswer(
+            beginSession(back, { askBase: s.askBase, unsaved: s.unsaved, baseMarks: s.baseMarks }),
+            message,
+            back,
+          ),
+        )
       } else {
         setSession((s) => rejectAnswer(s, message, localRef.current))
       }
@@ -154,16 +162,9 @@ export function DialogPane({
     setSession(step.session)
     if (step.entry !== local) {
       setLocal(step.entry)
-      void persist(step.entry)
+      void persist(step.entry, step.session)
     }
     if (step.effect === 'toform') onToForm()
-    if (step.effect === 'finish' && onFinish) {
-      void onFinish(step.entry).catch((e: unknown) => {
-        setSession((s) =>
-          rejectAnswer(s, e instanceof Error ? e.message : '登録に失敗しました', localRef.current),
-        )
-      })
-    }
   }
 
   const ctx = { entries }
@@ -173,14 +174,14 @@ export function DialogPane({
     const next = toggleAnswerPublic(local, key)
     if (next === local) return
     setLocal(next)
-    void persist(next)
+    void persist(next, sessionRef.current)
   }
   const applySummaryDraft = () => {
     if (summaryDraft === null) return
     const next = withPublicText(local, summaryDraft)
     setLocal(next)
     setSummaryDraft(null)
-    void persist(next)
+    void persist(next, sessionRef.current)
   }
 
   const q = pendingQuestion(session, local)
@@ -205,7 +206,6 @@ export function DialogPane({
             message={m}
             entry={local}
             answers={answers}
-            isDraft={isDraft}
             resolvedNames={resolvedNames}
             onRefClick={onRefClick}
             onChip={onChip}
@@ -224,15 +224,19 @@ export function DialogPane({
             // 受け付けなかった答え（重複する名前など）は消さず、直して出し直せる。
             key={session.promptId}
             question={q}
-            required={session.pending?.kind === 'question' && session.pending.required === true}
+            required={q.field === 'name' && local.name.trim() === ''}
             entries={entries}
             onCreateEntry={onCreateEntry}
             onAnswer={(text) => apply(submitAnswer(session, local, text, ctx))}
-            onSkip={(later) => apply(skipQuestion(session, local, later))}
+            onSkip={() => apply(skipQuestion(session, local))}
+            onEnd={onToForm}
           />
-        ) : hint ? (
-          <p className="text-[11.5px] text-on-surface-variant/70">{hint}</p>
-        ) : null}
+        ) : (
+          <div className="flex items-center gap-2">
+            {hint ? <p className="text-[11.5px] text-on-surface-variant/70">{hint}</p> : null}
+            <EndButton className="ml-auto" onClick={onToForm} />
+          </div>
+        )}
       </div>
     </section>
   )
@@ -246,14 +250,16 @@ function Composer({
   onCreateEntry,
   onAnswer,
   onSkip,
+  onEnd,
 }: {
   question: AnyDialogQuestion
-  /** スキップ・あとでにできない（登録に名前が要るときの聞き直し）。 */
+  /** スキップできない（名前は登録に要る）。 */
   required: boolean
   entries: GlossaryEntry[]
   onCreateEntry?: (name: string) => Promise<string | null>
   onAnswer: (text: string) => void
-  onSkip: (later: boolean) => void
+  onSkip: () => void
+  onEnd: () => void
 }) {
   const control = useRef<CommitTextareaHandle | null>(null)
   const choicesOnly = !!q.choices && !q.free
@@ -263,11 +269,8 @@ function Composer({
         {q.choices?.map((c) => (
           <Pill key={c} label={c} onClick={() => onAnswer(c)} />
         ))}
-        {choicesOnly || required ? null : (
-          <Pill label="スキップ" ghost onClick={() => onSkip(false)} />
-        )}
-        {required ? null : <Pill label="あとで答える" ghost onClick={() => onSkip(true)} />}
-        <span className="ml-auto text-[11px] text-on-surface-variant/60">{visibilityHint(q)}</span>
+        {required || choicesOnly ? null : <Pill label="スキップ" ghost onClick={onSkip} />}
+        <EndButton className="ml-auto" onClick={onEnd} />
       </div>
       {choicesOnly ? null : (
         <>
@@ -279,6 +282,7 @@ function Composer({
               onSubmit={onAnswer}
               controlRef={control}
               autoFocus
+              suggestAbove
               placeholder={q.placeholder}
               glossary={entries}
               onCreateEntry={onCreateEntry}
@@ -294,11 +298,14 @@ function Composer({
               答える
             </button>
           </div>
-          <p className="text-right text-[11px] text-on-surface-variant/60">
-            <span className="[@media(pointer:coarse)]:hidden">
-              Enter で決定、Shift+Enter で改行 ・{' '}
+          <p className="flex flex-wrap justify-between gap-x-3 text-[11px] text-on-surface-variant/60">
+            <span>{visibilityHint(q)}</span>
+            <span>
+              <span className="[@media(pointer:coarse)]:hidden">
+                Enter で決定、Shift+Enter で改行 ・{' '}
+              </span>
+              @ か [[ で用語集の項目を呼び出せます
             </span>
-            @ か [[ で用語集の項目を呼び出せます
           </p>
         </>
       )}
@@ -306,11 +313,26 @@ function Composer({
   )
 }
 
+/** 「対話を終える」＝フォームに戻る（答えは保存済み）。 */
+function EndButton({ onClick, className }: { onClick: () => void; className?: string }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        'rounded-md border border-outline-variant/40 px-2.5 py-1 text-[12px] text-on-surface-variant transition-colors hover:bg-surface-container-high hover:text-on-surface',
+        className,
+      )}
+    >
+      対話を終える
+    </button>
+  )
+}
+
 function Message({
   message: m,
   entry,
   answers,
-  isDraft,
   resolvedNames,
   onRefClick,
   onChip,
@@ -324,7 +346,6 @@ function Message({
   entry: GlossaryEntry
   /** answersOf(entry)（ログの吹き出しごとに作り直さない）。 */
   answers: Record<string, DialogAnswer>
-  isDraft: boolean
   resolvedNames: Set<string>
   onRefClick?: (name: string) => void
   onChip: (action: ChipAction, value?: string) => void
@@ -448,7 +469,6 @@ function Message({
         <SummaryCard
           entry={entry}
           answers={answers}
-          isDraft={isDraft}
           resolvedNames={resolvedNames}
           onRefClick={onRefClick}
           summaryDraft={summaryDraft}
@@ -463,7 +483,6 @@ function Message({
 function SummaryCard({
   entry,
   answers,
-  isDraft,
   resolvedNames,
   onRefClick,
   summaryDraft,
@@ -472,7 +491,6 @@ function SummaryCard({
 }: {
   entry: GlossaryEntry
   answers: Record<string, DialogAnswer>
-  isDraft: boolean
   resolvedNames: Set<string>
   onRefClick?: (name: string) => void
   summaryDraft: string | null
@@ -522,7 +540,7 @@ function SummaryCard({
         <VisibilityLabel isPublic={false} label="作者だけ" />
       </div>
       {list(rows.filter((r) => !r.pub))}
-      {isDraft ? null : (
+      {
         <div className="mt-3 flex flex-wrap items-center gap-2">
           <button
             type="button"
@@ -541,7 +559,7 @@ function SummaryCard({
             </button>
           ) : null}
         </div>
-      )}
+      }
       {summaryDraft !== null ? (
         <output
           aria-label="公開情報の下書き"

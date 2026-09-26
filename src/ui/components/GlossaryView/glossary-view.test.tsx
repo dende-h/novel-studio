@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from 'vitest'
 import type { Appearances } from '@/core/glossary'
 import type { DialogAnswer, GlossaryEntry } from '@/core/schema'
 import type { GlossaryFormValues } from '@/ui/components/GlossaryEntryForm/glossary-entry-form'
-import { GlossaryView, type KeptGlossaryDraft } from './glossary-view'
+import { GlossaryView } from './glossary-view'
 
 // 立ち絵欄が目録を読みに行く（fetch）のを止める（happy-dom は実ネットワークへ出ようとする）
 vi.mock('@/ui/_api/game-templates', () => ({
@@ -83,10 +83,7 @@ const appearances: Record<string, Appearances> = {
  * onApply を受け取るだけのモックだと「作成した項目がその場で選ばれる」「改名が一覧へ出る」
  * を検証できない（world-view.test で学んだ形）。
  */
-function setup(
-  initial: GlossaryEntry[] = ENTRIES,
-  opts: { kept?: { current: KeptGlossaryDraft | null } } = {},
-) {
+function setup(initial: GlossaryEntry[] = ENTRIES) {
   const calls = {
     onCreate: vi.fn(),
     onUpdate: vi.fn(),
@@ -152,9 +149,9 @@ function setup(
                           dialogVersion: patch.dialogVersion,
                         }
                       : {}),
-                    ...(patch.category !== undefined
-                      ? { category: patch.category || undefined }
-                      : {}),
+                    ...('category' in patch ? { category: patch.category || undefined } : {}),
+                    ...('reading' in patch ? { reading: patch.reading || undefined } : {}),
+                    ...(patch.aliases !== undefined ? { aliases: patch.aliases } : {}),
                     ...(patch.summary !== undefined
                       ? { summary: patch.summary || undefined, body: undefined }
                       : {}),
@@ -171,10 +168,6 @@ function setup(
         onDelete={(id) => {
           calls.onDelete(id)
           setEntries((cur) => cur.filter((e) => e.id !== id))
-        }}
-        keptDraft={opts.kept?.current ?? null}
-        onKeepDraft={(k) => {
-          if (opts.kept) opts.kept.current = k
         }}
       />
     )
@@ -212,43 +205,40 @@ describe('GlossaryView（左右2カラム：一覧・検索・その場編集）
     expect(screen.queryByRole('button', { name: '「アリス」を編集' })).toBeNull()
   })
 
-  it('「新しく登録」は対話で開き、フォームに切り替えて名前だけでも登録できる（登録するまで保存しない）', async () => {
+  it('「新しく登録」は対話で開き、フォームで名前を入れた時点で登録されて、その項目が開く', async () => {
     const { onCreate } = setup()
     fireEvent.click(screen.getByRole('button', { name: '新しく登録' }))
     // 対話タブで開き、最初に分類を聞く
     expect(screen.getByRole('button', { name: '対話 –' })).toHaveAttribute('aria-pressed', 'true')
     expect(dialogChip('人物')).toBeInTheDocument()
-    // フォームに切り替えて名前を入れる。この時点では onCreate は呼ばれない
+    // フォームに切り替えて名前を入れる＝欄を離れた時点で登録（登録ボタンは無い）
     fireEvent.click(screen.getByRole('button', { name: 'フォーム' }))
+    expect(screen.queryByRole('button', { name: '用語集に登録' })).toBeNull()
     const name = screen.getByLabelText('名前')
     fireEvent.change(name, { target: { value: 'キャロル' } })
     fireEvent.blur(name)
-    expect(onCreate).not.toHaveBeenCalled()
-    fireEvent.click(screen.getByRole('button', { name: '用語集に登録' }))
     await waitFor(() =>
       expect(onCreate).toHaveBeenCalledWith(expect.objectContaining({ name: 'キャロル' })),
     )
-    // 作成した項目が選ばれ、編集面で続きを書ける（一覧にも出る）
+    // 作成した項目が選ばれ、フォームのまま続きを書ける（一覧にも出る）
     await waitFor(() => expect(screen.getByLabelText('名前')).toHaveValue('キャロル'))
     expect(screen.getByRole('button', { name: '「キャロル」を編集' })).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: '用語集に登録' })).toBeNull()
+    expect(screen.getByRole('button', { name: 'フォーム' })).toHaveAttribute('aria-pressed', 'true')
   })
 
-  it('登録が重複で reject されるとエラーを表示し、下書きを保つ', async () => {
+  it('登録が重複で reject されるとエラーを表示し、名前の無い項目のまま残る', async () => {
     setup()
     fireEvent.click(screen.getByRole('button', { name: '新しく登録' }))
     fireEvent.click(screen.getByRole('button', { name: 'フォーム' }))
     const name = screen.getByLabelText('名前')
     fireEvent.change(name, { target: { value: 'アリス' } })
     fireEvent.blur(name)
-    fireEvent.click(screen.getByRole('button', { name: '用語集に登録' }))
     expect(await screen.findByRole('alert')).toHaveTextContent('重複')
-    expect(screen.getByLabelText('名前')).toHaveValue('アリス')
-    expect(screen.getByRole('button', { name: '用語集に登録' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '書きかけを捨てる' })).toBeInTheDocument()
   })
 
-  it('対話で新規：分類→名前→…と一問ずつ答え、「用語集に登録する」で答えごと作られる', async () => {
-    const { onCreate } = setup()
+  it('対話で新規：分類→名前で登録され、同じ会話のまま読み・別名・公開情報・深掘りと答えるたびに保存される', async () => {
+    const { onCreate, onUpdateDialog } = setup()
     fireEvent.click(screen.getByRole('button', { name: '新しく登録' }))
     fireEvent.click(dialogChip('人物'))
     expect(lastBot()).toBe('まず、名前を教えてください。')
@@ -256,42 +246,51 @@ describe('GlossaryView（左右2カラム：一覧・検索・その場編集）
     answer('アリス')
     expect(lastBot()).toMatch(/もうあります/)
     answer('キャロル')
-    expect(lastBot()).toBe('読みがなはありますか。なければスキップで構いません。')
-    // 見出し（名前）も下書きに追いつく
-    expect(screen.getByRole('heading', { name: /用語集/ })).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'スキップ' })) // reading
+    // 名前を答えた時点で登録され、その項目の対話に会話ごと引き継がれる
+    await waitFor(() =>
+      expect(onCreate).toHaveBeenCalledWith(
+        expect.objectContaining({ name: 'キャロル', category: '人物' }),
+      ),
+    )
+    expect(screen.getByRole('button', { name: '「キャロル」を編集' })).toBeInTheDocument()
+    await waitFor(() =>
+      expect(lastBot()).toBe('読みがなはありますか。なければスキップで構いません。'),
+    )
+    expect(dialogTab()).toHaveAttribute('aria-pressed', 'true')
+    answer('きゃろる')
+    await waitFor(() =>
+      expect(onUpdateDialog).toHaveBeenCalledWith('new-キャロル', { reading: 'きゃろる' }),
+    )
     fireEvent.click(screen.getByRole('button', { name: 'スキップ' })) // aliases
     answer('主人公の友人。') // blurb
+    await waitFor(() =>
+      expect(onUpdateDialog).toHaveBeenCalledWith('new-キャロル', { summary: '主人公の友人。' }),
+    )
     expect(lastBot()).toBe('キャロルの役職や肩書き、立場を教えてください。')
     answer('図書委員')
+    await waitFor(() =>
+      expect(onUpdateDialog).toHaveBeenCalledWith('new-キャロル', {
+        dialogPatch: { title: { text: '図書委員', public: true } },
+        dialogVersion: 2,
+      }),
+    )
     // 答えの吹き出しに公開の印（プロフィール＝読者に見せるが既定）と「直す」
     expect(
       screen.getByRole('button', { name: '読者に見せる（押すと作者だけに戻す）' }),
     ).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '「役職・肩書き」の答えを直す' })).toBeInTheDocument()
-    // 残りは全部あとでにして、まとめまで進む
+    // 残りは全部スキップして、まとめまで進む
     let guard = 0
-    while (screen.queryByRole('button', { name: 'あとで答える' }) && guard++ < 60) {
-      fireEvent.click(screen.getByRole('button', { name: 'あとで答える' }))
+    while (screen.queryByRole('button', { name: 'スキップ' }) && guard++ < 60) {
+      fireEvent.click(screen.getByRole('button', { name: 'スキップ' }))
       const dig = screen.queryByRole('button', { name: '次へ' })
       if (dig) fireEvent.click(dig)
     }
     expect(lastBot()).toMatch(/ひと通り聞きました/)
-    expect(onCreate).not.toHaveBeenCalled()
-    fireEvent.click(screen.getByRole('button', { name: '用語集に登録する' }))
-    await waitFor(() =>
-      expect(onCreate).toHaveBeenCalledWith(
-        expect.objectContaining({
-          name: 'キャロル',
-          category: '人物',
-          summary: '主人公の友人。',
-          dialog: expect.objectContaining({ title: { text: '図書委員', public: true } }),
-        }),
-      ),
-    )
-    // 登録後はその項目のフォームが開く
-    await waitFor(() => expect(screen.getByLabelText('名前')).toHaveValue('キャロル'))
+    // 「対話を終える」でフォームへ
+    fireEvent.click(screen.getByRole('button', { name: '対話を終える' }))
     expect(screen.getByRole('button', { name: 'フォーム' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByLabelText('名前')).toHaveValue('キャロル')
   })
 
   it('既存の項目はフォームで開き、「対話」に切り替えると深掘りから聞いて一問ずつ保存される', async () => {
@@ -306,7 +305,7 @@ describe('GlossaryView（左右2カラム：一覧・検索・その場編集）
     await waitFor(() =>
       expect(onUpdateDialog).toHaveBeenCalledWith('b', {
         dialogPatch: { title: { text: '灯台守', public: true } },
-        dialogVersion: 1,
+        dialogVersion: 2,
       }),
     )
     expect(onUpdate).not.toHaveBeenCalled()
@@ -366,36 +365,18 @@ describe('GlossaryView（左右2カラム：一覧・検索・その場編集）
         id: 'c',
         name: 'キャロル',
         category: '人物',
-        dialog: { title: { text: '図書委員' }, age: { text: '', later: true } },
+        dialog: { title: { text: '図書委員' }, age: { text: '', skipped: true } },
       }),
     ])
     openEntry('キャロル')
     expect(screen.getByRole('button', { name: '「キャロル」を編集' })).toHaveTextContent(
-      /対話 1\/\d+・あとで 1/,
+      /対話 2\/\d+/,
     )
     fireEvent.click(screen.getByRole('button', { name: '対話をつづける' }))
     expect(lastBot()).toBe('キャロルの性別を教えてください。（任意）')
     // 選択肢と自由記述の両方が出る
     expect(screen.getByRole('button', { name: '男' })).toBeInTheDocument()
     expect(screen.getByLabelText('答え')).toBeInTheDocument()
-  })
-
-  it('書きかけの下書きは画面を離れて戻っても残る（同じ作品の鍵）', () => {
-    const kept = { current: null as KeptGlossaryDraft | null }
-    const first = setup(ENTRIES, { kept })
-    fireEvent.click(screen.getByRole('button', { name: '新しく登録' }))
-    fireEvent.click(dialogChip('人物'))
-    answer('キャロル')
-    fireEvent.click(screen.getByRole('button', { name: 'スキップ' })) // 読み
-    first.unmount()
-    expect(kept.current?.entry.name).toBe('キャロル')
-    setup(ENTRIES, { kept })
-    // 対話タブで開き、下書きの名前と会話（スキップの印・続きの問い）が残っている
-    expect(screen.getByLabelText('名前')).toHaveValue('キャロル')
-    expect(dialogTab()).toHaveAttribute('aria-pressed', 'true')
-    expect(lastBot()).toBe(
-      '本文で使う別の呼び方はありますか。あだ名や肩書きなど、読点で区切ってください。',
-    )
   })
 
   it('フォームの対話ノートは、質問セットの無い分類でも残っている答えを表示する', () => {
@@ -421,29 +402,54 @@ describe('GlossaryView（左右2カラム：一覧・検索・その場編集）
     expect(within(note).getByText(/今の種類では聞かない答え/)).toBeInTheDocument()
   })
 
-  it('チラ見の「この項目を編集」で下書きを捨てる確認をキャンセルすると、チラ見も下書きも残る', async () => {
-    setup()
-    fireEvent.click(screen.getByRole('button', { name: '新しく登録' }))
-    fireEvent.click(dialogChip('人物'))
-    answer('キャロル')
-    answer('きゃろる') // 読み
-    fireEvent.click(screen.getByRole('button', { name: 'スキップ' })) // 別名
-    answer('[[アリス]]の友人。') // 公開情報＝吹き出しの [[アリス]] がリンクになる
-    fireEvent.click(await screen.findByRole('link', { name: 'アリス' }))
-    const peek = await screen.findByRole('complementary', { name: '用語のチラ見' })
-    fireEvent.click(within(peek).getByRole('button', { name: 'この項目を編集' }))
-    fireEvent.click(await screen.findByRole('button', { name: 'キャンセル' }))
-    expect(screen.getByRole('complementary', { name: '用語のチラ見' })).toBeInTheDocument()
-    expect(screen.getByLabelText('名前')).toHaveValue('キャロル')
+  it('フォームの対話ノートから答えを書き換え・公開の印を切り替えられる（鍵ごとのパッチ）', async () => {
+    const { onUpdateDialog } = setup([
+      entry({
+        id: 'c',
+        name: 'キャロル',
+        category: '人物',
+        dialog: { title: { text: '図書委員' } },
+      }),
+    ])
+    openEntry('キャロル')
+    const note = screen.getByRole('region', { name: '対話ノート' })
+    const age = within(note).getByLabelText('年齢') as HTMLTextAreaElement
+    fireEvent.change(age, { target: { value: '十七' } })
+    fireEvent.blur(age)
+    await waitFor(() =>
+      expect(onUpdateDialog).toHaveBeenLastCalledWith('c', {
+        dialogPatch: { age: { text: '十七', public: true } },
+        dialogVersion: 2,
+      }),
+    )
+    // 公開の印を押すと作者だけに
+    fireEvent.click(
+      within(note).getByRole('button', {
+        name: '役職・肩書き：読者に見せる（押すと作者だけに戻す）',
+      }),
+    )
+    await waitFor(() =>
+      expect(onUpdateDialog).toHaveBeenLastCalledWith('c', {
+        dialogPatch: { title: { text: '図書委員', public: false } },
+        dialogVersion: 2,
+      }),
+    )
+    // 空にすると答えを消す
+    fireEvent.change(age, { target: { value: '' } })
+    fireEvent.blur(age)
+    await waitFor(() =>
+      expect(onUpdateDialog).toHaveBeenLastCalledWith('c', {
+        dialogPatch: { age: null },
+        dialogVersion: 2,
+      }),
+    )
   })
 
-  it('書きかけの下書きから別の項目へ移るときは確認し、捨てると一覧の項目が開く', async () => {
+  it('名前の無い新しい項目から別の項目へ移ると、そのまま捨てられる', async () => {
     setup()
     fireEvent.click(screen.getByRole('button', { name: '新しく登録' }))
     fireEvent.click(dialogChip('人物'))
-    answer('キャロル')
     openEntry('アリス')
-    fireEvent.click(await screen.findByRole('button', { name: '捨てる' }))
     await waitFor(() => expect(screen.getByLabelText('名前')).toHaveValue('アリス'))
   })
 

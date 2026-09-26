@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import type { GlossaryEntry } from '../schema'
-import { activeDeepQuestionsFor, nextQuestion, questionByKey } from './dialog'
+import { activeDeepQuestionsFor, nextQuestion } from './dialog'
 import {
   beginSession,
   type DialogMessage,
   type DialogSession,
+  markSaved,
   pendingHint,
   pendingQuestion,
   pickQuestion,
@@ -31,9 +32,7 @@ function entry(p: Partial<GlossaryEntry> & { name: string }): GlossaryEntry {
 }
 
 const botTexts = (s: DialogSession) =>
-  s.log
-    .filter((m): m is Extract<DialogMessage, { role: 'bot' }> => m.role === 'bot')
-    .map((m) => m.text)
+  s.log.filter((m): m is DialogMessage & { role: 'bot' } => m.role === 'bot').map((m) => m.text)
 const lastBot = (s: DialogSession) => botTexts(s).at(-1) ?? ''
 const lastChips = (s: DialogSession) => {
   const m = s.log.at(-1)
@@ -42,10 +41,14 @@ const lastChips = (s: DialogSession) => {
 const pendingKey = (s: DialogSession) =>
   s.pending?.kind === 'question' ? s.pending.key : undefined
 
-describe('新規の下書き', () => {
+/** 名前の無い新しい項目の会話（登録前）。 */
+const newSession = (e: GlossaryEntry) => beginSession(e, { askBase: true, unsaved: true })
+
+describe('新しい項目（名前を答えると登録される）', () => {
   it('最初に決まった質問だけをすると名乗り、分類を聞く', () => {
-    const s = beginSession(entry({ name: '' }), { draft: true })
+    const s = newSession(entry({ name: '' }))
     expect(botTexts(s)[0]).toMatch(/決まった質問/)
+    expect(botTexts(s)[0]).toMatch(/名前を答えた時点で用語集に登録/)
     expect(s.pending).toEqual({ kind: 'category' })
     expect(lastChips(s).map((c) => c.value)).toEqual([
       '人物',
@@ -59,8 +62,12 @@ describe('新規の下書き', () => {
   })
 
   it('分類を選ぶと問数を案内し、名前から順に聞く。チップは消える', () => {
-    const s0 = beginSession(entry({ name: '' }), { draft: true })
-    const { session: s, entry: e } = runChip(s0, entry({ name: '' }), 'category', '人物')
+    const { session: s, entry: e } = runChip(
+      newSession(entry({ name: '' })),
+      entry({ name: '' }),
+      'category',
+      '人物',
+    )
     expect(e.category).toBe('人物')
     expect(s.log.some((m) => m.role === 'chips')).toBe(false)
     expect(botTexts(s)).toContainEqual(
@@ -70,24 +77,25 @@ describe('新規の下書き', () => {
     expect(pendingKey(s)).toBe('name')
   })
 
-  it('フォームで先に分類を選んだ下書きは、分類を聞き直さず最初の問いから', () => {
-    const e = entry({ name: 'ユキ', category: '人物' })
-    const s = beginSession(e, { draft: true })
-    expect(s.pending).toEqual({ kind: 'question', key: 'reading' })
+  it('フォームで先に分類を選んであれば、分類を聞き直さず最初の問いから', () => {
+    const e = entry({ name: '', category: '人物' })
+    const s = newSession(e)
+    expect(pendingKey(s)).toBe('name')
     expect(botTexts(s).some((t) => t.includes('どの分類'))).toBe(false)
   })
 
-  it('知らない分類は受け付けない', () => {
-    const s0 = beginSession(entry({ name: '' }), { draft: true })
+  it('知らない分類は受け付けず、チップを出し直す', () => {
+    const s0 = newSession(entry({ name: '' }))
     const { session: s, entry: e } = submitAnswer(s0, entry({ name: '' }), '地名')
     expect(e.category).toBeUndefined()
     expect(s.pending).toEqual({ kind: 'category' })
+    expect(lastChips(s).map((c) => c.value)).toContain('人物')
   })
 
-  it('名前の重複はその場で断り、同じ問いを待つ', () => {
+  it('名前の重複はその場で断り、同じ問いを待つ。名前を答えると登録の一言を添えて読みへ', () => {
     const others = [entry({ id: 'x', name: 'セト', category: '人物' })]
     let step: SessionStep = runChip(
-      beginSession(entry({ name: '' }), { draft: true }),
+      newSession(entry({ name: '' })),
       entry({ name: '' }),
       'category',
       '人物',
@@ -98,25 +106,45 @@ describe('新規の下書き', () => {
     expect(pendingKey(step.session)).toBe('name')
     step = submitAnswer(step.session, step.entry, 'ユキ', { entries: others })
     expect(step.entry.name).toBe('ユキ')
+    expect(botTexts(step.session)).toContainEqual(
+      '「ユキ」を用語集に登録しました。ここからは答えるたびに保存されます。',
+    )
     expect(pendingKey(step.session)).toBe('reading')
+    // 登録された項目で同じ会話を続ける
+    const saved = markSaved(step.session)
+    expect(saved.unsaved).toBe(false)
+    expect(saved.askBase).toBe(true)
+    expect(pendingKey(saved)).toBe('reading')
+  })
+
+  it('名前は飛ばせない（登録に要る）', () => {
+    let step: SessionStep = runChip(
+      newSession(entry({ name: '' })),
+      entry({ name: '' }),
+      'category',
+      '人物',
+    )
+    step = skipQuestion(step.session, step.entry)
+    expect(lastBot(step.session)).toMatch(/飛ばせません/)
+    expect(pendingKey(step.session)).toBe('name')
   })
 
   it('共通 4 問のスキップは印だけで欄を変えず、深掘りへ進む', () => {
     let step: SessionStep = runChip(
-      beginSession(entry({ name: '' }), { draft: true }),
+      newSession(entry({ name: '' })),
       entry({ name: '' }),
       'category',
       '人物',
     )
     step = submitAnswer(step.session, step.entry, 'ユキ')
-    step = skipQuestion(step.session, step.entry, false) // reading
-    step = skipQuestion(step.session, step.entry, true) // aliases あとで
-    step = skipQuestion(step.session, step.entry, false) // blurb
+    step = skipQuestion(step.session, step.entry) // reading
+    step = skipQuestion(step.session, step.entry) // aliases
+    step = skipQuestion(step.session, step.entry) // blurb
     expect(step.entry.reading).toBeUndefined()
     expect(step.entry.aliases).toEqual([])
     expect(step.session.baseMarks).toEqual({
       reading: 'skipped',
-      aliases: 'later',
+      aliases: 'skipped',
       blurb: 'skipped',
     })
     expect(pendingKey(step.session)).toBe('title')
@@ -126,47 +154,56 @@ describe('新規の下書き', () => {
   })
 
   it('別名に区切りだけを書いても答えにせず、書き方を伝えて同じ問いを待つ（ループしない）', () => {
-    let step: SessionStep = runChip(
-      beginSession(entry({ name: 'ユキ' }), { draft: true }),
-      entry({ name: 'ユキ' }),
-      'category',
-      '人物',
-    )
-    step = skipQuestion(step.session, step.entry, false) // reading
+    const e = entry({ name: 'ユキ', category: '人物' })
+    let step: SessionStep = { session: beginSession(e, { askBase: true }), entry: e }
+    expect(pendingKey(step.session)).toBe('reading')
+    step = skipQuestion(step.session, step.entry) // reading
     expect(pendingKey(step.session)).toBe('aliases')
     step = submitAnswer(step.session, step.entry, '、')
     expect(step.entry.aliases).toEqual([])
     expect(lastBot(step.session)).toMatch(/読点/)
     expect(pendingKey(step.session)).toBe('aliases')
-    expect(step.session.log.filter((m) => m.role === 'user')).toHaveLength(2) // 分類とスキップだけ
     step = submitAnswer(step.session, step.entry, 'ゆき、雪')
     expect(step.entry.aliases).toEqual(['ゆき', '雪'])
     expect(pendingKey(step.session)).toBe('blurb')
   })
 
-  it('名前が先に入っている下書き（未解決の [[用語]] から）は名前を聞かず、まとまりの案内は残りで言う', () => {
-    const step = runChip(
-      beginSession(entry({ name: 'ミア' }), { draft: true }),
-      entry({ name: 'ミア' }),
-      'category',
-      '人物',
-    )
-    expect(pendingKey(step.session)).toBe('reading')
-    expect(botTexts(step.session)).toContainEqual('ここから「基本」について 残り 3 問です。')
-    // ログの id は一意で、聞き直しで吹き出しを差し替えても重ならない
-    const ids = step.session.log.map((m) => m.id)
+  it('別名の重複もその場で断る', () => {
+    const others = [entry({ id: 'x', name: 'アリス', category: '人物' })]
+    const e = entry({ name: 'セト', category: '人物' })
+    let step: SessionStep = { session: beginSession(e, { askBase: true }), entry: e }
+    step = skipQuestion(step.session, step.entry) // reading
+    step = submitAnswer(step.session, step.entry, '部長、アリス', { entries: others })
+    expect(step.entry.aliases).toEqual([])
+    expect(lastBot(step.session)).toMatch(/「アリス」は用語集にもうあります/)
+    expect(pendingKey(step.session)).toBe('aliases')
+  })
+
+  it('名前だけで作った項目（未解決の [[用語]] から）は登録の一言から始め、読みから聞く。まとまりの案内は残りで言う', () => {
+    const e = entry({ name: 'ミア', category: '人物' })
+    const s = beginSession(e, { askBase: true })
+    expect(s.unsaved).toBe(false)
+    expect(botTexts(s)[0]).toMatch(/「ミア」を用語集に登録しました/)
+    expect(pendingKey(s)).toBe('reading')
+    expect(botTexts(s)).toContainEqual('ここから「基本」について 残り 3 問です。')
+    const ids = s.log.map((m) => m.id)
     expect(new Set(ids).size).toBe(ids.length)
+  })
+
+  it('名前だけで作った項目で分類が無ければ、まず分類を聞く', () => {
+    const s = beginSession(entry({ name: 'ミア' }), { askBase: true })
+    expect(s.pending).toEqual({ kind: 'category' })
   })
 })
 
 describe('深掘りの本流', () => {
   const seto = () => entry({ name: 'セト', category: '人物' })
+  const begin = (e: GlossaryEntry) => beginSession(e, { askBase: false })
 
   it('既存の項目は「フォームの情報」のカードを出して深掘りから聞く', () => {
-    const s = beginSession(seto(), { draft: false })
+    const s = begin(seto())
     expect(s.log[0]?.role).toBe('card-base')
-    // 問数は進み具合と同じ「基本の問い」で言い、まとまりの案内も基本と任意を分ける
-    expect(botTexts(s)).toContainEqual(expect.stringMatching(/基本の質問は 25 問です/))
+    expect(botTexts(s)).toContainEqual(expect.stringMatching(/基本の質問は 23 問です/))
     expect(botTexts(s)).toContainEqual(
       'ここから「プロフィール」について 5 問です（ほかに任意が 4 問）。',
     )
@@ -175,7 +212,7 @@ describe('深掘りの本流', () => {
   })
 
   it('答えは dialog に入り、既定の公開扱いで保存され、次の問いへ', () => {
-    const step = submitAnswer(beginSession(seto(), { draft: false }), seto(), '案内人')
+    const step = submitAnswer(begin(seto()), seto(), '案内人')
     expect(step.entry.dialog?.title).toEqual({ text: '案内人', public: true })
     expect(pendingKey(step.session)).toBe('age')
     const user = step.session.log.find((m) => m.role === 'user')
@@ -184,17 +221,16 @@ describe('深掘りの本流', () => {
 
   it('選択肢だけの問いは選択肢以外を断り、自由記述も可の問いは受ける', () => {
     let e = entry({ name: '街', category: '場所' })
-    let s = beginSession(e, { draft: false })
+    let s = begin(e)
     expect(pendingKey(s)).toBe('kind')
     let step = submitAnswer(s, e, '惑星')
     expect(step.entry.dialog?.kind).toBeUndefined()
     expect(lastBot(step.session)).toMatch(/から選んでください/)
     step = runChip(step.session, step.entry, 'choice', '乗り物・道中')
     expect(step.entry.dialog?.kind?.text).toBe('乗り物・道中')
-    // 種類の枝（route）が本流に入る
     expect(activeDeepQuestionsFor(step.entry).map((q) => q.key)).toContain('route')
     e = seto()
-    s = beginSession(e, { draft: false })
+    s = begin(e)
     let st = submitAnswer(s, e, '案内人')
     st = submitAnswer(st.session, st.entry, '二十歳')
     expect(pendingKey(st.session)).toBe('gender')
@@ -202,17 +238,20 @@ describe('深掘りの本流', () => {
     expect(st.entry.dialog?.gender?.text).toBe('女性寄り')
   })
 
-  it('追い質問のある問いに答えると「もう少し深める／次へ」を出し、深めると ↳ で聞く', () => {
+  /** skill の問いまでスキップで進める。 */
+  const toSkill = () => {
     let e = seto()
-    const skill = questionByKey('人物', 'skill')
-    if (!skill) throw new Error('質問が見つからない')
-    // skill まで飛ぶ：title/age をスキップ、任意も含めてスキップ
-    let s = beginSession(e, { draft: false })
+    let s = begin(e)
     while (pendingKey(s) !== 'skill') {
-      const st = skipQuestion(s, e, false)
+      const st = skipQuestion(s, e)
       s = st.session
       e = st.entry
     }
+    return { s, e }
+  }
+
+  it('追い質問のある問いに答えると「もう少し深める／次へ」を出し、深めると ↳ で聞く', () => {
+    const { s, e } = toSkill()
     let step = submitAnswer(s, e, '道を一度で覚える')
     expect(step.session.pending).toEqual({ kind: 'dig-offer', key: 'skill' })
     expect(lastChips(step.session).map((c) => c.action)).toEqual(['dig', 'digskip'])
@@ -221,185 +260,121 @@ describe('深掘りの本流', () => {
     expect(pendingKey(step.session)).toBe('skill__why')
     expect(lastBot(step.session)).toBe('↳ どうしてそれが得意になったのですか。')
     step = submitAnswer(step.session, step.entry, '迷えば帰れない場所で育ったから')
-    // 親と同じ公開の扱い（プロフィール＝読者に見せる）
     expect(step.entry.dialog?.skill__why).toEqual({
       text: '迷えば帰れない場所で育ったから',
       public: true,
     })
-    expect(pendingKey(step.session)).toBe('looks_first')
+    expect(pendingKey(step.session)).toBe('looks')
     expect(botTexts(step.session)).toContainEqual(
       expect.stringMatching(/ここから「見た目」について/),
     )
   })
 
-  it('追い質問を「あとで」にすると、まとめと選び直しにその追い質問が並ぶ', () => {
-    let e = seto()
-    let s = beginSession(e, { draft: false })
-    while (pendingKey(s) !== 'skill') {
-      const st = skipQuestion(s, e, false)
-      s = st.session
-      e = st.entry
-    }
-    let step = submitAnswer(s, e, '道を覚える')
-    step = runChip(step.session, step.entry, 'dig', 'skill')
-    step = skipQuestion(step.session, step.entry, true) // 追い質問をあとで
-    expect(step.entry.dialog?.skill__why).toEqual({ text: '', later: true })
-    let guard = 0
-    while (step.session.pending?.kind === 'question' && guard++ < 100) {
-      step = skipQuestion(step.session, step.entry, false)
-    }
-    expect(lastBot(step.session)).toMatch(/「あとで」にした答えが 1 つあります/)
-    expect(lastChips(step.session)[0]).toMatchObject({ action: 'pick', value: 'skill__why' })
-    // 選ぶとその追い質問を聞く
-    step = runChip(step.session, step.entry, 'pick', 'skill__why')
-    expect(pendingKey(step.session)).toBe('skill__why')
-  })
-
-  it('別名の重複もその場で断る', () => {
-    const others = [entry({ id: 'x', name: 'アリス', category: '人物' })]
-    let step: SessionStep = runChip(
-      beginSession(entry({ name: 'セト' }), { draft: true }),
-      entry({ name: 'セト' }),
-      'category',
-      '人物',
-    )
-    step = skipQuestion(step.session, step.entry, false) // reading
-    step = submitAnswer(step.session, step.entry, '部長、アリス', { entries: others })
-    expect(step.entry.aliases).toEqual([])
-    expect(lastBot(step.session)).toMatch(/「アリス」は用語集にもうあります/)
-    expect(pendingKey(step.session)).toBe('aliases')
-  })
-
-  it('「次へ」で飛ばした追い質問は、選び直しの一覧から「深める」として辿れる', () => {
-    let e = seto()
-    let s = beginSession(e, { draft: false })
-    while (pendingKey(s) !== 'skill') {
-      const st = skipQuestion(s, e, false)
-      s = st.session
-      e = st.entry
-    }
+  it('「次へ」で追い質問を飛ばし、選び直しの一覧から「深める」として辿れる', () => {
+    const { s, e } = toSkill()
     let step = submitAnswer(s, e, '料理')
     step = runChip(step.session, step.entry, 'digskip')
+    expect(pendingKey(step.session)).toBe('looks')
+    expect(step.entry.dialog?.skill__why).toBeUndefined()
     let guard = 0
     while (step.session.pending?.kind === 'question' && guard++ < 100) {
-      step = skipQuestion(step.session, step.entry, false)
+      step = skipQuestion(step.session, step.entry)
     }
     step = runChip(step.session, step.entry, 'reopen')
     const dig = lastChips(step.session).find((c) => c.value === 'skill__why')
     expect(dig).toMatchObject({ action: 'pick', note: '深める' })
     step = runChip(step.session, step.entry, 'pick', 'skill__why')
     expect(pendingKey(step.session)).toBe('skill__why')
-    // 問いを出すたびに promptId が進む（入力欄の作り直しの合図）
     expect(step.session.promptId).toBeGreaterThan(0)
-  })
-
-  it('「次へ」で追い質問を飛ばす', () => {
-    let e = seto()
-    let s = beginSession(e, { draft: false })
-    while (pendingKey(s) !== 'skill') {
-      const st = skipQuestion(s, e, false)
-      s = st.session
-      e = st.entry
-    }
-    let step = submitAnswer(s, e, '料理')
-    step = runChip(step.session, step.entry, 'digskip')
-    expect(pendingKey(step.session)).toBe('looks_first')
-    expect(step.entry.dialog?.skill__why).toBeUndefined()
   })
 
   it('ひと通り答えるとまとめのカードと「答えを直す／フォームで確かめる」', () => {
     let e = seto()
-    let s = beginSession(e, { draft: false })
+    let s = begin(e)
     let guard = 0
     while (s.pending?.kind === 'question' && guard++ < 100) {
-      const st = skipQuestion(s, e, false)
+      const st = skipQuestion(s, e)
       s = st.session
       e = st.entry
     }
     expect(nextQuestion(e)).toBeUndefined()
-    expect(lastBot(s)).toBe('ひと通り聞きました。まとめはこちらです。')
+    expect(lastBot(s)).toMatch(/^ひと通り聞きました。まとめはこちらです/)
     expect(s.log.some((m) => m.role === 'card')).toBe(true)
     expect(lastChips(s).map((c) => c.action)).toEqual(['reopen', 'toform'])
     expect(s.pending).toEqual({ kind: 'pick' })
-    // 「フォームで確かめる」は画面への指示
     expect(runChip(s, e, 'toform').effect).toBe('toform')
   })
 
-  it('あとでにした答えがあれば、まとめのあとにその一覧を出す', () => {
-    let e = seto()
-    let s = beginSession(e, { draft: false })
-    let first = true
+  it('旧データの「あとで」は、まとめのあとに未回答として並べる', () => {
+    const e = entry({
+      name: 'セト',
+      category: '人物',
+      dialog: { skill: { text: '道を覚える' }, skill__why: { text: '', later: true } },
+    })
+    let s = begin(e)
+    let cur = e
     let guard = 0
     while (s.pending?.kind === 'question' && guard++ < 100) {
-      const st = skipQuestion(s, e, first)
-      first = false
+      const st = skipQuestion(s, cur)
       s = st.session
-      e = st.entry
+      cur = st.entry
     }
-    expect(lastBot(s)).toMatch(/「あとで」にした答えが 1 つあります/)
-    expect(lastChips(s)[0]).toMatchObject({ action: 'pick', value: 'title', note: 'あとで' })
+    expect(lastBot(s)).toMatch(/答えていない問いが 1 つあります/)
+    expect(lastChips(s)[0]).toMatchObject({ action: 'pick', value: 'skill__why', note: '未回答' })
   })
 })
 
 describe('再開・直す', () => {
+  const begin = (e: GlossaryEntry) => beginSession(e, { askBase: false })
   const inProgress = () =>
     entry({
       name: 'セト',
       category: '人物',
-      dialog: { title: { text: '案内人' }, age: { text: '', later: true } },
+      dialog: { title: { text: '案内人' }, age: { text: '', skipped: true } },
     })
 
   it('途中の項目は答え済みを並べ直してから続きを聞く', () => {
-    const s = beginSession(inProgress(), { draft: false })
+    const s = begin(inProgress())
     expect(botTexts(s)[0]).toMatch(/対話をつづけます/)
     const users = s.log.filter((m) => m.role === 'user')
     expect(users.map((m) => (m.role === 'user' ? m.key : ''))).toEqual(['title', 'age'])
-    expect(pendingKey(s)).toBe('gender') // age は「あとで」なので飛ばす
+    expect(pendingKey(s)).toBe('gender')
   })
 
   it('「直す」はその問いだけ聞き直し、答えると本流（次の未回答）へ戻る（D-DLG-EDIT）', () => {
     const e = inProgress()
-    let step = pickQuestion(beginSession(e, { draft: false }), e, 'title')
+    let step = pickQuestion(begin(e), e, 'title')
     expect(step.session.editingKey).toBe('title')
     expect(botTexts(step.session).at(-2)).toMatch(/「役職・肩書き」は今こうなっています。\n案内人/)
     expect(pendingKey(step.session)).toBe('title')
     step = submitAnswer(step.session, step.entry, '境の街の案内人')
     expect(step.entry.dialog?.title?.text).toBe('境の街の案内人')
-    // 吹き出しは鍵ごとに 1 つ＝前の答えの吹き出しは消え、最新だけ残る
     expect(step.session.log.filter((m) => m.role === 'user' && m.key === 'title')).toHaveLength(1)
     expect(step.session.editingKey).toBeNull()
     expect(botTexts(step.session)).toContainEqual('直しました。つづきを聞きます。')
     expect(pendingKey(step.session)).toBe('gender')
   })
 
-  it('「直す」中のスキップ・あとでは「そのままにします」＝答えを消さない', () => {
+  it('「直す」中のスキップは「そのままにします」＝答えを消さない', () => {
     const e = entry({
       name: 'セト',
       category: '人物',
       dialog: { title: { text: '案内人', public: true } },
     })
-    let step = pickQuestion(beginSession(e, { draft: false }), e, 'title')
-    step = skipQuestion(step.session, step.entry, false)
+    let step = pickQuestion(begin(e), e, 'title')
+    step = skipQuestion(step.session, step.entry)
     expect(step.entry.dialog?.title).toEqual({ text: '案内人', public: true })
     expect(botTexts(step.session)).toContainEqual('そのままにします。')
     expect(botTexts(step.session)).not.toContainEqual('直しました。つづきを聞きます。')
     expect(step.session.editingKey).toBeNull()
-    expect(pendingKey(step.session)).toBe('age') // 本流へ戻る
-  })
-
-  it('知らない分類や空の答えはチップを出し直して待つ（行き止まりにしない）', () => {
-    const s0 = beginSession(entry({ name: '' }), { draft: true })
-    const step = runChip(s0, entry({ name: '' }), 'category', '神器')
-    expect(step.session.pending).toEqual({ kind: 'category' })
-    expect(lastChips(step.session).map((c) => c.value)).toContain('人物')
+    expect(pendingKey(step.session)).toBe('age')
   })
 
   it('直すときは追い質問の誘いを出さない', () => {
     const e = entry({ name: 'セト', category: '人物', dialog: { skill: { text: '料理' } } })
-    let step = pickQuestion(beginSession(e, { draft: false }), e, 'skill')
+    let step = pickQuestion(begin(e), e, 'skill')
     step = submitAnswer(step.session, step.entry, '道を覚える')
     expect(step.session.pending?.kind).toBe('question')
-    expect(step.session.pending).not.toEqual({ kind: 'dig-offer', key: 'skill' })
   })
 
   it('全問答え済みなら「どれを変えますか」の一覧から選び直せる', () => {
@@ -412,12 +387,12 @@ describe('再開・直す', () => {
       if (!e.dialog?.[q.key])
         e = { ...e, dialog: { ...(e.dialog ?? {}), [q.key]: { text: '', skipped: true } } }
     }
-    const s = beginSession(e, { draft: false })
+    const s = begin(e)
     expect(botTexts(s)[0]).toMatch(/全部の質問に答えてあります/)
     expect(s.pending).toEqual({ kind: 'pick' })
     const chips = lastChips(s)
     expect(chips.map((c) => c.value)).toContain('habitat')
-    expect(chips.map((c) => c.value)).not.toContain('name') // 既存は共通 4 問を出さない
+    expect(chips.map((c) => c.value)).not.toContain('name')
     expect(chips.at(-1)).toMatchObject({ action: 'toform', primary: true })
     let step = runChip(s, e, 'pick', 'habitat')
     step = submitAnswer(step.session, step.entry, '山の裏')
@@ -425,9 +400,25 @@ describe('再開・直す', () => {
     expect(step.session.pending).toEqual({ kind: 'pick' })
   })
 
+  it('登録後に共通 4 問を聞く会話では、名前だけ選び直しに出さない', () => {
+    const e = entry({ name: 'ユキ', category: '人物', reading: 'ゆき' })
+    let s = beginSession(e, { askBase: true })
+    let cur = e
+    let guard = 0
+    while (s.pending?.kind === 'question' && guard++ < 100) {
+      const st = skipQuestion(s, cur)
+      s = st.session
+      cur = st.entry
+    }
+    const step = runChip(s, cur, 'reopen')
+    const values = lastChips(step.session).map((c) => c.value)
+    expect(values).toContain('reading')
+    expect(values).not.toContain('name')
+  })
+
   it('分類が無い・質問の無い分類の既存項目は、まず分類を聞く。残っていた答えは分類を選んだあと並べ直す', () => {
     const e = entry({ name: '王都', category: '地名', dialog: { where: { text: '北の果て' } } })
-    const s = beginSession(e, { draft: false })
+    const s = begin(e)
     expect(s.pending).toEqual({ kind: 'category' })
     const step = runChip(s, e, 'category', '場所')
     expect(step.entry.category).toBe('場所')
@@ -438,35 +429,19 @@ describe('再開・直す', () => {
   it('beginSession は共通 4 問の印を引き継げる（分類を変えて始め直すとき）', () => {
     const e = entry({ name: 'ユキ', category: '組織' })
     const s = beginSession(e, {
-      draft: true,
+      askBase: true,
       baseMarks: { reading: 'skipped', aliases: 'skipped' },
     })
     expect(pendingKey(s)).toBe('blurb')
   })
 
-  it('登録のために名前を聞き直して答えたあと、登録に失敗しても選び直しへ戻れる', () => {
-    let step: SessionStep = runChip(
-      beginSession(entry({ name: '' }), { draft: true }),
-      entry({ name: '' }),
-      'category',
-      '人物',
-    )
-    step = skipQuestion(step.session, step.entry, false) // name
-    step = runChip(step.session, step.entry, 'finish')
-    step = submitAnswer(step.session, step.entry, 'ユキ')
-    expect(step.effect).toBe('finish')
-    const failed = rejectAnswer(step.session, '「ユキ」は既存の項目と重複しています', step.entry)
-    expect(failed.pending).toEqual({ kind: 'pick' })
-    expect(lastChips(failed).length).toBeGreaterThan(0)
-  })
-
-  it('「どれを変えますか」で登録に失敗しても、選び直しのチップを出し直す（行き止まりにしない）', () => {
+  it('「どれを変えますか」で保存に失敗しても、選び直しのチップを出し直す（行き止まりにしない）', () => {
     let e = entry({ name: '竜', category: '生物', dialog: { kind: { text: '植物' } } })
     for (const q of activeDeepQuestionsFor(e)) {
       if (!e.dialog?.[q.key])
         e = { ...e, dialog: { ...(e.dialog ?? {}), [q.key]: { text: '', skipped: true } } }
     }
-    const s = beginSession(e, { draft: false })
+    const s = begin(e)
     expect(s.pending).toEqual({ kind: 'pick' })
     const rejected = rejectAnswer(s, '「竜」は既存の項目と重複しています', e)
     expect(lastBot(rejected)).toBe('「竜」は既存の項目と重複しています')
@@ -474,53 +449,9 @@ describe('再開・直す', () => {
     expect(rejected.pending).toEqual({ kind: 'pick' })
   })
 
-  it('下書きは名前が無いと登録できず、「これで登録する」で名前を聞き直す', () => {
-    let step: SessionStep = runChip(
-      beginSession(entry({ name: '' }), { draft: true }),
-      entry({ name: '' }),
-      'category',
-      '人物',
-    )
-    step = skipQuestion(step.session, step.entry, false) // name をスキップ
-    expect(pendingKey(step.session)).toBe('reading')
-    // 途中で「これで登録する」（あとでの一覧などから）
-    step = runChip(step.session, step.entry, 'finish')
-    expect(step.effect).toBeUndefined()
-    expect(botTexts(step.session)).toContainEqual(
-      '名前が無いと登録できません。まず名前を教えてください。',
-    )
-    expect(pendingKey(step.session)).toBe('name')
-    expect(step.session.baseMarks.name).toBeUndefined()
-    step = submitAnswer(step.session, step.entry, 'ユキ')
-    expect(step.entry.name).toBe('ユキ')
-    // 「登録する」のために聞き直した名前なので、答えたらそのまま登録へ進む
-    expect(step.effect).toBe('finish')
-    expect(step.session.pendingFinish).toBeUndefined()
-  })
-
-  it('登録のための名前の聞き直し中に別の問いへ行けば、あとで名前を直しても勝手に登録しない', () => {
-    let step: SessionStep = runChip(
-      beginSession(entry({ name: '' }), { draft: true }),
-      entry({ name: '' }),
-      'category',
-      '人物',
-    )
-    step = skipQuestion(step.session, step.entry, false) // name
-    step = submitAnswer(step.session, step.entry, 'ゆき') // reading
-    step = runChip(step.session, step.entry, 'finish') // 名前を聞き直す
-    expect(step.session.pendingFinish).toBe(true)
-    step = pickQuestion(step.session, step.entry, 'reading') // 別の問いを直しに行く
-    expect(step.session.pendingFinish).toBeUndefined()
-    step = submitAnswer(step.session, step.entry, 'ユキ')
-    step = pickQuestion(step.session, step.entry, 'name')
-    step = submitAnswer(step.session, step.entry, 'ユキ')
-    expect(step.effect).toBeUndefined()
-  })
-
   it('「つづきの質問へ」でつづきが無くなっていれば選び直しへ（行き止まりにしない）', () => {
     let e = entry({ name: '竜', category: '生物' })
-    const s0 = beginSession(e, { draft: false })
-    // 裏で全部埋まった体（同期）
+    const s0 = begin(e)
     for (const q of activeDeepQuestionsFor(e)) {
       e = { ...e, dialog: { ...(e.dialog ?? {}), [q.key]: { text: '', skipped: true } } }
     }
@@ -531,7 +462,7 @@ describe('再開・直す', () => {
 
   it('rejectAnswer は問いを待ったまま一言添える／pendingQuestion は待っている問い', () => {
     const e = entry({ name: 'セト', category: '人物' })
-    const s = rejectAnswer(beginSession(e, { draft: false }), '保存に失敗しました', e)
+    const s = rejectAnswer(begin(e), '保存に失敗しました', e)
     expect(lastBot(s)).toBe('保存に失敗しました')
     expect(pendingQuestion(s, e)?.key).toBe('title')
   })

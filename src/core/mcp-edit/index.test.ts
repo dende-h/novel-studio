@@ -278,7 +278,7 @@ describe('mcp-edit（MCP 書き込みの純ロジック）', () => {
     )
     const e1 = w1?.glossary?.[0]
     expect(e1?.dialog).toEqual({ title: { text: '灯台守' }, flaw: { text: '忘れっぽい' } })
-    expect(e1?.dialogVersion).toBe(1)
+    expect(e1?.dialogVersion).toBe(2)
     // 読みだけの更新で対話ノートが消えない（本番利用者のデータ保全）
     const [w2] = upsertGlossaryEntry(
       w1 ? [w1] : [],
@@ -288,7 +288,7 @@ describe('mcp-edit（MCP 書き込みの純ロジック）', () => {
       200,
     )
     expect(w2?.glossary?.[0]?.dialog).toEqual(e1?.dialog)
-    expect(w2?.glossary?.[0]?.dialogVersion).toBe(1)
+    expect(w2?.glossary?.[0]?.dialogVersion).toBe(2)
     // 鍵ごとの削除・公開の指定
     const [w3] = upsertGlossaryEntry(
       w2 ? [w2] : [],

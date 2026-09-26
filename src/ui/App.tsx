@@ -44,7 +44,6 @@ import { useEditorStore } from '@/ui/hooks/use-editor-store'
 import { useIsNarrow } from '@/ui/hooks/use-narrow'
 import { useOpenProfile } from '@/ui/hooks/use-pen-name'
 import type { EditorStore } from '@/ui/store/editorStore'
-import { getKeptGlossaryDraft, setKeptGlossaryDraft } from '@/ui/store/glossaryDraftStore'
 
 interface AppProps {
   store: EditorStore
@@ -526,9 +525,6 @@ export function App({
           <GlossaryView
             entries={work.glossary ?? []}
             workTitle={work.title}
-            // 登録前の下書きは別ルート（投稿・設定）へ行っても残す＝App の外に置く
-            keptDraft={getKeptGlossaryDraft(work.id)}
-            onKeepDraft={(kept) => setKeptGlossaryDraft(work.id, kept)}
             getAppearances={getAppearances}
             onCreate={async (input) => (await store.addGlossaryEntry(input)).id}
             onUpdate={async (id, values) => {

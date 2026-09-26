@@ -1,5 +1,5 @@
 import { ArrowLeft, Plus, Search, Trash2, X } from 'lucide-react'
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
+import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import {
   type Appearances,
   categoriesOf,
@@ -11,13 +11,18 @@ import {
   sortEntries,
 } from '@/core/glossary'
 import {
+  type AnyDialogQuestion,
+  answerPublic,
+  applyDialogPatch,
   DIALOG_VERSION,
   type DialogSummary,
   dialogRecordDiff,
   dialogSummaryOf,
   parseAliasInput,
+  toggleAnswerPublic,
+  withDialogAnswer,
 } from '@/core/glossary/dialog'
-import type { DialogSession } from '@/core/glossary/dialogSession'
+import { type DialogSession, markSaved } from '@/core/glossary/dialogSession'
 import { applyGlossaryFieldPatch, type GlossaryFieldPatch } from '@/core/glossary/patch'
 import type { GlossaryEntry } from '@/core/schema'
 import type { GameAssetRepository } from '@/core/storage/gameAssetRepository'
@@ -61,10 +66,10 @@ import type { NewGlossaryEntry } from '@/ui/store/editorStore'
  * 狭い画面（md 未満）では一覧と編集を切り替え式にする（選ぶと編集・← で一覧へ戻る）。
  */
 
-/** 対話ペインが保存する差分（対話ノートは鍵ごと・分類・公開情報）。渡した欄だけ書き換える。 */
+/** 対話ペインが保存する差分（対話ノートは鍵ごと・分類・読み・別名・公開情報）。渡した欄だけ書き換える。 */
 export type GlossaryDialogPatch = Pick<
   GlossaryFieldPatch,
-  'dialogPatch' | 'dialogVersion' | 'category' | 'summary'
+  'dialogPatch' | 'dialogVersion' | 'category' | 'reading' | 'aliases' | 'summary'
 >
 
 interface GlossaryViewProps {
@@ -87,19 +92,6 @@ interface GlossaryViewProps {
   onCreateEntry?: (name: string) => Promise<string | null>
   /** ゲーム素材の置き場所（渡されたときだけ、人物 entry に「立ち絵」欄が出る。PC 限定）。 */
   gameAssetRepo?: GameAssetRepository
-  /**
-   * 登録前の下書き（と会話）の持ち場。別の画面へ行って戻っても、同じ作品なら書きかけが残るように
-   * 親（App）が作品ごとに持つ。`keptDraft` で戻し、変わるたびに `onKeepDraft` で渡す（null＝無し）。
-   * 省略すると画面を離れたら消える。
-   */
-  keptDraft?: KeptGlossaryDraft | null
-  onKeepDraft?: (kept: KeptGlossaryDraft | null) => void
-}
-
-/** 登録前の下書きと、その会話（画面を離れて戻ったときに続きから）。 */
-export interface KeptGlossaryDraft {
-  entry: GlossaryEntry
-  session?: DialogSession
 }
 
 /** 下書きの id（登録前の新規項目。一覧には出ない）。 */
@@ -109,26 +101,31 @@ const DIALOG_FILTER = '__dialog_in_progress__'
 
 type PaneTab = 'form' | 'dialog'
 
-/** 下書きは作るたびに別の id にする＝捨てて作り直したとき、編集面と対話が新しく立ち上がる。 */
+/**
+ * 名前がまだ無い新しい項目（登録前）。名前を答える／入れると用語集に登録され、以後は答えるたびに
+ * 保存される（D-DLG-ENTRY）。作るたびに別の id にする＝作り直したとき、編集面と対話が新しく立ち上がる。
+ */
 let draftSeq = 0
-const newDraft = (name = ''): GlossaryEntry => ({
+const newDraft = (): GlossaryEntry => ({
   id: `${DRAFT_ID}${++draftSeq}`,
-  name,
+  name: '',
   aliases: [],
   createdAt: 0,
   updatedAt: 0,
 })
 
-/** 下書きに何か書いてあるか（捨てるときに確認する）。 */
-const draftHasContent = (d: GlossaryEntry) =>
-  d.name.trim() !== '' ||
-  d.category !== undefined ||
-  Object.keys(d.dialog ?? {}).length > 0 ||
-  !!d.reading ||
-  d.aliases.length > 0 ||
-  !!d.summary ||
-  !!d.authorNote ||
-  !!d.thumbnail
+/** 登録前の項目の欄を、作成の入力に写す（空の欄の畳み方は store が持つ）。 */
+const toCreateInput = (d: GlossaryEntry, name: string): NewGlossaryEntry => ({
+  name: name.trim(),
+  aliases: d.aliases,
+  category: d.category,
+  reading: d.reading,
+  summary: publicTextOf(d) || undefined,
+  authorNote: d.authorNote,
+  thumbnail: d.thumbnail,
+  dialog: d.dialog,
+  dialogVersion: d.dialogVersion,
+})
 
 export function GlossaryView({
   entries,
@@ -141,50 +138,16 @@ export function GlossaryView({
   onDelete,
   onCreateEntry,
   gameAssetRepo,
-  keptDraft,
-  onKeepDraft,
 }: GlossaryViewProps) {
   const [query, setQuery] = useState('')
   const [category, setCategory] = useState<string | null>(null)
   const [selectedId, setSelectedId] = useState<string | null>(null)
-  // 新規の下書き（登録するまで保存しない）。選択中は一覧の選択を持たない。
-  // 画面を離れて戻ったときは、同じ作品の書きかけを戻す。
-  const [draft, setDraft] = useState<GlossaryEntry | null>(() => keptDraft?.entry ?? null)
-  // 戻ってきた下書きの会話（スキップの印・答えの吹き出しごと）。その下書き（id）にだけ使う＝
-  // 登録・破棄のあと新しく作った下書きには持ち越さない。
-  const restored = useRef(keptDraft ?? undefined)
-  const draftRef = useRef(draft)
-  draftRef.current = draft
-  const sessionRef = useRef<DialogSession | undefined>(keptDraft?.session)
-  const keepRef = useRef(onKeepDraft)
-  keepRef.current = onKeepDraft
-  const [tab, setTab] = useState<PaneTab>(() => (keptDraft ? 'dialog' : 'form'))
-  // 下書きが変わるたびに親へ渡す（中身が無ければ無し）。
-  useEffect(() => {
-    keepRef.current?.(
-      draft && draftHasContent(draft) ? { entry: draft, session: sessionRef.current } : null,
-    )
-  }, [draft])
-  const keepDraftSession = useCallback((session: DialogSession) => {
-    sessionRef.current = session
-    const d = draftRef.current
-    // 下書きがまだ渡されていない一手目（分類を選んだ直後）でも会話を落とさない。
-    if (d && draftHasContent(d)) keepRef.current?.({ entry: d, session })
-  }, [])
-  // 書きかけの下書きがあるあいだは、タブを閉じる・再読み込みの前に確認を出す（残らないので）。
-  const draftDirty = draft !== null && draftHasContent(draft)
-  useEffect(() => {
-    if (!draftDirty) return
-    const warn = (e: BeforeUnloadEvent) => {
-      e.preventDefault()
-      // Safari と古い Chrome は preventDefault だけでは確認を出さない。
-      e.returnValue = ''
-    }
-    window.addEventListener('beforeunload', warn)
-    return () => window.removeEventListener('beforeunload', warn)
-  }, [draftDirty])
-  // 書きかけの下書きを捨てて別の操作へ進む確認（進む先を持つ）。
-  const [discardThen, setDiscardThen] = useState<(() => void) | null>(null)
+  // 名前がまだ無い新しい項目（登録前）。選択中は一覧の選択を持たない。名前が入ると登録される。
+  const [draft, setDraft] = useState<GlossaryEntry | null>(null)
+  const [tab, setTab] = useState<PaneTab>('form')
+  // 名前を答えて登録された項目へ引き継ぐ会話（同じ会話を、登録された項目で続ける）。
+  // 会話が無ければ「名前だけで作った項目」＝共通 4 問（読み・別名・公開情報）も対話で聞く。
+  const handover = useRef<{ id: string; session?: DialogSession } | null>(null)
   // プレビューの [[用語]] クリックで開くチラ見ドロワーの対象。
   const [peekId, setPeekId] = useState<string | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<GlossaryEntry | null>(null)
@@ -230,52 +193,41 @@ export function GlossaryView({
     if (category === DIALOG_FILTER && inProgressCount === 0) setCategory(null)
   }, [category, inProgressCount])
 
-  /** 書きかけの下書きがあれば確認してから進む。 */
-  const guardDraft = (go: () => void) => {
-    if (draft && draftHasContent(draft)) setDiscardThen(() => go)
-    else go()
-  }
-  const selectEntry = (id: string) =>
-    guardDraft(() => {
-      setDraft(null)
-      setSelectedId(id)
-      setTab('form')
-      setPeekId(null)
-    })
-  /** 「＋ 新しく登録」＝対話で開く（名前が先に決まっているときはそれを入れて）。 */
-  const startDraft = (name = '') =>
-    guardDraft(() => {
-      setDraft(newDraft(name))
-      setSelectedId(null)
-      setTab('dialog')
-      setPeekId(null)
-    })
-
-  /** プレビューの [[用語]] クリック：解決済み→チラ見、未解決→その名前で新規の下書きへ。 */
-  const jumpToRef = (name: string) => {
-    const hit = resolveRef(name, entries)
-    if (hit) setPeekId(hit.id)
-    else startDraft(name.trim())
-  }
-
-  /** 下書きを登録する（対話の「用語集に登録する」・フォームの「用語集に登録」）。 */
-  const registerDraft = async (d: GlossaryEntry) => {
-    if (d.name.trim() === '') throw new Error('名前を入れると登録できます')
-    const id = await onCreate({
-      name: d.name.trim(),
-      aliases: d.aliases,
-      category: d.category,
-      reading: d.reading,
-      // 公開情報は 1 欄（旧・詳細は結合して summary へ）
-      summary: publicTextOf(d) || undefined,
-      authorNote: d.authorNote,
-      thumbnail: d.thumbnail,
-      dialog: d.dialog,
-      dialogVersion: d.dialogVersion,
-    })
+  const selectEntry = (id: string) => {
     setDraft(null)
     setSelectedId(id)
     setTab('form')
+    setPeekId(null)
+  }
+  /**
+   * 用語集に登録し、その項目を開く（下書きの名前が入ったとき・未解決の [[用語]] から）。
+   * 対話の途中なら会話ごと引き継ぐ。会話が無ければ共通 4 問も対話で聞く。重複などは reject。
+   */
+  const createAndOpen = async (
+    input: NewGlossaryEntry,
+    session: DialogSession | undefined,
+    nextTab: PaneTab,
+  ) => {
+    const id = await onCreate(input)
+    handover.current = { id, session: session ? markSaved(session) : undefined }
+    setDraft(null)
+    setSelectedId(id)
+    setTab(nextTab)
+    setPeekId(null)
+  }
+  /** 「＋ 新しく登録」＝名前の無い新しい項目を対話で開く。 */
+  const startDraft = () => {
+    setDraft(newDraft())
+    setSelectedId(null)
+    setTab('dialog')
+    setPeekId(null)
+  }
+
+  /** プレビューの [[用語]] クリック：解決済み→チラ見、未解決→その名前で登録して対話で開く。 */
+  const jumpToRef = (name: string) => {
+    const hit = resolveRef(name, entries)
+    if (hit) setPeekId(hit.id)
+    else void createAndOpen({ name: name.trim() }, undefined, 'dialog').catch(() => {})
   }
 
   return (
@@ -389,7 +341,11 @@ export function GlossaryView({
               <EntryEditor
                 key={current.id}
                 entry={current}
-                isDraft={draft !== null}
+                unsaved={draft !== null}
+                askBase={handover.current?.id === current.id}
+                initialSession={
+                  handover.current?.id === current.id ? handover.current.session : undefined
+                }
                 tab={tab}
                 onTabChange={setTab}
                 dialog={currentDialog ?? EMPTY_SUMMARY}
@@ -397,7 +353,7 @@ export function GlossaryView({
                 entries={entries}
                 resolvedNames={resolvedNames}
                 onCommitValues={async (values) => {
-                  // 下書きは保存済みの項目と同じ写像・同じ畳み方で手元の entry に当てる。
+                  // 登録前は保存済みの項目と同じ写像・同じ畳み方で手元の entry に当てる。
                   if (draft) {
                     setDraft((d) =>
                       d ? applyGlossaryFieldPatch(d, formValuesToFieldPatch(values), 0) : d,
@@ -405,12 +361,16 @@ export function GlossaryView({
                   } else await onUpdate(current.id, values)
                 }}
                 onCommitName={async (name) => {
-                  if (draft) setDraft((d) => (d ? { ...d, name } : d))
+                  // 登録前：名前が入った時点で用語集に登録し、その項目を開く（フォームのまま）。
+                  if (draft) await createAndOpen(toCreateInput(draft, name), undefined, 'form')
                   else await onRename(current.id, name, { rewriteBody: false })
                 }}
-                onDialogChange={async (next, prev) => {
+                onDialogChange={async (next, prev, session) => {
                   if (draft) {
-                    setDraft(next)
+                    // 名前を答えたら登録（会話ごと引き継ぐ）。それまでは手元に置く。
+                    if (next.name.trim() !== '') {
+                      await createAndOpen(toCreateInput(next, next.name), session, tab)
+                    } else setDraft(next)
                     return
                   }
                   const patch: GlossaryDialogPatch = {}
@@ -425,24 +385,23 @@ export function GlossaryView({
                     // 空は未設定（formValuesToFieldPatch と同じ畳み方）
                     patch.category = next.category?.trim() || undefined
                   }
+                  if ((next.reading ?? '') !== (prev.reading ?? '')) {
+                    patch.reading = next.reading?.trim() || undefined
+                  }
+                  if (next.aliases.join('\u0000') !== prev.aliases.join('\u0000')) {
+                    patch.aliases = next.aliases
+                  }
                   if (publicTextOf(next) !== publicTextOf(prev)) patch.summary = publicTextOf(next)
                   if (Object.keys(patch).length > 0) await onUpdateDialog(current.id, patch)
                 }}
-                onRegister={draft ? registerDraft : undefined}
-                initialSession={
-                  draft && restored.current?.entry.id === draft.id
-                    ? restored.current.session
-                    : undefined
-                }
-                onSessionChange={draft ? keepDraftSession : undefined}
                 onRequestDelete={() => {
-                  if (draft) guardDraft(() => setDraft(null))
+                  if (draft) setDraft(null)
                   else setDeleteTarget(current)
                 }}
                 onCreateEntry={onCreateEntry}
                 onRefClick={jumpToRef}
                 onBack={() => {
-                  if (draft) guardDraft(() => setDraft(null))
+                  if (draft) setDraft(null)
                   else setSelectedId(null)
                 }}
                 assetRepo={gameAssetRepo}
@@ -494,22 +453,6 @@ export function GlossaryView({
         </aside>
       ) : null}
 
-      {/* 書きかけの下書きを捨てる確認 */}
-      <ConfirmDialog
-        open={discardThen !== null}
-        onOpenChange={(o) => {
-          if (!o) setDiscardThen(null)
-        }}
-        title="書きかけの項目を捨てますか？"
-        description="まだ登録していない項目です。捨てると、対話で答えた内容は残りません。"
-        confirmLabel="捨てる"
-        onConfirm={() => {
-          const go = discardThen
-          setDiscardThen(null)
-          setDraft(null)
-          go?.()
-        }}
-      />
       {/* 削除確認 */}
       <ConfirmDialog
         open={deleteTarget !== null}
@@ -638,7 +581,9 @@ function EntryRow({
  */
 function EntryEditor({
   entry,
-  isDraft,
+  unsaved,
+  askBase,
+  initialSession,
   tab,
   onTabChange,
   dialog,
@@ -648,9 +593,6 @@ function EntryEditor({
   onCommitValues,
   onCommitName,
   onDialogChange,
-  onRegister,
-  initialSession,
-  onSessionChange,
   onRequestDelete,
   onCreateEntry,
   onRefClick,
@@ -658,7 +600,12 @@ function EntryEditor({
   assetRepo,
 }: {
   entry: GlossaryEntry
-  isDraft: boolean
+  /** まだ用語集に登録していない（名前が入ると登録される）。 */
+  unsaved: boolean
+  /** 名前だけで作った直後（共通 4 問も対話で聞く）。 */
+  askBase: boolean
+  /** 登録前から引き継ぐ会話。 */
+  initialSession?: DialogSession
   tab: PaneTab
   onTabChange: (tab: PaneTab) => void
   /** 対話の状態と進み具合（親が項目ごとに 1 回だけ計算したもの）。 */
@@ -668,13 +615,15 @@ function EntryEditor({
   resolvedNames: Set<string>
   onCommitValues: (values: GlossaryFormValues) => Promise<void> | void
   onCommitName: (name: string) => Promise<void> | void
-  /** 対話ペインが項目を進めたとき（答え・分類・公開の扱い・下書きの公開情報）。prev は直前の手元の項目。 */
-  onDialogChange: (next: GlossaryEntry, prev: GlossaryEntry) => Promise<void> | void
-  /** 下書きの登録（下書きのときだけ）。 */
-  onRegister?: (entry: GlossaryEntry) => Promise<void>
-  /** 画面を離れて戻った下書きの会話と、その保存先（下書きのときだけ）。 */
-  initialSession?: DialogSession
-  onSessionChange?: (session: DialogSession) => void
+  /**
+   * 対話ペイン・対話ノートが項目を進めたとき（答え・分類・公開の扱い・公開情報）。prev は直前の項目、
+   * session は対話ペインからのときの会話（名前を答えて登録するとき引き継ぐ）。
+   */
+  onDialogChange: (
+    next: GlossaryEntry,
+    prev: GlossaryEntry,
+    session?: DialogSession,
+  ) => Promise<void> | void
   onRequestDelete: () => void
   onCreateEntry?: (name: string) => Promise<string | null>
   onRefClick: (name: string) => void
@@ -684,7 +633,6 @@ function EntryEditor({
   const uid = useId()
   const [error, setError] = useState<string | null>(null)
   const [imageBusy, setImageBusy] = useState(false)
-  const [registering, setRegistering] = useState(false)
   // 対話は最初に開いたときに始める（それまでは台本も作らない）。以後はタブを切り替えても隠すだけ。
   const [dialogOpened, setDialogOpened] = useState(tab === 'dialog')
   useEffect(() => {
@@ -723,16 +671,32 @@ function EntryEditor({
     }
   }
 
-  const register = async () => {
-    if (!onRegister || registering) return
-    setRegistering(true)
+  /** 対話ノート（フォーム側）からの書き換え。空なら答えを消す。失敗はエラー表示。 */
+  const noteAnswer = async (q: AnyDialogQuestion, text: string) => {
+    const prevA = entry.dialog?.[q.key]
+    const t = text.trim()
+    const next =
+      t === ''
+        ? prevA
+          ? applyDialogPatch(entry, { [q.key]: '' })
+          : entry
+        : withDialogAnswer(entry, q, { text: t, public: answerPublic(q, prevA) })
+    if (next === entry) return
     setError(null)
     try {
-      await onRegister(entry)
+      await onDialogChange(next, entry)
     } catch (e) {
-      setError(e instanceof Error ? e.message : '登録に失敗しました')
-    } finally {
-      setRegistering(false)
+      setError(e instanceof Error ? e.message : '保存に失敗しました')
+    }
+  }
+  const noteToggle = async (key: string) => {
+    const next = toggleAnswerPublic(entry, key)
+    if (next === entry) return
+    setError(null)
+    try {
+      await onDialogChange(next, entry)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '保存に失敗しました')
     }
   }
 
@@ -763,13 +727,13 @@ function EntryEditor({
         <div className="min-w-0 flex-1">
           <NameInput
             value={entry.name}
-            placeholder={isDraft ? '新しい項目（名前は対話でも決められます）' : undefined}
-            allowEmpty={isDraft}
+            placeholder={unsaved ? '新しい項目（名前は対話でも決められます）' : undefined}
+            allowEmpty={unsaved}
             onCommit={(v) => void commitName(v)}
           />
           <p className="mt-1 text-[11px] text-on-surface-variant/60">
-            {isDraft
-              ? '新しい項目です。対話でもフォームでも書けます。登録するまで保存されません。'
+            {unsaved
+              ? '新しい項目です。名前を入れると用語集に登録され、そのあとは自動で保存されます。'
               : `名前を変えても、旧名は自動で別名に残り本文中の参照はそのまま解決されます ・ ${
                   used
                     ? `${appearances.episodeIds.length}話・${appearances.refCount}回 登場`
@@ -795,11 +759,11 @@ function EntryEditor({
           <button
             type="button"
             onClick={onRequestDelete}
-            aria-label={isDraft ? '書きかけを捨てる' : `「${entry.name}」を削除`}
+            aria-label={unsaved ? '書きかけを捨てる' : `「${entry.name}」を削除`}
             className="flex shrink-0 items-center gap-1 rounded-md px-2 py-1.5 text-[12px] text-on-surface-variant/70 transition-colors hover:bg-error-container hover:text-destructive"
           >
             <Trash2 className="size-3.5" aria-hidden />
-            {isDraft ? '捨てる' : '削除'}
+            {unsaved ? '捨てる' : '削除'}
           </button>
         </div>
       </div>
@@ -814,13 +778,12 @@ function EntryEditor({
       {dialogOpened ? (
         <DialogPane
           entry={entry}
-          isDraft={isDraft}
+          unsaved={unsaved}
+          askBase={askBase}
           entries={entries}
           resolvedNames={resolvedNames}
           onChange={onDialogChange}
-          onFinish={onRegister}
           initialSession={initialSession}
-          onSessionChange={onSessionChange}
           onToForm={() => onTabChange('form')}
           onCreateEntry={onCreateEntry}
           onRefClick={onRefClick}
@@ -922,11 +885,15 @@ function EntryEditor({
           {/* 対話ノート（見るだけ・直すのは対話から）。 */}
           <DialogNoteSection
             entry={entry}
-            isDraft={isDraft}
+            askBase={unsaved || askBase}
             summary={dialog}
             onOpenDialog={() => onTabChange('dialog')}
+            onAnswer={(q, text) => void noteAnswer(q, text)}
+            onToggleVisibility={(key) => void noteToggle(key)}
             resolvedNames={resolvedNames}
             onRefClick={onRefClick}
+            glossary={entries}
+            onCreateEntry={onCreateEntry}
           />
 
           {/* サムネイル。 */}
@@ -972,7 +939,7 @@ function EntryEditor({
           </section>
 
           {/* 立ち絵（人物のみ・PC 限定＝作る作業なので D-GAME-PC。実体は素材層で Work には入らない）。 */}
-          {!isDraft && assetRepo && PERSON_CATEGORY.test(entry.category ?? '') ? (
+          {!unsaved && assetRepo && PERSON_CATEGORY.test(entry.category ?? '') ? (
             <div className="max-lg:hidden">
               <SpriteSection
                 key={entry.name}
@@ -980,24 +947,6 @@ function EntryEditor({
                 aliases={entry.aliases}
                 assetRepo={assetRepo}
               />
-            </div>
-          ) : null}
-
-          {/* 下書きの登録。名前が無いと登録できない（@ 参照の解決キー）。 */}
-          {isDraft ? (
-            <div className="flex items-center justify-end gap-3">
-              {entry.name.trim() === '' ? (
-                <span className="text-[11.5px] text-on-surface-variant/70">
-                  名前を入れると登録できます
-                </span>
-              ) : null}
-              <Button
-                type="button"
-                onClick={() => void register()}
-                disabled={entry.name.trim() === '' || registering || imageBusy}
-              >
-                用語集に登録
-              </Button>
             </div>
           ) : null}
         </>

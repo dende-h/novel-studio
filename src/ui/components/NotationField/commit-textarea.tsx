@@ -41,6 +41,7 @@ export function CommitTextarea({
   onSubmit,
   controlRef,
   autoFocus,
+  suggestAbove = false,
 }: {
   value: string
   onCommit: (v: string) => void
@@ -67,9 +68,11 @@ export function CommitTextarea({
    * 内容は消さない（次の問いに移るときは呼び出し側が欄を作り直す）。
    */
   onSubmit?: (value: string) => void
-  /** 欄の外から submit／focus するための取っ手。 */
+  /** 欄の外から submit するための取っ手。 */
   controlRef?: { current: CommitTextareaHandle | null }
   autoFocus?: boolean
+  /** 候補を欄の上に開く（画面の下端にある欄＝対話の答え。下に開くと見切れる）。 */
+  suggestAbove?: boolean
 }) {
   const [draft, setDraft] = useState(value)
   const focused = useRef(false)
@@ -80,6 +83,8 @@ export function CommitTextarea({
     triggerLen: number
     query: string
     top: number
+    /** 上向きに開くときの、欄の上端からの距離（wrapper 内 px）。 */
+    bottom?: number
     left: number
   } | null>(null)
   const [activeIndex, setActiveIndex] = useState(0)
@@ -166,6 +171,10 @@ export function CommitTextarea({
       triggerLen,
       query: text.slice(at + triggerLen, caret),
       top: el.offsetTop + c.top + c.height,
+      // 上向き：wrapper の下端から測って、欄の上端＋少しの隙間に候補の下端を置く
+      ...(suggestAbove
+        ? { bottom: (el.parentElement?.offsetHeight ?? el.offsetHeight) - el.offsetTop + 4 }
+        : {}),
       left: el.offsetLeft + c.left,
     })
     setActiveIndex(0)
@@ -332,6 +341,7 @@ export function CommitTextarea({
           showCreate={showCreate}
           activeIndex={activeIndex}
           top={suggest.top}
+          bottom={suggest.bottom}
           left={suggest.left}
           listId={listId}
           optionId={optionId}

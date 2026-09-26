@@ -5,7 +5,6 @@ import {
   activeQuestionsFor,
   answerPublic,
   answersOf,
-  BASE_QUESTIONS,
   DIALOG_CATEGORIES,
   type DialogQuestion,
   dialogStarted,
@@ -28,21 +27,20 @@ import { resolveRef } from './index'
  * 対話ペインの**台本**（LLM を使わない決まった応答・D-DLG-BOT）。会話ログと「いま何を待っているか」を
  * 純データで持ち、遷移はすべて純関数＝画面は結果を描いて保存するだけ。
  *
- * 遷移は `{ session, entry }` を返す。entry が変わったとき（答え・分類）は、呼び出し側が保存する
- * （既存の項目は store へ、新規の下書きは登録まで手元に置く）。
+ * 遷移は `{ session, entry }` を返す。entry が変わったとき（答え・分類）は、呼び出し側が保存する。
+ * 新しい項目は**名前を答えた時点で用語集に登録され**、以後は答えるたびに保存される（D-DLG-ENTRY）。
+ * 登録前（名前がまだ無い）のあいだだけ `unsaved` で、その間の答えは画面が手元に持つ。
  */
 
 export type ChipAction =
   | 'category'
   | 'choice'
   | 'skip'
-  | 'later'
   | 'pick'
   | 'reopen'
   | 'dig'
   | 'digskip'
   | 'resume'
-  | 'finish'
   | 'toform'
 
 export interface DialogChip {
@@ -51,9 +49,9 @@ export interface DialogChip {
   value?: string
   primary?: boolean
   ghost?: boolean
-  /** 未回答・あとでの印（破線）。 */
+  /** 未回答の印（破線）。 */
   blank?: boolean
-  /** ラベルの右に添える小さな注記（「あとで」「未回答」）。 */
+  /** ラベルの右に添える小さな注記（「未回答」「深める」）。 */
   note?: string
 }
 
@@ -78,41 +76,43 @@ export type DialogMessageBody =
   | { role: 'card' }
 
 export type DialogPending =
-  /** required＝スキップ・あとでにできない（登録に名前が要るときの聞き直し）。 */
-  | { kind: 'question'; key: string; required?: true }
+  | { kind: 'question'; key: string }
   | { kind: 'category' }
   | { kind: 'pick' }
   | { kind: 'dig-offer'; key: string }
 
 export interface DialogSession {
-  /** 新規の下書き（登録するまで保存しない）。 */
-  draft: boolean
+  /** 共通 4 問（名前・読み・別名・公開情報）も聞く（新しく作った項目）。既存の項目では聞かない。 */
+  askBase: boolean
+  /** まだ用語集に登録していない（名前を答えると登録される）。 */
+  unsaved: boolean
   log: DialogMessage[]
   pending: DialogPending | null
   /** 「直す」で聞き直している鍵。答えると本流（次の未回答）へ戻る（D-DLG-EDIT）。 */
   editingKey: string | null
   /** 直前に案内したまとまり（切り替わりでだけ案内する）。 */
   lastSection: string | null
-  /** 下書きで共通 4 問をスキップ／あとでにした印。 */
-  baseMarks: Record<string, 'skipped' | 'later'>
-  /** 「登録する」を押したが名前が無く、名前を聞き直している＝答えたらそのまま登録へ進む。 */
-  pendingFinish?: true
+  /** 共通 4 問をスキップした印（欄には残らないので、ここで持つ）。 */
+  baseMarks: Record<string, 'skipped'>
   /** 次に振るログの id。 */
   nextId: number
   /** 問いを出した回数。画面は入力欄をこれで作り直す（問いが出るたびに空で、拒否では残す）。 */
   promptId: number
 }
 
-export type SessionEffect = 'finish' | 'toform'
+export type SessionEffect = 'toform'
 
 export interface SessionStep {
   session: DialogSession
   entry: GlossaryEntry
-  /** 画面側の操作（登録する・フォームへ戻る）。 */
+  /** 画面側の操作（フォームへ戻る）。 */
   effect?: SessionEffect
 }
 
-const optsOf = (s: DialogSession): AnsweredOptions => ({ draft: s.draft, baseMarks: s.baseMarks })
+const optsOf = (s: DialogSession): AnsweredOptions => ({
+  askBase: s.askBase,
+  baseMarks: s.baseMarks,
+})
 
 /** チップは常に「いまの問いかけ」なので、次の遷移で消す。 */
 const withoutChips = (log: DialogMessage[]) => log.filter((m) => m.role !== 'chips')
@@ -135,6 +135,11 @@ export function pendingQuestion(
 ): AnyDialogQuestion | undefined {
   if (session.pending?.kind !== 'question') return undefined
   return questionByKey(entry.category, session.pending.key)
+}
+
+/** 名前を答えて用語集に登録されたあとの会話（同じ会話を、登録された項目で続ける）。 */
+export function markSaved(session: DialogSession): DialogSession {
+  return session.unsaved ? { ...session, unsaved: false } : session
 }
 
 /** 分類を聞く（新規・分類が対話の質問を持たないとき）。 */
@@ -171,14 +176,15 @@ function ask(s: DialogSession, entry: GlossaryEntry, q: AnyDialogQuestion): Dial
   return { ...next, pending: { kind: 'question', key: q.key }, promptId: next.promptId + 1 }
 }
 
-/** どれを変えるかを選ばせる（全問答え済み・あとでの答え・直すの入口）。 */
+/** どれを変えるかを選ばせる（全問答え済み・直すの入口）。 */
 function askPick(s: DialogSession, entry: GlossaryEntry, lead: string | null): DialogSession {
   let next = lead ? say(s, lead) : s
   next = { ...next, pending: { kind: 'pick' } }
   const o = optsOf(next)
   const items: DialogChip[] = []
   for (const q of activeQuestionsFor(entry)) {
-    if (q.field !== undefined && !next.draft) continue
+    // 共通 4 問は新しい項目でだけ。名前は登録後はフォームの見出しで直す（改名は別名の退避を伴う）。
+    if (q.field !== undefined && (!next.askBase || (q.field === 'name' && !next.unsaved))) continue
     const later = isLater(entry, q, o)
     const blank = !isAnswered(entry, q, o) || later
     items.push({
@@ -186,31 +192,26 @@ function askPick(s: DialogSession, entry: GlossaryEntry, lead: string | null): D
       action: 'pick',
       value: q.key,
       blank,
-      ...(later ? { note: 'あとで' } : blank ? { note: '未回答' } : {}),
+      ...(blank ? { note: '未回答' } : {}),
     })
     // 追い質問は本流に無いので、ここが戻る道。答えた親の追い質問で、まだ答えていないもの
-    // （「次へ」で飛ばした・あとでにした）を並べる。答え済みは親の「直す」から辿れる。
-    if (isAnswered(entry, q, o) && !isLater(entry, q, o)) {
+    // （「次へ」で飛ばした）を並べる。答え済みは親の「直す」から辿れる。
+    if (isAnswered(entry, q, o) && !later) {
       for (const d of digQuestionsOf(q)) {
         if (isAnswered(entry, d, o)) continue
-        const dLater = isLater(entry, d, o)
         items.push({
           label: `↳ ${d.label}`,
           action: 'pick',
           value: d.key,
           blank: true,
-          note: dLater ? 'あとで' : '深める',
+          note: '深める',
         })
       }
     }
   }
   const nu = nextQuestion(entry, o)
   if (nu) items.push({ label: 'つづきの質問へ', action: 'resume', primary: true })
-  items.push(
-    next.draft
-      ? { label: 'これで登録する', action: 'finish', primary: !nu }
-      : { label: 'フォームに戻る', action: 'toform', primary: !nu },
-  )
+  items.push({ label: 'フォームに戻る', action: 'toform', primary: !nu })
   return chips(next, items)
 }
 
@@ -242,32 +243,38 @@ function userMessage(q: AnyDialogQuestion, a: DialogAnswer): DialogMessageBody {
   }
 }
 
-const INTRO_DRAFT = [
-  '新しい項目を作ります。決まった質問を順にお聞きしますので、ひとつずつ答えてください。「用語集に登録」するまで保存はされません。ほかの画面へ行って戻るあいだは残りますが、ページを閉じると消えます（登録したあとは「対話をつづける」でいつでも再開できます）。',
+const INTRO_HOW = [
   '読者に見せるかどうかは、答えごとに選べます。答えの中で @ か [[ と打つと、用語集の項目を呼び出せます。答えたあとに「もう少し深める」を押すと、追い質問が続きます。',
+  '答えはフォームの「対話ノート」からも直せます。「対話を終える」でいつでもフォームに戻れ、続きは「対話をつづける」から。',
 ]
 
-/** 対話を始める（開いた項目の状態に合わせて、続きから・あとでから・どれを変えるか）。 */
+/** 対話を始める（開いた項目の状態に合わせて、続きから・どれを変えるか）。 */
 export function beginSession(
   entry: GlossaryEntry,
-  opts: { draft: boolean; baseMarks?: DialogSession['baseMarks'] },
+  opts: { askBase: boolean; unsaved?: boolean; baseMarks?: DialogSession['baseMarks'] },
 ): DialogSession {
   let s: DialogSession = {
-    draft: opts.draft,
+    askBase: opts.askBase,
+    unsaved: opts.unsaved ?? false,
     log: [],
     pending: null,
     editingKey: null,
     lastSection: null,
-    // 分類を変えて始め直すときは、共通 4 問のスキップ／あとでの印を引き継ぐ（同じことを二度聞かない）。
+    // 分類を変えて始め直すときは、共通 4 問のスキップの印を引き継ぐ（同じことを二度聞かない）。
     baseMarks: { ...(opts.baseMarks ?? {}) },
     nextId: 1,
     promptId: 0,
   }
-  if (opts.draft) {
-    for (const t of INTRO_DRAFT) s = say(s, t)
+  if (opts.askBase) {
+    s = say(
+      s,
+      s.unsaved
+        ? '新しい項目を作ります。決まった質問を順にお聞きしますので、ひとつずつ答えてください。名前を答えた時点で用語集に登録され、そのあとは答えるたびに保存されます。'
+        : `「${entry.name}」を用語集に登録しました。決まった質問を順にお聞きしますので、ひとつずつ答えてください。答えるたびに保存されます。`,
+    )
+    for (const t of INTRO_HOW) s = say(s, t)
     // フォームで先に分類を選んであれば聞かない（同じことを二度聞かない）。
     if (!hasDialogQuestions(entry.category)) return askCategory(s, 'どの分類の項目ですか。')
-    // 答え済みがあれば（画面を離れて戻った下書き）並べ直してから続きを聞く。
     if (dialogStarted(entry)) s = replay(s, entry)
     const first = nextQuestion(entry, optsOf(s))
     return first ? ask(s, entry, first) : askPick(s, entry, null)
@@ -285,7 +292,7 @@ export function beginSession(
     s = push(s, { role: 'card-base' })
     s = say(
       s,
-      `${entry.name} の名前・読み・別名・公開情報は入っているので、その先から聞きます。基本の質問は ${p.total} 問です（任意の問いは数に入れません）。読者に見せるかどうかは、答えごとに選べます。`,
+      `${entry.name} の名前・読み・別名・公開情報は入っているので、その先から聞きます。基本の質問は ${p.total} 問です（任意の問いは数に入れません）。読者に見せるかどうかは、答えごとに選べます。答えるたびに保存されます。`,
     )
     return nu ? ask(s, entry, nu) : askPick(s, entry, null)
   }
@@ -297,7 +304,7 @@ export function beginSession(
     return ask(replay(s, entry), entry, nu)
   }
   if (p.later > 0) {
-    s = say(s, `${entry.name} は「あとで」にした答えが ${p.later} つあります。`)
+    s = say(s, `${entry.name} は答えていない問いが ${p.later} つあります。`)
     return askPick(replay(s, entry), entry, '答えますか。')
   }
   s = say(s, `${entry.name} は全部の質問に答えてあります。どれを変えますか。`)
@@ -305,7 +312,7 @@ export function beginSession(
 }
 
 /**
- * 答えを受け付けなかった・保存や登録に失敗したときの一言。待っている状態はそのままにし、
+ * 答えを受け付けなかった・保存に失敗したときの一言。待っている状態はそのままにし、
  * チップで待っていた状態（分類・どれを変えるか・深める）はチップを出し直す＝行き止まりにしない。
  */
 export function rejectAnswer(
@@ -368,7 +375,7 @@ export function submitAnswer(
       entry,
     }
   }
-  // 名前・別名の重複（D-GLOS-UNIQUE）は登録時にも弾かれるが、対話の途中で分かるほうが直しやすい。
+  // 名前・別名の重複（D-GLOS-UNIQUE）は保存時にも弾かれるが、対話の途中で分かるほうが直しやすい。
   if ((q.field === 'name' || q.field === 'aliases') && ctx.entries) {
     const others = ctx.entries.filter((e) => e.id !== entry.id)
     const keys = q.field === 'name' ? [text] : parseAliasInput(text)
@@ -413,6 +420,8 @@ export function submitAnswer(
     const { [q.key]: _drop, ...marks } = ns.baseMarks
     ns = { ...ns, baseMarks: marks }
   }
+  if (q.field === 'name')
+    ns = say(ns, `「${text}」を用語集に登録しました。ここからは答えるたびに保存されます。`)
   if (isDigQuestion(q)) return afterDig(ns, next, q)
   if (q.dig && q.dig.length > 0 && !ns.editingKey) {
     ns = { ...ns, pending: { kind: 'dig-offer', key: q.key } }
@@ -425,42 +434,40 @@ export function submitAnswer(
   return after(ns, next)
 }
 
-/** スキップ／あとで答える。 */
-export function skipQuestion(
-  session: DialogSession,
-  entry: GlossaryEntry,
-  later: boolean,
-): SessionStep {
+/** スキップ（その問いを飛ばす。あとから「答えを直す」で戻れる）。 */
+export function skipQuestion(session: DialogSession, entry: GlossaryEntry): SessionStep {
   const s: DialogSession = { ...session, log: withoutChips(session.log) }
   if (s.pending?.kind !== 'question') return { session: s, entry }
-  if (s.pending.required) {
+  const q = questionByKey(entry.category, s.pending.key)
+  if (!q) return { session: { ...s, pending: null }, entry }
+  // 名前は登録に要る（@ 参照の解決キー）。飛ばせない。
+  if (q.field === 'name' && entry.name.trim() === '') {
     return {
-      session: rejectAnswer(s, '名前は登録に必要です。名前を教えてください。', entry),
+      session: rejectAnswer(
+        s,
+        '名前は用語集の登録に必要なので、飛ばせません。名前を教えてください。',
+        entry,
+      ),
       entry,
     }
   }
-  const q = questionByKey(entry.category, s.pending.key)
-  if (!q) return { session: { ...s, pending: null }, entry }
-  // 「直す」で聞き直しているときのスキップ・あとでは「そのままにする」＝答えを消さない。
+  // 「直す」で聞き直しているときのスキップは「そのままにする」＝答えを消さない。
   if (s.editingKey === q.key && (answersOf(entry)[q.key]?.text.trim() ?? '') !== '') {
     return after(say(s, 'そのままにします。'), entry, { silent: true })
   }
   let next = entry
   let ns = s
   if (q.field !== undefined) {
-    ns = { ...ns, baseMarks: { ...ns.baseMarks, [q.key]: later ? 'later' : 'skipped' } }
+    ns = { ...ns, baseMarks: { ...ns.baseMarks, [q.key]: 'skipped' } }
   } else {
-    next = withDialogAnswer(entry, q, {
-      text: '',
-      ...(later ? { later: true } : { skipped: true }),
-    })
+    next = withDialogAnswer(entry, q, { text: '', skipped: true })
   }
   ns = pushAnswer(ns, {
     role: 'user',
     key: q.key,
     label: q.label,
     text: '',
-    ...(later ? { later: true } : { skipped: true }),
+    skipped: true,
     ...(isDigQuestion(q) ? { isDig: true } : {}),
   })
   if (isDigQuestion(q)) return afterDig(ns, next, q)
@@ -486,16 +493,6 @@ function after(
   let ns: DialogSession = { ...s, pending: null }
   const o = optsOf(ns)
   if (ns.editingKey) {
-    // 「登録する」のために名前を聞き直していた＝名前が入ったらそのまま登録へ。
-    if (ns.pendingFinish && ns.editingKey === 'name' && entry.name.trim() !== '') {
-      const { pendingFinish: _f, ...done } = ns
-      // 登録に失敗したときに選び直しへ戻れるよう、待ちは「どれを変えますか」にしておく。
-      return {
-        session: { ...done, editingKey: null, pending: { kind: 'pick' } },
-        entry,
-        effect: 'finish',
-      }
-    }
     ns = { ...ns, editingKey: null }
     const nu = nextQuestion(entry, o)
     if (nu) {
@@ -512,12 +509,13 @@ function after(
   }
   const nu = nextQuestion(entry, o)
   if (nu) return { session: ask(ns, entry, nu), entry }
+  // 古いデータの「あとで」（今の画面では作らない）は、まとめのあとに並べて戻る道にする。
   const later = laterQuestionsOf(entry, o)
   ns = say(
     ns,
     later.length > 0
-      ? `ひと通り聞きました。「あとで」にした答えが ${later.length} つあります。今答えても、あとで戻ってきても構いません。`
-      : 'ひと通り聞きました。まとめはこちらです。',
+      ? `ひと通り聞きました。答えていない問いが ${later.length} つあります。今答えても、あとで戻ってきても構いません。`
+      : 'ひと通り聞きました。まとめはこちらです。飛ばした問いは「答えを直す」から答えられます。',
   )
   ns = push(ns, { role: 'card' })
   ns = { ...ns, pending: { kind: 'pick' } }
@@ -526,14 +524,10 @@ function after(
     action: 'pick',
     value: q.key,
     blank: true,
-    note: 'あとで',
+    note: '未回答',
   }))
   items.push({ label: '答えを直す', action: 'reopen' })
-  items.push(
-    ns.draft
-      ? { label: '用語集に登録する', action: 'finish', primary: true }
-      : { label: 'フォームで確かめる', action: 'toform', primary: true },
-  )
+  items.push({ label: 'フォームで確かめる', action: 'toform', primary: true })
   return { session: chips(ns, items), entry }
 }
 
@@ -547,9 +541,7 @@ export function pickQuestion(
   const q = questionByKey(entry.category, key)
   // 分類が変わって無くなった問い：待っていた状態のチップを出し直す（行き止まりにしない）。
   if (!q) return { session: reissuePrompt(s, entry), entry }
-  // 別の問いを直しに行く＝「登録のための名前の聞き直し」は打ち切る（あとで名前を直しても勝手に登録しない）。
-  const { pendingFinish: _f, ...rest } = s
-  let ns: DialogSession = { ...rest, editingKey: key }
+  let ns: DialogSession = { ...s, editingKey: key }
   const a = answersOf(entry)[key]
   if (a && a.text.trim() !== '') {
     ns = say(ns, `「${q.label}」は今こうなっています。\n${a.text}\n\n新しい答えを書いてください。`)
@@ -570,9 +562,7 @@ export function runChip(
     case 'choice':
       return submitAnswer(session, entry, value ?? '', ctx)
     case 'skip':
-      return skipQuestion(session, entry, false)
-    case 'later':
-      return skipQuestion(session, entry, true)
+      return skipQuestion(session, entry)
     case 'pick':
       return pickQuestion(session, entry, value ?? '')
     case 'reopen':
@@ -593,9 +583,8 @@ export function runChip(
     case 'digskip':
       return after({ ...session, log: withoutChips(session.log) }, entry)
     case 'resume': {
-      const { pendingFinish: _f, ...rest } = session
       const s: DialogSession = {
-        ...rest,
+        ...session,
         log: withoutChips(session.log),
         editingKey: null,
         pending: null,
@@ -603,25 +592,6 @@ export function runChip(
       const nu = nextQuestion(entry, optsOf(s))
       // つづきが無くなっていたら（同期で埋まった等）選び直しへ＝行き止まりにしない。
       return { session: nu ? ask(s, entry, nu) : askPick(s, entry, null), entry }
-    }
-    case 'finish': {
-      const s: DialogSession = { ...session, log: withoutChips(session.log) }
-      // 名前が無いと登録できない（@ 参照の解決キー）。スキップやあとでにしていたら、ここで聞き直す。
-      if (entry.name.trim() === '') {
-        const nameQ = BASE_QUESTIONS.find((q) => q.key === 'name')
-        if (!nameQ) return { session: s, entry }
-        const { name: _n, ...marks } = s.baseMarks
-        const ns = say(
-          { ...s, baseMarks: marks, editingKey: 'name', pendingFinish: true },
-          '名前が無いと登録できません。まず名前を教えてください。',
-        )
-        const asked = ask(ns, entry, nameQ)
-        return {
-          session: { ...asked, pending: { kind: 'question', key: nameQ.key, required: true } },
-          entry,
-        }
-      }
-      return { session: s, entry, effect: 'finish' }
     }
     case 'toform':
       return { session: { ...session, log: withoutChips(session.log) }, entry, effect: 'toform' }
@@ -634,7 +604,7 @@ export function pendingHint(session: DialogSession): string | null {
     case 'category':
       return '上の分類から選んでください。'
     case 'pick':
-      return '変えたい項目を選ぶか、右のボタンで戻ります。'
+      return '変えたい項目を選ぶか、「フォームに戻る」で戻ります。'
     case 'dig-offer':
       return '「もう少し深める」で追い質問に進みます。「次へ」で先へ。'
     default:
