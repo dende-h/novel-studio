@@ -4,14 +4,16 @@ import { describe, expect, it, vi } from 'vitest'
 import type { GlossaryEntry } from '@/core/schema'
 import { DialogPane } from './dialog-pane'
 
+/** 名前のある項目は共通の欄（読み・別名・公開情報）が入っている体（空ければそこから聞かれる）。 */
 function entry(p: Partial<GlossaryEntry> & { id: string; name: string }): GlossaryEntry {
+  const named = p.name !== ''
   return {
     id: p.id,
     name: p.name,
-    aliases: p.aliases ?? [],
+    aliases: 'aliases' in p ? (p.aliases ?? []) : named ? [`${p.name}の別名`] : [],
     category: p.category,
-    reading: p.reading,
-    summary: p.summary,
+    reading: 'reading' in p ? p.reading : named ? 'よみ' : undefined,
+    summary: 'summary' in p ? p.summary : named ? '公開情報。' : undefined,
     dialog: p.dialog,
     dialogVersion: p.dialogVersion,
     createdAt: 0,
@@ -19,7 +21,7 @@ function entry(p: Partial<GlossaryEntry> & { id: string; name: string }): Glossa
   }
 }
 
-const OTHERS = [entry({ id: 'x', name: 'ボブ', category: '人物' })]
+const OTHERS = [entry({ id: 'x', name: 'ボブ', category: '人物', aliases: [] })]
 
 /** onChange を反映して描き直す stateful なハーネス。 */
 function setup(
@@ -243,6 +245,22 @@ describe('DialogPane（キー操作と保存）', () => {
     await waitFor(() =>
       expect(lastBot()).toBe('読みがなはありますか。なければスキップで構いません。'),
     )
+  })
+
+  it('名前だけで登録してある既存の項目は、空いている共通の欄（読みなど）から聞く', () => {
+    setup(
+      entry({
+        id: 'n',
+        name: 'ナナ',
+        category: '人物',
+        reading: undefined,
+        aliases: [],
+        summary: undefined,
+      }),
+    )
+    expect(lastBot()).toBe('読みがなはありますか。なければスキップで構いません。')
+    expect(pane().textContent).toMatch(/ナナ の読み・別名・公開情報に空いている欄があるので/)
+    expect(pane().textContent).not.toMatch(/登録しました/)
   })
 
   it('「対話を終える」でフォームに戻る', () => {

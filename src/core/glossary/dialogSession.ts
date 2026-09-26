@@ -83,8 +83,10 @@ export type DialogPending =
   | { kind: 'dig-offer'; key: string }
 
 export interface DialogSession {
-  /** 共通 4 問（名前・読み・別名・公開情報）も聞く（新しく作った項目）。既存の項目では聞かない。 */
+  /** 共通 4 問（名前・読み・別名・公開情報）も聞く（新しく作った項目・共通の欄に空きがある項目）。 */
   askBase: boolean
+  /** 名前を答えて登録した直後の会話（書き出しの文言に使う）。 */
+  created: boolean
   /** まだ用語集に登録していない（名前を答えると登録される）。 */
   unsaved: boolean
   log: DialogMessage[]
@@ -93,8 +95,6 @@ export interface DialogSession {
   editingKey: string | null
   /** 直前に案内したまとまり（切り替わりでだけ案内する）。 */
   lastSection: string | null
-  /** 共通 4 問をスキップした印（欄には残らないので、ここで持つ）。 */
-  baseMarks: Record<string, 'skipped'>
   /** 次に振るログの id。 */
   nextId: number
   /** 問いを出した回数。画面は入力欄をこれで作り直す（問いが出るたびに空で、拒否では残す）。 */
@@ -110,10 +110,7 @@ export interface SessionStep {
   effect?: SessionEffect
 }
 
-const optsOf = (s: DialogSession): AnsweredOptions => ({
-  askBase: s.askBase,
-  baseMarks: s.baseMarks,
-})
+const optsOf = (s: DialogSession): AnsweredOptions => ({ askBase: s.askBase })
 
 /** チップは常に「いまの問いかけ」なので、次の遷移で消す。 */
 const withoutChips = (log: DialogMessage[]) => log.filter((m) => m.role !== 'chips')
@@ -140,7 +137,7 @@ export function pendingQuestion(
 
 /** 名前を答えて用語集に登録されたあとの会話（同じ会話を、登録された項目で続ける）。 */
 export function markSaved(session: DialogSession): DialogSession {
-  return session.unsaved ? { ...session, unsaved: false } : session
+  return session.unsaved ? { ...session, unsaved: false, created: true } : session
 }
 
 /** 分類を聞く（新規・分類が対話の質問を持たないとき）。 */
@@ -162,7 +159,7 @@ function ask(s: DialogSession, entry: GlossaryEntry, q: AnyDialogQuestion): Dial
     const o = optsOf(s)
     const inSection = activeQuestionsFor(entry).filter((x) => x.section === q.section)
     const core = inSection.filter((x) => !x.optional)
-    const remaining = core.filter((x) => !isAnswered(entry, x, o) && !isLater(entry, x, o)).length
+    const remaining = core.filter((x) => !isAnswered(entry, x, o) && !isLater(entry, x)).length
     const optional = inSection.length - core.length
     const count = remaining < core.length ? `残り ${remaining} 問` : `${core.length} 問`
     next = say(
@@ -186,7 +183,7 @@ function askPick(s: DialogSession, entry: GlossaryEntry, lead: string | null): D
   for (const q of activeQuestionsFor(entry)) {
     // 共通 4 問は新しい項目でだけ。名前は登録後はフォームの見出しで直す（改名は別名の退避を伴う）。
     if (q.field !== undefined && (!next.askBase || (q.field === 'name' && !next.unsaved))) continue
-    const later = isLater(entry, q, o)
+    const later = isLater(entry, q)
     const blank = !isAnswered(entry, q, o) || later
     items.push({
       label: q.label,
@@ -252,17 +249,21 @@ const INTRO_HOW = [
 /** 対話を始める（開いた項目の状態に合わせて、続きから・どれを変えるか）。 */
 export function beginSession(
   entry: GlossaryEntry,
-  opts: { askBase: boolean; unsaved?: boolean; baseMarks?: DialogSession['baseMarks'] },
+  opts: {
+    askBase: boolean
+    unsaved?: boolean
+    /** 名前だけで登録した直後（書き出しは「登録しました」）。 */
+    created?: boolean
+  },
 ): DialogSession {
   let s: DialogSession = {
     askBase: opts.askBase,
+    created: opts.created ?? false,
     unsaved: opts.unsaved ?? false,
     log: [],
     pending: null,
     editingKey: null,
     lastSection: null,
-    // 分類を変えて始め直すときは、共通 4 問のスキップの印を引き継ぐ（同じことを二度聞かない）。
-    baseMarks: { ...(opts.baseMarks ?? {}) },
     nextId: 1,
     promptId: 0,
   }
@@ -271,11 +272,20 @@ export function beginSession(
       s,
       s.unsaved
         ? '新しい項目を作ります。決まった質問を順にお聞きしますので、ひとつずつ答えてください。名前を答えた時点で用語集に登録され、そのあとは答えるたびに保存されます。'
-        : `「${entry.name}」を用語集に登録しました。決まった質問を順にお聞きしますので、ひとつずつ答えてください。答えるたびに保存されます。`,
+        : s.created
+          ? `「${entry.name}」を用語集に登録しました。決まった質問を順にお聞きしますので、ひとつずつ答えてください。答えるたびに保存されます。`
+          : `${entry.name} の読み・別名・公開情報に空いている欄があるので、まずそこから聞きます。そのあと決まった質問を順にお聞きします。答えるたびに保存されます。`,
     )
     for (const t of INTRO_HOW) s = say(s, t)
     // フォームで先に分類を選んであれば聞かない（同じことを二度聞かない）。
-    if (!hasDialogQuestions(entry.category)) return askCategory(s, 'どの分類の項目ですか。')
+    if (!hasDialogQuestions(entry.category)) {
+      return askCategory(
+        s,
+        s.unsaved || s.created
+          ? 'どの分類の項目ですか。'
+          : `${entry.name} の分類を選ぶと、その分類の質問が並びます。分類はフォームの「カテゴリ」と同じ欄です。`,
+      )
+    }
     if (dialogStarted(entry)) s = replay(s, entry)
     const first = nextQuestion(entry, optsOf(s))
     return first ? ask(s, entry, first) : askPick(s, entry, null)
@@ -417,10 +427,6 @@ export function submitAnswer(
     text,
     ...(isDigQuestion(q) ? { isDig: true } : {}),
   })
-  if (q.field !== undefined) {
-    const { [q.key]: _drop, ...marks } = ns.baseMarks
-    ns = { ...ns, baseMarks: marks }
-  }
   if (q.field === 'name') {
     // 登録前なら名前で登録される。登録後の「直す」は改名（前の名前は別名に退避される）。
     ns = say(
@@ -463,14 +469,9 @@ export function skipQuestion(session: DialogSession, entry: GlossaryEntry): Sess
   if (s.editingKey === q.key && (answersOf(entry)[q.key]?.text.trim() ?? '') !== '') {
     return after(say(s, 'そのままにします。'), entry, { silent: true })
   }
-  let next = entry
-  let ns = s
-  if (q.field !== undefined) {
-    ns = { ...ns, baseMarks: { ...ns.baseMarks, [q.key]: 'skipped' } }
-  } else {
-    next = withDialogAnswer(entry, q, { text: '', skipped: true })
-  }
-  ns = pushAnswer(ns, {
+  // 共通 4 問のスキップも印を残す（欄は変えない）＝開き直しても同じことを聞かない。
+  const next = withDialogAnswer(entry, q, { text: '', skipped: true })
+  const ns = pushAnswer(s, {
     role: 'user',
     key: q.key,
     label: q.label,
@@ -518,7 +519,7 @@ function after(
   const nu = nextQuestion(entry, o)
   if (nu) return { session: ask(ns, entry, nu), entry }
   // 古いデータの「あとで」（今の画面では作らない）は、まとめのあとに並べて戻る道にする。
-  const later = laterQuestionsOf(entry, o)
+  const later = laterQuestionsOf(entry)
   ns = say(
     ns,
     later.length > 0

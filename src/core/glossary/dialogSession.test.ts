@@ -142,10 +142,10 @@ describe('新しい項目（名前を答えると登録される）', () => {
     step = skipQuestion(step.session, step.entry) // blurb
     expect(step.entry.reading).toBeUndefined()
     expect(step.entry.aliases).toEqual([])
-    expect(step.session.baseMarks).toEqual({
-      reading: 'skipped',
-      aliases: 'skipped',
-      blurb: 'skipped',
+    expect(step.entry.dialog).toEqual({
+      reading: { text: '', skipped: true },
+      aliases: { text: '', skipped: true },
+      blurb: { text: '', skipped: true },
     })
     expect(pendingKey(step.session)).toBe('title')
     expect(botTexts(step.session)).toContainEqual(
@@ -181,7 +181,7 @@ describe('新しい項目（名前を答えると登録される）', () => {
 
   it('名前だけで作った項目（未解決の [[用語]] から）は登録の一言から始め、読みから聞く。まとまりの案内は残りで言う', () => {
     const e = entry({ name: 'ミア', category: '人物' })
-    const s = beginSession(e, { askBase: true })
+    const s = beginSession(e, { askBase: true, created: true })
     expect(s.unsaved).toBe(false)
     expect(botTexts(s)[0]).toMatch(/「ミア」を用語集に登録しました/)
     expect(pendingKey(s)).toBe('reading')
@@ -437,13 +437,24 @@ describe('再開・直す', () => {
     expect(pendingKey(step.session)).toBe('kind')
   })
 
-  it('beginSession は共通 4 問の印を引き継げる（分類を変えて始め直すとき）', () => {
-    const e = entry({ name: 'ユキ', category: '組織' })
-    const s = beginSession(e, {
-      askBase: true,
-      baseMarks: { reading: 'skipped', aliases: 'skipped' },
+  it('共通 4 問のスキップの印は項目に残る＝分類を変えて始め直しても、開き直しても聞き直さない', () => {
+    const e = entry({
+      name: 'ユキ',
+      category: '組織',
+      dialog: { reading: { text: '', skipped: true }, aliases: { text: '', skipped: true } },
     })
+    const s = beginSession(e, { askBase: true })
     expect(pendingKey(s)).toBe('blurb')
+  })
+
+  it('既存の項目でも共通の欄に空きがあれば、そこから聞く（登録しましたとは言わない）', () => {
+    const e = entry({ name: 'ミア', category: '人物', reading: 'みあ' })
+    const s = beginSession(e, { askBase: true })
+    expect(botTexts(s)[0]).toMatch(/^ミア の読み・別名・公開情報に空いている欄があるので/)
+    expect(pendingKey(s)).toBe('aliases')
+    // 質問セットの無い分類なら、分類から
+    const t = beginSession(entry({ name: '王都', category: '地名' }), { askBase: true })
+    expect(lastBot(t)).toMatch(/王都 の分類を選ぶと/)
   })
 
   it('「どれを変えますか」で保存に失敗しても、選び直しのチップを出し直す（行き止まりにしない）', () => {

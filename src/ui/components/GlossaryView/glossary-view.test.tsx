@@ -264,7 +264,10 @@ describe('GlossaryView（左右2カラム：一覧・検索・その場編集）
     fireEvent.click(screen.getByRole('button', { name: 'スキップ' })) // aliases
     answer('主人公の友人。') // blurb
     await waitFor(() =>
-      expect(onUpdateDialog).toHaveBeenCalledWith('new-キャロル', { summary: '主人公の友人。' }),
+      expect(onUpdateDialog).toHaveBeenCalledWith(
+        'new-キャロル',
+        expect.objectContaining({ summary: '主人公の友人。' }),
+      ),
     )
     expect(lastBot()).toBe('キャロルの役職や肩書き、立場を教えてください。')
     answer('図書委員')
@@ -297,8 +300,22 @@ describe('GlossaryView（左右2カラム：一覧・検索・その場編集）
     const { onUpdate, onUpdateDialog } = setup()
     openEntry('ボブ')
     expect(screen.getByRole('button', { name: 'フォーム' })).toHaveAttribute('aria-pressed', 'true')
-    // 対話ノート区画（見るだけ）から対話を開ける
+    // 対話ノート区画（見るだけ）から対話を開ける。ボブは名前だけ＝空いている共通の欄から聞く
     fireEvent.click(screen.getByRole('button', { name: '対話で深める' }))
+    expect(lastBot()).toBe('読みがなはありますか。なければスキップで構いません。')
+    fireEvent.click(screen.getByRole('button', { name: 'スキップ' })) // reading
+    fireEvent.click(screen.getByRole('button', { name: 'スキップ' })) // aliases
+    fireEvent.click(screen.getByRole('button', { name: 'スキップ' })) // blurb
+    // スキップの印は項目に残る（欄は変えない）＝開き直しても聞き直さない
+    await waitFor(() =>
+      expect(onUpdateDialog).toHaveBeenCalledWith(
+        'b',
+        expect.objectContaining({
+          dialogPatch: expect.objectContaining({ blurb: { text: '', skipped: true } }),
+          dialogVersion: 2,
+        }),
+      ),
+    )
     expect(lastBot()).toBe('ボブの役職や肩書き、立場を教えてください。')
     answer('灯台守')
     // 対話の保存は変わった欄（対話ノート）だけのパッチ＝フォームの他の欄を巻き込まない
@@ -350,6 +367,10 @@ describe('GlossaryView（左右2カラム：一覧・検索・その場編集）
     expect(lastBot()).toMatch(/分類を選ぶと/)
     fireEvent.click(dialogChip('場所'))
     await waitFor(() => expect(onUpdateDialog).toHaveBeenCalledWith('t', { category: '場所' }))
+    // 王都は名前だけ＝空いている共通の欄から（スキップの印は残る）
+    fireEvent.click(screen.getByRole('button', { name: 'スキップ' })) // reading
+    fireEvent.click(screen.getByRole('button', { name: 'スキップ' })) // aliases
+    fireEvent.click(screen.getByRole('button', { name: 'スキップ' })) // blurb
     expect(lastBot()).toBe('王都はどんな種類の場所ですか。')
     // フォームでカテゴリを変える → 対話に戻ると新しい分類で最初から
     fireEvent.click(screen.getByRole('button', { name: 'フォーム' }))
@@ -373,6 +394,10 @@ describe('GlossaryView（左右2カラム：一覧・検索・その場編集）
       /対話 2\/\d+/,
     )
     fireEvent.click(screen.getByRole('button', { name: '対話をつづける' }))
+    // 共通の欄が空なので、先にそこから（スキップして深掘りの続きへ）
+    fireEvent.click(screen.getByRole('button', { name: 'スキップ' })) // reading
+    fireEvent.click(screen.getByRole('button', { name: 'スキップ' })) // aliases
+    fireEvent.click(screen.getByRole('button', { name: 'スキップ' })) // blurb
     expect(lastBot()).toBe('キャロルの性別を教えてください。（任意）')
     // 選択肢と自由記述の両方が出る
     expect(screen.getByRole('button', { name: '男' })).toBeInTheDocument()
@@ -519,7 +544,10 @@ describe('GlossaryView（左右2カラム：一覧・検索・その場編集）
     openEntry('アリス')
     openEntry('キャロル')
     fireEvent.click(dialogTab())
-    expect(lastBot()).not.toMatch(/登録しました|読みがな/)
+    // 読みはまだ空なので聞かれるが、登録時の会話（登録の一言・名前の吹き出し）には戻らない
+    const pane = screen.getByRole('region', { name: '対話' })
+    expect(pane.textContent).not.toMatch(/登録しました/)
+    expect(screen.queryByRole('button', { name: '「名前」の答えを直す' })).toBeNull()
   })
 
   it('フォームの対話ノートは v1 の人物の答え（背格好・目に留まるところ）を見た目の特徴に畳み、人の呼び方は（旧）で残す', () => {

@@ -8,6 +8,7 @@ import {
   answersOf,
   digQuestionsOf,
   draftSummaryFromDialog,
+  emptyBaseQuestions,
   isDigQuestion,
   isFixedVisibility,
   questionByKey,
@@ -61,7 +62,7 @@ export function DialogPane({
   entry: GlossaryEntry
   /** まだ用語集に登録していない新しい項目（名前を答えると登録される・D-DLG-ENTRY）。 */
   unsaved: boolean
-  /** 登録済みだが共通 4 問（読み・別名・公開情報）も聞く（名前だけで作った直後）。 */
+  /** 名前だけで登録した直後（共通 4 問も聞き、書き出しは「登録しました」）。 */
   askBase?: boolean
   /** 引き継ぐ会話（名前を答えて登録された項目で、同じ会話を続ける）。無ければ最初から。 */
   initialSession?: DialogSession
@@ -85,7 +86,14 @@ export function DialogPane({
 }) {
   const [local, setLocal] = useState(entry)
   const [session, setSession] = useState<DialogSession>(
-    () => initialSession ?? beginSession(entry, { askBase: unsaved || askBase, unsaved }),
+    () =>
+      initialSession ??
+      beginSession(entry, {
+        // 共通の欄に空きがあれば既存の項目でも聞く（名前だけで登録した項目など）。
+        askBase: unsaved || askBase || emptyBaseQuestions(entry).length > 0,
+        created: askBase,
+        unsaved,
+      }),
   )
   const sessionRef = useRef(session)
   sessionRef.current = session
@@ -109,7 +117,7 @@ export function DialogPane({
     setLocal(latest)
     if (categoryChanged) {
       setSession((s) =>
-        beginSession(latest, { askBase: s.askBase, unsaved: s.unsaved, baseMarks: s.baseMarks }),
+        beginSession(latest, { askBase: s.askBase, created: s.created, unsaved: s.unsaved }),
       )
     }
   }

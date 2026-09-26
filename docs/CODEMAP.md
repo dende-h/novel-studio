@@ -46,7 +46,7 @@ Cloudflare Pages Functions
 | 保存・自動保存・undo・開いている作品の状態 | `src/ui/store/editorStore.ts` |
 | データの永続化・スキーマ移行 | `src/core/storage/*Repository.ts` |
 | 用語集（`@`参照の解決先・**コトノハ-grove- へ送られる**）の挙動 | `src/core/glossary/index.ts` + `src/ui/components/GlossaryView/` |
-| 用語集の**「対話」**（一問一答で項目を育てる・D-DLG-*）を変える：質問セット・公開の既定・進み具合・MCP の `dialog` | 質問の正本と純ロジックは `src/core/glossary/dialog.ts`（`BASE_QUESTIONS` `DEEP_QUESTIONS` `DIALOG_KINDS`・`applyDialogPatch`＝MCP と画面が共用するパッチ規則・`dialogToPlainText` `questionsToPlainText`）、ボットの台本は `dialogSession.ts`（`beginSession` `submitAnswer` `skipQuestion` `pickQuestion` `runChip`）。画面は `GlossaryView/dialog-pane.tsx`（会話ログ＋入力欄・答えるたびに保存）と `dialog-note-section.tsx`（フォーム側の「対話ノート」＝見るだけ）。答えの器は `GlossaryEntry.dialog`（公開バンドルからは落とす＝`publish.ts` の `toBundleGlossary`）。質問を足す・消すときは `DIALOG_VERSION` を上げ、鍵は消さない |
+| 用語集の**「対話」**（一問一答で項目を育てる・D-DLG-*）を変える：質問セット・公開の既定・進み具合・MCP の `dialog` | 質問の正本と純ロジックは `src/core/glossary/dialog.ts`（`BASE_QUESTIONS` `DEEP_QUESTIONS` `DIALOG_KINDS`・`applyDialogPatch`＝MCP と画面が共用するパッチ規則・`dialogToPlainText` `questionsToPlainText`）、ボットの台本は `dialogSession.ts`（`beginSession` `submitAnswer` `skipQuestion` `pickQuestion` `runChip`）。画面は `GlossaryView/dialog-pane.tsx`（会話ログ＋入力欄・答えるたびに保存）と `dialog-note-section.tsx`（フォーム側の「対話ノート」＝行ごとに直せる）。答えの器は `GlossaryEntry.dialog`（公開バンドルからは落とす＝`publish.ts` の `toBundleGlossary`）。質問を足す・消すときは `DIALOG_VERSION` を上げ、鍵は消さない |
 | 世界観設定（作者専用・**公開されない**）の挙動 | `src/core/plot/index.ts`（`WORLD_SLOTS` ほか）+ `src/ui/components/PlotView/world-view.tsx` |
 | `@`/`[[` サジェストの挙動 | 判定・候補は `src/core/glossary/index.ts`、見た目は `src/ui/components/EditorPane/ref-suggest.tsx`、本文以外の入力欄は `src/ui/components/NotationField/` |
 | プロット（幕×ビート・伏線・秘密） | `src/core/plot/index.ts` + `src/ui/components/PlotView/plot-view.tsx` |
@@ -136,7 +136,7 @@ Cloudflare Pages Functions
 | `activity/` | 執筆記録（`localDateKey` `currentStreak` `buildHeatmap`） |
 | `stats/` | 文字数カウント |
 | `outline/` | アウトラインのメモ木操作（`indentNote` `moveNote` 等） |
-| `glossary/` | 参照解決・出現検索・改名・サジェスト・公開情報の結合（`resolveRef` `renameEntry` `suggestRefs` `publicTextOf` `withPublicText`＝公開情報を 1 欄で書く唯一の入口・`PERSON_CATEGORY`）。項目のフィールドパッチは `patch.ts`（`GlossaryFieldPatch` `applyGlossaryFieldPatch`＝store と登録前の下書きが共用。`dialogPatch`＝対話ノートの鍵ごとの差分）。**「対話」**は `dialog.ts`（質問の正本＝付録 A と同内容・`activeQuestionsFor` `nextQuestion` `dialogSummaryOf`（状態と進み具合を 1 回の走査で）`laterQuestionsOf` `withDialogAnswer` `toggleAnswerPublic` `draftSummaryFromDialog` `dialogRecordDiff` `applyDialogPatch` `dialogToPlainText` `questionsToPlainText`）と `dialogSession.ts`（会話ログと待ち状態の純データ・遷移は `{ session, entry }` を返す） |
+| `glossary/` | 参照解決・出現検索・改名・サジェスト・公開情報の結合（`resolveRef` `renameEntry` `suggestRefs` `publicTextOf` `withPublicText`＝公開情報を 1 欄で書く唯一の入口・`PERSON_CATEGORY`）。項目のフィールドパッチは `patch.ts`（`GlossaryFieldPatch` `applyGlossaryFieldPatch`＝store と登録前の下書きが共用。`dialogPatch`＝対話ノートの鍵ごとの差分）。**「対話」**は `dialog.ts`（質問の正本＝付録 A と同内容・`activeQuestionsFor` `nextQuestion` `dialogSummaryOf`（状態と進み具合を 1 回の走査で）`laterQuestionsOf` `emptyBaseQuestions`＝共通の欄の空き（既存の項目でも対話で聞く）・`answerOf`＝旧鍵を今の問いに畳んで読む・`withDialogAnswer`（共通 4 問のスキップは `dialog[key]` の印で残す） `toggleAnswerPublic` `draftSummaryFromDialog` `dialogRecordDiff` `applyDialogPatch` `dialogToPlainText` `questionsToPlainText`）と `dialogSession.ts`（会話ログと待ち状態の純データ・遷移は `{ session, entry }` を返す） |
 
 ### 掲示板（`board/`）— 判断はすべてここ。サーバは呼ぶだけ
 | ファイル | 責務 | 主な export |

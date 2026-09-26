@@ -414,8 +414,8 @@ export const DEEP_QUESTIONS: Readonly<Record<string, readonly DialogQuestion[]>>
     },
     {
       key: 'memo',
-      section: 'ほかに',
-      label: 'ほかに',
+      section: 'その他',
+      label: 'その他',
       q: 'ほかに書き留めておきたい情報があれば、自由に記述してください。',
       vis: 'switch',
       optional: true,
@@ -490,8 +490,8 @@ export const DEEP_QUESTIONS: Readonly<Record<string, readonly DialogQuestion[]>>
     },
     {
       key: 'memo',
-      section: 'ほかに',
-      label: 'ほかに',
+      section: 'その他',
+      label: 'その他',
       q: 'ほかに書き留めておきたい情報があれば、自由に記述してください。',
       vis: 'switch',
       optional: true,
@@ -604,8 +604,8 @@ export const DEEP_QUESTIONS: Readonly<Record<string, readonly DialogQuestion[]>>
     },
     {
       key: 'memo',
-      section: 'ほかに',
-      label: 'ほかに',
+      section: 'その他',
+      label: 'その他',
       q: 'ほかに書き留めておきたい情報があれば、自由に記述してください。',
       vis: 'switch',
       optional: true,
@@ -730,8 +730,8 @@ export const DEEP_QUESTIONS: Readonly<Record<string, readonly DialogQuestion[]>>
     },
     {
       key: 'memo',
-      section: 'ほかに',
-      label: 'ほかに',
+      section: 'その他',
+      label: 'その他',
       q: 'ほかに書き留めておきたい情報があれば、自由に記述してください。',
       vis: 'switch',
       optional: true,
@@ -815,8 +815,8 @@ export const DEEP_QUESTIONS: Readonly<Record<string, readonly DialogQuestion[]>>
     },
     {
       key: 'memo',
-      section: 'ほかに',
-      label: 'ほかに',
+      section: 'その他',
+      label: 'その他',
       q: 'ほかに書き留めておきたい情報があれば、自由に記述してください。',
       vis: 'switch',
       optional: true,
@@ -910,8 +910,8 @@ export const DEEP_QUESTIONS: Readonly<Record<string, readonly DialogQuestion[]>>
     },
     {
       key: 'memo',
-      section: 'ほかに',
-      label: 'ほかに',
+      section: 'その他',
+      label: 'その他',
       q: 'ほかに書き留めておきたい情報があれば、自由に記述してください。',
       vis: 'switch',
       optional: true,
@@ -1053,19 +1053,22 @@ export function activeDeepQuestionsFor(entry: EntryLike): DialogQuestion[] {
   return activeQuestionsFor(entry).filter((q) => q.field === undefined)
 }
 
-/**
- * 新規の下書きで共通 4 問を「スキップ／あとで」にした印。答えが欄に入らないので `dialog` では
- * 表せない。登録するまでの一時的な状態で、保存はしない。既存の項目では使わない。
- */
-export type BaseMarks = Readonly<Record<string, 'skipped' | 'later' | undefined>>
-
 export interface AnsweredOptions {
   /**
-   * 共通 4 問（名前・読み・別名・公開情報）も対話で聞くか。新しく作った項目では聞き、
-   * 既存の項目は聞かない（D-DLG-EXISTING）＝答え済みとして扱う。
+   * 共通 4 問（名前・読み・別名・公開情報）も対話で聞くか。新しく作った項目と、共通の欄に
+   * 空きがある項目で聞く（`emptyBaseQuestions`）。全部入っている既存の項目は聞かない
+   * （D-DLG-EXISTING）＝答え済みとして扱う。
    */
   askBase?: boolean
-  baseMarks?: BaseMarks
+}
+
+/**
+ * 共通 4 問のうち、欄が空のもの（名前を除く）。登録済みの項目でも空欄は対話で聞く
+ * （名前だけで登録した項目に「読み・別名・公開情報は入っている」と言わない）。
+ */
+export function emptyBaseQuestions(entry: EntryLike): DialogQuestion[] {
+  const a = answersOf(entry)
+  return BASE_QUESTIONS.filter((q) => q.field !== 'name' && a[q.key] === undefined)
 }
 
 /** 答え済みか（スキップも「済み」。あとでは未回答）。 */
@@ -1075,9 +1078,8 @@ export function isAnswered(
   opts: AnsweredOptions = {},
 ): boolean {
   if (q.field !== undefined) {
-    if (!opts.askBase) return true
-    if (answersOf(entry)[q.key] !== undefined) return true
-    return opts.baseMarks?.[q.key] === 'skipped'
+    // 欄が入っているか、スキップの印（`dialog[key]`＝欄は変えない）が残っていれば済み。
+    return !opts.askBase || answersOf(entry)[q.key] !== undefined
   }
   const a = answerOf(entry, q.key)
   if (a === undefined) return false
@@ -1086,12 +1088,8 @@ export function isAnswered(
 }
 
 /** 「あとで答える」にしたままか。 */
-export function isLater(
-  entry: EntryLike,
-  q: AnyDialogQuestion,
-  opts: AnsweredOptions = {},
-): boolean {
-  if (q.field !== undefined) return opts.askBase === true && opts.baseMarks?.[q.key] === 'later'
+export function isLater(entry: EntryLike, q: AnyDialogQuestion): boolean {
+  if (q.field !== undefined) return false
   const a = answerOf(entry, q.key)
   return a !== undefined && a.later === true && a.text.trim() === ''
 }
@@ -1101,9 +1099,7 @@ export function nextQuestion(
   entry: EntryLike,
   opts: AnsweredOptions = {},
 ): DialogQuestion | undefined {
-  return activeQuestionsFor(entry).find(
-    (q) => !isAnswered(entry, q, opts) && !isLater(entry, q, opts),
-  )
+  return activeQuestionsFor(entry).find((q) => !isAnswered(entry, q, opts) && !isLater(entry, q))
 }
 
 export type DialogStatus = 'none' | 'inProgress' | 'done'
@@ -1158,14 +1154,11 @@ export function dialogSummaryOf(entry: EntryLike): DialogSummary {
  * 「あとで答える」のままの問い（本流の問いと、答えた親の追い質問）。まとめ・選び直し・再開で
  * 一覧にする。追い質問は本流に無いので、ここで拾わないと二度と聞かれない。
  */
-export function laterQuestionsOf(
-  entry: EntryLike,
-  opts: AnsweredOptions = {},
-): AnyDialogQuestion[] {
+export function laterQuestionsOf(entry: EntryLike): AnyDialogQuestion[] {
   const out: AnyDialogQuestion[] = []
   for (const q of activeQuestionsFor(entry)) {
-    if (isLater(entry, q, opts)) out.push(q)
-    for (const d of digQuestionsOf(q)) if (isLater(entry, d, opts)) out.push(d)
+    if (isLater(entry, q)) out.push(q)
+    for (const d of digQuestionsOf(q)) if (isLater(entry, d)) out.push(d)
   }
   return out
 }
@@ -1241,7 +1234,8 @@ function normalizeAnswer(q: Pick<AnyDialogQuestion, 'vis'>, a: DialogAnswer): Di
 
 /**
  * 1 問の答えを項目へ入れる（画面の対話ペインが使う）。共通 4 問は既存の欄へ、深掘りは `dialog` へ。
- * 共通 4 問のスキップ／あとでは欄を変えない（印は BaseMarks の責務）。
+ * 共通 4 問のスキップは欄を変えず、`dialog[key]` にスキップの印だけ残す（開き直しても聞き直さない。
+ * 欄に入れば印は消す）。
  */
 export function withDialogAnswer(
   entry: GlossaryEntry,
@@ -1249,18 +1243,23 @@ export function withDialogAnswer(
   answer: DialogAnswer,
 ): GlossaryEntry {
   if (q.field !== undefined) {
-    if (answer.skipped || answer.later) return entry
+    if (answer.skipped || answer.later) {
+      return entry.dialog?.[q.key]
+        ? entry
+        : setDialogAnswer(entry, q.key, { text: '', skipped: true })
+    }
     const text = answer.text.trim()
+    const base = entry.dialog?.[q.key] ? setDialogAnswer(entry, q.key, undefined) : entry
     switch (q.field) {
       case 'name':
-        return { ...entry, name: text }
+        return { ...base, name: text }
       case 'reading':
-        return text === '' ? omit(entry, 'reading') : { ...entry, reading: text }
+        return text === '' ? omit(base, 'reading') : { ...base, reading: text }
       case 'aliases':
-        return { ...entry, aliases: parseAliasInput(text) }
+        return { ...base, aliases: parseAliasInput(text) }
       case 'summary':
         // 公開情報は 1 欄（D-GLOS-PUBLIC-ONE）＝旧・詳細は畳む。
-        return withPublicText(entry, text)
+        return withPublicText(base, text)
     }
   }
   return setDialogAnswer(entry, q.key, normalizeAnswer(q, answer))

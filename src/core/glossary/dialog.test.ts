@@ -164,13 +164,27 @@ describe('答えの読み書き', () => {
     // 下書きは名前から
     expect(nextQuestion(e, { askBase: true })?.key).toBe('reading')
     expect(nextQuestion(entry({ name: '', category: '人物' }), { askBase: true })?.key).toBe('name')
-    // 下書きのスキップは印で表す
-    expect(
-      nextQuestion(entry({ name: '', category: '人物' }), {
-        askBase: true,
-        baseMarks: { name: 'skipped', reading: 'skipped', aliases: 'skipped', blurb: 'later' },
-      })?.key,
-    ).toBe('title')
+    // 共通 4 問のスキップは dialog の印（欄は変えない）で表し、開き直しても聞き直さない
+    const skipped = entry({
+      name: 'セト',
+      category: '人物',
+      dialog: {
+        reading: { text: '', skipped: true },
+        aliases: { text: '', skipped: true },
+        blurb: { text: '', skipped: true },
+      },
+    })
+    expect(nextQuestion(skipped, { askBase: true })?.key).toBe('title')
+    // 欄に入れば印は消える
+    const readingQ = questionByKey('人物', 'reading')
+    if (!readingQ) throw new Error('reading が無い')
+    const filled = withDialogAnswer(skipped, readingQ, { text: 'せと' })
+    expect(filled.reading).toBe('せと')
+    expect(filled.dialog?.reading).toBeUndefined()
+    // スキップは欄を変えず印だけ
+    expect(withDialogAnswer(e, readingQ, { text: '', skipped: true }).dialog).toEqual({
+      reading: { text: '', skipped: true },
+    })
   })
 
   it('withDialogAnswer は共通 4 問を欄へ、深掘りを dialog へ入れ、固定の public は持たない', () => {

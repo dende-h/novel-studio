@@ -9,6 +9,7 @@ import {
   type DialogQuestion,
   type DialogSummary,
   digQuestionsOf,
+  emptyBaseQuestions,
   foldedLegacyKeys,
   hasDialogQuestions,
   isDigQuestion,
@@ -58,6 +59,7 @@ export function DialogNoteSection({
 }) {
   const { status, progress } = summary
   const questions = useMemo(() => activeDeepQuestionsFor(entry), [entry])
+  const emptyBase = useMemo(() => emptyBaseQuestions(entry), [entry])
   // 今の問いの列に無い答え（種類を変えて枝から外れた・質問セットから消えた鍵）。データは残るので、
   // 表示場所も残す（CLAUDE.md「欄の出力先を無くさない」）。
   const inactive = useMemo(() => {
@@ -107,7 +109,9 @@ export function DialogNoteSection({
             問）、ひとつずつ答えられます。
             {askBase
               ? '名前・読み・別名・公開情報も、対話の最初に聞きます。'
-              : '名前・読み・別名・公開情報はもう入っているので、そこは聞きません。'}
+              : emptyBase.length > 0
+                ? `${emptyBase.map((q) => q.label).join('・')}が空いているので、対話の最初に聞きます。`
+                : '名前・読み・別名・公開情報はもう入っているので、そこは聞きません。'}
             <div className="mt-2">
               <OpenButton primary onClick={onOpenDialog}>
                 対話で深める
