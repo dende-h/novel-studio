@@ -213,7 +213,7 @@ export function SpriteSection({ name, aliases, assetRepo }: SpriteSectionProps) 
 
   return (
     <section className="space-y-1.5">
-      <Label>立ち絵（サウンドノベル用・任意）</Label>
+      <Label>立ち絵（サウンドノベル用）</Label>
       <p className="text-[11px] text-on-surface-variant leading-relaxed">
         この人物のセリフで自動的に表示されます。表情を分けて登録すると、演出で切り替えられます。
       </p>

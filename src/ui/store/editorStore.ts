@@ -1,9 +1,11 @@
 import { blocksToNotation } from '../../core/exporter/blocksToNotation'
 import { renameEntry, resolveRef } from '../../core/glossary'
+import { DIALOG_VERSION } from '../../core/glossary/dialog'
+import { applyGlossaryFieldPatch, type GlossaryFieldPatch } from '../../core/glossary/patch'
 import { parseEpisodeBody } from '../../core/parser/parseNotation'
 import { reconcileBlockIds } from '../../core/parser/reconcileBlockIds'
 import type { Profile, ProfileRepository } from '../../core/profile'
-import type { Episode, GlossaryEntry, Work, WorkPlatform } from '../../core/schema'
+import type { DialogAnswer, Episode, GlossaryEntry, Work, WorkPlatform } from '../../core/schema'
 import type { Snapshot } from '../../core/snapshot'
 import type { SnapshotRepository } from '../../core/snapshot/snapshotRepository'
 import { countWorkChars } from '../../core/stats'
@@ -116,20 +118,13 @@ export interface NewGlossaryEntry {
   authorNote?: string
   /** サムネ画像の data URL。空文字/未指定なら付与しない。 */
   thumbnail?: string
+  /** 対話ノート（対話で答えてから登録したとき）。 */
+  dialog?: Record<string, DialogAnswer>
+  dialogVersion?: number
 }
 
-/** 辞書 entry のフィールド更新パッチ（name は対象外＝renameGlossaryEntry を使う）。 */
-export interface GlossaryFieldPatch {
-  aliases?: string[]
-  category?: string
-  reading?: string
-  summary?: string
-  body?: string
-  /** 作者だけが見るメモ（公開時に落とす）。 */
-  authorNote?: string
-  /** サムネ画像の data URL。空文字 '' は削除（キーを落とす）、undefined は据え置き。 */
-  thumbnail?: string
-}
+/** 辞書 entry のフィールド更新パッチ（規則は core/glossary/patch。ここは再 export）。 */
+export type { GlossaryFieldPatch } from '../../core/glossary/patch'
 
 /** 作品メタ編集の入力（指定したキーのみ上書き）。 */
 export interface WorkMeta {
@@ -528,6 +523,8 @@ export function createEditorStore({
     addGlossaryEntry(input) {
       return serializeGlossary(async () => {
         if (!state.work) throw new Error('作品が開かれていません')
+        // 名前は @ 参照の解決キー。空の項目は解決できず一覧で「？」になるだけなので作らない。
+        if (input.name.trim() === '') throw new Error('名前を入れてください')
         const entries = state.work.glossary ?? []
         const ts = now()
         const entry: GlossaryEntry = {
@@ -541,6 +538,10 @@ export function createEditorStore({
           ...(input.authorNote !== undefined ? { authorNote: input.authorNote } : {}),
           // 空文字/未指定は付与しない（クイック作成・サムネ未設定の作成経路を許容）。
           ...(input.thumbnail ? { thumbnail: input.thumbnail } : {}),
+          // 対話で答えてから登録した項目は、答えごと保存する（空の record は持たない）。
+          ...(input.dialog && Object.keys(input.dialog).length > 0
+            ? { dialog: input.dialog, dialogVersion: input.dialogVersion ?? DIALOG_VERSION }
+            : {}),
           createdAt: ts,
           updatedAt: ts,
         }
@@ -572,9 +573,7 @@ export function createEditorStore({
           }
         }
         const ts = now()
-        const updated: GlossaryEntry = { ...cur, ...patch, updatedAt: ts }
-        // thumbnail は空文字 '' を「削除」とする（undefined＝据え置きと区別）。
-        if (patch.thumbnail === '') delete updated.thumbnail
+        const updated = applyGlossaryFieldPatch(cur, patch, ts)
         const work: Work = {
           ...state.work,
           glossary: entries.map((e) => (e.id === id ? updated : e)),

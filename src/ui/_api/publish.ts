@@ -239,7 +239,7 @@ export function attachEpisodeGames(
 }
 
 /**
- * 送信する用語集を組み立てる。**作者メモ（authorNote）は必ず落とす**。
+ * 送信する用語集を組み立てる。**作者メモ（authorNote）と対話ノート（dialog）は必ず落とす**。
  *
  * 用語集そのものは読者に見せる前提で送っている（先方が初出の話まで読んだ読者に開く＝段階公開）。
  * その中で authorNote だけは「項目に紐づくが、まだ読者に見せない情報」の置き場なので、
@@ -252,7 +252,15 @@ export function attachEpisodeGames(
 function toBundleGlossary(glossary: GlossaryEntry[] | undefined): GlossaryEntry[] | undefined {
   if (!glossary) return undefined
   return glossary.map((entry) => {
-    const { authorNote: _authorNote, body: _body, summary: _summary, ...rest } = entry
+    // 対話ノート（dialog）も第 1 段では契約に載せない（D-DLG-PUBLISH）＝作者メモと同じく落とす。
+    const {
+      authorNote: _authorNote,
+      body: _body,
+      summary: _summary,
+      dialog: _dialog,
+      dialogVersion: _dialogVersion,
+      ...rest
+    } = entry
     const merged = publicTextOf(entry)
     return merged ? { ...rest, summary: merged } : rest
   })

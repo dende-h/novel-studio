@@ -1,4 +1,5 @@
 import { publicTextOf } from '../glossary'
+import { dialogToPlainText } from '../glossary/dialog'
 import type { Block, GlossaryEntry, Inline, Work } from '../schema'
 
 /**
@@ -71,6 +72,10 @@ function entryToPlainText(entry: GlossaryEntry, withId = false): string {
   const pub = publicTextOf(entry)
   if (pub) blocks.push(pub)
   if (entry.authorNote) blocks.push(`### 作者メモ（非公開）\n${entry.authorNote}`)
+  // 対話ノート（一問一答の答え）。鍵つきで出す＝ upsert の dialog で鍵ごとに直せる。
+  // 「読者に見せる」の答えも第 1 段では公開バンドルに載らない（下書きに使うだけ）。
+  const dialog = dialogToPlainText(entry)
+  if (dialog) blocks.push(`### ${dialog}`)
   return blocks.join('\n\n')
 }
 
