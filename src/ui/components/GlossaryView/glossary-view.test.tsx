@@ -437,9 +437,9 @@ describe('GlossaryView（左右2カラム：一覧・検索・その場編集）
         dialogVersion: 2,
       }),
     )
-    // 欄を離れると表示に戻る。空にすると答えを消す
+    // 欄を離れると表示に戻る（答え済みは鉛筆で直す）。空にすると答えを消す
     await waitFor(() => expect(within(note).queryByLabelText('年齢')).toBeNull())
-    fireEvent.click(within(note).getByRole('button', { name: '年齢を書く' }))
+    fireEvent.click(within(note).getByRole('button', { name: '年齢を直す' }))
     const age2 = within(note).getByLabelText('年齢') as HTMLTextAreaElement
     fireEvent.change(age2, { target: { value: '' } })
     fireEvent.blur(age2)
@@ -471,6 +471,22 @@ describe('GlossaryView（左右2カラム：一覧・検索・その場編集）
     expect(screen.getByLabelText('作者メモ')).toHaveValue('正体は王女')
     fireEvent.click(await screen.findByRole('button', { name: '捨てる' }))
     await waitFor(() => expect(screen.getByLabelText('名前')).toHaveValue('アリス'))
+  })
+
+  it('分類を変えて見た目の問いが無くなった v1 の答えは畳まず、（旧）の行に残す', () => {
+    setup([
+      entry({
+        id: 'v',
+        name: 'セト',
+        category: '組織',
+        dialogVersion: 1,
+        dialog: { looks_body: { text: '小柄' } },
+      }),
+    ])
+    openEntry('セト')
+    const note = screen.getByRole('region', { name: '対話ノート' })
+    expect(within(note).getByText('背格好（旧）')).toBeInTheDocument()
+    expect(within(note).getByText('小柄')).toBeInTheDocument()
   })
 
   it('登録された項目の対話で名前を「直す」と改名になる（onRename）', async () => {
@@ -522,9 +538,10 @@ describe('GlossaryView（左右2カラム：一覧・検索・その場編集）
     ])
     openEntry('セト')
     const note = screen.getByRole('region', { name: '対話ノート' })
-    const looks = within(note).getByRole('button', { name: '見た目の特徴を書く' })
-    expect(looks).toHaveTextContent('小柄')
-    expect(looks).toHaveTextContent('左手の手袋')
+    const row = within(note).getByRole('button', { name: '見た目の特徴を直す' }).parentElement
+    expect(row).toHaveTextContent('小柄')
+    expect(row).toHaveTextContent('左手の手袋')
+    expect(within(note).queryByText('背格好（旧）')).toBeNull()
     expect(within(note).getByText('人の呼び方（旧）')).toBeInTheDocument()
     expect(within(note).getByText('呼び捨て')).toBeInTheDocument()
     expect(within(note).queryByText(/looks_first|looks_body|speech_second/)).toBeNull()

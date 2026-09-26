@@ -1,4 +1,4 @@
-import { MessageSquareText } from 'lucide-react'
+import { MessageSquareText, Pencil } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import {
   type AnyDialogQuestion,
@@ -65,7 +65,7 @@ export function DialogNoteSection({
       questions.flatMap((q) => [q.key, ...digQuestionsOf(q).map((d) => d.key)]),
     )
     // 今の問いに畳んで読んでいる旧鍵（v1 の背格好＋目に留まるところ→見た目の特徴）は、その行に出る。
-    const folded = foldedLegacyKeys(entry.dialog)
+    const folded = foldedLegacyKeys(entry)
     return Object.entries(entry.dialog ?? {})
       .filter(([key, a]) => !active.has(key) && !folded.has(key) && a.text.trim() !== '')
       .map(([key, a]) => {
@@ -183,18 +183,18 @@ function NoteRow({
   resolvedNames: Set<string>
   onRefClick?: (name: string) => void
 }) {
-  const a = answerOf(entry.dialog, q.key)
+  const a = answerOf(entry, q.key)
   // 分類を変えて持ち越した「種類」（今の選択肢に無い）は未回答扱い（ボットが聞き直す）。
   const text = a && !answerOutOfChoices(q, a) ? a.text.trim() : ''
   const digs = digQuestionsOf(q).filter(
-    (d) => (answerOf(entry.dialog, d.key)?.text.trim() ?? '') !== '' || text !== '',
+    (d) => (answerOf(entry, d.key)?.text.trim() ?? '') !== '' || text !== '',
   )
   const line = { onAnswer, onToggleVisibility, glossary, onCreateEntry, resolvedNames, onRefClick }
   return (
     <>
       <NoteLine question={q} answer={a} text={text} {...line} />
       {digs.map((d) => {
-        const da = answerOf(entry.dialog, d.key)
+        const da = answerOf(entry, d.key)
         return (
           <NoteLine key={d.key} question={d} answer={da} text={da?.text.trim() ?? ''} {...line} />
         )
@@ -275,30 +275,32 @@ function NoteLine({
             autoFocus
             className={cn('min-h-8 py-1', !answered && 'border-dashed')}
           />
+        ) : answered ? (
+          // 答えの中の [[用語]] は用語へ飛ぶリンク＝ボタンの中に入れない。直すのは右の鉛筆から。
+          <div className="flex min-h-8 items-start gap-1 rounded-md border border-outline-variant/30 bg-surface py-1 pr-1 pl-2 text-[13px] leading-relaxed">
+            <NotationText
+              text={text}
+              resolvedNames={resolvedNames}
+              onRefClick={onRefClick}
+              className="m-0 min-w-0 flex-1 whitespace-pre-wrap text-on-surface"
+            />
+            <button
+              type="button"
+              onClick={() => setEditing(true)}
+              aria-label={`${label}を直す`}
+              className="flex size-6 shrink-0 items-center justify-center rounded-md text-on-surface-variant/70 transition-colors hover:bg-accent hover:text-primary"
+            >
+              <Pencil className="size-3.5" aria-hidden />
+            </button>
+          </div>
         ) : (
           <button
             type="button"
             aria-label={`${label}を書く`}
-            onClick={(e) => {
-              // 答えの中の [[用語]] は用語へ飛ぶ（書き換えには入らない）。
-              if ((e.target as HTMLElement).closest('[data-ref-name]')) return
-              setEditing(true)
-            }}
-            className={cn(
-              'min-h-8 w-full cursor-text rounded-md border border-outline-variant/30 bg-surface px-2 py-1 text-left text-[13px] leading-relaxed outline-none focus-visible:border-primary/50',
-              !answered && 'border-dashed',
-            )}
+            onClick={() => setEditing(true)}
+            className="min-h-8 w-full cursor-text rounded-md border border-outline-variant/30 border-dashed bg-surface px-2 py-1 text-left text-[13px] text-on-surface-variant/60 leading-relaxed outline-none focus-visible:border-primary/50"
           >
-            {answered ? (
-              <NotationText
-                text={text}
-                resolvedNames={resolvedNames}
-                onRefClick={onRefClick}
-                className="m-0 whitespace-pre-wrap text-on-surface"
-              />
-            ) : (
-              <span className="text-on-surface-variant/60">{placeholder}</span>
-            )}
+            {placeholder}
           </button>
         )}
       </dd>

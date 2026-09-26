@@ -507,27 +507,39 @@ describe('後方互換', () => {
     if (!looksQ) throw new Error('looks が無い')
 
     it('見た目の特徴（looks）は旧 2 鍵を畳んで読む＝答え済み扱いで、聞き直さない', () => {
-      expect(answerOf(v1.dialog, 'looks')).toEqual({ text: '小柄\n左手の手袋', public: false })
+      expect(answerOf(v1, 'looks')).toEqual({ text: '小柄\n左手の手袋', public: false })
       expect(answersOf(v1).looks?.text).toBe('小柄\n左手の手袋')
       expect(isAnswered(v1, looksQ)).toBe(true)
-      expect(foldedLegacyKeys(v1.dialog)).toEqual(new Set(['looks_body', 'looks_first']))
-      // 片方だけ・スキップのままも畳む
-      expect(answerOf({ looks_first: { text: '手袋', public: true } }, 'looks')).toEqual({
+      expect(foldedLegacyKeys(v1)).toEqual(new Set(['looks_body', 'looks_first']))
+      const at = (dialog: GlossaryEntry['dialog'], category = '人物') =>
+        answerOf({ category, dialog }, 'looks')
+      // 片方だけ＝その文だけ。公開は文のある鍵だけで決める（スキップの鍵に引きずられない）
+      expect(at({ looks_first: { text: '手袋', public: true } })).toEqual({
         text: '手袋',
         public: true,
       })
-      expect(answerOf({ looks_body: { text: '', skipped: true } }, 'looks')).toEqual({
-        text: '',
-        skipped: true,
-      })
+      expect(
+        at({
+          looks_first: { text: '赤い髪', public: true },
+          looks_body: { text: '', skipped: true },
+        }),
+      ).toEqual({ text: '赤い髪', public: true })
+      // 文が無ければ印を引き継ぐ（スキップ／あとで）。印も無ければ未回答
+      expect(at({ looks_body: { text: '', skipped: true } })).toEqual({ text: '', skipped: true })
+      expect(at({ looks_body: { text: '', later: true } })).toEqual({ text: '', later: true })
+      expect(at({ looks_body: { text: '' } })).toBeUndefined()
       // 今の鍵があればそれを読む（旧鍵は畳まない）
-      expect(answerOf({ looks: { text: '新' }, looks_body: { text: '旧' } }, 'looks')?.text).toBe(
-        '新',
-      )
-      expect(foldedLegacyKeys({ looks: { text: '新' }, looks_body: { text: '旧' } }).size).toBe(0)
+      const both = { looks: { text: '新' }, looks_body: { text: '旧' } }
+      expect(at(both)?.text).toBe('新')
+      expect(foldedLegacyKeys({ category: '人物', dialog: both }).size).toBe(0)
+      // 今の分類に looks の問いが無ければ畳まない＝旧鍵は（旧）の行に残る
+      expect(at({ looks_body: { text: '小柄' } }, '組織')).toBeUndefined()
+      expect(
+        foldedLegacyKeys({ category: '組織', dialog: { looks_body: { text: '小柄' } } }).size,
+      ).toBe(0)
     })
 
-    it('looks に書く・消す・公開を切り替えると旧 2 鍵は消える（新形式へ寄せる）。人の呼び方は残る', () => {
+    it('looks に書く・消す・公開を切り替えると畳んでいた旧 2 鍵は消える（新形式へ寄せる）。人の呼び方は残る', () => {
       const written = withDialogAnswer(v1, looksQ, { text: '小柄で手袋', public: true })
       expect(written.dialog).toEqual({
         looks: { text: '小柄で手袋', public: true },
@@ -543,6 +555,34 @@ describe('後方互換', () => {
         speech_second: { text: '呼び捨て' },
       })
       expect(withoutDialogAnswer(v1, 'age')).toBe(v1)
+      // MCP のパッチも同じ規則（書いた・消した時点で畳んでいた旧鍵を消す）
+      expect(applyDialogPatch(v1, { looks: '長身' }).dialog).toEqual({
+        looks: { text: '長身' },
+        speech_second: { text: '呼び捨て' },
+      })
+      expect(applyDialogPatch(v1, { looks: '' }).dialog).toEqual({
+        speech_second: { text: '呼び捨て' },
+      })
+    })
+
+    it('畳んでいなかった旧鍵（looks が先にある）は、looks を書き換えても消さない（削除は明示操作だけ）', () => {
+      const mixed = entry({
+        name: 'セト',
+        category: '人物',
+        dialog: { looks: { text: '長身' }, looks_body: { text: '小柄' } },
+      })
+      expect(withDialogAnswer(mixed, looksQ, { text: '長身で細い' }).dialog).toEqual({
+        looks: { text: '長身で細い' },
+        looks_body: { text: '小柄' },
+      })
+      expect(withoutDialogAnswer(mixed, 'looks').dialog).toEqual({ looks_body: { text: '小柄' } })
+      expect(applyDialogPatch(mixed, { looks: '' }).dialog).toEqual({
+        looks_body: { text: '小柄' },
+      })
+      // 旧鍵そのものは明示すれば消せる
+      expect(applyDialogPatch(mixed, { looks_body: '' }).dialog).toEqual({
+        looks: { text: '長身' },
+      })
     })
 
     it('平文では畳んだ答えを looks の行に出し、消えた鍵は見出し付きの（旧）で残す', () => {

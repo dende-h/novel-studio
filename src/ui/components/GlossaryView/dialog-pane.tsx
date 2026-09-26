@@ -129,7 +129,14 @@ export function DialogPane({
    * 保存する。`session` はその変更を含む会話（登録の引き継ぎ用）、`before` はその直前の会話
    * ＝失敗したらここへ戻す（その一歩だけ取り消し、同じ問いを出し直す。書き出しは繰り返さない）。
    */
-  const persist = async (next: GlossaryEntry, session: DialogSession, before: DialogSession) => {
+  // 保存に失敗して一歩戻したときに、入力欄へ戻す答え（before の問い＝promptId に結びつける）。
+  const [retry, setRetry] = useState<{ promptId: number; text: string } | null>(null)
+  const persist = async (
+    next: GlossaryEntry,
+    session: DialogSession,
+    before: DialogSession,
+    text?: string,
+  ) => {
     saving.current += 1
     const base = savedRef.current
     try {
@@ -146,6 +153,7 @@ export function DialogPane({
         const back = base
         localRef.current = back
         setLocal(back)
+        if (text !== undefined) setRetry({ promptId: before.promptId, text })
         setSession(rejectAnswer(before, message, back))
       } else {
         setSession((s) => rejectAnswer(s, message, localRef.current))
@@ -156,12 +164,13 @@ export function DialogPane({
     }
   }
 
-  const apply = (step: SessionStep) => {
+  /** 台本を一歩進める。`text` は自由記述の答え＝保存に失敗したら入力欄へ戻す。 */
+  const apply = (step: SessionStep, text?: string) => {
     const before = session
     setSession(step.session)
     if (step.entry !== local) {
       setLocal(step.entry)
-      void persist(step.entry, step.session, before)
+      void persist(step.entry, step.session, before, text)
     }
     if (step.effect === 'toform') onToForm()
   }
@@ -220,14 +229,15 @@ export function DialogPane({
         {q ? (
           <Composer
             // 問いを出すたび（台本の promptId）に欄を作り直す＝次の問いは空で始まり、
-            // その場で受け付けなかった答え（重複する名前など）は消さず、直して出し直せる
-            // （保存で失敗したときは一歩戻って同じ問いを出し直す＝ボットの一言に答えが入る）。
+            // 受け付けなかった答え（重複する名前など）は消さず、直して出し直せる
+            // （保存で失敗したときは一歩戻って同じ問いを出し直し、答えを入力欄へ戻す）。
             key={session.promptId}
             question={q}
             required={q.field === 'name' && local.name.trim() === ''}
+            initialText={retry?.promptId === session.promptId ? retry.text : ''}
             entries={entries}
             onCreateEntry={onCreateEntry}
-            onAnswer={(text) => apply(submitAnswer(session, local, text, ctx))}
+            onAnswer={(text) => apply(submitAnswer(session, local, text, ctx), text)}
             onSkip={() => apply(skipQuestion(session, local))}
             onEnd={onToForm}
           />
@@ -246,6 +256,7 @@ export function DialogPane({
 function Composer({
   question: q,
   required,
+  initialText = '',
   entries,
   onCreateEntry,
   onAnswer,
@@ -255,6 +266,8 @@ function Composer({
   question: AnyDialogQuestion
   /** スキップできない（名前は登録に要る）。 */
   required: boolean
+  /** 欄の初期値（保存に失敗して戻した答え）。 */
+  initialText?: string
   entries: GlossaryEntry[]
   onCreateEntry?: (name: string) => Promise<string | null>
   onAnswer: (text: string) => void
@@ -277,7 +290,7 @@ function Composer({
           <div className="flex items-end gap-2">
             <CommitTextarea
               ariaLabel="答え"
-              value=""
+              value={initialText}
               onCommit={() => {}}
               onSubmit={onAnswer}
               controlRef={control}

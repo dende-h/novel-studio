@@ -161,7 +161,9 @@ describe('DialogPane（キー操作と保存）', () => {
     fireEvent.change(box(), { target: { value: '灯台守' } })
     fireEvent.keyDown(box(), { key: 'Enter' })
     await waitFor(() => expect(lastBot()).toBe('保存に失敗しました（テスト）'))
-    // 保存できなかった答えは手元にも残さず、同じ問い（役職）を待つ＝次に答えたぶんが正しく保存される
+    // 保存できなかった答えは手元にも残さず、同じ問い（役職）を待つ＝次に答えたぶんが正しく保存される。
+    // 打った答えは入力欄へ戻る（打ち直さなくてよい）
+    expect(box().value).toBe('灯台守')
     fireEvent.change(box(), { target: { value: '灯台守（再）' } })
     fireEvent.keyDown(box(), { key: 'Enter' })
     expect(onChange).toHaveBeenLastCalledWith(
@@ -233,8 +235,9 @@ describe('DialogPane（キー操作と保存）', () => {
     const bots = [...pane().querySelectorAll('.rounded-bl-md')].map((b) => b.textContent ?? '')
     expect(bots.filter((t) => t.startsWith('新しい項目を作ります'))).toHaveLength(1)
     expect(bots.some((t) => t.includes('登録しました'))).toBe(false)
-    // 同じ問い（名前）を待つ
+    // 同じ問い（名前）を待ち、打った名前は入力欄に戻る
     expect(screen.queryByRole('button', { name: 'スキップ' })).toBeNull()
+    expect(box().value).toBe('ミア')
     fireEvent.change(box(), { target: { value: 'ミア' } })
     fireEvent.keyDown(box(), { key: 'Enter' })
     await waitFor(() =>

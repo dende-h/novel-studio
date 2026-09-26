@@ -221,11 +221,11 @@ function replay(s: DialogSession, entry: GlossaryEntry): DialogSession {
   let next = s
   for (const q of activeQuestionsFor(entry)) {
     if (q.field !== undefined) continue
-    const a = answerOf(entry.dialog, q.key)
+    const a = answerOf(entry, q.key)
     if (!a) continue
     next = push(next, userMessage(q, a))
     for (const d of digQuestionsOf(q)) {
-      const da = answerOf(entry.dialog, d.key)
+      const da = answerOf(entry, d.key)
       if (da) next = push(next, userMessage(d, da))
     }
   }
@@ -405,7 +405,7 @@ export function submitAnswer(
       entry,
     }
   }
-  const prev = answerOf(entry.dialog, q.key)
+  const prev = answerOf(entry, q.key)
   const next = withDialogAnswer(entry, q, {
     text,
     ...(q.field === undefined ? { public: answerPublic(q, prev) } : {}),
@@ -485,7 +485,7 @@ export function skipQuestion(session: DialogSession, entry: GlossaryEntry): Sess
 /** 同じ親の、まだ答えていない追い質問があれば続ける。 */
 function afterDig(s: DialogSession, entry: GlossaryEntry, q: AnyDialogQuestion): SessionStep {
   const parent = isDigQuestion(q) ? questionByKey(entry.category, q.parentKey) : undefined
-  const rest = parent ? digQuestionsOf(parent).filter((d) => !answerOf(entry.dialog, d.key)) : []
+  const rest = parent ? digQuestionsOf(parent).filter((d) => !answerOf(entry, d.key)) : []
   const ns = { ...s, pending: null }
   if (rest.length > 0 && !ns.editingKey && rest[0])
     return { session: ask(ns, entry, rest[0]), entry }

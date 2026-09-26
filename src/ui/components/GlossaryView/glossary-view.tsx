@@ -17,6 +17,7 @@ import {
   DIALOG_VERSION,
   type DialogSummary,
   dialogRecordDiff,
+  dialogStarted,
   dialogSummaryOf,
   parseAliasInput,
   toggleAnswerPublic,
@@ -104,7 +105,7 @@ type PaneTab = 'form' | 'dialog'
 
 /** 名前の前に何か書いてあるか（捨てるときに確認する。分類だけなら聞かない）。 */
 const draftHasContent = (d: GlossaryEntry) =>
-  Object.keys(d.dialog ?? {}).some((k) => k !== 'kind') ||
+  dialogStarted(d) ||
   !!d.reading ||
   d.aliases.length > 0 ||
   !!d.summary ||
@@ -161,7 +162,12 @@ export function GlossaryView({
   const handover = useRef<{ id: string; session?: DialogSession } | null>(null)
   // 登録の途中（名前を答えてから登録が終わるまで）。その間の変更は登録された項目への更新に回す
   // ＝二重に登録しない。
-  const creating = useRef<Promise<string> | null>(null)
+  const creating = useRef<{ promise: Promise<string>; session?: DialogSession } | null>(null)
+  // 登録が終わって画面が登録された項目に切り替わった（draft が消えた）時点で鍵を外す
+  // ＝登録の直後に届いた答えが、古い draft を見てもう一度登録しない。
+  useEffect(() => {
+    if (draft === null) creating.current = null
+  }, [draft])
   // 名前の前に書いた内容を捨てて別の操作へ進む確認（進む先を持つ）。
   const [discardThen, setDiscardThen] = useState<(() => void) | null>(null)
   // 一覧・プレビューからの操作（未解決の [[用語]] の登録など）の失敗。
@@ -248,7 +254,9 @@ export function GlossaryView({
     nextTab: PaneTab,
   ) => {
     const id = await onCreate(input)
-    handover.current = { id, session: session ? markSaved(session) : undefined }
+    // 登録を待つ間に進んだ会話（次の答え）があれば、そちらを引き継ぐ。
+    const latest = creating.current?.session ?? session
+    handover.current = { id, session: latest ? markSaved(latest) : undefined }
     setDraft(null)
     setSelectedId(id)
     setTab(nextTab)
@@ -454,16 +462,19 @@ export function GlossaryView({
                   if (draft) {
                     // 登録の途中に届いた変更（登録を待たずに次を答えた）は、登録された項目へ。
                     if (creating.current) {
-                      await updateFromDialog(await creating.current, next, prev)
+                      if (session) creating.current.session = session
+                      await updateFromDialog(await creating.current.promise, next, prev)
                       return
                     }
                     // 名前を答えたら登録（会話ごと引き継ぐ）。それまでは手元に置く。
                     if (next.name.trim() !== '') {
-                      creating.current = createAndOpen(toCreateInput(next, next.name), session, tab)
+                      const promise = createAndOpen(toCreateInput(next, next.name), session, tab)
+                      creating.current = { promise }
                       try {
-                        await creating.current
-                      } finally {
+                        await promise
+                      } catch (e) {
                         creating.current = null
+                        throw e
                       }
                     } else setDraft(next)
                     return
@@ -768,7 +779,7 @@ function EntryEditor({
 
   /** 対話ノート（フォーム側）からの書き換え。空なら答えを消す（畳んで読んでいた旧鍵も）。 */
   const noteAnswer = async (q: AnyDialogQuestion, text: string) => {
-    const prevA = answerOf(entry.dialog, q.key)
+    const prevA = answerOf(entry, q.key)
     const t = text.trim()
     const next =
       t === ''

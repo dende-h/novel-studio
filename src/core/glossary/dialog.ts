@@ -31,41 +31,44 @@ const LEGACY_FOLDS: Readonly<Record<string, readonly string[]>> = {
 }
 
 /**
- * 鍵の答えを読む。今の鍵が無ければ旧鍵から畳んで返す（遅延移行）。畳んだ答えは
- * 両方が「読者に見せる」のときだけ公開＝片方が作者だけなら作者だけに倒す（安全側）。
- * 今の鍵に書けば（`withDialogAnswer`）旧鍵は消え、新形式に寄る。
+ * 鍵の答えを読む。今の鍵が無く、今の分類にその問いがあれば旧鍵から畳んで返す（遅延移行）。
+ * 畳んだ文は文のある旧鍵だけを並べ、公開はそれらが全部「読者に見せる」のときだけ（安全側）。
+ * 文が無ければスキップ／あとでの印を引き継ぐ。今の鍵に書けば（`withDialogAnswer`）旧鍵は消え、
+ * 新形式に寄る。今の分類にその問いが無ければ畳まない＝旧鍵はそのまま「（旧）」の行に出る。
  */
 export function answerOf(
-  dialog: Record<string, DialogAnswer> | undefined,
+  entry: Pick<GlossaryEntry, 'dialog' | 'category'>,
   key: string,
 ): DialogAnswer | undefined {
+  const dialog = entry.dialog
   const a = dialog?.[key]
   if (a !== undefined || !dialog) return a
   const from = LEGACY_FOLDS[key]
-  if (!from) return undefined
+  if (!from || !questionByKey(entry.category, key)) return undefined
   const olds = from.map((k) => dialog[k]).filter((x): x is DialogAnswer => x !== undefined)
   if (olds.length === 0) return undefined
-  const texts = olds.map((x) => x.text.trim()).filter((t) => t !== '')
-  // 旧鍵がスキップのまま（文が無い）＝今の問いもスキップ済みとして扱う（同じことを二度聞かない）。
-  if (texts.length === 0) return { text: '', skipped: true }
-  return { text: texts.join('\n'), public: olds.every((x) => x.public === true) }
+  const filled = olds.filter((x) => x.text.trim() !== '')
+  if (filled.length === 0) {
+    if (olds.some((x) => x.skipped)) return { text: '', skipped: true }
+    if (olds.some((x) => x.later)) return { text: '', later: true }
+    return undefined
+  }
+  return {
+    text: filled.map((x) => x.text.trim()).join('\n'),
+    public: filled.every((x) => x.public === true),
+  }
 }
 
-/** 今の問いに畳まれて読まれている旧鍵（「残っている答え」の一覧には出さない）。 */
-export function foldedLegacyKeys(dialog: Record<string, DialogAnswer> | undefined): Set<string> {
+/** 今の問いに畳んで読んでいる旧鍵（「残っている答え」の一覧には出さない・書くときに消す）。 */
+export function foldedLegacyKeys(entry: Pick<GlossaryEntry, 'dialog' | 'category'>): Set<string> {
   const out = new Set<string>()
+  const dialog = entry.dialog
   if (!dialog) return out
   for (const [key, from] of Object.entries(LEGACY_FOLDS)) {
-    if (dialog[key] === undefined && from.some((k) => dialog[k] !== undefined)) {
-      for (const k of from) out.add(k)
-    }
+    if (dialog[key] !== undefined || !questionByKey(entry.category, key)) continue
+    if (from.some((k) => dialog[k] !== undefined)) for (const k of from) out.add(k)
   }
   return out
-}
-
-/** 鍵の答えを書くときに一緒に消す旧鍵（畳まれていた答えは今の鍵に移る）。 */
-function withoutLegacyOf(record: Record<string, DialogAnswer>, key: string): void {
-  for (const k of LEGACY_FOLDS[key] ?? []) delete record[k]
 }
 
 /**
@@ -1005,7 +1008,7 @@ type EntryLike = Pick<
 export function answersOf(entry: EntryLike): Record<string, DialogAnswer> {
   const a: Record<string, DialogAnswer> = { ...(entry.dialog ?? {}) }
   for (const key of Object.keys(LEGACY_FOLDS)) {
-    const folded = answerOf(entry.dialog, key)
+    const folded = answerOf(entry, key)
     if (folded !== undefined) a[key] = folded
   }
   if (entry.name.trim() !== '') a.name = { text: entry.name, public: true }
@@ -1076,7 +1079,7 @@ export function isAnswered(
     if (answersOf(entry)[q.key] !== undefined) return true
     return opts.baseMarks?.[q.key] === 'skipped'
   }
-  const a = answerOf(entry.dialog, q.key)
+  const a = answerOf(entry, q.key)
   if (a === undefined) return false
   if (a.skipped === true) return true
   return a.text.trim() !== '' && !answerOutOfChoices(q, a)
@@ -1089,7 +1092,7 @@ export function isLater(
   opts: AnsweredOptions = {},
 ): boolean {
   if (q.field !== undefined) return opts.askBase === true && opts.baseMarks?.[q.key] === 'later'
-  const a = answerOf(entry.dialog, q.key)
+  const a = answerOf(entry, q.key)
   return a !== undefined && a.later === true && a.text.trim() === ''
 }
 
@@ -1260,17 +1263,29 @@ export function withDialogAnswer(
         return withPublicText(entry, text)
     }
   }
-  const record = { ...(entry.dialog ?? {}), [q.key]: normalizeAnswer(q, answer) }
-  withoutLegacyOf(record, q.key)
-  return withDialogRecord(entry, record)
+  return setDialogAnswer(entry, q.key, normalizeAnswer(q, answer))
 }
 
 /** 鍵の答えを消す（畳んで読んでいた旧鍵も一緒に消す）。無ければ同じ参照。 */
 export function withoutDialogAnswer(entry: GlossaryEntry, key: string): GlossaryEntry {
-  if (answerOf(entry.dialog, key) === undefined) return entry
+  if (answerOf(entry, key) === undefined) return entry
+  return setDialogAnswer(entry, key, undefined)
+}
+
+/**
+ * 鍵の答えを書く（undefined＝消す）。旧鍵の扱いはここ 1 か所：畳んで読んでいた旧鍵は今の鍵に
+ * 移るので消す。畳んでいなかった旧鍵（今の鍵が先にあった・分類に問いが無い）は触らない。
+ */
+function setDialogAnswer(
+  entry: GlossaryEntry,
+  key: string,
+  answer: DialogAnswer | undefined,
+): GlossaryEntry {
+  const folded = foldedLegacyKeys(entry)
   const record = { ...(entry.dialog ?? {}) }
-  delete record[key]
-  withoutLegacyOf(record, key)
+  if (answer === undefined) delete record[key]
+  else record[key] = answer
+  for (const k of LEGACY_FOLDS[key] ?? []) if (folded.has(k)) delete record[k]
   return withDialogRecord(entry, record)
 }
 
@@ -1282,11 +1297,9 @@ function omit<K extends keyof GlossaryEntry>(entry: GlossaryEntry, key: K): Glos
 /** 答えの「読者に見せる／作者だけ」を切り替える（固定の問いや未回答は何もしない）。 */
 export function toggleAnswerPublic(entry: GlossaryEntry, key: string): GlossaryEntry {
   const q = questionByKey(entry.category, key)
-  const a = answerOf(entry.dialog, key)
+  const a = answerOf(entry, key)
   if (!q || !a || isFixedVisibility(q) || a.text.trim() === '') return entry
-  const record = { ...(entry.dialog ?? {}), [key]: { ...a, public: !answerPublic(q, a) } }
-  withoutLegacyOf(record, key)
-  return withDialogRecord(entry, record)
+  return setDialogAnswer(entry, key, { ...a, public: !answerPublic(q, a) })
 }
 
 /**
@@ -1300,7 +1313,7 @@ export function draftSummaryFromDialog(entry: EntryLike): string {
   // 一度入れた答えはもう公開情報にある＝二度目の下書きで同じ答え（複数行でも）を重ねない。
   for (const q of activeDeepQuestionsFor(entry)) {
     for (const x of [q, ...digQuestionsOf(q)]) {
-      const a = answerOf(entry.dialog, x.key)
+      const a = answerOf(entry, x.key)
       if (!a || a.text.trim() === '' || !answerPublic(x, a) || answerOutOfChoices(x, a)) continue
       const line = `${isDigQuestion(x) ? '↳ ' : ''}${x.label}：${a.text.trim()}`
       if (!pub.includes(line)) parts.push(line)
@@ -1359,10 +1372,16 @@ export function applyDialogPatch(entry: GlossaryEntry, patch: DialogPatch): Glos
   const textOf = (v: DialogPatchValue | undefined) =>
     typeof v === 'string' ? v : typeof v?.text === 'string' ? v.text : undefined
   const next: Record<string, DialogAnswer> = { ...(entry.dialog ?? {}) }
+  // 畳んで読ませていた旧鍵（get_glossary には今の鍵で出る）は、今の鍵を書いた・消した時点で消す。
+  const folded = foldedLegacyKeys(entry)
+  const dropFolded = (key: string) => {
+    for (const k of LEGACY_FOLDS[key] ?? []) if (folded.has(k)) delete next[k]
+  }
   for (const key of keys) {
     // 削除（空文字）。残っている鍵は旧鍵・枝から外れた鍵でも消せる（分類に質問セットが無くても）。
     // 無い鍵を消すときだけ、誤字と共通 4 問の鍵を検める（消したつもりで残る事故を防ぐ）。
     if (textOf(patch[key])?.trim() === '') {
+      dropFolded(key)
       if (key in next) {
         delete next[key]
         continue
@@ -1409,6 +1428,7 @@ export function applyDialogPatch(entry: GlossaryEntry, patch: DialogPatch): Glos
     const prev = next[key]
     const pub = value.public ?? prev?.public
     next[key] = normalizeAnswer(q, { text, ...(pub !== undefined ? { public: pub } : {}) })
+    dropFolded(key)
   }
   return withDialogRecord(entry, next)
 }
@@ -1470,12 +1490,12 @@ export function dialogToPlainText(entry: EntryLike & Pick<GlossaryEntry, 'dialog
   }
   for (const q of activeDeepQuestionsFor(entry)) {
     for (const x of [q, ...digQuestionsOf(q)]) {
-      const a = answerOf(dialog, x.key)
+      const a = answerOf(entry, x.key)
       if (a && !answerOutOfChoices(x, a)) line(x, a)
     }
   }
   // 今の問いに畳んで出した旧鍵は、もう出さない。
-  for (const k of foldedLegacyKeys(dialog)) seen.add(k)
+  for (const k of foldedLegacyKeys(entry)) seen.add(k)
   // いま有効な問いに無い答え：種類を変えて枝から外れたもの（今の種類では聞かない）と、
   // 質問セットから消えた鍵（旧）。どちらも現役の答えと区別できる印を付ける。
   for (const [key, a] of Object.entries(dialog)) {
