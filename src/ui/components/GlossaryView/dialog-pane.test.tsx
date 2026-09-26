@@ -225,6 +225,23 @@ describe('DialogPane（キー操作と保存）', () => {
     expect(lastBot()).toBe('読みがなはありますか。なければスキップで構いません。')
   })
 
+  it('名前での登録に失敗すると一歩だけ戻る（書き出しを繰り返さず、登録の一言も残さない）', async () => {
+    setup(entry({ id: 'd', name: '', category: '人物' }), { draft: true, failOnce: true })
+    fireEvent.change(box(), { target: { value: 'ミア' } })
+    fireEvent.keyDown(box(), { key: 'Enter' })
+    await waitFor(() => expect(lastBot()).toBe('保存に失敗しました（テスト）'))
+    const bots = [...pane().querySelectorAll('.rounded-bl-md')].map((b) => b.textContent ?? '')
+    expect(bots.filter((t) => t.startsWith('新しい項目を作ります'))).toHaveLength(1)
+    expect(bots.some((t) => t.includes('登録しました'))).toBe(false)
+    // 同じ問い（名前）を待つ
+    expect(screen.queryByRole('button', { name: 'スキップ' })).toBeNull()
+    fireEvent.change(box(), { target: { value: 'ミア' } })
+    fireEvent.keyDown(box(), { key: 'Enter' })
+    await waitFor(() =>
+      expect(lastBot()).toBe('読みがなはありますか。なければスキップで構いません。'),
+    )
+  })
+
   it('「対話を終える」でフォームに戻る', () => {
     const { onToForm } = setup(entry({ id: 'a', name: 'アリス', category: '人物' }))
     fireEvent.click(screen.getByRole('button', { name: '対話を終える' }))

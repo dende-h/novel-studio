@@ -413,6 +413,9 @@ describe('GlossaryView（左右2カラム：一覧・検索・その場編集）
     ])
     openEntry('キャロル')
     const note = screen.getByRole('region', { name: '対話ノート' })
+    // 行を押すと入力欄になる（開くだけでは 30 個の欄を作らない）
+    expect(within(note).queryByLabelText('年齢')).toBeNull()
+    fireEvent.click(within(note).getByRole('button', { name: '年齢を書く' }))
     const age = within(note).getByLabelText('年齢') as HTMLTextAreaElement
     fireEvent.change(age, { target: { value: '十七' } })
     fireEvent.blur(age)
@@ -434,9 +437,12 @@ describe('GlossaryView（左右2カラム：一覧・検索・その場編集）
         dialogVersion: 2,
       }),
     )
-    // 空にすると答えを消す
-    fireEvent.change(age, { target: { value: '' } })
-    fireEvent.blur(age)
+    // 欄を離れると表示に戻る。空にすると答えを消す
+    await waitFor(() => expect(within(note).queryByLabelText('年齢')).toBeNull())
+    fireEvent.click(within(note).getByRole('button', { name: '年齢を書く' }))
+    const age2 = within(note).getByLabelText('年齢') as HTMLTextAreaElement
+    fireEvent.change(age2, { target: { value: '' } })
+    fireEvent.blur(age2)
     await waitFor(() =>
       expect(onUpdateDialog).toHaveBeenLastCalledWith('c', {
         dialogPatch: { age: null },
@@ -445,12 +451,83 @@ describe('GlossaryView（左右2カラム：一覧・検索・その場編集）
     )
   })
 
-  it('名前の無い新しい項目から別の項目へ移ると、そのまま捨てられる', async () => {
+  it('名前の無い新しい項目から別の項目へ移ると、そのまま捨てられる（分類だけなら聞かない）', async () => {
     setup()
     fireEvent.click(screen.getByRole('button', { name: '新しく登録' }))
     fireEvent.click(dialogChip('人物'))
     openEntry('アリス')
     await waitFor(() => expect(screen.getByLabelText('名前')).toHaveValue('アリス'))
+  })
+
+  it('名前の前にフォームへ書いた内容があれば、別の項目へ移る前に捨てるか確認する', async () => {
+    setup()
+    fireEvent.click(screen.getByRole('button', { name: '新しく登録' }))
+    fireEvent.click(screen.getByRole('button', { name: 'フォーム' }))
+    const memo = screen.getByLabelText('作者メモ')
+    fireEvent.change(memo, { target: { value: '正体は王女' } })
+    fireEvent.blur(memo)
+    openEntry('アリス')
+    // まだ移らない
+    expect(screen.getByLabelText('作者メモ')).toHaveValue('正体は王女')
+    fireEvent.click(await screen.findByRole('button', { name: '捨てる' }))
+    await waitFor(() => expect(screen.getByLabelText('名前')).toHaveValue('アリス'))
+  })
+
+  it('登録された項目の対話で名前を「直す」と改名になる（onRename）', async () => {
+    const { onRename } = setup()
+    fireEvent.click(screen.getByRole('button', { name: '新しく登録' }))
+    fireEvent.click(dialogChip('人物'))
+    answer('キャロル')
+    await waitFor(() =>
+      expect(lastBot()).toBe('読みがなはありますか。なければスキップで構いません。'),
+    )
+    fireEvent.click(screen.getByRole('button', { name: '「名前」の答えを直す' }))
+    answer('キャロライン')
+    await waitFor(() =>
+      expect(onRename).toHaveBeenCalledWith('new-キャロル', 'キャロライン', { rewriteBody: false }),
+    )
+    const pane = screen.getByRole('region', { name: '対話' })
+    expect(pane.textContent).toMatch(/名前を「キャロライン」に直しました/)
+    expect(pane.textContent).not.toMatch(/「キャロライン」を用語集に登録しました/)
+    expect(screen.getByRole('button', { name: '「キャロライン」を編集' })).toBeInTheDocument()
+  })
+
+  it('登録した項目を離れて開き直すと、登録時の会話へは戻らない', async () => {
+    setup()
+    fireEvent.click(screen.getByRole('button', { name: '新しく登録' }))
+    fireEvent.click(dialogChip('人物'))
+    answer('キャロル')
+    await waitFor(() =>
+      expect(lastBot()).toBe('読みがなはありますか。なければスキップで構いません。'),
+    )
+    openEntry('アリス')
+    openEntry('キャロル')
+    fireEvent.click(dialogTab())
+    expect(lastBot()).not.toMatch(/登録しました|読みがな/)
+  })
+
+  it('フォームの対話ノートは v1 の人物の答え（背格好・目に留まるところ）を見た目の特徴に畳み、人の呼び方は（旧）で残す', () => {
+    setup([
+      entry({
+        id: 'v',
+        name: 'セト',
+        category: '人物',
+        dialogVersion: 1,
+        dialog: {
+          looks_body: { text: '小柄' },
+          looks_first: { text: '左手の手袋' },
+          speech_second: { text: '呼び捨て' },
+        },
+      }),
+    ])
+    openEntry('セト')
+    const note = screen.getByRole('region', { name: '対話ノート' })
+    const looks = within(note).getByRole('button', { name: '見た目の特徴を書く' })
+    expect(looks).toHaveTextContent('小柄')
+    expect(looks).toHaveTextContent('左手の手袋')
+    expect(within(note).getByText('人の呼び方（旧）')).toBeInTheDocument()
+    expect(within(note).getByText('呼び捨て')).toBeInTheDocument()
+    expect(within(note).queryByText(/looks_first|looks_body|speech_second/)).toBeNull()
   })
 
   it('公開情報は旧データ（概要＋詳細）を結合して 1 欄で開く', () => {

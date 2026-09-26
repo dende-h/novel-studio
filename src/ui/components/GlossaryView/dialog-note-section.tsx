@@ -1,16 +1,19 @@
 import { MessageSquareText } from 'lucide-react'
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import {
   type AnyDialogQuestion,
   activeDeepQuestionsFor,
+  answerOf,
   answerOutOfChoices,
   answerPublic,
   type DialogQuestion,
   type DialogSummary,
   digQuestionsOf,
+  foldedLegacyKeys,
   hasDialogQuestions,
   isDigQuestion,
   isFixedVisibility,
+  LEGACY_LABELS,
   questionByKey,
 } from '@/core/glossary/dialog'
 import type { DialogAnswer, GlossaryEntry } from '@/core/schema'
@@ -61,13 +64,19 @@ export function DialogNoteSection({
     const active = new Set(
       questions.flatMap((q) => [q.key, ...digQuestionsOf(q).map((d) => d.key)]),
     )
+    // 今の問いに畳んで読んでいる旧鍵（v1 の背格好＋目に留まるところ→見た目の特徴）は、その行に出る。
+    const folded = foldedLegacyKeys(entry.dialog)
     return Object.entries(entry.dialog ?? {})
-      .filter(([key, a]) => !active.has(key) && a.text.trim() !== '')
-      .map(([key, a]) => ({
-        key,
-        label: questionByKey(entry.category, key)?.label ?? key,
-        text: a.text,
-      }))
+      .filter(([key, a]) => !active.has(key) && !folded.has(key) && a.text.trim() !== '')
+      .map(([key, a]) => {
+        const q = questionByKey(entry.category, key)
+        const legacy = LEGACY_LABELS[key]
+        return {
+          key,
+          label: q ? q.label : legacy ? `${legacy}（旧）` : key,
+          text: a.text,
+        }
+      })
   }, [entry, questions])
   return (
     <section className="space-y-1.5" aria-label="対話ノート">
@@ -132,12 +141,14 @@ export function DialogNoteSection({
                   onToggleVisibility={onToggleVisibility}
                   glossary={glossary}
                   onCreateEntry={onCreateEntry}
+                  resolvedNames={resolvedNames}
+                  onRefClick={onRefClick}
                 />
               ))}
             </dl>
             <InactiveAnswers
               rows={inactive}
-              lead="今の種類では聞かない答え（残してあります。種類を戻すと元の場所に出ます）"
+              lead="今の種類では聞かない答え・前の質問セットの答え（残してあります）"
               resolvedNames={resolvedNames}
               onRefClick={onRefClick}
             />
@@ -160,6 +171,8 @@ function NoteRow({
   onToggleVisibility,
   glossary,
   onCreateEntry,
+  resolvedNames,
+  onRefClick,
 }: {
   question: DialogQuestion
   entry: GlossaryEntry
@@ -167,36 +180,25 @@ function NoteRow({
   onToggleVisibility: (key: string) => void
   glossary: GlossaryEntry[]
   onCreateEntry?: (name: string) => Promise<string | null>
+  resolvedNames: Set<string>
+  onRefClick?: (name: string) => void
 }) {
-  const a = entry.dialog?.[q.key]
+  const a = answerOf(entry.dialog, q.key)
   // 分類を変えて持ち越した「種類」（今の選択肢に無い）は未回答扱い（ボットが聞き直す）。
   const text = a && !answerOutOfChoices(q, a) ? a.text.trim() : ''
   const digs = digQuestionsOf(q).filter(
-    (d) => (entry.dialog?.[d.key]?.text.trim() ?? '') !== '' || text !== '',
+    (d) => (answerOf(entry.dialog, d.key)?.text.trim() ?? '') !== '' || text !== '',
   )
+  const line = { onAnswer, onToggleVisibility, glossary, onCreateEntry, resolvedNames, onRefClick }
   return (
     <>
-      <NoteLine
-        question={q}
-        answer={a}
-        text={text}
-        onAnswer={onAnswer}
-        onToggleVisibility={onToggleVisibility}
-        glossary={glossary}
-        onCreateEntry={onCreateEntry}
-      />
-      {digs.map((d) => (
-        <NoteLine
-          key={d.key}
-          question={d}
-          answer={entry.dialog?.[d.key]}
-          text={entry.dialog?.[d.key]?.text.trim() ?? ''}
-          onAnswer={onAnswer}
-          onToggleVisibility={onToggleVisibility}
-          glossary={glossary}
-          onCreateEntry={onCreateEntry}
-        />
-      ))}
+      <NoteLine question={q} answer={a} text={text} {...line} />
+      {digs.map((d) => {
+        const da = answerOf(entry.dialog, d.key)
+        return (
+          <NoteLine key={d.key} question={d} answer={da} text={da?.text.trim() ?? ''} {...line} />
+        )
+      })}
     </>
   )
 }
@@ -209,6 +211,8 @@ function NoteLine({
   onToggleVisibility,
   glossary,
   onCreateEntry,
+  resolvedNames,
+  onRefClick,
 }: {
   question: AnyDialogQuestion
   answer: DialogAnswer | undefined
@@ -217,11 +221,16 @@ function NoteLine({
   onToggleVisibility: (key: string) => void
   glossary: GlossaryEntry[]
   onCreateEntry?: (name: string) => Promise<string | null>
+  resolvedNames: Set<string>
+  onRefClick?: (name: string) => void
 }) {
+  // 入力欄（@ の候補・高さの計測を持つ）は押したときだけ作る＝人物の 30 行を開くたびに 30 個作らない。
+  const [editing, setEditing] = useState(false)
   const answered = text !== ''
   const dig = isDigQuestion(q)
   const choicesOnly = !!q.choices && !q.free
   const label = `${dig ? '↳ ' : ''}${q.label}`
+  const placeholder = a?.skipped || a?.later ? 'スキップした問い' : '未回答'
   return (
     <>
       <dt
@@ -254,16 +263,43 @@ function NoteLine({
               </option>
             ))}
           </select>
-        ) : (
+        ) : editing ? (
           <CommitTextarea
             ariaLabel={label}
             value={text}
             onCommit={(v) => onAnswer(q, v)}
-            placeholder={a?.skipped || a?.later ? 'スキップした問い' : '未回答'}
+            onBlur={() => setEditing(false)}
+            placeholder={placeholder}
             glossary={glossary}
             onCreateEntry={onCreateEntry}
+            autoFocus
             className={cn('min-h-8 py-1', !answered && 'border-dashed')}
           />
+        ) : (
+          <button
+            type="button"
+            aria-label={`${label}を書く`}
+            onClick={(e) => {
+              // 答えの中の [[用語]] は用語へ飛ぶ（書き換えには入らない）。
+              if ((e.target as HTMLElement).closest('[data-ref-name]')) return
+              setEditing(true)
+            }}
+            className={cn(
+              'min-h-8 w-full cursor-text rounded-md border border-outline-variant/30 bg-surface px-2 py-1 text-left text-[13px] leading-relaxed outline-none focus-visible:border-primary/50',
+              !answered && 'border-dashed',
+            )}
+          >
+            {answered ? (
+              <NotationText
+                text={text}
+                resolvedNames={resolvedNames}
+                onRefClick={onRefClick}
+                className="m-0 whitespace-pre-wrap text-on-surface"
+              />
+            ) : (
+              <span className="text-on-surface-variant/60">{placeholder}</span>
+            )}
+          </button>
         )}
       </dd>
       <dd className="m-0 pt-1.5">

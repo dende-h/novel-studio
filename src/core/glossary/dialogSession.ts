@@ -3,6 +3,7 @@ import {
   type AnsweredOptions,
   type AnyDialogQuestion,
   activeQuestionsFor,
+  answerOf,
   answerPublic,
   answersOf,
   DIALOG_CATEGORIES,
@@ -220,11 +221,11 @@ function replay(s: DialogSession, entry: GlossaryEntry): DialogSession {
   let next = s
   for (const q of activeQuestionsFor(entry)) {
     if (q.field !== undefined) continue
-    const a = entry.dialog?.[q.key]
+    const a = answerOf(entry.dialog, q.key)
     if (!a) continue
     next = push(next, userMessage(q, a))
     for (const d of digQuestionsOf(q)) {
-      const da = entry.dialog?.[d.key]
+      const da = answerOf(entry.dialog, d.key)
       if (da) next = push(next, userMessage(d, da))
     }
   }
@@ -404,7 +405,7 @@ export function submitAnswer(
       entry,
     }
   }
-  const prev = entry.dialog?.[q.key]
+  const prev = answerOf(entry.dialog, q.key)
   const next = withDialogAnswer(entry, q, {
     text,
     ...(q.field === undefined ? { public: answerPublic(q, prev) } : {}),
@@ -420,8 +421,15 @@ export function submitAnswer(
     const { [q.key]: _drop, ...marks } = ns.baseMarks
     ns = { ...ns, baseMarks: marks }
   }
-  if (q.field === 'name')
-    ns = say(ns, `「${text}」を用語集に登録しました。ここからは答えるたびに保存されます。`)
+  if (q.field === 'name') {
+    // 登録前なら名前で登録される。登録後の「直す」は改名（前の名前は別名に退避される）。
+    ns = say(
+      ns,
+      s.unsaved
+        ? `「${text}」を用語集に登録しました。ここからは答えるたびに保存されます。`
+        : `名前を「${text}」に直しました。前の名前は別名に残ります。`,
+    )
+  }
   if (isDigQuestion(q)) return afterDig(ns, next, q)
   if (q.dig && q.dig.length > 0 && !ns.editingKey) {
     ns = { ...ns, pending: { kind: 'dig-offer', key: q.key } }
@@ -477,7 +485,7 @@ export function skipQuestion(session: DialogSession, entry: GlossaryEntry): Sess
 /** 同じ親の、まだ答えていない追い質問があれば続ける。 */
 function afterDig(s: DialogSession, entry: GlossaryEntry, q: AnyDialogQuestion): SessionStep {
   const parent = isDigQuestion(q) ? questionByKey(entry.category, q.parentKey) : undefined
-  const rest = parent ? digQuestionsOf(parent).filter((d) => !entry.dialog?.[d.key]) : []
+  const rest = parent ? digQuestionsOf(parent).filter((d) => !answerOf(entry.dialog, d.key)) : []
   const ns = { ...s, pending: null }
   if (rest.length > 0 && !ns.editingKey && rest[0])
     return { session: ask(ns, entry, rest[0]), entry }

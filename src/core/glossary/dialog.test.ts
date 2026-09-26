@@ -4,6 +4,7 @@ import {
   activeDeepQuestionsFor,
   activeQuestionsFor,
   allQuestionsFor,
+  answerOf,
   answerPublic,
   answersOf,
   applyDialogPatch,
@@ -18,6 +19,7 @@ import {
   dialogToPlainText,
   digQuestionsOf,
   draftSummaryFromDialog,
+  foldedLegacyKeys,
   isAnswered,
   isLater,
   kindOf,
@@ -29,6 +31,7 @@ import {
   resolveName,
   toggleAnswerPublic,
   withDialogAnswer,
+  withoutDialogAnswer,
 } from './dialog'
 
 function entry(p: Partial<GlossaryEntry> & { name: string }): GlossaryEntry {
@@ -487,5 +490,68 @@ describe('後方互換', () => {
     // 質問セットの無い分類は、答えが残っていても「手を付けていない」扱い（分類を選び直せば戻る）
     expect(dialogSummaryOf({ ...withDialog, category: '地名' }).status).toBe('none')
     expect(dialogSummaryOf({ ...withDialog, category: '人物' }).status).toBe('inProgress')
+  })
+
+  describe('v1 の人物（背格好・目に留まるところ・人の呼び方）', () => {
+    const v1 = entry({
+      name: 'セト',
+      category: '人物',
+      dialogVersion: 1,
+      dialog: {
+        looks_body: { text: '小柄' },
+        looks_first: { text: '左手の手袋', public: true },
+        speech_second: { text: '呼び捨て' },
+      },
+    })
+    const looksQ = questionByKey('人物', 'looks')
+    if (!looksQ) throw new Error('looks が無い')
+
+    it('見た目の特徴（looks）は旧 2 鍵を畳んで読む＝答え済み扱いで、聞き直さない', () => {
+      expect(answerOf(v1.dialog, 'looks')).toEqual({ text: '小柄\n左手の手袋', public: false })
+      expect(answersOf(v1).looks?.text).toBe('小柄\n左手の手袋')
+      expect(isAnswered(v1, looksQ)).toBe(true)
+      expect(foldedLegacyKeys(v1.dialog)).toEqual(new Set(['looks_body', 'looks_first']))
+      // 片方だけ・スキップのままも畳む
+      expect(answerOf({ looks_first: { text: '手袋', public: true } }, 'looks')).toEqual({
+        text: '手袋',
+        public: true,
+      })
+      expect(answerOf({ looks_body: { text: '', skipped: true } }, 'looks')).toEqual({
+        text: '',
+        skipped: true,
+      })
+      // 今の鍵があればそれを読む（旧鍵は畳まない）
+      expect(answerOf({ looks: { text: '新' }, looks_body: { text: '旧' } }, 'looks')?.text).toBe(
+        '新',
+      )
+      expect(foldedLegacyKeys({ looks: { text: '新' }, looks_body: { text: '旧' } }).size).toBe(0)
+    })
+
+    it('looks に書く・消す・公開を切り替えると旧 2 鍵は消える（新形式へ寄せる）。人の呼び方は残る', () => {
+      const written = withDialogAnswer(v1, looksQ, { text: '小柄で手袋', public: true })
+      expect(written.dialog).toEqual({
+        looks: { text: '小柄で手袋', public: true },
+        speech_second: { text: '呼び捨て' },
+      })
+      expect(written.dialogVersion).toBe(DIALOG_VERSION)
+      const toggled = toggleAnswerPublic(v1, 'looks')
+      expect(toggled.dialog).toEqual({
+        looks: { text: '小柄\n左手の手袋', public: true },
+        speech_second: { text: '呼び捨て' },
+      })
+      expect(withoutDialogAnswer(v1, 'looks').dialog).toEqual({
+        speech_second: { text: '呼び捨て' },
+      })
+      expect(withoutDialogAnswer(v1, 'age')).toBe(v1)
+    })
+
+    it('平文では畳んだ答えを looks の行に出し、消えた鍵は見出し付きの（旧）で残す', () => {
+      const text = dialogToPlainText(v1)
+      expect(text).toContain('looks 見た目の特徴 [作者だけ]: 小柄\n左手の手袋')
+      expect(text).not.toContain('looks_first')
+      expect(text).toContain(
+        'speech_second 人の呼び方（旧・今の質問セットに無い鍵） [作者だけ]: 呼び捨て',
+      )
+    })
   })
 })

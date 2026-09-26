@@ -12,8 +12,8 @@ import {
 } from '@/core/glossary'
 import {
   type AnyDialogQuestion,
+  answerOf,
   answerPublic,
-  applyDialogPatch,
   DIALOG_VERSION,
   type DialogSummary,
   dialogRecordDiff,
@@ -21,6 +21,7 @@ import {
   parseAliasInput,
   toggleAnswerPublic,
   withDialogAnswer,
+  withoutDialogAnswer,
 } from '@/core/glossary/dialog'
 import { type DialogSession, markSaved } from '@/core/glossary/dialogSession'
 import { applyGlossaryFieldPatch, type GlossaryFieldPatch } from '@/core/glossary/patch'
@@ -101,6 +102,15 @@ const DIALOG_FILTER = '__dialog_in_progress__'
 
 type PaneTab = 'form' | 'dialog'
 
+/** 名前の前に何か書いてあるか（捨てるときに確認する。分類だけなら聞かない）。 */
+const draftHasContent = (d: GlossaryEntry) =>
+  Object.keys(d.dialog ?? {}).some((k) => k !== 'kind') ||
+  !!d.reading ||
+  d.aliases.length > 0 ||
+  !!d.summary ||
+  !!d.body ||
+  !!d.authorNote ||
+  !!d.thumbnail
 /**
  * 名前がまだ無い新しい項目（登録前）。名前を答える／入れると用語集に登録され、以後は答えるたびに
  * 保存される（D-DLG-ENTRY）。作るたびに別の id にする＝作り直したとき、編集面と対話が新しく立ち上がる。
@@ -147,7 +157,15 @@ export function GlossaryView({
   const [tab, setTab] = useState<PaneTab>('form')
   // 名前を答えて登録された項目へ引き継ぐ会話（同じ会話を、登録された項目で続ける）。
   // 会話が無ければ「名前だけで作った項目」＝共通 4 問（読み・別名・公開情報）も対話で聞く。
+  // 開いた項目が一度使ったら捨てる（別の項目へ移るとき）＝あとで開き直したときに古い会話へ戻らない。
   const handover = useRef<{ id: string; session?: DialogSession } | null>(null)
+  // 登録の途中（名前を答えてから登録が終わるまで）。その間の変更は登録された項目への更新に回す
+  // ＝二重に登録しない。
+  const creating = useRef<Promise<string> | null>(null)
+  // 名前の前に書いた内容を捨てて別の操作へ進む確認（進む先を持つ）。
+  const [discardThen, setDiscardThen] = useState<(() => void) | null>(null)
+  // 一覧・プレビューからの操作（未解決の [[用語]] の登録など）の失敗。
+  const [notice, setNotice] = useState<string | null>(null)
   // プレビューの [[用語]] クリックで開くチラ見ドロワーの対象。
   const [peekId, setPeekId] = useState<string | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<GlossaryEntry | null>(null)
@@ -193,12 +211,33 @@ export function GlossaryView({
     if (category === DIALOG_FILTER && inProgressCount === 0) setCategory(null)
   }, [category, inProgressCount])
 
-  const selectEntry = (id: string) => {
-    setDraft(null)
-    setSelectedId(id)
-    setTab('form')
-    setPeekId(null)
+  // 名前の前に書いた内容は登録されていない＝タブを閉じる・再読み込みの前に確認を出す。
+  const draftDirty = draft !== null && draftHasContent(draft)
+  useEffect(() => {
+    if (!draftDirty) return
+    const warn = (e: BeforeUnloadEvent) => {
+      e.preventDefault()
+      // Safari と古い Chrome は preventDefault だけでは確認を出さない。
+      e.returnValue = ''
+    }
+    window.addEventListener('beforeunload', warn)
+    return () => window.removeEventListener('beforeunload', warn)
+  }, [draftDirty])
+
+  /** 名前の前に何か書いた項目を開いていれば、確認してから進む。 */
+  const guardDraft = (go: () => void) => {
+    if (draftDirty) setDiscardThen(() => go)
+    else go()
   }
+  const selectEntry = (id: string) =>
+    guardDraft(() => {
+      handover.current = null
+      setDraft(null)
+      setSelectedId(id)
+      setTab('form')
+      setPeekId(null)
+      setNotice(null)
+    })
   /**
    * 用語集に登録し、その項目を開く（下書きの名前が入ったとき・未解決の [[用語]] から）。
    * 対話の途中なら会話ごと引き継ぐ。会話が無ければ共通 4 問も対話で聞く。重複などは reject。
@@ -214,20 +253,61 @@ export function GlossaryView({
     setSelectedId(id)
     setTab(nextTab)
     setPeekId(null)
+    setNotice(null)
+    return id
   }
   /** 「＋ 新しく登録」＝名前の無い新しい項目を対話で開く。 */
-  const startDraft = () => {
-    setDraft(newDraft())
-    setSelectedId(null)
-    setTab('dialog')
-    setPeekId(null)
-  }
+  const startDraft = () =>
+    guardDraft(() => {
+      handover.current = null
+      setDraft(newDraft())
+      setSelectedId(null)
+      setTab('dialog')
+      setPeekId(null)
+      setNotice(null)
+    })
 
   /** プレビューの [[用語]] クリック：解決済み→チラ見、未解決→その名前で登録して対話で開く。 */
   const jumpToRef = (name: string) => {
     const hit = resolveRef(name, entries)
     if (hit) setPeekId(hit.id)
-    else void createAndOpen({ name: name.trim() }, undefined, 'dialog').catch(() => {})
+    else
+      guardDraft(() => {
+        createAndOpen({ name: name.trim() }, undefined, 'dialog').catch((e: unknown) => {
+          setNotice(
+            `「${name.trim()}」を登録できませんでした。${e instanceof Error ? e.message : ''}`.trim(),
+          )
+        })
+      })
+  }
+
+  /** 対話ペイン・対話ノートからの変更を、登録済みの項目へ差分で保存する（変わった欄だけ）。 */
+  const updateFromDialog = async (id: string, next: GlossaryEntry, prev: GlossaryEntry) => {
+    // 名前の「直す」は改名（前の名前は別名へ退避）＝ほかの欄より先に。
+    const name = next.name.trim()
+    if (name !== '' && name !== prev.name.trim()) {
+      await onRename(id, name, { rewriteBody: false })
+    }
+    const patch: GlossaryDialogPatch = {}
+    if (next.dialog !== prev.dialog) {
+      const diff = dialogRecordDiff(prev.dialog, next.dialog)
+      if (Object.keys(diff).length > 0) {
+        patch.dialogPatch = diff
+        patch.dialogVersion = DIALOG_VERSION
+      }
+    }
+    if ((next.category ?? '') !== (prev.category ?? '')) {
+      // 空は未設定（formValuesToFieldPatch と同じ畳み方）
+      patch.category = next.category?.trim() || undefined
+    }
+    if ((next.reading ?? '') !== (prev.reading ?? '')) {
+      patch.reading = next.reading?.trim() || undefined
+    }
+    if (next.aliases.join('\u0000') !== prev.aliases.join('\u0000')) {
+      patch.aliases = next.aliases
+    }
+    if (publicTextOf(next) !== publicTextOf(prev)) patch.summary = publicTextOf(next)
+    if (Object.keys(patch).length > 0) await onUpdateDialog(id, patch)
   }
 
   return (
@@ -337,6 +417,11 @@ export function GlossaryView({
               current ? 'flex' : 'hidden',
             )}
           >
+            {notice ? (
+              <p role="alert" className="mb-2 text-[12.5px] text-destructive">
+                {notice}
+              </p>
+            ) : null}
             {current ? (
               <EntryEditor
                 key={current.id}
@@ -367,32 +452,23 @@ export function GlossaryView({
                 }}
                 onDialogChange={async (next, prev, session) => {
                   if (draft) {
+                    // 登録の途中に届いた変更（登録を待たずに次を答えた）は、登録された項目へ。
+                    if (creating.current) {
+                      await updateFromDialog(await creating.current, next, prev)
+                      return
+                    }
                     // 名前を答えたら登録（会話ごと引き継ぐ）。それまでは手元に置く。
                     if (next.name.trim() !== '') {
-                      await createAndOpen(toCreateInput(next, next.name), session, tab)
+                      creating.current = createAndOpen(toCreateInput(next, next.name), session, tab)
+                      try {
+                        await creating.current
+                      } finally {
+                        creating.current = null
+                      }
                     } else setDraft(next)
                     return
                   }
-                  const patch: GlossaryDialogPatch = {}
-                  if (next.dialog !== prev.dialog) {
-                    const diff = dialogRecordDiff(prev.dialog, next.dialog)
-                    if (Object.keys(diff).length > 0) {
-                      patch.dialogPatch = diff
-                      patch.dialogVersion = DIALOG_VERSION
-                    }
-                  }
-                  if ((next.category ?? '') !== (prev.category ?? '')) {
-                    // 空は未設定（formValuesToFieldPatch と同じ畳み方）
-                    patch.category = next.category?.trim() || undefined
-                  }
-                  if ((next.reading ?? '') !== (prev.reading ?? '')) {
-                    patch.reading = next.reading?.trim() || undefined
-                  }
-                  if (next.aliases.join('\u0000') !== prev.aliases.join('\u0000')) {
-                    patch.aliases = next.aliases
-                  }
-                  if (publicTextOf(next) !== publicTextOf(prev)) patch.summary = publicTextOf(next)
-                  if (Object.keys(patch).length > 0) await onUpdateDialog(current.id, patch)
+                  await updateFromDialog(current.id, next, prev)
                 }}
                 onRequestDelete={() => {
                   if (draft) setDraft(null)
@@ -400,10 +476,13 @@ export function GlossaryView({
                 }}
                 onCreateEntry={onCreateEntry}
                 onRefClick={jumpToRef}
-                onBack={() => {
-                  if (draft) setDraft(null)
-                  else setSelectedId(null)
-                }}
+                onBack={() =>
+                  guardDraft(() => {
+                    handover.current = null
+                    if (draft) setDraft(null)
+                    else setSelectedId(null)
+                  })
+                }
                 assetRepo={gameAssetRepo}
               />
             ) : (
@@ -452,6 +531,23 @@ export function GlossaryView({
           </div>
         </aside>
       ) : null}
+
+      {/* 名前の前に書いた内容を捨てる確認 */}
+      <ConfirmDialog
+        open={discardThen !== null}
+        onOpenChange={(o) => {
+          if (!o) setDiscardThen(null)
+        }}
+        title="書きかけの項目を捨てますか？"
+        description="名前がまだ無いので、用語集には登録されていません。捨てると、ここまでの内容は残りません。"
+        confirmLabel="捨てる"
+        onConfirm={() => {
+          const go = discardThen
+          setDiscardThen(null)
+          setDraft(null)
+          go?.()
+        }}
+      />
 
       {/* 削除確認 */}
       <ConfirmDialog
@@ -639,23 +735,22 @@ function EntryEditor({
     if (tab === 'dialog') setDialogOpened(true)
   }, [tab])
 
-  const commitField = async (patch: Partial<GlossaryFormValues>) => {
+  /** 保存を走らせ、失敗は欄の下のエラーに出す（成功で消す）。 */
+  const guarded = async (run: () => Promise<void> | void, fallback: string) => {
     setError(null)
     try {
-      await onCommitValues({ ...valuesOf(entry), ...patch })
+      await run()
     } catch (e) {
-      setError(e instanceof Error ? e.message : '保存に失敗しました')
+      setError(e instanceof Error ? e.message : fallback)
     }
   }
 
+  const commitField = (patch: Partial<GlossaryFormValues>) =>
+    guarded(() => onCommitValues({ ...valuesOf(entry), ...patch }), '保存に失敗しました')
+
   const commitName = async (name: string) => {
     if (name === entry.name) return
-    setError(null)
-    try {
-      await onCommitName(name)
-    } catch (e) {
-      setError(e instanceof Error ? e.message : '名前の変更に失敗しました')
-    }
+    await guarded(() => onCommitName(name), '名前の変更に失敗しました')
   }
 
   const onPickImage = async (file: File | undefined) => {
@@ -671,33 +766,21 @@ function EntryEditor({
     }
   }
 
-  /** 対話ノート（フォーム側）からの書き換え。空なら答えを消す。失敗はエラー表示。 */
+  /** 対話ノート（フォーム側）からの書き換え。空なら答えを消す（畳んで読んでいた旧鍵も）。 */
   const noteAnswer = async (q: AnyDialogQuestion, text: string) => {
-    const prevA = entry.dialog?.[q.key]
+    const prevA = answerOf(entry.dialog, q.key)
     const t = text.trim()
     const next =
       t === ''
-        ? prevA
-          ? applyDialogPatch(entry, { [q.key]: '' })
-          : entry
+        ? withoutDialogAnswer(entry, q.key)
         : withDialogAnswer(entry, q, { text: t, public: answerPublic(q, prevA) })
     if (next === entry) return
-    setError(null)
-    try {
-      await onDialogChange(next, entry)
-    } catch (e) {
-      setError(e instanceof Error ? e.message : '保存に失敗しました')
-    }
+    await guarded(() => onDialogChange(next, entry), '保存に失敗しました')
   }
   const noteToggle = async (key: string) => {
     const next = toggleAnswerPublic(entry, key)
     if (next === entry) return
-    setError(null)
-    try {
-      await onDialogChange(next, entry)
-    } catch (e) {
-      setError(e instanceof Error ? e.message : '保存に失敗しました')
-    }
+    await guarded(() => onDialogChange(next, entry), '保存に失敗しました')
   }
 
   // 既存データに固定リスト外のカテゴリ（旧・自由入力）があれば選択肢に含めて保全する。

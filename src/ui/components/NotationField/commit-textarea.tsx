@@ -42,6 +42,7 @@ export function CommitTextarea({
   controlRef,
   autoFocus,
   suggestAbove = false,
+  onBlur,
 }: {
   value: string
   onCommit: (v: string) => void
@@ -73,6 +74,8 @@ export function CommitTextarea({
   autoFocus?: boolean
   /** 候補を欄の上に開く（画面の下端にある欄＝対話の答え。下に開くと見切れる）。 */
   suggestAbove?: boolean
+  /** 欄を離れたあと（確定のあと）に呼ぶ＝押したときだけ欄を出す親が、表示に戻すために使う。 */
+  onBlur?: () => void
 }) {
   const [draft, setDraft] = useState(value)
   const focused = useRef(false)
@@ -269,6 +272,7 @@ export function CommitTextarea({
           focused.current = false
           setSuggest(null)
           commit(draft)
+          onBlur?.()
         }}
         onKeyDown={(e) => {
           if (open) {

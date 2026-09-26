@@ -125,7 +125,11 @@ export function DialogPane({
     if (el) el.scrollTop = el.scrollHeight
   }, [logLength])
 
-  const persist = async (next: GlossaryEntry, session: DialogSession) => {
+  /**
+   * 保存する。`session` はその変更を含む会話（登録の引き継ぎ用）、`before` はその直前の会話
+   * ＝失敗したらここへ戻す（その一歩だけ取り消し、同じ問いを出し直す。書き出しは繰り返さない）。
+   */
+  const persist = async (next: GlossaryEntry, session: DialogSession, before: DialogSession) => {
     saving.current += 1
     const base = savedRef.current
     try {
@@ -133,7 +137,7 @@ export function DialogPane({
       savedRef.current = next
     } catch (e) {
       // 保存できなかった変更を手元に残すと、以後の差分がそこを基準にして二度と保存されない。
-      // 保存前の項目へ戻し、台本もそこから始め直す（答え済みは並び直し、失敗した問いから続く）。
+      // 保存前の項目と会話へ戻し、失敗した問いから続く。
       // ほかの保存が同時に走っているときは戻さない（そちらの答えまで消してしまう）＝一言だけ添える。
       const message = e instanceof Error ? e.message : '保存に失敗しました'
       if (saving.current === 1) {
@@ -142,13 +146,7 @@ export function DialogPane({
         const back = base
         localRef.current = back
         setLocal(back)
-        setSession((s) =>
-          rejectAnswer(
-            beginSession(back, { askBase: s.askBase, unsaved: s.unsaved, baseMarks: s.baseMarks }),
-            message,
-            back,
-          ),
-        )
+        setSession(rejectAnswer(before, message, back))
       } else {
         setSession((s) => rejectAnswer(s, message, localRef.current))
       }
@@ -159,10 +157,11 @@ export function DialogPane({
   }
 
   const apply = (step: SessionStep) => {
+    const before = session
     setSession(step.session)
     if (step.entry !== local) {
       setLocal(step.entry)
-      void persist(step.entry, step.session)
+      void persist(step.entry, step.session, before)
     }
     if (step.effect === 'toform') onToForm()
   }
@@ -174,14 +173,14 @@ export function DialogPane({
     const next = toggleAnswerPublic(local, key)
     if (next === local) return
     setLocal(next)
-    void persist(next, sessionRef.current)
+    void persist(next, sessionRef.current, sessionRef.current)
   }
   const applySummaryDraft = () => {
     if (summaryDraft === null) return
     const next = withPublicText(local, summaryDraft)
     setLocal(next)
     setSummaryDraft(null)
-    void persist(next, sessionRef.current)
+    void persist(next, sessionRef.current, sessionRef.current)
   }
 
   const q = pendingQuestion(session, local)
@@ -221,7 +220,8 @@ export function DialogPane({
         {q ? (
           <Composer
             // 問いを出すたび（台本の promptId）に欄を作り直す＝次の問いは空で始まり、
-            // 受け付けなかった答え（重複する名前など）は消さず、直して出し直せる。
+            // その場で受け付けなかった答え（重複する名前など）は消さず、直して出し直せる
+            // （保存で失敗したときは一歩戻って同じ問いを出し直す＝ボットの一言に答えが入る）。
             key={session.promptId}
             question={q}
             required={q.field === 'name' && local.name.trim() === ''}

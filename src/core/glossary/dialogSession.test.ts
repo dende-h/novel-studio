@@ -400,6 +400,17 @@ describe('再開・直す', () => {
     expect(step.session.pending).toEqual({ kind: 'pick' })
   })
 
+  it('登録後に名前を「直す」と改名の一言（登録しましたとは言わない）', () => {
+    const e = entry({ name: 'セト', category: '人物' })
+    const s = markSaved(beginSession(e, { askBase: true, unsaved: true }))
+    const step = submitAnswer(pickQuestion(s, e, 'name').session, e, 'セツ')
+    expect(step.entry.name).toBe('セツ')
+    expect(botTexts(step.session).some((t) => t.startsWith('名前を「セツ」に直しました'))).toBe(
+      true,
+    )
+    expect(botTexts(step.session).join('')).not.toContain('「セツ」を用語集に登録しました')
+  })
+
   it('登録後に共通 4 問を聞く会話では、名前だけ選び直しに出さない', () => {
     const e = entry({ name: 'ユキ', category: '人物', reading: 'ゆき' })
     let s = beginSession(e, { askBase: true })
