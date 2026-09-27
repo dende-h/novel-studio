@@ -23,7 +23,7 @@ const entry = (over: Partial<GlossaryEntry> = {}): GlossaryEntry => ({
 })
 
 const nameInput = () => screen.getByLabelText('名前') as HTMLInputElement
-const summaryInput = () => screen.getByLabelText('公開情報（任意）') as HTMLTextAreaElement
+const summaryInput = () => screen.getByLabelText('公開情報') as HTMLTextAreaElement
 
 describe('GlossaryEntryForm: 公開／非公開の2欄', () => {
   it('旧データ（概要＋詳細）は公開情報 1 欄に結合して開き、保存で一本化される', async () => {

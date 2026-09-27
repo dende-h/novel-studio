@@ -45,7 +45,8 @@ export function FieldHelp({
         title={title}
         onClick={() => setOpen(true)}
         className={cn(
-          'inline-flex shrink-0 items-center justify-center rounded-full p-0.5 text-on-surface-variant/50 transition-colors hover:bg-surface-container-high hover:text-primary',
+          // 押せるものだと分かるよう、ボタンと同じ緑にする（灰色だと飾りに見えて気づかれない）
+          'inline-flex shrink-0 items-center justify-center rounded-full p-0.5 text-primary transition-colors hover:bg-accent hover:text-primary',
           className,
         )}
       >

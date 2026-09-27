@@ -24,6 +24,7 @@ import { ErrorBoundary } from '@/ui/components/ErrorBoundary/error-boundary'
 import { ExportDialog } from '@/ui/components/ExportDialog/export-dialog'
 import { FieldHelp } from '@/ui/components/FieldHelp/field-help'
 import {
+  formValuesToFieldPatch,
   GlossaryEntryForm,
   type GlossaryFormValues,
 } from '@/ui/components/GlossaryEntryForm/glossary-entry-form'
@@ -44,23 +45,6 @@ import { useEditorStore } from '@/ui/hooks/use-editor-store'
 import { useIsNarrow } from '@/ui/hooks/use-narrow'
 import { useOpenProfile } from '@/ui/hooks/use-pen-name'
 import type { EditorStore } from '@/ui/store/editorStore'
-
-/** フォーム値の空文字は未設定(undefined)へ畳んでスキーマの任意項目を綺麗に保つ。 */
-const emptyToUndef = (s: string): string | undefined => (s.trim() === '' ? undefined : s)
-
-/** GlossaryFormValues → updateGlossaryEntry のフィールドパッチ（name は除外＝改名は別操作）。 */
-const toFieldPatch = (v: GlossaryFormValues) => ({
-  aliases: v.aliases,
-  category: emptyToUndef(v.category),
-  reading: emptyToUndef(v.reading),
-  summary: emptyToUndef(v.summary),
-  // 公開情報は summary へ一本化（D-GLOS-PUBLIC-ONE）。旧・詳細（body）は保存のたびに畳む
-  // （フォームは publicTextOf で結合した文を summary として返してくる）。
-  body: undefined,
-  authorNote: emptyToUndef(v.authorNote),
-  // サムネは空文字をそのまま渡す（更新時 '' = 削除指示。作成時は addGlossaryEntry が空を弾く）。
-  thumbnail: v.thumbnail,
-})
 
 interface AppProps {
   store: EditorStore
@@ -287,7 +271,7 @@ export function App({
       if (values.name !== entry.name) {
         await store.renameGlossaryEntry(entry.id, values.name, { rewriteBody: false })
       }
-      await store.updateGlossaryEntry(entry.id, toFieldPatch(values))
+      await store.updateGlossaryEntry(entry.id, formValuesToFieldPatch(values))
     },
     [store],
   )
@@ -544,9 +528,13 @@ export function App({
             entries={work.glossary ?? []}
             workTitle={work.title}
             getAppearances={getAppearances}
-            onCreate={async (name) => (await store.addGlossaryEntry({ name })).id}
+            onCreate={async (input) => (await store.addGlossaryEntry(input)).id}
             onUpdate={async (id, values) => {
-              await store.updateGlossaryEntry(id, toFieldPatch(values))
+              await store.updateGlossaryEntry(id, formValuesToFieldPatch(values))
+            }}
+            onUpdateDialog={async (id, patch) => {
+              // 変わった欄だけ（対話ノートは鍵ごと）。空の畳み方も store が持つ。
+              await store.updateGlossaryEntry(id, patch)
             }}
             onRename={async (id, newName, opts) => {
               await store.renameGlossaryEntry(id, newName, opts)
@@ -875,7 +863,7 @@ export function App({
         mode="create"
         initial={quickCreateName !== null ? { name: quickCreateName } : undefined}
         onSubmit={async (values) => {
-          await store.addGlossaryEntry({ name: values.name, ...toFieldPatch(values) })
+          await store.addGlossaryEntry({ name: values.name, ...formValuesToFieldPatch(values) })
         }}
         glossary={work?.glossary ?? []}
         onCreateEntry={createPlainGlossaryEntry}

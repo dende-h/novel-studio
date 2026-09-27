@@ -11,8 +11,9 @@ interface RefSuggestProps {
   showCreate: boolean
   /** ハイライト中の項目（候補 → クイック作成行 の通し番号）。 */
   activeIndex: number
-  /** キャレット直下に重ねるための座標（要素内 px）。 */
-  top: number
+  /** キャレット直下に重ねるための座標（要素内 px）。`bottom` を渡すと上向きに開く（入力欄の上に）。 */
+  top?: number
+  bottom?: number
   left: number
   listId: string
   optionId: (index: number) => string
@@ -34,6 +35,7 @@ export function RefSuggest({
   showCreate,
   activeIndex,
   top,
+  bottom,
   left,
   listId,
   optionId,
@@ -57,7 +59,7 @@ export function RefSuggest({
       id={listId}
       aria-label="参照候補"
       className="absolute z-30 max-h-64 w-64 overflow-auto rounded-md border border-outline-variant/30 bg-surface-container-lowest py-1 font-sans text-sm shadow-lg"
-      style={{ top, left }}
+      style={bottom !== undefined ? { bottom, left } : { top, left }}
     >
       {candidates.map((item, i) => (
         <button

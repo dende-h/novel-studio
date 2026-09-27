@@ -209,6 +209,8 @@ describe('toBundleWork（送信するバンドルの work）', () => {
           summary: '旅の同行者',
           body: '本文に出る詳しい説明',
           authorNote: '正体は管理AI。第六編まで伏せる',
+          dialog: { secret: { text: '帳の向こう' }, title: { text: '同行者', public: true } },
+          dialogVersion: 1,
           createdAt: 1,
           updatedAt: 2,
         },
@@ -217,6 +219,9 @@ describe('toBundleWork（送信するバンドルの work）', () => {
     const entry = bundle.glossary?.[0]
     expect(entry).toBeDefined()
     expect('authorNote' in (entry ?? {})).toBe(false)
+    // 対話ノートは第 1 段では契約に載せない（「読者に見せる」の答えも含めて落とす）
+    expect('dialog' in (entry ?? {})).toBe(false)
+    expect('dialogVersion' in (entry ?? {})).toBe(false)
     // 旧形式（summary + body）は summary へ結合して送る＝先方は summary だけで公開情報の全文
     expect('body' in (entry ?? {})).toBe(false)
     expect(entry).toMatchObject({

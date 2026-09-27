@@ -15,6 +15,18 @@ import { RefSuggest } from '@/ui/components/EditorPane/ref-suggest'
 /** @／＠ が用語集サジェストのトリガ（本文エディタと同じ）。 */
 const isSuggestTrigger = (ch: string) => ch === '@' || ch === '＠'
 
+/** 「答える」ボタンなど、欄の外から決定・フォーカスするための取っ手（`controlRef`）。 */
+export interface CommitTextareaHandle {
+  /** いまの内容を onSubmit へ渡す（空白だけなら何もしない）。 */
+  submit: () => void
+}
+
+/** タッチ端末（指で打つ）では Enter を改行のままにする（D-DLG-KEYS）。 */
+const isCoarsePointer = () =>
+  typeof window !== 'undefined' &&
+  typeof window.matchMedia === 'function' &&
+  window.matchMedia('(pointer: coarse)').matches
+
 export function CommitTextarea({
   value,
   onCommit,
@@ -26,6 +38,11 @@ export function CommitTextarea({
   grow = true,
   className,
   wrapperClassName,
+  onSubmit,
+  controlRef,
+  autoFocus,
+  suggestAbove = false,
+  onBlur,
 }: {
   value: string
   onCommit: (v: string) => void
@@ -45,6 +62,20 @@ export function CommitTextarea({
   grow?: boolean
   className?: string
   wrapperClassName?: string
+  /**
+   * 「Enter で決定」の欄（用語集の対話の答え）。指定すると Enter が改行ではなく決定になり、
+   * 改行は Shift／Ctrl／Cmd＋Enter。IME 変換中の Enter と、@／[[ の候補が開いている間の
+   * Enter（候補の確定）は決定にしない。タッチ端末では Enter＝改行のままで、決定は controlRef.submit。
+   * 内容は消さない（次の問いに移るときは呼び出し側が欄を作り直す）。
+   */
+  onSubmit?: (value: string) => void
+  /** 欄の外から submit するための取っ手。 */
+  controlRef?: { current: CommitTextareaHandle | null }
+  autoFocus?: boolean
+  /** 候補を欄の上に開く（画面の下端にある欄＝対話の答え。下に開くと見切れる）。 */
+  suggestAbove?: boolean
+  /** 欄を離れたあと（確定のあと）に呼ぶ＝押したときだけ欄を出す親が、表示に戻すために使う。 */
+  onBlur?: () => void
 }) {
   const [draft, setDraft] = useState(value)
   const focused = useRef(false)
@@ -55,6 +86,8 @@ export function CommitTextarea({
     triggerLen: number
     query: string
     top: number
+    /** 上向きに開くときの、欄の上端からの距離（wrapper 内 px）。 */
+    bottom?: number
     left: number
   } | null>(null)
   const [activeIndex, setActiveIndex] = useState(0)
@@ -141,6 +174,10 @@ export function CommitTextarea({
       triggerLen,
       query: text.slice(at + triggerLen, caret),
       top: el.offsetTop + c.top + c.height,
+      // 上向き：wrapper の下端から測って、欄の上端＋少しの隙間に候補の下端を置く
+      ...(suggestAbove
+        ? { bottom: (el.parentElement?.offsetHeight ?? el.offsetHeight) - el.offsetTop + 4 }
+        : {}),
       left: el.offsetLeft + c.left,
     })
     setActiveIndex(0)
@@ -184,9 +221,21 @@ export function CommitTextarea({
     })
   }
 
+  const submit = () => {
+    const v = draft.trim()
+    if (v === '' || !onSubmit) return
+    onSubmit(v)
+  }
   // 選択の切り替え・画面離脱で欄が外れるとき、blur を待たずに書きかけを確定する。
-  const latest = useRef({ draft, commit })
-  latest.current = { draft, commit }
+  const latest = useRef({ draft, commit, submit })
+  latest.current = { draft, commit, submit }
+  useEffect(() => {
+    if (!controlRef) return
+    controlRef.current = { submit: () => latest.current.submit() }
+    return () => {
+      controlRef.current = null
+    }
+  }, [controlRef])
   useEffect(() => {
     return () => {
       latest.current.commit(latest.current.draft)
@@ -223,6 +272,7 @@ export function CommitTextarea({
           focused.current = false
           setSuggest(null)
           commit(draft)
+          onBlur?.()
         }}
         onKeyDown={(e) => {
           if (open) {
@@ -248,9 +298,28 @@ export function CommitTextarea({
               return
             }
           }
-          if (e.key === 'Escape') {
+          // Esc で元に戻すのは blur 確定の欄だけ。Enter 決定の欄（対話の答え）は書きかけを消さない
+          //（IME の取り消しや癖の Esc で答えが丸ごと消えないように）。
+          if (e.key === 'Escape' && !onSubmit && !composing.current) {
             setDraft(value)
             sent.current = value
+          }
+          // Enter で決定（onSubmit のある欄だけ）。改行は修飾キー付き。IME 変換中は決定しない。
+          if (
+            onSubmit &&
+            e.key === 'Enter' &&
+            !e.shiftKey &&
+            !e.ctrlKey &&
+            !e.metaKey &&
+            !e.altKey &&
+            !composing.current &&
+            !e.nativeEvent.isComposing &&
+            // Safari は変換確定の Enter を isComposing=false・keyCode 229 で出す
+            e.nativeEvent.keyCode !== 229 &&
+            !isCoarsePointer()
+          ) {
+            e.preventDefault()
+            submit()
           }
         }}
         onKeyUp={(e) => {
@@ -259,6 +328,8 @@ export function CommitTextarea({
             refresh(e.currentTarget)
           }
         }}
+        // biome-ignore lint/a11y/noAutofocus: 対話の答えの欄は問いが出た瞬間に打ち始めたい（呼び出し側が明示したときだけ）
+        autoFocus={autoFocus}
         placeholder={placeholder}
         aria-label={ariaLabel}
         className={cn(
@@ -274,6 +345,7 @@ export function CommitTextarea({
           showCreate={showCreate}
           activeIndex={activeIndex}
           top={suggest.top}
+          bottom={suggest.bottom}
           left={suggest.left}
           listId={listId}
           optionId={optionId}
