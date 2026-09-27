@@ -99,13 +99,14 @@ export function DialogNoteSection({
   }
   return (
     <section aria-label="対話ノート">
-      <div className="flex items-center gap-2 py-0.5">
+      {/* 狭幅では印を次の行へ落とす（見出しを縦に折らない）。 */}
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 py-0.5">
         <button
           type="button"
           onClick={toggle}
           aria-expanded={open}
           aria-label={open ? '対話ノートを畳む' : '対話ノートを開く'}
-          className="flex items-center gap-2 rounded-md py-0.5 pr-1 text-left transition-colors hover:text-primary"
+          className="flex shrink-0 items-center gap-2 whitespace-nowrap rounded-md py-0.5 pr-1 text-left transition-colors hover:text-primary"
         >
           <ChevronRight
             className={cn(
@@ -124,6 +125,7 @@ export function DialogNoteSection({
         <VisibilityLabel
           isPublic={false}
           label="「読者に見せる」にした答えも、まだ投稿には載りません"
+          className="whitespace-normal"
         />
       </div>
       <div className="mt-1.5 space-y-1.5">
@@ -175,7 +177,8 @@ export function DialogNoteSection({
                   </OpenButton>
                 </div>
               </div>
-              <dl className="m-0 grid grid-cols-[8em_minmax(0,1fr)_auto] items-start gap-x-2.5 gap-y-1.5 text-[13px]">
+              {/* 狭幅では見出し・答え・印を縦に積む（8em の見出し列を取ると答えが数文字幅になる）。 */}
+              <dl className="m-0 grid grid-cols-1 items-start gap-x-2.5 gap-y-1 text-[13px] md:grid-cols-[8em_minmax(0,1fr)_auto] md:gap-y-1.5">
                 {questions.map((q) => (
                   <NoteRow
                     key={q.key}
@@ -313,7 +316,7 @@ function NoteLine({
     <>
       <dt
         className={cn(
-          'pt-1.5 leading-snug',
+          'pt-2.5 leading-snug md:pt-1.5',
           dig && 'pl-4',
           answered ? 'font-medium text-on-surface' : 'text-on-surface-variant/55',
         )}
@@ -379,7 +382,7 @@ function NoteLine({
           </button>
         )}
       </dd>
-      <dd className="m-0 pt-1.5">
+      <dd className="m-0 empty:hidden md:pt-1.5">
         {answered && a ? (
           isFixedVisibility(q) ? (
             <VisibilityLabel
@@ -426,7 +429,7 @@ function InactiveAnswers({
   return (
     <div className="mt-3 border-outline-variant/30 border-t pt-2">
       <p className="mb-1 text-[11px] text-on-surface-variant/70">{lead}</p>
-      <dl className="m-0 grid grid-cols-[8em_1fr] items-start gap-x-2.5 gap-y-1 text-[12.5px]">
+      <dl className="m-0 grid grid-cols-1 items-start gap-x-2.5 gap-y-1 text-[12.5px] md:grid-cols-[8em_1fr]">
         {rows.map((row) => (
           <div key={row.key} className="contents">
             <dt className="text-on-surface-variant/60">{row.label}</dt>
