@@ -43,7 +43,7 @@ import {
   WORLD_CUSTOM_SLOT,
   WORLD_SLOTS,
 } from '../plot'
-import type { Episode, GlossaryEntry, Work } from '../schema'
+import { type Episode, type GlossaryEntry, type Work, WorkFormatSchema } from '../schema'
 import {
   emptyStructure,
   pickPrimaryStructure,
@@ -74,20 +74,35 @@ function updateWork(works: Work[], workId: string, fn: (w: Work) => Work): Work[
   return next
 }
 
-/** 作品のメタ（タイトル・著者・あらすじ）を更新する。 */
+/** 作品のメタ（タイトル・著者・あらすじ・梗概・形式）を更新する。 */
 export function setWorkMeta(
   works: Work[],
   workId: string,
-  patch: { title?: string; author?: string; description?: string },
+  patch: {
+    title?: string
+    author?: string
+    description?: string
+    synopsis?: string
+    format?: Work['format']
+  },
   now: number,
 ): Work[] {
-  return updateWork(works, workId, (w) => ({
-    ...w,
-    ...(patch.title !== undefined ? { title: patch.title } : {}),
-    ...(patch.author !== undefined ? { author: emptyToUndef(patch.author) } : {}),
-    ...(patch.description !== undefined ? { description: emptyToUndef(patch.description) } : {}),
-    updatedAt: now,
-  }))
+  if (patch.format !== undefined) WorkFormatSchema.parse(patch.format)
+  return updateWork(works, workId, (w) => {
+    const next = {
+      ...w,
+      ...(patch.title !== undefined ? { title: patch.title } : {}),
+      ...(patch.author !== undefined ? { author: emptyToUndef(patch.author) } : {}),
+      ...(patch.description !== undefined ? { description: emptyToUndef(patch.description) } : {}),
+      ...(patch.synopsis !== undefined ? { synopsis: emptyToUndef(patch.synopsis) } : {}),
+      updatedAt: now,
+    }
+    // 空文字で「未設定」に戻したキーは残さない（description 等の既存の扱いと同じ）。
+    if (next.synopsis === undefined) delete next.synopsis
+    if (patch.format === 'novel') delete next.format
+    else if (patch.format !== undefined) next.format = patch.format
+    return next
+  })
 }
 
 /** 話のタイトル・本文（プレーンテキスト→記法解析）を更新する。 */

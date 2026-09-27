@@ -849,3 +849,38 @@ describe('演出譜ツール（get_staging / set_staging）', () => {
     expect(get()?.stagings ?? []).toHaveLength(0)
   })
 })
+
+it('MCPで形式を設定・取得・解除し、本文は字下げを変えない', async () => {
+  const { deps: d, get } = makeDeps(snapshot([work()]))
+  const set = await handleMcpMessage(call('set_work_meta', { work_id: 'w1', format: 'script' }), d)
+  expect(isError(set)).toBe(false)
+  expect(get()?.works[0]?.format).toBe('script')
+  expect(contentText(await handleMcpMessage(call('list_works'), d))).toContain('形式: 脚本')
+  const body = '○公園\n　風が吹く\nユイ（声）「こんにちは」'
+  await handleMcpMessage(call('set_episode', { work_id: 'w1', episode_id: 'e1', body }), d)
+  const text = contentText(await handleMcpMessage(call('get_work', { work_id: 'w1' }), d))
+  expect(text).toContain('形式: 脚本')
+  expect(text).toContain('脚本の書き方:')
+  expect(text).toContain(body)
+  await handleMcpMessage(call('set_work_meta', { work_id: 'w1', format: 'novel' }), d)
+  expect(get()?.works[0]).not.toHaveProperty('format')
+  expect(get()?.works[0]?.author).toBe('星野')
+  expect(contentText(await handleMcpMessage(call('list_works'), d))).not.toContain('形式: 脚本')
+  expect(MCP_TOOLS.find((t) => t.name === 'set_episode')?.description).not.toContain('行頭「＊」')
+})
+
+it('MCPで梗概を設定・取得・解除できる（他欄は据え置き）', async () => {
+  const { deps: d, get } = makeDeps(snapshot([work()]))
+  await handleMcpMessage(
+    call('set_work_meta', { work_id: 'w1', format: 'script', synopsis: '結末まで。' }),
+    d,
+  )
+  expect(get()?.works[0]?.synopsis).toBe('結末まで。')
+  expect(get()?.works[0]?.author).toBe('星野')
+  expect(contentText(await handleMcpMessage(call('get_work', { work_id: 'w1' }), d))).toContain(
+    '梗概:\n結末まで。',
+  )
+  await handleMcpMessage(call('set_work_meta', { work_id: 'w1', synopsis: '' }), d)
+  expect(get()?.works[0]).not.toHaveProperty('synopsis')
+  expect(get()?.works[0]?.format).toBe('script')
+})

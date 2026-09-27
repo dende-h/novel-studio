@@ -956,3 +956,30 @@ describe('refreshOpenWork（同期の pull をエディタへ追随させる）'
     expect(store.getSnapshot().work).toBe(before) // 参照も変わらない＝無駄な再描画なし
   })
 })
+
+it('形式変更を保存し、小説に戻すとキーを消す（他欄は据え置き）', async () => {
+  const store = makeStore()
+  await store.createWork('題')
+  const id = store.getSnapshot().work?.id ?? ''
+  await store.updateWorkMeta(id, {
+    author: '著者',
+    description: '概要',
+    coverImage: 'data:image/jpeg;base64,AA',
+  })
+  await store.updateWorkMeta(id, { format: 'script' })
+  expect(store.getSnapshot().work).toMatchObject({
+    title: '題',
+    author: '著者',
+    description: '概要',
+    coverImage: 'data:image/jpeg;base64,AA',
+    format: 'script',
+  })
+  expect(store.getSnapshot().workList[0]?.format).toBe('script')
+  await store.updateWorkMeta(id, { title: '新題' })
+  expect(store.getSnapshot().work?.format).toBe('script')
+  await store.updateWorkMeta(id, { format: 'novel' })
+  expect(store.getSnapshot().work).not.toHaveProperty('format')
+  await store.openWork(id)
+  expect(store.getSnapshot().work).not.toHaveProperty('format')
+  expect(store.getSnapshot().work?.author).toBe('著者')
+})

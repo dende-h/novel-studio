@@ -10,7 +10,7 @@
 ## 0. 30秒でわかる全体像
 
 ローカルファーストの小説執筆ツール。原稿は既定で端末内（IndexedDB）にのみ置き、
-クラウド同期・バックアップは有料オプトイン（at-rest 暗号化）。書き出し先は EPUB / なろう / カクヨム / 自前 コトノハ-grove-。
+クラウド同期・バックアップは有料オプトイン（at-rest 暗号化）。書き出し先は EPUB / なろう / カクヨム / 自前 コトノハ-grove-（脚本の作品は体裁を整えたテキスト）。
 
 ```
 ブラウザ (Vite + React 19 + Tailwind4 + PWA)
@@ -32,6 +32,8 @@ Cloudflare Pages Functions
 
 | やりたいこと | まず開くファイル |
 |---|---|
+| 本文の記法ボタン・ショートカット | `src/ui/components/EditorPane/notation.ts`（一覧・表示・キー判定を共有。PC/スマホの出し分けは `notationItems(scriptMode, surface)`）、挿入と脚本の Tab 字下げ／Enter 継続は `editor-pane.tsx` |
+| 脚本形式（柱・ト書き・セリフ）の判別・原稿用紙の組版・書き出し | 判別 `src/core/script/index.ts`、書式チェック `src/core/script/proofread.ts`、原稿用紙（禁則・頁割り・前付け）`src/core/script/layout.ts`、紙のプレビュー `src/ui/components/ScriptSheet/`、脚本の Word `src/core/exporter/toDocx.ts`・テキスト `src/core/exporter/toScriptText.ts`、形式・梗概（`Work.synopsis`）は `src/ui/components/WorkMetaDialog/`、公開 v7 は `src/ui/_api/publish.ts`。EPUB・なろう・カクヨムは小説専用 |
 | 記法（ルビ・傍点・`[[参照]]`）の解釈を変える | `src/core/parser/parseNotation.ts` + `src/core/schema/index.ts` |
 | プレビューのマークダウン（見出し・リスト・表・引用）を変える | `src/core/markdown/index.ts`（本文は非対応。効くのはプロット・世界観・用語集の記法つき欄） |
 | 書き出し（EPUB/なろう/カクヨム/HTML）の出力を変える | `src/core/exporter/` 配下（形式ごとに1ファイル） |
@@ -81,7 +83,8 @@ Cloudflare Pages Functions
 ### データ定義
 | モジュール | 責務 | 主な export |
 |---|---|---|
-| `schema/` | **正本 block スキーマ（Zod）**。全データの型の源 | `Block` `Inline` `Episode` `Work` `GlossaryEntry`（`authorNote` は公開時に落とす） `WorkPlatform` `PLATFORM_GENRES` |
+| `script/` | 脚本の行判別（柱・ト書き・セリフ・***場面転換）・話者分割・字下げ除去・原稿用紙の組版 | `classifyScriptBlock` `splitSpeaker` `stripLeadingSpace` `ScriptLine`、`proofread.ts` の `proofreadScript`（書式の確認候補）、`layout.ts` の `layoutScriptBlocks` `paginate` `composeScriptSheet` `normalizeScriptText`（20字×20行などへの流し込み・禁則・頁割り・表紙／登場人物表／梗概） |
+| `schema/` | **正本 block スキーマ（Zod）**。全データの型の源 | `Block` `Inline` `Episode` `Work` `WorkFormat` `WorkFormatSchema` `GlossaryEntry`（`authorNote` は公開時に落とす） `WorkPlatform` `PLATFORM_GENRES` |
 | `plot/` | プロット（幕/ライン/ビート/伏線/秘密）＋**世界観設定**（`Plot.world`・作者専用） | `PlotSection` `PlotLine` `PlotBeat` `Foreshadow` `Secret` / `beatsInStoryOrder` `sectionOfBeat` `linesOfBeat` `foreshadowsOfBeat` `secretsHiddenAt` / `WorldNote` `WORLD_SLOTS` `WORLD_CUSTOM_SLOT` `worldNoteLabel` `worldNotesInOrder` `setWorldNote` `removeWorldNote` |
 | `structure/` | 構造レイヤー（outline/chart/mindmap）のノード・辺 | `StructureNode` `StructureEdge` `StructureKind` `emptyStructure` `addNode` `pickPrimaryStructure` |
 | `idea/` | ネタ帳のメモ | `IdeaNote` `normalizeIdeaText` |
@@ -208,7 +211,7 @@ Cloudflare Pages Functions
 | 設定・ヘルプ等の一枚ものページ | `PageLayout`（`src/ui/components/PageLayout/page-layout.tsx`） | — |
 | 一時通知 | `useToast()`（`src/ui/components/Toast/toast.tsx`） | `alert()` |
 | 破壊操作の確認 | `ConfirmDialog`（`src/ui/components/ConfirmDialog/confirm-dialog.tsx`） | `window.confirm()` |
-| 文字列の入力を求める | `TitlePromptDialog`（`src/ui/components/TitlePromptDialog/title-prompt-dialog.tsx`） | `window.prompt()` |
+| 文字列の入力を求める | `TitlePromptDialog`（`src/ui/components/TitlePromptDialog/title-prompt-dialog.tsx`、children で追加欄。作品作成時は形式選択） | `window.prompt()` |
 | 描画例外の受け止め | `ErrorBoundary`（`src/ui/components/ErrorBoundary/error-boundary.tsx`） | — |
 | `@`/`[[` の用語集サジェスト付き入力欄（blur 確定） | `CommitTextarea`（`src/ui/components/NotationField/commit-textarea.tsx`） | 生の `<textarea>` ＋ 自前サジェスト |
 | 記法つき入力（書く／プレビュー切替・マークダウン描画・`[[用語]]` クリック委譲） | `NotationField`（`src/ui/components/NotationField/notation-field.tsx`） | 画面ごとのプレビュー自作 |

@@ -452,3 +452,55 @@ describe('Library の掲示板導線', () => {
     expect(screen.queryByRole('button', { name: '掲示板' })).toBeNull()
   })
 })
+
+it('脚本バッジはカードとリストに表示し、小説には表示しない', async () => {
+  const store = makeStore()
+  await store.createWork('脚本作品')
+  await store.updateWorkMeta(store.getSnapshot().work?.id ?? '', { format: 'script' })
+  await store.createWork('小説作品')
+  render(
+    <Library
+      store={store}
+      onEnterPublish={() => {}}
+      onEnterEditor={() => {}}
+      localBackup={fakeLocalBackup}
+      isMember={false}
+      onboarded={false}
+      activityRepo={fakeActivityRepo}
+    />,
+  )
+  expect(screen.getAllByText('脚本', { exact: true })).toHaveLength(1)
+  fireEvent.click(screen.getByRole('button', { name: 'リスト表示' }))
+  expect(screen.getAllByText('脚本', { exact: true })).toHaveLength(1)
+})
+
+it('新規作成時に脚本を選択でき、次の作成は小説に戻る', async () => {
+  const store = makeStore()
+  render(
+    <Library
+      store={store}
+      onEnterPublish={() => {}}
+      onEnterEditor={() => {}}
+      localBackup={fakeLocalBackup}
+      isMember={false}
+      onboarded={false}
+      activityRepo={fakeActivityRepo}
+    />,
+  )
+  fireEvent.click(screen.getByRole('button', { name: /新規プロジェクト/ }))
+  expect(screen.getByRole('radio', { name: '小説' })).toBeChecked()
+  fireEvent.change(screen.getByLabelText('作品タイトル'), { target: { value: '新規脚本' } })
+  fireEvent.click(screen.getByRole('radio', { name: '脚本' }))
+  fireEvent.click(screen.getByRole('button', { name: '作成' }))
+  await screen.findByRole('heading', { name: '新規脚本' })
+  expect(store.getSnapshot().work?.format).toBe('script')
+  const id = store.getSnapshot().work?.id ?? ''
+  await store.openWork(id)
+  expect(store.getSnapshot().work?.format).toBe('script')
+  fireEvent.click(screen.getByRole('button', { name: /新規プロジェクト/ }))
+  expect(screen.getByRole('radio', { name: '小説' })).toBeChecked()
+  fireEvent.change(screen.getByLabelText('作品タイトル'), { target: { value: '新規小説' } })
+  fireEvent.click(screen.getByRole('button', { name: '作成' }))
+  await screen.findByRole('heading', { name: '新規小説' })
+  expect(store.getSnapshot().work).not.toHaveProperty('format')
+})

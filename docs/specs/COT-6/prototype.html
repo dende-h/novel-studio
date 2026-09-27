@@ -1,0 +1,479 @@
+<title>脚本モード プロトタイプ</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&family=Noto+Serif+JP:wght@400;600&display=swap">
+<style>
+  /* ── トークン：src/ui/index.css の :root / dark をそのまま写す ── */
+  :root {
+    --background: #fdfcfb;
+    --card: #fefeff;
+    --surface-container-low: #f9f7f5;
+    --surface-container: #f3f1ec;
+    --surface-container-high: #edeae3;
+    --surface-variant: #f3ede4;      /* 読書面（プレビュー） */
+    --on-surface: #1f2430;
+    --on-surface-variant: #6b7381;
+    --outline-variant: #9da3ae;
+    --primary: #2c5b27;
+    --primary-foreground: #ffffff;
+    --primary-container: #e3ece1;
+    --on-primary-container: #234420;
+    --secondary-container: #f2e6d4;
+    --on-secondary-container: #92703f;
+    --accent: #f2f7f1;
+    --forest-600: #35692f;
+    --input: #d5d8dd;
+    --ring: #2c5b27;
+    --mark: #b98f63;                 /* 変更箇所の番号（wheat-500） */
+    --sans: "Noto Sans JP", "Hiragino Sans", "Yu Gothic", system-ui, sans-serif;
+    --serif: "Noto Serif JP", "Hiragino Mincho ProN", "Yu Mincho", serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --background: #1a1814; --card: #221f18;
+      --surface-container-low: #1f1c17; --surface-container: #262219; --surface-container-high: #2d2820;
+      --surface-variant: #201d16; --on-surface: #ece8e1; --on-surface-variant: #a49e92;
+      --outline-variant: #645e53; --primary: #8bc47e; --primary-foreground: #1a3014;
+      --primary-container: #294424; --on-primary-container: #cae4c3;
+      --secondary-container: #38301f; --on-secondary-container: #e0c398;
+      --accent: #1d291b; --forest-600: #74ab68; --input: #4a463f; --ring: #8bc47e; --mark: #cba576;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --background: #1a1814; --card: #221f18;
+    --surface-container-low: #1f1c17; --surface-container: #262219; --surface-container-high: #2d2820;
+    --surface-variant: #201d16; --on-surface: #ece8e1; --on-surface-variant: #a49e92;
+    --outline-variant: #645e53; --primary: #8bc47e; --primary-foreground: #1a3014;
+    --primary-container: #294424; --on-primary-container: #cae4c3;
+    --secondary-container: #38301f; --on-secondary-container: #e0c398;
+    --accent: #1d291b; --forest-600: #74ab68; --input: #4a463f; --ring: #8bc47e; --mark: #cba576;
+  }
+
+  body { background: var(--background); color: var(--on-surface); font-family: var(--sans); font-size: 14px; line-height: 1.7; }
+  .wrap { max-width: 1120px; margin-inline: auto; padding-inline: 16px; padding-block: 28px 64px; }
+  h1 { font-family: var(--serif); font-weight: 600; font-size: 26px; letter-spacing: .04em; margin: 0 0 4px; text-wrap: balance; }
+  .lede { color: var(--on-surface-variant); margin: 0 0 6px; max-width: 64ch; }
+  .meta { font-size: 12px; color: var(--on-surface-variant); display: flex; flex-wrap: wrap; gap: 8px 18px; margin-bottom: 28px; }
+  .meta code { font-family: ui-monospace, Menlo, monospace; font-size: 11.5px; }
+  h2 { font-family: var(--serif); font-weight: 600; font-size: 19px; margin: 40px 0 4px; display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+  h2 .route { font-family: ui-monospace, Menlo, monospace; font-size: 12px; font-weight: 400; color: var(--on-surface-variant); }
+  .sub { color: var(--on-surface-variant); font-size: 13px; margin: 0 0 14px; max-width: 70ch; }
+  .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start; }
+  @media (max-width: 760px) { .pair { grid-template-columns: 1fr; } }
+  .panel { border: 1px solid color-mix(in srgb, var(--outline-variant) 35%, transparent); border-radius: 10px; background: var(--card); overflow: hidden; }
+  .panel > .cap { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--on-surface-variant); padding: 8px 12px; border-bottom: 1px solid color-mix(in srgb, var(--outline-variant) 25%, transparent); display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+  .panel img { display: block; width: 100%; height: auto; }
+  .panel .body { padding: 12px; }
+  .shots { display: grid; grid-template-columns: 1fr auto; gap: 12px; align-items: start; padding: 12px; }
+  .shots .phone { width: 128px; border-radius: 8px; border: 1px solid color-mix(in srgb, var(--outline-variant) 35%, transparent); }
+  @media (max-width: 480px) { .shots { grid-template-columns: 1fr; } .shots .phone { width: 160px; } }
+
+  /* 変更箇所の番号 */
+  .n { display: inline-flex; align-items: center; justify-content: center; inline-size: 18px; block-size: 18px; border-radius: 50%; background: var(--mark); color: #fff; font-size: 11px; font-weight: 700; font-family: var(--sans); vertical-align: middle; margin-inline: 2px; flex: none; }
+  .changes { list-style: none; padding: 0; margin: 10px 0 0; display: grid; gap: 6px; font-size: 13px; }
+  .changes li { display: flex; gap: 8px; align-items: flex-start; }
+  .changes li .n { margin-top: 3px; }
+
+  /* トグル（プロトタイプの操作） */
+  .ctl { display: flex; gap: 6px; flex-wrap: wrap; }
+  .seg { display: inline-flex; border: 1px solid color-mix(in srgb, var(--outline-variant) 40%, transparent); border-radius: 6px; overflow: hidden; }
+  .seg button { border: 0; background: transparent; color: var(--on-surface-variant); font: inherit; font-size: 12px; padding: 3px 10px; cursor: pointer; text-transform: none; letter-spacing: 0; }
+  .seg button[aria-pressed="true"] { background: var(--primary); color: var(--primary-foreground); }
+  .seg button:focus-visible { outline: 2px solid var(--ring); outline-offset: -2px; }
+
+  /* ── アプリの再現 ── */
+  .app { font-family: var(--sans); color: var(--on-surface); }
+  .toolbar { display: flex; align-items: center; gap: 4px; padding: 8px 14px; border-bottom: 1px solid color-mix(in srgb, var(--outline-variant) 30%, transparent); background: var(--background); font-size: 12px; flex-wrap: wrap; }
+  .toolbar .ep { font-weight: 700; color: var(--on-surface); margin-right: 6px; }
+  .toolbar .b { padding: 3px 10px; border-radius: 6px; color: var(--on-surface-variant); }
+  .toolbar .b.new { position: relative; }
+  .toolbar .sp { flex: 1; }
+  .toolbar .pill { padding: 3px 10px; border-radius: 999px; }
+  .toolbar .pill.on { background: var(--primary); color: var(--primary-foreground); }
+  .kbbar { display: flex; gap: 6px; padding: 6px 8px; overflow-x: auto; border-top: 1px solid color-mix(in srgb, var(--outline-variant) 30%, transparent); background: var(--card); }
+  .kbbar .chip { flex: none; border: 1px solid color-mix(in srgb, var(--outline-variant) 40%, transparent); border-radius: 999px; padding: 9px 18px; font-size: 14px; }
+  .editor { padding: 18px 22px; font-family: var(--serif); font-size: 15px; line-height: 2.05; white-space: pre-wrap; background: var(--background); min-height: 220px; }
+  .editor.narrow { font-size: 16px; }
+
+  /* プレビュー面：.preview のルールを写し、脚本用 .sc-* を足す */
+  .preview-wrap { background: var(--surface-variant); padding: 20px 24px; min-height: 300px; }
+  .preview { font-family: var(--serif); font-size: 15px; color: var(--on-surface); line-height: 2.2; overflow-wrap: anywhere; max-width: 640px; margin-inline: auto; }
+  .preview p { margin: 0; }
+  .preview .blank { min-block-size: 1em; }
+  .preview.vertical { writing-mode: vertical-rl; block-size: 380px; line-height: 2.3; max-width: none; margin: 0; overflow-x: auto; }
+  /* ③④⑤ 脚本の体裁 */
+  .preview.script .sc-slug { font-weight: 600; margin-block-start: 1lh; }
+  .preview.script .sc-slug:first-child { margin-block-start: 0; }
+  .preview.script .sc-direction { padding-inline-start: 3em; }
+  .preview.script .sc-dialogue { padding-inline-start: 3em; text-indent: -3em; }
+  .preview .tag { position: relative; }
+  .preview.script .tag::before { content: attr(data-n); position: absolute; inset-inline-start: -26px; inset-block-start: .55em; inline-size: 18px; block-size: 18px; border-radius: 50%; background: var(--mark); color: #fff; font: 700 11px/18px var(--sans); text-align: center; writing-mode: horizontal-tb; }
+  .preview.vertical.script .tag::before { inset-inline-start: -24px; inset-block-start: 0; }
+  .preview.vertical { padding-inline-start: 26px; }
+  .preview:not(.vertical) { padding-inline-start: 30px; }
+
+  /* ダイアログ */
+  .dlg { background: var(--card); border: 1px solid color-mix(in srgb, var(--outline-variant) 30%, transparent); border-radius: 12px; padding: 18px 20px; max-width: 480px; margin-inline: auto; box-shadow: 0 8px 30px rgba(0,0,0,.08); }
+  .dlg h3 { font-family: var(--serif); color: var(--primary); font-size: 16px; margin: 0; }
+  .dlg .desc { font-size: 12.5px; color: var(--on-surface-variant); margin: 2px 0 14px; }
+  .field { display: grid; gap: 6px; margin-bottom: 14px; }
+  .field label, .field .lbl { font-size: 13px; font-weight: 500; display: flex; align-items: center; gap: 6px; }
+  .field .in { border: 1px solid var(--input); border-radius: 6px; padding: 7px 10px; font-size: 13px; color: var(--on-surface-variant); background: var(--background); }
+  .field .in.ta { min-height: 58px; }
+  .field .cnt { margin-left: auto; font-size: 11px; color: var(--on-surface-variant); font-weight: 400; font-variant-numeric: tabular-nums; }
+  .info { inline-size: 16px; block-size: 16px; border-radius: 50%; border: 1px solid var(--outline-variant); color: var(--on-surface-variant); font-size: 10px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; background: transparent; cursor: pointer; font-family: var(--sans); padding: 0; }
+  .info:focus-visible { outline: 2px solid var(--ring); outline-offset: 1px; }
+  .radios { display: flex; gap: 18px; font-size: 13px; }
+  .radios label { display: inline-flex; align-items: center; gap: 6px; font-weight: 400; cursor: pointer; }
+  .radios input { accent-color: var(--primary); inline-size: 15px; block-size: 15px; margin: 0; }
+  .helpbox { border: 1px solid color-mix(in srgb, var(--outline-variant) 35%, transparent); border-radius: 8px; padding: 10px 12px; font-size: 12.5px; background: var(--surface-container-low); margin-top: 2px; }
+  .helpbox b { font-weight: 600; display: block; margin-bottom: 4px; }
+  .helpbox ul { margin: 4px 0 6px; padding-inline-start: 18px; }
+  .dlg .foot { display: flex; justify-content: flex-end; gap: 8px; margin-top: 6px; border-top: 1px solid color-mix(in srgb, var(--outline-variant) 25%, transparent); padding-top: 12px; }
+  .btn { border-radius: 6px; padding: 6px 14px; font-size: 13px; border: 1px solid color-mix(in srgb, var(--outline-variant) 40%, transparent); background: var(--card); color: var(--primary); }
+  .btn.pri { background: var(--primary); color: var(--primary-foreground); border-color: transparent; }
+  .cover { display: flex; gap: 10px; align-items: flex-start; }
+  .cover .none { inline-size: 52px; block-size: 76px; border: 1px dashed color-mix(in srgb, var(--outline-variant) 40%, transparent); border-radius: 6px; display: grid; place-items: center; font-size: 11px; color: var(--on-surface-variant); }
+  .cover .hint { font-size: 11.5px; color: var(--on-surface-variant); }
+
+  /* ライブラリカード */
+  .cards { display: flex; gap: 20px; flex-wrap: wrap; padding: 14px; }
+  .wcard { inline-size: 206px; border: 1px solid color-mix(in srgb, var(--outline-variant) 30%, transparent); border-radius: 10px; background: var(--card); padding: 10px; }
+  .wcard .cv { block-size: 240px; border-radius: 6px; background: var(--secondary-container); display: grid; place-items: center; font-family: var(--serif); writing-mode: vertical-rl; color: var(--on-surface); font-size: 15px; letter-spacing: .12em; position: relative; }
+  .wcard .cv small { position: absolute; inset-inline-end: auto; left: 8px; bottom: 6px; writing-mode: horizontal-tb; font-family: var(--serif); font-size: 8px; color: var(--on-secondary-container); }
+  .wcard .t { font-size: 13px; font-weight: 500; margin: 12px 0 8px; display: flex; justify-content: space-between; }
+  .wcard .row { display: flex; gap: 8px; align-items: center; font-size: 11px; color: var(--on-surface-variant); }
+  .badge { border-radius: 999px; padding: 1px 8px; font-size: 11px; font-weight: 500; background: var(--primary-container); color: var(--on-primary-container); }
+  .badge.script { background: var(--secondary-container); color: var(--on-secondary-container); }
+  .wcard .ago { font-size: 11px; color: var(--on-surface-variant); opacity: .75; margin-top: 6px; }
+  .wrow { display: flex; gap: 14px; align-items: center; padding: 10px 14px; border-top: 1px solid color-mix(in srgb, var(--outline-variant) 25%, transparent); font-size: 13px; }
+  .wrow .th { inline-size: 40px; block-size: 54px; border-radius: 4px; background: var(--secondary-container); display: grid; place-items: center; font-family: var(--serif); }
+  .wrow .m { display: flex; gap: 8px; align-items: center; font-size: 11px; color: var(--on-surface-variant); margin-top: 2px; }
+
+  /* ヘルプ */
+  .help { padding: 18px 22px; max-width: 64ch; }
+  .help h3 { font-family: var(--serif); font-size: 17px; font-weight: 600; margin: 0 0 8px; display: flex; gap: 8px; align-items: center; }
+  .help p { margin: 0 0 8px; font-size: 13.5px; }
+  .help ul { margin: 0 0 8px; padding-inline-start: 20px; font-size: 13.5px; }
+  .help code { font-family: var(--serif); background: var(--surface-container); padding: 0 4px; border-radius: 3px; }
+  .help .ex { font-family: var(--serif); background: var(--surface-variant); padding: 10px 14px; border-radius: 6px; white-space: pre-wrap; line-height: 1.9; font-size: 13.5px; margin: 6px 0 10px; }
+
+  /* MCP・書き出し */
+  pre.code { background: var(--surface-container); border-radius: 8px; padding: 12px 14px; font-size: 12px; overflow-x: auto; margin: 0; line-height: 1.6; }
+  table { border-collapse: collapse; font-size: 13px; width: 100%; }
+  th, td { text-align: left; padding: 6px 10px; border-bottom: 1px solid color-mix(in srgb, var(--outline-variant) 25%, transparent); vertical-align: top; }
+  th { font-weight: 500; color: var(--on-surface-variant); font-size: 12px; }
+  .tbl { overflow-x: auto; }
+  .note { font-size: 12.5px; color: var(--on-surface-variant); margin-top: 8px; }
+  @media (prefers-reduced-motion: no-preference) { .preview p, .toolbar .b { transition: padding .15s, font-weight .15s; } }
+</style>
+
+<div class="wrap">
+  <h1>脚本モード プロトタイプ</h1>
+  <p class="lede">作品ごとに「形式：脚本」を選ぶと、行頭の書き方だけで柱・ト書き・セリフを見分けて描きます。本文の文字はそのまま。左が現状のスクショ、右が変更後のモックです。</p>
+  <div class="meta">
+    <span>Linear <code>COT-6</code>（要件 <code>COT-8</code>／設計 <code>COT-14</code>）</span>
+    <span>番号 <span class="n">1</span>〜<span class="n">8</span> は <code>design.md</code> の UI 節と対応</span>
+    <span>判別ルール：<code>○</code>で始まる行＝柱／行頭から <code>名前「…」</code>＝セリフ／それ以外（字下げした行を含む）＝ト書き</span>
+  </div>
+
+  <!-- ───────── 1. エディタ ───────── -->
+  <h2>執筆：エディタ <span class="route">#/write</span></h2>
+  <p class="sub">脚本の作品でだけ、記法ボタンに「柱」「セリフ」が加わります。ト書きにボタンはありません（何も付けない行がト書き）。</p>
+  <div class="pair">
+    <div class="panel">
+      <div class="cap">現状</div>
+      <div class="shots">
+        <img src="screens/write-desktop.png" alt="現状のエディタ（PC）。記法ボタンはルビ・傍点・参照の3つ">
+        <img class="phone" src="screens/write-mobile.png" alt="現状のエディタ（スマホ）。キーボード上の記法バーも3つ">
+      </div>
+    </div>
+    <div class="panel">
+      <div class="cap">変更後
+        <span class="ctl"><span class="seg" role="group" aria-label="作品の形式">
+          <button type="button" id="ed-novel" aria-pressed="false" data-format="novel">小説</button>
+          <button type="button" id="ed-script" aria-pressed="true" data-format="script">脚本</button>
+        </span></span>
+      </div>
+      <div class="app" id="editor-mock" data-format="script">
+        <div class="toolbar">
+          <span class="ep">第一場</span>
+          <span class="b">ルビ</span><span class="b">傍点</span><span class="b">参照</span>
+          <span class="b new script-only" title="柱 ○場所（時間）">柱</span>
+          <span class="b new script-only" title="セリフ 名前「…」">セリフ</span>
+          <span class="n script-only" aria-hidden="true">1</span>
+          <span class="sp"></span>
+          <span class="pill">横書き</span><span class="pill on">縦書き</span>
+        </div>
+        <div class="editor">○公園（夕方）
+
+　ベンチに座るユイ。風が吹き、落ち葉が舞う。
+
+ユイ「もう帰ろっか」
+ケン「……うん」
+「本当にいいの？」
+
+○ユイの部屋（夜）
+
+　机に向かうユイ。手が止まる。</div>
+        <div class="cap" style="border-top:1px solid color-mix(in srgb, var(--outline-variant) 25%, transparent)">スマホの記法バー（キーボード直上）<span class="n script-only" aria-hidden="true">2</span></div>
+        <div class="kbbar">
+          <span class="chip">ルビ</span><span class="chip">傍点</span><span class="chip">参照</span>
+          <span class="chip script-only">柱</span><span class="chip script-only">セリフ</span>
+        </div>
+      </div>
+      <div class="body">
+        <ul class="changes">
+          <li><span class="n">1</span><span>PC ツールバー：「参照」の右に <b>柱</b>（行頭に <code>○</code> を入れる）と <b>セリフ</b>（<code>「」</code> を入れてキャレットを内側へ）。脚本の作品のみ。ショートカットは足さない。</span></li>
+          <li><span class="n">2</span><span>スマホの記法バー：同じ 5 つ。横スクロールで届く。</span></li>
+        </ul>
+        <p class="note">例：「ユイ」の直後で「セリフ」を押す → <code>ユイ「｜」</code>（｜がキャレット）。</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ───────── 2. プレビュー ───────── -->
+  <h2>執筆：プレビュー <span class="route">#/write</span></h2>
+  <p class="sub">同じ本文が、小説なら今までどおりの段落、脚本なら柱・ト書き・セリフの体裁で描かれます。縦書き・横書きの両方に効きます。</p>
+  <div class="pair">
+    <div class="panel">
+      <div class="cap">現状（脚本の例文を小説として描いた状態）</div>
+      <div class="shots">
+        <img src="screens/write-desktop.png" alt="現状のプレビュー（PC・縦書き）。柱もト書きもセリフも同じ段落として並ぶ">
+        <img class="phone" src="screens/preview-mobile.png" alt="現状のプレビュー（スマホ・縦書き）">
+      </div>
+    </div>
+    <div class="panel">
+      <div class="cap">変更後
+        <span class="ctl">
+          <span class="seg" role="group" aria-label="作品の形式">
+            <button type="button" id="pv-novel" aria-pressed="false" data-format="novel">小説</button>
+            <button type="button" id="pv-script" aria-pressed="true" data-format="script">脚本</button>
+          </span>
+          <span class="seg" role="group" aria-label="組み方向">
+            <button type="button" id="pv-h" aria-pressed="false" data-dir="h">横書き</button>
+            <button type="button" id="pv-v" aria-pressed="true" data-dir="v">縦書き</button>
+          </span>
+        </span>
+      </div>
+      <div class="preview-wrap">
+        <article class="preview script vertical" id="preview-mock" lang="ja">
+          <p class="sc-slug tag" data-n="3">○公園（夕方）</p>
+          <p class="blank"></p>
+          <p class="sc-direction tag" data-n="4">ベンチに座るユイ。風が吹き、落ち葉が舞う。ゆっくりと空を見上げ、息を吐く。</p>
+          <p class="blank"></p>
+          <p class="sc-dialogue tag" data-n="5"><span class="sc-speaker">ユイ</span>「もう帰ろっか。今日はなんだか疲れちゃった。明日も早いし、そろそろ行こう」</p>
+          <p class="sc-dialogue"><span class="sc-speaker">ケン</span>「……うん」</p>
+          <p class="sc-dialogue"><span class="sc-speaker">ユイ（声）</span>「本当にいいの？」</p>
+          <p class="sc-dialogue">「……」</p>
+          <p class="blank"></p>
+          <p class="sc-slug">○ユイの部屋（夜）</p>
+          <p class="blank"></p>
+          <p class="sc-direction">机に向かうユイ。手が止まる。</p>
+        </article>
+      </div>
+      <div class="body">
+        <ul class="changes">
+          <li><span class="n">3</span><span><b>柱</b>：太字。直前に 1 行ぶんの間隔（<code>margin-block-start: 1lh</code>）。</span></li>
+          <li><span class="n">4</span><span><b>ト書き</b>：3 字下げ（<code>padding-inline-start: 3em</code>）。本文に打った行頭の全角空白は描画時に落とし、二重字下げにしない。</span></li>
+          <li><span class="n">5</span><span><b>セリフ</b>：ぶら下げ（2 行目以降を 3 字下げ）。話者名は太字にしない。<code>ユイ（声）</code> のような補足も話者に含む。名前なしの <code>「…」</code> は話者なしのセリフ。行頭を空けた行は中に「」があってもト書き。</span></li>
+        </ul>
+        <p class="note">小説に切り替えると、出力 HTML は現状と 1 バイトも変わりません（回帰テストで固定）。ルビ・傍点・@参照は脚本でも今までどおり効きます。</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ───────── 3. 作品情報ダイアログ ───────── -->
+  <h2>作品情報ダイアログ <span class="route">サイドバー「作品情報を編集」／ライブラリの作品メニュー</span></h2>
+  <p class="sub">形式の切替口はここだけ。「あらすじ」の下に「形式」を足し、ラベル横のⓘで判別ルールを説明します（既存の <code>FieldHelp</code>）。</p>
+  <div class="pair">
+    <div class="panel">
+      <div class="cap">現状</div>
+      <div class="shots">
+        <img src="screens/workmeta-desktop.png" alt="現状の作品情報ダイアログ（PC）。タイトル・著者・あらすじ・表紙画像">
+        <img class="phone" src="screens/workmeta-mobile.png" alt="現状の作品情報ダイアログ（スマホ）">
+      </div>
+    </div>
+    <div class="panel">
+      <div class="cap">変更後</div>
+      <div class="body" style="background: var(--surface-container-low)">
+        <div class="dlg app" role="dialog" aria-labelledby="dlg-title">
+          <h3 id="dlg-title">作品情報</h3>
+          <p class="desc">作品の情報を編集します。EPUB やコトノハ-grove- に反映されます。</p>
+          <div class="field"><label for="p-title">タイトル</label><div class="in" id="p-title" style="color: var(--on-surface); border-color: var(--primary)">夕暮れの公園</div></div>
+          <div class="field"><label for="p-author">著者</label><div class="in" id="p-author">ペンネームなど（任意）</div></div>
+          <div class="field"><label for="p-desc">あらすじ <span class="cnt">0/250</span></label><div class="in ta" id="p-desc">作品の概要・あらすじ（任意）</div></div>
+          <div class="field">
+            <div class="lbl"><span class="n" aria-hidden="true">6</span>形式
+              <button type="button" class="info" id="fmt-help-btn" aria-expanded="false" aria-controls="fmt-help" title="形式について">i</button>
+            </div>
+            <div class="radios" role="radiogroup" aria-label="形式">
+              <label><input type="radio" name="fmt" id="fmt-novel" value="novel"> 小説</label>
+              <label><input type="radio" name="fmt" id="fmt-script" value="script" checked> 脚本</label>
+            </div>
+            <div class="helpbox" id="fmt-help" hidden>
+              <b>形式</b>
+              脚本にすると、行頭の書き方で柱・ト書き・セリフを見分けて表示します。
+              <ul>
+                <li>○で始まる行 → 柱（場所と時間）</li>
+                <li>行頭に名前、そのあとに「」が続く行 → セリフ</li>
+                <li>それ以外の行（行頭を空けた行を含む） → ト書き（自動で 3 字下がります）</li>
+              </ul>
+              本文の文字はそのままです。EPUB・なろう・カクヨムへの書き出しと、コトノハ-grove- の表示も脚本の体裁になります。
+            </div>
+          </div>
+          <div class="field"><span class="lbl">表紙画像</span>
+            <div class="cover"><div class="none">なし</div><div><div class="btn" style="display:inline-block;font-size:12px">ファイルを選択</div><div class="hint">EPUB に埋め込む表紙（縦横比はそのまま・任意）</div></div></div>
+          </div>
+          <div class="foot"><span class="btn">キャンセル</span><span class="btn pri">保存</span></div>
+        </div>
+        <ul class="changes">
+          <li><span class="n">6</span><span>「形式」：小説／脚本の 2 択（ラジオ・横並び）。初期値は現在の形式（未設定＝小説）。ⓘを押すと説明が開きます（実装ではダイアログ）。形式だけ変えて保存しても他の欄は据え置き。</span></li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <!-- ───────── 4. ライブラリ ───────── -->
+  <h2>マイライブラリ <span class="route">/</span></h2>
+  <p class="sub">脚本の作品には「N話」の隣に「脚本」バッジ。小説の作品には何も出ません。</p>
+  <div class="pair">
+    <div class="panel">
+      <div class="cap">現状</div>
+      <div class="shots">
+        <img src="screens/library-desktop.png" alt="現状のライブラリ（PC）。作品カードに 0話・0字のバッジ">
+        <img class="phone" src="screens/library-mobile.png" alt="現状のライブラリ（スマホ）">
+      </div>
+    </div>
+    <div class="panel">
+      <div class="cap">変更後（カード表示・リスト表示）</div>
+      <div class="app">
+        <div class="cards">
+          <div class="wcard">
+            <div class="cv">夕暮れの公園<small>コトノハ-leaf-</small></div>
+            <div class="t"><span>夕暮れの公園</span><span style="color: var(--on-surface-variant)">…</span></div>
+            <div class="row"><span class="badge">1話</span><span class="badge script">脚本</span><span class="n" aria-hidden="true">7</span><span>80字</span></div>
+            <div class="ago">たった今に編集</div>
+          </div>
+          <div class="wcard">
+            <div class="cv">春の庭<small>コトノハ-leaf-</small></div>
+            <div class="t"><span>春の庭</span><span style="color: var(--on-surface-variant)">…</span></div>
+            <div class="row"><span class="badge">12話</span><span>48,210字</span></div>
+            <div class="ago">3日前に編集</div>
+          </div>
+        </div>
+        <div class="wrow"><div class="th">夕</div><div><div>夕暮れの公園</div><div class="m"><span class="badge">1話</span><span class="badge script">脚本</span><span>80字</span><span>・ たった今に編集</span></div></div></div>
+        <div class="wrow"><div class="th">春</div><div><div>春の庭</div><div class="m"><span class="badge">12話</span><span>48,210字</span><span>・ 3日前に編集</span></div></div></div>
+      </div>
+      <div class="body">
+        <ul class="changes">
+          <li><span class="n">7</span><span>「脚本」バッジ（既存の <code>Badge variant="secondary"</code>・wheat 系）。カードと行の両方。</span></li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <!-- ───────── 5. ヘルプ ───────── -->
+  <h2>ヘルプ <span class="route">#/help</span></h2>
+  <p class="sub">「脚本を書く」の節を 1 つ足します。ダイアログのⓘと同じ 3 行のルールに、ボタンと書き出しの説明を添えます。</p>
+  <div class="pair">
+    <div class="panel">
+      <div class="cap">現状（ページ全体）</div>
+      <div style="max-height: 420px; overflow-y: auto"><img src="screens/help-desktop.png" alt="現状のヘルプページ全体"></div>
+    </div>
+    <div class="panel">
+      <div class="cap">変更後：追加する節</div>
+      <div class="help app">
+        <h3><span class="n" aria-hidden="true">8</span>脚本を書く</h3>
+        <p>作品情報で形式を「脚本」にすると、行頭の書き方で柱・ト書き・セリフを見分けます。特別な記号を覚える必要はありません。</p>
+        <ul>
+          <li><code>○</code>で始まる行は<b>柱</b>です。場所と時間を書きます。</li>
+          <li>行頭に名前、そのあとに<code>「」</code>が続く行は<b>セリフ</b>です。<code>ユイ（声）「…」</code>のように名前のあとに補足を 1 つ付けられます。名前を省いた<code>「…」</code>だけの行も、話者なしのセリフになります。</li>
+          <li>それ以外の行は<b>ト書き</b>です。自動で 3 字下がります。行頭を空けた行は、中に<code>「」</code>があってもト書きです。</li>
+        </ul>
+        <div class="ex">○公園（夕方）
+
+　ベンチに座るユイ。風が吹く。
+
+ユイ「もう帰ろっか」
+ケン「……うん」</div>
+        <p>ツールバーの「柱」と「セリフ」を押すと、<code>○</code>や<code>「」</code>が入ります。ルビ・傍点・@参照は小説と同じように使えます。</p>
+        <p>EPUB・なろう・カクヨムへ書き出すときも、この体裁で出ます。コトノハ-grove- に投稿した作品も脚本として表示されます。</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ───────── 6. 画面の外 ───────── -->
+  <h2>画面の外で変わること</h2>
+  <p class="sub">プロトタイプにはない変更。設計の根拠は <code>design.md</code> を参照。</p>
+  <div class="pair">
+    <div class="panel">
+      <div class="cap">書き出し・公開</div>
+      <div class="body tbl">
+        <table>
+          <tr><th>出力先</th><th>脚本の作品</th><th>小説の作品</th></tr>
+          <tr><td>EPUB</td><td>各話 XHTML に <code>sc-*</code> クラス、<code>style.css</code> に体裁</td><td>変わらない</td></tr>
+          <tr><td>なろう／カクヨム／テキスト</td><td>ト書き行の行頭空白を全角 3 つに揃える。柱・セリフは打ったまま</td><td>変わらない</td></tr>
+          <tr><td>AI 向けテキスト・MCP <code>get_work</code></td><td>正規化しない。先頭に <code>形式: 脚本</code> の行</td><td>変わらない</td></tr>
+          <tr><td>コトノハ-grove-</td><td>バンドルに <code>format: "script"</code> を載せ、契約 v7 で送る</td><td>載せない・版も上げない</td></tr>
+        </table>
+        <p class="note">grove（別リポ）が v7 を受けてから、leaf の v7 送信をリリースします。</p>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="cap">データと MCP</div>
+      <div class="body">
+<pre class="code">// src/core/schema/index.ts — Work に optional で追加
+format: z.enum(['novel', 'script']).optional()
+// 未設定＝小説。'novel' は保存しない（未設定に正規化）
+
+// MCP set_work_meta（渡した項目だけ書き換える）
+{ work_id, format: "script" }   // 脚本にする
+{ work_id, format: "novel"  }   // 小説に戻す（キー削除）</pre>
+        <p class="note">本文は今までどおり純テキスト → <code>Block[]</code>。演出譜の <code>blockId</code> アンカーも同期スナップショットもそのまま効きます。</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  (function () {
+    var edMock = document.getElementById('editor-mock');
+    var pv = document.getElementById('preview-mock');
+
+    function setPressed(group, activeBtn) {
+      group.forEach(function (b) { b.setAttribute('aria-pressed', b === activeBtn ? 'true' : 'false'); });
+    }
+    function applyEditorFormat(fmt) {
+      edMock.dataset.format = fmt;
+      edMock.querySelectorAll('.script-only').forEach(function (el) { el.hidden = fmt !== 'script'; });
+    }
+    var edBtns = [document.getElementById('ed-novel'), document.getElementById('ed-script')];
+    edBtns.forEach(function (b) {
+      b.addEventListener('click', function () { setPressed(edBtns, b); applyEditorFormat(b.dataset.format); });
+    });
+
+    var pvFmt = [document.getElementById('pv-novel'), document.getElementById('pv-script')];
+    pvFmt.forEach(function (b) {
+      b.addEventListener('click', function () {
+        setPressed(pvFmt, b);
+        pv.classList.toggle('script', b.dataset.format === 'script');
+      });
+    });
+    var pvDir = [document.getElementById('pv-h'), document.getElementById('pv-v')];
+    pvDir.forEach(function (b) {
+      b.addEventListener('click', function () {
+        setPressed(pvDir, b);
+        pv.classList.toggle('vertical', b.dataset.dir === 'v');
+      });
+    });
+
+    var helpBtn = document.getElementById('fmt-help-btn');
+    var help = document.getElementById('fmt-help');
+    helpBtn.addEventListener('click', function () {
+      var open = help.hidden;
+      help.hidden = !open;
+      helpBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    });
+  })();
+</script>

@@ -7,28 +7,19 @@ import {
   useRef,
   useState,
 } from 'react'
-import { resolveRef, shouldTriggerSuggest, suggestRefs } from '@/core/glossary'
-import { needsRubyPipe } from '@/core/parser/parseNotation'
+import { PERSON_CATEGORY, resolveRef, shouldTriggerSuggest, suggestRefs } from '@/core/glossary'
+import { needsRubyPipe, parseEpisodeBody } from '@/core/parser/parseNotation'
 import type { GlossaryEntry } from '@/core/schema'
+import { proofreadScript } from '@/core/script/proofread'
 import { getCaretCoordinates } from '@/ui/_utils/caretCoordinates'
 import { useKeyboardInset } from '@/ui/hooks/use-keyboard-inset'
 import { useIsNarrow } from '@/ui/hooks/use-narrow'
+import { type NotationKind, notationForKey, notationItems } from './notation'
 import { NotationBar } from './notation-bar'
 import { RefSuggest } from './ref-suggest'
 import { RefSuggestBar } from './ref-suggest-bar'
 
-/** 挿入できる記法。ルビ ｜親文字《よみ》／傍点 《《text》》／用語集参照 [[名前]]。 */
-export type NotationKind = 'ruby' | 'dots' | 'ref'
-
-/**
- * Cmd/Ctrl + キー → 記法。太字・斜体・リンクの標準スロットを意味で割り当てる
- * （縦書きの強調＝傍点、用語集参照＝リンク）。いずれもブラウザの既定動作と衝突しない。
- */
-const SHORTCUTS: Record<string, NotationKind | undefined> = {
-  b: 'dots',
-  i: 'ruby',
-  k: 'ref',
-}
+export type { NotationKind } from './notation'
 
 /** 外（ツールバー）から記法挿入を呼ぶためのハンドル。 */
 export interface EditorPaneHandle {
@@ -36,6 +27,7 @@ export interface EditorPaneHandle {
 }
 
 interface EditorPaneProps {
+  scriptMode?: boolean
   value: string
   onChange: (value: string) => void
   /** @ サジェストの候補となる辞書。省略時はサジェスト無効。 */
@@ -64,13 +56,28 @@ export function EditorPane({
   value,
   onChange,
   glossary = [],
+  scriptMode = false,
   onCreateEntry,
 }: EditorPaneProps & { ref?: React.Ref<EditorPaneHandle> }) {
   const taRef = useRef<HTMLTextAreaElement>(null)
+  // 登場人物表（用語集の「人物」）に無い話者も知らせる。名前と別名のどちらでも通す。
+  const cast = useMemo(
+    () =>
+      glossary
+        .filter((e) => PERSON_CATEGORY.test(e.category ?? ''))
+        .flatMap((e) => [e.name, ...e.aliases]),
+    [glossary],
+  )
+  const notices = useMemo(
+    () => (scriptMode ? proofreadScript(parseEpisodeBody(value), { cast }) : []),
+    [scriptMode, value, cast],
+  )
   // IME 変換中はサジェストを抑止する（純関数は判定できないので UI 層で握る）。
   const composingRef = useRef(false)
   // 挿入後に復元したいキャレット位置（useLayoutEffect で適用）。
   const pendingCaretRef = useRef<number | null>(null)
+  // 脚本では Tab を字下げに使うため、Esc の直後の Tab だけ標準のフォーカス移動に返す。
+  const escapeTabRef = useRef(false)
   const [suggest, setSuggest] = useState<SuggestState | null>(null)
   const [activeIndex, setActiveIndex] = useState(0)
   // 記法バー（狭幅）は書いている間だけ出す。閉じている時に画面下端へ残ると
@@ -183,13 +190,59 @@ export function EditorPane({
     (kind: NotationKind) => {
       const el = taRef.current
       if (!el) return
-      const start = el.selectionStart ?? 0
+      let start = el.selectionStart ?? 0
       const end = el.selectionEnd ?? start
       const selected = value.slice(start, end)
 
       let inserted: string
       let caret: number
-      if (kind === 'ruby') {
+      if (kind === 'direction' || kind === 'undirection') {
+        // 現在行（選択中なら各行）の行頭空白を全角3つに揃える／外す。
+        const lineStart = start === 0 ? 0 : value.lastIndexOf('\n', start - 1) + 1
+        // 選択が次行の先頭で終わる場合、その次行は対象に含めない。
+        const last = end > start && value[end - 1] === '\n' ? end - 1 : end
+        const newline = value.indexOf('\n', last)
+        const lineEnd = newline < 0 ? value.length : newline
+        const source = value.slice(lineStart, lineEnd)
+        const indent = kind === 'direction' ? '　　　' : ''
+        const indented = source
+          .split('\n')
+          .map((line) => `${indent}${line.replace(/^[^\S\n]+/u, '')}`)
+          .join('\n')
+        const oldIndent = source.match(/^[^\S\n]*/u)?.[0].length ?? 0
+        pendingCaretRef.current =
+          start === end
+            ? Math.max(lineStart + indent.length, start + indent.length - oldIndent)
+            : lineStart + indented.length
+        onChange(value.slice(0, lineStart) + indented + value.slice(lineEnd))
+        setSuggest(null)
+        return
+      } else if (kind === 'transition') {
+        // 本文を消さず、現在行の手前に独立した場面転換行を置く。
+        const lineStart = start === 0 ? 0 : value.lastIndexOf('\n', start - 1) + 1
+        const marker = '***\n'
+        pendingCaretRef.current = lineStart + marker.length
+        onChange(value.slice(0, lineStart) + marker + value.slice(lineStart))
+        setSuggest(null)
+        return
+      } else if (kind === 'slug') {
+        if (selected === '') start = start === 0 ? 0 : value.lastIndexOf('\n', start - 1) + 1
+        inserted = `○${selected}`
+        caret = start + inserted.length
+        if (selected === '') {
+          pendingCaretRef.current = caret
+          onChange(value.slice(0, start) + inserted + value.slice(start))
+          setSuggest(null)
+          return
+        }
+      } else if (kind === 'dialogue') {
+        inserted = `「${selected}」`
+        caret = selected === '' ? start + 1 : start + inserted.length
+      } else if (kind === 'ellipsis' || kind === 'dash') {
+        // 囲む型ではなく記号そのもの。選択があれば置き換え、キャレットは記号の後ろへ。
+        inserted = kind === 'ellipsis' ? '……' : '――'
+        caret = start + inserted.length
+      } else if (kind === 'ruby') {
         // 親文字が漢字だけなら自動ルビが効くのでパイプは付けない（判定は core と共有）。
         const head = needsRubyPipe(selected) ? '｜' : ''
         inserted = `${head}${selected}《》`
@@ -244,17 +297,53 @@ export function EditorPane({
   })
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    const composing = composingRef.current || e.nativeEvent.isComposing
+    const escapedTab = escapeTabRef.current
+    escapeTabRef.current = false
     // 記法のショートカットはサジェストの開閉に関係なく効かせたいので、下の早期 return より前で見る。
     // IME 変換中は変換操作を奪わないよう素通しする。
-    if (!composingRef.current && !e.nativeEvent.isComposing && (e.metaKey || e.ctrlKey)) {
-      const kind = SHORTCUTS[e.key.toLowerCase()]
+    if (!composing && (e.metaKey || e.ctrlKey)) {
+      const kind = notationForKey(e, scriptMode)
       if (kind) {
         e.preventDefault()
         applyNotation(kind)
         return
       }
     }
-    if (!open || composingRef.current || e.nativeEvent.isComposing) return
+    // 脚本のト書き：Tab で3字下げ、Shift+Tab で解除、字下げした行の Enter は次の行も字下げる。
+    // 字下げ行の Enter は空白だけの行でも継続する（Tab 直後に Enter しても字下げが消えない）。
+    // ト書きが脚本の大半を占めるので、行ごとにボタンやショートカットを押さずに済ませる。
+    // PC でサジェストが開いている間は Tab / Enter を候補の確定に譲る（狭幅は Enter を改行に返す）。
+    if (scriptMode && !composing && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      if (e.key === 'Escape' && !open) {
+        // Tab を字下げに取るとキーボードだけでエディタから出られないので、Esc→Tab を逃げ道にする。
+        escapeTabRef.current = true
+      } else if (e.key === 'Tab' && (!open || narrow)) {
+        if (escapedTab) return
+        e.preventDefault()
+        applyNotation(e.shiftKey ? 'undirection' : 'direction')
+        return
+      } else if (e.key === 'Enter' && !e.shiftKey && (!open || narrow)) {
+        const el = e.currentTarget
+        const start = el.selectionStart ?? 0
+        const end = el.selectionEnd ?? start
+        const lineStart = start === 0 ? 0 : value.lastIndexOf('\n', start - 1) + 1
+        const newline = value.indexOf('\n', start)
+        const lineEnd = newline < 0 ? value.length : newline
+        const line = value.slice(lineStart, lineEnd)
+        const indent = line.match(/^[^\S\n]*/u)?.[0] ?? ''
+        // 字下げを抜けるのは Shift+Tab。空白だけの行でも継続する（Tab 直後の Enter で字下げが消えないように）。
+        if (indent !== '') {
+          e.preventDefault()
+          const inserted = `\n${indent}`
+          pendingCaretRef.current = start + inserted.length
+          onChange(value.slice(0, start) + inserted + value.slice(end))
+          setSuggest(null)
+          return
+        }
+      }
+    }
+    if (!open || composing) return
     if (narrow) {
       // スマホ：確定はバーのタップのみ。ソフトキーボードに Tab は無く、Enter は
       // 改行として使いたいので横取りしない（サジェスト表示中に改行できないのは致命的）。
@@ -313,9 +402,45 @@ export function EditorPane({
           composingRef.current = false
           refresh(e.currentTarget)
         }}
-        placeholder="ここから書き始めましょう。[[用語]] で用語集にリンク、@ で用語集から呼び出せます。"
+        placeholder={
+          scriptMode
+            ? '○場所（時間）で柱、名前「セリフ」でセリフ。それ以外の行はト書きとして、プレビューと書き出しで自動的に3字下がります。'
+            : 'ここから書き始めましょう。[[用語]] で用語集にリンク、@ で用語集から呼び出せます。'
+        }
         spellCheck={false}
       />
+
+      {scriptMode ? (
+        <details className="shrink-0 border-t border-outline-variant/30 px-4 py-2 text-xs text-on-surface-variant">
+          <summary className="cursor-pointer">
+            脚本の書式チェック（確認候補 {notices.length}件）
+          </summary>
+          <p className="my-2">
+            ト書きの字下げ、柱の前の余白、！？の後ろの1マスは表示・書き出し時に自動で揃います。意図した表現なら、そのまま使えます。
+          </p>
+          <ul className="max-h-32 overflow-y-auto">
+            {notices.map((notice) => (
+              <li key={`${notice.blockIndex}-${notice.code}`}>
+                <button
+                  type="button"
+                  className="min-h-11 w-full py-1 text-left hover:text-primary"
+                  onClick={() => {
+                    const lines = value.split('\n')
+                    const start = lines
+                      .slice(0, notice.blockIndex)
+                      .reduce((sum, line) => sum + line.length + 1, 0)
+                    const el = taRef.current
+                    el?.focus()
+                    el?.setSelectionRange(start, start + (lines[notice.blockIndex]?.length ?? 0))
+                  }}
+                >
+                  {notice.blockIndex + 1}行：{notice.message}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </details>
+      ) : null}
 
       {open && suggest ? (
         narrow ? (
@@ -343,7 +468,7 @@ export function EditorPane({
         )
       ) : narrow && focused ? (
         // サジェストと同じ位置に出るので、候補が出ていない間だけ記法バーを見せる。
-        <NotationBar onApply={applyNotation} />
+        <NotationBar onApply={applyNotation} items={notationItems(scriptMode, 'mobile')} />
       ) : null}
     </div>
   )

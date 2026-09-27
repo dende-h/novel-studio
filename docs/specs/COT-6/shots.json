@@ -1,0 +1,507 @@
+{
+  "outDir": "docs/specs/COT-6/screens",
+  "shots": [
+    {
+      "name": "library",
+      "viewports": [
+        "desktop"
+      ],
+      "steps": [
+        {
+          "goto": "/"
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "新しい作品"
+          }
+        },
+        {
+          "fill": {
+            "label": "作品タイトル",
+            "value": "夕暮れの公園"
+          }
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "作成",
+            "exact": true
+          }
+        },
+        {
+          "waitFor": {
+            "role": "heading",
+            "name": "夕暮れの公園"
+          }
+        }
+      ]
+    },
+    {
+      "name": "write",
+      "viewports": [
+        "desktop"
+      ],
+      "steps": [
+        {
+          "goto": "/"
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "新しい作品"
+          }
+        },
+        {
+          "fill": {
+            "label": "作品タイトル",
+            "value": "夕暮れの公園"
+          }
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "作成",
+            "exact": true
+          }
+        },
+        {
+          "waitFor": {
+            "role": "heading",
+            "name": "夕暮れの公園"
+          }
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "「夕暮れの公園」を執筆"
+          }
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "新しいエピソード",
+            "exact": true
+          }
+        },
+        {
+          "fill": {
+            "label": "話タイトル",
+            "value": "第一場"
+          }
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "追加",
+            "exact": true
+          }
+        },
+        {
+          "waitFor": {
+            "role": "textbox"
+          }
+        },
+        {
+          "click": {
+            "role": "textbox"
+          }
+        },
+        {
+          "fill": {
+            "role": "textbox",
+            "value": "○公園（夕方）\n\n　ベンチに座るユイ。風が吹き、落ち葉が舞う。\n\nユイ「もう帰ろっか」\nケン「……うん」\n「本当にいいの？」\n\n○ユイの部屋（夜）\n\n　机に向かうユイ。手が止まる。"
+          }
+        },
+        {
+          "wait": 800
+        }
+      ]
+    },
+    {
+      "name": "workmeta",
+      "viewports": [
+        "desktop"
+      ],
+      "steps": [
+        {
+          "goto": "/"
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "新しい作品"
+          }
+        },
+        {
+          "fill": {
+            "label": "作品タイトル",
+            "value": "夕暮れの公園"
+          }
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "作成",
+            "exact": true
+          }
+        },
+        {
+          "waitFor": {
+            "role": "heading",
+            "name": "夕暮れの公園"
+          }
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "「夕暮れの公園」を執筆"
+          }
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "作品情報を編集"
+          }
+        },
+        {
+          "waitFor": {
+            "role": "dialog"
+          }
+        },
+        {
+          "wait": 400
+        }
+      ]
+    },
+    {
+      "name": "help",
+      "viewports": [
+        "desktop"
+      ],
+      "steps": [
+        {
+          "goto": "/#/help"
+        },
+        {
+          "wait": 600
+        }
+      ],
+      "fullPage": true
+    },
+    {
+      "name": "library",
+      "viewports": [
+        "mobile"
+      ],
+      "steps": [
+        {
+          "goto": "/"
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "メニュー",
+            "exact": true
+          }
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "新しい作品",
+            "exact": true
+          }
+        },
+        {
+          "fill": {
+            "label": "作品タイトル",
+            "value": "夕暮れの公園"
+          }
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "作成",
+            "exact": true
+          }
+        },
+        {
+          "waitFor": {
+            "role": "heading",
+            "name": "夕暮れの公園"
+          }
+        }
+      ]
+    },
+    {
+      "name": "write",
+      "viewports": [
+        "mobile"
+      ],
+      "steps": [
+        {
+          "goto": "/"
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "メニュー",
+            "exact": true
+          }
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "新しい作品",
+            "exact": true
+          }
+        },
+        {
+          "fill": {
+            "label": "作品タイトル",
+            "value": "夕暮れの公園"
+          }
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "作成",
+            "exact": true
+          }
+        },
+        {
+          "waitFor": {
+            "role": "heading",
+            "name": "夕暮れの公園"
+          }
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "「夕暮れの公園」を執筆"
+          }
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "メニュー",
+            "exact": true
+          }
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "新しいエピソード",
+            "exact": true
+          }
+        },
+        {
+          "fill": {
+            "label": "話タイトル",
+            "value": "第一場"
+          }
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "追加",
+            "exact": true
+          }
+        },
+        {
+          "waitFor": {
+            "role": "textbox",
+            "name": "本文"
+          }
+        },
+        {
+          "fill": {
+            "role": "textbox",
+            "name": "本文",
+            "value": "○公園（夕方）\n\n　ベンチに座るユイ。風が吹き、落ち葉が舞う。\n\nユイ「もう帰ろっか」\nケン「……うん」\n「本当にいいの？」\n\n○ユイの部屋（夜）\n\n　机に向かうユイ。手が止まる。"
+          }
+        },
+        {
+          "click": {
+            "role": "textbox",
+            "name": "本文"
+          }
+        },
+        {
+          "wait": 800
+        }
+      ]
+    },
+    {
+      "name": "preview",
+      "viewports": [
+        "mobile"
+      ],
+      "steps": [
+        {
+          "goto": "/"
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "メニュー",
+            "exact": true
+          }
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "新しい作品",
+            "exact": true
+          }
+        },
+        {
+          "fill": {
+            "label": "作品タイトル",
+            "value": "夕暮れの公園"
+          }
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "作成",
+            "exact": true
+          }
+        },
+        {
+          "waitFor": {
+            "role": "heading",
+            "name": "夕暮れの公園"
+          }
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "「夕暮れの公園」を執筆"
+          }
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "メニュー",
+            "exact": true
+          }
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "新しいエピソード",
+            "exact": true
+          }
+        },
+        {
+          "fill": {
+            "label": "話タイトル",
+            "value": "第一場"
+          }
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "追加",
+            "exact": true
+          }
+        },
+        {
+          "waitFor": {
+            "role": "textbox",
+            "name": "本文"
+          }
+        },
+        {
+          "fill": {
+            "role": "textbox",
+            "name": "本文",
+            "value": "○公園（夕方）\n\n　ベンチに座るユイ。風が吹き、落ち葉が舞う。\n\nユイ「もう帰ろっか」\nケン「……うん」\n「本当にいいの？」\n\n○ユイの部屋（夜）\n\n　机に向かうユイ。手が止まる。"
+          }
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "プレビュー",
+            "exact": true
+          }
+        },
+        {
+          "wait": 800
+        }
+      ]
+    },
+    {
+      "name": "workmeta",
+      "viewports": [
+        "mobile"
+      ],
+      "steps": [
+        {
+          "goto": "/"
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "メニュー",
+            "exact": true
+          }
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "新しい作品",
+            "exact": true
+          }
+        },
+        {
+          "fill": {
+            "label": "作品タイトル",
+            "value": "夕暮れの公園"
+          }
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "作成",
+            "exact": true
+          }
+        },
+        {
+          "waitFor": {
+            "role": "heading",
+            "name": "夕暮れの公園"
+          }
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "「夕暮れの公園」を執筆"
+          }
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "メニュー",
+            "exact": true
+          }
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "作品情報を編集"
+          }
+        },
+        {
+          "waitFor": {
+            "role": "dialog"
+          }
+        },
+        {
+          "wait": 400
+        }
+      ]
+    }
+  ]
+}

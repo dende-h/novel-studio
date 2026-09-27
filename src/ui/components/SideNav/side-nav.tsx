@@ -25,6 +25,7 @@ import type { ComponentType } from 'react'
 import { cn } from '@/lib/utils'
 import { PLATFORM_ORIGIN } from '@/ui/_api/publish'
 import { coverTone } from '@/ui/_utils/cover-tone'
+import { Badge } from '@/ui/components/ui/badge'
 import { Button } from '@/ui/components/ui/button'
 import { ScrollArea } from '@/ui/components/ui/scroll-area'
 import { ZoomableImage } from '@/ui/components/ui/zoomable-image'
@@ -83,6 +84,8 @@ interface SideNavProps {
   onEditWorkMeta?: () => void
   /** 作品カードに出すメタ情報（例: 「3話 ・ 12,480字」）。 */
   workMeta?: string
+  /** 作品の形式。脚本のときだけ一覧と同じ「脚本」バッジをカードに出す。 */
+  workFormat?: 'novel' | 'script'
   /** エディタ画面へ切替（作品オープン時のみ） */
   onNavigateEpisodes?: () => void
   /** 用語集画面へ切替（作品オープン時のみ） */
@@ -160,6 +163,7 @@ export function SideNav({
   onEditWorkMeta,
   workTitle,
   workMeta,
+  workFormat,
   episodes,
   currentEpisodeId,
   onSelectEpisode,
@@ -205,9 +209,17 @@ export function SideNav({
                   <span className="line-clamp-2 block font-semibold font-serif text-[13px] text-on-surface leading-normal">
                     {workTitle}
                   </span>
-                  {workMeta ? (
-                    <span className="mt-0.5 block truncate text-[11px] text-on-surface-variant">
-                      {workMeta}
+                  {workMeta || workFormat === 'script' ? (
+                    <span className="mt-0.5 flex items-center gap-1.5 text-[11px] text-on-surface-variant">
+                      {workMeta ? <span className="truncate">{workMeta}</span> : null}
+                      {workFormat === 'script' ? (
+                        <Badge
+                          variant="secondary"
+                          className="shrink-0 bg-secondary-container px-1.5 py-0 font-sans text-[10px] text-on-secondary-container"
+                        >
+                          脚本
+                        </Badge>
+                      ) : null}
                     </span>
                   ) : null}
                 </span>

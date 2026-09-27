@@ -6,6 +6,8 @@ import {
   workAiTextExport,
   workEpubExport,
   workFolderZipExport,
+  workScriptDocxExport,
+  workScriptTextExport,
   worksBundleExport,
 } from './exporters'
 
@@ -76,4 +78,27 @@ describe('exporters（書き出しビルダー・純粋）', () => {
     expect(on.data as string).toContain('# 用語集')
     expect(on.data as string).toContain('## アリス')
   })
+})
+
+it('脚本テキストは .txt で、ト書きを3字下げにした本文を含む', () => {
+  const f = workScriptTextExport(
+    { ...work, format: 'script' },
+    { cover: false, cast: false, synopsis: false },
+  )
+  expect(f.filename).toBe('夜の物語_脚本.txt')
+  expect(f.mime).toContain('text/plain')
+  // 話の題名は見出しに置く（半角の / は全角へ）
+  expect(f.data).toBe('第一話／序\n\n　　　漢字\n　　　重要\n')
+})
+it('脚本 Word は .docx（zip）で、用紙ごとにファイル名が変わる', () => {
+  const a4 = workScriptDocxExport({ ...work, format: 'script' }, 'a4')
+  expect(a4.filename).toBe('夜の物語_脚本_A4.docx')
+  expect(a4.mime).toBe('application/vnd.openxmlformats-officedocument.wordprocessingml.document')
+  expect(Array.from((a4.data as Uint8Array).slice(0, 2))).toEqual([0x50, 0x4b])
+  expect(workScriptDocxExport(work, 'b5').filename).toBe('夜の物語_脚本_B5.docx')
+})
+it('フォルダ zip の本文は形式で変わらない', () => {
+  expect(workFolderZipExport({ ...work, format: 'script' }).data).toEqual(
+    workFolderZipExport(work).data,
+  )
 })

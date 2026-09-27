@@ -168,3 +168,91 @@ describe('ExportDialog（サウンドノベル）', () => {
     expect((file.data as Uint8Array)[1]).toBe(0x4b)
   })
 })
+
+describe('ExportDialog（脚本・提出用）', () => {
+  function makeScriptWork(): Work {
+    return {
+      ...makeWork(),
+      author: '著者',
+      description: '読者向け',
+      synopsis: '結末まで書いた梗概。',
+      format: 'script',
+      glossary: [
+        {
+          id: 'g1',
+          name: 'ユイ',
+          aliases: [],
+          category: '人物',
+          summary: '主人公',
+          createdAt: 0,
+          updatedAt: 0,
+        },
+        { id: 'g2', name: '公園', aliases: [], category: '場所', createdAt: 0, updatedAt: 0 },
+      ],
+      episodes: [
+        { id: 'e1', title: '第一話', blocks: parseEpisodeBody('○公園\n風が吹く\nユイ「はい」') },
+      ],
+    }
+  }
+  it('脚本では「脚本（提出用）」が先頭に出て EPUB・Web投稿形式は出ない。小説では逆', () => {
+    const { unmount } = render(
+      <ExportDialog open onOpenChange={() => {}} work={makeScriptWork()} />,
+    )
+    expect(screen.getByText('脚本（提出用）')).toBeInTheDocument()
+    expect(screen.queryByText('EPUB / 電子書籍')).toBeNull()
+    expect(screen.queryByText('Web投稿形式')).toBeNull()
+    expect(screen.getByRole('button', { name: '書き出し' })).toBeEnabled()
+    expect(screen.getByText('本文 1 枚（20字×20行換算）')).toBeInTheDocument()
+    expect(screen.getByText('用語集の「人物」1 件（名前と説明）を載せます')).toBeInTheDocument()
+    expect(screen.getByText(/作品情報の梗概 10 字を載せます/)).toBeInTheDocument()
+    unmount()
+    render(<ExportDialog open onOpenChange={() => {}} work={makeWork()} />)
+    expect(screen.queryByText('脚本（提出用）')).toBeNull()
+    expect(screen.getByText('EPUB / 電子書籍')).toBeInTheDocument()
+  })
+  it('既定は Word A4。「書き出し」で .docx をダウンロードし、B5 に切り替えられる', () => {
+    const onOpenChange = vi.fn()
+    render(<ExportDialog open onOpenChange={onOpenChange} work={makeScriptWork()} />)
+    expect(screen.getByRole('button', { name: 'Word A4・14pt' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    )
+    fireEvent.click(screen.getByRole('button', { name: '書き出し' }))
+    expect(vi.mocked(triggerDownload)).toHaveBeenCalledTimes(1)
+    const a4 = vi.mocked(triggerDownload).mock.calls[0]?.[0] as ExportFile
+    expect(a4.filename).toBe('銀河の詩_脚本_A4.docx')
+    expect(onOpenChange).toHaveBeenCalledWith(false)
+    vi.mocked(triggerDownload).mockClear()
+    fireEvent.click(screen.getByRole('button', { name: 'Word B5・12pt' }))
+    fireEvent.click(screen.getByRole('button', { name: '書き出し' }))
+    expect((vi.mocked(triggerDownload).mock.calls[0]?.[0] as ExportFile).filename).toBe(
+      '銀河の詩_脚本_B5.docx',
+    )
+  })
+  it('テキストを選ぶと前付け付きの .txt をダウンロードし、前付けを外すと本文だけになる', () => {
+    const onOpenChange = vi.fn()
+    const { unmount } = render(
+      <ExportDialog open onOpenChange={onOpenChange} work={makeScriptWork()} />,
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'テキスト（.txt）' }))
+    fireEvent.click(screen.getByRole('button', { name: '書き出し' }))
+    expect(vi.mocked(triggerDownload)).toHaveBeenCalledTimes(1)
+    const full = vi.mocked(triggerDownload).mock.calls[0]?.[0] as ExportFile
+    expect(full.filename).toBe('銀河の詩_脚本.txt')
+    expect(full.data as string).toContain('登場人物表\n\nユイ　主人公')
+    expect(full.data as string).toContain('梗概\n\n　結末まで書いた梗概。')
+    expect(full.data as string).toContain('○公園\n　　　風が吹く\nユイ「はい」')
+    expect(full.data as string).not.toContain('読者向け')
+    expect(onOpenChange).toHaveBeenCalledWith(false)
+    unmount()
+    vi.mocked(triggerDownload).mockClear()
+    render(<ExportDialog open onOpenChange={() => {}} work={makeScriptWork()} />)
+    fireEvent.click(screen.getByRole('button', { name: 'テキスト（.txt）' }))
+    fireEvent.click(screen.getByRole('switch', { name: /表紙/ }))
+    fireEvent.click(screen.getByRole('switch', { name: /登場人物表/ }))
+    fireEvent.click(screen.getByRole('switch', { name: /梗概/ }))
+    fireEvent.click(screen.getByRole('button', { name: '書き出し' }))
+    const bodyOnly = vi.mocked(triggerDownload).mock.calls[0]?.[0] as ExportFile
+    expect(bodyOnly.data).toBe('第一話\n\n○公園\n　　　風が吹く\nユイ「はい」\n')
+  })
+})

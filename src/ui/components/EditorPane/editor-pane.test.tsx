@@ -355,6 +355,18 @@ function NotationHarness({ initial = '' }: { initial?: string }) {
       <button type="button" onClick={() => ref.current?.applyNotation('ref')}>
         用語集
       </button>
+      <button type="button" onClick={() => ref.current?.applyNotation('slug')}>
+        柱
+      </button>
+      <button type="button" onClick={() => ref.current?.applyNotation('dialogue')}>
+        セリフ
+      </button>
+      <button type="button" onClick={() => ref.current?.applyNotation('ellipsis')}>
+        三点リーダー
+      </button>
+      <button type="button" onClick={() => ref.current?.applyNotation('dash')}>
+        ダッシュ
+      </button>
       <EditorPane ref={ref} value={value} onChange={setValue} />
     </>
   )
@@ -481,4 +493,188 @@ describe('EditorPane（記法のショートカット）', () => {
     fireEvent.keyDown(ta, { key: 'b', metaKey: true })
     expect(ta.value).toContain('《《》》')
   })
+})
+
+it.each([
+  { kind: '柱', initial: '前行\n公園', start: 5, end: 5, expected: '前行\n○公園', caret: 4 },
+  { kind: '柱', initial: '公園', start: 0, end: 2, expected: '○公園', caret: 3 },
+  { kind: 'セリフ', initial: 'ユイ', start: 2, end: 2, expected: 'ユイ「」', caret: 3 },
+  {
+    kind: 'セリフ',
+    initial: 'ユイこんにちは',
+    start: 2,
+    end: 7,
+    expected: 'ユイ「こんにちは」',
+    caret: 9,
+  },
+])('$kind の挿入とキャレット: $initial', ({ kind, initial, start, end, expected, caret }) => {
+  render(<NotationHarness initial={initial} />)
+  const ta = screen.getByRole('textbox', { name: '本文' }) as HTMLTextAreaElement
+  select(ta, start, end)
+  fireEvent.click(screen.getByRole('button', { name: kind }))
+  expect(ta).toHaveValue(expected)
+  expect(ta.selectionStart).toBe(caret)
+})
+
+it('小説でも Ctrl+Alt+D で選択範囲を「」で囲む', () => {
+  render(<NotationHarness initial="本文" />)
+  const ta = screen.getByRole('textbox', { name: '本文' }) as HTMLTextAreaElement
+  select(ta, 0, 2)
+  fireEvent.keyDown(ta, { key: 'd', code: 'KeyD', ctrlKey: true, altKey: true })
+  expect(ta).toHaveValue('「本文」')
+  expect(ta.selectionStart).toBe(4)
+})
+it('空のセリフは内側にキャレットを置き、IME中は挿入しない', () => {
+  render(<NotationHarness />)
+  const ta = screen.getByRole('textbox', { name: '本文' }) as HTMLTextAreaElement
+  fireEvent.keyDown(ta, { key: 'd', code: 'KeyD', ctrlKey: true, altKey: true })
+  expect(ta).toHaveValue('「」')
+  expect(ta.selectionStart).toBe(1)
+  fireEvent.compositionStart(ta)
+  fireEvent.keyDown(ta, { key: 'd', code: 'KeyD', ctrlKey: true, altKey: true })
+  expect(ta).toHaveValue('「」')
+})
+it.each([
+  ['e', 'KeyE', '……', '三点リーダー'],
+  ['m', 'KeyM', '――', 'ダッシュ'],
+])('Ctrl+Alt+%s で %s を2マス分入れ、選択があれば置き換える（小説でも使える）', (key, code, mark, label) => {
+  render(<NotationHarness initial="前後" />)
+  const ta = screen.getByRole('textbox', { name: '本文' }) as HTMLTextAreaElement
+  select(ta, 1, 1)
+  fireEvent.keyDown(ta, { key, code, ctrlKey: true, altKey: true })
+  expect(ta).toHaveValue(`前${mark}後`)
+  expect(ta.selectionStart).toBe(3)
+  select(ta, 0, 1)
+  fireEvent.click(screen.getByRole('button', { name: label }))
+  expect(ta).toHaveValue(`${mark}${mark}後`)
+})
+it('脚本ではプレイスホルダーでト書きの自動字下げを案内する', () => {
+  const { rerender } = render(<EditorPane value="" onChange={() => {}} />)
+  expect(screen.getByPlaceholderText(/ここから書き始めましょう/)).toBeInTheDocument()
+  rerender(<EditorPane scriptMode value="" onChange={() => {}} />)
+  expect(
+    screen.getByPlaceholderText(/それ以外の行はト書きとして.*3字下がります/),
+  ).toBeInTheDocument()
+})
+it('場面転換・丸括弧・隅付き括弧のキーは小説では効かない', () => {
+  render(<NotationHarness initial="本文" />)
+  const ta = screen.getByRole('textbox', { name: '本文' }) as HTMLTextAreaElement
+  select(ta, 0, 2)
+  for (const [key, code] of [
+    ['s', 'KeyS'],
+    ['p', 'KeyP'],
+    ['b', 'KeyB'],
+  ]) {
+    expect(fireEvent.keyDown(ta, { key, code, ctrlKey: true, altKey: true })).toBe(true)
+  }
+  expect(ta).toHaveValue('本文')
+  expect(screen.queryByRole('button', { name: '場面転換' })).toBeNull()
+})
+it('Ctrl+Shift+I と Alt を含むキーは既存ショートカットと誤認しない', () => {
+  render(<NotationHarness />)
+  const ta = screen.getByRole('textbox', { name: '本文' })
+  expect(fireEvent.keyDown(ta, { key: 'I', ctrlKey: true, shiftKey: true })).toBe(true)
+  expect(fireEvent.keyDown(ta, { key: 'i', ctrlKey: true, altKey: true })).toBe(true)
+  expect(ta).toHaveValue('')
+})
+it('柱のショートカットは脚本のみ、校正候補から本文の該当行を選べる', () => {
+  const onChange = vi.fn()
+  const { rerender } = render(<EditorPane value={'○公園\n「はい」'} onChange={onChange} />)
+  const ta = screen.getByRole('textbox', { name: '本文' }) as HTMLTextAreaElement
+  expect(fireEvent.keyDown(ta, { key: 'h', code: 'KeyH', ctrlKey: true, altKey: true })).toBe(true)
+  expect(screen.queryByText(/脚本の書式チェック/)).toBeNull()
+  rerender(<EditorPane scriptMode value={'○公園\n「はい」'} onChange={onChange} />)
+  fireEvent.click(screen.getByText(/脚本の書式チェック/))
+  fireEvent.click(screen.getByRole('button', { name: /2行：話者名のないセリフ/ }))
+  expect(ta.selectionStart).toBe(4)
+  expect(ta.selectionEnd).toBe(8)
+  expect(onChange).not.toHaveBeenCalled()
+  select(ta, 4, 4)
+  fireEvent.keyDown(ta, { key: 'h', code: 'KeyH', ctrlKey: true, altKey: true })
+  expect(onChange).toHaveBeenCalledWith('○公園\n○「はい」')
+})
+
+it.each([
+  ['', 0, 0, '　　　'],
+  ['本文', 1, 1, '　　　本文'],
+  ['　本文', 2, 2, '　　　本文'],
+  ['　　　　本文', 5, 5, '　　　本文'],
+  ['前\n　動く\n歩く\n次', 2, 8, '前\n　　　動く\n　　　歩く\n次'],
+] as const)('ト書きの字下げを3字に揃える: %s', (initial, start, end, expected) => {
+  function ScriptHarness() {
+    const [value, setValue] = useState(initial as string)
+    return <EditorPane scriptMode value={value} onChange={setValue} />
+  }
+  render(<ScriptHarness />)
+  const ta = screen.getByRole('textbox', { name: '本文' }) as HTMLTextAreaElement
+  select(ta, start, end)
+  fireEvent.keyDown(ta, { key: 'Tab', code: 'Tab' })
+  expect(ta).toHaveValue(expected)
+  fireEvent.keyDown(ta, { key: 'Tab', code: 'Tab' })
+  expect(ta).toHaveValue(expected)
+})
+
+function ScriptHarness({ initial = '' }: { initial?: string }) {
+  const [value, setValue] = useState(initial)
+  return <EditorPane scriptMode value={value} onChange={setValue} />
+}
+
+it('Shift+Tab とスマホの「ト書き解除」で行頭の字下げを外す', () => {
+  render(<ScriptHarness initial={'　　　動く\n　　　歩く\n次'} />)
+  const ta = screen.getByRole('textbox', { name: '本文' }) as HTMLTextAreaElement
+  select(ta, 5, 5)
+  fireEvent.keyDown(ta, { key: 'Tab', code: 'Tab', shiftKey: true })
+  expect(ta).toHaveValue('動く\n　　　歩く\n次')
+  expect(ta.selectionStart).toBe(2)
+  select(ta, 0, 4)
+  fireEvent.keyDown(ta, { key: 'Tab', code: 'Tab', shiftKey: true })
+  expect(ta).toHaveValue('動く\n歩く\n次')
+})
+
+it('字下げした行の Enter は次の行も字下げ（Tab 直後の空白だけの行でも継続）', () => {
+  render(<ScriptHarness initial={'　　　風が吹く'} />)
+  const ta = screen.getByRole('textbox', { name: '本文' }) as HTMLTextAreaElement
+  select(ta, 7, 7)
+  fireEvent.keyDown(ta, { key: 'Enter', code: 'Enter' })
+  expect(ta).toHaveValue('　　　風が吹く\n　　　')
+  expect(ta.selectionStart).toBe(11)
+  fireEvent.keyDown(ta, { key: 'Enter', code: 'Enter' })
+  expect(ta).toHaveValue('　　　風が吹く\n　　　\n　　　')
+  expect(ta.selectionStart).toBe(15)
+  // 抜けるのは Shift+Tab。字下げの無い行の Enter は横取りしない（標準の改行に任せる）。
+  fireEvent.keyDown(ta, { key: 'Tab', code: 'Tab', shiftKey: true })
+  expect(ta).toHaveValue('　　　風が吹く\n　　　\n')
+  expect(fireEvent.keyDown(ta, { key: 'Enter', code: 'Enter' })).toBe(true)
+  expect(ta).toHaveValue('　　　風が吹く\n　　　\n')
+})
+
+it('Tab の字下げは脚本だけ。IME 中と Esc 直後の Tab は素通しする', () => {
+  const { unmount } = render(<NotationHarness initial="本文" />)
+  let ta = screen.getByRole('textbox', { name: '本文' }) as HTMLTextAreaElement
+  expect(fireEvent.keyDown(ta, { key: 'Tab', code: 'Tab' })).toBe(true)
+  expect(ta).toHaveValue('本文')
+  unmount()
+  render(<ScriptHarness initial="本文" />)
+  ta = screen.getByRole('textbox', { name: '本文' }) as HTMLTextAreaElement
+  fireEvent.compositionStart(ta)
+  expect(fireEvent.keyDown(ta, { key: 'Tab', code: 'Tab' })).toBe(true)
+  fireEvent.compositionEnd(ta)
+  expect(ta).toHaveValue('本文')
+  fireEvent.keyDown(ta, { key: 'Escape', code: 'Escape' })
+  expect(fireEvent.keyDown(ta, { key: 'Tab', code: 'Tab' })).toBe(true)
+  expect(ta).toHaveValue('本文')
+  expect(fireEvent.keyDown(ta, { key: 'Tab', code: 'Tab' })).toBe(false)
+  expect(ta).toHaveValue('　　　本文')
+})
+it('場面転換は脚本で、選択した本文を消さず現在行の前に *** 行を置く', () => {
+  function ScriptHarness() {
+    const [value, setValue] = useState('前\n次の場面')
+    return <EditorPane scriptMode value={value} onChange={setValue} />
+  }
+  render(<ScriptHarness />)
+  const ta = screen.getByRole('textbox', { name: '本文' }) as HTMLTextAreaElement
+  select(ta, 3, 6)
+  fireEvent.keyDown(ta, { key: 's', code: 'KeyS', ctrlKey: true, altKey: true })
+  expect(ta).toHaveValue('前\n***\n次の場面')
+  expect(ta.selectionStart).toBe(6)
 })

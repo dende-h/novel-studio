@@ -135,6 +135,8 @@ export const PLATFORM_MAX_TAG_LENGTH = 30
  * 短いほう（EPUB の dc:description と同じ 250 字）に合わせる。
  */
 export const MAX_DESCRIPTION_LENGTH = 250
+/** 脚本の梗概（提出用のあらすじ）。募集要項は 400〜1200 字が多いので上限をそこに置く。 */
+export const MAX_SYNOPSIS_LENGTH = 1200
 
 /**
  * コトノハ-grove- （novel platform）へ投稿するときだけ意味を持つ設定。
@@ -188,6 +190,9 @@ export const WorkPlatformSchema = z.object({
 })
 export type WorkPlatform = z.infer<typeof WorkPlatformSchema>
 
+export const WorkFormatSchema = z.enum(['novel', 'script'])
+export type WorkFormat = z.infer<typeof WorkFormatSchema>
+
 export const WorkSchema = z.object({
   id: z.string(),
   title: z.string(),
@@ -206,5 +211,9 @@ export const WorkSchema = z.object({
     .optional(),
   // コトノハ-grove- （novel platform）への投稿設定。投稿しない作品は持たない・旧データ互換のため任意。
   platform: WorkPlatformSchema.optional(),
+  format: WorkFormatSchema.optional(),
+  // 脚本の梗概（結末まで書く提出用のあらすじ）。description（読者向け・grove 公開）とは別物。
+  // 脚本の書き出しだけが使う。任意・旧データ互換。
+  synopsis: z.string().optional(),
 })
 export type Work = z.infer<typeof WorkSchema>

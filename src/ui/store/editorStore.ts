@@ -44,7 +44,7 @@ export interface EditorStore {
   getSnapshot(): EditorState
   subscribe(listener: () => void): () => void
   init(): Promise<void>
-  createWork(title: string): Promise<void>
+  createWork(title: string, format?: Work['format']): Promise<void>
   openWork(id: string): Promise<void>
   /**
    * 開いている作品を IndexedDB から読み直してメモリ状態を追随させる（同期の pull 反映用）。
@@ -133,9 +133,12 @@ export interface GlossaryFieldPatch {
 
 /** 作品メタ編集の入力（指定したキーのみ上書き）。 */
 export interface WorkMeta {
+  format?: Work['format']
   title?: string
   author?: string
   description?: string
+  /** 脚本の梗概。空文字 '' は削除（キーを落とす）、undefined は据え置き。 */
+  synopsis?: string
   /**
    * コトノハ-grove- への投稿設定。部分更新はせず丸ごと差し替える（投稿ダイアログが全項目を持つため）。
    * undefined は据え置き。
@@ -274,7 +277,7 @@ export function createEditorStore({
       set({ profile: await profileRepo.get(), profileAccountId: await profileRepo.getAccountId() })
     },
 
-    async createWork(title) {
+    async createWork(title, format) {
       // 著者はプロフィールのペンネームを既定にする（未設定ならキーを付けない）。
       const author = state.profile.penName
       const work: Work = {
@@ -283,6 +286,7 @@ export function createEditorStore({
         episodes: [],
         updatedAt: now(),
         ...(author ? { author } : {}),
+        ...(format === 'script' ? { format } : {}),
       }
       await repo.saveWork(work)
       set({
@@ -505,8 +509,12 @@ export function createEditorStore({
       const existing = await repo.getWork(id)
       if (!existing) return
       // coverImage は空文字 '' を「削除」とする（undefined＝据え置きと区別するため別扱い）。
-      const { coverImage, ...rest } = meta
+      const { coverImage, format, synopsis, ...rest } = meta
       const work: Work = { ...existing, ...rest, updatedAt: now() }
+      if (format === 'novel') delete work.format
+      else if (format !== undefined) work.format = format
+      if (synopsis === '') delete work.synopsis
+      else if (synopsis !== undefined) work.synopsis = synopsis
       if (coverImage === '') delete work.coverImage
       else if (coverImage !== undefined) work.coverImage = coverImage
       await repo.saveWork(work)
