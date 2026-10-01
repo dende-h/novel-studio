@@ -17,10 +17,10 @@ import {
   DialogTitle,
 } from '@/ui/components/ui/dialog'
 
-type ClientTab = 'claude' | 'genspark'
+type ClientTab = 'claude' | 'chatgpt'
 const TABS: { id: ClientTab; label: string }[] = [
   { id: 'claude', label: 'Claude' },
-  { id: 'genspark', label: 'Genspark' },
+  { id: 'chatgpt', label: 'ChatGPT' },
 ]
 
 interface McpConnectDialogProps {
@@ -103,7 +103,9 @@ function TokenHint() {
 
 /**
  * AI・MCP アクセス（リモート MCP）の接続管理（会員のみ）。
- * 動作確認済みは Claude コネクタ（OAuth・トークン不要）／Genspark コネクタ（Bearer ヘッダー）の2系統。
+ * 動作確認済みは Claude コネクタ／ChatGPT の MCP アプリ（どちらも OAuth・トークン不要）の2系統。
+ * `mcp_` 長期トークン（Bearer 直接設定）はそれ以外の AI 向けに残し、折りたたみの中に置く
+ * （Genspark は送受信の容量が足りず読み書きできないことを 2026-09 に確認し、案内から外した）。
  * AI は作品の読み取りに加え編集・用語集・構造・バックアップ操作もできる
  * （AI の編集は「AIの変更を取り込む」で反映するまでローカルには影響しない）。
  * トークンは作品を読み書きできる鍵なので共有しない／漏れたら失効。平文表示は発行時の一度きり。
@@ -124,7 +126,8 @@ export function McpConnectDialog({
   const [client, setClient] = useState<ClientTab>('claude') // 設定手順のタブ
 
   const mcpUrl = `${window.location.origin}/api/mcp`
-  const gensparkHeader = plaintext
+  // Bearer を直接設定する AI 向けのリクエストヘッダー（発行直後だけ組める）。
+  const bearerHeader = plaintext
     ? JSON.stringify({ 'Content-Type': 'application/json', Authorization: `Bearer ${plaintext}` })
     : ''
 
@@ -196,7 +199,7 @@ export function McpConnectDialog({
           </DialogTitle>
           <DialogDescription>
             お使いの AI に、あなたの作品を<strong>読み書き</strong>させる設定です。動作確認済みは{' '}
-            <strong>Claude</strong> と <strong>Genspark</strong> の2つです。
+            <strong>Claude</strong> と <strong>ChatGPT</strong> の2つです。
           </DialogDescription>
         </DialogHeader>
 
@@ -273,36 +276,55 @@ export function McpConnectDialog({
                 </div>
               )}
 
-              {client === 'genspark' && (
+              {client === 'chatgpt' && (
                 <div className="space-y-2">
                   <p className="font-sans text-on-surface-variant text-xs leading-relaxed">
-                    Genspark のチャットからコネクタとして追加します。
+                    ChatGPT に MCP アプリとして追加します。<strong>トークンは不要</strong>
+                    （ログインで認証）。先に開発者モードをオンにします。
                   </p>
                   <Steps
                     items={[
                       <>
-                        チャットの <strong>＋</strong> →「コネクタ」→「コネクタを追加」
+                        設定 →「プラグイン」→ 一覧の下の<strong>「開発者モード」</strong>
+                        を開き、スイッチをオン
                       </>,
                       <>
-                        <strong>「新しい MCP サーバーを追加」</strong>
+                        左メニューの「プラグイン」→ 右上の <strong>＋</strong> →「アプリを作成」→
+                        <strong>「MCP アプリを作成」</strong>
                       </>,
                       <>
-                        サーバー名（任意）を入力／サーバータイプは <strong>StreamableHttp</strong>
-                        （既定）
+                        名前（例：コトノハ）を入力し、「サーバーの URL」に下記を貼る。認証は{' '}
+                        <strong>OAuth</strong>（既定）
                       </>,
-                      <>サーバー URL：下記を貼る</>,
-                      <>リクエストヘッダー：下記 JSON を貼る</>,
-                      <>「サーバーを追加」</>,
+                      <>注意事項を読み、「理解したうえで、続行します」にチェック →「作成する」</>,
+                      <>
+                        「サインイン」→ 表示されるログイン画面で<strong>許可</strong>
+                        （あなたの コトノハ-leaf- アカウント）
+                      </>,
                     ]}
                   />
+                  <CopyRow label="サーバーの URL" value={mcpUrl} />
+                </div>
+              )}
+
+              {/* Bearer を直接設定する AI 向け（上級者向け）。目立たせず、必要な人だけ開く。 */}
+              <details className="group rounded-lg border border-outline-variant/30">
+                <summary className="cursor-pointer list-none px-3 py-2 font-sans text-on-surface-variant text-xs transition-colors hover:text-on-surface">
+                  ほかの AI につなぐ（トークンを直接設定）
+                </summary>
+                <div className="space-y-2 border-outline-variant/30 border-t px-3 py-2">
+                  <p className="font-sans text-on-surface-variant text-xs leading-relaxed">
+                    リクエストヘッダーに Bearer トークンを設定できる AI 向けです。サーバー URL
+                    と下記のヘッダーを、その AI の MCP 設定に貼ります。
+                  </p>
                   <CopyRow label="サーバー URL" value={mcpUrl} />
                   {plaintext ? (
-                    <CopyRow label="リクエストヘッダー" value={gensparkHeader} />
+                    <CopyRow label="リクエストヘッダー" value={bearerHeader} />
                   ) : (
                     <TokenHint />
                   )}
                 </div>
-              )}
+              </details>
 
               {/* 接続中の管理（再発行・解除） */}
               {connected && (

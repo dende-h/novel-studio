@@ -38,8 +38,10 @@ function Faq({ q, children }: { q: string; children: ReactNode }) {
   )
 }
 
-/** ヘルプページ（基本の使い方・よくある質問・お問い合わせ）。 */
+/** ヘルプページ（基本の使い方・AI 連携の設定・よくある質問・お問い合わせ）。 */
 export function HelpPage() {
+  // AI 側に登録する MCP サーバーの URL。接続画面（McpConnectDialog）と同じ値。
+  const mcpUrl = `${window.location.origin}/api/mcp`
   return (
     <PageLayout
       title="ヘルプ"
@@ -67,6 +69,50 @@ export function HelpPage() {
           <HowTo term="バックアップする">
             「データ管理」からバックアップの書き出し／取り込みができます。有料会員は端末間の自動同期に加え、
             クラウドへの自動バックアップも行われます。
+          </HowTo>
+        </div>
+      </Section>
+
+      {/* AI 連携（MCP）の設定手順。有料の機能なので、中身の前にそれを言う（toc-copy）。
+          手順の文言は接続画面（McpConnectDialog）と揃える。 */}
+      <Section title="AI に読み書きさせる（MCP）">
+        <p className="mb-3 text-[13px] text-on-surface-variant leading-relaxed">
+          ここから先は、有料のクラウド版の機能です。お使いの AI チャットにコトノハ-leaf-
+          をつなぐと、AI
+          が作品の本文・用語集・世界観設定・プロットを読み、直した本文を書き戻せます。
+          動作確認済みの AI は <strong>Claude</strong> と <strong>ChatGPT</strong> です。
+          どちらもログインで認証するので、トークンの貼り付けは要りません。
+        </p>
+        <div className="rounded-lg border border-outline-variant/30 bg-surface-container-lowest px-4 py-1">
+          <HowTo term="1. コトノハ側で接続をオンにする">
+            マイライブラリの「データ管理」→「AI に接続（MCP）」を開きます。
+            同意にチェックして「接続する」を押すと、AI 側に登録する URL と手順が表示されます。URL は{' '}
+            <code className="rounded bg-surface-container-high px-1 py-0.5 font-mono text-[12px]">
+              {mcpUrl}
+            </code>{' '}
+            です。
+          </HowTo>
+          <HowTo term="2a. Claude につなぐ">
+            Claude の設定 →「コネクタ」→「カスタムコネクタを追加」。「リモート MCP サーバーの
+            URL」に上の URL を貼って追加し、「接続」を押します。表示されるコトノハ-leaf-
+            のログイン画面で「許可する」を選べば完了です。
+          </HowTo>
+          <HowTo term="2b. ChatGPT につなぐ">
+            先に開発者モードをオンにします。ChatGPT の設定 →「プラグイン」→
+            一覧の下の「開発者モード」を開き、スイッチをオン。 次に左メニューの「プラグイン」→
+            右上の「＋」→「アプリを作成」→「MCP アプリを作成」。名前（例：コトノハ）を入力し、
+            「サーバーの URL」に上の URL を貼ります。認証は OAuth
+            のまま、注意事項を読んで「理解したうえで、続行します」にチェックし、「作成する」。
+            「サインイン」を押すとコトノハ-leaf-
+            のログイン画面が開くので、「許可する」を選べば完了です。
+          </HowTo>
+          <HowTo term="AI が直した内容を原稿に反映する">
+            AI
+            の編集はクラウドに入り、この端末の原稿はすぐには変わりません。マイライブラリの「データ管理」→「AIの変更を取り込む」を押したときに反映されます。
+          </HowTo>
+          <HowTo term="接続をやめる">
+            「AI に接続（MCP）」の画面で「接続を解除」を押します。AI
+            側に出した許可も同時に無効になります。
           </HowTo>
         </div>
       </Section>

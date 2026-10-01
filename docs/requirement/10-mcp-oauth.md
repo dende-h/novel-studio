@@ -261,8 +261,10 @@ scope・resource・失効時刻・回転元）。期限切れの掃除は token 
 
 ### 画面と文言
 
-接続ダイアログ（`McpConnectDialog`）のタブは今 `claude` / `genspark` の 2 つ。ChatGPT を足し、
-**開発者モードの入れ方から書く**（§2-E）。同意画面の文言は `toc-copy` スキルの語彙で書く。
+接続ダイアログ（`McpConnectDialog`）のタブは `claude` / `chatgpt` の 2 つ（**2026-09-27 に ChatGPT を実地確認して
+Genspark と入れ替えた**。Genspark は送受信の容量が足りず読み書きできない）。ChatGPT の手順は
+**開発者モードの入れ方から書く**（§2-E）。Bearer を直接設定する AI 向けの `mcp_` トークンは折りたたみに残す。
+同じ手順はヘルプ（`HelpPage`）にも載せ、有料機能であることを先に言う。同意画面の文言は `toc-copy` スキルの語彙で書く。
 
 ---
 

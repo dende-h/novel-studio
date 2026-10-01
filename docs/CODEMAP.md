@@ -56,7 +56,7 @@ Cloudflare Pages Functions
 | 課金・会員判定 | `src/core/billing/` + `functions/api/billing/` + `functions/api/_lib/membership.ts` |
 | 無料／有料の線（どの機能をどの状態で出すか） | `src/ui/Root.tsx`（`canUseCreativeTools` ほか）+ `src/ui/auth/derive-status.ts` |
 | AI/MCP 連携（外部から原稿を編集） | `src/core/mcp-edit/index.ts` + `functions/api/_lib/mcp-server.ts` |
-| MCP コネクタの接続（OAuth・**認可サーバーは自前**） | 純ロジックは `functions/api/_lib/oauth-server.ts`、SQL は `oauth-store.ts`（migration 0010）、窓口は `functions/api/oauth/[[path]].ts`、同意画面は `src/ui/components/OAuthConsent/` ＋ `functions/api/oauth/consent.ts`、ディスカバリは `functions/_middleware.ts`。経緯と決定表は `docs/requirement/10-mcp-oauth.md` |
+| MCP コネクタの接続（OAuth・**認可サーバーは自前**） | 純ロジックは `functions/api/_lib/oauth-server.ts`、SQL は `oauth-store.ts`（migration 0010）、窓口は `functions/api/oauth/[[path]].ts`、同意画面は `src/ui/components/OAuthConsent/` ＋ `functions/api/oauth/consent.ts`、ディスカバリは `functions/_middleware.ts`。**利用者向けの接続手順**（タブは Claude / ChatGPT・Bearer 直接設定は折りたたみ）は `src/ui/components/McpConnectDialog/mcp-connect-dialog.tsx`、同じ手順のヘルプ掲載は `src/ui/components/HelpPage/help-page.tsx`——**文言は 2 か所を揃える**。経緯と決定表は `docs/requirement/10-mcp-oauth.md` |
 | **UI 部品・ヘルパを新規に作りたい** | まず §3「共通部品カタログ」で在庫を確認する（重複作成の防止） |
 | **掲示板**（記名式スレッド・お知らせ・アンケート・通報）の挙動 | 画面は `src/ui/components/BoardPage/`、判断は `src/core/board/`、SQL は `functions/api/_lib/board-store.ts`、窓口は `functions/api/board/` |
 | 掲示板に貼られた外部リンクの OGP（取得可否・画像の許可表） | `src/core/board/link.ts`（判定）+ `functions/api/_lib/board-link-fetch.ts`（取得とキャッシュ） |
@@ -368,7 +368,7 @@ uv run .claude/skills/natural-japanese/scripts/lint.py <file>   # 仕事の文�
 | `docs/requirement/07-novel-game.md` | **サウンドノベル書き出し（ゲーム化）の設計**（演出譜・素材・課金の線・G0〜G3） |
 | `docs/game/bgm-presets.md` | 組み込み BGM 24 曲のファイル名・用途と Suno 用の制作プロンプト（管理ページへ入れる手順つき） |
 | `docs/requirement/09-board.md` | 掲示板（記名式スレッド・お知らせ・アンケート・外部リンクの OGP）の設計と決定表 |
-| `docs/requirement/10-mcp-oauth.md` | MCP の OAuth（ChatGPT で繋がらない原因の実測と診断・Phase 1 の撤去・自前 認可サーバーの設計案） |
+| `docs/requirement/10-mcp-oauth.md` | MCP の OAuth（ChatGPT で繋がらなかった原因の実測と診断・Phase 1 の撤去・自前 認可サーバーの設計と、2026-09 の ChatGPT 実地確認） |
 | `public/board-guidelines.html` | 掲示板ガイドライン（`/board-guidelines` で公開・通報や上限の文言はここと揃える） |
 | `docs/requirement/99-open-questions.md` | 未決事項 |
 | `design/stitch/*/index.html` | 画面のデザインカンプ（+ スクリーンショット） |

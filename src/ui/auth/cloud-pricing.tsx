@@ -15,7 +15,7 @@ import { Button } from '@/ui/components/ui/button'
 const FEATURES = [
   '複数端末で同じ原稿を同期',
   '全データ暗号化のクラウドバックアップ＆復元',
-  'AI に読み書きさせる（Claude・Genspark／MCP）',
+  'AI に読み書きさせる（Claude・ChatGPT／MCP）',
 ]
 
 const PLANS: Array<{
