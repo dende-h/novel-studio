@@ -403,7 +403,7 @@ export function PublishPage({
               公開にはサインインが必要です
             </h2>
             <p className="mt-1.5 text-[13px] text-on-surface-variant leading-relaxed">
-              執筆アカウントがそのまま公開アカウントになります。書き出し（EPUB・カクヨム・なろう）は
+              執筆アカウントがそのまま公開アカウントになります。書き出しは
               サインインしなくても使えます。
             </p>
             {onSignIn ? (
@@ -549,17 +549,20 @@ export function PublishPage({
                       </span>
                     </div>
 
-                    {/* 書き出しは話ごと。コトノハ-grove- に出さない話でも、外部サイトへは出せる */}
-                    <div className="flex shrink-0 items-center gap-1">
-                      <ExportButton
-                        label="カクヨム"
-                        onClick={() => triggerDownload(episodeKakuyomuExport(work.title, ep))}
-                      />
-                      <ExportButton
-                        label="なろう"
-                        onClick={() => triggerDownload(episodeNarouExport(work.title, ep))}
-                      />
-                    </div>
+                    {/* 書き出しは話ごと。コトノハ-grove- に出さない話でも、外部サイトへは出せる。
+                        脚本は投稿サイトの体裁に合わないので出さない（Word・テキストは「書き出し」から）。 */}
+                    {work.format === 'script' ? null : (
+                      <div className="flex shrink-0 items-center gap-1">
+                        <ExportButton
+                          label="カクヨム"
+                          onClick={() => triggerDownload(episodeKakuyomuExport(work.title, ep))}
+                        />
+                        <ExportButton
+                          label="なろう"
+                          onClick={() => triggerDownload(episodeNarouExport(work.title, ep))}
+                        />
+                      </div>
+                    )}
 
                     <div className="flex shrink-0 items-center gap-2">
                       {/* サウンドノベルにする話を選ぶ。作品の切り替えが ON のときだけ意味を持つ */}
@@ -754,19 +757,28 @@ export function PublishPage({
         {/* 5. 手元に取り出す（作品まるごと） */}
         <section className="rounded-xl border border-outline-variant/40 bg-surface-container-lowest p-5">
           <h2 className="font-semibold font-serif text-[17px] text-on-surface">作品を書き出す</h2>
-          <p className="mt-1.5 text-[13px] text-on-surface-variant leading-relaxed">
-            カクヨム・小説家になろうへは話ごとに出せます（各話の行のボタン）。 EPUB
-            は1作品＝1冊として、縦書きで書き出します。
-          </p>
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => triggerDownload(workEpubExport(work))}
-            className="mt-4 gap-2 text-primary"
-          >
-            <BookText className="size-4" aria-hidden />
-            EPUB を書き出す
-          </Button>
+          {work.format === 'script' ? (
+            <p className="mt-1.5 text-[13px] text-on-surface-variant leading-relaxed">
+              脚本は Word（縦書き
+              20字×20行）か、体裁を整えたテキスト（.txt）に書き出せます。エディタの「書き出し」から「脚本（提出用）」を選んでください。
+            </p>
+          ) : (
+            <>
+              <p className="mt-1.5 text-[13px] text-on-surface-variant leading-relaxed">
+                カクヨム・小説家になろうへは話ごとに出せます（各話の行のボタン）。 EPUB
+                は1作品＝1冊として、縦書きで書き出します。
+              </p>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => triggerDownload(workEpubExport(work))}
+                className="mt-4 gap-2 text-primary"
+              >
+                <BookText className="size-4" aria-hidden />
+                EPUB を書き出す
+              </Button>
+            </>
+          )}
         </section>
 
         {result ? <PublishResultPanel result={result} /> : null}

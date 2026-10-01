@@ -1,12 +1,15 @@
 import { exportBundle } from '../../core/bundle'
+import { buildDocxFiles, type DocxPaper } from '../../core/exporter/toDocx'
 import { buildEpubFiles } from '../../core/exporter/toEpub'
 import { blocksToKakuyomu } from '../../core/exporter/toKakuyomu'
 import { blocksToNarou } from '../../core/exporter/toNarou'
 import { buildNovelGameFiles, type NovelGameOptions } from '../../core/exporter/toNovelGame'
 import { glossaryToPlainText, workToPlainText } from '../../core/exporter/toPlainText'
+import { sheetSourceOf, workToScriptText } from '../../core/exporter/toScriptText'
 import { workToFolder } from '../../core/folder'
 import type { Staging } from '../../core/game'
 import type { Episode, Work } from '../../core/schema'
+import type { SheetFrontMatter } from '../../core/script/layout'
 import { zipStore } from '../../core/zip'
 
 /**
@@ -63,6 +66,28 @@ export function episodeNovelGameExport(
 export function workEpubExport(work: Work): ExportFile {
   const bytes = zipStore(buildEpubFiles(work).map((f) => ({ path: f.path, data: f.content })))
   return { filename: `${safeName(work.title)}.epub`, mime: 'application/epub+zip', data: bytes }
+}
+
+/** 脚本 → 提出用テキスト（柱・ト書き・セリフの体裁を整えた .txt）。 */
+export function workScriptTextExport(work: Work, front?: SheetFrontMatter): ExportFile {
+  return {
+    filename: `${safeName(work.title)}_脚本.txt`,
+    mime: 'text/plain;charset=utf-8',
+    data: workToScriptText(work, front),
+  }
+}
+
+/** 脚本 → Word（.docx・縦書き 20字×20行の原稿用紙設定・柱書き／ト書き／セリフのスタイル付き）。 */
+export function workScriptDocxExport(
+  work: Work,
+  paper: DocxPaper,
+  front?: SheetFrontMatter,
+): ExportFile {
+  return {
+    filename: `${safeName(work.title)}_脚本_${paper.toUpperCase()}.docx`,
+    mime: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    data: zipStore(buildDocxFiles(sheetSourceOf(work), { paper, front })),
+  }
 }
 
 export function worksBundleExport(works: Work[]): ExportFile {

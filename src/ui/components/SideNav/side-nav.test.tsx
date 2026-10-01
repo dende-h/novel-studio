@@ -113,6 +113,14 @@ describe('SideNav（サイドバー）', () => {
     render(<SideNav {...baseProps} workTitle="月と剣の物語" workMeta="3話 ・ 9,000字" />)
     expect(screen.getByText('月と剣の物語')).toBeInTheDocument()
     expect(screen.getByText('3話 ・ 9,000字')).toBeInTheDocument()
+    expect(screen.queryByText('脚本')).toBeNull()
+  })
+
+  it('脚本の作品はカードに「脚本」バッジを出す', () => {
+    render(
+      <SideNav {...baseProps} workTitle="月と剣の物語" workMeta="1話 ・ 0字" workFormat="script" />,
+    )
+    expect(screen.getByText('脚本')).toBeInTheDocument()
   })
 
   it('ライブラリ状態（workTitle 未指定）は本文を書く/用語集を出さず、マイライブラリが active', () => {

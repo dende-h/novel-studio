@@ -14,7 +14,7 @@ import {
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { localDateKey, summarize } from '@/core/activity'
 import { decideBackupNudge, type NudgeDecision } from '@/core/nudge/backup-nudge'
-import type { WorkPlatform } from '@/core/schema'
+import type { WorkFormat, WorkPlatform } from '@/core/schema'
 import type { ActivityRepository } from '@/core/storage/activityRepository'
 import type { GameAssetRepository } from '@/core/storage/gameAssetRepository'
 import type { StagingRepository } from '@/core/storage/stagingRepository'
@@ -169,6 +169,11 @@ export function Library({
   const openProfile = useOpenProfile()
   const { show } = useToast()
   const [newOpen, setNewOpen] = useState(false)
+  const [newFormat, setNewFormat] = useState<WorkFormat>('novel')
+  const openNewWork = () => {
+    setNewFormat('novel')
+    setNewOpen(true)
+  }
   const [exportOpen, setExportOpen] = useState(false)
   /** 公開切り替えの通信中の作品 id（多重送信を防ぐ）。 */
   const [publishBusyId, setPublishBusyId] = useState<string | null>(null)
@@ -257,7 +262,7 @@ export function Library({
     onEnterPublish()
   }
   // 作成しても自動では遷移しない（一覧の先頭に出る）。執筆は「執筆」ボタンから。
-  const handleCreate = (title: string) => void store.createWork(title)
+  const handleCreate = (title: string) => void store.createWork(title, newFormat)
 
   /**
    * 投稿済み作品の公開／下書きを、ライブラリから切り替える。
@@ -349,7 +354,7 @@ export function Library({
           onNavigateTrash={state.trashList.length > 0 ? () => setTrashOpen(true) : undefined}
           onNavigateSettings={onOpenSettings}
           onNavigateHelp={onOpenHelp}
-          cta={{ label: '新しい作品', onClick: () => setNewOpen(true) }}
+          cta={{ label: '新しい作品', onClick: openNewWork }}
           profile={state.profile}
           onEditProfile={openProfile}
         />
@@ -537,7 +542,7 @@ export function Library({
               {/* 新規プロジェクト（カード） */}
               <button
                 type="button"
-                onClick={() => setNewOpen(true)}
+                onClick={openNewWork}
                 className="flex min-h-[300px] flex-col items-center justify-center gap-2.5 rounded-lg border-[1.5px] border-outline-variant/50 border-dashed font-sans text-on-surface-variant transition-colors hover:border-primary hover:bg-accent hover:text-primary"
               >
                 <Plus className="size-[22px]" />
@@ -554,7 +559,7 @@ export function Library({
               {/* 新規プロジェクト（行） */}
               <button
                 type="button"
-                onClick={() => setNewOpen(true)}
+                onClick={openNewWork}
                 className="flex w-full items-center justify-center gap-2 py-3.5 font-sans text-[13px] text-on-surface-variant transition-colors hover:bg-accent hover:text-primary"
               >
                 <Plus className="size-[15px]" />
@@ -569,13 +574,31 @@ export function Library({
         open={newOpen}
         onOpenChange={setNewOpen}
         title="新しいプロジェクト"
-        description="新しい作品のタイトルを決めましょう。あとから変更できます。"
+        description="作品のタイトルと形式を選びます。あとから変更できます。"
         label="作品タイトル"
         placeholder="無題の作品"
         defaultValue="無題の作品"
         submitLabel="作成"
         onSubmit={(title) => handleCreate(title)}
-      />
+      >
+        <fieldset className="space-y-2">
+          <legend className="font-medium text-sm">形式</legend>
+          <div className="flex gap-6">
+            {(['novel', 'script'] as const).map((format) => (
+              <label key={format} className="flex items-center gap-2 text-sm">
+                <input
+                  type="radio"
+                  name="new-work-format"
+                  value={format}
+                  checked={newFormat === format}
+                  onChange={() => setNewFormat(format)}
+                />
+                {format === 'novel' ? '小説' : '脚本'}
+              </label>
+            ))}
+          </div>
+        </fieldset>
+      </TitlePromptDialog>
       <ExportDialog
         open={exportOpen}
         onOpenChange={setExportOpen}
@@ -616,8 +639,10 @@ export function Library({
           title: metaTarget?.title,
           author: metaTarget?.author,
           description: metaTarget?.description,
+          synopsis: metaTarget?.synopsis,
           // 表紙を初期値に含めないと、保存時に '' 扱いとなり既存表紙が消えてしまう。
           coverImage: metaTarget?.coverImage,
+          format: metaTarget?.format,
         }}
         onSubmit={(values) => {
           if (metaTarget) void store.updateWorkMeta(metaTarget.id, values)

@@ -222,7 +222,7 @@ test('記法バーの参照で空枠を置いてから候補確定しても括�
 
   const ta = page.getByRole('textbox', { name: '本文' })
   await ta.click()
-  await page.getByRole('button', { name: '参照', exact: true }).click()
+  await page.getByRole('button', { name: '用語引用', exact: true }).click()
   await expect(ta).toHaveValue('[[]]')
 
   // 空枠の中（キャレットは [[ の直後）に打つ
@@ -287,4 +287,25 @@ test('記法バー：フォーカス中だけ出て、選択を囲む。@サジ�
   await ta2.pressSequentially('@アリ')
   await expect(page.getByRole('listbox', { name: '参照候補' })).toBeVisible()
   await expect(bar).toBeHidden()
+})
+
+test('脚本形式のスマホ記法バーとプレビュー', async ({ page }) => {
+  await page.goto('/')
+  await createWork(page, 'スマホ脚本')
+  await page.getByRole('button', { name: '「スマホ脚本」のメニュー' }).click()
+  await page.getByRole('menuitem', { name: '情報を編集' }).click()
+  await page.getByRole('radio', { name: '脚本', exact: true }).check()
+  await page.getByRole('button', { name: '保存', exact: true }).click()
+  await openWriter(page, 'スマホ脚本')
+  await addEpisode(page, '第一話')
+  const body = page.getByRole('textbox', { name: '本文' })
+  await body.fill('○公園\n　風が吹く\nユイ「こんにちは」')
+  const toolbar = page.getByRole('toolbar', { name: '記法の挿入' })
+  await expect(toolbar.getByRole('button', { name: '柱', exact: true })).toBeVisible()
+  await expect(toolbar.getByRole('button', { name: 'セリフ', exact: true })).toBeVisible()
+  await expect(toolbar.getByRole('button', { name: 'ト書き', exact: true })).toBeVisible()
+  await expect(toolbar.getByRole('button', { name: 'ト書き解除', exact: true })).toBeVisible()
+  await page.getByRole('button', { name: 'プレビュー', exact: true }).click()
+  await expect(page.locator('.sheet-line--slug').first()).toHaveText('○公園')
+  await expect(page.locator('.sheet-line--dialogue').first()).toHaveText('ユイ「こんにちは」')
 })

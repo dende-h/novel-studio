@@ -817,11 +817,12 @@ function EntryEditor({
       </button>
 
       {/* 名前＋フォーム｜対話＋削除。名前は blur で確定（旧名は自動で別名に残り、本文の参照は解決され続ける）。 */}
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0 flex-1">
+      {/* 狭幅では名前の下にタブと削除を落とす（横に並べると名前が数文字しか入らない）。 */}
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
+        <div className="min-w-0 sm:flex-1">
           <NameInput
             value={entry.name}
-            placeholder={unsaved ? '新しい項目（名前は対話でも決められます）' : undefined}
+            placeholder={unsaved ? '名前（対話でも決められます）' : undefined}
             allowEmpty={unsaved}
             onCommit={(v) => void commitName(v)}
           />

@@ -105,3 +105,8 @@ describe('blocksToHtml（ライブプレビュー描画）', () => {
     )
   })
 })
+
+it('○ や 名前「」 で始まる行も小説では素の段落のまま', () => {
+  const blocks = parseEpisodeBody('　それはまるで\n○公園\nユイ（声）「…」')
+  expect(blocksToHtml(blocks)).toBe('<p>　それはまるで</p><p>○公園</p><p>ユイ（声）「…」</p>')
+})

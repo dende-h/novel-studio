@@ -53,6 +53,7 @@ import {
   upsertStructure,
 } from '../../../src/core/mcp-edit'
 import { pickPrimaryPlot, WORLD_CUSTOM_SLOT, WORLD_SLOTS } from '../../../src/core/plot'
+import { WorkFormatSchema } from '../../../src/core/schema'
 
 /** クライアントが未指定のときに名乗る MCP プロトコル版（十分に新しい安定版）。 */
 const DEFAULT_PROTOCOL_VERSION = '2025-06-18'
@@ -168,14 +169,24 @@ export const MCP_TOOLS = [
   {
     name: 'set_work_meta',
     description:
-      '作品のメタ情報（タイトル・著者名・あらすじ）を更新する。渡した項目だけ書き換える。',
+      '作品のメタ情報（タイトル・著者名・あらすじ・梗概・形式）を更新する。渡した項目だけ書き換える。',
     inputSchema: {
       type: 'object',
       properties: {
         ...workIdProp,
         title: { type: 'string', description: '作品タイトル' },
         author: { type: 'string', description: '作者名（空文字で未設定）' },
-        description: { type: 'string', description: 'あらすじ（空文字で未設定）' },
+        description: { type: 'string', description: 'あらすじ（読者向け。空文字で未設定）' },
+        synopsis: {
+          type: 'string',
+          description:
+            '梗概（脚本の提出用に結末まで書いたあらすじ。脚本テキストの書き出しだけに載る。空文字で未設定）',
+        },
+        format: {
+          type: 'string',
+          enum: ['novel', 'script'],
+          description: '作品の形式。novel は形式の指定を解除する',
+        },
       },
       required: ['work_id'],
       additionalProperties: false,
@@ -184,7 +195,7 @@ export const MCP_TOOLS = [
   {
     name: 'set_episode',
     description:
-      '既存の話のタイトル・本文を更新する。body はプレーンテキスト（改行で段落・行頭「＊」でシーン区切り・｜漢字《かんじ》でルビ）。渡した項目だけ書き換える。**書く前に get_world で作品の決め事（語り手と文体・言葉づかい・開示方針・やらないこと）を読み、それに従うこと。**',
+      '既存の話のタイトル・本文を更新する。body はプレーンテキスト（改行で段落・｜漢字《かんじ》でルビ。脚本形式では *** だけの行が場面転換、○・〇で始まる行が柱、字下げした行がト書き、名前（補足も可）＋「」・『』または鉤括弧で始まる行がセリフ、それ以外がト書き）。渡した項目だけ書き換える。**書く前に get_world で作品の決め事（語り手と文体・言葉づかい・開示方針・やらないこと）を読み、それに従うこと。**',
     inputSchema: {
       type: 'object',
       properties: {
@@ -797,7 +808,7 @@ function listWorksText(works: CloudBackup['works']): string {
   const lines = works.map((w) => {
     const author = w.author ? `（著者: ${w.author}）` : ''
     const eps = w.episodes.map((e) => `    - ${e.title} [episode_id: ${e.id}]`).join('\n')
-    return `- ${w.title}${author} — ${w.episodes.length}話 [work_id: ${w.id}]${eps ? `\n${eps}` : ''}`
+    return `- ${w.title}${author} — ${w.episodes.length}話 [work_id: ${w.id}]${w.format === 'script' ? '\n    形式: 脚本' : ''}${eps ? `\n${eps}` : ''}`
   })
   return `作品が ${works.length} 件あります。\n${lines.join('\n')}`
 }
@@ -883,6 +894,8 @@ async function callTool(
               title: str(args, 'title'),
               author: str(args, 'author'),
               description: str(args, 'description'),
+              synopsis: str(args, 'synopsis'),
+              format: args?.format === undefined ? undefined : WorkFormatSchema.parse(args.format),
             },
             now,
           ),

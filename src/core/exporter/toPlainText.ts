@@ -43,8 +43,15 @@ export function workToPlainText(work: Work): string {
   const meta = [`# ${work.title}`]
   if (work.author) meta.push(`著者: ${work.author}`)
 
+  if (work.format === 'script')
+    meta.push(
+      '形式: 脚本',
+      '脚本の書き方: *** だけの行は場面転換、○・〇で始まる行は柱、字下げした行はト書き、名前（補足も可）＋「」・『』または鉤括弧で始まる行はセリフ、それ以外はト書き。',
+    )
+
   const sections = [meta.join('\n')]
   if (work.description) sections.push(work.description)
+  if (work.format === 'script' && work.synopsis) sections.push(`梗概:\n${work.synopsis}`)
   for (const ep of work.episodes) {
     sections.push(`## ${ep.title}\n\n${blocksToPlainText(ep.blocks)}`)
   }

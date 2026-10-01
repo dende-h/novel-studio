@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
-import { MAX_DESCRIPTION_LENGTH } from '@/core/schema'
+import { MAX_DESCRIPTION_LENGTH, MAX_SYNOPSIS_LENGTH, type WorkFormat } from '@/core/schema'
 import { coverToDataUrl } from '@/ui/_utils/imageResizer'
+import { FieldHelp } from '@/ui/components/FieldHelp/field-help'
 import { Button } from '@/ui/components/ui/button'
 import {
   Dialog,
@@ -17,9 +18,12 @@ import { Textarea } from '@/ui/components/ui/textarea'
 import { ZoomableImage } from '@/ui/components/ui/zoomable-image'
 
 export interface WorkMetaValues {
+  format: WorkFormat
   title: string
   author: string
   description: string
+  /** 脚本の梗概（結末までのあらすじ）。空文字 '' は未設定／削除を表す。 */
+  synopsis: string
   /** 表紙画像の data URL。空文字 '' は未設定／削除を表す。 */
   coverImage: string
 }
@@ -34,9 +38,11 @@ interface WorkMetaDialogProps {
 
 /** 作品メタ（タイトル・著者・あらすじ）の編集ダイアログ。EPUB のメタ情報に反映される。 */
 export function WorkMetaDialog({ open, onOpenChange, initial, onSubmit }: WorkMetaDialogProps) {
+  const [format, setFormat] = useState<WorkFormat>(initial.format ?? 'novel')
   const [title, setTitle] = useState(initial.title ?? '')
   const [author, setAuthor] = useState(initial.author ?? '')
   const [description, setDescription] = useState(initial.description ?? '')
+  const [synopsis, setSynopsis] = useState(initial.synopsis ?? '')
   const [coverImage, setCoverImage] = useState(initial.coverImage ?? '')
   const [imageBusy, setImageBusy] = useState(false)
   const [imageError, setImageError] = useState<string | null>(null)
@@ -48,9 +54,11 @@ export function WorkMetaDialog({ open, onOpenChange, initial, onSubmit }: WorkMe
   useEffect(() => {
     if (open) {
       const init = initialRef.current
+      setFormat(init.format ?? 'novel')
       setTitle(init.title ?? '')
       setAuthor(init.author ?? '')
       setDescription(init.description ?? '')
+      setSynopsis(init.synopsis ?? '')
       setCoverImage(init.coverImage ?? '')
       setImageBusy(false)
       setImageError(null)
@@ -76,9 +84,12 @@ export function WorkMetaDialog({ open, onOpenChange, initial, onSubmit }: WorkMe
   const submit = () => {
     if (!canSubmit) return
     onSubmit({
+      format,
       title: title.trim(),
       author: author.trim(),
       description: description.trim(),
+      // 小説へ戻したときも梗概は消さない（形式を行き来しても入力を失わない）。
+      synopsis: synopsis.trim(),
       coverImage,
     })
     onOpenChange(false)
@@ -90,7 +101,7 @@ export function WorkMetaDialog({ open, onOpenChange, initial, onSubmit }: WorkMe
         <DialogHeader>
           <DialogTitle className="font-serif text-primary">作品情報</DialogTitle>
           <DialogDescription>
-            電子書籍（EPUB）に埋め込まれる作品のメタ情報を編集します。
+            作品の情報を編集します。EPUB やコトノハ-grove- に反映されます。
           </DialogDescription>
         </DialogHeader>
         <form
@@ -138,6 +149,70 @@ export function WorkMetaDialog({ open, onOpenChange, initial, onSubmit }: WorkMe
                 maxLength={MAX_DESCRIPTION_LENGTH}
               />
             </div>
+            <fieldset className="space-y-2">
+              <legend className="flex items-center gap-1 text-sm font-medium">
+                形式
+                <FieldHelp title="形式">
+                  <p>脚本にすると、行頭の書き方で柱・ト書き・セリフを見分けて表示します。</p>
+                  <ul className="list-disc pl-5">
+                    <li>○で始まる行 → 柱（場所と時間）</li>
+                    <li>行頭に名前、そのあとに「」が続く行 → セリフ</li>
+                    <li>それ以外の行（行頭を空けた行を含む） → ト書き（自動で 3 字下がります）</li>
+                  </ul>
+                  <p>
+                    本文の文字はそのままです。プレビューは原稿用紙（20字×20行）になり、書き出しは
+                    Word かテキストです（EPUB・なろう・カクヨムは小説だけ）。コトノハ-grove-
+                    の表示も脚本の体裁になります。
+                  </p>
+                </FieldHelp>
+              </legend>
+              <div className="flex gap-6">
+                {(['novel', 'script'] as const).map((value) => (
+                  <label key={value} className="flex items-center gap-2 text-sm">
+                    <input
+                      type="radio"
+                      name="work-format"
+                      value={value}
+                      checked={format === value}
+                      onChange={() => setFormat(value)}
+                    />
+                    {value === 'novel' ? '小説' : '脚本'}
+                  </label>
+                ))}
+              </div>
+            </fieldset>
+            {format === 'script' ? (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="work-meta-synopsis" className="flex items-center gap-1">
+                    梗概
+                    <FieldHelp title="梗概">
+                      <p>
+                        脚本を提出するときに付ける、結末まで書いたあらすじです。募集要項の指定に合わせ、400〜
+                        {MAX_SYNOPSIS_LENGTH} 字が目安です。
+                      </p>
+                      <p>
+                        上の「あらすじ」は読者向け（コトノハ-grove- や EPUB
+                        に出ます）で、梗概は脚本の書き出し（Word・テキスト）にだけ載ります。
+                      </p>
+                    </FieldHelp>
+                  </Label>
+                  <span
+                    className={`text-xs tabular-nums ${synopsis.length >= MAX_SYNOPSIS_LENGTH ? 'text-destructive' : 'text-on-surface-variant/50'}`}
+                  >
+                    {synopsis.length}/{MAX_SYNOPSIS_LENGTH}
+                  </span>
+                </div>
+                <Textarea
+                  id="work-meta-synopsis"
+                  value={synopsis}
+                  onChange={(e) => setSynopsis(e.target.value)}
+                  placeholder="結末まで書いた、提出用のあらすじ（任意）"
+                  rows={6}
+                  maxLength={MAX_SYNOPSIS_LENGTH}
+                />
+              </div>
+            ) : null}
             <div className="space-y-2">
               <Label htmlFor="work-meta-cover">表紙画像</Label>
               <div className="flex items-start gap-3">

@@ -10,7 +10,7 @@
 ## 0. 30秒でわかる全体像
 
 ローカルファーストの小説執筆ツール。原稿は既定で端末内（IndexedDB）にのみ置き、
-クラウド同期・バックアップは有料オプトイン（at-rest 暗号化）。書き出し先は EPUB / なろう / カクヨム / 自前 コトノハ-grove-。
+クラウド同期・バックアップは有料オプトイン（at-rest 暗号化）。書き出し先は EPUB / なろう / カクヨム / 自前 コトノハ-grove-（脚本の作品は体裁を整えたテキスト）。
 
 ```
 ブラウザ (Vite + React 19 + Tailwind4 + PWA)
@@ -32,6 +32,8 @@ Cloudflare Pages Functions
 
 | やりたいこと | まず開くファイル |
 |---|---|
+| 本文の記法ボタン・ショートカット | `src/ui/components/EditorPane/notation.ts`（一覧・表示・キー判定を共有。PC/スマホの出し分けは `notationItems(scriptMode, surface)`）、挿入と脚本の Tab 字下げ／Enter 継続は `editor-pane.tsx` |
+| 脚本形式（柱・ト書き・セリフ）の判別・原稿用紙の組版・書き出し | 判別 `src/core/script/index.ts`、書式チェック `src/core/script/proofread.ts`、原稿用紙（禁則・頁割り・前付け）`src/core/script/layout.ts`、紙のプレビュー `src/ui/components/ScriptSheet/`、脚本の Word `src/core/exporter/toDocx.ts`・テキスト `src/core/exporter/toScriptText.ts`、形式・梗概（`Work.synopsis`）は `src/ui/components/WorkMetaDialog/`、公開 v7 は `src/ui/_api/publish.ts`。EPUB・なろう・カクヨムは小説専用 |
 | 記法（ルビ・傍点・`[[参照]]`）の解釈を変える | `src/core/parser/parseNotation.ts` + `src/core/schema/index.ts` |
 | プレビューのマークダウン（見出し・リスト・表・引用）を変える | `src/core/markdown/index.ts`（本文は非対応。効くのはプロット・世界観・用語集の記法つき欄） |
 | 書き出し（EPUB/なろう/カクヨム/HTML）の出力を変える | `src/core/exporter/` 配下（形式ごとに1ファイル） |
@@ -57,7 +59,7 @@ Cloudflare Pages Functions
 | 課金・会員判定 | `src/core/billing/` + `functions/api/billing/` + `functions/api/_lib/membership.ts` |
 | 無料／有料の線（どの機能をどの状態で出すか） | `src/ui/Root.tsx`（`canUseCreativeTools` ほか）+ `src/ui/auth/derive-status.ts` |
 | AI/MCP 連携（外部から原稿を編集） | `src/core/mcp-edit/index.ts` + `functions/api/_lib/mcp-server.ts` |
-| MCP コネクタの接続（OAuth・**認可サーバーは自前**） | 純ロジックは `functions/api/_lib/oauth-server.ts`、SQL は `oauth-store.ts`（migration 0010）、窓口は `functions/api/oauth/[[path]].ts`、同意画面は `src/ui/components/OAuthConsent/` ＋ `functions/api/oauth/consent.ts`、ディスカバリは `functions/_middleware.ts`。経緯と決定表は `docs/requirement/10-mcp-oauth.md` |
+| MCP コネクタの接続（OAuth・**認可サーバーは自前**） | 純ロジックは `functions/api/_lib/oauth-server.ts`、SQL は `oauth-store.ts`（migration 0010）、窓口は `functions/api/oauth/[[path]].ts`、同意画面は `src/ui/components/OAuthConsent/` ＋ `functions/api/oauth/consent.ts`、ディスカバリは `functions/_middleware.ts`。**利用者向けの接続手順**（タブは Claude / ChatGPT・Bearer 直接設定は折りたたみ）は `src/ui/components/McpConnectDialog/mcp-connect-dialog.tsx`、同じ手順のヘルプ掲載は `src/ui/components/HelpPage/help-page.tsx`——**文言は 2 か所を揃える**。経緯と決定表は `docs/requirement/10-mcp-oauth.md` |
 | **UI 部品・ヘルパを新規に作りたい** | まず §3「共通部品カタログ」で在庫を確認する（重複作成の防止） |
 | **掲示板**（記名式スレッド・お知らせ・アンケート・通報）の挙動 | 画面は `src/ui/components/BoardPage/`、判断は `src/core/board/`、SQL は `functions/api/_lib/board-store.ts`、窓口は `functions/api/board/` |
 | 掲示板に貼られた外部リンクの OGP（取得可否・画像の許可表） | `src/core/board/link.ts`（判定）+ `functions/api/_lib/board-link-fetch.ts`（取得とキャッシュ） |
@@ -82,7 +84,8 @@ Cloudflare Pages Functions
 ### データ定義
 | モジュール | 責務 | 主な export |
 |---|---|---|
-| `schema/` | **正本 block スキーマ（Zod）**。全データの型の源 | `Block` `Inline` `Episode` `Work` `GlossaryEntry`（`authorNote`・`dialog` は公開時に落とす） `DialogAnswer` `WorkPlatform` `PLATFORM_GENRES` |
+| `script/` | 脚本の行判別（柱・ト書き・セリフ・***場面転換）・話者分割・字下げ除去・原稿用紙の組版 | `classifyScriptBlock` `splitSpeaker` `stripLeadingSpace` `ScriptLine`、`proofread.ts` の `proofreadScript`（書式の確認候補）、`layout.ts` の `layoutScriptBlocks` `paginate` `composeScriptSheet` `normalizeScriptText`（20字×20行などへの流し込み・禁則・頁割り・表紙／登場人物表／梗概） |
+| `schema/` | **正本 block スキーマ（Zod）**。全データの型の源 | `Block` `Inline` `Episode` `Work` `WorkFormat` `WorkFormatSchema`（`Work.synopsis`＝脚本の梗概） `GlossaryEntry`（`authorNote`・`dialog` は公開時に落とす） `DialogAnswer` `WorkPlatform` `PLATFORM_GENRES` |
 | `plot/` | プロット（幕/ライン/ビート/伏線/秘密）＋**世界観設定**（`Plot.world`・作者専用） | `PlotSection` `PlotLine` `PlotBeat` `Foreshadow` `Secret` / `beatsInStoryOrder` `sectionOfBeat` `linesOfBeat` `foreshadowsOfBeat` `secretsHiddenAt` / `WorldNote` `WORLD_SLOTS` `WORLD_CUSTOM_SLOT` `worldNoteLabel` `worldNotesInOrder` `setWorldNote` `removeWorldNote` |
 | `structure/` | 構造レイヤー（outline/chart/mindmap）のノード・辺 | `StructureNode` `StructureEdge` `StructureKind` `emptyStructure` `addNode` `pickPrimaryStructure` |
 | `idea/` | ネタ帳のメモ | `IdeaNote` `normalizeIdeaText` |
@@ -209,7 +212,7 @@ Cloudflare Pages Functions
 | 設定・ヘルプ等の一枚ものページ | `PageLayout`（`src/ui/components/PageLayout/page-layout.tsx`） | — |
 | 一時通知 | `useToast()`（`src/ui/components/Toast/toast.tsx`） | `alert()` |
 | 破壊操作の確認 | `ConfirmDialog`（`src/ui/components/ConfirmDialog/confirm-dialog.tsx`） | `window.confirm()` |
-| 文字列の入力を求める | `TitlePromptDialog`（`src/ui/components/TitlePromptDialog/title-prompt-dialog.tsx`） | `window.prompt()` |
+| 文字列の入力を求める | `TitlePromptDialog`（`src/ui/components/TitlePromptDialog/title-prompt-dialog.tsx`、children で追加欄。作品作成時は形式選択） | `window.prompt()` |
 | 描画例外の受け止め | `ErrorBoundary`（`src/ui/components/ErrorBoundary/error-boundary.tsx`） | — |
 | `@`/`[[` の用語集サジェスト付き入力欄（blur 確定。`onSubmit` を渡すと Enter で決定＝対話の答え・`suggestAbove` で候補を上に開く） | `CommitTextarea`（`src/ui/components/NotationField/commit-textarea.tsx`） | 生の `<textarea>` ＋ 自前サジェスト |
 | 記法つき入力（書く／プレビュー切替・マークダウン描画・`[[用語]]` クリック委譲） | `NotationField`（`src/ui/components/NotationField/notation-field.tsx`） | 画面ごとのプレビュー自作 |
@@ -370,7 +373,7 @@ uv run .claude/skills/natural-japanese/scripts/lint.py <file>   # 仕事の文�
 | `docs/requirement/07-novel-game.md` | **サウンドノベル書き出し（ゲーム化）の設計**（演出譜・素材・課金の線・G0〜G3） |
 | `docs/game/bgm-presets.md` | 組み込み BGM 24 曲のファイル名・用途と Suno 用の制作プロンプト（管理ページへ入れる手順つき） |
 | `docs/requirement/09-board.md` | 掲示板（記名式スレッド・お知らせ・アンケート・外部リンクの OGP）の設計と決定表 |
-| `docs/requirement/10-mcp-oauth.md` | MCP の OAuth（ChatGPT で繋がらない原因の実測と診断・Phase 1 の撤去・自前 認可サーバーの設計案） |
+| `docs/requirement/10-mcp-oauth.md` | MCP の OAuth（ChatGPT で繋がらなかった原因の実測と診断・Phase 1 の撤去・自前 認可サーバーの設計と、2026-09 の ChatGPT 実地確認） |
 | `docs/requirement/11-glossary-dialog.md` | 用語集の「対話」（一問一答で項目を育てる）の決定表・`GlossaryEntry.dialog` の形・MCP 契約（`get_glossary` の出力、`upsert_glossary_entry` の `dialog` パッチ、`get_glossary_questions`）・質問の正本（付録 A） |
 | `public/board-guidelines.html` | 掲示板ガイドライン（`/board-guidelines` で公開・通報や上限の文言はここと揃える） |
 | `docs/requirement/99-open-questions.md` | 未決事項 |

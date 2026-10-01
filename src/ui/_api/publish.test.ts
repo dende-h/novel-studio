@@ -766,3 +766,34 @@ describe('canPublishPublicly / describePublishBlocked（公開可否の判定）
     expect(describePublishBlocked('moderated')).toContain('運営')
   })
 })
+
+it.each(['script', 'novel'] as const)('形式 %s に必要な版だけで公開する', async (format) => {
+  const { publishWorkToPlatform, toBundleWork } = await loadModule()
+  const fetchMock = vi
+    .fn()
+    .mockResolvedValue(new Response(JSON.stringify({ ok: true }), { status: 200 }))
+  vi.stubGlobal('fetch', fetchMock)
+  await publishWorkToPlatform(async () => 'jwt', { ...work, format })
+  const request = fetchMock.mock.calls[0] as [string, RequestInit]
+  const body = JSON.parse(request[1].body as string)
+  expect(body.schemaVersion).toBe(format === 'script' ? 7 : 2)
+  if (format === 'script') expect(body.work.format).toBe('script')
+  else expect(body.work).not.toHaveProperty('format')
+  expect(toBundleWork(work)).not.toHaveProperty('format')
+})
+it('v7未対応の公開先では脚本向けの案内を表示する', async () => {
+  const { publishWorkToPlatform } = await loadModule()
+  vi.stubGlobal(
+    'fetch',
+    vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ error: 'unsupported-schema-version', supported: 6 }), {
+        status: 409,
+      }),
+    ),
+  )
+  expect(await publishWorkToPlatform(async () => 'jwt', { ...work, format: 'script' })).toEqual({
+    ok: false,
+    message:
+      '公開先がまだ脚本の体裁に対応していません。作品情報で形式を小説にしてから、もう一度お試しください。',
+  })
+})

@@ -1,11 +1,28 @@
-import { BookText, Copy, Download, Folder, Gamepad2, Globe, Pencil, Sparkles } from 'lucide-react'
-import { type ComponentType, useId, useState } from 'react'
+import {
+  BookText,
+  Copy,
+  Download,
+  FileText,
+  Folder,
+  Gamepad2,
+  Globe,
+  Pencil,
+  Sparkles,
+} from 'lucide-react'
+import { type ComponentType, useId, useMemo, useState } from 'react'
+import { DOCX_PRESETS } from '@/core/exporter/toDocx'
 import { glossaryToPlainText, workToPlainText } from '@/core/exporter/toPlainText'
+import { sheetSourceOf } from '@/core/exporter/toScriptText'
 import { gameAssetKey } from '@/core/game/assets'
 import { DEFAULT_BG_KEY } from '@/core/game/presets'
 import { mergeBackgroundCatalog, mergeBgmCatalog, mergeSeCatalog } from '@/core/game/templates'
 import { dataUrlMime, decodeDataUrl } from '@/core/image'
-import type { Work } from '@/core/schema'
+import { MAX_SYNOPSIS_LENGTH, type Work } from '@/core/schema'
+import {
+  composeScriptSheet,
+  DEFAULT_FRONT_MATTER,
+  type SheetFrontMatter,
+} from '@/core/script/layout'
 import type { GameAssetRepository } from '@/core/storage/gameAssetRepository'
 import type { StagingRepository } from '@/core/storage/stagingRepository'
 import { cn } from '@/lib/utils'
@@ -18,9 +35,12 @@ import {
   workAiTextExport,
   workEpubExport,
   workFolderZipExport,
+  workScriptDocxExport,
+  workScriptTextExport,
 } from '@/ui/_utils/exporters'
 import { loadGameFont } from '@/ui/_utils/game-font'
 import { useAuth } from '@/ui/auth/auth-context'
+import { SHEET_PRESETS } from '@/ui/components/ScriptSheet/script-sheet'
 import { TemplatePicker } from '@/ui/components/StagingView/template-picker'
 import { Button } from '@/ui/components/ui/button'
 import {
@@ -46,7 +66,7 @@ import {
 } from '@/ui/game/template-catalog'
 import { useIsNarrow } from '@/ui/hooks/use-narrow'
 
-type Format = 'epub' | 'web' | 'game' | 'folder' | 'ai'
+type Format = 'script' | 'epub' | 'web' | 'game' | 'folder' | 'ai'
 type Platform = 'narou' | 'kakuyomu'
 
 interface ExportDialogProps {
@@ -69,20 +89,31 @@ interface FormatDef {
   icon: ComponentType<{ className?: string }>
   title: string
   desc: string
+  /** 作品の形式で出し分ける（脚本は提出用テキスト、小説は EPUB と投稿サイト）。 */
+  only?: 'novel' | 'script'
 }
 
 const FORMATS: FormatDef[] = [
+  {
+    key: 'script',
+    icon: FileText,
+    title: '脚本（提出用）',
+    desc: 'Word（縦書き 20字×20行）またはテキストで、柱・ト書き・セリフの体裁を整えて',
+    only: 'script',
+  },
   {
     key: 'epub',
     icon: BookText,
     title: 'EPUB / 電子書籍',
     desc: '縦書き対応の電子書籍標準フォーマット',
+    only: 'novel',
   },
   {
     key: 'web',
     icon: Globe,
     title: 'Web投稿形式',
     desc: '「小説家になろう」「カクヨム」などの投稿用記法',
+    only: 'novel',
   },
   {
     key: 'game',
@@ -122,11 +153,37 @@ export function ExportDialog({
   const [gameBg, setGameBg] = useState(DEFAULT_BG_KEY)
   const [busy, setBusy] = useState(false)
   const [gameError, setGameError] = useState(false)
+  // 脚本（提出用）：出力の形（Word A4／B5／テキスト）と、前付け（表紙・登場人物表・梗概）の有無。
+  const [scriptOutput, setScriptOutput] = useState<'docx-a4' | 'docx-b5' | 'txt'>('docx-a4')
+  const [front, setFront] = useState<SheetFrontMatter>(DEFAULT_FRONT_MATTER)
   const glossaryToggleId = useId()
+  const frontIds = { cover: useId(), cast: useId(), synopsis: useId() }
   const glossaryCount = work?.glossary?.length ?? 0
 
   const episodes = work?.episodes ?? []
   const selectedEpisode = episodes.find((e) => e.id === episodeId) ?? episodes[0] ?? null
+  // 形式で出せるものが変わる。選んでいた形式が無ければ先頭に寄せる（脚本なら脚本テキスト）。
+  const isScript = work?.format === 'script'
+  const formats = FORMATS.filter((f) => !f.only || f.only === (isScript ? 'script' : 'novel'))
+  const fmt: Format = formats.some((f) => f.key === format) ? format : (formats[0]?.key ?? 'ai')
+  // 登場人物表は用語集の「人物」から、梗概は作品情報の梗概から。枚数は 20字×20行換算で本文だけ数える。
+  const sheetSource = useMemo(
+    () => (work && isScript ? sheetSourceOf(work) : null),
+    [work, isScript],
+  )
+  const bodySheets = useMemo(
+    () =>
+      sheetSource
+        ? composeScriptSheet(
+            sheetSource,
+            { cover: false, cast: false, synopsis: false },
+            SHEET_PRESETS.vertical,
+          ).length
+        : 0,
+    [sheetSource],
+  )
+  const castCount = sheetSource?.cast?.length ?? 0
+  const synopsisLength = Array.from(work?.synopsis?.trim() ?? '').length
 
   // サウンドノベルは無料枠でもアカウント必須（D-GAME-ACCOUNT）——
   // 運営素材を同梱した zip の配布には、ライセンスに同意した主体の特定が要る。
@@ -146,9 +203,9 @@ export function ExportDialog({
   const narrow = useIsNarrow()
 
   const canExport =
-    format === 'web' || format === 'ai'
+    fmt === 'web' || fmt === 'ai' || fmt === 'script'
       ? Boolean(work) && episodes.length > 0
-      : format === 'game'
+      : fmt === 'game'
         ? Boolean(work) && episodes.length > 0 && gameUnlocked && !narrow
         : Boolean(work)
 
@@ -164,7 +221,7 @@ export function ExportDialog({
   }
 
   const handleExport = async () => {
-    if (format === 'ai') {
+    if (fmt === 'ai') {
       if (work) {
         const glossary = work.glossary ?? []
         const text =
@@ -175,7 +232,7 @@ export function ExportDialog({
       }
       return // コピーはダイアログを閉じず、結果メッセージを見せる
     }
-    if (format === 'game') {
+    if (fmt === 'game') {
       if (work && selectedEpisode && gameUnlocked) {
         setBusy(true)
         setGameError(false)
@@ -245,9 +302,15 @@ export function ExportDialog({
       return
     }
     if (work) {
-      if (format === 'epub') triggerDownload(workEpubExport(work))
-      else if (format === 'folder') triggerDownload(workFolderZipExport(work))
-      else if (format === 'web' && selectedEpisode) {
+      if (fmt === 'script') {
+        triggerDownload(
+          scriptOutput === 'txt'
+            ? workScriptTextExport(work, front)
+            : workScriptDocxExport(work, scriptOutput === 'docx-a4' ? 'a4' : 'b5', front),
+        )
+      } else if (fmt === 'epub') triggerDownload(workEpubExport(work))
+      else if (fmt === 'folder') triggerDownload(workFolderZipExport(work))
+      else if (fmt === 'web' && selectedEpisode) {
         triggerDownload(
           platform === 'narou'
             ? episodeNarouExport(work.title, selectedEpisode)
@@ -271,8 +334,8 @@ export function ExportDialog({
         <div className="flex min-h-[320px] flex-1 flex-col overflow-hidden md:flex-row">
           {/* 形式リスト */}
           <nav className="flex shrink-0 flex-col gap-2 border-outline-variant/30 border-b bg-surface-container-low p-4 md:w-1/3 md:overflow-y-auto md:border-r md:border-b-0">
-            {FORMATS.map(({ key, icon: Icon, title, desc }) => {
-              const active = format === key
+            {formats.map(({ key, icon: Icon, title, desc }) => {
+              const active = fmt === key
               return (
                 <button
                   key={key}
@@ -303,7 +366,115 @@ export function ExportDialog({
 
           {/* 設定 */}
           <div className="min-h-0 flex-1 overflow-y-auto p-6 font-sans">
-            {format === 'epub' && (
+            {fmt === 'script' && (
+              <Section title="脚本（提出用） 設定">
+                <div className="space-y-5">
+                  <Note>
+                    柱は行頭に ○、ト書きは 3 字下げ、セリフは話者名から（2 行目以降は 1
+                    字下げ）、！？の後ろは 1 マス空け、の体裁で書き出します。Word 版は縦書き
+                    20字×20行の原稿用紙設定で、柱書き・ト書き・セリフが段落スタイルになっています。ページ番号は本文の
+                    1 頁目から入ります。
+                  </Note>
+                  <div>
+                    <div className="mb-2 text-on-surface-variant text-xs uppercase tracking-wider">
+                      出力
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {(
+                        [
+                          ['docx-a4', `Word ${DOCX_PRESETS.a4.label}`],
+                          ['docx-b5', `Word ${DOCX_PRESETS.b5.label}`],
+                          ['txt', 'テキスト（.txt）'],
+                        ] as const
+                      ).map(([key, label]) => (
+                        <button
+                          key={key}
+                          type="button"
+                          aria-pressed={scriptOutput === key}
+                          onClick={() => setScriptOutput(key)}
+                          className={cn(
+                            'rounded-full border px-4 py-1.5 text-sm transition-colors',
+                            scriptOutput === key
+                              ? 'border-primary bg-primary/10 text-primary'
+                              : 'border-outline-variant/50 text-on-surface-variant hover:bg-surface-container-high',
+                          )}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                    <p className="mt-2 text-on-surface-variant text-xs">
+                      {scriptOutput === 'txt'
+                        ? '折り返しのないテキストです。Word などに貼って、応募先の規定に合わせられます。'
+                        : '游明朝・横置きの用紙に縦書きで組みます。応募先の規定に合わせて Word で調整できます。'}
+                    </p>
+                  </div>
+                  <div className="space-y-2 rounded-md border border-outline-variant/30 p-3">
+                    {(
+                      [
+                        [
+                          'cover',
+                          '表紙（題名・著者名）',
+                          work?.author ? work.author : '著者名は作品情報で設定',
+                        ],
+                        [
+                          'cast',
+                          scriptOutput === 'txt' ? '登場人物表' : '人物一覧表',
+                          castCount > 0
+                            ? `用語集の「人物」${castCount} 件（名前と説明）を載せます`
+                            : '用語集に「人物」の項目がないので付きません',
+                        ],
+                        [
+                          'synopsis',
+                          scriptOutput === 'txt'
+                            ? '梗概（結末までのあらすじ）'
+                            : 'あらすじ（梗概・結末まで）',
+                          synopsisLength > 0
+                            ? `作品情報の梗概 ${synopsisLength} 字を載せます（目安は 400〜${MAX_SYNOPSIS_LENGTH} 字）`
+                            : '作品情報に梗概がないので付きません',
+                        ],
+                      ] as const
+                    ).map(([key, label, hint]) => (
+                      <div key={key} className="flex items-center justify-between gap-3">
+                        <Label
+                          htmlFor={frontIds[key]}
+                          className="font-normal text-on-surface text-sm"
+                        >
+                          {label}
+                          <span className="mt-0.5 block text-on-surface-variant text-xs">
+                            {hint}
+                          </span>
+                        </Label>
+                        <Switch
+                          id={frontIds[key]}
+                          checked={front[key]}
+                          onCheckedChange={(v) => setFront((f) => ({ ...f, [key]: v }))}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                  <dl className="space-y-2 rounded-md border border-outline-variant/30 p-4 text-sm">
+                    <MetaRow label="タイトル" value={work?.title} />
+                    <MetaRow label="著者" value={work?.author} />
+                    <MetaRow label="枚数" value={`本文 ${bodySheets} 枚（20字×20行換算）`} />
+                  </dl>
+                  {onEditMeta ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={onEditMeta}
+                      className="gap-2 text-primary"
+                    >
+                      <Pencil className="size-4" />
+                      作品情報を編集
+                    </Button>
+                  ) : null}
+                </div>
+              </Section>
+            )}
+
+            {fmt === 'epub' && (
               <Section title="EPUB 設定">
                 <div className="space-y-4">
                   <Note>
@@ -331,7 +502,7 @@ export function ExportDialog({
               </Section>
             )}
 
-            {format === 'web' && (
+            {fmt === 'web' && (
               <Section title="Web投稿 設定">
                 <div className="space-y-5">
                   <div>
@@ -384,7 +555,7 @@ export function ExportDialog({
               </Section>
             )}
 
-            {format === 'game' && narrow && (
+            {fmt === 'game' && narrow && (
               <Section title="サウンドノベル 設定">
                 <Note>
                   サウンドノベルづくり（演出付けと書き出し）は、PC などの広い画面での機能です。
@@ -393,7 +564,7 @@ export function ExportDialog({
               </Section>
             )}
 
-            {format === 'game' &&
+            {fmt === 'game' &&
               !narrow &&
               (gameUnlocked ? (
                 <Section title="サウンドノベル 設定">
@@ -527,7 +698,7 @@ export function ExportDialog({
                 </Section>
               ))}
 
-            {format === 'folder' && (
+            {fmt === 'folder' && (
               <Section title="フォルダ(ZIP) 設定">
                 <Note>
                   話ごとのテキストファイルをフォルダ構成のまま ZIP にまとめて書き出します。
@@ -535,7 +706,7 @@ export function ExportDialog({
               </Section>
             )}
 
-            {format === 'ai' && (
+            {fmt === 'ai' && (
               <Section title="AI に渡す">
                 <div className="space-y-4">
                   <Note>
@@ -605,8 +776,8 @@ export function ExportDialog({
             キャンセル
           </Button>
           <Button onClick={handleExport} disabled={!canExport || busy} className="gap-2">
-            {format === 'ai' ? <Copy className="size-4" /> : <Download className="size-4" />}
-            {format === 'ai' ? 'コピー' : busy ? '書き出し中…' : '書き出し'}
+            {fmt === 'ai' ? <Copy className="size-4" /> : <Download className="size-4" />}
+            {fmt === 'ai' ? 'コピー' : busy ? '書き出し中…' : '書き出し'}
           </Button>
         </DialogFooter>
       </DialogContent>
