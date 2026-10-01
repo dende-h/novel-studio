@@ -66,6 +66,21 @@ export const EpisodeSchema = z.object({
 export type Episode = z.infer<typeof EpisodeSchema>
 
 /**
+ * 用語集の「対話」（一問一答）の答え 1 つ（11-glossary-dialog.md §2）。
+ * `text` が空のときは「スキップ／あとで」の印としてだけ使い、公開・下書きには使わない。
+ */
+export const DialogAnswerSchema = z.object({
+  text: z.string(),
+  /** 読者に見せるか。省略＝その問いの既定（D-DLG-VIS）。 */
+  public: z.boolean().optional(),
+  /** スキップした（聞き直さない）。 */
+  skipped: z.boolean().optional(),
+  /** あとで答える（次に開いたとき聞き直す）。 */
+  later: z.boolean().optional(),
+})
+export type DialogAnswer = z.infer<typeof DialogAnswerSchema>
+
+/**
  * 用語集の1項目（@参照の解決先）。P1。作品ごと（Work 相乗り）。
  * name + aliases が解決キー（trim 後の完全一致）。reading はサジェスト/ソート用で解決対象外。
  *
@@ -97,6 +112,14 @@ export const GlossaryEntrySchema = z.object({
     .string()
     .refine((s) => s.startsWith('data:image/'), 'data URL が必要')
     .optional(),
+  /**
+   * 対話ノート（D-DLG-STORE）。鍵は質問の key（追い質問は `親__子`・種類は `kind`）。
+   * 無い＝対話を始めていない。共通 4 問（名前・読み・別名・公開情報）は既存の欄に入り、ここには持たない。
+   * **公開バンドルからは落とす**（第 1 段・D-DLG-PUBLISH。publish.ts の toBundleGlossary）。
+   */
+  dialog: z.record(z.string(), DialogAnswerSchema).optional(),
+  /** 答えたときの質問セットの版（`DIALOG_VERSION`）。質問を足したり消したりしても旧データを壊さないための印。 */
+  dialogVersion: z.number().optional(),
   createdAt: z.number(),
   updatedAt: z.number(),
 })
@@ -135,6 +158,8 @@ export const PLATFORM_MAX_TAG_LENGTH = 30
  * 短いほう（EPUB の dc:description と同じ 250 字）に合わせる。
  */
 export const MAX_DESCRIPTION_LENGTH = 250
+/** 脚本の梗概（提出用のあらすじ）。募集要項は 400〜1200 字が多いので上限をそこに置く。 */
+export const MAX_SYNOPSIS_LENGTH = 1200
 
 /**
  * コトノハ-grove- （novel platform）へ投稿するときだけ意味を持つ設定。
@@ -188,6 +213,9 @@ export const WorkPlatformSchema = z.object({
 })
 export type WorkPlatform = z.infer<typeof WorkPlatformSchema>
 
+export const WorkFormatSchema = z.enum(['novel', 'script'])
+export type WorkFormat = z.infer<typeof WorkFormatSchema>
+
 export const WorkSchema = z.object({
   id: z.string(),
   title: z.string(),
@@ -206,5 +234,9 @@ export const WorkSchema = z.object({
     .optional(),
   // コトノハ-grove- （novel platform）への投稿設定。投稿しない作品は持たない・旧データ互換のため任意。
   platform: WorkPlatformSchema.optional(),
+  format: WorkFormatSchema.optional(),
+  // 脚本の梗概（結末まで書く提出用のあらすじ）。description（読者向け・grove 公開）とは別物。
+  // 脚本の書き出しだけが使う。任意・旧データ互換。
+  synopsis: z.string().optional(),
 })
 export type Work = z.infer<typeof WorkSchema>

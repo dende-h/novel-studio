@@ -14,6 +14,8 @@ import { type SpriteSource, spriteExpressionsOf, userAssetKey } from '../game/as
 import { GAME_FEATURES } from '../game/features'
 import { BLACKOUT_BG_KEY, presetBackground } from '../game/presets'
 import { presetSe, SE_STOP } from '../game/sePresets'
+import { emptyToUndef } from '../glossary'
+import { applyDialogPatch, type DialogPatch, DialogPatchError } from '../glossary/dialog'
 import { type FlatNote, MAX_NOTE_DEPTH, rebuildEpisodeNotes } from '../outline'
 import { parseEpisodeBody } from '../parser/parseNotation'
 import { reconcileBlockIds } from '../parser/reconcileBlockIds'
@@ -43,7 +45,7 @@ import {
   WORLD_CUSTOM_SLOT,
   WORLD_SLOTS,
 } from '../plot'
-import type { Episode, GlossaryEntry, Work } from '../schema'
+import { type Episode, type GlossaryEntry, type Work, WorkFormatSchema } from '../schema'
 import {
   emptyStructure,
   pickPrimaryStructure,
@@ -60,8 +62,6 @@ import {
 export class McpEditError extends Error {}
 
 /** 空文字は未設定(undefined)へ畳む（スキーマの任意項目を綺麗に保つ）。 */
-const emptyToUndef = (s: string | undefined): string | undefined =>
-  s === undefined || s.trim() === '' ? undefined : s
 
 function updateWork(works: Work[], workId: string, fn: (w: Work) => Work): Work[] {
   let found = false
@@ -74,20 +74,35 @@ function updateWork(works: Work[], workId: string, fn: (w: Work) => Work): Work[
   return next
 }
 
-/** 作品のメタ（タイトル・著者・あらすじ）を更新する。 */
+/** 作品のメタ（タイトル・著者・あらすじ・梗概・形式）を更新する。 */
 export function setWorkMeta(
   works: Work[],
   workId: string,
-  patch: { title?: string; author?: string; description?: string },
+  patch: {
+    title?: string
+    author?: string
+    description?: string
+    synopsis?: string
+    format?: Work['format']
+  },
   now: number,
 ): Work[] {
-  return updateWork(works, workId, (w) => ({
-    ...w,
-    ...(patch.title !== undefined ? { title: patch.title } : {}),
-    ...(patch.author !== undefined ? { author: emptyToUndef(patch.author) } : {}),
-    ...(patch.description !== undefined ? { description: emptyToUndef(patch.description) } : {}),
-    updatedAt: now,
-  }))
+  if (patch.format !== undefined) WorkFormatSchema.parse(patch.format)
+  return updateWork(works, workId, (w) => {
+    const next = {
+      ...w,
+      ...(patch.title !== undefined ? { title: patch.title } : {}),
+      ...(patch.author !== undefined ? { author: emptyToUndef(patch.author) } : {}),
+      ...(patch.description !== undefined ? { description: emptyToUndef(patch.description) } : {}),
+      ...(patch.synopsis !== undefined ? { synopsis: emptyToUndef(patch.synopsis) } : {}),
+      updatedAt: now,
+    }
+    // 空文字で「未設定」に戻したキーは残さない（description 等の既存の扱いと同じ）。
+    if (next.synopsis === undefined) delete next.synopsis
+    if (patch.format === 'novel') delete next.format
+    else if (patch.format !== undefined) next.format = patch.format
+    return next
+  })
 }
 
 /** 話のタイトル・本文（プレーンテキスト→記法解析）を更新する。 */
@@ -245,6 +260,11 @@ export function upsertGlossaryEntry(
     summary?: string
     body?: string
     authorNote?: string
+    /**
+     * 対話ノートのパッチ（11-glossary-dialog.md §5.2）。鍵ごとに渡した答えだけ書き換え、
+     * 省略＝据え置き・空文字＝削除。規則は画面と共用の applyDialogPatch。
+     */
+    dialog?: DialogPatch
   },
   newId: string,
   now: number,
@@ -312,12 +332,24 @@ export function upsertGlossaryEntry(
       ...(authorNote !== undefined ? { authorNote } : {}),
       // サムネは MCP から操作できない＝更新で既存の画像を落とさない。
       ...(prev?.thumbnail ? { thumbnail: prev.thumbnail } : {}),
+      // 対話ノートは dialog を渡したときだけパッチする（下で）。渡さなければ丸ごと据え置き。
+      ...(prev?.dialog ? { dialog: prev.dialog } : {}),
+      ...(prev?.dialogVersion !== undefined ? { dialogVersion: prev.dialogVersion } : {}),
       createdAt: prev?.createdAt ?? now,
       updatedAt: now,
     }
+    let withDialog = entry
+    if (input.dialog !== undefined) {
+      try {
+        withDialog = applyDialogPatch(entry, input.dialog)
+      } catch (e) {
+        if (e instanceof DialogPatchError) throw new McpEditError(e.message)
+        throw e
+      }
+    }
     const nextGlossary = prev
-      ? glossary.map((g) => (g.id === entryId ? entry : g))
-      : [...glossary, entry]
+      ? glossary.map((g) => (g.id === entryId ? withDialog : g))
+      : [...glossary, withDialog]
     return { ...w, glossary: nextGlossary, updatedAt: now }
   })
 }

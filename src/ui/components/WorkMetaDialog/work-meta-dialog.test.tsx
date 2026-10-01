@@ -33,9 +33,11 @@ describe('WorkMetaDialog（作品メタ編集）', () => {
     fireEvent.change(screen.getByLabelText('あらすじ'), { target: { value: ' 物語の概要 ' } })
     fireEvent.click(screen.getByRole('button', { name: '保存' }))
     expect(onSubmit).toHaveBeenCalledWith({
+      format: 'novel',
       title: '新題',
       author: '山田太郎',
       description: '物語の概要',
+      synopsis: '',
       // 表紙未設定は空文字（= 変更なし／削除指示）として届く。
       coverImage: '',
     })
@@ -52,5 +54,34 @@ describe('WorkMetaDialog（作品メタ編集）', () => {
       />,
     )
     expect(screen.getByRole('button', { name: '保存' })).toBeDisabled()
+  })
+})
+
+it.each(['novel', 'script'] as const)('形式 %s を切り替えても他の欄を保つ', (format) => {
+  const onSubmit = vi.fn()
+  render(
+    <WorkMetaDialog
+      open
+      onOpenChange={() => {}}
+      initial={{
+        title: '題',
+        author: '著者',
+        description: '概要',
+        coverImage: 'data:image/jpeg;base64,AA',
+        format,
+      }}
+      onSubmit={onSubmit}
+    />,
+  )
+  expect(screen.getByRole('radio', { name: format === 'script' ? '脚本' : '小説' })).toBeChecked()
+  fireEvent.click(screen.getByRole('radio', { name: format === 'script' ? '小説' : '脚本' }))
+  fireEvent.click(screen.getByRole('button', { name: '保存' }))
+  expect(onSubmit).toHaveBeenCalledWith({
+    title: '題',
+    author: '著者',
+    description: '概要',
+    synopsis: '',
+    coverImage: 'data:image/jpeg;base64,AA',
+    format: format === 'script' ? 'novel' : 'script',
   })
 })

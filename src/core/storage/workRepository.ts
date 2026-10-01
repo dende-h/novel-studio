@@ -17,6 +17,7 @@ interface TrashedRecord {
 }
 
 export interface WorkSummary {
+  format?: Work['format']
   id: string
   title: string
   /** 話数（ライブラリカード表示用の派生値） */
@@ -27,6 +28,8 @@ export interface WorkSummary {
   author?: string
   /** あらすじ（メタ編集ダイアログの初期値用） */
   description?: string
+  /** 脚本の梗概（メタ編集ダイアログの初期値用。無いと保存時に '' 扱いで消えてしまう） */
+  synopsis?: string
   /** 最終更新時刻（未設定の旧データは undefined） */
   updatedAt?: number
   /** 表紙画像の data URL（ライブラリカード表示用。未設定なら undefined） */
@@ -70,8 +73,10 @@ export class WorkRepository {
         charCount: countWorkChars(parsed),
         author: parsed.author,
         description: parsed.description,
+        synopsis: parsed.synopsis,
         updatedAt: parsed.updatedAt,
         coverImage: parsed.coverImage,
+        format: parsed.format,
         platform: parsed.platform,
       }
     })

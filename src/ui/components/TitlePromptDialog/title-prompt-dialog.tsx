@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { type ReactNode, useEffect, useRef, useState } from 'react'
 import { Button } from '@/ui/components/ui/button'
 import {
   Dialog,
@@ -13,6 +13,7 @@ import { Input } from '@/ui/components/ui/input'
 import { Label } from '@/ui/components/ui/label'
 
 interface TitlePromptDialogProps {
+  children?: ReactNode
   open: boolean
   onOpenChange: (open: boolean) => void
   title: string
@@ -26,6 +27,7 @@ interface TitlePromptDialogProps {
 
 /** タイトル入力ダイアログ（window.prompt の置き換え）。空なら defaultValue を採用。 */
 export function TitlePromptDialog({
+  children,
   open,
   onOpenChange,
   title,
@@ -76,6 +78,7 @@ export function TitlePromptDialog({
                 autoFocus
               />
             </div>
+            {children}
           </DialogBody>
           <DialogFooter>
             <Button

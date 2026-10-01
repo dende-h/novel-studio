@@ -25,11 +25,13 @@ type GetToken = () => Promise<string | null>
  * v2 で work.platform、v3 で episodes[].visibility（話ごとの公開状態）、
  * v4 で episodes[].game（サウンドノベルの自己完結プレイヤー HTML）、
  * v5 で work.gameAssets（素材の実体を**作品ぶん1回だけ**送り、話は `asset:<id>` で参照）、
+ * v7 は脚本の work.format を追加（小説では従来の版を維持）。
  * v6 で work.gameAssets に**音声**（運営テンプレの BGM・効果音ファイル・`data:audio/…`）を追加。
  *
  * 使わない機能の版は名乗らない（**最小の版で送る**）。先方が新しい版を知らないあいだも
  * 「本文の更新だけは通る」ようにしておく（新しすぎるバンドルは 409 で弾かれる契約）。
  */
+const SCHEMA_VERSION_WITH_FORMAT = 7
 const SCHEMA_VERSION_WITH_AUDIO_ASSETS = 6
 const SCHEMA_VERSION_WITH_SHARED_ASSETS = 5
 const SCHEMA_VERSION_WITH_GAME = 4
@@ -136,7 +138,8 @@ export interface NovelGameBundleInput {
 }
 
 /** 送信する作品。ローカル専用キーを落とし、話に公開状態を載せた形。 */
-export type BundleWork = Omit<Work, 'episodes' | 'platform'> & {
+export type BundleWork = Omit<Work, 'episodes' | 'platform' | 'format' | 'synopsis'> & {
+  format?: 'script'
   episodes: BundleEpisode[]
   platform?: PlatformPayload
   /** 契約 v5：話から参照される素材の実体（使われた分だけ・1作品1回） */
@@ -239,7 +242,7 @@ export function attachEpisodeGames(
 }
 
 /**
- * 送信する用語集を組み立てる。**作者メモ（authorNote）は必ず落とす**。
+ * 送信する用語集を組み立てる。**作者メモ（authorNote）と対話ノート（dialog）は必ず落とす**。
  *
  * 用語集そのものは読者に見せる前提で送っている（先方が初出の話まで読んだ読者に開く＝段階公開）。
  * その中で authorNote だけは「項目に紐づくが、まだ読者に見せない情報」の置き場なので、
@@ -252,7 +255,15 @@ export function attachEpisodeGames(
 function toBundleGlossary(glossary: GlossaryEntry[] | undefined): GlossaryEntry[] | undefined {
   if (!glossary) return undefined
   return glossary.map((entry) => {
-    const { authorNote: _authorNote, body: _body, summary: _summary, ...rest } = entry
+    // 対話ノート（dialog）も第 1 段では契約に載せない（D-DLG-PUBLISH）＝作者メモと同じく落とす。
+    const {
+      authorNote: _authorNote,
+      body: _body,
+      summary: _summary,
+      dialog: _dialog,
+      dialogVersion: _dialogVersion,
+      ...rest
+    } = entry
     const merged = publicTextOf(entry)
     return merged ? { ...rest, summary: merged } : rest
   })
@@ -260,7 +271,15 @@ function toBundleGlossary(glossary: GlossaryEntry[] | undefined): GlossaryEntry[
 
 /** 送信するバンドルの work を組み立てる（契約に無いローカル専用キーを落とす）。 */
 export function toBundleWork(work: Work, novelGame?: NovelGameBundleInput): BundleWork {
-  const { platform: _local, episodes: _episodes, glossary, ...rest } = work
+  // 梗概（結末まで書く提出用のあらすじ）は読者に見せない。契約にも無い。
+  const {
+    platform: _local,
+    episodes: _episodes,
+    glossary,
+    format,
+    synopsis: _synopsis,
+    ...rest
+  } = work
   const payload = toPlatformPayload(work.platform)
   const sendable = toBundleGlossary(glossary)
   let episodes = toBundleEpisodes(work).episodes
@@ -272,6 +291,7 @@ export function toBundleWork(work: Work, novelGame?: NovelGameBundleInput): Bund
   }
   const base: BundleWork = {
     ...rest,
+    ...(format === 'script' ? { format } : {}),
     ...(sendable ? { glossary: sendable } : {}),
     episodes,
     ...(gameAssets.length > 0 ? { gameAssets } : {}),
@@ -330,17 +350,19 @@ export async function publishWorkToPlatform(
       method: 'POST',
       headers: { Authorization: `Bearer ${jwt}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        // 素材をまとめて送るときだけ v5、その中に音声（効果音ファイル）があるときだけ v6。
+        // 脚本は v7。素材をまとめて送るときだけ v5、その中に音声（効果音ファイル）があるときだけ v6。
         // テンプレだけの作品は v4 のまま＝使わない版は名乗らない
-        schemaVersion: bundleWork.gameAssets
-          ? bundleWork.gameAssets.some((a) => a.dataUrl.startsWith('data:audio/'))
-            ? SCHEMA_VERSION_WITH_AUDIO_ASSETS
-            : SCHEMA_VERSION_WITH_SHARED_ASSETS
-          : withGame
-            ? SCHEMA_VERSION_WITH_GAME
-            : toBundleEpisodes(work).declared
-              ? SCHEMA_VERSION_WITH_EPISODES
-              : SCHEMA_VERSION_BASE,
+        schemaVersion: bundleWork.format
+          ? SCHEMA_VERSION_WITH_FORMAT
+          : bundleWork.gameAssets
+            ? bundleWork.gameAssets.some((a) => a.dataUrl.startsWith('data:audio/'))
+              ? SCHEMA_VERSION_WITH_AUDIO_ASSETS
+              : SCHEMA_VERSION_WITH_SHARED_ASSETS
+            : withGame
+              ? SCHEMA_VERSION_WITH_GAME
+              : toBundleEpisodes(work).declared
+                ? SCHEMA_VERSION_WITH_EPISODES
+                : SCHEMA_VERSION_BASE,
         work: bundleWork,
       }),
     })
@@ -378,9 +400,11 @@ export async function publishWorkToPlatform(
     return {
       ok: false,
       message:
-        supported >= SCHEMA_VERSION_WITH_SHARED_ASSETS
-          ? '公開先がまだ音の素材（BGM・効果音）に対応していません。演出から BGM と効果音を外してから、もう一度お試しください。'
-          : '公開先がまだサウンドノベル公開に対応していません。話ごとの「サウンドノベル」をすべて切ってから、もう一度お試しください。',
+        bundleWork.format && supported < SCHEMA_VERSION_WITH_FORMAT
+          ? '公開先がまだ脚本の体裁に対応していません。作品情報で形式を小説にしてから、もう一度お試しください。'
+          : supported >= SCHEMA_VERSION_WITH_SHARED_ASSETS
+            ? '公開先がまだ音の素材（BGM・効果音）に対応していません。演出から BGM と効果音を外してから、もう一度お試しください。'
+            : '公開先がまだサウンドノベル公開に対応していません。話ごとの「サウンドノベル」をすべて切ってから、もう一度お試しください。',
     }
   }
   const message = typeof payload.message === 'string' ? payload.message : defaultMessage(res.status)

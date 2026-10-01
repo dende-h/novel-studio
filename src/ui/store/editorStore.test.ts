@@ -790,6 +790,46 @@ describe('editorStore（自前ストア・useSyncExternalStore 用）', () => {
       expect(g?.category).toBe('人物')
     })
 
+    it('updateGlossaryEntry の dialogPatch は鍵ごとに重ね、null で消し、空になれば record ごと落とす', async () => {
+      await store.createWork('作')
+      const e = await store.addGlossaryEntry({ name: 'アリス', category: '人物' })
+      await store.updateGlossaryEntry(e.id, {
+        dialogPatch: { title: { text: '灯台守', public: true }, flaw: { text: '忘れっぽい' } },
+        dialogVersion: 1,
+      })
+      // 別の鍵だけのパッチは他の鍵を巻き込まない（同期や MCP で増えた鍵も残る）
+      await store.updateGlossaryEntry(e.id, { dialogPatch: { secret: { text: '正体' } } })
+      let g = store.getSnapshot().work?.glossary?.[0]
+      expect(g?.dialog).toEqual({
+        title: { text: '灯台守', public: true },
+        flaw: { text: '忘れっぽい' },
+        secret: { text: '正体' },
+      })
+      expect(g?.dialogVersion).toBe(1)
+      await store.updateGlossaryEntry(e.id, {
+        dialogPatch: { title: null, flaw: null, secret: null },
+      })
+      g = store.getSnapshot().work?.glossary?.[0]
+      expect(g?.dialog).toBeUndefined()
+      expect(g?.dialogVersion).toBeUndefined()
+    })
+
+    it('updateGlossaryEntry は summary を書いたら旧・詳細（body）を畳む（D-GLOS-PUBLIC-ONE）', async () => {
+      await store.createWork('作')
+      const e = await store.addGlossaryEntry({ name: 'アリス', summary: '概要', body: '旧' })
+      await store.updateGlossaryEntry(e.id, { reading: 'ありす' })
+      expect(store.getSnapshot().work?.glossary?.[0]?.body).toBe('旧') // 触らなければ残る
+      await store.updateGlossaryEntry(e.id, { summary: '概要\n\n旧' })
+      const g = store.getSnapshot().work?.glossary?.[0]
+      expect(g?.summary).toBe('概要\n\n旧')
+      expect(g?.body).toBeUndefined()
+    })
+
+    it('addGlossaryEntry は空の名前を拒否する', async () => {
+      await store.createWork('作')
+      await expect(store.addGlossaryEntry({ name: '  ' })).rejects.toThrow(/名前/)
+    })
+
     it('updateGlossaryEntry は別名変更時に他 entry との衝突を拒否', async () => {
       await store.createWork('作')
       await store.addGlossaryEntry({ name: 'アリス' })
@@ -955,4 +995,31 @@ describe('refreshOpenWork（同期の pull をエディタへ追随させる）'
     await store.refreshOpenWork()
     expect(store.getSnapshot().work).toBe(before) // 参照も変わらない＝無駄な再描画なし
   })
+})
+
+it('形式変更を保存し、小説に戻すとキーを消す（他欄は据え置き）', async () => {
+  const store = makeStore()
+  await store.createWork('題')
+  const id = store.getSnapshot().work?.id ?? ''
+  await store.updateWorkMeta(id, {
+    author: '著者',
+    description: '概要',
+    coverImage: 'data:image/jpeg;base64,AA',
+  })
+  await store.updateWorkMeta(id, { format: 'script' })
+  expect(store.getSnapshot().work).toMatchObject({
+    title: '題',
+    author: '著者',
+    description: '概要',
+    coverImage: 'data:image/jpeg;base64,AA',
+    format: 'script',
+  })
+  expect(store.getSnapshot().workList[0]?.format).toBe('script')
+  await store.updateWorkMeta(id, { title: '新題' })
+  expect(store.getSnapshot().work?.format).toBe('script')
+  await store.updateWorkMeta(id, { format: 'novel' })
+  expect(store.getSnapshot().work).not.toHaveProperty('format')
+  await store.openWork(id)
+  expect(store.getSnapshot().work).not.toHaveProperty('format')
+  expect(store.getSnapshot().work?.author).toBe('著者')
 })

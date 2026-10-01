@@ -24,6 +24,11 @@ import {
   type TemplateManifest,
 } from '../../../src/core/game/templates'
 import {
+  DIALOG_CATEGORIES,
+  type DialogPatch,
+  questionsToPlainText,
+} from '../../../src/core/glossary/dialog'
+import {
   addEpisode,
   createWork,
   deleteGlossaryEntry,
@@ -48,6 +53,7 @@ import {
   upsertStructure,
 } from '../../../src/core/mcp-edit'
 import { pickPrimaryPlot, WORLD_CUSTOM_SLOT, WORLD_SLOTS } from '../../../src/core/plot'
+import { WorkFormatSchema } from '../../../src/core/schema'
 
 /** クライアントが未指定のときに名乗る MCP プロトコル版（十分に新しい安定版）。 */
 const DEFAULT_PROTOCOL_VERSION = '2025-06-18'
@@ -67,6 +73,9 @@ const SERVER_INSTRUCTIONS = [
   '- 用語集（get_glossary / upsert_glossary_entry）… 人物・場所・組織・用語・アイテム・生物の事典。',
   '  **公開サイトへ投稿され、読者にも見えます**（その用語が出てくる話まで読んだ読者に開きます）。',
   '  各項目の「作者メモ」欄だけは公開されません。',
+  '  各項目には「対話ノート」（一問一答の答え。役職・見た目・話し方・関係・秘密など）があり、',
+  '  get_glossary_questions で質問の鍵を引いて upsert_glossary_entry の dialog で書けます。',
+  '  対話ノートは公開サイトへ送られません（作者が「読者に見せる」にした答えは、公開情報の下書きに使うだけ）。',
   '- 世界観設定（get_world / set_world_note）… 作品の決め事・設定ルール・執筆方針を置く',
   '  **作者だけの場所。公開されません。**',
   '- プロット（get_plot / upsert_plot_beat 等）… 幕とビート、プロットライン、伏線、秘密。公開されません。',
@@ -123,11 +132,26 @@ export const MCP_TOOLS = [
   {
     name: 'get_glossary',
     description:
-      '1 作品の用語集（人物・場所・組織・用語・アイテム・生物の事典）を各項目の [entry_id: …] 付きで返す。この entry_id を upsert_glossary_entry の id / delete_glossary_entry の entry_id に渡す。用語集は公開サイトで読者にも見える器なので、書き換える前に get_world で作品の決め事を確認すること。',
+      '1 作品の用語集（人物・場所・組織・用語・アイテム・生物の事典）を各項目の [entry_id: …] 付きで返す。この entry_id を upsert_glossary_entry の id / delete_glossary_entry の entry_id に渡す。各項目の「対話ノート」（一問一答の答え）も鍵つきで返す＝ upsert_glossary_entry の dialog で鍵ごとに直せる。用語集は公開サイトで読者にも見える器なので、書き換える前に get_world で作品の決め事を確認すること。',
     inputSchema: {
       type: 'object',
       properties: workIdProp,
       required: ['work_id'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'get_glossary_questions',
+    description:
+      '用語集の「対話ノート」の質問セット（分類ごとの鍵・見出し・問い・公開の既定・基本／任意・選択肢・種類の枝の条件・追い質問）を返す。upsert_glossary_entry の dialog を組む前に読む。作品には依存しないので work_id は要らない。世界全体の決め事（名前のない設定）は用語集ではなく set_world_note へ。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        category: {
+          type: 'string',
+          description: `分類（${DIALOG_CATEGORIES.join('／')}）。省略すると全分類`,
+        },
+      },
       additionalProperties: false,
     },
   },
@@ -145,14 +169,24 @@ export const MCP_TOOLS = [
   {
     name: 'set_work_meta',
     description:
-      '作品のメタ情報（タイトル・著者名・あらすじ）を更新する。渡した項目だけ書き換える。',
+      '作品のメタ情報（タイトル・著者名・あらすじ・梗概・形式）を更新する。渡した項目だけ書き換える。',
     inputSchema: {
       type: 'object',
       properties: {
         ...workIdProp,
         title: { type: 'string', description: '作品タイトル' },
         author: { type: 'string', description: '作者名（空文字で未設定）' },
-        description: { type: 'string', description: 'あらすじ（空文字で未設定）' },
+        description: { type: 'string', description: 'あらすじ（読者向け。空文字で未設定）' },
+        synopsis: {
+          type: 'string',
+          description:
+            '梗概（脚本の提出用に結末まで書いたあらすじ。脚本テキストの書き出しだけに載る。空文字で未設定）',
+        },
+        format: {
+          type: 'string',
+          enum: ['novel', 'script'],
+          description: '作品の形式。novel は形式の指定を解除する',
+        },
       },
       required: ['work_id'],
       additionalProperties: false,
@@ -161,7 +195,7 @@ export const MCP_TOOLS = [
   {
     name: 'set_episode',
     description:
-      '既存の話のタイトル・本文を更新する。body はプレーンテキスト（改行で段落・行頭「＊」でシーン区切り・｜漢字《かんじ》でルビ）。渡した項目だけ書き換える。**書く前に get_world で作品の決め事（語り手と文体・言葉づかい・開示方針・やらないこと）を読み、それに従うこと。**',
+      '既存の話のタイトル・本文を更新する。body はプレーンテキスト（改行で段落・｜漢字《かんじ》でルビ。脚本形式では *** だけの行が場面転換、○・〇で始まる行が柱、字下げした行がト書き、名前（補足も可）＋「」・『』または鉤括弧で始まる行がセリフ、それ以外がト書き）。渡した項目だけ書き換える。**書く前に get_world で作品の決め事（語り手と文体・言葉づかい・開示方針・やらないこと）を読み、それに従うこと。**',
     inputSchema: {
       type: 'object',
       properties: {
@@ -252,6 +286,22 @@ export const MCP_TOOLS = [
           type: 'string',
           description:
             '作者メモ。この項目に紐づく非公開の情報（正体・後の展開など）。公開時に取り除かれる（空文字で削除）',
+        },
+        dialog: {
+          type: 'object',
+          description:
+            '対話ノート（一問一答の答え）のパッチ。鍵は get_glossary_questions の鍵（追い質問は 親__子、種類は kind）。値は文字列（答え。空文字でその答えを削除）か { "text": "...", "public": true|false }（公開の扱いも指定。省略は新規＝その問いの既定・既存＝据え置き）。渡した鍵だけ書き換え、渡さない鍵は据え置く。未知の鍵・共通 4 問の鍵（name/reading/aliases/blurb）・選択肢外の kind はエラー。名前・読み・別名・公開情報は name／reading／aliases／summary で渡す',
+          additionalProperties: {
+            anyOf: [
+              { type: 'string' },
+              {
+                type: 'object',
+                properties: { text: { type: 'string' }, public: { type: 'boolean' } },
+                required: ['text'],
+                additionalProperties: false,
+              },
+            ],
+          },
         },
       },
       required: ['work_id', 'name'],
@@ -719,12 +769,46 @@ const num = (args: Record<string, unknown> | undefined, key: string): number | u
 const bool = (args: Record<string, unknown> | undefined, key: string): boolean | undefined =>
   typeof args?.[key] === 'boolean' ? (args[key] as boolean) : undefined
 
+/**
+ * upsert_glossary_entry の dialog（鍵 → 文字列 or { text, public }）を読む。形が違う値は
+ * ここで McpEditError にする（鍵の検証・既定の公開は core の applyDialogPatch）。
+ */
+function dialogPatchOf(args: Record<string, unknown> | undefined): DialogPatch | undefined {
+  const raw = args?.dialog
+  if (raw === undefined) return undefined
+  if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) {
+    throw new McpEditError('dialog は { 鍵: 答え } の object で渡してください')
+  }
+  const out: DialogPatch = {}
+  for (const [key, v] of Object.entries(raw as Record<string, unknown>)) {
+    if (typeof v === 'string') {
+      out[key] = v
+      continue
+    }
+    if (v && typeof v === 'object' && typeof (v as { text?: unknown }).text === 'string') {
+      const pub = (v as { public?: unknown }).public
+      if (pub !== undefined && typeof pub !== 'boolean') {
+        throw new McpEditError(`dialog の「${key}」の public は true か false で渡してください`)
+      }
+      out[key] = {
+        text: (v as { text: string }).text,
+        ...(pub !== undefined ? { public: pub } : {}),
+      }
+      continue
+    }
+    throw new McpEditError(
+      `dialog の「${key}」は文字列か { "text": "...", "public": true|false } で渡してください`,
+    )
+  }
+  return out
+}
+
 function listWorksText(works: CloudBackup['works']): string {
   if (works.length === 0) return '作品はまだありません。'
   const lines = works.map((w) => {
     const author = w.author ? `（著者: ${w.author}）` : ''
     const eps = w.episodes.map((e) => `    - ${e.title} [episode_id: ${e.id}]`).join('\n')
-    return `- ${w.title}${author} — ${w.episodes.length}話 [work_id: ${w.id}]${eps ? `\n${eps}` : ''}`
+    return `- ${w.title}${author} — ${w.episodes.length}話 [work_id: ${w.id}]${w.format === 'script' ? '\n    形式: 脚本' : ''}${eps ? `\n${eps}` : ''}`
   })
   return `作品が ${works.length} 件あります。\n${lines.join('\n')}`
 }
@@ -758,6 +842,9 @@ async function callTool(
       ? text(`backup_id "${backupId}" をライブに復元しました。${PULL_HINT}`)
       : text(`backup_id "${backupId}" の復元に失敗しました（見つからない等）。`, true)
   }
+
+  // 質問セットは作品に依存しない（スナップショット不要）。
+  if (name === 'get_glossary_questions') return text(questionsToPlainText(str(args, 'category')))
 
   // --- スナップショットに基づく読み書き ---
   const snap = await deps.loadSnapshot()
@@ -807,6 +894,8 @@ async function callTool(
               title: str(args, 'title'),
               author: str(args, 'author'),
               description: str(args, 'description'),
+              synopsis: str(args, 'synopsis'),
+              format: args?.format === undefined ? undefined : WorkFormatSchema.parse(args.format),
             },
             now,
           ),
@@ -882,6 +971,7 @@ async function callTool(
               summary: str(args, 'summary'),
               body: str(args, 'body'),
               authorNote: str(args, 'author_note'),
+              dialog: dialogPatchOf(args),
             },
             deps.genId(),
             now,

@@ -1,4 +1,5 @@
 import { publicTextOf } from '../glossary'
+import { dialogToPlainText } from '../glossary/dialog'
 import type { Block, GlossaryEntry, Inline, Work } from '../schema'
 
 /**
@@ -42,8 +43,15 @@ export function workToPlainText(work: Work): string {
   const meta = [`# ${work.title}`]
   if (work.author) meta.push(`著者: ${work.author}`)
 
+  if (work.format === 'script')
+    meta.push(
+      '形式: 脚本',
+      '脚本の書き方: *** だけの行は場面転換、○・〇で始まる行は柱、字下げした行はト書き、名前（補足も可）＋「」・『』または鉤括弧で始まる行はセリフ、それ以外はト書き。',
+    )
+
   const sections = [meta.join('\n')]
   if (work.description) sections.push(work.description)
+  if (work.format === 'script' && work.synopsis) sections.push(`梗概:\n${work.synopsis}`)
   for (const ep of work.episodes) {
     sections.push(`## ${ep.title}\n\n${blocksToPlainText(ep.blocks)}`)
   }
@@ -71,6 +79,10 @@ function entryToPlainText(entry: GlossaryEntry, withId = false): string {
   const pub = publicTextOf(entry)
   if (pub) blocks.push(pub)
   if (entry.authorNote) blocks.push(`### 作者メモ（非公開）\n${entry.authorNote}`)
+  // 対話ノート（一問一答の答え）。鍵つきで出す＝ upsert の dialog で鍵ごとに直せる。
+  // 「読者に見せる」の答えも第 1 段では公開バンドルに載らない（下書きに使うだけ）。
+  const dialog = dialogToPlainText(entry)
+  if (dialog) blocks.push(`### ${dialog}`)
   return blocks.join('\n\n')
 }
 

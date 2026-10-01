@@ -5,6 +5,7 @@ import { blocksToHtml } from '@/core/exporter/toHtml'
 import { findAppearances, resolvedNameSet, resolveRef } from '@/core/glossary'
 import { parseEpisodeBody } from '@/core/parser/parseNotation'
 import type { GlossaryEntry } from '@/core/schema'
+import { layoutScriptBlocks, paginate } from '@/core/script/layout'
 import { countEpisodeChars, countWorkChars } from '@/core/stats'
 import type { ActivityRepository } from '@/core/storage/activityRepository'
 import type { GameAssetRepository } from '@/core/storage/gameAssetRepository'
@@ -16,15 +17,14 @@ import { cn } from '@/lib/utils'
 import { isPublishAvailable } from '@/ui/_api/publish'
 import { AppShell } from '@/ui/components/AppShell/app-shell'
 import { ConfirmDialog } from '@/ui/components/ConfirmDialog/confirm-dialog'
-import {
-  EditorPane,
-  type EditorPaneHandle,
-  type NotationKind,
-} from '@/ui/components/EditorPane/editor-pane'
+import { EditorPane, type EditorPaneHandle } from '@/ui/components/EditorPane/editor-pane'
+import { notationItems, notationShortcut } from '@/ui/components/EditorPane/notation'
 import { ReplacePanel } from '@/ui/components/EditorPane/replace-panel'
 import { ErrorBoundary } from '@/ui/components/ErrorBoundary/error-boundary'
 import { ExportDialog } from '@/ui/components/ExportDialog/export-dialog'
+import { FieldHelp } from '@/ui/components/FieldHelp/field-help'
 import {
+  formValuesToFieldPatch,
   GlossaryEntryForm,
   type GlossaryFormValues,
 } from '@/ui/components/GlossaryEntryForm/glossary-entry-form'
@@ -33,6 +33,8 @@ import { GlossaryView } from '@/ui/components/GlossaryView/glossary-view'
 import { HistoryPanel } from '@/ui/components/HistoryPanel/history-panel'
 import { PlotPeek } from '@/ui/components/PlotPeek/plot-peek'
 import { PreviewPane } from '@/ui/components/PreviewPane/preview-pane'
+import { SHEET_PRESETS } from '@/ui/components/ScriptSheet/script-sheet'
+import { ScriptSheetView } from '@/ui/components/ScriptSheet/script-sheet-view'
 import { SideNav } from '@/ui/components/SideNav/side-nav'
 import { TitlePromptDialog } from '@/ui/components/TitlePromptDialog/title-prompt-dialog'
 import { useToast } from '@/ui/components/Toast/toast'
@@ -43,23 +45,6 @@ import { useEditorStore } from '@/ui/hooks/use-editor-store'
 import { useIsNarrow } from '@/ui/hooks/use-narrow'
 import { useOpenProfile } from '@/ui/hooks/use-pen-name'
 import type { EditorStore } from '@/ui/store/editorStore'
-
-/** フォーム値の空文字は未設定(undefined)へ畳んでスキーマの任意項目を綺麗に保つ。 */
-const emptyToUndef = (s: string): string | undefined => (s.trim() === '' ? undefined : s)
-
-/** GlossaryFormValues → updateGlossaryEntry のフィールドパッチ（name は除外＝改名は別操作）。 */
-const toFieldPatch = (v: GlossaryFormValues) => ({
-  aliases: v.aliases,
-  category: emptyToUndef(v.category),
-  reading: emptyToUndef(v.reading),
-  summary: emptyToUndef(v.summary),
-  // 公開情報は summary へ一本化（D-GLOS-PUBLIC-ONE）。旧・詳細（body）は保存のたびに畳む
-  // （フォームは publicTextOf で結合した文を summary として返してくる）。
-  body: undefined,
-  authorNote: emptyToUndef(v.authorNote),
-  // サムネは空文字をそのまま渡す（更新時 '' = 削除指示。作成時は addGlossaryEntry が空を弾く）。
-  thumbnail: v.thumbnail,
-})
 
 interface AppProps {
   store: EditorStore
@@ -99,15 +84,6 @@ const CorrelationChartView = lazy(
 const OutlineView = lazy(() => import('@/ui/components/OutlineView/outline-view'))
 const PlotView = lazy(() => import('@/ui/components/PlotView/plot-view'))
 const StagingView = lazy(() => import('@/ui/components/StagingView/staging-view'))
-
-/** エディタツールバーの記法ボタン（ショートカットは EditorPane の SHORTCUTS と対応）。 */
-const NOTATION_BUTTONS: { kind: NotationKind; label: string; title: string }[] = [
-  { kind: 'ruby', label: 'ルビ', title: 'ルビ ｜漢字《かんじ》（Ctrl/Cmd + I）' },
-  { kind: 'dots', label: '傍点', title: '傍点 《《強調》》（Ctrl/Cmd + B）' },
-  // 「用語集」はナビ（用語集ページ）とツールバー（用語集パネル）で既に使っているため、
-  // 記法ボタンは挿入されるもの＝参照で呼び分ける。
-  { kind: 'ref', label: '参照', title: '用語集参照 [[用語]]（Ctrl/Cmd + K）' },
-]
 
 /** 自動保存：本文の入力が止まってから保存するまでの待ち時間(ms)。純ローカル処理なので
  * 短くても安い。同期の push 猶予（保存後 1.5 秒）と直列に効くため、ここも短く保つ。 */
@@ -239,6 +215,15 @@ export function App({
     () => blocksToHtml(parseEpisodeBody(state.draft), resolvedNames),
     [state.draft, resolvedNames],
   )
+  // 脚本は HTML ではなく原稿用紙（20字×20行など）に組む。縦横の切替は用紙の型の切替になる。
+  const sheetPreset = SHEET_PRESETS[orientation]
+  const scriptPages = useMemo(
+    () =>
+      work?.format === 'script'
+        ? paginate(layoutScriptBlocks(parseEpisodeBody(state.draft), sheetPreset), sheetPreset)
+        : null,
+    [state.draft, work?.format, sheetPreset],
+  )
   // 「この話のプロット」の進捗（実字数）。プレビューと同じ正本パーサで数える。
   const draftChars = useMemo(
     () => countEpisodeChars({ id: '', title: '', blocks: parseEpisodeBody(state.draft) }),
@@ -286,7 +271,7 @@ export function App({
       if (values.name !== entry.name) {
         await store.renameGlossaryEntry(entry.id, values.name, { rewriteBody: false })
       }
-      await store.updateGlossaryEntry(entry.id, toFieldPatch(values))
+      await store.updateGlossaryEntry(entry.id, formValuesToFieldPatch(values))
     },
     [store],
   )
@@ -369,6 +354,7 @@ export function App({
       sidebar={
         <SideNav
           workTitle={work?.title}
+          workFormat={work?.format}
           workMeta={
             work
               ? `${work.episodes.length}話 ・ ${countWorkChars(work).toLocaleString('ja-JP')}字`
@@ -542,9 +528,13 @@ export function App({
             entries={work.glossary ?? []}
             workTitle={work.title}
             getAppearances={getAppearances}
-            onCreate={async (name) => (await store.addGlossaryEntry({ name })).id}
+            onCreate={async (input) => (await store.addGlossaryEntry(input)).id}
             onUpdate={async (id, values) => {
-              await store.updateGlossaryEntry(id, toFieldPatch(values))
+              await store.updateGlossaryEntry(id, formValuesToFieldPatch(values))
+            }}
+            onUpdateDialog={async (id, patch) => {
+              // 変わった欄だけ（対話ノートは鍵ごと）。空の畳み方も store が持つ。
+              await store.updateGlossaryEntry(id, patch)
             }}
             onRename={async (id, newName, opts) => {
               await store.renameGlossaryEntry(id, newName, opts)
@@ -556,8 +546,8 @@ export function App({
         ) : episode ? (
           <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col">
             {/* エディタツールバー */}
-            <div className="flex h-[46px] shrink-0 items-center justify-between gap-3 border-outline-variant/30 border-b bg-surface-container-lowest px-4">
-              <div className="flex min-w-0 items-center gap-2.5">
+            <div className="flex min-h-[46px] shrink-0 flex-wrap items-center justify-between gap-3 border-outline-variant/30 border-b bg-surface-container-lowest px-4 py-2">
+              <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2.5">
                 {/* 狭幅では話タイトルを畳む（ドロワーの話一覧で分かる）。代わりに面の切替を置く。 */}
                 <span className="truncate font-medium font-sans text-[13px] text-on-surface max-lg:hidden">
                   {episode.title}
@@ -596,20 +586,64 @@ export function App({
                 </fieldset>
                 {/* 記法の挿入（PC のみ。狭幅はキーボード直上の記法バーが担当する）。
                   選択があれば囲み、無ければ空の型を置く。ショートカットは EditorPane 側。 */}
-                <div className="flex items-center gap-1 max-lg:hidden">
-                  {NOTATION_BUTTONS.map(({ kind, label, title }) => (
+                <div className="flex flex-wrap items-center gap-1 max-lg:hidden">
+                  {notationItems(work?.format === 'script').map((item) => (
                     <button
-                      key={kind}
+                      key={item.kind}
                       type="button"
-                      title={title}
+                      title={`${item.hint}（${notationShortcut(item)}）`}
+                      aria-label={item.label}
                       // クリックで textarea のフォーカス・選択範囲を失うと挿入先が分からなくなる。
                       onMouseDown={(e) => e.preventDefault()}
-                      onClick={() => editorRef.current?.applyNotation(kind)}
-                      className="flex h-[26px] items-center rounded-md px-2.5 font-sans text-on-surface-variant text-xs transition-colors hover:bg-surface-container-high hover:text-on-surface"
+                      onClick={() => editorRef.current?.applyNotation(item.kind)}
+                      className="flex min-h-11 shrink-0 flex-col justify-center items-center whitespace-nowrap rounded-md px-2.5 font-sans text-on-surface-variant text-xs transition-colors hover:bg-surface-container-high hover:text-on-surface"
                     >
-                      {label}
+                      {item.label}
+                      <kbd aria-hidden className="mt-0.5 text-[10px] leading-tight opacity-60">
+                        {notationShortcut(item)}
+                      </kbd>
                     </button>
                   ))}
+                  {work?.format === 'script' ? (
+                    // 脚本の書き方（判別・字下げ・Tab 操作・自動で揃うもの）は ⓘ に畳む。
+                    <FieldHelp
+                      title="脚本の書き方"
+                      description="行頭の書き方だけで柱・セリフ・ト書きを見分けます。字下げや余白は自動で揃います。"
+                      className="ml-1"
+                    >
+                      <ul className="list-disc space-y-1 pl-5">
+                        <li>
+                          <strong>柱</strong>：行頭に ○
+                          を付けて場所と時間を書きます。例「○公園（夕方）」
+                        </li>
+                        <li>
+                          <strong>セリフ</strong>
+                          ：行頭に話者名、続けて「」で書きます。例「ユイ「こんにちは」」。話者名の後ろに（声）のような補足を1つ付けられます
+                        </li>
+                        <li>
+                          <strong>ト書き</strong>
+                          ：柱でもセリフでもない行はすべてト書きです。プレビューと書き出しで自動的に3字下がるので、字下げを打つ必要はありません。人物が初めて登場するト書きでは、名前の後ろに年齢を付けます。例「ベンチに座るユイ（１７）」
+                        </li>
+                        <li>
+                          <strong>場面転換</strong>：***
+                          だけの行。プレビューと書き出しでは「×　　×　　×」になります
+                        </li>
+                      </ul>
+                      <p>
+                        自分で字下げしたいときは Tab で3字下げ、Shift+Tab
+                        で解除できます。字下げした行で Enter を押すと次の行も字下げのまま続きます。
+                        行頭に「が来るト書き（例：「立入禁止」の看板がある。）は、字下げしておくとセリフと間違われません。
+                      </p>
+                      <p>
+                        柱や場面転換の前の空行、！？の後ろの1マス、半角の英数字（全角に揃えます）は、打っても打たなくても仕上がりは同じです。
+                        縦書きでは数字を漢数字で書くのが一般的です。
+                      </p>
+                      <p>
+                        右のプレビューは20字×20行の原稿用紙で、枚数が分かります。書き出しは「書き出し」から
+                        Word（A4／B5）かテキストを選べます。本文の下の「書式チェック」で確認候補を見られます。
+                      </p>
+                    </FieldHelp>
+                  ) : null}
                 </div>
               </div>
               <div className="flex shrink-0 items-center gap-2">
@@ -712,6 +746,7 @@ export function App({
               >
                 <EditorPane
                   ref={editorRef}
+                  scriptMode={work?.format === 'script'}
                   value={state.draft}
                   onChange={(v) => store.setDraft(v)}
                   glossary={work?.glossary ?? []}
@@ -730,7 +765,15 @@ export function App({
                 ) : null}
               </div>
               <div className={cn('min-w-0 flex-[1_1_0%]', pane !== 'preview' && 'max-lg:hidden')}>
-                <PreviewPane html={previewHtml} onRefClick={onRefClick} orientation={orientation} />
+                {scriptPages ? (
+                  <ScriptSheetView pages={scriptPages} preset={sheetPreset} />
+                ) : (
+                  <PreviewPane
+                    html={previewHtml}
+                    onRefClick={onRefClick}
+                    orientation={orientation}
+                  />
+                )}
               </div>
             </div>
 
@@ -820,7 +863,7 @@ export function App({
         mode="create"
         initial={quickCreateName !== null ? { name: quickCreateName } : undefined}
         onSubmit={async (values) => {
-          await store.addGlossaryEntry({ name: values.name, ...toFieldPatch(values) })
+          await store.addGlossaryEntry({ name: values.name, ...formValuesToFieldPatch(values) })
         }}
         glossary={work?.glossary ?? []}
         onCreateEntry={createPlainGlossaryEntry}
@@ -856,7 +899,9 @@ export function App({
             title: work.title,
             author: work.author,
             description: work.description,
+            synopsis: work.synopsis,
             coverImage: work.coverImage,
+            format: work.format,
           }}
           onSubmit={(values) => void store.updateWorkMeta(work.id, values)}
         />

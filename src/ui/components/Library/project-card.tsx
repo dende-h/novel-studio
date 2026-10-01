@@ -99,6 +99,14 @@ export function ProjectCard({
           >
             {episodeCount}話
           </Badge>
+          {summary.format === 'script' ? (
+            <Badge
+              variant="secondary"
+              className="shrink-0 bg-secondary-container font-sans text-on-secondary-container"
+            >
+              脚本
+            </Badge>
+          ) : null}
           {/* 公開中はメニューを開かなくても分かるようにする（切替の可否判断に必要な情報）。 */}
           {published ? (
             <Badge variant="secondary" className="bg-accent font-sans text-primary">

@@ -263,6 +263,78 @@ describe('mcp-edit（MCP 書き込みの純ロジック）', () => {
     expect(w?.glossary?.find((e) => e.id === 'g1')?.thumbnail).toBe('data:image/jpeg;base64,x')
   })
 
+  it('upsertGlossaryEntry の dialog は鍵ごとのパッチで、省略すると対話ノートを据え置く', () => {
+    const [w1] = upsertGlossaryEntry(
+      [work()],
+      'w1',
+      {
+        id: 'g1',
+        name: 'アカリ',
+        category: '人物',
+        dialog: { title: '灯台守', flaw: '忘れっぽい' },
+      },
+      'n1',
+      100,
+    )
+    const e1 = w1?.glossary?.[0]
+    expect(e1?.dialog).toEqual({ title: { text: '灯台守' }, flaw: { text: '忘れっぽい' } })
+    expect(e1?.dialogVersion).toBe(2)
+    // 読みだけの更新で対話ノートが消えない（本番利用者のデータ保全）
+    const [w2] = upsertGlossaryEntry(
+      w1 ? [w1] : [],
+      'w1',
+      { id: 'g1', name: 'アカリ', reading: 'あかり' },
+      'n2',
+      200,
+    )
+    expect(w2?.glossary?.[0]?.dialog).toEqual(e1?.dialog)
+    expect(w2?.glossary?.[0]?.dialogVersion).toBe(2)
+    // 鍵ごとの削除・公開の指定
+    const [w3] = upsertGlossaryEntry(
+      w2 ? [w2] : [],
+      'w1',
+      {
+        id: 'g1',
+        name: 'アカリ',
+        dialog: { title: '', flaw: { text: '忘れっぽい', public: true } },
+      },
+      'n3',
+      300,
+    )
+    expect(w3?.glossary?.[0]?.dialog).toEqual({ flaw: { text: '忘れっぽい', public: true } })
+  })
+
+  it('upsertGlossaryEntry の dialog は未知の鍵・質問の無い分類で McpEditError（何も書かない）', () => {
+    expect(() =>
+      upsertGlossaryEntry(
+        [work()],
+        'w1',
+        { id: 'g1', name: 'アカリ', category: '人物', dialog: { nope: 'x' } },
+        'n',
+        1,
+      ),
+    ).toThrow(McpEditError)
+    // 分類が無い項目に dialog を渡す＝分類を先に付けるよう促す
+    expect(() =>
+      upsertGlossaryEntry(
+        [work()],
+        'w1',
+        { id: 'g1', name: 'アカリ', dialog: { title: 'x' } },
+        'n',
+        1,
+      ),
+    ).toThrow(/分類/)
+    // 分類を同時に渡せば通る
+    const [w] = upsertGlossaryEntry(
+      [work()],
+      'w1',
+      { id: 'g1', name: 'アカリ', category: '人物', dialog: { title: 'x' } },
+      'n',
+      1,
+    )
+    expect(w?.glossary?.[0]?.dialog?.title?.text).toBe('x')
+  })
+
   it('deleteGlossaryEntry は削除、存在しなければ McpEditError', () => {
     const [w] = deleteGlossaryEntry([work()], 'w1', 'g1', 100)
     expect(w?.glossary).toHaveLength(0)

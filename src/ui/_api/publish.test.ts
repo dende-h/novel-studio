@@ -209,6 +209,8 @@ describe('toBundleWork（送信するバンドルの work）', () => {
           summary: '旅の同行者',
           body: '本文に出る詳しい説明',
           authorNote: '正体は管理AI。第六編まで伏せる',
+          dialog: { secret: { text: '帳の向こう' }, title: { text: '同行者', public: true } },
+          dialogVersion: 1,
           createdAt: 1,
           updatedAt: 2,
         },
@@ -217,6 +219,9 @@ describe('toBundleWork（送信するバンドルの work）', () => {
     const entry = bundle.glossary?.[0]
     expect(entry).toBeDefined()
     expect('authorNote' in (entry ?? {})).toBe(false)
+    // 対話ノートは第 1 段では契約に載せない（「読者に見せる」の答えも含めて落とす）
+    expect('dialog' in (entry ?? {})).toBe(false)
+    expect('dialogVersion' in (entry ?? {})).toBe(false)
     // 旧形式（summary + body）は summary へ結合して送る＝先方は summary だけで公開情報の全文
     expect('body' in (entry ?? {})).toBe(false)
     expect(entry).toMatchObject({
@@ -759,5 +764,36 @@ describe('canPublishPublicly / describePublishBlocked（公開可否の判定）
     const { describePublishBlocked } = await loadModule()
     expect(describePublishBlocked('declarations-missing')).toContain('誓約')
     expect(describePublishBlocked('moderated')).toContain('運営')
+  })
+})
+
+it.each(['script', 'novel'] as const)('形式 %s に必要な版だけで公開する', async (format) => {
+  const { publishWorkToPlatform, toBundleWork } = await loadModule()
+  const fetchMock = vi
+    .fn()
+    .mockResolvedValue(new Response(JSON.stringify({ ok: true }), { status: 200 }))
+  vi.stubGlobal('fetch', fetchMock)
+  await publishWorkToPlatform(async () => 'jwt', { ...work, format })
+  const request = fetchMock.mock.calls[0] as [string, RequestInit]
+  const body = JSON.parse(request[1].body as string)
+  expect(body.schemaVersion).toBe(format === 'script' ? 7 : 2)
+  if (format === 'script') expect(body.work.format).toBe('script')
+  else expect(body.work).not.toHaveProperty('format')
+  expect(toBundleWork(work)).not.toHaveProperty('format')
+})
+it('v7未対応の公開先では脚本向けの案内を表示する', async () => {
+  const { publishWorkToPlatform } = await loadModule()
+  vi.stubGlobal(
+    'fetch',
+    vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ error: 'unsupported-schema-version', supported: 6 }), {
+        status: 409,
+      }),
+    ),
+  )
+  expect(await publishWorkToPlatform(async () => 'jwt', { ...work, format: 'script' })).toEqual({
+    ok: false,
+    message:
+      '公開先がまだ脚本の体裁に対応していません。作品情報で形式を小説にしてから、もう一度お試しください。',
   })
 })

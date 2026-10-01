@@ -177,9 +177,11 @@ test('@サジェストは狭幅ではキーボード直上のバーで出る', a
   // 用語集に用語を1件用意する
   await openNav(page)
   await page.getByRole('button', { name: '用語集', exact: true }).click()
+  // 「新しく登録」は対話で開く。ここでは名前だけ要るのでフォームに切り替え、名前を入れた時点で登録される
   await page.getByRole('button', { name: '新しく登録' }).click()
+  await page.getByRole('button', { name: 'フォーム', exact: true }).click()
   await page.getByLabel('名前').fill('アリス')
-  await page.getByRole('button', { name: '作成', exact: true }).click()
+  await page.getByLabel('名前').blur()
   // 作成した項目がその場で選ばれ、編集面に開く（マスター・ディテール）
   await expect(page.getByLabel('項目の編集').getByLabel('名前')).toHaveValue('アリス')
 
@@ -210,8 +212,9 @@ test('記法バーの参照で空枠を置いてから候補確定しても括�
   await openNav(page)
   await page.getByRole('button', { name: '用語集', exact: true }).click()
   await page.getByRole('button', { name: '新しく登録' }).click()
+  await page.getByRole('button', { name: 'フォーム', exact: true }).click()
   await page.getByLabel('名前').fill('ユグドラシル')
-  await page.getByRole('button', { name: '作成', exact: true }).click()
+  await page.getByLabel('名前').blur()
   // 作成した項目がその場で選ばれ、編集面に開く（マスター・ディテール）
   await expect(page.getByLabel('項目の編集').getByLabel('名前')).toHaveValue('ユグドラシル')
   await openNav(page)
@@ -219,7 +222,7 @@ test('記法バーの参照で空枠を置いてから候補確定しても括�
 
   const ta = page.getByRole('textbox', { name: '本文' })
   await ta.click()
-  await page.getByRole('button', { name: '参照', exact: true }).click()
+  await page.getByRole('button', { name: '用語引用', exact: true }).click()
   await expect(ta).toHaveValue('[[]]')
 
   // 空枠の中（キャレットは [[ の直後）に打つ
@@ -267,9 +270,11 @@ test('記法バー：フォーカス中だけ出て、選択を囲む。@サジ�
   // 候補が出る状態を作る（候補 0 件ならサジェスト自体が開かないため用語を1件登録する）
   await openNav(page)
   await page.getByRole('button', { name: '用語集', exact: true }).click()
+  // 「新しく登録」は対話で開く。ここでは名前だけ要るのでフォームに切り替え、名前を入れた時点で登録される
   await page.getByRole('button', { name: '新しく登録' }).click()
+  await page.getByRole('button', { name: 'フォーム', exact: true }).click()
   await page.getByLabel('名前').fill('アリス')
-  await page.getByRole('button', { name: '作成', exact: true }).click()
+  await page.getByLabel('名前').blur()
   // 作成した項目がその場で選ばれ、編集面に開く（マスター・ディテール）
   await expect(page.getByLabel('項目の編集').getByLabel('名前')).toHaveValue('アリス')
   await openNav(page)
@@ -282,4 +287,25 @@ test('記法バー：フォーカス中だけ出て、選択を囲む。@サジ�
   await ta2.pressSequentially('@アリ')
   await expect(page.getByRole('listbox', { name: '参照候補' })).toBeVisible()
   await expect(bar).toBeHidden()
+})
+
+test('脚本形式のスマホ記法バーとプレビュー', async ({ page }) => {
+  await page.goto('/')
+  await createWork(page, 'スマホ脚本')
+  await page.getByRole('button', { name: '「スマホ脚本」のメニュー' }).click()
+  await page.getByRole('menuitem', { name: '情報を編集' }).click()
+  await page.getByRole('radio', { name: '脚本', exact: true }).check()
+  await page.getByRole('button', { name: '保存', exact: true }).click()
+  await openWriter(page, 'スマホ脚本')
+  await addEpisode(page, '第一話')
+  const body = page.getByRole('textbox', { name: '本文' })
+  await body.fill('○公園\n　風が吹く\nユイ「こんにちは」')
+  const toolbar = page.getByRole('toolbar', { name: '記法の挿入' })
+  await expect(toolbar.getByRole('button', { name: '柱', exact: true })).toBeVisible()
+  await expect(toolbar.getByRole('button', { name: 'セリフ', exact: true })).toBeVisible()
+  await expect(toolbar.getByRole('button', { name: 'ト書き', exact: true })).toBeVisible()
+  await expect(toolbar.getByRole('button', { name: 'ト書き解除', exact: true })).toBeVisible()
+  await page.getByRole('button', { name: 'プレビュー', exact: true }).click()
+  await expect(page.locator('.sheet-line--slug').first()).toHaveText('○公園')
+  await expect(page.locator('.sheet-line--dialogue').first()).toHaveText('ユイ「こんにちは」')
 })
