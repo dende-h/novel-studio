@@ -12,6 +12,7 @@ import { MemoryStore } from '@/core/storage/memoryStore'
 import { PlotRepository } from '@/core/storage/plotRepository'
 import { StagingRepository } from '@/core/storage/stagingRepository'
 import { StructureRepository } from '@/core/storage/structureRepository'
+import { withWorkMutationLock } from '@/core/storage/workMutationLock'
 import { WorkRepository } from '@/core/storage/workRepository'
 import type { Structure } from '@/core/structure'
 import type { ActivityDay } from '@/core/sync/activityMerge'
@@ -402,6 +403,89 @@ describe('sync-service reconcile', () => {
     expect((await repo.getWork('w1'))?.title).toBe('リモート編集')
     const snaps = await snapshotRepo.list('w1')
     expect(snaps.some((s) => s.work.title === '往復中の編集')).toBe(true)
+  })
+
+  it('pull の取得中に未保存編集が始まったら適用しない', async () => {
+    const remote = makeFakeRemote()
+    let dirty = false
+    const { repo, service } = makeEnv(remote, { getOpenWork: () => ({ id: 'w1', dirty }) })
+    await repo.saveWork(mkWork('w1', 'v1', 100))
+    await service.reconcile()
+    await remote.seed(mkWork('w1', 'リモート編集', 300))
+    const get = remote.api.getWork
+    remote.api.getWork = async (id) => {
+      dirty = true
+      return get(id)
+    }
+    const summary = await service.reconcile()
+    expect(summary?.pulled).toBe(0)
+    expect((await repo.getWork('w1'))?.title).toBe('v1')
+  })
+
+  it('置換のロック待ち後に内容を再検証し、古い pull で巻き戻さない', async () => {
+    const remote = makeFakeRemote()
+    const { repo, service } = makeEnv(remote)
+    await repo.saveWork(mkWork('w1', 'v1', 100))
+    await service.reconcile()
+    await remote.seed(mkWork('w1', 'リモート編集', 2_000_000))
+    let release!: () => void
+    let entered!: () => void
+    let downloaded!: () => void
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const ready = new Promise<void>((resolve) => {
+      entered = resolve
+    })
+    const fetched = new Promise<void>((resolve) => {
+      downloaded = resolve
+    })
+    const replacing = withWorkMutationLock('w1', async () => {
+      entered()
+      await gate
+      await repo.saveWork(mkWork('w1', '置換後', 3_000_000))
+    })
+    await ready
+    const get = remote.api.getWork
+    remote.api.getWork = async (id) => {
+      const result = await get(id)
+      downloaded()
+      return result
+    }
+    const syncing = service.reconcile()
+    await fetched
+    release()
+    await replacing
+    await syncing
+    expect((await repo.getWork('w1'))?.title).toBe('置換後')
+    expect(remote.rows.get('w1')?.json).toContain('置換後')
+  })
+
+  it.each([
+    'trash',
+    'purge',
+  ] as const)('%s はロック内でも開いている作品を再確認する', async (operation) => {
+    const remote = makeFakeRemote()
+    let checking = false
+    let checks = 0
+    const { repo, service } = makeEnv(remote, {
+      getOpenWork: () => {
+        if (!checking) return null
+        checks++
+        return checks >= 2 ? { id: 'w1', dirty: false } : null
+      },
+    })
+    await repo.saveWork(mkWork('w1', 'v1', 100))
+    await service.reconcile()
+    await remote.seed(
+      mkWork('w1', 'v1', 100),
+      operation === 'trash' ? { trashedAt: 300 } : { deleted: 1, updatedAt: 300 },
+    )
+    checking = true
+    const summary = await service.reconcile()
+    expect(checks).toBeGreaterThanOrEqual(2)
+    expect(summary?.changedLocal).toBe(false)
+    expect((await repo.getWork('w1'))?.title).toBe('v1')
   })
 
   it('subscribeSummary は追走を含む全実行の結果を届ける', async () => {

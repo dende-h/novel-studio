@@ -12,6 +12,7 @@ import { IdeaRepository } from '@/core/storage/ideaRepository'
 import { PlotRepository } from '@/core/storage/plotRepository'
 import { StagingRepository, stagingIdOf } from '@/core/storage/stagingRepository'
 import { StructureRepository } from '@/core/storage/structureRepository'
+import { withWorkMutationLock } from '@/core/storage/workMutationLock'
 import { WorkRepository } from '@/core/storage/workRepository'
 import { StructureSchema } from '@/core/structure'
 import { type ActivityDay, mergeActivity, toActivityDay } from '@/core/sync/activityMerge'
@@ -352,6 +353,26 @@ export function createSyncService(deps: SyncDeps): SyncService {
       return o !== null && o.id === workId && o.dirty
     }
 
+    // Revalidate content and active/trash state inside the shared write lock.
+    // The planning snapshot can be stale after waiting for a local replacement.
+    const readUnchangedWork = async (workId: string) => {
+      const active = await deps.repo.getWork(workId)
+      const trashed = active
+        ? undefined
+        : (await deps.repo.listTrashFull()).find((entry) => entry.work.id === workId)
+      const work = active ?? trashed?.work
+      const hash = work ? await sha256Hex(canonicalWorkJson(work)) : undefined
+      if (
+        hash !== planHash.get(workId) ||
+        Boolean(active) !== activeIds.has(workId) ||
+        (trashed?.trashedAt ?? null) !== (trashById.get(workId)?.trashedAt ?? null)
+      ) {
+        replanNeeded = true
+        return { unchanged: false as const }
+      }
+      return { unchanged: true as const, active, trashed, work }
+    }
+
     // base の書き込みは stale チェックの後ろに通す。全置換（復元・取り込み）が base を
     // 全消しした**後**にここが書き戻すと、次の reconcile が「base はあるのにローカルに無い」＝
     // 削除済みと誤認して purgeRemote を出し、全端末から作品が消える（事故の芯）。
@@ -432,26 +453,22 @@ export function createSyncService(deps: SyncDeps): SyncService {
             } catch {
               break // 壊れた/未知形式はローカルを触らない（backup 系と同じ防波堤）
             }
-            // ネットワーク往復の間にローカルが編集されていたら上書きしない（黙った消失の防止）。
-            // 再計画に回せば、その編集は dirty として三方向差分（競合なら退避つき）に入る。
-            const current = await deps.repo.getWork(op.workId)
-            if (current) {
-              const currentHash = await sha256Hex(canonicalWorkJson(current))
-              if (currentHash !== planHash.get(op.workId)) {
-                replanNeeded = true
-                break
+            const applied = await withWorkMutationLock(op.workId, async () => {
+              if (stale() || isOpenWorkDirty(op.workId)) return false
+              const fresh = await readUnchangedWork(op.workId)
+              if (!fresh.unchanged || stale() || isOpenWorkDirty(op.workId)) return false
+              if (conflictIds.has(op.workId) && fresh.work) {
+                await deps.snapshotRepo.append(fresh.work, deps.now(), deps.genId(), 'sync')
+                await recordLost(op.workId, 'conflict', fresh.work.title)
               }
-            }
-            // 競合の敗者（ローカル版）は上書き前に必ず履歴へ退避する＝丸ごと消失させない。
-            // 履歴に入れるだけだと「どこへ退避したのか」が分からないので、退避の一覧にも記録する。
-            if (conflictIds.has(op.workId) && current) {
-              await deps.snapshotRepo.append(current, deps.now(), deps.genId(), 'sync')
-              await recordLost(op.workId, 'conflict', current.title)
-            }
-            await deps.repo.saveWork(pulled)
-            if (op.toTrashedAt !== null) {
-              await deps.repo.trashWork(op.workId, op.toTrashedAt)
-            }
+              if (stale() || isOpenWorkDirty(op.workId)) return false
+              await deps.repo.saveWork(pulled)
+              if (op.toTrashedAt !== null) {
+                await deps.repo.trashWork(op.workId, op.toTrashedAt)
+              }
+              return true
+            })
+            if (!applied) break
           } else {
             // 構造・ネタ帳：スキーマ検証 → 開いている作品の構造は見送り → 直前再検証 →
             // 敗者を synclost へ退避 → 素通し put（updatedAt を刻印しない）。
@@ -585,9 +602,16 @@ export function createSyncService(deps: SyncDeps): SyncService {
           if (isOpenWork(op.workId)) {
             break
           }
-          // active→trash。既にゴミ箱なら trashedAt の付け替え（復元→退避で実現・repo に専用 API を増やさない）。
-          if (!activeIds.has(op.workId)) await deps.repo.restoreWork(op.workId)
-          await deps.repo.trashWork(op.workId, op.trashedAt)
+          const applied = await withWorkMutationLock(op.workId, async () => {
+            if (stale() || isOpenWork(op.workId)) return false
+            const fresh = await readUnchangedWork(op.workId)
+            if (!fresh.unchanged || stale() || isOpenWork(op.workId)) return false
+            // Re-tagging an existing trash entry retains the repository contract.
+            if (!fresh.active) await deps.repo.restoreWork(op.workId)
+            await deps.repo.trashWork(op.workId, op.trashedAt)
+            return true
+          })
+          if (!applied) break
           summary.changedLocal = true
           // リモートのゴミ箱移動に追随した＝ローカルの編集が引っ込んだ。決着として記録する。
           markResolved(op.workId)
@@ -604,7 +628,14 @@ export function createSyncService(deps: SyncDeps): SyncService {
         }
         case 'restoreLocal': {
           if (kindOf(op.workId) !== 'work') break // ゴミ箱状態を持つのは Work のみ（防御）
-          await deps.repo.restoreWork(op.workId)
+          const applied = await withWorkMutationLock(op.workId, async () => {
+            if (stale() || isOpenWork(op.workId)) return false
+            const fresh = await readUnchangedWork(op.workId)
+            if (!fresh.unchanged || stale() || isOpenWork(op.workId)) return false
+            await deps.repo.restoreWork(op.workId)
+            return true
+          })
+          if (!applied) break
           summary.changedLocal = true
           break
         }
@@ -615,19 +646,27 @@ export function createSyncService(deps: SyncDeps): SyncService {
             if (isOpenWork(op.workId)) {
               break
             }
-            // 他端末の purge（トゥームストーン）の伝播。消える内容は退避してから消す。
-            // 退避先は履歴ではなく退避の一覧：作品が消えると履歴（`snap:<workId>`）を開く画面が
-            // 無くなり、本人に見えないまま端末に溜まり続けるため（editorStore の purge と同じ考え）。
-            // 一覧なら件数上限つきで残り、ファイルへ書き出して取り戻せる。画像は履歴と同じく外す。
-            const active = await deps.repo.getWork(op.workId)
-            const victim = active ?? trashById.get(op.workId)?.work
-            if (victim) {
-              const slim = createSnapshot(victim, deps.now(), op.workId).work
-              await recordLost(op.workId, 'remoteDelete', victim.title, canonicalWorkJson(slim))
-            }
-            await deps.repo.deleteWork(op.workId)
-            await deps.repo.purgeTrashedWork(op.workId)
-            await deps.snapshotRepo.clear(op.workId) // 開く画面の無い履歴を残さない
+            const applied = await withWorkMutationLock(op.workId, async () => {
+              if (stale() || isOpenWork(op.workId)) return false
+              const fresh = await readUnchangedWork(op.workId)
+              if (!fresh.unchanged || stale() || isOpenWork(op.workId)) return false
+              // Deleted works cannot expose their snapshots; retain the content in sync-lost.
+              if (fresh.work) {
+                const slim = createSnapshot(fresh.work, deps.now(), op.workId).work
+                await recordLost(
+                  op.workId,
+                  'remoteDelete',
+                  fresh.work.title,
+                  canonicalWorkJson(slim),
+                )
+              }
+              if (stale() || isOpenWork(op.workId)) return false
+              await deps.repo.deleteWork(op.workId)
+              await deps.repo.purgeTrashedWork(op.workId)
+              await deps.snapshotRepo.clear(op.workId)
+              return true
+            })
+            if (!applied) break
           } else if (kind === 'structure') {
             const cur = await deps.structures.get(rawIdOf(op.workId))
             // snapshot 機構が無いので synclost へ退避してから消す（黙って消えない）。

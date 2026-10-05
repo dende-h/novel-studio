@@ -19,7 +19,6 @@ import { AppShell } from '@/ui/components/AppShell/app-shell'
 import { ConfirmDialog } from '@/ui/components/ConfirmDialog/confirm-dialog'
 import { EditorPane, type EditorPaneHandle } from '@/ui/components/EditorPane/editor-pane'
 import { notationItems, notationShortcut } from '@/ui/components/EditorPane/notation'
-import { ReplacePanel } from '@/ui/components/EditorPane/replace-panel'
 import { ErrorBoundary } from '@/ui/components/ErrorBoundary/error-boundary'
 import { ExportDialog } from '@/ui/components/ExportDialog/export-dialog'
 import { FieldHelp } from '@/ui/components/FieldHelp/field-help'
@@ -40,6 +39,7 @@ import { TitlePromptDialog } from '@/ui/components/TitlePromptDialog/title-promp
 import { useToast } from '@/ui/components/Toast/toast'
 import { Button } from '@/ui/components/ui/button'
 import { WorkMetaDialog } from '@/ui/components/WorkMetaDialog/work-meta-dialog'
+import { WorkSearchPanel } from '@/ui/components/WorkSearchPanel/work-search-panel'
 import { useAutosave } from '@/ui/hooks/use-autosave'
 import { useEditorStore } from '@/ui/hooks/use-editor-store'
 import { useIsNarrow } from '@/ui/hooks/use-narrow'
@@ -171,6 +171,25 @@ export function App({
   const [editEntryId, setEditEntryId] = useState<string | null>(null)
   // ツールバーの記法ボタンから本文へ挿入するためのハンドル（選択範囲は EditorPane が持つ）。
   const editorRef = useRef<EditorPaneHandle>(null)
+  const searchButtonRef = useRef<HTMLButtonElement>(null)
+  // biome-ignore lint/correctness/useExhaustiveDependencies: ストアの検索元は本文・話の更新時に再取得する
+  const searchSources = useMemo(
+    () => store.getSearchSources(),
+    [store, state.work, state.draft, state.currentEpisodeId],
+  )
+  const closeSearch = () => {
+    setReplaceOpen(false)
+    searchButtonRef.current?.focus()
+  }
+  const appInteractionRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const root = appInteractionRef.current
+    if (!root) return
+    const nodes = root.querySelectorAll<HTMLElement>('button, input, textarea, select, a')
+    for (const node of nodes) {
+      if (!node.closest('[data-work-search-panel]')) node.inert = state.workOperation !== 'idle'
+    }
+  }, [state.workOperation])
   const [deleteEpisodeTarget, setDeleteEpisodeTarget] = useState<{
     id: string
     title: string
@@ -229,20 +248,37 @@ export function App({
     () => countEpisodeChars({ id: '', title: '', blocks: parseEpisodeBody(state.draft) }),
     [state.draft],
   )
-  useAutosave(state.draft, state.dirty, () => void store.save(), AUTOSAVE_DELAY_MS)
+  useAutosave(
+    state.draft,
+    state.dirty && state.workOperation === 'idle',
+    () => {
+      void store
+        .save()
+        .catch(() => show('保存できませんでした。下書きは残っています。本文を確認してください'))
+    },
+    AUTOSAVE_DELAY_MS,
+  )
 
   const episode = work?.episodes.find((e) => e.id === state.currentEpisodeId) ?? null
   const onEpisodes = activeScreen === 'episodes'
 
   const openExport = async () => {
-    if (episode) await store.save()
-    setExportOpen(true)
+    try {
+      if (episode) await store.save()
+      setExportOpen(true)
+    } catch {
+      show('保存できませんでした。下書きは残っています。もう一度お試しください')
+    }
   }
 
   // 投稿は作品まるごとを送るので、書き出しと同じく編集中の本文を先に保存してから公開ページへ移る。
   const openPublish = async () => {
-    if (episode) await store.save()
-    onNavigatePublish?.()
+    try {
+      if (episode) await store.save()
+      onNavigatePublish?.()
+    } catch {
+      show('保存できませんでした。下書きは残っています。もう一度お試しください')
+    }
   }
 
   const getAppearances = useCallback(
@@ -328,600 +364,655 @@ export function App({
   const charCount = state.draft.length
 
   return (
-    <AppShell
-      onBrandClick={onExit}
-      workTitle={work?.title}
-      saveStatus={{ dirty: state.dirty, status: state.status }}
-      onExport={() => void openExport()}
-      onPublish={
-        isPublishAvailable && work && onNavigatePublish ? () => void openPublish() : undefined
-      }
-      onToggleHistory={
-        episode && onEpisodes
-          ? () => {
-              setGlossaryPanelOpen(false)
-              setPlotPanelOpen(false)
-              setHistoryOpen((v) => !v)
+    <div ref={appInteractionRef} className="h-full" aria-busy={state.workOperation !== 'idle'}>
+      <AppShell
+        onBrandClick={onExit}
+        workTitle={work?.title}
+        saveStatus={{ dirty: state.dirty, status: state.status }}
+        onExport={() => void openExport()}
+        onPublish={
+          isPublishAvailable && work && onNavigatePublish ? () => void openPublish() : undefined
+        }
+        onToggleHistory={
+          episode && onEpisodes
+            ? () => {
+                setGlossaryPanelOpen(false)
+                setPlotPanelOpen(false)
+                setHistoryOpen((v) => !v)
+              }
+            : undefined
+        }
+        historyOpen={historyOpen}
+        onCloseAside={() => {
+          setHistoryOpen(false)
+          setGlossaryPanelOpen(false)
+          setPlotPanelOpen(false)
+        }}
+        sidebar={
+          <SideNav
+            workTitle={work?.title}
+            workFormat={work?.format}
+            workMeta={
+              work
+                ? `${work.episodes.length}話 ・ ${countWorkChars(work).toLocaleString('ja-JP')}字`
+                : undefined
             }
-          : undefined
-      }
-      historyOpen={historyOpen}
-      onCloseAside={() => {
-        setHistoryOpen(false)
-        setGlossaryPanelOpen(false)
-        setPlotPanelOpen(false)
-      }}
-      sidebar={
-        <SideNav
-          workTitle={work?.title}
-          workFormat={work?.format}
-          workMeta={
-            work
-              ? `${work.episodes.length}話 ・ ${countWorkChars(work).toLocaleString('ja-JP')}字`
-              : undefined
-          }
-          active={activeScreen}
-          onNavigateCollection={() => onExit?.()}
-          onNavigateActivity={onNavigateActivity}
-          onNavigateBoard={onNavigateBoard}
-          onNavigateSettings={onNavigateSettings}
-          onNavigateHelp={onNavigateHelp}
-          onNavigateEpisodes={work ? () => setActiveScreen('episodes') : undefined}
-          onNavigateGlossary={work ? () => setActiveScreen('glossary') : undefined}
-          onNavigateMindmap={structureAvailable ? () => setActiveScreen('mindmap') : undefined}
-          onNavigateChart={structureAvailable ? () => setActiveScreen('chart') : undefined}
-          onNavigateOutline={structureAvailable ? () => setActiveScreen('outline') : undefined}
-          onNavigatePlot={plotAvailable ? () => setActiveScreen('plot') : undefined}
-          onNavigateStaging={stagingAvailable ? () => setActiveScreen('staging') : undefined}
-          cta={{
-            label: '新しいエピソード',
-            onClick: () => setNewEpisodeOpen(true),
-            disabled: !work,
-          }}
-          profile={state.profile}
-          onEditProfile={openProfile}
-          // 執筆中に作品情報（あらすじ・表紙）を直せるようにする。ダイアログは既存のものをそのまま開く。
-          onEditWorkMeta={work ? () => setMetaOpen(true) : undefined}
-          episodes={work?.episodes.map((e) => ({ id: e.id, title: e.title })) ?? []}
-          currentEpisodeId={state.currentEpisodeId}
-          onSelectEpisode={(id) => {
-            store.openEpisode(id)
-            setActiveScreen('episodes')
-          }}
-          onRenameEpisode={(id) => {
-            const ep = work?.episodes.find((e) => e.id === id)
-            if (ep) setRenameEpisodeTarget({ id, title: ep.title })
-          }}
-          onDeleteEpisode={(id) => {
-            const ep = work?.episodes.find((e) => e.id === id)
-            if (ep) setDeleteEpisodeTarget({ id, title: ep.title })
-          }}
-        />
-      }
-      aside={
-        onEpisodes && plotPanelOpen && work && plotRepo ? (
-          <PlotPeek
-            repo={plotRepo}
-            workId={work.id}
-            episodeId={state.currentEpisodeId}
-            actualChars={draftChars}
-            glossary={work.glossary ?? []}
-            episodes={work.episodes}
-            resolvedNames={resolvedNames}
-            ideaRepo={ideaRepo}
-            onRefClick={onRefClick}
-            onJumpBeat={(beatId) => {
-              setPlotFocusBeatId(beatId)
-              setActiveScreen('plot')
+            active={activeScreen}
+            onNavigateCollection={() => onExit?.()}
+            onNavigateActivity={onNavigateActivity}
+            onNavigateBoard={onNavigateBoard}
+            onNavigateSettings={onNavigateSettings}
+            onNavigateHelp={onNavigateHelp}
+            onNavigateEpisodes={work ? () => setActiveScreen('episodes') : undefined}
+            onNavigateGlossary={work ? () => setActiveScreen('glossary') : undefined}
+            onNavigateMindmap={structureAvailable ? () => setActiveScreen('mindmap') : undefined}
+            onNavigateChart={structureAvailable ? () => setActiveScreen('chart') : undefined}
+            onNavigateOutline={structureAvailable ? () => setActiveScreen('outline') : undefined}
+            onNavigatePlot={plotAvailable ? () => setActiveScreen('plot') : undefined}
+            onNavigateStaging={stagingAvailable ? () => setActiveScreen('staging') : undefined}
+            cta={{
+              label: '新しいエピソード',
+              onClick: () => setNewEpisodeOpen(true),
+              disabled: !work,
             }}
-            onOpenPlot={() => setActiveScreen('plot')}
-            onClose={() => setPlotPanelOpen(false)}
-          />
-        ) : (onEpisodes || activeScreen === 'plot') && glossaryPanelOpen && work ? (
-          <GlossaryPeek
-            entries={work.glossary ?? []}
-            // プロット画面では「この話に登場」チップの母集団になる本文が無いので空を渡す
-            // （選んだ用語の中身＝用語集の見え方は本文編集とまったく同じ）。
-            draft={onEpisodes ? state.draft : ''}
-            entry={peekEntry}
-            appearances={peekEntry ? getAppearances(peekEntry) : null}
-            onSelect={(id) => setPeekId(id)}
-            onQuickCreate={(name) => setQuickCreateName(name)}
-            onClose={() => setGlossaryPanelOpen(false)}
-            // 作成と同じくその場のモーダルで編集する（用語集ページへ飛ばさない）。
-            // パネルは開いたままにして、編集後にチップ一覧へ自然に戻れるようにする。
-            onEdit={() => {
-              if (peekEntry) setEditEntryId(peekEntry.id)
-            }}
-            onNewEntry={() => setQuickCreateName('')}
-          />
-        ) : historyOpen && episode && onEpisodes ? (
-          <HistoryPanel
-            snapshots={state.snapshots}
+            profile={state.profile}
+            onEditProfile={openProfile}
+            // 執筆中に作品情報（あらすじ・表紙）を直せるようにする。ダイアログは既存のものをそのまま開く。
+            onEditWorkMeta={work ? () => setMetaOpen(true) : undefined}
+            episodes={work?.episodes.map((e) => ({ id: e.id, title: e.title })) ?? []}
             currentEpisodeId={state.currentEpisodeId}
-            currentText={state.draft}
-            onRestore={(id) => store.restoreSnapshot(id)}
-            onClose={() => setHistoryOpen(false)}
+            onSelectEpisode={(id) => {
+              store.openEpisode(id)
+              setActiveScreen('episodes')
+            }}
+            onRenameEpisode={(id) => {
+              const ep = work?.episodes.find((e) => e.id === id)
+              if (ep) setRenameEpisodeTarget({ id, title: ep.title })
+            }}
+            onDeleteEpisode={(id) => {
+              const ep = work?.episodes.find((e) => e.id === id)
+              if (ep) setDeleteEpisodeTarget({ id, title: ep.title })
+            }}
           />
-        ) : undefined
-      }
-    >
-      {/*
+        }
+        aside={
+          onEpisodes && plotPanelOpen && work && plotRepo ? (
+            <PlotPeek
+              repo={plotRepo}
+              workId={work.id}
+              episodeId={state.currentEpisodeId}
+              actualChars={draftChars}
+              glossary={work.glossary ?? []}
+              episodes={work.episodes}
+              resolvedNames={resolvedNames}
+              ideaRepo={ideaRepo}
+              onRefClick={onRefClick}
+              onJumpBeat={(beatId) => {
+                setPlotFocusBeatId(beatId)
+                setActiveScreen('plot')
+              }}
+              onOpenPlot={() => setActiveScreen('plot')}
+              onClose={() => setPlotPanelOpen(false)}
+            />
+          ) : (onEpisodes || activeScreen === 'plot') && glossaryPanelOpen && work ? (
+            <GlossaryPeek
+              entries={work.glossary ?? []}
+              // プロット画面では「この話に登場」チップの母集団になる本文が無いので空を渡す
+              // （選んだ用語の中身＝用語集の見え方は本文編集とまったく同じ）。
+              draft={onEpisodes ? state.draft : ''}
+              entry={peekEntry}
+              appearances={peekEntry ? getAppearances(peekEntry) : null}
+              onSelect={(id) => setPeekId(id)}
+              onQuickCreate={(name) => setQuickCreateName(name)}
+              onClose={() => setGlossaryPanelOpen(false)}
+              // 作成と同じくその場のモーダルで編集する（用語集ページへ飛ばさない）。
+              // パネルは開いたままにして、編集後にチップ一覧へ自然に戻れるようにする。
+              onEdit={() => {
+                if (peekEntry) setEditEntryId(peekEntry.id)
+              }}
+              onNewEntry={() => setQuickCreateName('')}
+            />
+          ) : historyOpen && episode && onEpisodes ? (
+            <HistoryPanel
+              snapshots={state.snapshots}
+              currentEpisodeId={state.currentEpisodeId}
+              currentText={state.draft}
+              onRestore={(id) => store.restoreSnapshot(id)}
+              onClose={() => setHistoryOpen(false)}
+            />
+          ) : undefined
+        }
+      >
+        {/*
         画面ごとの描画エラーをここで受け止める。境界がアプリの根元にしか無かったころは、
         1 画面の例外でサイドバーもヘッダーも巻き添えに消え、利用者からは「別の画面へ飛ばされて
         メニューが減った」ようにしか見えなかった（リロードでしか戻れない）。
         activeScreen を key にしているので、別の画面へ移れば境界は張り直される。
       */}
-      <ErrorBoundary key={activeScreen} fallback={(retry) => <ScreenFailure retry={retry} />}>
-        {activeScreen === 'staging' && work && stagingRepo ? (
-          <Suspense fallback={<ScreenLoading />}>
-            <StagingView
-              repo={stagingRepo}
-              work={work}
-              currentEpisodeId={state.currentEpisodeId}
-              assetRepo={gameAssetRepo}
-            />
-          </Suspense>
-        ) : activeScreen === 'plot' && work && plotRepo ? (
-          <Suspense fallback={<ScreenLoading />}>
-            <PlotView
-              repo={plotRepo}
-              workId={work.id}
-              glossary={work.glossary ?? []}
-              episodes={work.episodes}
-              ideaRepo={ideaRepo}
-              structureRepo={structureRepo}
-              focusBeatId={plotFocusBeatId}
-              onConsumeFocus={() => setPlotFocusBeatId(null)}
-              onOpenEpisode={(id) => {
-                store.openEpisode(id)
-                setActiveScreen('episodes')
+        <ErrorBoundary key={activeScreen} fallback={(retry) => <ScreenFailure retry={retry} />}>
+          {activeScreen === 'staging' && work && stagingRepo ? (
+            <Suspense fallback={<ScreenLoading />}>
+              <StagingView
+                repo={stagingRepo}
+                work={work}
+                currentEpisodeId={state.currentEpisodeId}
+                assetRepo={gameAssetRepo}
+              />
+            </Suspense>
+          ) : activeScreen === 'plot' && work && plotRepo ? (
+            <Suspense fallback={<ScreenLoading />}>
+              <PlotView
+                repo={plotRepo}
+                workId={work.id}
+                glossary={work.glossary ?? []}
+                episodes={work.episodes}
+                ideaRepo={ideaRepo}
+                structureRepo={structureRepo}
+                focusBeatId={plotFocusBeatId}
+                onConsumeFocus={() => setPlotFocusBeatId(null)}
+                onOpenEpisode={(id) => {
+                  store.openEpisode(id)
+                  setActiveScreen('episodes')
+                }}
+                onCreateEpisode={async (title) => {
+                  // createEpisode は末尾に追加して id を返さないため、直後の snapshot から引く。
+                  await store.createEpisode(title)
+                  const snap = store.getSnapshot()
+                  const ep = snap.work?.episodes[snap.work.episodes.length - 1]
+                  return ep && ep.title === title ? ep.id : null
+                }}
+                onRefClick={onRefClick}
+                onCreatePlainGlossaryEntry={createPlainGlossaryEntry}
+                onCreateGlossaryEntry={async (name, category) => {
+                  try {
+                    const entry = await store.addGlossaryEntry({ name, category })
+                    return entry.id
+                  } catch {
+                    // 既存と重複（D-GLOS-UNIQUE）なら、その既存エントリを選ぶ。
+                    const existing = resolveRef(name, store.getSnapshot().work?.glossary ?? [])
+                    return existing?.id ?? null
+                  }
+                }}
+              />
+            </Suspense>
+          ) : activeScreen === 'mindmap' && work && structureRepo ? (
+            <Suspense fallback={<ScreenLoading />}>
+              <MindmapView repo={structureRepo} workId={work.id} ideaRepo={ideaRepo} />
+            </Suspense>
+          ) : activeScreen === 'chart' && work && structureRepo ? (
+            <Suspense fallback={<ScreenLoading />}>
+              <CorrelationChartView
+                repo={structureRepo}
+                workId={work.id}
+                glossary={work.glossary ?? []}
+              />
+            </Suspense>
+          ) : activeScreen === 'outline' && work && structureRepo ? (
+            <Suspense fallback={<ScreenLoading />}>
+              <OutlineView
+                repo={structureRepo}
+                workId={work.id}
+                episodes={work.episodes}
+                onOpenEpisode={(id) => {
+                  store.openEpisode(id)
+                  setActiveScreen('episodes')
+                }}
+                onReorder={(ids) => void store.reorderEpisodes(ids)}
+              />
+            </Suspense>
+          ) : activeScreen === 'glossary' && work ? (
+            <GlossaryView
+              entries={work.glossary ?? []}
+              workTitle={work.title}
+              getAppearances={getAppearances}
+              onCreate={async (input) => (await store.addGlossaryEntry(input)).id}
+              onUpdate={async (id, values) => {
+                await store.updateGlossaryEntry(id, formValuesToFieldPatch(values))
               }}
-              onCreateEpisode={async (title) => {
-                // createEpisode は末尾に追加して id を返さないため、直後の snapshot から引く。
-                await store.createEpisode(title)
-                const snap = store.getSnapshot()
-                const ep = snap.work?.episodes[snap.work.episodes.length - 1]
-                return ep && ep.title === title ? ep.id : null
+              onUpdateDialog={async (id, patch) => {
+                // 変わった欄だけ（対話ノートは鍵ごと）。空の畳み方も store が持つ。
+                await store.updateGlossaryEntry(id, patch)
               }}
-              onRefClick={onRefClick}
-              onCreatePlainGlossaryEntry={createPlainGlossaryEntry}
-              onCreateGlossaryEntry={async (name, category) => {
-                try {
-                  const entry = await store.addGlossaryEntry({ name, category })
-                  return entry.id
-                } catch {
-                  // 既存と重複（D-GLOS-UNIQUE）なら、その既存エントリを選ぶ。
-                  const existing = resolveRef(name, store.getSnapshot().work?.glossary ?? [])
-                  return existing?.id ?? null
-                }
+              onRename={async (id, newName, opts) => {
+                await store.renameGlossaryEntry(id, newName, opts)
               }}
+              onDelete={(id) => void store.deleteGlossaryEntry(id)}
+              onCreateEntry={createPlainGlossaryEntry}
+              gameAssetRepo={gameAssetRepo}
             />
-          </Suspense>
-        ) : activeScreen === 'mindmap' && work && structureRepo ? (
-          <Suspense fallback={<ScreenLoading />}>
-            <MindmapView repo={structureRepo} workId={work.id} ideaRepo={ideaRepo} />
-          </Suspense>
-        ) : activeScreen === 'chart' && work && structureRepo ? (
-          <Suspense fallback={<ScreenLoading />}>
-            <CorrelationChartView
-              repo={structureRepo}
-              workId={work.id}
-              glossary={work.glossary ?? []}
-            />
-          </Suspense>
-        ) : activeScreen === 'outline' && work && structureRepo ? (
-          <Suspense fallback={<ScreenLoading />}>
-            <OutlineView
-              repo={structureRepo}
-              workId={work.id}
-              episodes={work.episodes}
-              onOpenEpisode={(id) => {
-                store.openEpisode(id)
-                setActiveScreen('episodes')
-              }}
-              onReorder={(ids) => void store.reorderEpisodes(ids)}
-            />
-          </Suspense>
-        ) : activeScreen === 'glossary' && work ? (
-          <GlossaryView
-            entries={work.glossary ?? []}
-            workTitle={work.title}
-            getAppearances={getAppearances}
-            onCreate={async (input) => (await store.addGlossaryEntry(input)).id}
-            onUpdate={async (id, values) => {
-              await store.updateGlossaryEntry(id, formValuesToFieldPatch(values))
-            }}
-            onUpdateDialog={async (id, patch) => {
-              // 変わった欄だけ（対話ノートは鍵ごと）。空の畳み方も store が持つ。
-              await store.updateGlossaryEntry(id, patch)
-            }}
-            onRename={async (id, newName, opts) => {
-              await store.renameGlossaryEntry(id, newName, opts)
-            }}
-            onDelete={(id) => void store.deleteGlossaryEntry(id)}
-            onCreateEntry={createPlainGlossaryEntry}
-            gameAssetRepo={gameAssetRepo}
-          />
-        ) : episode ? (
-          <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col">
-            {/* エディタツールバー */}
-            <div className="flex min-h-[46px] shrink-0 flex-wrap items-center justify-between gap-3 border-outline-variant/30 border-b bg-surface-container-lowest px-4 py-2">
-              <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2.5">
-                {/* 狭幅では話タイトルを畳む（ドロワーの話一覧で分かる）。代わりに面の切替を置く。 */}
-                <span className="truncate font-medium font-sans text-[13px] text-on-surface max-lg:hidden">
-                  {episode.title}
-                </span>
-                {/* 本文／プレビューの切替（狭幅のみ）。組み方向トグルと同じ視覚言語で揃える。 */}
-                <fieldset
-                  aria-label="表示する面"
-                  className="m-0 flex items-center gap-1 border-0 p-0 lg:hidden"
-                >
-                  <button
-                    type="button"
-                    aria-pressed={pane === 'editor'}
-                    onClick={() => setPane('editor')}
-                    className={cn(
-                      'flex h-9 items-center rounded-md px-3 font-sans text-xs transition-colors',
-                      pane === 'editor'
-                        ? 'bg-primary text-white'
-                        : 'text-on-surface-variant hover:bg-surface-container-high',
-                    )}
+          ) : episode ? (
+            <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col">
+              {/* エディタツールバー */}
+              <div className="flex min-h-[46px] shrink-0 flex-wrap items-center justify-between gap-3 border-outline-variant/30 border-b bg-surface-container-lowest px-4 py-2">
+                <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2.5">
+                  {/* 狭幅では話タイトルを畳む（ドロワーの話一覧で分かる）。代わりに面の切替を置く。 */}
+                  <span className="truncate font-medium font-sans text-[13px] text-on-surface max-lg:hidden">
+                    {episode.title}
+                  </span>
+                  {/* 本文／プレビューの切替（狭幅のみ）。組み方向トグルと同じ視覚言語で揃える。 */}
+                  <fieldset
+                    aria-label="表示する面"
+                    className="m-0 flex items-center gap-1 border-0 p-0 lg:hidden"
                   >
-                    本文
-                  </button>
-                  <button
-                    type="button"
-                    aria-pressed={pane === 'preview'}
-                    onClick={() => setPane('preview')}
-                    className={cn(
-                      'flex h-9 items-center rounded-md px-3 font-sans text-xs transition-colors',
-                      pane === 'preview'
-                        ? 'bg-primary text-white'
-                        : 'text-on-surface-variant hover:bg-surface-container-high',
-                    )}
-                  >
-                    プレビュー
-                  </button>
-                </fieldset>
-                {/* 記法の挿入（PC のみ。狭幅はキーボード直上の記法バーが担当する）。
-                  選択があれば囲み、無ければ空の型を置く。ショートカットは EditorPane 側。 */}
-                <div className="flex flex-wrap items-center gap-1 max-lg:hidden">
-                  {notationItems(work?.format === 'script').map((item) => (
                     <button
-                      key={item.kind}
                       type="button"
-                      title={`${item.hint}（${notationShortcut(item)}）`}
-                      aria-label={item.label}
-                      // クリックで textarea のフォーカス・選択範囲を失うと挿入先が分からなくなる。
-                      onMouseDown={(e) => e.preventDefault()}
-                      onClick={() => editorRef.current?.applyNotation(item.kind)}
-                      className="flex min-h-11 shrink-0 flex-col justify-center items-center whitespace-nowrap rounded-md px-2.5 font-sans text-on-surface-variant text-xs transition-colors hover:bg-surface-container-high hover:text-on-surface"
+                      aria-pressed={pane === 'editor'}
+                      onClick={() => setPane('editor')}
+                      className={cn(
+                        'flex h-9 items-center rounded-md px-3 font-sans text-xs transition-colors',
+                        pane === 'editor'
+                          ? 'bg-primary text-white'
+                          : 'text-on-surface-variant hover:bg-surface-container-high',
+                      )}
                     >
-                      {item.label}
-                      <kbd aria-hidden className="mt-0.5 text-[10px] leading-tight opacity-60">
-                        {notationShortcut(item)}
-                      </kbd>
+                      本文
                     </button>
-                  ))}
-                  {work?.format === 'script' ? (
-                    // 脚本の書き方（判別・字下げ・Tab 操作・自動で揃うもの）は ⓘ に畳む。
-                    <FieldHelp
-                      title="脚本の書き方"
-                      description="行頭の書き方だけで柱・セリフ・ト書きを見分けます。字下げや余白は自動で揃います。"
-                      className="ml-1"
+                    <button
+                      type="button"
+                      aria-pressed={pane === 'preview'}
+                      onClick={() => setPane('preview')}
+                      className={cn(
+                        'flex h-9 items-center rounded-md px-3 font-sans text-xs transition-colors',
+                        pane === 'preview'
+                          ? 'bg-primary text-white'
+                          : 'text-on-surface-variant hover:bg-surface-container-high',
+                      )}
                     >
-                      <ul className="list-disc space-y-1 pl-5">
-                        <li>
-                          <strong>柱</strong>：行頭に ○
-                          を付けて場所と時間を書きます。例「○公園（夕方）」
-                        </li>
-                        <li>
-                          <strong>セリフ</strong>
-                          ：行頭に話者名、続けて「」で書きます。例「ユイ「こんにちは」」。話者名の後ろに（声）のような補足を1つ付けられます
-                        </li>
-                        <li>
-                          <strong>ト書き</strong>
-                          ：柱でもセリフでもない行はすべてト書きです。プレビューと書き出しで自動的に3字下がるので、字下げを打つ必要はありません。人物が初めて登場するト書きでは、名前の後ろに年齢を付けます。例「ベンチに座るユイ（１７）」
-                        </li>
-                        <li>
-                          <strong>場面転換</strong>：***
-                          だけの行。プレビューと書き出しでは「×　　×　　×」になります
-                        </li>
-                      </ul>
-                      <p>
-                        自分で字下げしたいときは Tab で3字下げ、Shift+Tab
-                        で解除できます。字下げした行で Enter を押すと次の行も字下げのまま続きます。
-                        行頭に「が来るト書き（例：「立入禁止」の看板がある。）は、字下げしておくとセリフと間違われません。
-                      </p>
-                      <p>
-                        柱や場面転換の前の空行、！？の後ろの1マス、半角の英数字（全角に揃えます）は、打っても打たなくても仕上がりは同じです。
-                        縦書きでは数字を漢数字で書くのが一般的です。
-                      </p>
-                      <p>
-                        右のプレビューは20字×20行の原稿用紙で、枚数が分かります。書き出しは「書き出し」から
-                        Word（A4／B5）かテキストを選べます。本文の下の「書式チェック」で確認候補を見られます。
-                      </p>
-                    </FieldHelp>
-                  ) : null}
+                      プレビュー
+                    </button>
+                  </fieldset>
+                  {/* 記法の挿入（PC のみ。狭幅はキーボード直上の記法バーが担当する）。
+                  選択があれば囲み、無ければ空の型を置く。ショートカットは EditorPane 側。 */}
+                  <div className="flex flex-wrap items-center gap-1 max-lg:hidden">
+                    {notationItems(work?.format === 'script').map((item) => (
+                      <button
+                        key={item.kind}
+                        type="button"
+                        title={`${item.hint}（${notationShortcut(item)}）`}
+                        aria-label={item.label}
+                        // クリックで textarea のフォーカス・選択範囲を失うと挿入先が分からなくなる。
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => editorRef.current?.applyNotation(item.kind)}
+                        className="flex min-h-11 shrink-0 flex-col justify-center items-center whitespace-nowrap rounded-md px-2.5 font-sans text-on-surface-variant text-xs transition-colors hover:bg-surface-container-high hover:text-on-surface"
+                      >
+                        {item.label}
+                        <kbd aria-hidden className="mt-0.5 text-[10px] leading-tight opacity-60">
+                          {notationShortcut(item)}
+                        </kbd>
+                      </button>
+                    ))}
+                    {work?.format === 'script' ? (
+                      // 脚本の書き方（判別・字下げ・Tab 操作・自動で揃うもの）は ⓘ に畳む。
+                      <FieldHelp
+                        title="脚本の書き方"
+                        description="行頭の書き方だけで柱・セリフ・ト書きを見分けます。字下げや余白は自動で揃います。"
+                        className="ml-1"
+                      >
+                        <ul className="list-disc space-y-1 pl-5">
+                          <li>
+                            <strong>柱</strong>：行頭に ○
+                            を付けて場所と時間を書きます。例「○公園（夕方）」
+                          </li>
+                          <li>
+                            <strong>セリフ</strong>
+                            ：行頭に話者名、続けて「」で書きます。例「ユイ「こんにちは」」。話者名の後ろに（声）のような補足を1つ付けられます
+                          </li>
+                          <li>
+                            <strong>ト書き</strong>
+                            ：柱でもセリフでもない行はすべてト書きです。プレビューと書き出しで自動的に3字下がるので、字下げを打つ必要はありません。人物が初めて登場するト書きでは、名前の後ろに年齢を付けます。例「ベンチに座るユイ（１７）」
+                          </li>
+                          <li>
+                            <strong>場面転換</strong>：***
+                            だけの行。プレビューと書き出しでは「×　　×　　×」になります
+                          </li>
+                        </ul>
+                        <p>
+                          自分で字下げしたいときは Tab で3字下げ、Shift+Tab
+                          で解除できます。字下げした行で Enter
+                          を押すと次の行も字下げのまま続きます。
+                          行頭に「が来るト書き（例：「立入禁止」の看板がある。）は、字下げしておくとセリフと間違われません。
+                        </p>
+                        <p>
+                          柱や場面転換の前の空行、！？の後ろの1マス、半角の英数字（全角に揃えます）は、打っても打たなくても仕上がりは同じです。
+                          縦書きでは数字を漢数字で書くのが一般的です。
+                        </p>
+                        <p>
+                          右のプレビューは20字×20行の原稿用紙で、枚数が分かります。書き出しは「書き出し」から
+                          Word（A4／B5）かテキストを選べます。本文の下の「書式チェック」で確認候補を見られます。
+                        </p>
+                      </FieldHelp>
+                    ) : null}
+                  </div>
                 </div>
-              </div>
-              <div className="flex shrink-0 items-center gap-2">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  aria-pressed={replaceOpen}
-                  onClick={() => setReplaceOpen((v) => !v)}
-                  className={cn(
-                    'gap-1.5 text-on-surface-variant hover:text-primary',
-                    replaceOpen && 'bg-accent text-primary',
-                  )}
-                >
-                  <Replace className="size-4" aria-hidden />
-                  <span className="max-lg:hidden">置換</span>
-                </Button>
-                {/* 組み方向の切替（プレビュー）。狭幅では本文タブの時に意味を持たないので畳む。 */}
-                <fieldset
-                  aria-label="本文の組み方向"
-                  className={cn(
-                    'm-0 flex items-center gap-1 border-0 p-0',
-                    pane === 'editor' && 'max-lg:hidden',
-                  )}
-                >
-                  <button
-                    type="button"
-                    aria-pressed={orientation === 'horizontal'}
-                    onClick={() => setOrientation('horizontal')}
-                    className={cn(
-                      'flex h-11 items-center rounded-md px-2.5 font-sans text-xs transition-colors md:h-[26px]',
-                      orientation === 'horizontal'
-                        ? 'bg-primary text-white'
-                        : 'text-on-surface-variant hover:bg-surface-container-high',
-                    )}
-                  >
-                    横書き
-                  </button>
-                  <button
-                    type="button"
-                    aria-pressed={orientation === 'vertical'}
-                    onClick={() => setOrientation('vertical')}
-                    className={cn(
-                      'flex h-11 items-center rounded-md px-2.5 font-sans text-xs transition-colors md:h-[26px]',
-                      orientation === 'vertical'
-                        ? 'bg-primary text-white'
-                        : 'text-on-surface-variant hover:bg-surface-container-high',
-                    )}
-                  >
-                    縦書き
-                  </button>
-                </fieldset>
-                {canUseStructure && plotRepo ? (
+                <div className="flex shrink-0 items-center gap-2">
                   <Button
                     variant="ghost"
                     size="sm"
-                    aria-label="この話のプロット"
-                    aria-pressed={plotPanelOpen}
+                    ref={searchButtonRef}
+                    aria-label="検索・置換"
+                    aria-pressed={replaceOpen}
                     onClick={() => {
-                      setHistoryOpen(false)
-                      setGlossaryPanelOpen(false)
-                      setPlotPanelOpen((v) => !v)
+                      setPane('editor')
+                      setReplaceOpen((v) => !v)
                     }}
                     className={cn(
                       'gap-1.5 text-on-surface-variant hover:text-primary',
-                      plotPanelOpen && 'bg-accent text-primary',
+                      replaceOpen && 'bg-accent text-primary',
                     )}
                   >
-                    <Milestone className="size-4" aria-hidden />
-                    <span className="max-lg:hidden">プロット</span>
+                    <Replace className="size-4" aria-hidden />
+                    <span className="max-lg:hidden">検索・置換</span>
                   </Button>
-                ) : null}
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  aria-label="用語集パネル"
-                  aria-pressed={glossaryPanelOpen}
-                  onClick={() => {
-                    setHistoryOpen(false)
-                    setPlotPanelOpen(false)
-                    setGlossaryPanelOpen((v) => !v)
-                  }}
+                  {/* 組み方向の切替（プレビュー）。狭幅では本文タブの時に意味を持たないので畳む。 */}
+                  <fieldset
+                    aria-label="本文の組み方向"
+                    className={cn(
+                      'm-0 flex items-center gap-1 border-0 p-0',
+                      pane === 'editor' && 'max-lg:hidden',
+                    )}
+                  >
+                    <button
+                      type="button"
+                      aria-pressed={orientation === 'horizontal'}
+                      onClick={() => setOrientation('horizontal')}
+                      className={cn(
+                        'flex h-11 items-center rounded-md px-2.5 font-sans text-xs transition-colors md:h-[26px]',
+                        orientation === 'horizontal'
+                          ? 'bg-primary text-white'
+                          : 'text-on-surface-variant hover:bg-surface-container-high',
+                      )}
+                    >
+                      横書き
+                    </button>
+                    <button
+                      type="button"
+                      aria-pressed={orientation === 'vertical'}
+                      onClick={() => setOrientation('vertical')}
+                      className={cn(
+                        'flex h-11 items-center rounded-md px-2.5 font-sans text-xs transition-colors md:h-[26px]',
+                        orientation === 'vertical'
+                          ? 'bg-primary text-white'
+                          : 'text-on-surface-variant hover:bg-surface-container-high',
+                      )}
+                    >
+                      縦書き
+                    </button>
+                  </fieldset>
+                  {canUseStructure && plotRepo ? (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      aria-label="この話のプロット"
+                      aria-pressed={plotPanelOpen}
+                      onClick={() => {
+                        setHistoryOpen(false)
+                        setGlossaryPanelOpen(false)
+                        setPlotPanelOpen((v) => !v)
+                      }}
+                      className={cn(
+                        'gap-1.5 text-on-surface-variant hover:text-primary',
+                        plotPanelOpen && 'bg-accent text-primary',
+                      )}
+                    >
+                      <Milestone className="size-4" aria-hidden />
+                      <span className="max-lg:hidden">プロット</span>
+                    </Button>
+                  ) : null}
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    aria-label="用語集パネル"
+                    aria-pressed={glossaryPanelOpen}
+                    onClick={() => {
+                      setHistoryOpen(false)
+                      setPlotPanelOpen(false)
+                      setGlossaryPanelOpen((v) => !v)
+                    }}
+                    className={cn(
+                      'gap-1.5 text-on-surface-variant hover:text-primary',
+                      glossaryPanelOpen && 'bg-accent text-primary',
+                    )}
+                  >
+                    <BookMarked className="size-4" aria-hidden />
+                    <span className="max-lg:hidden">用語集</span>
+                  </Button>
+                </div>
+              </div>
+
+              {/* 本文＋プレビュー。lg 以上は従来どおり横並び、lg 未満は pane で切り替える（D-EDIT-2）。 */}
+              <div className="flex min-h-0 flex-1">
+                <div
                   className={cn(
-                    'gap-1.5 text-on-surface-variant hover:text-primary',
-                    glossaryPanelOpen && 'bg-accent text-primary',
+                    'relative flex min-w-0 flex-[1.3_1_0%] flex-col border-outline-variant/30 lg:border-r',
+                    pane !== 'editor' && 'max-lg:hidden',
                   )}
                 >
-                  <BookMarked className="size-4" aria-hidden />
-                  <span className="max-lg:hidden">用語集</span>
-                </Button>
-              </div>
-            </div>
-
-            {/* 本文＋プレビュー。lg 以上は従来どおり横並び、lg 未満は pane で切り替える（D-EDIT-2）。 */}
-            <div className="flex min-h-0 flex-1">
-              <div
-                className={cn(
-                  'relative flex min-w-0 flex-[1.3_1_0%] flex-col border-outline-variant/30 lg:border-r',
-                  pane !== 'editor' && 'max-lg:hidden',
-                )}
-              >
-                <EditorPane
-                  ref={editorRef}
-                  scriptMode={work?.format === 'script'}
-                  value={state.draft}
-                  onChange={(v) => store.setDraft(v)}
-                  glossary={work?.glossary ?? []}
-                  onCreateEntry={(name) => store.addGlossaryEntry({ name })}
-                />
-                {replaceOpen ? (
-                  <ReplacePanel
+                  <EditorPane
+                    ref={editorRef}
+                    readOnly={state.workOperation !== 'idle'}
+                    scriptMode={work?.format === 'script'}
                     value={state.draft}
-                    onApply={(next, count) => {
-                      store.setDraft(next)
-                      setReplaceOpen(false)
-                      show(`${count}件を置換しました`)
-                    }}
-                    onClose={() => setReplaceOpen(false)}
+                    onChange={(v) => store.setDraft(v)}
+                    glossary={work?.glossary ?? []}
+                    onCreateEntry={(name) => store.addGlossaryEntry({ name })}
                   />
-                ) : null}
+                  {replaceOpen ? (
+                    <WorkSearchPanel
+                      sources={searchSources}
+                      busy={state.workOperation !== 'idle'}
+                      value={state.draft}
+                      onApply={(next, count) => {
+                        store.setDraft(next)
+                        setReplaceOpen(false)
+                        show(`${count}件を置換しました`)
+                      }}
+                      onClose={closeSearch}
+                      onReplace={async (sources, query, replacement, target) => {
+                        if (!work) return
+                        const result = await store.replaceWorkMatches({
+                          workId: work.id,
+                          sources,
+                          query,
+                          replacement,
+                          target,
+                        })
+                        if (result.committed)
+                          show(result.warning ?? `${result.count}件を置換しました`)
+                      }}
+                      onNavigate={async (sources, query, match) => {
+                        if (!work) return
+                        const range = await store.navigateWorkMatch({
+                          workId: work.id,
+                          sources,
+                          query,
+                          match,
+                        })
+                        setPane('editor')
+                        if (narrow) setReplaceOpen(false)
+                        requestAnimationFrame(() =>
+                          editorRef.current?.selectRange(range.start, range.end),
+                        )
+                      }}
+                    />
+                  ) : null}
+                </div>
+                <div className={cn('min-w-0 flex-[1_1_0%]', pane !== 'preview' && 'max-lg:hidden')}>
+                  {scriptPages ? (
+                    <ScriptSheetView pages={scriptPages} preset={sheetPreset} />
+                  ) : (
+                    <PreviewPane
+                      html={previewHtml}
+                      onRefClick={onRefClick}
+                      orientation={orientation}
+                    />
+                  )}
+                </div>
               </div>
-              <div className={cn('min-w-0 flex-[1_1_0%]', pane !== 'preview' && 'max-lg:hidden')}>
-                {scriptPages ? (
-                  <ScriptSheetView pages={scriptPages} preset={sheetPreset} />
-                ) : (
-                  <PreviewPane
-                    html={previewHtml}
-                    onRefClick={onRefClick}
-                    orientation={orientation}
-                  />
-                )}
+
+              {/* ステータスバー */}
+              <div className="flex h-[38px] shrink-0 items-center justify-between border-outline-variant/30 border-t bg-surface-container-lowest px-4 max-lg:h-7">
+                {/* 狭幅は縦を本文に譲る（TopAppBar+ツールバー+ここで既に 120px 超を消費している）。 */}
+                <span className="font-sans text-[11px] text-on-surface-variant/60 max-lg:hidden">
+                  自動保存 ON
+                </span>
+                <span className="font-sans text-[12px] text-on-surface-variant tabular-nums">
+                  {lineCount}行 ・ {charCount}文字
+                  {todayNet !== null
+                    ? ` ・ 今日 ${todayNet >= 0 ? '+' : ''}${todayNet.toLocaleString('ja-JP')}字`
+                    : ''}
+                </span>
               </div>
             </div>
-
-            {/* ステータスバー */}
-            <div className="flex h-[38px] shrink-0 items-center justify-between border-outline-variant/30 border-t bg-surface-container-lowest px-4 max-lg:h-7">
-              {/* 狭幅は縦を本文に譲る（TopAppBar+ツールバー+ここで既に 120px 超を消費している）。 */}
-              <span className="font-sans text-[11px] text-on-surface-variant/60 max-lg:hidden">
-                自動保存 ON
-              </span>
-              <span className="font-sans text-[12px] text-on-surface-variant tabular-nums">
-                {lineCount}行 ・ {charCount}文字
-                {todayNet !== null
-                  ? ` ・ 今日 ${todayNet >= 0 ? '+' : ''}${todayNet.toLocaleString('ja-JP')}字`
-                  : ''}
-              </span>
+          ) : work ? (
+            <div className="relative flex flex-1 flex-col items-center justify-center gap-4 p-8">
+              <Button
+                ref={searchButtonRef}
+                aria-label="検索・置換"
+                onClick={() => setReplaceOpen((v) => !v)}
+              >
+                検索・置換
+              </Button>
+              {replaceOpen ? (
+                <WorkSearchPanel
+                  sources={searchSources}
+                  value=""
+                  busy={false}
+                  onApply={() => {}}
+                  onNavigate={async () => {}}
+                  onReplace={async () => {}}
+                  onClose={closeSearch}
+                />
+              ) : null}
+              <button
+                type="button"
+                onClick={() => setNewEpisodeOpen(true)}
+                className="group flex flex-col items-center justify-center rounded-xl border-2 border-outline-variant/50 border-dashed px-12 py-10 font-sans text-on-surface-variant transition-colors hover:bg-surface-container-low"
+              >
+                <div className="mb-4 flex size-12 items-center justify-center rounded-full bg-surface-container-highest transition-colors group-hover:bg-primary group-hover:text-on-primary">
+                  <Plus className="size-5" />
+                </div>
+                <h3 className="font-semibold font-serif text-lg text-on-surface">
+                  新しいエピソードを追加
+                </h3>
+                <p className="text-sm">白紙から書き始める</p>
+              </button>
             </div>
-          </div>
-        ) : work ? (
-          <div className="flex flex-1 items-center justify-center p-8">
-            <button
-              type="button"
-              onClick={() => setNewEpisodeOpen(true)}
-              className="group flex flex-col items-center justify-center rounded-xl border-2 border-outline-variant/50 border-dashed px-12 py-10 font-sans text-on-surface-variant transition-colors hover:bg-surface-container-low"
-            >
-              <div className="mb-4 flex size-12 items-center justify-center rounded-full bg-surface-container-highest transition-colors group-hover:bg-primary group-hover:text-on-primary">
-                <Plus className="size-5" />
-              </div>
-              <h3 className="font-semibold font-serif text-lg text-on-surface">
-                新しいエピソードを追加
-              </h3>
-              <p className="text-sm">白紙から書き始める</p>
-            </button>
-          </div>
-        ) : (
-          <div className="flex flex-1 items-center justify-center p-8 text-center text-on-surface-variant text-sm">
-            ライブラリから作品を開いてください
-          </div>
-        )}
-      </ErrorBoundary>
+          ) : (
+            <div className="flex flex-1 items-center justify-center p-8 text-center text-on-surface-variant text-sm">
+              ライブラリから作品を開いてください
+            </div>
+          )}
+        </ErrorBoundary>
 
-      <TitlePromptDialog
-        open={newEpisodeOpen}
-        onOpenChange={setNewEpisodeOpen}
-        title="新しいエピソード"
-        description="この作品に追加する話のタイトルを入力します。"
-        label="話タイトル"
-        placeholder={`第${(work?.episodes.length ?? 0) + 1}話`}
-        defaultValue={`第${(work?.episodes.length ?? 0) + 1}話`}
-        submitLabel="追加"
-        onSubmit={(title) => void store.createEpisode(title)}
-      />
-      {/* 話タイトルの変更（現在のタイトルをプリフィル・本文には影響しない）。 */}
-      <TitlePromptDialog
-        open={renameEpisodeTarget !== null}
-        onOpenChange={(o) => {
-          if (!o) setRenameEpisodeTarget(null)
-        }}
-        title="話のタイトルを変更"
-        description="この話の表示名を変更します。本文には影響しません。"
-        label="話タイトル"
-        defaultValue={renameEpisodeTarget?.title ?? ''}
-        submitLabel="変更"
-        onSubmit={(title) => {
-          if (renameEpisodeTarget) void store.renameEpisode(renameEpisodeTarget.id, title)
-        }}
-      />
-      {/* 用語集パネルからの編集（名前の変更も同じダイアログ。旧名は自動で別名に残る）。 */}
-      <GlossaryEntryForm
-        open={editEntry !== null}
-        onOpenChange={(o) => {
-          if (!o) setEditEntryId(null)
-        }}
-        mode="edit"
-        initial={editEntry ?? undefined}
-        onSubmit={async (values) => {
-          if (editEntry) await submitEntryEdit(editEntry, values)
-        }}
-        glossary={work?.glossary ?? []}
-        onCreateEntry={createPlainGlossaryEntry}
-      />
-      {/* 未解決 @参照クリックからのクイック作成（名前プリフィル）。 */}
-      <GlossaryEntryForm
-        open={quickCreateName !== null}
-        onOpenChange={(o) => {
-          if (!o) setQuickCreateName(null)
-        }}
-        mode="create"
-        initial={quickCreateName !== null ? { name: quickCreateName } : undefined}
-        onSubmit={async (values) => {
-          await store.addGlossaryEntry({ name: values.name, ...formValuesToFieldPatch(values) })
-        }}
-        glossary={work?.glossary ?? []}
-        onCreateEntry={createPlainGlossaryEntry}
-      />
-      <ExportDialog
-        open={exportOpen}
-        onOpenChange={setExportOpen}
-        work={state.work}
-        onEditMeta={
-          work
-            ? () => {
-                setExportOpen(false)
-                setMetaOpen(true)
-              }
-            : undefined
-        }
-        stagingRepo={stagingRepo}
-        gameAssetRepo={gameAssetRepo}
-        onEditStaging={
-          stagingAvailable
-            ? () => {
-                setExportOpen(false)
-                setActiveScreen('staging')
-              }
-            : undefined
-        }
-      />
-      {work ? (
-        <WorkMetaDialog
-          open={metaOpen}
-          onOpenChange={setMetaOpen}
-          initial={{
-            title: work.title,
-            author: work.author,
-            description: work.description,
-            synopsis: work.synopsis,
-            coverImage: work.coverImage,
-            format: work.format,
-          }}
-          onSubmit={(values) => void store.updateWorkMeta(work.id, values)}
+        <TitlePromptDialog
+          open={newEpisodeOpen}
+          onOpenChange={setNewEpisodeOpen}
+          title="新しいエピソード"
+          description="この作品に追加する話のタイトルを入力します。"
+          label="話タイトル"
+          placeholder={`第${(work?.episodes.length ?? 0) + 1}話`}
+          defaultValue={`第${(work?.episodes.length ?? 0) + 1}話`}
+          submitLabel="追加"
+          onSubmit={(title) => void store.createEpisode(title)}
         />
-      ) : null}
-      <ConfirmDialog
-        open={deleteEpisodeTarget !== null}
-        onOpenChange={(o) => {
-          if (!o) setDeleteEpisodeTarget(null)
-        }}
-        title="この話を削除しますか？"
-        description={
-          deleteEpisodeTarget
-            ? `「${deleteEpisodeTarget.title}」を削除します。この操作は取り消せません。`
-            : undefined
-        }
-        confirmLabel="削除する"
-        onConfirm={() => {
-          if (deleteEpisodeTarget) void store.deleteEpisode(deleteEpisodeTarget.id)
-        }}
-      />
-    </AppShell>
+        {/* 話タイトルの変更（現在のタイトルをプリフィル・本文には影響しない）。 */}
+        <TitlePromptDialog
+          open={renameEpisodeTarget !== null}
+          onOpenChange={(o) => {
+            if (!o) setRenameEpisodeTarget(null)
+          }}
+          title="話のタイトルを変更"
+          description="この話の表示名を変更します。本文には影響しません。"
+          label="話タイトル"
+          defaultValue={renameEpisodeTarget?.title ?? ''}
+          submitLabel="変更"
+          onSubmit={(title) => {
+            if (renameEpisodeTarget) void store.renameEpisode(renameEpisodeTarget.id, title)
+          }}
+        />
+        {/* 用語集パネルからの編集（名前の変更も同じダイアログ。旧名は自動で別名に残る）。 */}
+        <GlossaryEntryForm
+          open={editEntry !== null}
+          onOpenChange={(o) => {
+            if (!o) setEditEntryId(null)
+          }}
+          mode="edit"
+          initial={editEntry ?? undefined}
+          onSubmit={async (values) => {
+            if (editEntry) await submitEntryEdit(editEntry, values)
+          }}
+          glossary={work?.glossary ?? []}
+          onCreateEntry={createPlainGlossaryEntry}
+        />
+        {/* 未解決 @参照クリックからのクイック作成（名前プリフィル）。 */}
+        <GlossaryEntryForm
+          open={quickCreateName !== null}
+          onOpenChange={(o) => {
+            if (!o) setQuickCreateName(null)
+          }}
+          mode="create"
+          initial={quickCreateName !== null ? { name: quickCreateName } : undefined}
+          onSubmit={async (values) => {
+            await store.addGlossaryEntry({ name: values.name, ...formValuesToFieldPatch(values) })
+          }}
+          glossary={work?.glossary ?? []}
+          onCreateEntry={createPlainGlossaryEntry}
+        />
+        <ExportDialog
+          open={exportOpen}
+          onOpenChange={setExportOpen}
+          work={state.work}
+          onEditMeta={
+            work
+              ? () => {
+                  setExportOpen(false)
+                  setMetaOpen(true)
+                }
+              : undefined
+          }
+          stagingRepo={stagingRepo}
+          gameAssetRepo={gameAssetRepo}
+          onEditStaging={
+            stagingAvailable
+              ? () => {
+                  setExportOpen(false)
+                  setActiveScreen('staging')
+                }
+              : undefined
+          }
+        />
+        {work ? (
+          <WorkMetaDialog
+            open={metaOpen}
+            onOpenChange={setMetaOpen}
+            initial={{
+              title: work.title,
+              author: work.author,
+              description: work.description,
+              synopsis: work.synopsis,
+              coverImage: work.coverImage,
+              format: work.format,
+            }}
+            onSubmit={(values) => void store.updateWorkMeta(work.id, values)}
+          />
+        ) : null}
+        <ConfirmDialog
+          open={deleteEpisodeTarget !== null}
+          onOpenChange={(o) => {
+            if (!o) setDeleteEpisodeTarget(null)
+          }}
+          title="この話を削除しますか？"
+          description={
+            deleteEpisodeTarget
+              ? `「${deleteEpisodeTarget.title}」を削除します。この操作は取り消せません。`
+              : undefined
+          }
+          confirmLabel="削除する"
+          onConfirm={() => {
+            if (deleteEpisodeTarget) void store.deleteEpisode(deleteEpisodeTarget.id)
+          }}
+        />
+      </AppShell>
+    </div>
   )
 }

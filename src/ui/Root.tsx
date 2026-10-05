@@ -258,7 +258,9 @@ function RootRoutes({ store }: RootProps) {
             () => {
               if (routeRef.current !== '/write') return null
               const snap = store.getSnapshot()
-              return snap.work ? { id: snap.work.id, dirty: snap.dirty } : null
+              return snap.work
+                ? { id: snap.work.id, dirty: snap.dirty || snap.workOperation !== 'idle' }
+                : null
             },
           )
         : null,
