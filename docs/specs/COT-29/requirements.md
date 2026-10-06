@@ -13,7 +13,6 @@
 | R5 スキーマ不変・純関数 | FR-5 | 保存型の変更なし、検索・置換は純TS | 可 | `src/core/parser/parseNotation.ts:34` |
 | R6 置換前履歴・同期通知 | FR-6 | 保護した置換前履歴・保存後通知 | 条件付き: 保存手順変更 | `src/core/snapshot/snapshotRepository.ts:28`, `src/ui/hooks/use-auto-sync.ts:32` |
 | R7 未保存本文との整合 | FR-7 | 下書き優先・保存の競合防止 | 条件付き: 操作の直列化 | `src/ui/store/editorStore.ts:362`, `src/ui/Root.tsx:261` |
-
 | R8 ユーザー追加: 参照の置換保護 | FR-5 | 参照内検索・移動を維持し置換から除外 | 可 | `src/core/search/workSearch.ts`, `replace-panel.tsx`, `work-search-panel.tsx` |
 
 ## 機能要件
