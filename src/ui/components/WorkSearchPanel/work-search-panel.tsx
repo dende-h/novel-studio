@@ -9,7 +9,7 @@ interface Props {
   sources: readonly SearchSource[]
   value: string
   busy: boolean
-  onApply: (next: string, count: number) => void
+  onApply: (next: string, count: number, keepOpen?: boolean) => void
   onNavigate: (sources: readonly SearchSource[], query: string, match: SearchMatch) => Promise<void>
   onReplace: (
     sources: readonly SearchSource[],

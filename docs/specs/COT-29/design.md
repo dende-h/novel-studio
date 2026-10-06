@@ -4,7 +4,7 @@
 
 ## 方針
 本文の記法テキストを検索する純関数と、保存・履歴を扱うストア操作を分ける。現在話は draft を使う。
-既存「置換」入口を「検索・置換」にし、「この話」と「作品全体」を切り替える。この話の従来操作は維持する。
+既存「置換」入口を「検索・置換」にし、「この話」と「作品全体」を切り替える。この話は結果一覧と個別置換を追加し、全件の即時適用も維持する。
 結果はオフセット付きで返す。保存時は結果の元テキストと現在の作品を再検証する。
 全話の保存は1つの Work レコードの更新。話ごとの連続 save は行わない。
 
@@ -20,7 +20,7 @@
 | 変更 | `src/ui/Root.tsx`（現行:261） | dirtyに置換中フラグを加え同期受信を見送る | FR-7 |
 | 変更 | `src/ui/App.tsx`（現行:159,232,653,747） | 検索パネル・確認・保存エラー・移動を配線、操作中は作品変更を無効化 | FR-1〜7 |
 | 新規 | `src/ui/components/WorkSearchPanel/work-search-panel.tsx` | 作品全体の入力・結果・状態・1件置換 | FR-1,3,4 |
-| 変更 | `src/ui/components/EditorPane/replace-panel.tsx`（現行:26） | 既存「この話」モードのラベルと共通枠への統合 | FR-1 |
+| 変更 | `src/ui/components/EditorPane/replace-panel.tsx`（現行:26） | この話の結果一覧・個別/全件置換、個別適用後の継続 | FR-1 |
 | 変更 | `src/ui/components/EditorPane/editor-pane.tsx`（現行:25,285） | selectRangeハンドル・readOnly・行へのスクロール | FR-2,7 |
 | 新規/変更 | `src/core/search/workSearch.test.ts`, `src/core/storage/workMutationLock.test.ts`, `src/ui/components/WorkSearchPanel/work-search-panel.test.tsx`, `src/ui/store/editorStore.test.ts`, `src/core/storage/idbStore.test.ts`, `src/ui/sync/sync-service.test.ts`, `src/ui/components/EditorPane/editor-pane.test.tsx`, `e2e/work-search.spec.ts` | 下記テスト | FR-1〜7 |
 | 変更 | `docs/CODEMAP.md` | 検索モジュール・ストア操作・共有排他の索引更新 | FR-5 |
@@ -84,3 +84,5 @@ App側で元一致を再検証し、キュー内でsave→保存結果再検索�
 - 履歴の一括復元はしない。全話復元は既存履歴で話ごとに行う（`src/ui/store/editorStore.ts:390`）。
 - 排他対象を置換だけに限定すると保存/同期の巻き戻しが残るため、既存Work変更処理も参加させる。
 - 未決: なし。性能測定・実ブラウザのスクロール確認は実装時の完了条件。
+
+2026-10-06追加: ReplacePanel.onApply(next,count,keepOpen?) の個別置換はkeepOpen=trueで下書きだけを更新し、Appはパネルを閉じない。両スコープで「この1件を置換」を提供する。参照保護は同じcoreのplanReplacementを使用。

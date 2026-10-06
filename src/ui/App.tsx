@@ -801,9 +801,9 @@ export function App({
                       sources={searchSources}
                       busy={state.workOperation !== 'idle'}
                       value={state.draft}
-                      onApply={(next, count) => {
+                      onApply={(next, count, keepOpen = false) => {
                         store.setDraft(next)
-                        setReplaceOpen(false)
+                        if (!keepOpen) setReplaceOpen(false)
                         show(`${count}件を置換しました`)
                       }}
                       onClose={closeSearch}
