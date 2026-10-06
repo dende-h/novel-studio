@@ -10,6 +10,8 @@ export interface SearchMatch {
   end: number
   line: number
   occurrence: number
+  /** Any overlap with [[...]], including its delimiters, is protected from replacement. */
+  isReference: boolean
   excerpt: string
   excerptMatchStart: number
   excerptMatchEnd: number
@@ -27,6 +29,13 @@ export function searchWork(sources: readonly SearchSource[], query: string): Sea
   if (!query || /[\r\n]/.test(query)) return []
   const matches: SearchMatch[] = []
   for (const source of sources) {
+    // Like the notation parser, an unfinished reference extends to the end of its line.
+    // Protect raw delimiters too, even inside decorated or malformed notation.
+    const references = Array.from(source.text.matchAll(/\[\[[^\n]*?(?:\]\]|(?=\n|$))/g), (m) => ({
+      start: m.index,
+      end: m.index + m[0].length,
+    }))
+    let referenceIndex = 0
     let cursor = 0
     let line = 1
     let lineCursor = 0
@@ -35,6 +44,8 @@ export function searchWork(sources: readonly SearchSource[], query: string): Sea
       const start = source.text.indexOf(query, cursor)
       if (start < 0) break
       const end = start + query.length
+      let reference = references[referenceIndex]
+      while (reference && reference.end <= start) reference = references[++referenceIndex]
       while (lineCursor < start) {
         if (source.text.charCodeAt(lineCursor) === 10) line++
         lineCursor++
@@ -50,6 +61,7 @@ export function searchWork(sources: readonly SearchSource[], query: string): Sea
         end,
         line,
         occurrence: occurrence++,
+        isReference: reference !== undefined && reference.start < end,
         excerpt:
           prefix +
           source.text.slice(left, right).replace(/[\r\n]/g, ' ') +
@@ -71,7 +83,7 @@ export function planReplacement(
 ): ReplacementPlan[] {
   if (!query || query === replacement || /[\r\n]/.test(query + replacement)) return []
   const all = searchWork(sources, query)
-  const matches =
+  const selected =
     target === 'all'
       ? all
       : all.filter(
@@ -81,8 +93,9 @@ export function planReplacement(
             m.end === target.end &&
             m.occurrence === target.occurrence,
         )
-  if (target !== 'all' && matches.length !== 1)
+  if (target !== 'all' && selected.length !== 1)
     throw new Error('本文が変わりました。検索し直してください')
+  const matches = selected.filter((match) => !match.isReference)
   return sources.flatMap((source) => {
     const selected = matches.filter((m) => m.episodeId === source.episodeId)
     if (!selected.length) return []

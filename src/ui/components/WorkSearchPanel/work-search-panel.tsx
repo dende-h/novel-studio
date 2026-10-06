@@ -46,11 +46,12 @@ export function WorkSearchPanel({
   const currentKey = result ? JSON.stringify(result.sources) : null
   const stale = !result || result.query !== query || sourceKey !== currentKey || composing
   const matches = result?.matches ?? []
+  const replaceable = matches.filter((match) => !match.isReference)
   const titles = useMemo(() => new Map(sources.map((s) => [s.episodeId, s.title])), [sources])
   const canReplace =
     !busy &&
     !stale &&
-    matches.length > 0 &&
+    replaceable.length > 0 &&
     query !== replacement &&
     !/[\r\n]/.test(query + replacement)
 
@@ -140,6 +141,7 @@ export function WorkSearchPanel({
             onChange={(e) => setReplacement(e.target.value)}
           />
           <p className="text-xs text-on-surface-variant">ルビや参照の記法も検索します</p>
+          <p className="text-xs text-on-surface-variant">用語集の参照は置換しません</p>
           <p aria-live="polite" className="text-xs text-on-surface-variant">
             {busy
               ? '処理しています'
@@ -153,6 +155,9 @@ export function WorkSearchPanel({
                       ? '見つかりませんでした'
                       : `${matches.length}件・${new Set(matches.map((m) => m.episodeId)).size}話`}
           </p>
+          {!stale && matches.some((match) => match.isReference) ? (
+            <p className="text-xs text-on-surface-variant">{replaceable.length}件を置換できます</p>
+          ) : null}
           {error ? (
             <p role="alert" className="text-xs text-destructive">
               {error}
@@ -187,7 +192,7 @@ export function WorkSearchPanel({
                 <Button
                   variant="outline"
                   className="min-h-11"
-                  disabled={!canReplace}
+                  disabled={!canReplace || match.isReference}
                   onClick={() => {
                     if (result)
                       void perform(() =>
@@ -197,6 +202,9 @@ export function WorkSearchPanel({
                 >
                   この1件を置換
                 </Button>
+                {match.isReference ? (
+                  <p className="text-xs text-on-surface-variant">用語集の参照・置換対象外</p>
+                ) : null}
               </div>
             ))}
             {matches.length > visible ? (
@@ -223,12 +231,15 @@ export function WorkSearchPanel({
         onOpenChange={(open) => {
           if (!open) setConfirmation(null)
         }}
-        title={`${confirmation?.matches.length ?? 0}件を置換しますか？`}
+        title={`${confirmation?.matches.filter((match) => !match.isReference).length ?? 0}件を置換しますか？`}
         confirmLabel="置換"
         destructive={false}
         description={
           <>
-            {new Set(confirmation?.matches.map((m) => m.episodeId)).size}
+            {
+              new Set(confirmation?.matches.filter((m) => !m.isReference).map((m) => m.episodeId))
+                .size
+            }
             話の本文を変更します。置換前の本文は履歴に残ります
             {replacement === '' ? `。「${confirmation?.query}」を削除します` : ''}
           </>

@@ -191,7 +191,7 @@ describe('App（エディタ結合：本文/プレビュー・自動保存・履
     expect(screen.getByText('この話の本文だけを対象に置換します')).toBeInTheDocument()
 
     fireEvent.change(screen.getByLabelText('検索する語'), { target: { value: '猫' } })
-    expect(screen.getByText('2件 見つかりました')).toBeInTheDocument()
+    expect(screen.getByText('2件を置換できます')).toBeInTheDocument()
     fireEvent.change(screen.getByLabelText('置換後の語'), { target: { value: '犬' } })
     fireEvent.click(screen.getByRole('button', { name: 'すべて置換' }))
 
@@ -210,7 +210,7 @@ describe('App（エディタ結合：本文/プレビュー・自動保存・履
     })
     fireEvent.click(screen.getByRole('button', { name: '検索・置換' }))
     fireEvent.change(screen.getByLabelText('検索する語'), { target: { value: '猫' } })
-    expect(screen.getByText('0件 見つかりました')).toBeInTheDocument()
+    expect(screen.getByText('0件を置換できます')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'すべて置換' })).toBeDisabled()
   })
 

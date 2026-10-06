@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { blocksToNotation } from '../../core/exporter/blocksToNotation'
+import { resolveRef } from '../../core/glossary'
 import { ProfileRepository } from '../../core/profile'
 import { searchWork } from '../../core/search/workSearch'
 import { SnapshotRepository } from '../../core/snapshot/snapshotRepository'
@@ -67,19 +68,19 @@ describe('作品全体検索の保存・履歴・競合', () => {
     const save = vi.spyOn(repo, 'saveWork')
     const activity = vi.spyOn(activityRepo, 'record')
     const result = await store.replaceWorkMatches(request(store))
-    expect(result).toEqual({ count: 5, committed: true })
+    expect(result).toEqual({ count: 4, committed: true })
     expect(save).toHaveBeenCalledTimes(1)
     expect(activity).toHaveBeenCalledTimes(1)
     const after = store.getSnapshot()
     expect(after.work?.author).toBe('作者')
     expect(after.work?.description).toBe('説明')
     expect(after.work?.episodes[0]?.blocks[0]?.id).toBe(oldId)
-    expect(after.draft).toBe('犬😀犬 [[犬]]')
+    expect(after.draft).toBe('犬😀犬 [[猫]]')
     const snapshots = await snapshotRepo.list(old.id)
     expect(blocksToNotation(required(required(snapshots[0]).work.episodes[1]).blocks)).toBe(
       '猫😀猫 [[猫]]',
     )
-    store.setDraft('犬😀犬 [[犬]] 続き')
+    store.setDraft('犬😀犬 [[猫]] 続き')
     await store.save()
     expect(
       blocksToNotation(
@@ -253,5 +254,27 @@ describe('作品全体検索の保存・履歴・競合', () => {
     const result = await store.replaceWorkMatches({ ...request(store), replacement: '猫' })
     expect(result).toEqual({ count: 0, committed: false })
     expect(await snapshotRepo.list(old.id)).toEqual(snapshots)
+  })
+  it('全置換で参照と別名の解決先を保ち、参照だけの1件置換は保存しない', async () => {
+    const { store, repo, snapshotRepo } = await fixture()
+    const entry = await store.addGlossaryEntry({ name: '猫', aliases: ['にゃんこ'] })
+    store.setDraft('猫 [[猫]] [[にゃんこ]] [[｜猫《ねこ》]]')
+    const input = request(store)
+    const protectedMatch = required(searchWork(input.sources, '猫').find((m) => m.isReference))
+    const put = vi.spyOn(repo, 'saveWork')
+    const history = vi.spyOn(snapshotRepo, 'append')
+    expect(await store.replaceWorkMatches({ ...input, target: protectedMatch })).toEqual({
+      count: 0,
+      committed: false,
+    })
+    expect(put).not.toHaveBeenCalled()
+    expect(history).not.toHaveBeenCalled()
+    expect(await store.replaceWorkMatches(input)).toEqual({ count: 3, committed: true })
+    expect(store.getSnapshot().draft).toBe('犬 [[猫]] [[にゃんこ]] [[｜猫《ねこ》]]')
+    const work = required(await repo.getWork(input.workId))
+    expect(work.glossary?.[0]).toEqual(entry)
+    for (const name of ['猫', 'にゃんこ'])
+      expect(resolveRef(name, work.glossary ?? [])?.id).toBe(entry.id)
+    expect(blocksToNotation(required(work.episodes[1]).blocks)).toContain('[[猫]] [[にゃんこ]]')
   })
 })

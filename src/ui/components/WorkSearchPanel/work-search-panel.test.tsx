@@ -115,4 +115,47 @@ describe('WorkSearchPanel', () => {
     rerender(<WorkSearchPanel {...props} busy />)
     expect(screen.getByRole('button', { name: 'すべて置換' })).toBeDisabled()
   })
+  it('参照は検索・移動でき、1件置換と全置換の件数から除外する', async () => {
+    const { onNavigate, onReplace } = setup([
+      { episodeId: 'one', title: '第一話', text: '猫 [[猫]]' },
+      { episodeId: 'two', title: '第二話', text: '[[猫]]' },
+    ])
+    await search()
+    expect(screen.getAllByText('用語集の参照・置換対象外')).toHaveLength(2)
+    expect(screen.getByText('1件を置換できます')).toBeInTheDocument()
+    const buttons = screen.getAllByRole('button', { name: 'この1件を置換' })
+    expect(buttons[0]).toBeEnabled()
+    expect(buttons[1]).toBeDisabled()
+    expect(buttons[2]).toBeDisabled()
+    fireEvent.click(screen.getByRole('button', { name: /第二話・1行/ }))
+    await waitFor(() =>
+      expect(onNavigate).toHaveBeenCalledWith(
+        expect.any(Array),
+        '猫',
+        expect.objectContaining({ isReference: true }),
+      ),
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'すべて置換' }))
+    expect(screen.getByText('1件を置換しますか？')).toBeInTheDocument()
+    expect(screen.getByRole('dialog')).toHaveTextContent('1話の本文を変更します')
+    fireEvent.click(screen.getByRole('button', { name: 'キャンセル' }))
+    expect(onReplace).not.toHaveBeenCalled()
+  })
+  it('参照だけならすべて置換できず、この話でも括弧を変更しない', async () => {
+    const { props, rerender, onApply } = setup([
+      { episodeId: 'one', title: '第一話', text: '[[猫]]' },
+    ])
+    fireEvent.click(screen.getByRole('button', { name: '作品全体' }))
+    fireEvent.change(screen.getByLabelText('検索する語'), { target: { value: '猫' } })
+    fireEvent.change(screen.getByLabelText('置換後の語'), { target: { value: '犬' } })
+    await screen.findByText('0件を置換できます')
+    expect(screen.getByRole('button', { name: 'すべて置換' })).toBeDisabled()
+    rerender(<WorkSearchPanel {...props} value="[猫] [[猫]]" />)
+    fireEvent.click(screen.getByRole('button', { name: 'この話' }))
+    fireEvent.change(screen.getByLabelText('検索する語'), { target: { value: '[' } })
+    fireEvent.change(screen.getByLabelText('置換後の語'), { target: { value: '' } })
+    expect(screen.getByText('1件を置換できます')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'すべて置換' }))
+    expect(onApply).toHaveBeenCalledWith('猫] [[猫]]', 1)
+  })
 })

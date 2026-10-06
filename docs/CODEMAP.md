@@ -108,7 +108,7 @@ Cloudflare Pages Functions
 | `src/core/exporter/blocksToNotation.ts` | 正本 → 記法（往復変換） |
 | `src/core/zip/index.ts` | 依存ゼロの ZIP（store 法）・`crc32` |
 | `bundle/` `folder/` | 全作品バンドル JSON / フォルダ形式の入出力 |
-| `search/workSearch.ts` | 全話の記法テキストのリテラル検索・置換計画（`searchWork` `planReplacement` `SearchSource` `SearchMatch`） |
+| `search/workSearch.ts` | 全話の記法テキスト検索・参照を保護する置換計画（`searchWork` `planReplacement` `SearchSource` `SearchMatch.isReference`） |
 | `diff/` | 履歴表示用の行差分（`diffLines` `collapseUnchanged`） |
 | `image/` | 画像のリサイズ・切り抜き計算（純関数） |
 

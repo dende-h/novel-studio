@@ -29,7 +29,7 @@
 Work/Episode/Block の Zod 差分なし（`src/core/schema/index.ts:61,219`）。永続化キー・IndexedDBのversionも不変。
 検索結果・検索語・操作中フラグはメモリだけ。旧作品は現行 WorkRepository で読み出す（`src/core/storage/workRepository.ts:55`）。
 変更話だけ `{...episode, blocks: reconcileBlockIds(oldBlocks, parseEpisodeBody(nextText))}`（`src/core/parser/reconcileBlockIds.ts:23`）。他話は同じ参照。作品の他フィールドは最新 Work をspreadする。
-ルビ/参照は記法中の語も置換される。記法記号を置換すると通常の本文編集と同様に意味が変わるため、パネルに「ルビや参照の記法も検索します」を表示する。用語集項目の改名はしない。
+検索はルビ/参照の記法中の語も含む。検索結果のisReferenceで、`[[…]]` の中身・区切り・境界に重なる一致を識別し、置換から除外する。未終端はパーサーと同じく行末まで保護。装飾内の生の参照記号も保守的に保護する。用語集の改名・別名追加はしない。
 演出譜は書き換えない。変更行のblock id引継ぎは既存規則に従い、行の削除・分割時は既存編集と同じアンカーの制約がある。
 バックアップ・同期・publishバンドル・MCPは既存 Work 型のまま。新しいリモートAPIなし。
 
@@ -38,8 +38,8 @@ Work/Episode/Block の Zod 差分なし（`src/core/schema/index.ts:61,219`）�
 - 現状: `screens/writer-desktop.png`, `screens/writer-mobile.png`, `screens/replace-desktop.png`, `screens/replace-mobile.png`。
 - ①入口: ツールバー「検索・置換」。狭幅はアイコンに aria-label を設定する。話なしでも入口を出す。
 - ②共通枠: 初期タブ「この話」（既存置換）。「作品全体」で検索入力・置換入力・本文範囲の説明を表示。desktopは右側の幅360pxのパネル、mobileは全幅のシートで最大高さ85dvh、結果だけスクロール。プレビュータブからも本文タブに切り替えて開く。
-- ③結果: 件数/話数、話名・行・抜粋。移動ボタンと「この1件を置換」は別々のボタン（入れ子にしない）。最大100件を描画、追加表示する。
-- ④全置換: 件数ゼロ・検索中・同じ置換語・処理中は無効。ConfirmDialogで件数・話数を確認。キャンセルでは何もしない。
+- ③結果: 件数/話数、話名・行・抜粋。移動ボタンと「この1件を置換」は別々のボタン（入れ子にしない）。参照は「用語集の参照・置換対象外」と表示し、移動可能・1件置換不可。最大100件を描画、追加表示する。
+- ④全置換: 件数ゼロ・検索中・同じ置換語・処理中は無効。ConfirmDialogで参照を除外した置換可能件数・話数を確認。キャンセルでは何もしない。
 - ⑤移動: モバイルは閉じる、desktopはパネルを残す。本文タブに切替、React commit後にハンドルを呼んで一致選択・行スクロール。同一話でも未保存があれば保存する。
 - 状態: 初期/話なし/0件/検索中/履歴保存失敗/本文保存失敗/古い結果/保存後補助処理失敗。処理中「置換しています」、成功「N件を置換しました」。オフライン・ゲスト・無料会員も同じ表示。クラウド同期状態は既存ヘッダに任せる。
 - エラー: 「置換できませんでした。本文は変更していません。もう一度お試しください」。競合は「本文が変わりました。検索し直してください」。保存後の補助処理失敗は「置換は保存しました。履歴や一覧の表示を更新できませんでした」。保存失敗した移動は「保存できませんでした。本文を確認して、もう一度お試しください」。
@@ -51,9 +51,9 @@ Work/Episode/Block の Zod 差分なし（`src/core/schema/index.ts:61,219`）�
 ## ロジック・API
 ### 純関数（新規提案）
 `SearchSource = {episodeId:string; title:string; text:string}`。
-`SearchMatch = {episodeId:string; start:number; end:number; line:number; occurrence:number; excerpt:string; excerptMatchStart:number; excerptMatchEnd:number}`。
+`SearchMatch = {episodeId:string; start:number; end:number; line:number; occurrence:number; isReference:boolean; excerpt:string; excerptMatchStart:number; excerptMatchEnd:number}`。
 `searchWork(sources: readonly SearchSource[], query:string): SearchMatch[]` はUTF-16オフセット（textareaと一致）。非重複indexOf走査でendから次を探す。抜粋境界はサロゲートペアを割らない。行数を毎一致で先頭から走査せず、話ごとに改行位置を先に計算する。
-`planReplacement(sources, query, replacement, target: SearchMatch|'all'): {episodeId:string; before:string; after:string; count:number}[]` はbeforeの一致を検証し、対象話内の位置の降順で置換する。同じ語/no-matchは空計画。$置換展開なし。
+`planReplacement(sources, query, replacement, target: SearchMatch|'all'): {episodeId:string; before:string; after:string; count:number}[]` はbeforeの一致を検証し、保護対象を再計算して除外し、元テキストの未変更区間と置換語を位置順に連結する。保護対象の1件指定や、全件保護なら空計画。同じ語/no-matchは空計画。$置換展開なし。
 ### ストア（新規提案）
 `EditorState.workOperation: 'idle'|'replacing'|'navigating'` と `replaceWorkMatches({workId, sources, query, replacement, target}): Promise<{count:number; committed:boolean}>` を追加する。sources は確認画面時点の全話テキスト・話順を含み、保存時に再計算して比較する。
 1. 入口でworkOperationを設定、Appで本文/記法/話切替/作品情報/用語集更新/ライブラリ移動を停止。ストアにもガードを置き、Appだけのdisableに依存しない。自動保存は進行中のものを待ち、新たなsaveは同じキューに入れる。

@@ -1,4 +1,5 @@
 import { useId, useMemo, useState } from 'react'
+import { planReplacement, searchWork } from '@/core/search/workSearch'
 import { Button } from '@/ui/components/ui/button'
 
 interface ReplacePanelProps {
@@ -10,10 +11,6 @@ interface ReplacePanelProps {
   onApply: (next: string, count: number) => void
   onClose: () => void
 }
-
-/** 文字列内の出現回数（リテラル一致・正規表現は使わない）。 */
-const countOccurrences = (text: string, find: string): number =>
-  find === '' ? 0 : text.split(find).length - 1
 
 /**
  * 一括置換（現在の話の本文だけを対象）。検索語・置換語ともリテラル一致で、
@@ -29,11 +26,15 @@ export function ReplacePanel({
   const [findQ, setFindQ] = useState('')
   const [replQ, setReplQ] = useState('')
   const titleId = useId()
-  const count = useMemo(() => countOccurrences(value, findQ), [value, findQ])
+  const sources = useMemo(() => [{ episodeId: 'current', title: '', text: value }], [value])
+  const matches = useMemo(() => searchWork(sources, findQ), [sources, findQ])
+  const count = matches.filter((match) => !match.isReference).length
+  const protectedCount = matches.length - count
 
   const apply = () => {
     if (disabled || findQ === '' || count === 0) return
-    onApply(value.split(findQ).join(replQ), count)
+    const plan = planReplacement(sources, findQ, replQ, 'all')[0]
+    if (plan) onApply(plan.after, plan.count)
   }
 
   return (
@@ -66,7 +67,11 @@ export function ReplacePanel({
         className="h-11 rounded-md border border-outline-variant/40 bg-surface-container-lowest px-3 text-base text-on-surface outline-none transition-colors placeholder:text-on-surface-variant/50 focus:border-primary md:h-[34px] md:text-[13px]"
       />
       <p className="text-[11px] text-on-surface-variant">
-        {findQ !== '' ? `${count}件 見つかりました` : 'この話の本文だけを対象に置換します'}
+        {findQ !== '' ? `${count}件を置換できます` : 'この話の本文だけを対象に置換します'}
+      </p>
+      <p className="text-[11px] text-on-surface-variant">
+        用語集の参照は置換しません
+        {protectedCount > 0 ? `（${protectedCount}件を除外）` : ''}
       </p>
       <div className="flex justify-end gap-2">
         {embedded ? null : (
@@ -74,7 +79,13 @@ export function ReplacePanel({
             閉じる
           </Button>
         )}
-        <Button size="sm" onClick={apply} disabled={disabled || findQ === '' || count === 0}>
+        <Button
+          size="sm"
+          onClick={apply}
+          disabled={
+            disabled || findQ === '' || count === 0 || findQ === replQ || /[\r\n]/.test(replQ)
+          }
+        >
           すべて置換
         </Button>
       </div>
