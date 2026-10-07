@@ -37,7 +37,11 @@ export class IdbStore implements KeyValueStore {
     return new Promise<T>((resolve, reject) => {
       const tx = db.transaction(this.storeName, mode)
       const req = run(tx.objectStore(this.storeName))
-      req.onsuccess = () => resolve(req.result as T)
+      // A successful request can still be rolled back by a later transaction abort.
+      // Publish success only once IndexedDB has committed the transaction.
+      tx.oncomplete = () => resolve(req.result as T)
+      tx.onabort = () => reject(tx.error ?? new Error('IndexedDB transaction aborted'))
+      tx.onerror = () => reject(tx.error ?? req.error)
       req.onerror = () => reject(req.error)
     })
   }

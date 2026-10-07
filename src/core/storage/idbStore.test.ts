@@ -1,5 +1,5 @@
 import 'fake-indexeddb/auto'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { IdbStore } from './idbStore'
 
 let dbn = 0
@@ -51,5 +51,26 @@ describe('IdbStore（KeyValueStore contract / IndexedDB）', () => {
     await a.set('work:1', { title: '夜' })
     const b = new IdbStore(name)
     expect(await b.get('work:1')).toEqual({ title: '夜' })
+  })
+
+  it('put が成功しても transaction が abort すれば保存失敗として返す', async () => {
+    const s = fresh()
+    await s.set('k', 'before')
+    const original = IDBObjectStore.prototype.put
+    const spy = vi.spyOn(IDBObjectStore.prototype, 'put').mockImplementation(function (
+      this: IDBObjectStore,
+      value: unknown,
+      key?: IDBValidKey,
+    ) {
+      const request = original.call(this, value, key)
+      request.addEventListener('success', () => this.transaction.abort())
+      return request
+    })
+    try {
+      await expect(s.set('k', 'after')).rejects.toThrow('aborted')
+    } finally {
+      spy.mockRestore()
+    }
+    expect(await s.get('k')).toBe('before')
   })
 })

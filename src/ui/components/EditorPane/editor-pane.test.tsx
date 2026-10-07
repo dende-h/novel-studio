@@ -678,3 +678,23 @@ it('場面転換は脚本で、選択した本文を消さず現在行の前に 
   expect(ta).toHaveValue('前\n***\n次の場面')
   expect(ta.selectionStart).toBe(6)
 })
+
+describe('EditorPane（検索結果の選択）', () => {
+  it('UTF-16の一致範囲を選択し本文へフォーカスする', () => {
+    const ref = { current: null as EditorPaneHandle | null }
+    render(<EditorPane ref={ref} value={'一行目\n😀猫と犬'} onChange={() => {}} />)
+    act(() => ref.current?.selectRange(6, 7))
+    const textarea = screen.getByRole('textbox', { name: '本文' }) as HTMLTextAreaElement
+    expect(textarea.selectionStart).toBe(6)
+    expect(textarea.selectionEnd).toBe(7)
+    expect(textarea).toHaveFocus()
+  })
+  it('置換中は本文と記法挿入を停止する', () => {
+    const onChange = vi.fn()
+    const ref = { current: null as EditorPaneHandle | null }
+    render(<EditorPane ref={ref} value="猫" onChange={onChange} readOnly />)
+    expect(screen.getByRole('textbox', { name: '本文' })).toHaveAttribute('readonly')
+    act(() => ref.current?.applyNotation('ruby'))
+    expect(onChange).not.toHaveBeenCalled()
+  })
+})

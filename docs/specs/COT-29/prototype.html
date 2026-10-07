@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="ja"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>COT-29 作品全体の検索・置換</title>
+<style>:root {
+  color-scheme: light;
+  --radius: 0.5rem;
+
+  /* 本文（エディタ・プレビュー）の基準フォントサイズ。設定の「文字サイズ」で
+     <html> の style に上書きされる（小=13.5px / 中=既定 / 大=17px）。 */
+  --reading-font-size: 15px;
+
+  /* shadcn セマンティック */
+  --background: #fdfcfb; /* cream-50: ページ背景（無機質な白でなく紙の温度） */
+  --foreground: #4b5160; /* gray-700: 本文 */
+  --card: #fefeff;
+  --card-foreground: #1f2430;
+  --popover: #fefeff;
+  --popover-foreground: #1f2430;
+  --primary: #2c5b27; /* forest-700: ブランド緑 */
+  --primary-foreground: #ffffff;
+  --secondary: #f2e6d4; /* wheat-100 */
+  --secondary-foreground: #92703f; /* wheat-700 */
+  --muted: #f3f4f6;
+  --muted-foreground: #7d8494;
+  --accent: #f2f7f1; /* forest-50: hover 等の控えめな緑 */
+  --accent-foreground: #2c5b27;
+  --destructive: #dc2626;
+  --destructive-foreground: #ffffff;
+  --border: #e4e6eb; /* gray-200: subtle border */
+  --input: #d5d8dd; /* gray-300 */
+  --ring: #2c5b27;
+
+  /* Material 拡張（既存ユーティリティ名を維持したまま値だけ差し替え） */
+  --surface: #fdfcfb;
+  --surface-container-lowest: #fefeff; /* カード面 */
+  --surface-container-low: #f9f7f5; /* cream-100: サイドバー等の面 */
+  --surface-container: #f3f1ec;
+  --surface-container-high: #edeae3;
+  --surface-container-highest: #e7e3da;
+  --surface-bright: #fefeff;
+  --surface-variant: #f3ede4; /* paper-100: 読書面（プレビュー） */
+  --on-surface: #1f2430; /* gray-900: 見出し */
+  --on-surface-variant: #6b7381; /* gray-600: 補助テキスト */
+  --outline: #7d8494; /* gray-500 */
+  --outline-variant: #9da3ae; /* gray-400（/30〜/40 の透過利用で design の subtle 境界に一致） */
+  --primary-container: #e3ece1; /* forest-100 */
+  --on-primary-container: #234420; /* forest-800 */
+  --secondary-color: #b98f63; /* wheat-500 */
+  --secondary-container: #f2e6d4; /* wheat-100 */
+  --on-secondary-container: #92703f; /* wheat-700 */
+  --error: #dc2626;
+  --error-container: #fef2f2;
+  --on-error-container: #b91c1c;
+
+  /* デザイン固有の追加パレット（草・表紙トーン・アクセント） */
+  --forest-50: #f2f7f1;
+  --forest-100: #e3ece1;
+  --forest-400: #6b9660;
+  --forest-600: #35692f;
+  --forest-700: #2c5b27;
+  --forest-800: #234420;
+  --forest-900: #1a3014;
+  --wheat-500: #b98f63;
+  --wheat-700: #92703f;
+  --paper-100: #f3ede4;
+
+  /*
+   * プレビューの @参照リンク色。下線は引かない（縦書きではルビと同じ側に出て重なり、
+   * 読みが潰れる）ため、色だけで「図鑑に居る語」と分かる必要がある。地の文（--on-surface）
+   * が暗い青灰なので、暗さではなく緑の鮮やかさで見分けさせる＝forest-700 より一段明るい 600。
+   */
+  --ref-link: var(--forest-600);
+  --ref-link-hover: var(--forest-900);
+}
+.dark {
+  color-scheme: dark;
+
+  /* shadcn セマンティック */
+  --background: #181611; /* 暖かい極暗（無機質な黒でなく紙の温度を残す） */
+  --foreground: #d7d2c8; /* 本文（暖色オフホワイト） */
+  --card: #201d16;
+  --card-foreground: #ece8e1;
+  --popover: #221f18;
+  --popover-foreground: #ece8e1;
+  --primary: #44863a; /* forest を持ち上げた緑（白文字≒AA・text-primary も可読） */
+  --primary-foreground: #ffffff;
+  --secondary: #38301f; /* 暗い wheat チップ */
+  --secondary-foreground: #dcbd8e;
+  --muted: #262319;
+  --muted-foreground: #9c968a;
+  --accent: #202c1c; /* hover 等の控えめな緑面 */
+  --accent-foreground: #a6d29b;
+  --destructive: #e5544e;
+  --destructive-foreground: #ffffff;
+  --border: #322e26;
+  --input: #423d33;
+  --ring: #5aa24d;
+
+  /* Material 拡張 */
+  --surface: #181611;
+  --surface-container-lowest: #1f1c16; /* カード面・トップバー */
+  --surface-container-low: #232019; /* サイドバー等の面 */
+  --surface-container: #29251e;
+  --surface-container-high: #322d25;
+  --surface-container-highest: #3a352b;
+  --surface-bright: #221f18;
+  --surface-variant: #201d16; /* 読書面（プレビュー） */
+  --on-surface: #ece8e1; /* 見出し */
+  --on-surface-variant: #a49e92; /* 補助テキスト */
+  --outline: #8b8578;
+  --outline-variant: #645e53; /* /30〜/40 の透過利用で subtle 境界 */
+  --primary-container: #294424;
+  --on-primary-container: #cae4c3;
+  --secondary-color: #cba576; /* wheat-500 相当 */
+  --secondary-container: #38301f;
+  --on-secondary-container: #e0c398;
+  --error: #e5544e;
+  --error-container: #3a1e1c;
+  --on-error-container: #f4b4b0;
+
+  /* デザイン固有の追加パレット（緑・表紙トーン・アクセント） */
+  --forest-50: #1d291b;
+  --forest-100: #24331f;
+  --forest-400: #5f8a54; /* @参照リンクの下線 */
+  --forest-600: #74ab68;
+  --forest-700: #8bc47e; /* @参照リンクの文字（暗い読書面で可読な明るい緑） */
+  --forest-800: #a9d69d;
+  --forest-900: #c6e8bb; /* @参照リンク hover（最も明るい） */
+  --wheat-500: #c9a274;
+  --wheat-700: #d8bd8e; /* 「-leaf-」等の wheat 文字（暗背景で可読な明るい麦色） */
+
+  /* 暗い読書面では「濃く」＝より明るく。明度の向きが逆なので light と別トークンにする。 */
+  --ref-link: var(--forest-800);
+  --ref-link-hover: var(--forest-900);
+  --paper-100: #201d16;
+}
+*{box-sizing:border-box}body{margin:0;background:var(--background);color:var(--on-surface);font:14px/1.6 'Noto Sans JP',sans-serif}main{padding:28px;max-width:1600px;margin:auto}h1{font-size:24px;margin:0}h2{font-size:18px}p{margin:8px 0}small,.muted{color:var(--on-surface-variant)}button,input,select{font:inherit}button{cursor:pointer;border:1px solid var(--border);background:var(--card);color:var(--on-surface);border-radius:6px;padding:7px 12px;min-height:36px}button:hover{background:var(--accent)}button:disabled{opacity:.45;cursor:default}.primary,.selected{background:var(--primary);color:white}.primary:hover,.selected:hover{background:var(--forest-800)}.controls{display:flex;gap:12px;align-items:center;flex-wrap:wrap;padding:16px 0}select{padding:7px;border:1px solid var(--border);background:var(--card);color:inherit;border-radius:6px}.compare{display:grid;grid-template-columns:1fr 1fr;gap:20px}.compare>div{min-width:0}.compare img{width:100%;display:block;border:1px solid var(--border);border-radius:8px}.frame{border:1px solid var(--border);border-radius:8px;overflow:hidden;background:var(--card);position:relative}.desktop{height:auto;aspect-ratio:1440/900}.virtual{position:absolute;top:0;left:0;width:1440px;height:900px;transform-origin:top left}.desktop .appbar{height:56px}.desktop .workspace{height:844px}.desktop .sidebar{width:248px;font-size:14px}.desktop .toolbar{height:60px;font-size:13px}.desktop .paper{height:calc(100% - 60px)}.desktop .text{font-size:15px;padding:28px 36px}.desktop .preview{font-size:15px}.appbar{height:48px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--border);padding:0 14px;color:var(--on-surface-variant);font-size:12px}.brand{font-weight:700;color:#18344b;font-size:18px}.workspace{display:flex;height:calc(100% - 48px)}.sidebar{width:160px;background:var(--surface-container-low);padding:14px 10px;font-size:12px;flex:none;border-right:1px solid var(--border)}.side-row{padding:10px 8px;border-radius:7px;margin:8px 0}.side-row.active{background:var(--card);color:var(--primary)}.right{flex:1;min-width:0}.toolbar{display:flex;align-items:center;justify-content:space-between;padding:6px 10px;height:52px;border-bottom:1px solid var(--border);font-size:12px}.paper{position:relative;display:flex;height:calc(100% - 52px)}.text{padding:28px 20px;flex:1;line-height:2.3;font-size:13px;white-space:pre-wrap}.preview{width:35%;background:var(--surface-variant);writing-mode:vertical-rl;font-family:serif;padding:25px 15px}.panel{position:absolute;right:10px;top:10px;width:360px;max-height:calc(100% - 20px);display:flex;flex-direction:column;border:1px solid var(--border);border-radius:8px;background:var(--card);box-shadow:0 8px 18px #00000014;padding:14px;font-size:13px;z-index:2}.panel header{display:flex;align-items:center;justify-content:space-between;font-weight:600}.tabs{display:flex;gap:6px;margin:8px 0}.tabs button{flex:1;font-size:12px}.field{display:block;font-size:12px;margin-top:6px}input{width:100%;border:1px solid var(--input);color:var(--on-surface);background:var(--card);border-radius:6px;padding:8px 10px;height:36px}input:focus{outline:1px solid var(--primary)}.help{font-size:11px;color:var(--on-surface-variant);margin:7px 0}.results{overflow:auto;min-height:0;max-height:235px}.result{border-top:1px solid var(--border);padding:8px 0}.result .go{width:100%;text-align:left;border:0;padding:0;background:transparent;line-height:1.7;min-height:44px}.result .go:hover{color:var(--primary)}.result .go strong{display:block;font-size:12px}.result .one{font-size:11px;min-height:32px;margin-top:5px}.actions{display:flex;justify-content:flex-end;gap:8px;padding-top:10px}.badge{background:var(--primary-container);color:var(--on-primary-container);border-radius:50%;padding:0 5px;font-size:11px;margin-right:4px}mark{background:var(--secondary-container);color:var(--on-surface);padding:0 2px}.status{font-size:12px;margin:10px 0}.error{color:var(--error)}.mobile-compare{grid-template-columns:393px 393px;justify-content:start}.phone{width:393px;height:727px}.phone .sidebar,.phone .preview{display:none}.phone .appbar{height:48px}.phone .toolbar{height:53px;padding:4px 16px;font-size:14px}.phone .text{padding:26px 30px;font-size:15px}.phone .panel{width:auto;left:8px;right:8px;top:10px;max-height:calc(100% - 18px);padding:14px}.phone button{min-height:44px}.phone input{height:44px;font-size:16px}.phone .one{min-height:44px}.phone .results{max-height:240px}.phone .workspace{height:calc(100% - 48px)}dialog{border:1px solid var(--border);border-radius:8px;background:var(--card);color:var(--on-surface);width:min(440px,calc(100vw - 32px));padding:24px}dialog::backdrop{background:#0005}dialog h2{margin-top:0}.toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--on-surface);color:var(--background);border-radius:8px;padding:12px 20px;z-index:5}.note{margin:24px 0;font-size:13px;color:var(--on-surface-variant)}[hidden]{display:none!important}@media(max-width:1000px){.compare{grid-template-columns:1fr}.mobile-compare{grid-template-columns:393px}.desktop{min-width:0}.compare>div{min-width:0;overflow:auto}}@media(max-width:450px){main{padding:12px}.mobile-compare{grid-template-columns:393px;overflow:auto}}:focus-visible{outline:2px solid var(--primary);outline-offset:2px}
+</style><main><h1>作品全体の検索・置換 <small>COT-29</small></h1><p class="muted">UIプロトタイプ — 本文・保存・同期はモックです。</p>
+<div class="controls"><label>状態 <select id="state"><option value="results">検索結果</option><option value="initial">初期</option><option value="noepisode">話なし</option><option value="empty">0件</option><option value="loading">検索中</option><option value="busy">置換中</option><option value="error">保存失敗</option><option value="stale">本文が変化</option><option value="free">無料会員</option><option value="offline">オフライン</option></select></label><label><input id="theme" type="checkbox" style="width:auto;height:auto"> ダークテーマ</label><button id="reset">モックをリセット</button></div>
+<h2>執筆・検索パネル（desktop）</h2><div class="compare"><div><p>現状 — この話だけの一括置換</p><img src="screens/replace-desktop.png" alt="現在のdesktop置換パネル"><details><summary>パネルを開く前</summary><img src="screens/writer-desktop.png" alt="現在のdesktop本文画面"></details></div><div><p>変更後 — ①入口 ②対象 ③結果 ④全件置換 ⑤該当行へ移動</p><div id="desktop" class="frame desktop"></div></div></div>
+<h2>執筆・検索パネル（mobile / 393px）</h2><div class="compare mobile-compare"><div><p>現状</p><img src="screens/replace-mobile.png" alt="現在のmobile置換パネル"><details><summary>パネルを開く前</summary><img src="screens/writer-mobile.png" alt="現在のmobile本文画面"></details></div><div><p>変更後 — 結果を押すと本文へ移動</p><div id="mobile" class="frame phone"></div></div></div><p class="note">検索語や置換語を変え、結果の「この1件を置換」や「すべて置換」を操作できます。③の話名・抜粋を押すと⑤の本文へ移動します。無料会員・オフラインも同じローカル機能です。履歴の復元は既存画面を使います。</p></main>
+<dialog id="confirm"><h2 id="confirm-title"></h2><p id="confirm-text"></p><p id="deletion"></p><div class="actions"><button id="cancel">キャンセル</button><button id="commit" class="primary">置換する</button></div></dialog><div class="toast" id="toast" hidden role="status"></div>
+<script>
+const original=[{id:'e1',title:'第一話　港の朝',text:'港に朝の光が差した。\n青葉は桟橋で風を待っていた。\n「明日も、ここで会おう」と青葉は言った。'},{id:'e2',title:'第二話　出航',text:'朝になり、船は港を離れた。\n青葉は手を振った。'}];let episodes=structuredClone(original),query='青葉',replacement='葵',state='results',scope='all',current='e1',open={desktop:true,mobile:true};const frames=['desktop','mobile'];let pending=[];
+function matches(){if(!query)return [];let out=[];episodes.forEach(e=>{let at=0;while((at=e.text.indexOf(query,at))!==-1){const start=Math.max(0,at-30),end=Math.min(e.text.length,at+query.length+30);out.push({id:e.id,title:e.title,start:at,end:at+query.length,line:e.text.slice(0,at).split('\n').length,left:e.text.slice(start,at),right:e.text.slice(at+query.length,end)});at+=query.length}});return out}
+function el(tag,cls,text){const e=document.createElement(tag);if(cls)e.className=cls;if(text!==undefined)e.textContent=text;return e}function button(text,fn,cls=''){const b=el('button',cls,text);b.type='button';b.onclick=fn;return b}
+function notify(t){const x=document.querySelector('#toast');x.textContent=t;x.hidden=false;setTimeout(()=>x.hidden=true,2200)}
+function render(){frames.forEach(name=>{const f=document.getElementById(name);f.replaceChildren();const bar=el('div','appbar');bar.append(el('span','brand','コトノハ -leaf-'),el('span','','✓ 保存済み　 ↶　 書き出し'));const host=name==='desktop'?el('div','virtual'):f;if(name==='desktop'){host.style.transform=`scale(${f.clientWidth/1440})`;f.append(host)}host.append(bar);const w=el('div','workspace'),side=el('aside','sidebar');side.append(el('div','side-row','← マイライブラリ'),el('div','side-row','風の行方'),el('div','side-row active','本文を書く'));episodes.forEach(e=>side.append(el('div','side-row'+(e.id===current?' active':''),e.title)));const right=el('div','right'),tool=el('div','toolbar');tool.append(el('span','','本文　｜　プレビュー'),button('① 検索・置換',()=>{open[name]=!open[name];render()},'selected'));const paper=el('div','paper'),text=el('div','text');text.setAttribute('tabindex','0');text.setAttribute('aria-label','本文モック');text.textContent=episodes.find(e=>e.id===current).text;paper.append(text,el('div','preview',episodes.find(e=>e.id===current).text));right.append(tool,paper);w.append(side,right);host.append(w);if(!open[name])return;
+const p=el('section','panel'),header=el('header');header.append(el('span','','検索・置換'),button('閉じる',()=>{open[name]=false;render()}));p.append(header);const tabs=el('div','tabs');tabs.append(button('② この話',()=>{scope='one';render()},scope==='one'?'selected':''),button('② 作品全体',()=>{scope='all';render()},scope==='all'?'selected':''));p.append(tabs);
+[['検索する語',query,'q'],['置換後の語',replacement,'r']].forEach(([label,val,key])=>{const l=el('label','field',label),input=el('input');input.value=val;input.setAttribute('aria-label',label+'（'+name+'）');input.disabled=state==='busy';input.onchange=()=>{if(key==='q')query=input.value;else replacement=input.value;render()};l.append(input);p.append(l)});p.append(el('p','help',scope==='all'?'全話の本文が対象です。用語集の参照は置換しません':'この話の本文が対象です。用語集の参照は置換しません'));
+let all=matches(),found=scope==='all'?all:all.filter(x=>x.id===current);const blocked=['busy','loading','initial','noepisode','empty','error','stale'].includes(state)||!query||query===replacement||found.length===0;
+const messages={initial:'検索する語を入力してください',noepisode:'話を追加すると検索できます',empty:'見つかりませんでした',loading:'検索しています',busy:'置換しています',error:'置換できませんでした。本文は変更していません。もう一度お試しください',stale:'本文が変わりました。検索し直してください'};
+if(messages[state])p.append(el('p','status'+(['error','stale'].includes(state)?' error':''),messages[state]));else{p.append(el('p','status',`${found.length}件 / ${new Set(found.map(x=>x.id)).size}話`));const results=el('div','results');found.forEach((m,i)=>{const row=el('div','result'),go=button('',()=>{current=m.id;if(name==='mobile')open.mobile=false;render();const body=document.getElementById(name).querySelector('.text');body.focus();const node=body.firstChild;const range=document.createRange();range.setStart(node,m.start);range.setEnd(node,m.end);const sel=getSelection();sel.removeAllRanges();sel.addRange(range);notify('⑤ '+m.title+'・'+m.line+'行目')},'go');go.append(el('strong','','③ '+m.title+' · '+m.line+'行目'));const excerpt=el('span');excerpt.append(document.createTextNode(m.left.replaceAll('\n',' ')),el('mark','',query),document.createTextNode(m.right.replaceAll('\n',' ')));go.append(excerpt);row.append(go);{const b=button('この1件を置換',()=>{replace([m]);notify('1件を置換しました')},'one');b.disabled=blocked;row.append(b)}results.append(row)});p.append(results)}
+const action=el('div','actions'),b=button('④ すべて置換',()=>{if(scope==='one'){const n=found.length;replace(found);open[name]=false;render();notify(n+'件を置換しました（下書き）');return}pending=found;document.getElementById('confirm-title').textContent=`${found.length}件を置換しますか？`;document.getElementById('confirm-text').textContent=`${new Set(found.map(x=>x.id)).size}話の本文を変更します。置換前の本文は履歴に残ります`;document.getElementById('deletion').textContent=replacement===''?`「${query}」を削除します`:'';document.getElementById('confirm').showModal()},'primary');b.disabled=blocked;action.append(b);p.append(action);paper.append(p)})}
+function replace(ms){[...ms].sort((a,b)=>b.start-a.start).forEach(m=>{const e=episodes.find(x=>x.id===m.id);e.text=e.text.slice(0,m.start)+replacement+e.text.slice(m.end)});render()}
+document.getElementById('cancel').onclick=()=>document.getElementById('confirm').close();document.getElementById('commit').onclick=()=>{const n=pending.length;replace(pending);document.getElementById('confirm').close();notify(n+'件を置換しました')};document.getElementById('state').onchange=e=>{state=e.target.value;render()};document.getElementById('theme').onchange=e=>document.documentElement.classList.toggle('dark',e.target.checked);document.getElementById('reset').onclick=()=>{episodes=structuredClone(original);query='青葉';replacement='葵';state='results';scope='all';current='e1';open={desktop:true,mobile:true};document.getElementById('state').value=state;render()};document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!document.getElementById('confirm').open){open={desktop:false,mobile:false};render()}});window.addEventListener('resize',render);render();
+</script></html>

@@ -235,9 +235,9 @@ test('エディタの一括置換で本文をまとめて書き換えられる',
   const textarea = page.getByRole('textbox', { name: '本文' })
   await textarea.fill('猫が来た。猫が鳴いた。')
 
-  await page.getByRole('button', { name: '置換' }).click()
+  await page.getByRole('button', { name: '検索・置換' }).click()
   await page.getByLabel('検索する語').fill('猫')
-  await expect(page.getByText('2件 見つかりました')).toBeVisible()
+  await expect(page.getByText('2件を置換できます')).toBeVisible()
   await page.getByLabel('置換後の語').fill('犬')
   await page.getByRole('button', { name: 'すべて置換' }).click()
   await expect(textarea).toHaveValue('犬が来た。犬が鳴いた。')
