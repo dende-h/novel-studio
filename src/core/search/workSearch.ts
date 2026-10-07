@@ -39,6 +39,8 @@ export function searchWork(sources: readonly SearchSource[], query: string): Sea
     let cursor = 0
     let line = 1
     let lineCursor = 0
+    let lineStart = 0
+    let lineEnd = -1
     let occurrence = 0
     while (cursor <= source.text.length) {
       const start = source.text.indexOf(query, cursor)
@@ -47,14 +49,21 @@ export function searchWork(sources: readonly SearchSource[], query: string): Sea
       let reference = references[referenceIndex]
       while (reference && reference.end <= start) reference = references[++referenceIndex]
       while (lineCursor < start) {
-        if (source.text.charCodeAt(lineCursor) === 10) line++
+        if (source.text.charCodeAt(lineCursor) === 10) {
+          line++
+          lineStart = lineCursor + 1
+        }
         lineCursor++
       }
-      let left = Math.max(0, start - 30)
-      let right = Math.min(source.text.length, end + 30)
+      if (lineEnd < start) {
+        const nextNewline = source.text.indexOf('\n', end)
+        lineEnd = nextNewline < 0 ? source.text.length : nextNewline
+      }
+      let left = Math.max(lineStart, start - 30)
+      let right = Math.min(lineEnd, end + 30)
       if (left > 0 && /[\uDC00-\uDFFF]/.test(source.text.charAt(left))) left--
       if (right < source.text.length && /[\uDC00-\uDFFF]/.test(source.text.charAt(right))) right++
-      const prefix = left > 0 ? '…' : ''
+      const prefix = left > lineStart ? '…' : ''
       matches.push({
         episodeId: source.episodeId,
         start,
@@ -65,7 +74,7 @@ export function searchWork(sources: readonly SearchSource[], query: string): Sea
         excerpt:
           prefix +
           source.text.slice(left, right).replace(/[\r\n]/g, ' ') +
-          (right < source.text.length ? '…' : ''),
+          (right < lineEnd ? '…' : ''),
         excerptMatchStart: prefix.length + start - left,
         excerptMatchEnd: prefix.length + end - left,
       })

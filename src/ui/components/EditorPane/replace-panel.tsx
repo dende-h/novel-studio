@@ -97,7 +97,8 @@ export function ReplacePanel({
             </p>
             <Button
               variant="outline"
-              className="mt-1 min-h-11"
+              size="sm"
+              className="mt-1"
               disabled={!canReplace || match.isReference}
               onClick={() => apply(match)}
             >
@@ -109,7 +110,7 @@ export function ReplacePanel({
           </div>
         ))}
         {matches.length > visible ? (
-          <Button variant="ghost" className="min-h-11" onClick={() => setVisible((n) => n + 100)}>
+          <Button variant="ghost" size="sm" onClick={() => setVisible((n) => n + 100)}>
             さらに表示
           </Button>
         ) : null}

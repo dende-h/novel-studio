@@ -27,6 +27,19 @@ describe('workSearch', () => {
     expect(searchWork(sources, '\n')).toEqual([])
     expect(searchWork(sources, ' CAT')).toEqual([])
   })
+  it('空行を含めて行番号を数え、抜粋には一致した行だけを表示する', () => {
+    const text = '前の猫\n\n該当の猫と猫\n後ろの猫'
+    const matches = searchWork([{ episodeId: 'a', title: '', text }], '猫')
+    expect(matches.map((m) => [m.line, m.excerpt])).toEqual([
+      [1, '前の猫'],
+      [3, '該当の猫と猫'],
+      [3, '該当の猫と猫'],
+      [4, '後ろの猫'],
+    ])
+    for (const match of matches) {
+      expect(match.excerpt.slice(match.excerptMatchStart, match.excerptMatchEnd)).toBe('猫')
+    }
+  })
   it('1件だけを置換し、$文字を展開しない', () => {
     const match = required(searchWork(sources, '猫')[1])
     expect(planReplacement(sources, '猫', '$&$1', match)).toEqual([

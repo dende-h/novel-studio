@@ -96,14 +96,14 @@ export function WorkSearchPanel({
         <h3 id={titleId} className="font-medium text-[13px]">
           検索・置換
         </h3>
-        <Button variant="ghost" className="min-h-11" onClick={onClose}>
+        <Button variant="ghost" size="sm" onClick={onClose}>
           閉じる
         </Button>
       </div>
       <fieldset aria-label="検索する範囲" className="flex gap-2">
         <Button
           variant={scope === 'episode' ? 'default' : 'outline'}
-          className="min-h-11"
+          size="sm"
           aria-pressed={scope === 'episode'}
           onClick={() => setScope('episode')}
         >
@@ -111,7 +111,7 @@ export function WorkSearchPanel({
         </Button>
         <Button
           variant={scope === 'work' ? 'default' : 'outline'}
-          className="min-h-11"
+          size="sm"
           aria-pressed={scope === 'work'}
           onClick={() => setScope('work')}
         >
@@ -172,7 +172,7 @@ export function WorkSearchPanel({
                 <button
                   type="button"
                   disabled={busy || stale}
-                  className="min-h-11 w-full text-left text-xs disabled:opacity-50"
+                  className="w-full py-1 text-left text-xs disabled:opacity-50"
                   onClick={() => {
                     if (result)
                       void perform(() => onNavigate(result.sources, result.query, match), true)
@@ -191,7 +191,7 @@ export function WorkSearchPanel({
                 </button>
                 <Button
                   variant="outline"
-                  className="min-h-11"
+                  size="sm"
                   disabled={!canReplace || match.isReference}
                   onClick={() => {
                     if (result)
@@ -208,17 +208,14 @@ export function WorkSearchPanel({
               </div>
             ))}
             {matches.length > visible ? (
-              <Button
-                variant="ghost"
-                className="min-h-11"
-                onClick={() => setVisible((n) => n + 100)}
-              >
+              <Button variant="ghost" size="sm" onClick={() => setVisible((n) => n + 100)}>
                 さらに表示
               </Button>
             ) : null}
           </div>
           <Button
-            className="min-h-11 shrink-0"
+            size="sm"
+            className="shrink-0"
             disabled={!canReplace}
             onClick={() => setConfirmation(result)}
           >
