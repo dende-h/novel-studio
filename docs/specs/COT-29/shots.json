@@ -1,0 +1,320 @@
+{
+  "baseURL": "http://127.0.0.1:5173",
+  "outDir": "docs/specs/COT-29/screens",
+  "shots": [
+    {
+      "name": "writer",
+      "viewports": [
+        "desktop"
+      ],
+      "steps": [
+        {
+          "goto": "/"
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "新しい作品"
+          }
+        },
+        {
+          "fill": {
+            "label": "作品タイトル",
+            "value": "風の行方"
+          }
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "作成",
+            "exact": true
+          }
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "「風の行方」を執筆"
+          }
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "新しいエピソード",
+            "exact": true
+          }
+        },
+        {
+          "fill": {
+            "label": "話タイトル",
+            "value": "第一話　港の朝"
+          }
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "追加",
+            "exact": true
+          }
+        },
+        {
+          "fill": {
+            "role": "textbox",
+            "name": "本文",
+            "value": "港に朝の光が差した。\n青葉は桟橋で風を待っていた。\n「明日も、ここで会おう」と青葉は言った。"
+          }
+        },
+        {
+          "wait": 1200
+        }
+      ]
+    },
+    {
+      "name": "writer",
+      "viewports": [
+        "mobile"
+      ],
+      "steps": [
+        {
+          "goto": "/"
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "メニュー",
+            "exact": true
+          }
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "新しい作品"
+          }
+        },
+        {
+          "fill": {
+            "label": "作品タイトル",
+            "value": "風の行方"
+          }
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "作成",
+            "exact": true
+          }
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "「風の行方」を執筆"
+          }
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "メニュー",
+            "exact": true
+          }
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "新しいエピソード",
+            "exact": true
+          }
+        },
+        {
+          "fill": {
+            "label": "話タイトル",
+            "value": "第一話　港の朝"
+          }
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "追加",
+            "exact": true
+          }
+        },
+        {
+          "fill": {
+            "role": "textbox",
+            "name": "本文",
+            "value": "港に朝の光が差した。\n青葉は桟橋で風を待っていた。\n「明日も、ここで会おう」と青葉は言った。"
+          }
+        },
+        {
+          "wait": 1200
+        }
+      ]
+    },
+    {
+      "name": "replace",
+      "viewports": [
+        "desktop"
+      ],
+      "steps": [
+        {
+          "goto": "/"
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "新しい作品"
+          }
+        },
+        {
+          "fill": {
+            "label": "作品タイトル",
+            "value": "風の行方"
+          }
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "作成",
+            "exact": true
+          }
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "「風の行方」を執筆"
+          }
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "新しいエピソード",
+            "exact": true
+          }
+        },
+        {
+          "fill": {
+            "label": "話タイトル",
+            "value": "第一話　港の朝"
+          }
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "追加",
+            "exact": true
+          }
+        },
+        {
+          "fill": {
+            "role": "textbox",
+            "name": "本文",
+            "value": "港に朝の光が差した。\n青葉は桟橋で風を待っていた。\n「明日も、ここで会おう」と青葉は言った。"
+          }
+        },
+        {
+          "wait": 1200
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "置換",
+            "exact": true
+          }
+        },
+        {
+          "fill": {
+            "label": "検索する語",
+            "value": "青葉"
+          }
+        }
+      ]
+    },
+    {
+      "name": "replace",
+      "viewports": [
+        "mobile"
+      ],
+      "steps": [
+        {
+          "goto": "/"
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "メニュー",
+            "exact": true
+          }
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "新しい作品"
+          }
+        },
+        {
+          "fill": {
+            "label": "作品タイトル",
+            "value": "風の行方"
+          }
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "作成",
+            "exact": true
+          }
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "「風の行方」を執筆"
+          }
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "メニュー",
+            "exact": true
+          }
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "新しいエピソード",
+            "exact": true
+          }
+        },
+        {
+          "fill": {
+            "label": "話タイトル",
+            "value": "第一話　港の朝"
+          }
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "追加",
+            "exact": true
+          }
+        },
+        {
+          "fill": {
+            "role": "textbox",
+            "name": "本文",
+            "value": "港に朝の光が差した。\n青葉は桟橋で風を待っていた。\n「明日も、ここで会おう」と青葉は言った。"
+          }
+        },
+        {
+          "wait": 1200
+        },
+        {
+          "eval": "[...document.querySelectorAll('button')].find(b=>b.getAttribute('aria-pressed')!==null && b.querySelector('.lucide-replace'))?.click()"
+        },
+        {
+          "fill": {
+            "label": "検索する語",
+            "value": "青葉"
+          }
+        }
+      ]
+    }
+  ]
+}

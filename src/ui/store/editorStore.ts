@@ -5,11 +5,25 @@ import { applyGlossaryFieldPatch, type GlossaryFieldPatch } from '../../core/glo
 import { parseEpisodeBody } from '../../core/parser/parseNotation'
 import { reconcileBlockIds } from '../../core/parser/reconcileBlockIds'
 import type { Profile, ProfileRepository } from '../../core/profile'
-import type { DialogAnswer, Episode, GlossaryEntry, Work, WorkPlatform } from '../../core/schema'
+import {
+  type DialogAnswer,
+  type Episode,
+  type GlossaryEntry,
+  type Work,
+  type WorkPlatform,
+  WorkSchema,
+} from '../../core/schema'
+import {
+  planReplacement,
+  type SearchMatch,
+  type SearchSource,
+  searchWork,
+} from '../../core/search/workSearch'
 import type { Snapshot } from '../../core/snapshot'
 import type { SnapshotRepository } from '../../core/snapshot/snapshotRepository'
 import { countWorkChars } from '../../core/stats'
 import type { ActivityRepository } from '../../core/storage/activityRepository'
+import { withWorkMutationLock } from '../../core/storage/workMutationLock'
 import type { TrashSummary, WorkRepository, WorkSummary } from '../../core/storage/workRepository'
 
 /**
@@ -23,6 +37,7 @@ import type { TrashSummary, WorkRepository, WorkSummary } from '../../core/stora
 export type SaveStatus = 'idle' | 'saving' | 'saved'
 
 export interface EditorState {
+  workOperation: 'idle' | 'replacing' | 'navigating'
   workList: WorkSummary[]
   work: Work | null
   currentEpisodeId: string | null
@@ -43,6 +58,20 @@ export interface EditorState {
 }
 
 export interface EditorStore {
+  getSearchSources(): SearchSource[]
+  replaceWorkMatches(input: {
+    workId: string
+    sources: readonly SearchSource[]
+    query: string
+    replacement: string
+    target: SearchMatch | 'all'
+  }): Promise<{ count: number; committed: boolean; warning?: string }>
+  navigateWorkMatch(input: {
+    workId: string
+    sources: readonly SearchSource[]
+    query: string
+    match: SearchMatch
+  }): Promise<{ start: number; end: number }>
   getSnapshot(): EditorState
   subscribe(listener: () => void): () => void
   init(): Promise<void>
@@ -165,6 +194,7 @@ export interface EditorStoreDeps {
 }
 
 const INITIAL: EditorState = {
+  workOperation: 'idle',
   workList: [],
   work: null,
   currentEpisodeId: null,
@@ -234,26 +264,128 @@ export function createEditorStore({
     set({ trashList: trash })
   }
 
-  /**
-   * 用語集の変更（add/update/rename/delete）を 1 本ずつ直列に実行する。
-   *
-   * 各メソッドは「state.work を読む → work を丸ごと保存 → set」で、読みと set の間に
-   * IndexedDB 書き込みの await を挟む。ここで別の変更が走ると、同じ古い state.work を
-   * 読んで保存し、先行の変更が丸ごと消える（実例：サジェストの「◯◯を新規作成」の直後に
-   * 欄を離れると、blur の確定が作成前の work を保存して、作ったばかりの項目が消えた）。
-   * 失敗した操作はチェーンを止めない（次の操作は普通に走る）。
-   */
-  let glossaryChain: Promise<unknown> = Promise.resolve()
-  const serializeGlossary = <T>(fn: () => Promise<T>): Promise<T> => {
-    const run = glossaryChain.then(fn, fn)
-    glossaryChain = run.then(
+  /** Work mutations share a queue; failed operations never poison later operations. */
+  let operationChain: Promise<unknown> = Promise.resolve()
+  const serializeOperation = <T>(fn: () => Promise<T>): Promise<T> => {
+    const run = operationChain.then(fn, fn)
+    operationChain = run.then(
       () => undefined,
       () => undefined,
     )
     return run
   }
 
-  return {
+  const searchSources = (): SearchSource[] =>
+    state.work?.episodes.map((e) => ({
+      episodeId: e.id,
+      title: e.title,
+      text: e.id === state.currentEpisodeId ? state.draft : blocksToNotation(e.blocks),
+    })) ?? []
+  const assertFresh = async (workId: string, sources: readonly SearchSource[]) => {
+    if (state.work?.id !== workId || JSON.stringify(searchSources()) !== JSON.stringify(sources)) {
+      throw new Error('本文が変わりました。検索し直してください')
+    }
+    const persisted = await repo.getWork(workId)
+    if (
+      !persisted ||
+      JSON.stringify(WorkSchema.parse(persisted)) !== JSON.stringify(WorkSchema.parse(state.work))
+    ) {
+      throw new Error('本文が変わりました。検索し直してください')
+    }
+  }
+
+  const internal: EditorStore = {
+    getSearchSources: searchSources,
+    async replaceWorkMatches(input) {
+      await assertFresh(input.workId, input.sources)
+      const plans = planReplacement(input.sources, input.query, input.replacement, input.target)
+      if (!plans.length || !state.work) return { count: 0, committed: false }
+      const old = state.work
+      const ep = currentEpisode(state)
+      const before: Work = {
+        ...old,
+        episodes: old.episodes.map((e) => {
+          if (e.id !== ep?.id || !state.dirty) return e
+          const blocks = reconcileBlockIds(e.blocks, parseEpisodeBody(state.draft))
+          return JSON.stringify(blocks) === JSON.stringify(e.blocks) ? e : { ...e, blocks }
+        }),
+      }
+      const after: Work = {
+        ...before,
+        updatedAt: Math.max(now(), (old.updatedAt ?? 0) + 1),
+        episodes: before.episodes.map((e) => {
+          const plan = plans.find((p) => p.episodeId === e.id)
+          return plan
+            ? { ...e, blocks: reconcileBlockIds(e.blocks, parseEpisodeBody(plan.after)) }
+            : e
+        }),
+      }
+      const snapshots = await snapshotRepo.append(before, now(), genId())
+      // Protect immediately: a failed body put must not let the next autosave replace this version.
+      appendNextSnapshot = true
+      set({ snapshots })
+      await repo.saveWork(after)
+      const draft = plans.find((p) => p.episodeId === state.currentEpisodeId)?.after ?? state.draft
+      set({ work: after, draft, dirty: false, status: 'saved' })
+      const count = plans.reduce((n, p) => n + p.count, 0)
+      try {
+        await activityRepo.record(countWorkChars(after) - countWorkChars(old), now())
+        await refreshList()
+        return { count, committed: true }
+      } catch {
+        return {
+          count,
+          committed: true,
+          warning: '置換は保存しました。履歴や一覧の表示を更新できませんでした',
+        }
+      }
+    },
+    async navigateWorkMatch(input) {
+      await assertFresh(input.workId, input.sources)
+      const original = searchWork(input.sources, input.query).find(
+        (m) =>
+          m.episodeId === input.match.episodeId &&
+          m.start === input.match.start &&
+          m.end === input.match.end,
+      )
+      if (!original) throw new Error('本文が変わりました。検索し直してください')
+      await internal.save()
+      const ep = state.work?.episodes.find((e) => e.id === original.episodeId)
+      if (!ep) throw new Error('本文が変わりました。検索し直してください')
+      const savedText = blocksToNotation(ep.blocks)
+      const matches = searchWork(
+        [{ episodeId: ep.id, title: ep.title, text: savedText }],
+        input.query,
+      )
+      const candidate = matches.find((m) => m.occurrence === original.occurrence)
+      const originalSource = input.sources.find((s) => s.episodeId === ep.id)
+      const normalized = originalSource && blocksToNotation(parseEpisodeBody(originalSource.text))
+      if (!candidate || !originalSource || savedText !== normalized) {
+        throw new Error('本文が変わりました。検索し直してください')
+      }
+      if (savedText !== originalSource.text) {
+        const beforeMatches = searchWork([originalSource], input.query)
+        const context = (text: string, match: SearchMatch) =>
+          JSON.stringify([
+            text.slice(Math.max(0, match.start - 30), match.start),
+            text.slice(match.end, match.end + 30),
+          ])
+        const originalContext = context(originalSource.text, original)
+        const corresponding = matches.filter(
+          (match) => context(savedText, match) === originalContext,
+        )
+        // Normalization may remove notation symbols: never redirect to another occurrence.
+        if (
+          beforeMatches.length !== matches.length ||
+          corresponding.length !== 1 ||
+          corresponding[0] !== candidate
+        ) {
+          throw new Error('本文が変わりました。検索し直してください')
+        }
+      }
+      internal.openEpisode(ep.id)
+      return { start: candidate.start, end: candidate.end }
+    },
     getSnapshot: () => state,
 
     subscribe(listener) {
@@ -265,8 +397,15 @@ export function createEditorStore({
 
     async init() {
       // 起動時にゴミ箱の期限切れ（30日超）を自動 purge し、履歴も掃除する。
-      const purged = await repo.purgeExpiredTrash(now(), trashTtlMs)
-      for (const id of purged) await purgeWorkArtifacts(id)
+      const trash = await repo.listTrash()
+      for (const item of trash) {
+        await withWorkMutationLock(item.id, async () => {
+          const fresh = (await repo.listTrash()).find((entry) => entry.id === item.id)
+          if (!fresh || fresh.trashedAt + trashTtlMs > now()) return
+          await repo.purgeTrashedWork(item.id)
+          await purgeWorkArtifacts(item.id)
+        })
+      }
       await refreshList()
       await refreshTrash()
       set({ profile: await profileRepo.get(), profileAccountId: await profileRepo.getAccountId() })
@@ -315,9 +454,13 @@ export function createEditorStore({
       const cur = state.work
       if (!cur) return
       // 下書きに未保存の編集がある間は触らない（同期側も dirty 中は pull を見送る）。
-      if (state.dirty) return
+      if (state.dirty || state.workOperation !== 'idle') return
       const fresh = await repo.getWork(cur.id)
-      if (!fresh || fresh.updatedAt === cur.updatedAt) return
+      if (
+        !fresh ||
+        JSON.stringify(WorkSchema.parse(fresh)) === JSON.stringify(WorkSchema.parse(cur))
+      )
+        return
       // 開いていた話が残っていればそのまま、消えていれば先頭へ。下書きは新内容から組み直す。
       const keep = fresh.episodes.some((e) => e.id === state.currentEpisodeId)
       const epId = keep ? state.currentEpisodeId : (fresh.episodes[0]?.id ?? null)
@@ -369,6 +512,8 @@ export function createEditorStore({
         set({ dirty: false, status: 'saved' })
         return
       }
+      const savedDraft = state.draft
+      const previousWork = state.work
       set({ status: 'saving' })
       const work: Work = {
         ...state.work,
@@ -376,14 +521,19 @@ export function createEditorStore({
         updatedAt: now(),
       }
       await repo.saveWork(work)
+      set({
+        work,
+        dirty: state.draft !== savedDraft,
+        status: state.draft === savedDraft ? 'saved' : 'idle',
+      })
       // 本文の純増減を日別の執筆活動へ記録（草・ストリーク用）。state.work は保存前の旧状態。
-      await activityRepo.record(countWorkChars(work) - countWorkChars(state.work), now())
+      await activityRepo.record(countWorkChars(work) - countWorkChars(previousWork), now())
       // 連続編集中は最新版へ合体し、間隔を空けた保存だけ新しい版として積む
       const snapshots = appendNextSnapshot
         ? await snapshotRepo.append(work, now(), genId())
         : await snapshotRepo.record(work, now(), genId(), snapshotMinIntervalMs)
       appendNextSnapshot = false
-      set({ work, dirty: false, status: 'saved', snapshots })
+      set({ snapshots })
       await refreshList()
     },
 
@@ -529,7 +679,7 @@ export function createEditorStore({
     },
 
     addGlossaryEntry(input) {
-      return serializeGlossary(async () => {
+      return (async () => {
         if (!state.work) throw new Error('作品が開かれていません')
         // 名前は @ 参照の解決キー。空の項目は解決できず一覧で「？」になるだけなので作らない。
         if (input.name.trim() === '') throw new Error('名前を入れてください')
@@ -563,11 +713,11 @@ export function createEditorStore({
         set({ work })
         await refreshList()
         return entry
-      })
+      })()
     },
 
     updateGlossaryEntry(id, patch) {
-      return serializeGlossary(async () => {
+      return (async () => {
         if (!state.work) return
         const entries = state.work.glossary ?? []
         const cur = entries.find((e) => e.id === id)
@@ -590,11 +740,11 @@ export function createEditorStore({
         await repo.saveWork(work)
         set({ work })
         await refreshList()
-      })
+      })()
     },
 
     renameGlossaryEntry(id, newName, opts) {
-      return serializeGlossary(async () => {
+      return (async () => {
         if (!state.work) return
         // renameEntry が衝突を throw・no-op なら同一参照を返す（自動エイリアス＋任意の本文書換）
         const renamed = renameEntry(state.work, id, newName, opts ?? {})
@@ -621,11 +771,11 @@ export function createEditorStore({
         }
         set(patch)
         await refreshList()
-      })
+      })()
     },
 
     deleteGlossaryEntry(id) {
-      return serializeGlossary(async () => {
+      return (async () => {
         if (!state.work) return
         const entries = state.work.glossary ?? []
         if (!entries.some((e) => e.id === id)) return
@@ -638,7 +788,7 @@ export function createEditorStore({
         await repo.saveWork(work)
         set({ work })
         await refreshList()
-      })
+      })()
     },
 
     async updateProfile(input) {
@@ -669,4 +819,106 @@ export function createEditorStore({
       set({ profile: next, profileAccountId })
     },
   }
+  const publicStore: EditorStore = { ...internal }
+  const serialized = [
+    'init',
+    'createWork',
+    'openWork',
+    'refreshOpenWork',
+    'createEpisode',
+    'save',
+    'trashWork',
+    'restoreWork',
+    'purgeWork',
+    'emptyTrash',
+    'deleteEpisode',
+    'renameEpisode',
+    'reorderEpisodes',
+    'updateWorkMeta',
+    'importWorks',
+    'addGlossaryEntry',
+    'updateGlossaryEntry',
+    'renameGlossaryEntry',
+    'deleteGlossaryEntry',
+    'replaceWorkMatches',
+    'navigateWorkMatch',
+  ] as const
+  for (const name of serialized) {
+    // Preserve each public method's signature; all calls share the same operation queue.
+    const invoke = internal[name] as (...args: unknown[]) => Promise<unknown>
+    Object.assign(publicStore, {
+      [name]: (...args: unknown[]) => {
+        if (state.workOperation !== 'idle' && name !== 'save' && name !== 'refreshOpenWork') {
+          return Promise.reject(new Error('処理が終わるまでお待ちください'))
+        }
+        const operation =
+          name === 'replaceWorkMatches'
+            ? 'replacing'
+            : name === 'navigateWorkMatch'
+              ? 'navigating'
+              : null
+        if (operation) set({ workOperation: operation })
+        return serializeOperation(async () => {
+          const explicit = [
+            'trashWork',
+            'restoreWork',
+            'purgeWork',
+            'updateWorkMeta',
+            'openWork',
+          ].includes(name)
+          const input = args[0] as { workId?: string } | undefined
+          const workId = explicit ? (args[0] as string) : operation ? input?.workId : state.work?.id
+          const run = async () => {
+            const writesOpenWork = [
+              'save',
+              'createEpisode',
+              'deleteEpisode',
+              'renameEpisode',
+              'reorderEpisodes',
+              'addGlossaryEntry',
+              'updateGlossaryEntry',
+              'renameGlossaryEntry',
+              'deleteGlossaryEntry',
+            ].includes(name)
+            const updatesOpenMeta = name === 'updateWorkMeta' && args[0] === state.work?.id
+            if ((writesOpenWork || updatesOpenMeta) && state.work) {
+              await assertFresh(state.work.id, searchSources())
+            }
+            return invoke(...args)
+          }
+          try {
+            // Bulk imports acquire individual locks, rather than re-entering the current work lock.
+            if (name === 'importWorks') {
+              for (const work of args[0] as Work[])
+                await withWorkMutationLock(work.id, () => repo.saveWork(work))
+              await refreshList()
+              return
+            }
+            if (name === 'emptyTrash') {
+              for (const trash of state.trashList)
+                await withWorkMutationLock(trash.id, async () => {
+                  await repo.purgeTrashedWork(trash.id)
+                  await purgeWorkArtifacts(trash.id)
+                })
+              await refreshTrash()
+              return
+            }
+            return workId && name !== 'init' ? await withWorkMutationLock(workId, run) : await run()
+          } finally {
+            if (operation) set({ workOperation: 'idle' })
+            if (state.status === 'saving') set({ status: 'idle' })
+          }
+        })
+      },
+    })
+  }
+  for (const name of ['openEpisode', 'setDraft', 'restoreSnapshot'] as const) {
+    const invoke = internal[name] as (...args: unknown[]) => void
+    Object.assign(publicStore, {
+      [name]: (...args: unknown[]) => {
+        if (state.workOperation === 'idle') invoke(...args)
+      },
+    })
+  }
+  return publicStore
 }

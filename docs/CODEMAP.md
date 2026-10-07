@@ -46,6 +46,7 @@ Cloudflare Pages Functions
 | 持ち込み素材のクラウド保管（有料・枚数上限）を変える | API は `functions/api/game-assets.ts`、上限と判定は `src/core/game/assets.ts`（`HOSTED_ASSET_LIMIT` `hostedAssetVerdict`）、配線は `src/ui/game/asset-hosting.ts`（下り取り込み）、管理 UI は `src/ui/components/StagingView/asset-manager.tsx` |
 | **運営テンプレ（背景・立ち絵・効果音・BGM）の目録・管理ページ・配信**を変える（D-GAME-TEMPLATE-CMS） | 目録と合流は `src/core/game/templates.ts`（`TemplateManifest` `mergeBackgroundCatalog` `mergeSpriteCatalog` `mergeSeCatalog` `mergeBgmCatalog` `parseTemplateFilename`＝**ファイル名がキー**（画像は kind bg/sprite・音声は `bgm-` で始まれば bgm、それ以外は se）・`applyTemplatePatch`・読み方は寛容＝読めない項目を落とす）。画面へ配るのは `src/ui/game/template-catalog.ts`（`useTemplateCatalog` `resolveTemplateBackgrounds`＝書き出し・投稿へ画像を持ち込み素材と同じ経路で渡す・`setTemplateCatalog`）。一覧の部品は `StagingView/template-picker.tsx`。管理ページは `src/ui/components/AdminTemplatesPage/`（`#/admin/templates`・staff だけ・`use-staff.ts`）。サーバは読み口 `functions/game-templates/[[path]].ts` と管理 API `functions/api/admin/templates.ts`、R2 のキーは `functions/api/_lib/templates-store.ts`（`_templates/`）。**stg で入れた素材を本番へ写す**のは `scripts/copy-templates.mjs`（`pnpm templates:copy-to-prod`・バケットが環境で別なため）。組み込み SVG（`presets.ts` `spritePresets.ts`）は画像が入るまでの控え。BGM は枠だけ組み込み（`bgmPresets.ts`・管理ページに「曲なし」の印で並び、同じ名前の mp3 を入れると埋まる） |
 | エディタの入力・ショートカット・サジェスト | `src/ui/components/EditorPane/` |
+| 作品全体の検索・置換・一致への移動 | `src/core/search/workSearch.ts` + `src/ui/components/WorkSearchPanel/` + `src/ui/store/editorStore.ts`（この話の結果/個別置換は `src/ui/components/EditorPane/replace-panel.tsx`） |
 | 保存・自動保存・undo・開いている作品の状態 | `src/ui/store/editorStore.ts` |
 | データの永続化・スキーマ移行 | `src/core/storage/*Repository.ts` |
 | 用語集（`@`参照の解決先・**コトノハ-grove- へ送られる**）の挙動 | `src/core/glossary/index.ts` + `src/ui/components/GlossaryView/` |
@@ -109,6 +110,7 @@ Cloudflare Pages Functions
 | `src/core/exporter/blocksToNotation.ts` | 正本 → 記法（往復変換） |
 | `src/core/zip/index.ts` | 依存ゼロの ZIP（store 法）・`crc32` |
 | `bundle/` `folder/` | 全作品バンドル JSON / フォルダ形式の入出力 |
+| `search/workSearch.ts` | 全話の記法テキスト検索・参照を保護する置換計画（`searchWork` `planReplacement` `SearchSource` `SearchMatch.isReference`） |
 | `diff/` | 履歴表示用の行差分（`diffLines` `collapseUnchanged`） |
 | `image/` | 画像のリサイズ・切り抜き計算（純関数） |
 
@@ -118,6 +120,7 @@ Cloudflare Pages Functions
 `PlotRepository`、`StagingRepository`（演出譜・`staging:<workId>:<episodeId>` の決定的 id）、
 `GameAssetRepository`（持ち込み背景・`gameasset:` プレフィクス・同期には載せない）、
 `IdeaRepository`、`ActivityRepository`。スナップショットは `snapshot/`。
+`src/core/storage/workMutationLock.ts` の `withWorkMutationLock` は作品単位のローカル書き込み排他（Web Locks / 同タブPromiseキュー）。`IdbStore` はtransaction完了を保存成功とする。
 
 > **罠**: IndexedDB からの直読みは Zod を通らないので、スキーマの `.default([])` が効かない
 > （効くのはバックアップ・同期など Zod を通る経路だけ）。既存レコードに実体が無い項目を足したら、
@@ -163,7 +166,7 @@ Cloudflare Pages Functions
 | `src/ui/main.tsx` | フォント読込・`createRoot`・Provider 積み上げ |
 | `src/ui/Root.tsx` | **ハッシュルーティングの分岐点**（下表）。リポジトリ生成と会員判定の配線 |
 | `src/ui/App.tsx` | 執筆画面本体（`#/write`）。エディタ・プレビュー・用語集・履歴パネルの統括。**約840行 / 最も密度が高い** |
-| `src/ui/store/editorStore.ts` | 自前ストア。`getSnapshot`/`subscribe` + 作品・話・用語集・ゴミ箱・プロフィールの全操作 |
+| `src/ui/store/editorStore.ts` | 自前ストア。`getSnapshot`/`subscribe` + 作品・話・用語集・ゴミ箱・プロフィール、作品操作キュー・`workOperation`・`getSearchSources`・`replaceWorkMatches`・`navigateWorkMatch` |
 | `src/ui/store/createDefaultStore.ts` | 本番のリポジトリ配線 |
 | `src/ui/hooks/use-editor-store.ts` | `useSyncExternalStore` の薄いラッパ |
 
@@ -173,7 +176,7 @@ Cloudflare Pages Functions
 ・ `/admin/templates` 運営テンプレの管理（**staff だけ描く**・それ以外は通常の入口に倒す・`use-staff.ts`）
 
 ### 画面（`components/` — PascalCase ディレクトリ + kebab ファイル・1ファイル1コンポーネント）
-- **執筆**: `EditorPane/`（textarea + 記法バー + `@` サジェスト + 置換パネル）, `PreviewPane/`, `HistoryPanel/`
+- **執筆**: `EditorPane/`（textarea + 記法バー + `@` サジェスト + この話の置換・`selectRange`）, `WorkSearchPanel/`（全話検索・1件/全件置換）, `PreviewPane/`, `HistoryPanel/`
 - **作品管理**: `Library/`（カード/リスト・作品メニュー）, `TrashDialog/`, `WorkMetaDialog/`, `TitlePromptDialog/`
 - **用語集**: `GlossaryView/`（左：一覧（対話の進み具合・「対話の途中」チップ）／右：「フォーム｜対話」の二面。`dialog-pane.tsx`＝対話ペイン・`dialog-note-section.tsx`＝フォームの対話ノート・`pill.tsx`＝丸いチップ・`visibility-label.tsx`＝「読者に見せる／作者だけ」の印・「＋ 新しく登録」は名前の無い項目を対話で開き、名前を答えた時点で登録（「登録」ボタンは無い）。会話は登録された項目へ引き継ぐ（`markSaved`・`initialSession`・一度使ったら捨てる）。名前の前に書いた内容を捨てるときだけ確認。対話ノートはフォームからも直せる（行を押すと入力欄・旧鍵は `answerOf` で今の問いに畳んで表示））, `GlossaryEntryForm/`（本文からのクイック作成・パネル編集用モーダル。`formValuesToFieldPatch`＝フォーム値→パッチの写像・`GLOSSARY_CATEGORIES`＝core の `DIALOG_CATEGORIES`）, `GlossaryPeek/`
 - **構想の道具（無料アカウント登録で解禁・遅延ロード）**: `MindmapView/`, `CorrelationChartView/`, `OutlineView/`, `PlotView/`（`plot-view.tsx` ＋ 世界観設定タブ `world-view.tsx`）, `StructureCanvas/`, `StagingView/`（サウンドノベルの演出エディタ：行一覧＋話者/表情/背景/BGM/効果音/場面の切れ目・背景と立ち絵の持ち込み・素材の管理 `asset-manager.tsx`＝一覧/削除/クラウド保管・テンプレの一覧 `template-picker.tsx`＝分類タブ＋サムネイル・書き出しと図鑑でも共用）

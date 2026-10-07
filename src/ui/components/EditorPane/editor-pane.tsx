@@ -27,9 +27,11 @@ export type { NotationKind } from './notation'
 /** 外（ツールバー）から記法挿入を呼ぶためのハンドル。 */
 export interface EditorPaneHandle {
   applyNotation: (kind: NotationKind) => void
+  selectRange: (start: number, end: number) => void
 }
 
 interface EditorPaneProps {
+  readOnly?: boolean
   scriptMode?: boolean
   value: string
   onChange: (value: string) => void
@@ -65,6 +67,7 @@ export function EditorPane({
   onChange,
   glossary = [],
   scriptMode = false,
+  readOnly = false,
   onCreateEntry,
   variantBase,
 }: EditorPaneProps & { ref?: React.Ref<EditorPaneHandle> }) {
@@ -216,7 +219,7 @@ export function EditorPane({
   const applyNotation = useCallback(
     (kind: NotationKind) => {
       const el = taRef.current
-      if (!el) return
+      if (!el || readOnly) return
       let start = el.selectionStart ?? 0
       const end = el.selectionEnd ?? start
       const selected = value.slice(start, end)
@@ -288,7 +291,7 @@ export function EditorPane({
       onChange(value.slice(0, start) + inserted + value.slice(end))
       setSuggest(null)
     },
-    [value, onChange],
+    [value, onChange, readOnly],
   )
 
   const commit = (index: number) => {
@@ -309,7 +312,22 @@ export function EditorPane({
 
   // ツールバー（PC）から記法挿入を呼べるようにする。textarea の ref と選択範囲は
   // このコンポーネントが持つので、値の書き換えではなく操作そのものを公開する。
-  useImperativeHandle(ref, () => ({ applyNotation }), [applyNotation])
+  useImperativeHandle(
+    ref,
+    () => ({
+      applyNotation,
+      selectRange: (start, end) => {
+        const el = taRef.current
+        if (!el) return
+        setSuggest(null)
+        el.focus({ preventScroll: true })
+        el.setSelectionRange(start, end)
+        const coordinates = getCaretCoordinates(el, start)
+        el.scrollTop = Math.max(0, el.scrollTop + coordinates.top - el.clientHeight / 3)
+      },
+    }),
+    [applyNotation],
+  )
 
   // 挿入後にキャレットを [[名前]] の直後へ戻す。
   useLayoutEffect(() => {
@@ -324,6 +342,7 @@ export function EditorPane({
   })
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (readOnly) return
     const composing = composingRef.current || e.nativeEvent.isComposing
     const escapedTab = escapeTabRef.current
     escapeTabRef.current = false
@@ -412,6 +431,7 @@ export function EditorPane({
         aria-activedescendant={open && !narrow ? optionId(activeIndex) : undefined}
         className="editor min-h-0 flex-1 resize-none border-none bg-transparent px-9 py-7 text-on-surface leading-[2.1] outline-none placeholder:text-on-surface-variant/40"
         value={value}
+        readOnly={readOnly}
         onChange={(e) => {
           onChange(e.target.value)
           if (!composingRef.current) refresh(e.currentTarget)

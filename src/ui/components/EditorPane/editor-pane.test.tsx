@@ -748,3 +748,23 @@ describe('推敲チェック（小説）', () => {
     expect(screen.getByText('推敲チェック（確認候補 3件）')).toBeInTheDocument()
   })
 })
+
+describe('EditorPane（検索結果の選択）', () => {
+  it('UTF-16の一致範囲を選択し本文へフォーカスする', () => {
+    const ref = { current: null as EditorPaneHandle | null }
+    render(<EditorPane ref={ref} value={'一行目\n😀猫と犬'} onChange={() => {}} />)
+    act(() => ref.current?.selectRange(6, 7))
+    const textarea = screen.getByRole('textbox', { name: '本文' }) as HTMLTextAreaElement
+    expect(textarea.selectionStart).toBe(6)
+    expect(textarea.selectionEnd).toBe(7)
+    expect(textarea).toHaveFocus()
+  })
+  it('置換中は本文と記法挿入を停止する', () => {
+    const onChange = vi.fn()
+    const ref = { current: null as EditorPaneHandle | null }
+    render(<EditorPane ref={ref} value="猫" onChange={onChange} readOnly />)
+    expect(screen.getByRole('textbox', { name: '本文' })).toHaveAttribute('readonly')
+    act(() => ref.current?.applyNotation('ruby'))
+    expect(onChange).not.toHaveBeenCalled()
+  })
+})
