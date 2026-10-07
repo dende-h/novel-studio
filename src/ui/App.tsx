@@ -4,6 +4,7 @@ import { localDateKey } from '@/core/activity'
 import { blocksToHtml } from '@/core/exporter/toHtml'
 import { findAppearances, resolvedNameSet, resolveRef } from '@/core/glossary'
 import { parseEpisodeBody } from '@/core/parser/parseNotation'
+import { createVariantCountCache } from '@/core/proofread'
 import type { GlossaryEntry } from '@/core/schema'
 import { layoutScriptBlocks, paginate } from '@/core/script/layout'
 import { countEpisodeChars, countWorkChars } from '@/core/stats'
@@ -217,6 +218,16 @@ export function App({
   )
   // 脚本は HTML ではなく原稿用紙（20字×20行など）に組む。縦横の切替は用紙の型の切替になる。
   const sheetPreset = SHEET_PRESETS[orientation]
+  // 小説の推敲チェック用：他の話の表記ゆれ集計。話ごとにキャッシュするので、
+  // 自動保存で episodes 配列が作り直されても編集していない話は数え直さない。
+  const variantCache = useMemo(() => createVariantCountCache(), [])
+  const variantBase = useMemo(
+    () =>
+      !work || work.format === 'script'
+        ? undefined
+        : variantCache(work.episodes.filter((e) => e.id !== state.currentEpisodeId)),
+    [work, state.currentEpisodeId, variantCache],
+  )
   const scriptPages = useMemo(
     () =>
       work?.format === 'script'
@@ -751,6 +762,7 @@ export function App({
                   onChange={(v) => store.setDraft(v)}
                   glossary={work?.glossary ?? []}
                   onCreateEntry={(name) => store.addGlossaryEntry({ name })}
+                  variantBase={variantBase}
                 />
                 {replaceOpen ? (
                   <ReplacePanel

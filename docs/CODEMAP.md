@@ -34,6 +34,7 @@ Cloudflare Pages Functions
 |---|---|
 | 本文の記法ボタン・ショートカット | `src/ui/components/EditorPane/notation.ts`（一覧・表示・キー判定を共有。PC/スマホの出し分けは `notationItems(scriptMode, surface)`）、挿入と脚本の Tab 字下げ／Enter 継続は `editor-pane.tsx` |
 | 脚本形式（柱・ト書き・セリフ）の判別・原稿用紙の組版・書き出し | 判別 `src/core/script/index.ts`、書式チェック `src/core/script/proofread.ts`、原稿用紙（禁則・頁割り・前付け）`src/core/script/layout.ts`、紙のプレビュー `src/ui/components/ScriptSheet/`、脚本の Word `src/core/exporter/toDocx.ts`・テキスト `src/core/exporter/toScriptText.ts`、形式・梗概（`Work.synopsis`）は `src/ui/components/WorkMetaDialog/`、公開 v7 は `src/ui/_api/publish.ts`。EPUB・なろう・カクヨムは小説専用 |
+| **小説の推敲チェック**（原稿の作法・表記ゆれの確認候補・項目のオン／オフ）を変える（COT-30） | ルールは `src/core/proofread/rules.ts`（字下げ・閉じ括弧前の句読点・！？の後の空白・三点リーダー／ダッシュ・半角の約物・同じ語の連続）、表記ゆれ辞書と作品全体の集計は `src/core/proofread/variants.ts`（組は「表示名＋正規表現」・数の書き方は助数詞ごと）、入口は `src/core/proofread/index.ts`（`proofreadNovel`・`createVariantCountCache`＝話ごとの集計キャッシュ）。表示は `src/ui/components/EditorPane/proofread-panel.tsx`（脚本の書式チェックと共用の `<details>`）、項目のオン／オフは `src/ui/hooks/use-proofread-prefs.ts`（localStorage `ns-proofread-off`）。他話の集計は `App.tsx` が `variantBase` で渡す。設計は `docs/specs/COT-30/` |
 | 記法（ルビ・傍点・`[[参照]]`）の解釈を変える | `src/core/parser/parseNotation.ts` + `src/core/schema/index.ts` |
 | プレビューのマークダウン（見出し・リスト・表・引用）を変える | `src/core/markdown/index.ts`（本文は非対応。効くのはプロット・世界観・用語集の記法つき欄） |
 | 書き出し（EPUB/なろう/カクヨム/HTML）の出力を変える | `src/core/exporter/` 配下（形式ごとに1ファイル） |
@@ -85,6 +86,7 @@ Cloudflare Pages Functions
 | モジュール | 責務 | 主な export |
 |---|---|---|
 | `script/` | 脚本の行判別（柱・ト書き・セリフ・***場面転換）・話者分割・字下げ除去・原稿用紙の組版 | `classifyScriptBlock` `splitSpeaker` `stripLeadingSpace` `ScriptLine`、`proofread.ts` の `proofreadScript`（書式の確認候補）、`layout.ts` の `layoutScriptBlocks` `paginate` `composeScriptSheet` `normalizeScriptText`（20字×20行などへの流し込み・禁則・頁割り・表紙／登場人物表／梗概） |
+| `proofread/` | 小説の推敲チェック（COT-30）。作法ルール（`rules.ts`・`checkLine`）・表記ゆれ辞書と集計（`variants.ts`・`VARIANT_GROUPS` `countVariants` `mergeCounts` `variantNoticesForLine`）・入口（`index.ts`・`proofreadNovel` `countVariantsInBlocks` `createVariantCountCache` `NOVEL_RULES` `ProofNotice` `NovelRuleId`）。脚本の `script/proofread.ts` とは別 | 純TS・React 非依存。`tools/novel-textlint/fixtures/` を回帰に使う |
 | `schema/` | **正本 block スキーマ（Zod）**。全データの型の源 | `Block` `Inline` `Episode` `Work` `WorkFormat` `WorkFormatSchema`（`Work.synopsis`＝脚本の梗概） `GlossaryEntry`（`authorNote`・`dialog` は公開時に落とす） `DialogAnswer` `WorkPlatform` `PLATFORM_GENRES` |
 | `plot/` | プロット（幕/ライン/ビート/伏線/秘密）＋**世界観設定**（`Plot.world`・作者専用） | `PlotSection` `PlotLine` `PlotBeat` `Foreshadow` `Secret` / `beatsInStoryOrder` `sectionOfBeat` `linesOfBeat` `foreshadowsOfBeat` `secretsHiddenAt` / `WorldNote` `WORLD_SLOTS` `WORLD_CUSTOM_SLOT` `worldNoteLabel` `worldNotesInOrder` `setWorldNote` `removeWorldNote` |
 | `structure/` | 構造レイヤー（outline/chart/mindmap）のノード・辺 | `StructureNode` `StructureEdge` `StructureKind` `emptyStructure` `addNode` `pickPrimaryStructure` |
@@ -228,6 +230,7 @@ Cloudflare Pages Functions
 `useEditorStore` / `useAutosave` / `useAutoSync` / `useAutoBackup` / `useLiveSnapshot` / `useSyncStatus`
 / `useHashRoute` / `useIsNarrow`（+ `NARROW_MAX_PX` `NARROW_QUERY`） / `useKeyboardInset`
 / `useLocalFlag`（localStorage 永続の真偽フラグ） / `usePreferences`（+ `setTheme` `setReadingSize`）
+/ `useProofreadPrefs`（+ `toggleProofreadRule` `reloadProofreadPrefs`・推敲チェックの項目オン／オフ・localStorage `ns-proofread-off`）
 / `usePenName` `useOpenProfile` `useAccountPenNameSync` `useSaveProfile`（+ `PenNameContext` `ProfileEditContext`・`use-pen-name.ts`）
 / `useBackupMarks`（+ `markLocalBackup` `markCloudBackup` `readBackupMarks`） / `readNudgeAck` `acknowledgeNudge`
 / `useSerialSave`（`use-serial-save.ts`・最新値へ fn を積み保存を直列化する変更経路。描画時点の値へ当てて保存しない＝プロット画面が使用）
@@ -255,7 +258,7 @@ Cloudflare Pages Functions
 |---|---|
 | `_api/` | サーバ呼び出しの薄いクライアント（`sync` `backup` `billing` `publish` `author` `mcp` `board` `game-assets` `game-templates`＝目録/実体の取得と staff の管理 API） |
 | `_utils/` | 純関数（`caretCoordinates` `focus-when-ready` `imageResizer` `exporters` `download` `format` `clipboard` `cover-tone` `audioMeta`＝音声ファイルの data URL 化と長さ計測・`sePlayer`＝効果音の試聴・`bgmPlayer`＝BGM の試聴（Web Audio・ループ区間つき・トグルで 1 曲だけ）） |
-| `hooks/` | React ライフサイクル依存のみ（`use-autosave` `use-auto-sync` `use-auto-backup` `use-live-snapshot` `use-preferences` `use-narrow` `use-keyboard-inset` `use-pen-name` `use-staff`＝運営か・`enabled` のときだけ `/api/board/me` を見る 等） |
+| `hooks/` | React ライフサイクル依存のみ（`use-autosave` `use-auto-sync` `use-auto-backup` `use-live-snapshot` `use-preferences` `use-proofread-prefs` `use-narrow` `use-keyboard-inset` `use-pen-name` `use-staff`＝運営か・`enabled` のときだけ `/api/board/me` を見る 等） |
 | `sync/` | 同期クライアント。`src/ui/sync/sync-service.ts` が本体（約800行）・`sync-gate` `sync-status` `sync-touch` |
 | `src/ui/backup/backup-service.ts` | クラウド全体バックアップの実行 |
 | `game/` | 持ち込み素材のクラウド保管の配線（`asset-hosting.ts`＝API 結線と下り取り込み `pullHostedAssets`。ローカルが正・上りは追加時と明示操作のみ）／運営テンプレの目録を画面へ配る `template-catalog.ts`（`useTemplateCatalog`＝アプリで1つの `useSyncExternalStore`・localStorage に控え、`templateBgSrc` `templateSpriteSrc`、`resolveTemplateBackgrounds` `resolveTemplateSes` `resolveTemplateBgms`＝演出譜が指す目録の実体を素材の形にして書き出し・投稿へ、`templateSpriteDataUrl`） |

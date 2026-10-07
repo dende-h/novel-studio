@@ -9,13 +9,16 @@ import {
 } from 'react'
 import { PERSON_CATEGORY, resolveRef, shouldTriggerSuggest, suggestRefs } from '@/core/glossary'
 import { needsRubyPipe, parseEpisodeBody } from '@/core/parser/parseNotation'
+import { NOVEL_RULES, proofreadNovel, type VariantCounts } from '@/core/proofread'
 import type { GlossaryEntry } from '@/core/schema'
 import { proofreadScript } from '@/core/script/proofread'
 import { getCaretCoordinates } from '@/ui/_utils/caretCoordinates'
 import { useKeyboardInset } from '@/ui/hooks/use-keyboard-inset'
 import { useIsNarrow } from '@/ui/hooks/use-narrow'
+import { useProofreadPrefs } from '@/ui/hooks/use-proofread-prefs'
 import { type NotationKind, notationForKey, notationItems } from './notation'
 import { NotationBar } from './notation-bar'
+import { ProofreadPanel } from './proofread-panel'
 import { RefSuggest } from './ref-suggest'
 import { RefSuggestBar } from './ref-suggest-bar'
 
@@ -34,6 +37,11 @@ interface EditorPaneProps {
   glossary?: GlossaryEntry[]
   /** クイック作成（name のみで即作成→挿入）。省略時は作成行を出さない。 */
   onCreateEntry?: (name: string) => Promise<GlossaryEntry> | GlossaryEntry
+  /**
+   * 小説の推敲チェック用：他の話の表記ゆれ集計（`createVariantCountCache` の結果）。
+   * いまの話の分はここで足して「作品全体で混ざっているか」を判定する。省略時はいまの話だけで判定。
+   */
+  variantBase?: VariantCounts
 }
 
 interface SuggestState {
@@ -58,6 +66,7 @@ export function EditorPane({
   glossary = [],
   scriptMode = false,
   onCreateEntry,
+  variantBase,
 }: EditorPaneProps & { ref?: React.Ref<EditorPaneHandle> }) {
   const taRef = useRef<HTMLTextAreaElement>(null)
   // 登場人物表（用語集の「人物」）に無い話者も知らせる。名前と別名のどちらでも通す。
@@ -68,9 +77,27 @@ export function EditorPane({
         .flatMap((e) => [e.name, ...e.aliases]),
     [glossary],
   )
+  const { disabled: disabledRules, toggle: toggleRule } = useProofreadPrefs()
   const notices = useMemo(
-    () => (scriptMode ? proofreadScript(parseEpisodeBody(value), { cast }) : []),
-    [scriptMode, value, cast],
+    () =>
+      scriptMode
+        ? proofreadScript(parseEpisodeBody(value), { cast })
+        : proofreadNovel(parseEpisodeBody(value), {
+            disabled: disabledRules,
+            baseCounts: variantBase,
+          }),
+    [scriptMode, value, cast, disabledRules, variantBase],
+  )
+  // 候補を押すと該当行を選択する。本文は書き換えない。
+  const jumpToBlock = useCallback(
+    (blockIndex: number) => {
+      const lines = value.split('\n')
+      const start = lines.slice(0, blockIndex).reduce((sum, line) => sum + line.length + 1, 0)
+      const el = taRef.current
+      el?.focus()
+      el?.setSelectionRange(start, start + (lines[blockIndex]?.length ?? 0))
+    },
+    [value],
   )
   // IME 変換中はサジェストを抑止する（純関数は判定できないので UI 層で握る）。
   const composingRef = useRef(false)
@@ -411,36 +438,25 @@ export function EditorPane({
       />
 
       {scriptMode ? (
-        <details className="shrink-0 border-t border-outline-variant/30 px-4 py-2 text-xs text-on-surface-variant">
-          <summary className="cursor-pointer">
-            脚本の書式チェック（確認候補 {notices.length}件）
-          </summary>
-          <p className="my-2">
-            ト書きの字下げ、柱の前の余白、！？の後ろの1マスは表示・書き出し時に自動で揃います。意図した表現なら、そのまま使えます。
-          </p>
-          <ul className="max-h-32 overflow-y-auto">
-            {notices.map((notice) => (
-              <li key={`${notice.blockIndex}-${notice.code}`}>
-                <button
-                  type="button"
-                  className="min-h-11 w-full py-1 text-left hover:text-primary"
-                  onClick={() => {
-                    const lines = value.split('\n')
-                    const start = lines
-                      .slice(0, notice.blockIndex)
-                      .reduce((sum, line) => sum + line.length + 1, 0)
-                    const el = taRef.current
-                    el?.focus()
-                    el?.setSelectionRange(start, start + (lines[notice.blockIndex]?.length ?? 0))
-                  }}
-                >
-                  {notice.blockIndex + 1}行：{notice.message}
-                </button>
-              </li>
-            ))}
-          </ul>
-        </details>
-      ) : null}
+        <ProofreadPanel
+          title="脚本の書式チェック"
+          intro="ト書きの字下げ、柱の前の余白、！？の後ろの1マスは表示・書き出し時に自動で揃います。意図した表現なら、そのまま使えます。"
+          notices={notices}
+          onJump={jumpToBlock}
+        />
+      ) : (
+        <ProofreadPanel
+          title="推敲チェック"
+          intro="原稿の作法と表記ゆれの確認候補です。本文は自動で書き換えません。意図した表現なら、そのまま使えます。"
+          notices={notices}
+          onJump={jumpToBlock}
+          toggles={{
+            items: NOVEL_RULES,
+            disabled: disabledRules,
+            onToggle: (id) => toggleRule(id as (typeof NOVEL_RULES)[number]['id']),
+          }}
+        />
+      )}
 
       {open && suggest ? (
         narrow ? (

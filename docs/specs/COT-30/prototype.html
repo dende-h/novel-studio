@@ -1,0 +1,297 @@
+<title>推敲チェック プロトタイプ</title>
+<style>
+/* レイアウト：仕様書の添付。画面ごとに「現状（スクショ）」と「変更後（モック）」を縦に並べ、変更箇所に番号を振る。
+   トークンは src/ui/index.css の :root / .dark をそのまま写す。 */
+:root {
+  color-scheme: light;
+  --radius: 0.5rem;
+  --background: #fdfcfb;
+  --foreground: #4b5160;
+  --primary: #2c5b27;
+  --primary-foreground: #ffffff;
+  --surface-container-lowest: #fefeff;
+  --surface-container-low: #f9f7f5;
+  --surface-container: #f3f1ec;
+  --surface-container-highest: #e7e3da;
+  --surface-variant: #f3ede4;
+  --on-surface: #1f2430;
+  --on-surface-variant: #6b7381;
+  --outline-variant: #9da3ae;
+  --primary-container: #e3ece1;
+  --on-primary-container: #234420;
+  --secondary-container: #f2e6d4;
+  --on-secondary-container: #92703f;
+  --wheat-500: #b98f63;
+  --font-sans: "Noto Sans JP", "Hiragino Sans", "Yu Gothic", system-ui, sans-serif;
+  --font-serif: "Noto Serif JP", "Hiragino Mincho ProN", "Yu Mincho", serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --background: #181611; --foreground: #d7d2c8; --primary: #44863a;
+    --surface-container-lowest: #1f1c16; --surface-container-low: #232019; --surface-container: #29251e;
+    --surface-container-highest: #3a352b; --surface-variant: #201d16;
+    --on-surface: #ece8e1; --on-surface-variant: #a49e92; --outline-variant: #645e53;
+    --primary-container: #294424; --on-primary-container: #cae4c3;
+    --secondary-container: #3a3024; --on-secondary-container: #e0c398;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --background: #181611; --foreground: #d7d2c8; --primary: #44863a;
+  --surface-container-lowest: #1f1c16; --surface-container-low: #232019; --surface-container: #29251e;
+  --surface-container-highest: #3a352b; --surface-variant: #201d16;
+  --on-surface: #ece8e1; --on-surface-variant: #a49e92; --outline-variant: #645e53;
+  --primary-container: #294424; --on-primary-container: #cae4c3;
+  --secondary-container: #3a3024; --on-secondary-container: #e0c398;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--background); color: var(--foreground); font-family: var(--font-sans); font-size: 14px; line-height: 1.7; }
+.wrap { max-width: 1100px; margin: 0 auto; padding-block: 32px 64px; padding-inline: 16px; }
+h1 { font-family: var(--font-serif); font-weight: 600; font-size: 1.6rem; color: var(--on-surface); margin: 0 0 4px; text-wrap: balance; }
+h2 { font-family: var(--font-serif); font-weight: 600; font-size: 1.2rem; color: var(--on-surface); margin: 40px 0 8px; border-bottom: 1px solid color-mix(in srgb, var(--outline-variant) 30%, transparent); padding-bottom: 6px; }
+h3 { font-size: 0.85rem; letter-spacing: 0.06em; text-transform: uppercase; color: var(--on-surface-variant); margin: 20px 0 8px; font-weight: 600; }
+p.lead { color: var(--on-surface-variant); margin: 0 0 12px; max-width: 70ch; }
+.legend { display: flex; flex-wrap: wrap; gap: 8px 18px; margin: 12px 0 0; padding: 0; list-style: none; max-width: 70ch; }
+.legend li { display: flex; gap: 8px; align-items: baseline; }
+.num { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 50%; background: var(--primary); color: var(--primary-foreground); font-size: 11px; font-weight: 700; flex: none; }
+.shot { border: 1px solid color-mix(in srgb, var(--outline-variant) 35%, transparent); border-radius: var(--radius); overflow: hidden; background: var(--surface-container-lowest); }
+.shot img { display: block; width: 100%; height: auto; }
+.caption { font-size: 12px; color: var(--on-surface-variant); margin: 6px 0 0; }
+.pair { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; align-items: start; }
+@media (max-width: 860px) { .pair { grid-template-columns: 1fr; } }
+.tabs { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 12px; }
+.tabs button { font: inherit; font-size: 12px; padding: 6px 12px; border-radius: 999px; border: 1px solid color-mix(in srgb, var(--outline-variant) 40%, transparent); background: transparent; color: var(--on-surface-variant); cursor: pointer; min-height: 32px; }
+.tabs button[aria-selected="true"] { background: var(--primary); color: var(--primary-foreground); border-color: transparent; }
+.tabs button:focus-visible, .mock button:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+
+/* --- エディタ列のモック（App.tsx のエディタ列 ≒ 674px） --- */
+.mock { position: relative; display: flex; flex-direction: column; min-width: 0; background: var(--surface-container-lowest); border: 1px solid color-mix(in srgb, var(--outline-variant) 35%, transparent); border-radius: var(--radius); overflow: hidden; }
+.mock .topbar { display: flex; align-items: center; gap: 18px; padding: 10px 16px; border-bottom: 1px solid color-mix(in srgb, var(--outline-variant) 30%, transparent); font-size: 12px; color: var(--on-surface-variant); }
+.mock .topbar .ep { color: var(--on-surface); font-weight: 600; font-size: 13px; }
+.mock .topbar .key { display: block; font-size: 9px; font-family: ui-monospace, monospace; letter-spacing: 0.02em; opacity: 0.8; }
+.mock .ta { padding: 28px 36px; min-height: 230px; line-height: 2.1; color: var(--on-surface); font-size: 15px; font-family: var(--font-sans); white-space: pre-wrap; word-break: break-all; }
+.mock .ta .ln { display: block; border-radius: 3px; }
+.mock .ta .ln.sel { background: color-mix(in srgb, var(--primary) 22%, transparent); }
+.mock .status { display: flex; justify-content: space-between; padding: 6px 16px; border-top: 1px solid color-mix(in srgb, var(--outline-variant) 30%, transparent); font-size: 11px; color: var(--on-surface-variant); }
+/* 推敲チェックの <details>：脚本の書式チェックと同じクラス構成（border-t px-4 py-2 text-xs text-on-surface-variant） */
+.panel { flex: none; border-top: 1px solid color-mix(in srgb, var(--outline-variant) 30%, transparent); padding: 8px 16px; font-size: 12px; color: var(--on-surface-variant); }
+.panel summary { cursor: pointer; list-style: none; display: flex; align-items: center; gap: 4px; }
+.panel summary::before { content: "▶"; font-size: 9px; }
+.panel[open] summary::before { content: "▼"; }
+.panel .intro { margin: 8px 0; }
+.toggles { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 4px 0 8px; }
+.toggles .lab { margin-inline-end: 4px; }
+.toggles button { font: inherit; font-size: 12px; min-height: 44px; padding: 0 12px; border-radius: 999px; border: 1px solid color-mix(in srgb, var(--outline-variant) 40%, transparent); background: transparent; color: var(--on-surface-variant); cursor: pointer; }
+.toggles button[aria-pressed="true"] { background: var(--primary-container); color: var(--on-primary-container); border-color: transparent; }
+.list { list-style: none; margin: 0; padding: 0; max-height: 128px; overflow-y: auto; }
+.list button { font: inherit; display: block; width: 100%; min-height: 44px; padding: 4px 0; text-align: left; background: none; border: 0; color: inherit; cursor: pointer; }
+.list button:hover { color: var(--primary); }
+.badge { position: absolute; z-index: 2; }
+/* モバイル枠 393px */
+.phone { width: 393px; max-width: 100%; margin: 0; }
+.phone .mock { border-radius: 14px; }
+.phone .ta { padding: 24px 24px 12px; font-size: 16px; min-height: 260px; }
+.phone .appbar { display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-bottom: 1px solid color-mix(in srgb, var(--outline-variant) 30%, transparent); }
+.phone .appbar .logo { font-family: var(--font-serif); font-weight: 700; color: var(--on-surface); }
+.phone .segs { display: flex; gap: 10px; padding: 8px 12px; border-bottom: 1px solid color-mix(in srgb, var(--outline-variant) 30%, transparent); font-size: 13px; }
+.phone .segs span { padding: 6px 12px; border-radius: 8px; color: var(--on-surface-variant); }
+.phone .segs span.on { background: var(--primary); color: var(--primary-foreground); }
+.phone .panel { font-size: 13px; }
+.note { background: var(--surface-container-low); border-radius: var(--radius); padding: 12px 14px; font-size: 13px; max-width: 70ch; }
+.note b { color: var(--on-surface); }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+<div class="wrap">
+  <h1>推敲チェック（COT-30）UI プロトタイプ</h1>
+  <p class="lead">小説のエディタ下部に、脚本の「書式チェック」と同じ見た目で「推敲チェック」を足します。候補は押すと該当行を選択し、項目はオフにできます。番号は design.md「UI」節の変更点に対応します。</p>
+  <ul class="legend">
+    <li><span class="num">1</span><span>本文の下の折りたたみ「推敲チェック（確認候補 N件）」</span></li>
+    <li><span class="num">2</span><span>説明文（本文は書き換えない）</span></li>
+    <li><span class="num">3</span><span>「確認する項目」の切替（7つ・既定は全部オン）</span></li>
+    <li><span class="num">4</span><span>候補一覧「N行：メッセージ」</span></li>
+    <li><span class="num">5</span><span>押すと該当行を選択</span></li>
+  </ul>
+
+  <h2>執筆画面（desktop・小説）</h2>
+  <h3>現状</h3>
+  <div class="pair">
+    <div>
+      <div class="shot"><img src="screens/editor-novel-desktop.png" alt="現状の小説エディタ。本文の下には何も無い"></div>
+      <p class="caption">screens/editor-novel-desktop.png — 小説では本文の下に何も出ない</p>
+    </div>
+    <div>
+      <div class="shot"><img src="screens/editor-script-desktop.png" alt="現状の脚本エディタ。本文の下に「脚本の書式チェック」が開いている"></div>
+      <p class="caption">screens/editor-script-desktop.png — 流用する見た目（脚本の書式チェック）</p>
+    </div>
+  </div>
+
+  <h3>変更後（エディタ列のモック・操作できます）</h3>
+  <div class="tabs" role="tablist" aria-label="状態">
+    <button role="tab" aria-selected="true" data-state="many">候補あり</button>
+    <button role="tab" aria-selected="false" data-state="none">候補 0件（統一された原稿）</button>
+    <button role="tab" aria-selected="false" data-state="empty">本文が空</button>
+  </div>
+  <div class="mock" id="desktop">
+    <div class="topbar">
+      <span class="ep">第一話</span>
+      <span>ルビ<span class="key">Ctrl+I</span></span><span>傍点<span class="key">Ctrl+B</span></span><span>用語引用<span class="key">Ctrl+K</span></span><span>セリフ<span class="key">Ctrl+Alt+D</span></span><span>三点リーダー<span class="key">Ctrl+Alt+E</span></span><span>ダッシュ<span class="key">Ctrl+Alt+M</span></span>
+    </div>
+    <div class="ta" id="d-ta" aria-label="本文（モック）"></div>
+    <details class="panel" open id="d-panel">
+      <summary><span class="num badge-inline">1</span>&nbsp;<span id="d-title">推敲チェック（確認候補 0件）</span></summary>
+      <p class="intro"><span class="num">2</span> 原稿の作法と表記ゆれの確認候補です。本文は自動で書き換えません。意図した表現なら、そのまま使えます。</p>
+      <div class="toggles" id="d-toggles"><span class="num">3</span><span class="lab">確認する項目</span></div>
+      <ul class="list" id="d-list"></ul>
+    </details>
+    <div class="status"><span>自動保存 ON</span><span id="d-stat">6行 ・ 158文字</span></div>
+  </div>
+  <p class="caption"><span class="num">4</span> 候補を押すと <span class="num">5</span> 本文の該当行が選択されます（モックでは行をハイライト）。項目の切替は localStorage に残り、作品をまたいで効きます。</p>
+
+  <h2>執筆画面（mobile・本文の面）</h2>
+  <div class="pair">
+    <div>
+      <h3>現状</h3>
+      <div class="phone"><div class="shot"><img src="screens/editor-novel-mobile.png" alt="現状のモバイル小説エディタ"></div></div>
+      <p class="caption">screens/editor-novel-mobile.png（脚本の例は screens/editor-script-mobile.png）</p>
+    </div>
+    <div>
+      <h3>変更後（本文の外を押した状態）</h3>
+      <div class="phone"><div class="mock" id="mobile">
+        <div class="appbar"><span>☰</span><span class="logo">コトノハ -leaf-</span></div>
+        <div class="segs"><span class="on">本文</span><span>プレビュー</span></div>
+        <div class="ta" id="m-ta" aria-label="本文（モック・モバイル）"></div>
+        <details class="panel" open>
+          <summary><span class="num">1</span>&nbsp;<span id="m-title">推敲チェック（確認候補 0件）</span></summary>
+          <p class="intro">原稿の作法と表記ゆれの確認候補です。本文は自動で書き換えません。意図した表現なら、そのまま使えます。</p>
+          <div class="toggles" id="m-toggles"><span class="lab">確認する項目</span></div>
+          <ul class="list" id="m-list"></ul>
+        </details>
+        <div class="status"><span id="m-stat">6行 ・ 158文字 ・ 今日 +158字</span></div>
+      </div></div>
+      <p class="caption">本文にフォーカス中は記法バーが下端を覆う（現状の脚本と同じ）。候補を押すとフォーカスが戻る。</p>
+    </div>
+  </div>
+
+  <h2>補足</h2>
+  <div class="note">
+    <b>件数の数え方</b>：見出しの N はオンの項目の候補数。オフにした項目は数えません。<br>
+    <b>表記ゆれ</b>：作品全体で 2 つ以上の書き方があるときだけ、いま開いている話の該当行を候補にします。統一されている語は何も言いません。<br>
+    <b>脚本作品</b>：従来の「脚本の書式チェック」のまま。切替の行は出ません。
+  </div>
+</div>
+
+<script>
+(function () {
+  var RULES = [
+    { id: 'indent', label: '字下げ' },
+    { id: 'punct-before-close', label: '閉じ括弧の前の句読点' },
+    { id: 'space-after-exclamation', label: '！？の後の空白' },
+    { id: 'leader-odd', label: '三点リーダー・ダッシュ' },
+    { id: 'halfwidth-punct', label: '半角の約物' },
+    { id: 'successive-word', label: '同じ語の連続' },
+    { id: 'variant', label: '表記ゆれ' }
+  ];
+  var TEXTS = {
+    many: [
+      '　夜の校舎に、私はひとりで立っていた。',
+      '「もう帰ろうよ。」',
+      '彼は言った。しかし私は、その場を動くことが出来なかった。',
+      '「待って!すぐ終わるから」',
+      '　廊下の奥で、何かが動いた気がした。非常口の緑の光がが揺れて…、足音がこちらへ近づいてきた。',
+      '　一人の足音ではない。2人、いや3人はいる。できることは、もう何もなかった。'
+    ],
+    none: [
+      '　夜の校舎に、私はひとりで立っていた。',
+      '「もう帰ろうよ」',
+      '　｜宮森《みやもり》は出口のほうへ顎をしゃくった。上履きの先が、もう半分廊下を向いている。',
+      '「待って！　すぐ終わるから」',
+      '',
+      '＊',
+      '',
+      '　廊下の奥で、掲示物が一枚めくれた。空調は止まっているはずだった。',
+      '　《《だれかいる》》。'
+    ],
+    empty: []
+  };
+  // 候補（要件 FR-2 / FR-4 の表に従い、サンプル本文から手で起こしたもの）
+  var NOTICES = {
+    many: [
+      { line: 2, rule: 'punct-before-close', msg: '閉じ括弧の前の句読点（。、）は付けないのが一般的です。' },
+      { line: 3, rule: 'indent', msg: '段落の頭は全角空白を1つ空けるのが一般的です。会話文（「）はそのままで構いません。' },
+      { line: 3, rule: 'variant', msg: '「出来る」と「できる」が混ざっています（この作品で 出来る 1件・できる 1件）。どちらかに揃えると読みやすくなります。' },
+      { line: 4, rule: 'halfwidth-punct', msg: '和文では感嘆符・疑問符は全角（！ ？）を使います。' },
+      { line: 5, rule: 'leader-odd', msg: '三点リーダー（…）は2つ単位（……）で使うのが一般的です。' },
+      { line: 5, rule: 'successive-word', msg: '同じ語が続いています（がが）。打ち間違いでなければ、そのままで構いません。' },
+      { line: 6, rule: 'variant', msg: '数の書き方が算用数字と漢数字で混ざっています：人（2人・一人／算用 2件・漢数字 1件）。' },
+      { line: 6, rule: 'variant', msg: '「できる」と「出来る」が混ざっています（この作品で できる 1件・出来る 1件）。どちらかに揃えると読みやすくなります。' }
+    ],
+    none: [],
+    empty: []
+  };
+  var STATS = { many: '6行 ・ 158文字', none: '9行 ・ 118文字', empty: '0行 ・ 0文字' };
+
+  var state = 'many';
+  var off = {};
+  var selected = { d: null, m: null };
+
+  function render(prefix) {
+    var ta = document.getElementById(prefix + '-ta');
+    var list = document.getElementById(prefix + '-list');
+    var title = document.getElementById(prefix + '-title');
+    var stat = document.getElementById(prefix + '-stat');
+    var toggles = document.getElementById(prefix + '-toggles');
+    var lines = TEXTS[state];
+    ta.textContent = '';
+    if (!lines.length) {
+      var ph = document.createElement('span');
+      ph.className = 'ln'; ph.style.opacity = '0.4';
+      ph.textContent = 'ここから書き始めましょう。[[用語]] で用語集にリンク、@ で用語集から呼び出せます。';
+      ta.appendChild(ph);
+    }
+    lines.forEach(function (t, i) {
+      var s = document.createElement('span');
+      s.className = 'ln' + (selected[prefix] === i + 1 ? ' sel' : '');
+      s.textContent = t === '' ? '​' : t;
+      ta.appendChild(s);
+    });
+    // toggles
+    Array.prototype.slice.call(toggles.querySelectorAll('button')).forEach(function (b) { b.remove(); });
+    RULES.forEach(function (r) {
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.textContent = r.label;
+      b.setAttribute('aria-pressed', off[r.id] ? 'false' : 'true');
+      b.addEventListener('click', function () { off[r.id] = !off[r.id]; renderAll(); });
+      toggles.appendChild(b);
+    });
+    // list
+    var items = NOTICES[state].filter(function (n) { return !off[n.rule]; });
+    list.textContent = '';
+    items.forEach(function (n) {
+      var li = document.createElement('li');
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.textContent = n.line + '行：' + n.msg;
+      b.addEventListener('click', function () { selected[prefix] = n.line; render(prefix); });
+      li.appendChild(b);
+      list.appendChild(li);
+    });
+    title.textContent = '推敲チェック（確認候補 ' + items.length + '件）';
+    stat.textContent = STATS[state] + (prefix === 'm' ? ' ・ 今日 +158字' : '');
+  }
+  function renderAll() { render('d'); render('m'); }
+
+  Array.prototype.slice.call(document.querySelectorAll('.tabs [role="tab"]')).forEach(function (t) {
+    t.addEventListener('click', function () {
+      document.querySelectorAll('.tabs [role="tab"]').forEach(function (x) { x.setAttribute('aria-selected', 'false'); });
+      t.setAttribute('aria-selected', 'true');
+      state = t.getAttribute('data-state');
+      selected = { d: null, m: null };
+      renderAll();
+    });
+  });
+  renderAll();
+})();
+</script>

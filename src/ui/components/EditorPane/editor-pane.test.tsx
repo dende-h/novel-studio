@@ -1,7 +1,10 @@
 import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import { useRef, useState } from 'react'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { parseEpisodeBody } from '@/core/parser/parseNotation'
+import { countVariantsInBlocks } from '@/core/proofread'
 import type { GlossaryEntry } from '@/core/schema'
+import { reloadProofreadPrefs } from '@/ui/hooks/use-proofread-prefs'
 import { EditorPane, type EditorPaneHandle } from './editor-pane'
 
 describe('EditorPane（Presentational）', () => {
@@ -677,4 +680,71 @@ it('場面転換は脚本で、選択した本文を消さず現在行の前に 
   fireEvent.keyDown(ta, { key: 's', code: 'KeyS', ctrlKey: true, altKey: true })
   expect(ta).toHaveValue('前\n***\n次の場面')
   expect(ta.selectionStart).toBe(6)
+})
+
+// --- 小説の推敲チェック（COT-30） -------------------------------------------
+
+describe('推敲チェック（小説）', () => {
+  const sample = '「もう帰ろうよ。」\n彼は言った。\n　できることは何もない。'
+
+  beforeEach(() => {
+    localStorage.removeItem('ns-proofread-off')
+    reloadProofreadPrefs()
+  })
+  afterEach(() => {
+    localStorage.removeItem('ns-proofread-off')
+    reloadProofreadPrefs()
+  })
+
+  it('小説では「推敲チェック」が出て、候補を押すと該当行を選択し、本文は変えない', () => {
+    const onChange = vi.fn()
+    render(<EditorPane value={sample} onChange={onChange} />)
+    expect(screen.queryByText(/脚本の書式チェック/)).toBeNull()
+    fireEvent.click(screen.getByText('推敲チェック（確認候補 2件）'))
+    const ta = screen.getByRole('textbox', { name: '本文' }) as HTMLTextAreaElement
+    fireEvent.click(screen.getByRole('button', { name: /2行：段落の頭は全角空白/ }))
+    expect(ta.selectionStart).toBe(10)
+    expect(ta.selectionEnd).toBe(16)
+    expect(onChange).not.toHaveBeenCalled()
+  })
+
+  it('脚本では推敲チェックは出ず、従来の書式チェックのまま', () => {
+    render(<EditorPane scriptMode value={sample} onChange={() => {}} />)
+    expect(screen.queryByText(/推敲チェック（/)).toBeNull()
+    expect(screen.getByText(/脚本の書式チェック（確認候補/)).toBeInTheDocument()
+    expect(screen.queryByRole('group', { name: '確認する項目' })).toBeNull()
+  })
+
+  it('空の本文でも 0 件の見出しが出て、項目の切替は 7 つ', () => {
+    render(<EditorPane value="" onChange={() => {}} />)
+    expect(screen.getByText('推敲チェック（確認候補 0件）')).toBeInTheDocument()
+    const group = screen.getByRole('group', { name: '確認する項目' })
+    expect(within(group).getAllByRole('button')).toHaveLength(7)
+    for (const b of within(group).getAllByRole('button'))
+      expect(b).toHaveAttribute('aria-pressed', 'true')
+  })
+
+  it('項目をオフにすると候補と件数が減り、localStorage に残る', () => {
+    render(<EditorPane value={sample} onChange={() => {}} />)
+    fireEvent.click(screen.getByRole('button', { name: '字下げ' }))
+    expect(screen.getByText('推敲チェック（確認候補 1件）')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /段落の頭は/ })).toBeNull()
+    expect(screen.getByRole('button', { name: '字下げ' })).toHaveAttribute('aria-pressed', 'false')
+    expect(JSON.parse(localStorage.getItem('ns-proofread-off') ?? '[]')).toEqual(['indent'])
+    fireEvent.click(screen.getByRole('button', { name: '字下げ' }))
+    expect(screen.getByText('推敲チェック（確認候補 2件）')).toBeInTheDocument()
+  })
+
+  it('variantBase（他の話の集計）と合わせて表記ゆれを判定する', () => {
+    const { rerender } = render(<EditorPane value={sample} onChange={() => {}} />)
+    expect(screen.queryByRole('button', { name: /混ざっています/ })).toBeNull()
+    const base = countVariantsInBlocks(parseEpisodeBody('　出来た。'))
+    rerender(<EditorPane value={sample} onChange={() => {}} variantBase={base} />)
+    expect(
+      screen.getByRole('button', {
+        name: /3行：「できる」と「出来る」が混ざっています（この作品で できる 1件・出来る 1件）/,
+      }),
+    ).toBeInTheDocument()
+    expect(screen.getByText('推敲チェック（確認候補 3件）')).toBeInTheDocument()
+  })
 })

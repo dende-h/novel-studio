@@ -1,0 +1,332 @@
+{
+  "baseURL": "http://localhost:5199",
+  "outDir": "docs/specs/COT-30/screens",
+  "shots": [
+    {
+      "name": "editor-script",
+      "viewports": [
+        "mobile"
+      ],
+      "steps": [
+        {
+          "goto": "/"
+        },
+        {
+          "click": {
+            "text": "新規プロジェクト"
+          }
+        },
+        {
+          "fill": {
+            "label": "作品タイトル",
+            "value": "夜の校舎（脚本）"
+          }
+        },
+        {
+          "click": {
+            "text": "脚本",
+            "exact": true
+          }
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "作成",
+            "exact": true
+          }
+        },
+        {
+          "waitFor": {
+            "role": "heading",
+            "name": "夜の校舎（脚本）"
+          }
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "「夜の校舎（脚本）」を執筆"
+          }
+        },
+        {
+          "click": {
+            "text": "新しいエピソードを追加"
+          }
+        },
+        {
+          "fill": {
+            "label": "話タイトル",
+            "value": "第一話"
+          }
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "追加",
+            "exact": true
+          }
+        },
+        {
+          "waitFor": {
+            "selector": "textarea[aria-label=\"本文\"]"
+          }
+        },
+        {
+          "fill": {
+            "selector": "textarea[aria-label=\"本文\"]",
+            "value": "○夜の校舎・廊下（夜）\n　非常口の緑の光が揺れている。\nユイ「もう帰ろうよ。」\n「待って、すぐ終わるから」\n　3人の足音が近づく。\nケン「未完"
+          }
+        },
+        {
+          "eval": "document.activeElement && document.activeElement.blur()"
+        },
+        {
+          "wait": 300
+        },
+        {
+          "click": {
+            "text": "脚本の書式チェック"
+          }
+        },
+        {
+          "wait": 500
+        }
+      ]
+    },
+    {
+      "name": "editor-novel",
+      "viewports": [
+        "desktop"
+      ],
+      "steps": [
+        {
+          "goto": "/"
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "新しい作品"
+          }
+        },
+        {
+          "fill": {
+            "label": "作品タイトル",
+            "value": "夜の校舎"
+          }
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "作成",
+            "exact": true
+          }
+        },
+        {
+          "waitFor": {
+            "role": "heading",
+            "name": "夜の校舎"
+          }
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "「夜の校舎」を執筆"
+          }
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "新しいエピソード",
+            "exact": true
+          }
+        },
+        {
+          "fill": {
+            "label": "話タイトル",
+            "value": "第一話"
+          }
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "追加",
+            "exact": true
+          }
+        },
+        {
+          "waitFor": {
+            "selector": "textarea[aria-label=\"本文\"]"
+          }
+        },
+        {
+          "fill": {
+            "selector": "textarea[aria-label=\"本文\"]",
+            "value": "　夜の校舎に、私はひとりで立っていた。\n「もう帰ろうよ。」\n彼は言った。しかし私は、その場を動くことが出来なかった。\n「待って!すぐ終わるから」\n　廊下の奥で、何かが動いた気がした。非常口の緑の光がが揺れて…、足音がこちらへ近づいてきた。\n　一人の足音ではない。2人、いや3人はいる。できることは、もう何もなかった。"
+          }
+        },
+        {
+          "wait": 500
+        }
+      ]
+    },
+    {
+      "name": "editor-novel",
+      "viewports": [
+        "mobile"
+      ],
+      "steps": [
+        {
+          "goto": "/"
+        },
+        {
+          "click": {
+            "text": "新規プロジェクト"
+          }
+        },
+        {
+          "fill": {
+            "label": "作品タイトル",
+            "value": "夜の校舎"
+          }
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "作成",
+            "exact": true
+          }
+        },
+        {
+          "waitFor": {
+            "role": "heading",
+            "name": "夜の校舎"
+          }
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "「夜の校舎」を執筆"
+          }
+        },
+        {
+          "click": {
+            "text": "新しいエピソードを追加"
+          }
+        },
+        {
+          "fill": {
+            "label": "話タイトル",
+            "value": "第一話"
+          }
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "追加",
+            "exact": true
+          }
+        },
+        {
+          "waitFor": {
+            "selector": "textarea[aria-label=\"本文\"]"
+          }
+        },
+        {
+          "fill": {
+            "selector": "textarea[aria-label=\"本文\"]",
+            "value": "　夜の校舎に、私はひとりで立っていた。\n「もう帰ろうよ。」\n彼は言った。しかし私は、その場を動くことが出来なかった。\n「待って!すぐ終わるから」\n　廊下の奥で、何かが動いた気がした。非常口の緑の光がが揺れて…、足音がこちらへ近づいてきた。\n　一人の足音ではない。2人、いや3人はいる。できることは、もう何もなかった。"
+          }
+        },
+        {
+          "wait": 500
+        }
+      ]
+    },
+    {
+      "name": "editor-script",
+      "viewports": [
+        "desktop"
+      ],
+      "steps": [
+        {
+          "goto": "/"
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "新しい作品"
+          }
+        },
+        {
+          "fill": {
+            "label": "作品タイトル",
+            "value": "夜の校舎（脚本）"
+          }
+        },
+        {
+          "click": {
+            "text": "脚本",
+            "exact": true
+          }
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "作成",
+            "exact": true
+          }
+        },
+        {
+          "waitFor": {
+            "role": "heading",
+            "name": "夜の校舎（脚本）"
+          }
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "「夜の校舎（脚本）」を執筆"
+          }
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "新しいエピソード",
+            "exact": true
+          }
+        },
+        {
+          "fill": {
+            "label": "話タイトル",
+            "value": "第一話"
+          }
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "追加",
+            "exact": true
+          }
+        },
+        {
+          "waitFor": {
+            "selector": "textarea[aria-label=\"本文\"]"
+          }
+        },
+        {
+          "fill": {
+            "selector": "textarea[aria-label=\"本文\"]",
+            "value": "○夜の校舎・廊下（夜）\n　非常口の緑の光が揺れている。\nユイ「もう帰ろうよ。」\n「待って、すぐ終わるから」\n　3人の足音が近づく。\nケン「未完"
+          }
+        },
+        {
+          "click": {
+            "text": "脚本の書式チェック"
+          }
+        },
+        {
+          "wait": 500
+        }
+      ]
+    }
+  ]
+}
