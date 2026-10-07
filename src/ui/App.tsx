@@ -359,8 +359,8 @@ export function App({
     }
   }, [activityRepo, state.status])
 
-  // ステータスバー用の行数・文字数（旧 EditorPane のチップから移設）。
-  const lineCount = state.draft === '' ? 0 : state.draft.split('\n').length
+  // ステータスバー用の段落数・文字数（旧 EditorPane のチップから移設）。
+  const paragraphCount = state.draft === '' ? 0 : state.draft.split('\n').length
   const charCount = state.draft.length
 
   return (
@@ -856,7 +856,7 @@ export function App({
                   自動保存 ON
                 </span>
                 <span className="font-sans text-[12px] text-on-surface-variant tabular-nums">
-                  {lineCount}行 ・ {charCount}文字
+                  {paragraphCount}段落 ・ {charCount}文字
                   {todayNet !== null
                     ? ` ・ 今日 ${todayNet >= 0 ? '+' : ''}${todayNet.toLocaleString('ja-JP')}字`
                     : ''}

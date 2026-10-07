@@ -43,7 +43,7 @@ describe('WorkSearchPanel', () => {
   it('全話結果から移動と1件置換をそれぞれ操作する', async () => {
     const { onReplace, onNavigate } = setup()
     await search()
-    fireEvent.click(screen.getByRole('button', { name: /第二話・1行/ }))
+    fireEvent.click(screen.getByRole('button', { name: /第二話・1段落目/ }))
     await waitFor(() =>
       expect(onNavigate).toHaveBeenCalledWith(
         sources,
@@ -127,7 +127,7 @@ describe('WorkSearchPanel', () => {
     expect(buttons[0]).toBeEnabled()
     expect(buttons[1]).toBeDisabled()
     expect(buttons[2]).toBeDisabled()
-    fireEvent.click(screen.getByRole('button', { name: /第二話・1行/ }))
+    fireEvent.click(screen.getByRole('button', { name: /第二話・1段落目/ }))
     await waitFor(() =>
       expect(onNavigate).toHaveBeenCalledWith(
         expect.any(Array),

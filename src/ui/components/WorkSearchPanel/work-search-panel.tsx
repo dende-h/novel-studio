@@ -163,6 +163,7 @@ export function WorkSearchPanel({
               {error}
             </p>
           ) : null}
+          <p className="text-xs text-on-surface-variant">空行も1段落として数えます</p>
           <div className="min-h-0 overflow-y-auto">
             {matches.slice(0, visible).map((match) => (
               <div
@@ -179,7 +180,7 @@ export function WorkSearchPanel({
                   }}
                 >
                   <span className="block font-medium">
-                    {titles.get(match.episodeId)}・{match.line}行
+                    {titles.get(match.episodeId)}・{match.line}段落目
                   </span>
                   <span className="block break-all">
                     {match.excerpt.slice(0, match.excerptMatchStart)}

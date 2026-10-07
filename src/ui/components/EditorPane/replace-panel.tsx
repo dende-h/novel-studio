@@ -84,11 +84,12 @@ export function ReplacePanel({
         用語集の参照は置換しません
         {protectedCount > 0 ? `（${protectedCount}件を除外）` : ''}
       </p>
+      <p className="text-xs text-on-surface-variant">空行も1段落として数えます</p>
       <div className="min-h-0 overflow-y-auto">
         {matches.slice(0, visible).map((match) => (
           <div key={match.start} className="border-outline-variant/30 border-b py-2">
             <p className="text-xs">
-              <span className="block font-medium">{match.line}行目</span>
+              <span className="block font-medium">{match.line}段落目</span>
               <span className="block break-all">
                 {match.excerpt.slice(0, match.excerptMatchStart)}
                 <mark>{match.excerpt.slice(match.excerptMatchStart, match.excerptMatchEnd)}</mark>
