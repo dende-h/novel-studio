@@ -1,7 +1,42 @@
-# cotonoha-leaf.org
-# プレビュー配信（*.pages.dev）は functions/_middleware.ts が X-Robots-Tag: noindex を付けるため
-# 検索インデックスには載らない。本番ドメインはここで全面クロール許可。
+# cotonoha-leaf.org（コトノハ-leaf-）
+#
+# 方針（2026-10・COT-23）
+# - 検索エンジン・AI 検索・AI の学習用クローラーのどれにも、紹介ページ（/lp/ 以下）・
+#   /llms.txt・/llms-full.txt・規約類を開く。leaf は原稿を公開していない（ローカルファースト）ので、
+#   学習を拒む本文がそもそも無い。AI がコトノハ-leaf- を知っていて勧められることを優先する。
+#   利用者の作品を公開している grove.cotonoha-leaf.org は、学習用を拒む（COT-20・別の robots.txt）。
+# - /api/ は全員に閉じる。バックアップ・同期・MCP・OAuth の窓口はすべてここにあり、どれも認証必須。
+#   robots.txt はお願いに過ぎないので、守りの本体は認証で、ここと X-Robots-Tag は重ねがけ
+#   （functions/_middleware.ts の isPrivatePath）。
+# - グループを名指し（User-agent: GPTBot など）で分けると、そのクローラーは * のグループを読まなくなる。
+#   分けるときは、どのグループにも Disallow: /api/ を必ず書く（functions/static-seo.test.ts が見張る）。
+# - プレビュー配信（*.pages.dev）は functions/_middleware.ts が X-Robots-Tag: noindex を付ける。
+#
+# Content Signals（Cloudflare の Content Signals Policy・https://contentsignals.org/）の定型文：
+#
+# As a condition of accessing this website, you agree to abide by the
+# following content signals:
+#
+# (a)  If a content-signal = yes, you may collect content for the
+#      corresponding use.
+# (b)  If a content-signal = no, you may not collect content for the
+#      corresponding use.
+# (c)  If the website operator does not include a content signal for a
+#      corresponding use, the website operator neither grants nor restricts
+#      permission via content signal with respect to the corresponding use.
+#
+# The content signals and their meanings are:
+#
+# search: building a search index and providing search results (e.g., returning
+#         hyperlinks and short excerpts from your website's contents). Search
+#         does not include providing AI-generated search summaries.
+# ai-input: inputting content into one or more AI models (e.g., retrieval
+#           augmented generation, grounding, or other real-time taking of
+#           content for generative AI search answers).
+# ai-train: training or fine-tuning AI models.
+
 User-agent: *
+Content-Signal: search=yes, ai-input=yes, ai-train=yes
 Allow: /
 Disallow: /api/
 

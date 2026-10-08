@@ -8,7 +8,7 @@
  * 実績がある（docs/requirement/10-mcp-oauth.md §2-A）。上流の値を混ぜないことも合わせて見張る。
  */
 import { describe, expect, it } from 'vitest'
-import { onRequest } from './_middleware'
+import { isPrivatePath, onRequest } from './_middleware'
 import { DEFAULT_MCP_SCOPES } from './api/_lib/oauth-metadata'
 
 const ISSUER = 'https://credible-stork-66.clerk.accounts.dev'
@@ -106,5 +106,47 @@ describe('noindex（本番ドメインを検索から消さない）', () => {
   it('本番ドメインには付けない', async () => {
     const res = await call('/', { MCP_OAUTH_ISSUER: ISSUER }, 'GET', 'https://cotonoha-leaf.org')
     expect(res.headers.get('X-Robots-Tag')).toBeNull()
+  })
+
+  it('本番ドメインでも、紹介ページと AI 向けの案内には付けない', async () => {
+    for (const path of ['/lp/', '/lp/ai/', '/llms.txt', '/llms-full.txt', '/robots.txt']) {
+      const res = await call(path, {}, 'GET', 'https://cotonoha-leaf.org')
+      expect(res.headers.get('X-Robots-Tag'), path).toBeNull()
+    }
+  })
+
+  it('利用者のデータの窓口（/api/）は本番ドメインでも索引に載せない', async () => {
+    for (const [path, method] of [
+      ['/api/mcp', 'POST'],
+      ['/api/backup', 'GET'],
+      ['/api/sync/manifest', 'GET'],
+    ] as const) {
+      const res = await call(path, {}, method, 'https://cotonoha-leaf.org')
+      expect(res.headers.get('X-Robots-Tag'), path).toBe('noindex, nofollow')
+      // 中身は素通し（ヘッダを足すだけで応答を変えない）
+      expect(res.headers.get('content-type'), path).toBe('text/html')
+    }
+  })
+})
+
+describe('AI Catalog（/.well-known/ai-catalog.json）', () => {
+  it('このオリジンの MCP サーバーの名刺を指す', async () => {
+    const res = await call('/.well-known/ai-catalog.json', {}, 'GET', 'https://cotonoha-leaf.org')
+    expect(res.status).toBe(200)
+    expect(res.headers.get('content-type')).toBe('application/ai-catalog+json; charset=utf-8')
+    // 紹介ページと同じく、本番では索引から外さない（目録は公開情報）
+    expect(res.headers.get('X-Robots-Tag')).toBeNull()
+    const doc = (await res.json()) as { entries: { url: string }[] }
+    expect(doc.entries[0].url).toBe('https://cotonoha-leaf.org/api/mcp/server-card')
+  })
+})
+
+describe('isPrivatePath', () => {
+  it('/api の配下だけを対象にする（似た名前の公開パスを巻き込まない）', () => {
+    expect(isPrivatePath('/api')).toBe(true)
+    expect(isPrivatePath('/api/mcp')).toBe(true)
+    expect(isPrivatePath('/apis')).toBe(false)
+    expect(isPrivatePath('/lp/ai/')).toBe(false)
+    expect(isPrivatePath('/')).toBe(false)
   })
 })

@@ -1,0 +1,21 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "org.cotonoha-leaf/leaf",
+  "title": "コトノハ-leaf-",
+  "description": "縦書き小説エディタ「コトノハ-leaf-」の作品（本文・用語集・プロット・世界観設定）を、AI から読み書きする MCP サーバー",
+  "version": "1.10.0",
+  "websiteUrl": "https://cotonoha-leaf.org/lp/ai/",
+  "icons": [
+    {
+      "src": "https://cotonoha-leaf.org/app_icon.png",
+      "mimeType": "image/png",
+      "sizes": "400x400"
+    }
+  ],
+  "remotes": [
+    {
+      "type": "streamable-http",
+      "url": "https://cotonoha-leaf.org/api/mcp"
+    }
+  ]
+}

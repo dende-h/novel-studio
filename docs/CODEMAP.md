@@ -61,7 +61,7 @@ Cloudflare Pages Functions
 | 課金・会員判定 | `src/core/billing/` + `functions/api/billing/` + `functions/api/_lib/membership.ts` |
 | 無料／有料の線（どの機能をどの状態で出すか） | `src/ui/Root.tsx`（`canUseCreativeTools` ほか）+ `src/ui/auth/derive-status.ts` |
 | AI/MCP 連携（外部から原稿を編集） | `src/core/mcp-edit/index.ts` + `functions/api/_lib/mcp-server.ts` |
-| MCP コネクタの接続（OAuth・**認可サーバーは自前**） | 純ロジックは `functions/api/_lib/oauth-server.ts`、SQL は `oauth-store.ts`（migration 0010）、窓口は `functions/api/oauth/[[path]].ts`、同意画面は `src/ui/components/OAuthConsent/` ＋ `functions/api/oauth/consent.ts`、ディスカバリは `functions/_middleware.ts`。**利用者向けの接続手順**（タブは Claude / ChatGPT・Bearer 直接設定は折りたたみ）は `src/ui/components/McpConnectDialog/mcp-connect-dialog.tsx`、同じ手順のヘルプ掲載は `src/ui/components/HelpPage/help-page.tsx`——**文言は 2 か所を揃える**。経緯と決定表は `docs/requirement/10-mcp-oauth.md` |
+| MCP コネクタの接続（OAuth・**認可サーバーは自前**） | 純ロジックは `functions/api/_lib/oauth-server.ts`、SQL は `oauth-store.ts`（migration 0010）、窓口は `functions/api/oauth/[[path]].ts`、同意画面は `src/ui/components/OAuthConsent/` ＋ `functions/api/oauth/consent.ts`、ディスカバリは `functions/_middleware.ts`。**利用者向けの接続手順**（タブは Claude / ChatGPT・Bearer 直接設定は折りたたみ）は `src/ui/components/McpConnectDialog/mcp-connect-dialog.tsx`、同じ手順のヘルプ掲載は `src/ui/components/HelpPage/help-page.tsx`、公開の案内は `public/lp/ai/index.html` と `public/llms-full.txt`——**文言は 4 か所を揃える**。経緯と決定表は `docs/requirement/10-mcp-oauth.md` |
 | **UI 部品・ヘルパを新規に作りたい** | まず §3「共通部品カタログ」で在庫を確認する（重複作成の防止） |
 | **掲示板**（記名式スレッド・お知らせ・アンケート・通報）の挙動 | 画面は `src/ui/components/BoardPage/`、判断は `src/core/board/`、SQL は `functions/api/_lib/board-store.ts`、窓口は `functions/api/board/` |
 | 掲示板に貼られた外部リンクの OGP（取得可否・画像の許可表） | `src/core/board/link.ts`（判定）+ `functions/api/_lib/board-link-fetch.ts`（取得とキャッシュ） |
@@ -70,7 +70,8 @@ Cloudflare Pages Functions
 | 未課金・解約アカウントの削除（reaper） | `src/core/billing/reap-policy.ts` + `functions/api/billing/reap.ts` + `functions/api/_lib/purge.ts` |
 | 画面遷移・ルート追加 | `src/ui/Root.tsx` + `src/ui/hooks/use-hash-route.ts` |
 | DB スキーマ | `migrations/*.sql` + `wrangler.toml` |
-| ランディングページ（機能紹介・プラン表・スクリーンショット） | `public/lp/index.html` + `public/lp/shots/` |
+| ランディングページ（機能紹介・プラン表・スクリーンショット） | `public/lp/index.html` + `public/lp/shots/`（AI 連携の案内ページは `public/lp/ai/index.html`。FAQ を直したら同じファイルの JSON-LD の FAQPage も直す） |
+| **検索・AI 検索向けの案内**（robots・sitemap・llms.txt・JSON-LD・MCP の名刺）。leaf は学習用クローラーも許可（D-AIS-TRAIN） | `public/robots.txt` `public/sitemap.xml` `public/llms.txt` `public/llms-full.txt`、JSON-LD は `index.html` `public/lp/index.html` `public/lp/ai/index.html`、MCP の名刺は `functions/api/_lib/server-card.ts`（Registry 用の `server.json` と揃える）。突き合わせは `functions/static-seo.test.ts`。決定と本番後の手作業は `docs/requirement/12-ai-search.md` |
 | ユーザー向け文言（LP・案内・ボタン・エラー等）を書く/直す | `.claude/skills/toc-copy/`（トーン・用語表・マイクロコピーの型） |
 | 小説本文の執筆・推敲（MCP/ローカル） | `.claude/skills/novel-writing/`（執筆制約・レビュー観点） |
 | 小説原稿の機械検査（textlint）のルール・AI臭辞書 | `tools/novel-textlint/`（アプリ本体とは独立。README 参照） |
@@ -280,6 +281,8 @@ Cloudflare Pages Functions
 実体は `/api/oauth/*`——**名乗る issuer と、認可応答の `iss` を書く主体が同じ**であることが要
 （食い違う中間形にして ChatGPT が繋がらなくなった。経緯は `docs/requirement/10-mcp-oauth.md` §2-A）。
 **上流（Clerk）の値をメタデータに混ぜない。** Clerk は同意画面が使う身元確認だけに退く。
+同じミドルウェアが `/.well-known/ai-catalog.json`（SEP-2127 の AI Catalog＝MCP の名刺 `/api/mcp/server-card` を指す）も返し、
+`/api/` の応答にはどのホストでも `X-Robots-Tag: noindex`（`isPrivatePath`）を付ける。
 
 `client_id` が `cid_` で始まらない要求は**従来どおり Clerk へ中継**する（ファサード時代に
 Clerk へ登録済みのクライアントの互換。消すとトークン更新が黙って切れる）。
@@ -311,6 +314,7 @@ Clerk へ登録済みのクライアントの互換。消すとトークン更�
 | `/api/mcp` | リモート MCP（Streamable HTTP・JSON-RPC 2.0） |
 | `/api/mcp/token` | MCP アクセストークン発行（会員のみ） |
 | `/api/mcp/oauth-protected-resource` | RFC 9728 メタデータ |
+| `GET /api/mcp/server-card` | MCP Server Card（SEP-2127・認証なし・名前／説明／版／接続先だけ・ETag で 304） |
 | `/api/oauth/authorize` | 認可の入口。検査して同意画面（`#/connect`）へ 302。`cid_` 以外は Clerk へ中継 |
 | `/api/oauth/token` | 認可コード／更新トークンの交換（PKCE 検証・更新は回転）。自前のもの以外は Clerk へ中継 |
 | `/api/oauth/register` | 動的クライアント登録（RFC 7591・公開クライアントのみ） |
@@ -321,7 +325,7 @@ Clerk へ登録済みのクライアントの互換。消すとトークン更�
 `crypto`（at-rest 暗号化）, `mcp-server`（MCP プロトコル核・約1,200行。用語集の対話は `get_glossary_questions`＝作品に依らない読み口と `upsert_glossary_entry` の `dialog`＝`dialogPatchOf` で形を検め core の `applyDialogPatch` へ）, `mcp-auth`, `mcp-token`,
 `oauth-metadata`（PRM）, `oauth-server`（**認可サーバーの純ロジック**）, `oauth-store`（同 SQL）, `oauth-upstream`（中継先 Clerk の取得）, `stripe`, `rate-limit`, `purge`, `visitor`,
 `board-store`（**掲示板の SQL はすべてここ**・行 ⇄ camelCase の変換も）, `board-link-fetch`（OGP の取得とキャッシュ）,
-`staff`（`verifyStaff`＝運営の判定・`board_profiles.role`）, `templates-store`（運営テンプレの R2 キー `_templates/` と目録の読み書き）。
+`staff`（`verifyStaff`＝運営の判定・`board_profiles.role`）, `templates-store`（運営テンプレの R2 キー `_templates/` と目録の読み書き）, `server-card`（MCP の名刺と AI Catalog・版は `mcp-server` の `SERVER_INFO` に連動）。
 
 掲示板の共通部品は `functions/api/board/board-endpoint.ts`（`boardJson`＝`private, no-store` 付きの応答、
 `rateLimitedResponse`＝分あたりの安全弁、`postQuotaExceeded`＝10件/時、`createPostRetrying`、`conflictResponse`）。
@@ -381,6 +385,7 @@ uv run .claude/skills/natural-japanese/scripts/lint.py <file>   # 仕事の文�
 | `docs/requirement/09-board.md` | 掲示板（記名式スレッド・お知らせ・アンケート・外部リンクの OGP）の設計と決定表 |
 | `docs/requirement/10-mcp-oauth.md` | MCP の OAuth（ChatGPT で繋がらなかった原因の実測と診断・Phase 1 の撤去・自前 認可サーバーの設計と、2026-09 の ChatGPT 実地確認） |
 | `docs/requirement/11-glossary-dialog.md` | 用語集の「対話」（一問一答で項目を育てる）の決定表・`GlossaryEntry.dialog` の形・MCP 契約（`get_glossary` の出力、`upsert_glossary_entry` の `dialog` パッチ、`get_glossary_questions`）・質問の正本（付録 A） |
+| `docs/requirement/12-ai-search.md` | 検索・AI 検索からの流入（COT-22〜28 の leaf 側）の決定表・置いたものと見張り・本番後の手作業（MCP Registry・Cloudflare・Bing） |
 | `public/board-guidelines.html` | 掲示板ガイドライン（`/board-guidelines` で公開・通報や上限の文言はここと揃える） |
 | `docs/requirement/99-open-questions.md` | 未決事項 |
 | `design/stitch/*/index.html` | 画面のデザインカンプ（+ スクリーンショット） |

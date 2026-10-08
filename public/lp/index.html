@@ -19,6 +19,9 @@
 <title>コトノハ-leaf- — あなたの物語を、書きはじめよう。｜無料の縦書き小説エディタ</title>
 <meta name="description" content="登録もインストールも不要。ブラウザで開いてすぐ書き始められる、無料の縦書き小説エディタ。縦書きプレビュー、キャラや用語の整理、自動保存、小説家になろう・カクヨム・EPUBへの書き出しまで。はじめての一作にも。">
 <link rel="canonical" href="https://cotonoha-leaf.org/lp/">
+<!-- AI 向けの案内（COT-24）。Markdown 版の全体像と llms.txt を指す。 -->
+<link rel="alternate" type="text/markdown" href="https://cotonoha-leaf.org/llms-full.txt" title="機能と AI 連携の全体像（Markdown）">
+<link rel="describedby" href="https://cotonoha-leaf.org/llms.txt">
 <meta name="theme-color" content="#0f1e0c">
 <!-- favicon はアプリ（index.html）と統一。favicon.svg は余白ありの旧版で小さく見えるため使わない。 -->
 <link rel="icon" href="/favicon-clean.png" type="image/png" sizes="any">
@@ -37,6 +40,170 @@
 <meta name="twitter:title" content="コトノハ-leaf- — あなたの物語を、書きはじめよう。">
 <meta name="twitter:description" content="登録もインストールも不要。ブラウザで開いたその場で書き始められる無料の縦書き小説エディタ。縦書きプレビュー・自動保存・毎日の記録つき。">
 <meta name="twitter:image" content="https://cotonoha-leaf.org/lp/ogp.png">
+
+<!-- 構造化データ（COT-22）。FAQPage は下の「よくある質問」と一字一句同じにする
+     （functions/static-seo.test.ts が突き合わせる）。@id はルート（/index.html）と /lp/ai/ からも参照する。 -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "Organization",
+      "@id": "https://cotonoha-leaf.org/#organization",
+      "name": "コトノハ",
+      "url": "https://cotonoha-leaf.org/lp/",
+      "logo": "https://cotonoha-leaf.org/logo-clean.png"
+    },
+    {
+      "@type": "WebSite",
+      "@id": "https://cotonoha-leaf.org/#website",
+      "url": "https://cotonoha-leaf.org/",
+      "name": "コトノハ-leaf-",
+      "inLanguage": "ja",
+      "publisher": {
+        "@id": "https://cotonoha-leaf.org/#organization"
+      }
+    },
+    {
+      "@type": "WebApplication",
+      "@id": "https://cotonoha-leaf.org/#app",
+      "name": "コトノハ-leaf-",
+      "alternateName": "Cotonoha leaf",
+      "url": "https://cotonoha-leaf.org/",
+      "mainEntityOfPage": "https://cotonoha-leaf.org/lp/",
+      "applicationCategory": "BusinessApplication",
+      "applicationSubCategory": "縦書き小説エディタ",
+      "operatingSystem": "Web",
+      "browserRequirements": "Chrome・Edge・Safari・Firefox の最新版（PC またはタブレット横向き・画面幅 1024px 以上）",
+      "inLanguage": "ja",
+      "isAccessibleForFree": true,
+      "description": "登録もインストールも不要。ブラウザで開いてすぐ書き始められる、無料の縦書き小説エディタ。縦書きプレビュー、キャラや用語の整理、自動保存、小説家になろう・カクヨム・EPUBへの書き出しまで。はじめての一作にも。",
+      "image": "https://cotonoha-leaf.org/lp/ogp.png",
+      "screenshot": [
+        "https://cotonoha-leaf.org/lp/shots/editor.webp",
+        "https://cotonoha-leaf.org/lp/shots/glossary.webp",
+        "https://cotonoha-leaf.org/lp/shots/plot.webp"
+      ],
+      "featureList": [
+        "縦書きプレビュー（ルビ・傍点・縦中横）",
+        "用語集（本文で＠を打つと設定とつながる）",
+        "プロット（幕とビート・伏線と秘密）と世界観設定",
+        "アウトライン・相関図・マインドマップ",
+        "脚本モード（原稿用紙プレビュー・Word 書き出し・書式チェック）",
+        "自動保存と版履歴・オフラインで執筆",
+        "執筆の記録（連続日数・累計文字数・年間ヒートマップ）",
+        "縦書き EPUB 書き出し",
+        "小説家になろう・カクヨム記法の書き出し",
+        "サウンドノベル書き出し",
+        "AI に渡す（作品をプレーンテキストで書き出し）",
+        "端末間の自動同期（クラウド版）",
+        "暗号化したクラウドバックアップと復元（クラウド版）",
+        "MCP で Claude・ChatGPT から作品を読み書き（クラウド版）"
+      ],
+      "offers": [
+        {
+          "@type": "Offer",
+          "name": "フリー",
+          "price": "0",
+          "priceCurrency": "JPY",
+          "description": "執筆・縦書きプレビュー・用語集・書き出し。構想の道具は無料のアカウント登録で使える"
+        },
+        {
+          "@type": "Offer",
+          "name": "クラウド版（月額）",
+          "price": "500",
+          "priceCurrency": "JPY",
+          "description": "端末間の自動同期・クラウドバックアップ＆復元・AI 連携（MCP）。初回 30 日間無料",
+          "priceSpecification": {
+            "@type": "UnitPriceSpecification",
+            "price": "500",
+            "priceCurrency": "JPY",
+            "billingDuration": "P1M",
+            "valueAddedTaxIncluded": true
+          }
+        },
+        {
+          "@type": "Offer",
+          "name": "クラウド版（年額）",
+          "price": "4800",
+          "priceCurrency": "JPY",
+          "description": "端末間の自動同期・クラウドバックアップ＆復元・AI 連携（MCP）。初回 30 日間無料",
+          "priceSpecification": {
+            "@type": "UnitPriceSpecification",
+            "price": "4800",
+            "priceCurrency": "JPY",
+            "billingDuration": "P1Y",
+            "valueAddedTaxIncluded": true
+          }
+        }
+      ],
+      "publisher": {
+        "@id": "https://cotonoha-leaf.org/#organization"
+      },
+      "subjectOf": {
+        "@type": "WebPage",
+        "url": "https://cotonoha-leaf.org/lp/ai/",
+        "name": "AI 連携（MCP）— Claude・ChatGPT で原稿を読み書き"
+      }
+    },
+    {
+      "@type": "FAQPage",
+      "@id": "https://cotonoha-leaf.org/lp/#faq",
+      "inLanguage": "ja",
+      "mainEntity": [
+        {
+          "@type": "Question",
+          "name": "本当に無料ですか？",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "はい。執筆・縦書きプレビュー・用語集・書き出しなど、一作を書き上げて投稿するまでに必要な機能はすべて無料で、期限もありません。プロット・世界観設定・アウトライン・相関図・マインドマップも、無料のアカウント登録だけで使えます。有料のクラウド版は、端末間の自動同期・クラウドバックアップ／復元・AI（MCP）連携の三つ（初回は 30 日間無料で試せます）。"
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "原稿が消えてしまうことはありませんか？",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "原稿は書いたそばから端末内に自動保存され、保存のたびに版履歴が残ります。ファイルへのバックアップもいつでも取れます。ブラウザのデータを消すと原稿も消えるため、長編には定期的なバックアップか、クラウド版（自動同期＋自動バックアップ）をおすすめします。"
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "書いたものを投稿サイトに載せられますか？",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "はい。「小説家になろう」「カクヨム」の記法へ、ルビ・傍点ごと自動変換して書き出せます。書き出したテキストを貼り付けるだけで投稿できます。"
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "話の流れや人物の関係も整理できますか？",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "プロット（幕とビート・伏線と秘密・世界観設定）、アウトライン、相関図、マインドマップがあります。どれも無料のアカウント登録で使えて、本文や用語集とつながっているので、構想がそのまま原稿に育ちます。登録なしでも、ネタ帳で思いつきをためておけます。"
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "AI 連携は原稿を学習に使われませんか？",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "コトノハ-leaf- 自体は AI を内蔵せず、原稿を勝手に外部へ送ることはありません。無料版の「AI に渡す」はあなたの操作で書き出すだけ。クラウド版の MCP 連携も、あなたが接続を選んだときだけ AI が読み書きできます。渡した先での扱いは各 AI サービスの規約に従うため、気になる場合は学習に使わない設定のあるサービスをお使いください。"
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Claude や ChatGPT から、原稿を読み書きできますか？",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "はい、クラウド版でできます。MCP という仕組みでお使いの AI とつなぐと、AI が本文・用語集・プロット・世界観設定を読み、直した原稿を書き戻せます。動作確認済みは Claude と ChatGPT で、どちらもログインするだけでつながります。つなぎ方は「AI 連携（MCP）」のページにまとめています。"
+          }
+        }
+      ]
+    }
+  ]
+}
+</script>
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -198,6 +365,7 @@
       <a class="nav-a" href="#cloud">クラウド</a>
       <a class="nav-a" href="#yours">安心</a>
       <a class="nav-a" href="#pricing">料金</a>
+      <a class="nav-a" href="/lp/ai/">AI 連携</a>
       <a class="nav-a" href="#faq">よくある質問</a>
       <a class="btn-cream ns-nav-cta" href="/" style="font-size:14px;font-weight:500;padding:10px 22px;letter-spacing:0.04em">無料で始める</a>
     </nav>
@@ -403,6 +571,7 @@
       <div style="display:flex;flex-direction:column;gap:12px;background:var(--surface-card);border:1px solid var(--border-subtle);border-radius:12px;padding:28px 26px;box-shadow:0 2px 12px rgba(31,36,48,0.05)">
         <div style="display:flex;align-items:baseline;gap:10px"><span style="color:var(--wheat-500);font-size:11px">◆</span><h3 style="margin:0;font-family:var(--font-display);font-weight:600;font-size:20px;letter-spacing:0.06em;color:var(--text-heading)">AI と読み書き（MCP 連携）</h3></div>
         <p style="margin:0;font-size:14px;line-height:2;letter-spacing:0.03em;color:var(--text-body);text-wrap:pretty">AI チャットに原稿を読ませて、誤字脱字の校正や、最初の一読者としての感想を。AI が直した原稿を、そのまま書き戻すこともできます。世界観設定を先に読ませてあるので、作品の決めごとを踏まえた返事が返ります。動作確認済みの AI は Claude と ChatGPT です。</p>
+        <a href="/lp/ai/" style="margin-top:auto;font-size:14px;letter-spacing:0.04em;text-underline-offset:3px">つなぎ方と、AI が使えるツール →</a>
       </div>
     </div>
 </section>
@@ -522,6 +691,10 @@
         <summary style="display:flex;align-items:center;justify-content:space-between;gap:16px;padding:20px 0;font-size:15px;font-weight:700;color:var(--text-heading)">AI 連携は原稿を学習に使われませんか？<span data-plus style="color:var(--forest-600);font-size:20px;font-weight:400;transition:transform 0.2s">＋</span></summary>
         <p style="margin:0;padding:0 0 20px;font-size:14px;line-height:2;color:var(--text-body)">コトノハ-leaf- 自体は AI を内蔵せず、原稿を勝手に外部へ送ることはありません。無料版の「AI に渡す」はあなたの操作で書き出すだけ。クラウド版の MCP 連携も、あなたが接続を選んだときだけ AI が読み書きできます。渡した先での扱いは各 AI サービスの規約に従うため、気になる場合は学習に使わない設定のあるサービスをお使いください。</p>
       </details>
+      <details style="background:var(--surface-card);border:1px solid var(--border-subtle);border-radius:10px;padding:0 24px">
+        <summary style="display:flex;align-items:center;justify-content:space-between;gap:16px;padding:20px 0;font-size:15px;font-weight:700;color:var(--text-heading)">Claude や ChatGPT から、原稿を読み書きできますか？<span data-plus style="color:var(--forest-600);font-size:20px;font-weight:400;transition:transform 0.2s">＋</span></summary>
+        <p style="margin:0;padding:0 0 20px;font-size:14px;line-height:2;color:var(--text-body)">はい、クラウド版でできます。MCP という仕組みでお使いの AI とつなぐと、AI が本文・用語集・プロット・世界観設定を読み、直した原稿を書き戻せます。動作確認済みは Claude と ChatGPT で、どちらもログインするだけでつながります。つなぎ方は<a href="/lp/ai/">「AI 連携（MCP）」のページ</a>にまとめています。</p>
+      </details>
     </div>
   </div>
 </section>
@@ -551,6 +724,7 @@
   <div style="max-width:1140px;margin:0 auto;display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:16px">
     <div style="font-family:var(--font-display);font-size:16px;letter-spacing:0.14em;color:rgba(242,236,220,0.6)">コトノハ<span style="font-size:11px;color:rgba(216,189,151,0.6)">&nbsp;-leaf-</span></div>
     <nav style="display:flex;flex-wrap:wrap;gap:24px">
+      <a class="foot-a" href="/lp/ai/">AI 連携（MCP）</a>
       <a class="foot-a" href="/terms">利用規約</a>
       <a class="foot-a" href="/board-guidelines">掲示板ガイドライン</a>
       <a class="foot-a" href="/privacy">プライバシーポリシー</a>

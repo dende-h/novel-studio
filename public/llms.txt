@@ -1,0 +1,33 @@
+# コトノハ-leaf-
+
+> コトノハ-leaf- は、ブラウザで動く無料の縦書き小説エディタです。登録もインストールも不要で、原稿は端末の中（ブラウザ）に保存され、サーバーには送られません。有料のクラウド版（月額 ¥500・年額 ¥4,800・初回 30 日間無料）では、端末間の自動同期と暗号化したクラウドバックアップに加えて、MCP（Model Context Protocol）で Claude や ChatGPT から作品を読み書きできます。
+
+日本語で小説や脚本を書く人のための道具です。縦書きプレビュー、ルビと傍点、用語集、プロットと伏線、相関図、執筆の記録、EPUB と「小説家になろう」「カクヨム」向けの書き出しまで、書いて投稿するまでの機能は無料で使えます。
+
+- MCP サーバー: https://cotonoha-leaf.org/api/mcp （Streamable HTTP・OAuth 2.1・クラウド版の会員向け。動作確認済みは Claude と ChatGPT）
+- 対応環境: PC またはタブレット（横向き）のブラウザ
+- 言語: 日本語
+
+## 主要ページ
+
+- [紹介ページ](https://cotonoha-leaf.org/lp/): できること・料金プラン・よくある質問
+- [AI 連携（MCP）](https://cotonoha-leaf.org/lp/ai/): Claude・ChatGPT とのつなぎ方、AI に頼めること、ツール一覧、原稿の扱い
+- [機能の全体像](https://cotonoha-leaf.org/llms-full.txt): 機能・料金・MCP ツールを 1 つにまとめた Markdown
+- [アプリ](https://cotonoha-leaf.org/): 開けばその場で書き始められます（アカウント不要）
+
+## 規約
+
+- [利用規約](https://cotonoha-leaf.org/terms)
+- [プライバシーポリシー](https://cotonoha-leaf.org/privacy)
+- [特定商取引法に基づく表記](https://cotonoha-leaf.org/tokushoho)
+- [掲示板ガイドライン](https://cotonoha-leaf.org/board-guidelines)
+
+## 関連サービス
+
+- [コトノハ-grove-](https://grove.cotonoha-leaf.org/): コトノハ-leaf- で書いた作品を投稿して、読者に読んでもらう公開サイト
+
+## Optional
+
+- [サイトマップ](https://cotonoha-leaf.org/sitemap.xml)
+- [MCP Server Card](https://cotonoha-leaf.org/api/mcp/server-card): MCP サーバーの名前・版・接続先（JSON・SEP-2127。目録は /.well-known/ai-catalog.json）
+- このサイトの紹介ページ（/lp/ 以下）と /llms.txt・/llms-full.txt は、AI の検索・回答・学習に使ってかまいません。利用者の原稿はこのサイトでは公開していません。
