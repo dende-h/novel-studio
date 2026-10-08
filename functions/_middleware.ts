@@ -22,6 +22,12 @@
 
 import { buildProtectedResourceMetadata, parseScopes } from './api/_lib/oauth-metadata'
 import { buildAuthServerMetadata } from './api/_lib/oauth-server'
+import {
+  AI_CATALOG_MEDIA_TYPE,
+  AI_CATALOG_PATH,
+  buildAiCatalog,
+  cardResponse,
+} from './api/_lib/server-card'
 
 interface Env {
   /** 要求してほしいスコープ（スペース区切り・任意。未設定なら DEFAULT_MCP_SCOPES）。 */
@@ -82,9 +88,28 @@ function oauthDiscovery(context: MiddlewareContext, url: URL): Response | null {
   return jsonDiscovery(JSON.stringify(meta))
 }
 
+/**
+ * 検索・AI の索引に載せないパス（本番ドメインでも）。
+ *
+ * /api/ はバックアップ・同期・MCP・OAuth の窓口で、利用者のデータはすべてここを通る。
+ * どれも認証必須で、守りの本体は認証そのもの。robots.txt の `Disallow: /api/` は
+ * 「お願い」に過ぎないので、万一たどられても索引に残らないよう応答ヘッダでも断る（重ねがけ）。
+ * 紹介ページ（/lp/ 以下）や `/` はここに入れない。MCP 接続の同意画面はハッシュルート
+ * （`/#/connect`）でサーバーにはパスが届かないため、ここでは扱えない（扱う必要もない）。
+ */
+export function isPrivatePath(pathname: string): boolean {
+  return pathname === '/api' || pathname.startsWith('/api/')
+}
+
 export async function onRequest(context: MiddlewareContext): Promise<Response> {
   const url = new URL(context.request.url)
-  const discovery = oauthDiscovery(context, url)
+  // ドメインの目録（SEP-2127 の AI Catalog）。MCP サーバーの名刺 /api/mcp/server-card を指す。
+  // オリジンに追従させたいので静的ファイルではなくここで組む（stg は stg の名刺を指す）。
+  const catalog =
+    url.pathname === AI_CATALOG_PATH
+      ? await cardResponse(context.request, buildAiCatalog(url.origin), AI_CATALOG_MEDIA_TYPE)
+      : null
+  const discovery = catalog ?? oauthDiscovery(context, url)
   const response = discovery ?? (await context.next())
 
   // SEO：本番の正規ドメインは cotonoha-leaf.org に一本化する。本番デプロイは
@@ -92,7 +117,8 @@ export async function onRequest(context: MiddlewareContext): Promise<Response> {
   // これらが検索インデックスに載ると重複コンテンツになるため、**ホスト名が .pages.dev で
   // 終わるときだけ** X-Robots-Tag: noindex を付ける。cotonoha-leaf.org は該当しないので
   // 絶対に noindex にならない（許可リスト型＝本番を検索から消す方向には決して倒れない）。
-  if (url.hostname.endsWith('.pages.dev')) {
+  // 例外は利用者のデータの窓口（isPrivatePath）で、こちらはどのホストでも索引に載せない。
+  if (url.hostname.endsWith('.pages.dev') || isPrivatePath(url.pathname)) {
     const res = new Response(response.body, response)
     res.headers.set('X-Robots-Tag', 'noindex, nofollow')
     return res

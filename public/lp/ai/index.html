@@ -1,0 +1,532 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- AI 連携（MCP）の案内ページ（COT-22〜24・AI 検索向けのカタログ）。
+     JS なしで全文が読める静的 HTML にしてある＝JS を実行しない AI クローラーにも中身が届く。
+     同じ内容の Markdown 版は /llms-full.txt。接続手順の文言はアプリ内の接続画面
+     （McpConnectDialog）とヘルプ（HelpPage）に揃える——4 か所を一緒に直す。
+     ツール一覧は functions/api/_lib/mcp-server.ts の MCP_TOOLS と突き合わせるテストがある
+     （functions/static-seo.test.ts）。FAQ の文言と JSON-LD の FAQPage も同じテストで一致を見ている。 -->
+<title>AI 連携（MCP）— Claude・ChatGPT で原稿を読み書き｜コトノハ-leaf-</title>
+<meta name="description" content="コトノハ-leaf- のクラウド版は、MCP で Claude や ChatGPT とつながります。AI が作品の本文・用語集・プロット・世界観設定を読み、頼んだ範囲で書き換えます。つなぎ方、頼めること、ツール一覧、原稿の扱いをまとめました。">
+<link rel="canonical" href="https://cotonoha-leaf.org/lp/ai/">
+<link rel="alternate" type="text/markdown" href="https://cotonoha-leaf.org/llms-full.txt" title="機能と AI 連携の全体像（Markdown）">
+<link rel="describedby" href="https://cotonoha-leaf.org/llms.txt">
+<meta name="theme-color" content="#0f1e0c">
+<link rel="icon" href="/favicon-clean.png" type="image/png" sizes="any">
+
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="コトノハ-leaf-">
+<meta property="og:title" content="AI 連携（MCP）— Claude・ChatGPT で原稿を読み書き｜コトノハ-leaf-">
+<meta property="og:description" content="MCP で Claude や ChatGPT とつながり、AI が作品の本文・用語集・プロット・世界観設定を読み書きします。つなぎ方と、原稿の扱いをまとめました。">
+<meta property="og:url" content="https://cotonoha-leaf.org/lp/ai/">
+<meta property="og:image" content="https://cotonoha-leaf.org/lp/ogp.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:locale" content="ja_JP">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="AI 連携（MCP）— Claude・ChatGPT で原稿を読み書き｜コトノハ-leaf-">
+<meta name="twitter:description" content="MCP で Claude や ChatGPT とつながり、AI が作品の本文・用語集・プロット・世界観設定を読み書きします。">
+<meta name="twitter:image" content="https://cotonoha-leaf.org/lp/ogp.png">
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "WebPage",
+      "@id": "https://cotonoha-leaf.org/lp/ai/#webpage",
+      "url": "https://cotonoha-leaf.org/lp/ai/",
+      "name": "AI 連携（MCP）— Claude・ChatGPT で原稿を読み書き｜コトノハ-leaf-",
+      "description": "コトノハ-leaf- のクラウド版は、MCP で Claude や ChatGPT とつながります。AI が作品の本文・用語集・プロット・世界観設定を読み、頼んだ範囲で書き換えます。つなぎ方、頼めること、ツール一覧、原稿の扱いをまとめました。",
+      "inLanguage": "ja",
+      "dateModified": "2026-10-08",
+      "isPartOf": { "@id": "https://cotonoha-leaf.org/#website" },
+      "about": { "@id": "https://cotonoha-leaf.org/#app" },
+      "breadcrumb": {
+        "@type": "BreadcrumbList",
+        "itemListElement": [
+          { "@type": "ListItem", "position": 1, "name": "コトノハ-leaf-", "item": "https://cotonoha-leaf.org/lp/" },
+          { "@type": "ListItem", "position": 2, "name": "AI 連携（MCP）", "item": "https://cotonoha-leaf.org/lp/ai/" }
+        ]
+      }
+    },
+    {
+      "@type": "FAQPage",
+      "@id": "https://cotonoha-leaf.org/lp/ai/#faq",
+      "inLanguage": "ja",
+      "mainEntity": [
+        {
+          "@type": "Question",
+          "name": "どの AI で使えますか？",
+          "acceptedAnswer": { "@type": "Answer", "text": "動作確認済みは Claude と ChatGPT です。どちらもコトノハ-leaf- のアカウントでログインして認証するので、トークンの貼り付けは要りません。リクエストヘッダーに Bearer トークンを設定できるほかの MCP クライアントでも、トークンを直接設定してつなげます（動作確認の対象外です）。" }
+        },
+        {
+          "@type": "Question",
+          "name": "無料版でも、AI に原稿を読ませられますか？",
+          "acceptedAnswer": { "@type": "Answer", "text": "はい。書き出しの「AI に渡す」で、作品全体をプレーンテキストにしてコピーやファイル保存ができます。好きな AI のチャットに貼り付けるか、ファイルで添付してください。AI が作品を直接読み書きする MCP 連携は、クラウド版の機能です。" }
+        },
+        {
+          "@type": "Question",
+          "name": "AI の書き換えで、手元の原稿が急に変わりませんか？",
+          "acceptedAnswer": { "@type": "Answer", "text": "変わりません。AI の編集はクラウドに入り、マイライブラリの「データ管理」→「AIの変更を取り込む」を押したときに、はじめて端末の原稿へ反映されます。大きく直してもらう前に、AI にクラウドバックアップを作らせておくこともできます。" }
+        },
+        {
+          "@type": "Question",
+          "name": "原稿は AI の学習に使われますか？",
+          "acceptedAnswer": { "@type": "Answer", "text": "コトノハ-leaf- 自体は AI を内蔵せず、原稿を勝手に外部へ送ることはありません。AI が読んだ原稿は、あなたが選んだ AI サービスに送られ、その先での扱いは各サービスの規約に従います。気になる場合は、学習に使わない設定のあるサービスをお使いください。" }
+        },
+        {
+          "@type": "Question",
+          "name": "接続をやめるには？",
+          "acceptedAnswer": { "@type": "Answer", "text": "「AI に接続（MCP）」の画面で「接続を解除」を押します。AI 側に出した許可も同時に無効になります。" }
+        }
+      ]
+    }
+  ]
+}
+</script>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Shippori+Mincho+B1:wght@500;600;700&family=Zen+Kaku+Gothic+New:wght@400;500;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+<style>
+  /* トークンは LP（public/lp/index.html）と同じ値の抜き書き。 */
+  :root {
+    --forest-900: #1a3014; --forest-800: #234420; --forest-700: #2c5b27;
+    --forest-600: #35692f; --forest-400: #6b9660; --forest-100: #e3ece1; --forest-50: #f2f7f1;
+    --wheat-700: #92703f; --wheat-600: #a67e4f; --wheat-500: #b98f63; --wheat-300: #d8bd97; --wheat-100: #f2e6d4;
+    --cream-0: #fefeff; --cream-50: #fdfcfb; --cream-100: #f9f7f5; --paper-100: #f3ede4;
+    --gray-200: #e4e6eb; --gray-300: #d5d8dd; --gray-400: #9da3ae; --gray-500: #7d8494;
+    --gray-700: #4b5160; --gray-900: #1f2430;
+    --surface-card: var(--cream-0); --surface-sunken: var(--cream-100); --surface-reading: var(--paper-100);
+    --border-subtle: var(--gray-200); --border-default: var(--gray-300);
+    --text-heading: var(--gray-900); --text-body: var(--gray-700); --text-muted: var(--gray-500);
+    --font-display: "Shippori Mincho B1", "Hiragino Mincho ProN", "Yu Mincho", serif;
+    --font-body: "Zen Kaku Gothic New", "Hiragino Sans", "Yu Gothic", sans-serif;
+    --font-mono: "JetBrains Mono", "SF Mono", ui-monospace, monospace;
+    --gutter: 32px;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body { margin: 0; background: var(--cream-50); font-family: var(--font-body); color: var(--text-body); -webkit-font-smoothing: antialiased; line-height: 1.9; }
+  a { color: var(--forest-700); }
+  a:hover { color: var(--forest-900); }
+  ::selection { background: var(--forest-100); }
+  code { font-family: var(--font-mono); font-size: 0.92em; }
+  summary { list-style: none; cursor: pointer; }
+  summary::-webkit-details-marker { display: none; }
+  details[open] .plus { transform: rotate(45deg); }
+
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 0 var(--gutter); }
+  .narrow { max-width: 820px; }
+  .eyebrow { font-family: var(--font-mono); font-size: 12px; letter-spacing: 0.32em; color: var(--wheat-600); }
+  .h2 { margin: 0; font-family: var(--font-display); font-weight: 600; font-size: clamp(26px, 2.8vw, 36px); letter-spacing: 0.08em; line-height: 1.5; color: var(--text-heading); }
+  .lead { margin: 0; font-size: 15px; letter-spacing: 0.04em; color: var(--text-muted); }
+  .sec { padding: 96px 0; }
+  .sec-head { display: flex; flex-direction: column; gap: 14px; margin-bottom: 44px; }
+  .badge { display: inline-flex; background: var(--wheat-500); color: #ffffff; border-radius: 999px; padding: 3px 14px; font-size: 11px; font-weight: 700; letter-spacing: 0.16em; }
+
+  /* ヘッダーとヒーロー（LP の夜の森を簡素にしたもの） */
+  .hero { background: #0f1e0c; color: #f2ecdc; position: relative; overflow: hidden; }
+  .hero::after { content: ""; position: absolute; top: 0; right: 0; bottom: 0; width: 50%; pointer-events: none; background: repeating-linear-gradient(90deg, rgba(233,228,211,0.05) 0px, rgba(233,228,211,0.05) 1px, transparent 1px, transparent 36px); }
+  .bar { position: relative; z-index: 2; display: flex; align-items: center; justify-content: space-between; gap: 16px; max-width: 1240px; margin: 0 auto; padding: 24px var(--gutter); }
+  .brand { display: flex; align-items: center; gap: 10px; text-decoration: none; }
+  .brand img { height: 36px; width: auto; display: block; }
+  .brand span { font-family: var(--font-display); font-size: 20px; letter-spacing: 0.14em; color: #f2ecdc; }
+  .brand small { font-size: 12px; color: var(--wheat-300); letter-spacing: 0.08em; }
+  .bar nav { display: flex; align-items: center; gap: 24px; }
+  .nav-a { color: rgba(242,236,220,0.75); text-decoration: none; font-size: 14px; letter-spacing: 0.06em; }
+  .nav-a:hover { color: #ffffff; }
+  .hero-body { position: relative; z-index: 2; max-width: 1080px; margin: 0 auto; padding: 56px var(--gutter) 112px; display: flex; flex-direction: column; gap: 26px; }
+  .hero h1 { margin: 0; font-family: var(--font-display); font-weight: 600; font-size: clamp(32px, 4vw, 54px); line-height: 1.45; letter-spacing: 0.08em; color: #f6f1e2; }
+  .hero p { margin: 0; max-width: 680px; font-size: 16px; line-height: 2; letter-spacing: 0.04em; color: rgba(236,229,208,0.82); }
+  .hero .meta { font-size: 13px; letter-spacing: 0.08em; color: rgba(236,229,208,0.6); }
+  .hero .eyebrow { color: var(--wheat-300); display: flex; align-items: center; gap: 12px; }
+  .cta-row { display: flex; flex-wrap: wrap; gap: 14px; }
+  .btn-cream { background: #f2ead8; color: var(--forest-900); text-decoration: none; font-weight: 700; border-radius: 999px; letter-spacing: 0.06em; padding: 13px 28px; font-size: 15px; transition: background 0.2s; }
+  .btn-cream:hover { background: #ffffff; color: var(--forest-900); }
+  .btn-ghost-dark { border: 1px solid rgba(242,236,220,0.4); color: rgba(242,236,220,0.9); text-decoration: none; border-radius: 999px; letter-spacing: 0.06em; padding: 12px 26px; font-size: 15px; transition: background 0.2s, color 0.2s; }
+  .btn-ghost-dark:hover { background: rgba(255,255,255,0.08); color: #ffffff; }
+  .btn-solid { background: var(--forest-700); color: #ffffff; text-decoration: none; font-weight: 700; border-radius: 999px; letter-spacing: 0.06em; padding: 13px 28px; font-size: 15px; }
+  .btn-solid:hover { background: var(--forest-600); color: #ffffff; }
+  .btn-card { background: var(--surface-card); border: 1px solid var(--border-default); color: var(--text-heading); text-decoration: none; border-radius: 999px; letter-spacing: 0.06em; padding: 12px 26px; font-size: 15px; }
+  .btn-card:hover { background: var(--surface-sunken); color: var(--text-heading); }
+
+  /* 頼めること */
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr)); gap: 22px; }
+  .card { display: flex; flex-direction: column; gap: 10px; background: var(--surface-card); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 26px 24px; box-shadow: 0 2px 12px rgba(31,36,48,0.05); }
+  .card h3 { margin: 0; font-family: var(--font-display); font-weight: 600; font-size: 19px; letter-spacing: 0.06em; color: var(--text-heading); display: flex; align-items: baseline; gap: 10px; }
+  .card h3::before { content: "◆"; color: var(--wheat-500); font-size: 11px; }
+  .card p { margin: 0; font-size: 14px; line-height: 2; letter-spacing: 0.03em; }
+  .aside { margin: 28px 0 0; font-size: 14px; color: var(--text-muted); letter-spacing: 0.03em; }
+
+  /* つなぎ方 */
+  .steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr)); gap: 22px; }
+  .step { background: var(--surface-card); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 26px 24px; }
+  .step h3 { margin: 0 0 12px; font-family: var(--font-display); font-weight: 600; font-size: 19px; letter-spacing: 0.06em; color: var(--text-heading); }
+  .step ol { margin: 0; padding-left: 1.4em; font-size: 14px; line-height: 2; }
+  .step li + li { margin-top: 6px; }
+  .step-first { grid-column: 1 / -1; }
+  .url-box { margin: 14px 0 0; display: flex; flex-wrap: wrap; align-items: center; gap: 10px; background: var(--surface-sunken); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 12px 16px; }
+  .url-box span { font-size: 12px; letter-spacing: 0.08em; color: var(--text-muted); }
+  .url-box code { font-size: 14px; color: var(--text-heading); word-break: break-all; }
+  .notes { margin: 26px 0 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 10px; font-size: 14px; }
+  .notes li { padding-left: 1.4em; position: relative; }
+  .notes li::before { content: "─"; position: absolute; left: 0; color: var(--wheat-500); }
+
+  /* ツール一覧 */
+  .tool-groups { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(460px, 100%), 1fr)); gap: 22px; align-items: start; }
+  .tool-group { background: var(--surface-card); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 22px 24px; }
+  .tool-group h3 { margin: 0 0 10px; font-family: var(--font-display); font-weight: 600; font-size: 18px; letter-spacing: 0.06em; color: var(--text-heading); }
+  .tool-group h3 small { font-family: var(--font-body); font-weight: 400; font-size: 12px; color: var(--text-muted); letter-spacing: 0.04em; margin-left: 8px; }
+  .tools { margin: 0; padding: 0; list-style: none; }
+  .tools li { display: grid; grid-template-columns: 13.5em 1fr; gap: 4px 14px; padding: 10px 0; border-top: 1px solid var(--border-subtle); font-size: 13.5px; line-height: 1.8; }
+  .tools li:first-child { border-top: 0; }
+  .tools code { color: var(--forest-800); word-break: break-all; }
+  @media (max-width: 560px) { .tools li { grid-template-columns: 1fr; } }
+
+  /* 原稿の扱い（LP の「YOURS」と同じ深い緑） */
+  .dark { background: var(--forest-900); color: rgba(236,229,208,0.85); }
+  .dark .h2 { color: #f6f1e2; }
+  .dark .eyebrow { color: var(--wheat-300); }
+  .facts { margin: 0; padding: 0; list-style: none; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr)); gap: 18px; }
+  .facts li { border: 1px solid rgba(242,236,220,0.16); border-radius: 12px; padding: 22px 22px; font-size: 14px; line-height: 2; letter-spacing: 0.03em; background: rgba(255,255,255,0.03); }
+  .facts strong { display: block; margin-bottom: 6px; font-family: var(--font-display); font-weight: 600; font-size: 17px; letter-spacing: 0.06em; color: #f6f1e2; }
+
+  /* 料金 */
+  .price { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr)); gap: 22px; }
+  .price-card { background: var(--surface-card); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 28px 26px; display: flex; flex-direction: column; gap: 12px; }
+  .price-card.paid { border-color: var(--wheat-300); box-shadow: 0 8px 28px rgba(146,112,63,0.10); }
+  .price-card h3 { margin: 0; font-family: var(--font-display); font-weight: 600; font-size: 20px; letter-spacing: 0.06em; color: var(--text-heading); display: flex; align-items: center; gap: 10px; }
+  .price-card .yen { font-family: var(--font-display); font-size: 26px; color: var(--text-heading); letter-spacing: 0.04em; }
+  .price-card p, .price-card ul { margin: 0; font-size: 14px; line-height: 2; }
+  .price-card ul { padding-left: 1.2em; }
+
+  /* よくある質問 */
+  .faq { display: flex; flex-direction: column; gap: 14px; }
+  .faq details { background: var(--surface-card); border: 1px solid var(--border-subtle); border-radius: 10px; padding: 0 24px; }
+  .faq summary { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 20px 0; font-size: 15px; font-weight: 700; color: var(--text-heading); }
+  .faq .plus { color: var(--forest-600); font-size: 20px; font-weight: 400; transition: transform 0.2s; }
+  .faq p { margin: 0; padding: 0 0 20px; font-size: 14px; line-height: 2; }
+
+  /* 最後の案内とフッター */
+  .closing { background: #10200c; padding: 110px var(--gutter); text-align: center; }
+  .closing h2 { margin: 0 0 18px; font-family: var(--font-display); font-weight: 600; font-size: clamp(28px, 3vw, 40px); letter-spacing: 0.1em; color: #f6f1e2; }
+  .closing p { margin: 0 auto 30px; max-width: 560px; font-size: 15px; line-height: 2; letter-spacing: 0.05em; color: rgba(236,229,208,0.72); }
+  .closing .cta-row { justify-content: center; }
+  footer { background: #0c1809; padding: 34px var(--gutter); }
+  footer .row { max-width: 1140px; margin: 0 auto; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px; }
+  footer .name { font-family: var(--font-display); font-size: 16px; letter-spacing: 0.14em; color: rgba(242,236,220,0.6); }
+  footer .name small { font-size: 11px; color: rgba(216,189,151,0.6); }
+  footer nav { display: flex; flex-wrap: wrap; gap: 20px; }
+  .foot-a { color: rgba(236,229,208,0.5); text-decoration: none; font-size: 13px; }
+  .foot-a:hover { color: rgba(236,229,208,0.9); }
+
+  @media (max-width: 860px) {
+    :root { --gutter: 20px; }
+    .nav-a { display: none; }
+    .sec { padding: 72px 0; }
+    .hero-body { padding: 36px var(--gutter) 84px; }
+  }
+  @media (max-width: 400px) { :root { --gutter: 16px; } }
+  @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+</style>
+</head>
+<body>
+
+<div class="hero">
+  <header class="bar">
+    <a class="brand" href="/lp/">
+      <img src="/logo-clean.png" alt="" aria-hidden="true" width="347" height="367">
+      <span>コトノハ<small>&nbsp;-leaf-</small></span>
+    </a>
+    <nav>
+      <a class="nav-a" href="#use">頼めること</a>
+      <a class="nav-a" href="#connect">つなぎ方</a>
+      <a class="nav-a" href="#tools">ツール一覧</a>
+      <a class="nav-a" href="#data">原稿の扱い</a>
+      <a class="nav-a" href="/lp/">紹介ページ</a>
+    </nav>
+  </header>
+  <div class="hero-body">
+    <div class="eyebrow">AI × MCP <span class="badge">クラウド版</span></div>
+    <h1>あなたの AI と、<br>原稿を読み書きする。</h1>
+    <p>コトノハ-leaf- のクラウド版は、MCP（Model Context Protocol）で Claude や ChatGPT とつながります。AI が作品の本文・用語集・プロット・世界観設定を読み、あなたが頼んだ範囲で書き換えます。</p>
+    <p class="meta">動作確認済み：Claude ／ ChatGPT　・　ログインで認証（トークンの貼り付けは不要）</p>
+    <div class="cta-row">
+      <a class="btn-cream" href="#connect">つなぎ方を見る</a>
+      <a class="btn-ghost-dark" href="/lp/#pricing">料金を見る</a>
+    </div>
+  </div>
+</div>
+
+<main>
+
+<section id="use" class="sec">
+  <div class="wrap">
+    <div class="sec-head">
+      <div class="eyebrow">USE</div>
+      <h2 class="h2">AI に頼めること</h2>
+      <p class="lead">書くのは、あなたです。AI は、読んで、確かめて、手を貸します。</p>
+    </div>
+    <div class="cards">
+      <div class="card">
+        <h3>校正と書き戻し</h3>
+        <p>誤字脱字や表記の揺れを確かめてもらい、直した原稿をそのまま作品へ書き戻せます。</p>
+      </div>
+      <div class="card">
+        <h3>最初の一読者として</h3>
+        <p>書いたばかりの話を読ませて、感想や、読んでいて引っかかった箇所を聞けます。</p>
+      </div>
+      <div class="card">
+        <h3>決めごとを踏まえた相談</h3>
+        <p>AI は書き換えの前に、世界観設定を読みます。語り手や言葉づかい、やらないと決めたことを守ったまま、続きの展開を一緒に考えられます。</p>
+      </div>
+      <div class="card">
+        <h3>用語集を育てる</h3>
+        <p>会話の中で決まった人物や場所を、用語集の項目として足していけます。読者に見せない情報は、作者メモに分けて書かれます。</p>
+      </div>
+      <div class="card">
+        <h3>プロットの点検</h3>
+        <p>幕とビートを組み、伏線の回収漏れや、秘密を明かす時期を AI と確かめられます。</p>
+      </div>
+      <div class="card">
+        <h3>サウンドノベルの演出</h3>
+        <p>話者・立ち絵・背景・BGM・場面の切れ目を、行ごとにまとめて付けられます。本文には手を触れません。</p>
+      </div>
+    </div>
+    <p class="aside">机を離れているときは、スマートフォンの AI アプリから、読み返しや短いメモもできます。</p>
+  </div>
+</section>
+
+<section id="connect" class="sec" style="background:var(--surface-reading)">
+  <div class="wrap">
+    <div class="sec-head">
+      <div class="eyebrow">CONNECT</div>
+      <h2 class="h2">つなぎ方</h2>
+      <p class="lead">どちらの AI も、コトノハ-leaf- のアカウントでログインして認証します。トークンを貼る手間はありません。</p>
+    </div>
+    <div class="steps">
+      <div class="step step-first">
+        <h3>1. コトノハ-leaf- で接続をオンにする</h3>
+        <ol>
+          <li>マイライブラリの「データ管理」→「AI に接続（MCP）」を開きます。</li>
+          <li>同意にチェックして「接続する」を押すと、AI 側に登録する URL と手順が表示されます。</li>
+        </ol>
+        <div class="url-box"><span>MCP サーバーの URL</span><code>https://cotonoha-leaf.org/api/mcp</code></div>
+      </div>
+      <div class="step">
+        <h3>2a. Claude につなぐ</h3>
+        <ol>
+          <li>Claude の設定 →「コネクタ」→「カスタムコネクタを追加」。</li>
+          <li>「リモート MCP サーバーの URL」に上の URL を貼って追加し、「接続」を押します。</li>
+          <li>表示されるコトノハ-leaf- のログイン画面で「許可する」を選べば完了です。</li>
+        </ol>
+      </div>
+      <div class="step">
+        <h3>2b. ChatGPT につなぐ</h3>
+        <ol>
+          <li>先に開発者モードをオンにします。設定 →「プラグイン」→ 一覧の下の「開発者モード」を開き、スイッチをオン。</li>
+          <li>左メニューの「プラグイン」→ 右上の「＋」→「アプリを作成」→「MCP アプリを作成」。</li>
+          <li>名前（例：コトノハ）を入力し、「サーバーの URL」に上の URL を貼ります。認証は OAuth のまま、注意事項を読んで「理解したうえで、続行します」にチェックし、「作成する」。</li>
+          <li>「サインイン」を押すとコトノハ-leaf- のログイン画面が開くので、「許可する」を選べば完了です。</li>
+        </ol>
+      </div>
+    </div>
+    <ul class="notes">
+      <li>AI の編集はクラウドに入り、端末の原稿はすぐには変わりません。マイライブラリの「データ管理」→「AIの変更を取り込む」を押したときに反映されます。</li>
+      <li>接続をやめるときは、「AI に接続（MCP）」の画面で「接続を解除」を押します。AI 側に出した許可も同時に無効になります。</li>
+      <li>リクエストヘッダーに Bearer トークンを設定できるほかの MCP クライアントには、接続画面の「ほかの AI につなぐ（トークンを直接設定）」から設定できます（動作確認の対象外です）。</li>
+    </ul>
+  </div>
+</section>
+
+<section id="tools" class="sec">
+  <div class="wrap">
+    <div class="sec-head">
+      <div class="eyebrow">TOOLS</div>
+      <h2 class="h2">AI が使えるツール</h2>
+      <p class="lead">MCP でつながった AI は、次のツールで作品を読み書きします。書き込み系のツールは、渡した項目だけを書き換えます。</p>
+    </div>
+    <div class="tool-groups">
+      <div class="tool-group">
+        <h3>作品</h3>
+        <ul class="tools">
+          <li><code>list_works</code><span>作品の一覧（タイトル・著者・話数）を返します。</span></li>
+          <li><code>get_work</code><span>1 作品の本文全体を、各話の見出し付きで返します。</span></li>
+          <li><code>create_work</code><span>新しい空の作品を作ります。</span></li>
+          <li><code>set_work_meta</code><span>タイトル・著者名・あらすじ・梗概・形式（小説／脚本）を更新します。</span></li>
+        </ul>
+      </div>
+      <div class="tool-group">
+        <h3>話（本文）</h3>
+        <ul class="tools">
+          <li><code>set_episode</code><span>既存の話のタイトルと本文を更新します。</span></li>
+          <li><code>add_episode</code><span>作品の末尾に新しい話を追加します。</span></li>
+        </ul>
+      </div>
+      <div class="tool-group">
+        <h3>用語集<small>コトノハ-grove- で読者にも見えます</small></h3>
+        <ul class="tools">
+          <li><code>get_glossary</code><span>人物・場所・組織・用語・アイテム・生物の項目を返します。</span></li>
+          <li><code>get_glossary_questions</code><span>項目を一問一答で育てる「対話ノート」の質問を返します。</span></li>
+          <li><code>upsert_glossary_entry</code><span>項目を追加・更新します。読者に見せない情報は作者メモへ。</span></li>
+          <li><code>delete_glossary_entry</code><span>項目を削除します。</span></li>
+        </ul>
+      </div>
+      <div class="tool-group">
+        <h3>世界観設定<small>作者だけの控え・公開されません</small></h3>
+        <ul class="tools">
+          <li><code>get_world</code><span>作品の決めごと・設定ルール・執筆方針を返します。AI は書き換えの前にまずこれを読みます。</span></li>
+          <li><code>set_world_note</code><span>世界観設定の枠を書き込みます。</span></li>
+          <li><code>delete_world_note</code><span>世界観設定の枠を削除します。</span></li>
+        </ul>
+      </div>
+      <div class="tool-group">
+        <h3>プロット</h3>
+        <ul class="tools">
+          <li><code>get_plot</code><span>幕とビート、プロットライン、伏線、秘密を返します。</span></li>
+          <li><code>set_plot_meta</code><span>タイトル・ログライン・テーマを更新します。</span></li>
+          <li><code>upsert_plot_section</code><span>幕を追加・更新します。</span></li>
+          <li><code>upsert_plot_beat</code><span>ビート（出来事のカード）を追加・更新・移動します。</span></li>
+          <li><code>delete_plot_beat</code><span>ビートを削除します。</span></li>
+          <li><code>upsert_plot_line</code><span>メインやサブプロットなどの筋を追加・更新します。</span></li>
+          <li><code>upsert_foreshadow</code><span>伏線（張るビートと回収するビート）を追加・更新します。</span></li>
+          <li><code>upsert_secret</code><span>秘密（読者に伏せている情報と、明かすビート）を追加・更新します。</span></li>
+          <li><code>delete_plot_item</code><span>幕・プロットライン・伏線・秘密を削除します。</span></li>
+        </ul>
+      </div>
+      <div class="tool-group">
+        <h3>構造</h3>
+        <ul class="tools">
+          <li><code>get_structures</code><span>アウトライン・相関図・マインドマップを返します。</span></li>
+          <li><code>set_structure</code><span>構造データを追加・更新します。</span></li>
+          <li><code>set_outline</code><span>1 つの話の構成メモ（アウトライン）を書き換えます。</span></li>
+        </ul>
+      </div>
+      <div class="tool-group">
+        <h3>演出（サウンドノベル）</h3>
+        <ul class="tools">
+          <li><code>get_staging</code><span>1 つの話の演出（話者・立ち絵・場面の切れ目・背景・BGM）を行ごとに返します。</span></li>
+          <li><code>set_staging</code><span>行ごとに演出を付けます。本文は変わりません。</span></li>
+        </ul>
+      </div>
+      <div class="tool-group">
+        <h3>バックアップ</h3>
+        <ul class="tools">
+          <li><code>create_backup</code><span>現在の全データをクラウドにバックアップします。</span></li>
+          <li><code>list_backups</code><span>クラウドバックアップの一覧を返します。</span></li>
+          <li><code>restore_backup</code><span>指定したバックアップの内容に戻します（反映はアプリで取り込んだとき）。</span></li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="data" class="sec dark">
+  <div class="wrap">
+    <div class="sec-head">
+      <div class="eyebrow">YOUR MANUSCRIPT</div>
+      <h2 class="h2">原稿の扱い</h2>
+    </div>
+    <ul class="facts">
+      <li><strong>ふだんは、端末の中だけ</strong>MCP を使わない執筆では、原稿はお使いの端末のブラウザ内にだけ保存されます。</li>
+      <li><strong>接続すると、暗号化してクラウドへ</strong>AI が読み書きするための作品データは、暗号化してクラウドに置かれます。</li>
+      <li><strong>読んだ原稿は、選んだ AI へ</strong>AI が読んだ原稿は、あなたが選んだ AI サービスに送られます。その先での扱いは、各サービスの規約に従います。</li>
+      <li><strong>反映は、取り込んだときだけ</strong>AI の変更は、「AIの変更を取り込む」を押すまで端末の原稿に反映されません。</li>
+      <li><strong>いつでも止められる</strong>「接続を解除」で、AI 側に出した許可ごと無効になります。</li>
+      <li><strong>AI は内蔵していない</strong>コトノハ-leaf- 自体は AI を持たず、原稿を勝手に外部へ送ることはありません。</li>
+    </ul>
+  </div>
+</section>
+
+<section id="price" class="sec">
+  <div class="wrap">
+    <div class="sec-head">
+      <div class="eyebrow">PRICING</div>
+      <h2 class="h2">料金</h2>
+      <p class="lead">AI 連携（MCP）は、有料のクラウド版の機能です。無料版にも、原稿を AI に渡す方法があります。</p>
+    </div>
+    <div class="price">
+      <div class="price-card paid">
+        <h3>クラウド版 <span class="badge">有料</span></h3>
+        <div class="yen">月額 ¥500 ／ 年額 ¥4,800</div>
+        <p>いずれも税込。初回の契約には 30 日間の無料トライアルが付き、期間中に解約すれば料金はかかりません。</p>
+        <ul>
+          <li>AI 連携（MCP）</li>
+          <li>端末間の自動同期</li>
+          <li>クラウドバックアップ＆復元（暗号化・全データ）</li>
+        </ul>
+      </div>
+      <div class="price-card">
+        <h3>フリー</h3>
+        <div class="yen">¥0・ずっと</div>
+        <p>書き出しの「AI に渡す」で、作品全体をプレーンテキストにしてコピーやファイル保存ができます。好きな AI のチャットに貼り付けて、感想や推敲を頼めます。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="faq" class="sec" style="padding-top:24px">
+  <div class="wrap narrow">
+    <div class="sec-head">
+      <div class="eyebrow">FAQ</div>
+      <h2 class="h2">よくある質問</h2>
+    </div>
+    <div class="faq">
+      <details>
+        <summary>どの AI で使えますか？<span class="plus" aria-hidden="true">＋</span></summary>
+        <p>動作確認済みは Claude と ChatGPT です。どちらもコトノハ-leaf- のアカウントでログインして認証するので、トークンの貼り付けは要りません。リクエストヘッダーに Bearer トークンを設定できるほかの MCP クライアントでも、トークンを直接設定してつなげます（動作確認の対象外です）。</p>
+      </details>
+      <details>
+        <summary>無料版でも、AI に原稿を読ませられますか？<span class="plus" aria-hidden="true">＋</span></summary>
+        <p>はい。書き出しの「AI に渡す」で、作品全体をプレーンテキストにしてコピーやファイル保存ができます。好きな AI のチャットに貼り付けるか、ファイルで添付してください。AI が作品を直接読み書きする MCP 連携は、クラウド版の機能です。</p>
+      </details>
+      <details>
+        <summary>AI の書き換えで、手元の原稿が急に変わりませんか？<span class="plus" aria-hidden="true">＋</span></summary>
+        <p>変わりません。AI の編集はクラウドに入り、マイライブラリの「データ管理」→「AIの変更を取り込む」を押したときに、はじめて端末の原稿へ反映されます。大きく直してもらう前に、AI にクラウドバックアップを作らせておくこともできます。</p>
+      </details>
+      <details>
+        <summary>原稿は AI の学習に使われますか？<span class="plus" aria-hidden="true">＋</span></summary>
+        <p>コトノハ-leaf- 自体は AI を内蔵せず、原稿を勝手に外部へ送ることはありません。AI が読んだ原稿は、あなたが選んだ AI サービスに送られ、その先での扱いは各サービスの規約に従います。気になる場合は、学習に使わない設定のあるサービスをお使いください。</p>
+      </details>
+      <details>
+        <summary>接続をやめるには？<span class="plus" aria-hidden="true">＋</span></summary>
+        <p>「AI に接続（MCP）」の画面で「接続を解除」を押します。AI 側に出した許可も同時に無効になります。</p>
+      </details>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<div class="closing">
+  <h2>書くのは、無料のままで。</h2>
+  <p>アカウントがなくても、開けばその場で書けます。AI とつなぐのは、必要になってからで十分です。</p>
+  <div class="cta-row">
+    <a class="btn-cream" href="/">コトノハ-leaf- を開く ─ 無料</a>
+    <a class="btn-ghost-dark" href="/lp/">紹介ページへ</a>
+  </div>
+</div>
+
+<footer>
+  <div class="row">
+    <div class="name">コトノハ<small>&nbsp;-leaf-</small></div>
+    <nav>
+      <a class="foot-a" href="/lp/">紹介ページ</a>
+      <a class="foot-a" href="/terms">利用規約</a>
+      <a class="foot-a" href="/board-guidelines">掲示板ガイドライン</a>
+      <a class="foot-a" href="/privacy">プライバシーポリシー</a>
+      <a class="foot-a" href="/tokushoho">特定商取引法に基づく表記</a>
+    </nav>
+  </div>
+</footer>
+
+<!-- 訪問者カウント（Cookie なし・自前集計）。?noanalytics=1 で自分の端末を除外できる。 -->
+<script src="/hit.js" defer></script>
+</body>
+</html>
