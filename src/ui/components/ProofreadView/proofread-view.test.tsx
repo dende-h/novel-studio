@@ -4,6 +4,7 @@ import { parseEpisodeBody } from '@/core/parser/parseNotation'
 import { countAutoVariants, frequentWords } from '@/core/proofread'
 import type { ProofreadRecord } from '@/core/proofread/decisions'
 import { sampleTokens } from '@/core/proofread/morph/fixtures'
+import { NOVEL_RULES } from '@/core/proofread/types'
 import type { Work } from '@/core/schema'
 import { reloadProofreadPrefs } from '@/ui/hooks/use-proofread-prefs'
 import type { AnalyzerState, MorphAnalyzerClient } from '@/ui/proofread/analyzer-client'
@@ -78,15 +79,20 @@ async function renderView(
   return { ...view, repo, analyzer, onFixInEditor }
 }
 
+/** 一覧の指摘カード（「確認する項目」のチップと名前が重なるので、カードの「本文で見る」ボタンから辿る）。 */
 const findingCard = (text: RegExp) =>
-  screen.getByRole('button', { name: text }).closest('li') as HTMLElement
+  screen
+    .getByRole('button', { name: new RegExp(`^本文で見る：.*${text.source}`) })
+    .closest('li') as HTMLElement
 
-beforeEach(() => {
-  localStorage.removeItem('ns-proofread-off')
+// 既定は何も選ばれていない（COT-40）。指摘を見るテストは、すべての項目を選んだ状態から始める
+const selectAll = () => {
+  localStorage.setItem('ns-proofread-on', JSON.stringify(NOVEL_RULES.map((r) => r.id)))
   reloadProofreadPrefs()
-})
+}
+beforeEach(selectAll)
 afterEach(() => {
-  localStorage.removeItem('ns-proofread-off')
+  localStorage.removeItem('ns-proofread-on')
   reloadProofreadPrefs()
 })
 
@@ -215,9 +221,41 @@ describe('ProofreadView（推敲画面・COT-40）', () => {
     ).toBeInTheDocument()
   })
 
-  it('確認する項目でオフにした項目は一覧にも本文にも出ない（9 項目）', async () => {
+  it('最初は「確認する項目」が開いていて何も選ばれておらず、選んだ項目の指摘だけが出る', async () => {
+    localStorage.removeItem('ns-proofread-on')
+    reloadProofreadPrefs()
     await renderView(work([{ id: 'e1', title: '第一話', body: '「待って。」\n彼は言った。' }]))
+    const group = screen.getByRole('group', { name: '確認する項目' })
+    for (const b of within(group).getAllByRole('button'))
+      expect(b).toHaveAttribute('aria-pressed', 'false')
+    expect(
+      screen.getByText('上の「確認する項目」から、確かめたい項目を選んでください'),
+    ).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^指摘を選ぶ/ })).toBeNull()
+    fireEvent.click(within(group).getByRole('button', { name: '字下げ' }))
+    expect(screen.getByText('未判断 1 ・ 直す 0 ・ このまま 0')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '指摘を選ぶ：彼' })).toBeInTheDocument()
+    expect(JSON.parse(localStorage.getItem('ns-proofread-on') ?? '[]')).toEqual(['indent'])
+    // 欄は「確認する項目」で閉じられる
     fireEvent.click(screen.getByRole('button', { name: '確認する項目' }))
+    expect(screen.queryByRole('group', { name: '確認する項目' })).toBeNull()
+  })
+
+  it('項目にフォーカス（ホバー）すると、何を探す項目かの説明が出る', async () => {
+    await renderView(work([{ id: 'e1', title: '第一話', body: '「待って。」' }]))
+    const chip = within(screen.getByRole('group', { name: '確認する項目' })).getByRole('button', {
+      name: '！？の後の空白',
+    })
+    await act(async () => {
+      fireEvent.focus(chip)
+    })
+    expect(
+      (await screen.findAllByText(/！や？の後ろに全角空白を空けずに文が続く箇所を探します/)).length,
+    ).toBeGreaterThan(0)
+  })
+
+  it('確認する項目で外した項目は一覧にも本文にも出ない（9 項目）', async () => {
+    await renderView(work([{ id: 'e1', title: '第一話', body: '「待って。」\n彼は言った。' }]))
     const group = screen.getByRole('group', { name: '確認する項目' })
     expect(within(group).getAllByRole('button')).toHaveLength(9)
     fireEvent.click(within(group).getByRole('button', { name: '字下げ' }))

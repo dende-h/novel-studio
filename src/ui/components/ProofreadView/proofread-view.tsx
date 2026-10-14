@@ -19,6 +19,7 @@ import {
   type Verdict,
   withNth,
 } from '@/core/proofread/decisions'
+import { NOVEL_RULES } from '@/core/proofread/types'
 import type { Work } from '@/core/schema'
 import { cn } from '@/lib/utils'
 import { Button } from '@/ui/components/ui/button'
@@ -78,7 +79,12 @@ export function ProofreadView({
 }: ProofreadViewProps) {
   const [episodeId, setEpisodeId] = useState(currentEpisodeId ?? work.episodes[0]?.id ?? '')
   const episode = work.episodes.find((e) => e.id === episodeId) ?? work.episodes[0]
-  const { disabled, toggle } = useProofreadPrefs()
+  const { enabled, toggle } = useProofreadPrefs()
+  // 選んでいない項目は指摘も集計も作らない（最初は何も選ばれていない）
+  const disabled = useMemo(
+    () => new Set(NOVEL_RULES.map((r) => r.id).filter((id) => !enabled.has(id))),
+    [enabled],
+  )
   const { record, save } = useProofreadRecord(repo, work.id, episode?.id)
   const {
     state: analyzer,
@@ -91,7 +97,8 @@ export function ProofreadView({
   const [tab, setTab] = useState<'findings' | 'analysis'>('findings')
   const [activeKey, setActiveKey] = useState<string | null>(null)
   const [word, setWord] = useState<string | null>(null)
-  const [rulesOpen, setRulesOpen] = useState(false)
+  // 「確認する項目」は開いた状態で始める（何を確かめるかを作者が選ぶ）
+  const [rulesOpen, setRulesOpen] = useState(true)
   const textRef = useRef<HTMLDivElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
   // 本文の印から選んだ指摘。一覧（絞り込みが変わることがある）を描き直したあとで、そのカードまで送る。
@@ -251,7 +258,7 @@ export function ProofreadView({
         </div>
         {rulesOpen ? (
           <div className="mt-3">
-            <RuleToggles disabled={disabled} onToggle={toggle} morph={morphState} />
+            <RuleToggles enabled={enabled} onToggle={toggle} morph={morphState} />
           </div>
         ) : null}
       </header>
@@ -317,8 +324,12 @@ export function ProofreadView({
                 ))}
               </fieldset>
               <div ref={listRef} className="min-h-0 flex-1 overflow-y-auto px-4 pb-4">
-                {findings.length === 0 &&
-                episode?.blocks.some((b) => plainTextOfBlock(b).trim()) ? (
+                {enabled.size === 0 ? (
+                  <p className="p-6 text-center text-on-surface-variant text-sm">
+                    上の「確認する項目」から、確かめたい項目を選んでください
+                  </p>
+                ) : findings.length === 0 &&
+                  episode?.blocks.some((b) => plainTextOfBlock(b).trim()) ? (
                   <p className="p-6 text-center text-on-surface-variant text-sm">
                     確認する項目では、気になる箇所は見つかりませんでした
                   </p>

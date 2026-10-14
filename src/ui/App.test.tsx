@@ -1,8 +1,9 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ProfileRepository } from '../core/profile'
 import { proofreadNovel } from '../core/proofread'
 import { decide, withNth } from '../core/proofread/decisions'
+import { NOVEL_RULES } from '../core/proofread/types'
 import { SnapshotRepository } from '../core/snapshot/snapshotRepository'
 import { ActivityRepository } from '../core/storage/activityRepository'
 import { MemoryStore } from '../core/storage/memoryStore'
@@ -12,6 +13,7 @@ import type { KeyValueStore } from '../core/storage/types'
 import { WorkRepository } from '../core/storage/workRepository'
 import { App } from './App'
 import { ToastProvider } from './components/Toast/toast'
+import { reloadProofreadPrefs } from './hooks/use-proofread-prefs'
 import { createEditorStore, type EditorStore } from './store/editorStore'
 
 const makeStore = (kv: KeyValueStore = new MemoryStore()): EditorStore => {
@@ -437,7 +439,16 @@ describe('App（推敲画面と「直す箇所」・COT-40）', () => {
       happyDOM.setViewport({ width })
     })
   }
-  afterEach(() => setWidth(1280))
+  // 推敲画面の「確認する項目」は既定で何も選ばれていないので、すべて選んだ状態から始める
+  beforeEach(() => {
+    localStorage.setItem('ns-proofread-on', JSON.stringify(NOVEL_RULES.map((r) => r.id)))
+    reloadProofreadPrefs()
+  })
+  afterEach(() => {
+    setWidth(1280)
+    localStorage.removeItem('ns-proofread-on')
+    reloadProofreadPrefs()
+  })
 
   /** 本文を保存し、全指摘を「直す」にした判断を置く。 */
   const seedWithFix = async (kv: KeyValueStore, bodies: string[]) => {

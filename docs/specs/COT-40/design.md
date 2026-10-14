@@ -297,3 +297,4 @@ e2e は常にゲストで動く（`playwright.config.ts`）ので、無料会員
 - 品詞ルールのテストは、実際の lindera の出力を `scripts/gen-morph-fixtures.mjs` で `morph/__fixtures__/samples.json` に固定して使う（テスト専用の読み口は `morph/fixtures.ts`）
 - `variants.ts` の `variantNoticesForLine`（COT-30 の1行1件）は `variantFindingsForLine`（出現ごと）に置き換えた
 - 手動の確認で残っているもの：stg での Safari・Firefox の動作、実機のメモリ
+- 実装後のユーザー要望（2026-10-14）：「確認する項目」は最初から開き、どの項目も選ばれていない状態から作者が選ぶ。記憶は localStorage `ns-proofread-on`（選んだ項目）に替えた（旧 `ns-proofread-off` は意味が逆なので読まない）。項目のチップにホバー・フォーカスで説明（`NOVEL_RULES[].description`・shadcn の `Tooltip`）を出す。チップの高さは 44px からプロット画面のタブ（`ViewTab`）と同じ 28px にそろえた。本文の印から選んだ指摘は、右の一覧をそのカードまで送る
