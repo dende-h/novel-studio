@@ -5,6 +5,7 @@ import { GameAssetRepository } from '../../core/storage/gameAssetRepository'
 import { IdbStore } from '../../core/storage/idbStore'
 import { IdeaRepository } from '../../core/storage/ideaRepository'
 import { PlotRepository } from '../../core/storage/plotRepository'
+import { ProofreadRepository } from '../../core/storage/proofreadRepository'
 import { StagingRepository } from '../../core/storage/stagingRepository'
 import { StructureRepository } from '../../core/storage/structureRepository'
 import { WorkRepository } from '../../core/storage/workRepository'
@@ -28,11 +29,12 @@ export function createDefaultStore(): EditorStore {
     snapshotRepo,
     profileRepo,
     activityRepo,
-    // 作品を完全削除したら、その作品の構造レイヤー・プロット・演出譜も一緒に消す
+    // 作品を完全削除したら、その作品の構造レイヤー・プロット・演出譜・推敲の判断も一緒に消す
     // （残すと見えない孤児レコードが端末に溜まり、同期にも載り続ける）。
     structureRepo: new StructureRepository(store),
     plotRepo: new PlotRepository(store),
     stagingRepo: new StagingRepository(store),
+    proofreadRepo: new ProofreadRepository(store),
     genId: () => crypto.randomUUID(),
     now: () => Date.now(),
     snapshotMinIntervalMs: SNAPSHOT_MIN_INTERVAL_MS,
@@ -68,4 +70,9 @@ export function createDefaultStagingRepository(): StagingRepository {
 /** 持ち込みゲーム素材（背景画像）用のリポジトリ。純ローカル（同期に載せない）。 */
 export function createDefaultGameAssetRepository(): GameAssetRepository {
   return new GameAssetRepository(new IdbStore('novel-studio'))
+}
+
+/** 推敲の判断（COT-40・直す／このまま）用のリポジトリ。 */
+export function createDefaultProofreadRepository(): ProofreadRepository {
+  return new ProofreadRepository(new IdbStore('novel-studio'))
 }

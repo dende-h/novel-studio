@@ -14,6 +14,7 @@ import {
   PenLine,
   Plus,
   Settings,
+  SpellCheck,
   Sprout,
   StickyNote,
   Trash2,
@@ -39,6 +40,7 @@ export type NavKey =
   | 'glossary'
   | 'plot'
   | 'staging'
+  | 'proofread'
   | 'outline'
   | 'mindmap'
   | 'chart'
@@ -94,6 +96,8 @@ interface SideNavProps {
   onNavigatePlot?: () => void
   /** 演出（サウンドノベル）へ切替（作品オープン＋アカウント登録時のみ） */
   onNavigateStaging?: () => void
+  /** 推敲へ切替（COT-40。小説＋アカウント登録＋PC のときのみ） */
+  onNavigateProofread?: () => void
   /** アウトラインへ切替（作品オープン＋アカウント登録時のみ） */
   onNavigateOutline?: () => void
   /** マインドマップへ切替（作品オープン＋アカウント登録時のみ） */
@@ -154,6 +158,7 @@ export function SideNav({
   onNavigateGlossary,
   onNavigatePlot,
   onNavigateStaging,
+  onNavigateProofread,
   onNavigateOutline,
   onNavigateMindmap,
   onNavigateChart,
@@ -250,6 +255,14 @@ export function SideNav({
               active={active === 'episodes'}
               onClick={onNavigateEpisodes}
             />
+            {onNavigateProofread ? (
+              <NavRow
+                icon={SpellCheck}
+                label="推敲"
+                active={active === 'proofread'}
+                onClick={onNavigateProofread}
+              />
+            ) : null}
             <NavRow
               icon={BookMarked}
               label="用語集"

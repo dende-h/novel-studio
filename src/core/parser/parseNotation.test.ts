@@ -1,6 +1,9 @@
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
+import { plainTextOfInlines } from '../game'
 import type { Inline } from '../schema'
-import { needsRubyPipe, parseEpisodeBody, parseInlines } from './parseNotation'
+import { needsRubyPipe, parseEpisodeBody, parseInlines, plainOffsetMap } from './parseNotation'
 
 describe('parseInlines', () => {
   it('プレーン行は1つのtext', () => {
@@ -221,5 +224,33 @@ describe('needsRubyPipe（挿入 UI とパーサで判定を共有する）', ()
     expect(parseEpisodeBody(build('お嬢さん', 'おじょうさん'))[0]?.inlines).toEqual([
       { type: 'ruby', base: 'お嬢さん', reading: 'おじょうさん' },
     ])
+  })
+})
+
+describe('plainOffsetMap（COT-40：プレーン文字の位置 → 行の位置）', () => {
+  const lines = [
+    '　夜の校舎に、私はひとりで立っていた。',
+    '｜宮森《みやもり》は言った。',
+    '漢字《かんじ》と《《傍点》》と[[参照]]と[[｜言葉《ことば》]]と《《[[包み]]》》',
+    '｜[[言葉]]《ことば》、未終端の《《や｜も残る',
+    '𠮷野は[[𠮷田]]と',
+    ...readFileSync(
+      resolve(process.cwd(), 'tools/novel-textlint/fixtures/novel-good.txt'),
+      'utf8',
+    ).split('\n'),
+  ]
+  it('表示文字は plainTextOfInlines(parseInlines(line)) と一致する', () => {
+    for (const line of lines) {
+      const { plainText, sourceOf } = plainOffsetMap(line)
+      expect(plainText, line).toBe(plainTextOfInlines(parseInlines(line)))
+      expect(sourceOf).toHaveLength(plainText.length)
+    }
+  })
+  it('地の文字・ルビの親文字・傍点の中身は 1 文字ずつ対応し、参照の中は null', () => {
+    const line = '｜宮森《みやもり》は《《傍点》》[[参照]]'
+    const { plainText, sourceOf } = plainOffsetMap(line)
+    expect(plainText).toBe('宮森は傍点参照')
+    expect(sourceOf).toEqual([1, 2, 9, 12, 13, null, null])
+    for (const [i, s] of sourceOf.entries()) if (s !== null) expect(line[s]).toBe(plainText[i])
   })
 })

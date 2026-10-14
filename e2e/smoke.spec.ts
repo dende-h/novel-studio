@@ -553,3 +553,30 @@ test('脚本形式を保存し、縦横プレビュー・再読込・小説へ�
   await expect(page.getByRole('button', { name: '柱', exact: true })).toHaveCount(0)
   await expect(page.getByRole('textbox', { name: '本文' })).toHaveValue(body)
 })
+
+/**
+ * 推敲（COT-40）。小説の本文の下に推敲チェックは出さない（推敲画面へ移した）。
+ * 推敲画面を開かない限り、解析器（wasm）と辞書（/dict/）は取りに行かない。
+ * 推敲画面そのものは無料会員以上なので、ゲストで走る e2e では入口が無いことだけを見る。
+ */
+test('小説では本文の下に推敲チェックを出さず、執筆画面では解析器と辞書を取りに行かない', async ({
+  page,
+}) => {
+  const heavy: string[] = []
+  page.on('request', (req) => {
+    const url = new URL(req.url())
+    if (url.pathname.endsWith('.wasm') || url.pathname.startsWith('/dict/')) heavy.push(url.pathname)
+  })
+  await page.goto('/')
+  await createWork(page, '推敲E2E')
+  await openWriter(page, '推敲E2E')
+  await addEpisode(page, '第一話')
+  await page
+    .getByRole('textbox', { name: '本文' })
+    .fill('彼は言った。「待って!すぐ終わるから。」\n　光がが揺れて…、出来ることは、できることだ。')
+  await expect(page.getByText('保存済み')).toBeVisible()
+  await expect(page.getByText(/推敲チェック/)).toHaveCount(0)
+  await expect(page.getByRole('button', { name: '推敲', exact: true })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: /直すと決めた箇所/ })).toHaveCount(0)
+  expect(heavy).toEqual([])
+})

@@ -47,6 +47,9 @@ importers:
       clsx:
         specifier: 2.1.1
         version: 2.1.1
+      lindera-wasm:
+        specifier: 6.2.0
+        version: 6.2.0
       lucide-react:
         specifier: 1.18.0
         version: 1.18.0(react@19.2.7)
@@ -3130,6 +3133,9 @@ packages:
   lightningcss@1.32.0:
     resolution: {integrity: sha512-NXYBzinNrblfraPGyrbPoD19C1h9lfI/1mzgWYvXUTe414Gz/X1FD2XBZSZM7rRTrMA8JL3OtAaGifrIKhQ5yQ==}
     engines: {node: '>= 12.0.0'}
+
+  lindera-wasm@6.2.0:
+    resolution: {integrity: sha512-cKdnZIjhOsbfgjEpGsjeAuzYsstKoYcNqQqM7LXlN6Pf2AD3yK8scD6SIv2kc+3JdJkWlPuQZFNr1IIm+rleKQ==}
 
   lodash.debounce@4.0.8:
     resolution: {integrity: sha512-FT1yDzDYEoYWhnSGnpE/4Kj1fLZkDFyqRb7fNt6FdYOSxlUWAtp42Eh6Wb0rGIv/m9Bgo7x4GhQbm5Ys4SG5ow==}
@@ -6878,6 +6884,8 @@ snapshots:
       lightningcss-linux-x64-musl: 1.32.0
       lightningcss-win32-arm64-msvc: 1.32.0
       lightningcss-win32-x64-msvc: 1.32.0
+
+  lindera-wasm@6.2.0: {}
 
   lodash.debounce@4.0.8: {}
 

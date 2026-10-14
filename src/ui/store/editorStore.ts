@@ -185,6 +185,8 @@ export interface EditorStoreDeps {
   structureRepo?: { removeByWork(workId: string): Promise<void> }
   plotRepo?: { removeByWork(workId: string): Promise<void> }
   stagingRepo?: { removeByWork(workId: string): Promise<void> }
+  /** 推敲の判断（COT-40）。作品の完全削除で一緒に消す。 */
+  proofreadRepo?: { removeByWork(workId: string): Promise<void> }
   genId: () => string
   now: () => number
   /** 履歴の集約間隔(ms)。連続編集中はこの間隔内の保存を最新版へ合体し、版の氾濫を防ぐ。 */
@@ -218,6 +220,7 @@ export function createEditorStore({
   structureRepo,
   plotRepo,
   stagingRepo,
+  proofreadRepo,
   genId,
   now,
   snapshotMinIntervalMs,
@@ -243,6 +246,7 @@ export function createEditorStore({
     await structureRepo?.removeByWork(workId)
     await plotRepo?.removeByWork(workId)
     await stagingRepo?.removeByWork(workId)
+    await proofreadRepo?.removeByWork(workId)
   }
   const set = (patch: Partial<EditorState>) => {
     state = { ...state, ...patch }

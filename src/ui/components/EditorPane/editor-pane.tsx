@@ -9,13 +9,11 @@ import {
 } from 'react'
 import { PERSON_CATEGORY, resolveRef, shouldTriggerSuggest, suggestRefs } from '@/core/glossary'
 import { needsRubyPipe, parseEpisodeBody } from '@/core/parser/parseNotation'
-import { NOVEL_RULES, proofreadNovel, type VariantCounts } from '@/core/proofread'
 import type { GlossaryEntry } from '@/core/schema'
 import { proofreadScript } from '@/core/script/proofread'
 import { getCaretCoordinates } from '@/ui/_utils/caretCoordinates'
 import { useKeyboardInset } from '@/ui/hooks/use-keyboard-inset'
 import { useIsNarrow } from '@/ui/hooks/use-narrow'
-import { useProofreadPrefs } from '@/ui/hooks/use-proofread-prefs'
 import { type NotationKind, notationForKey, notationItems } from './notation'
 import { NotationBar } from './notation-bar'
 import { ProofreadPanel } from './proofread-panel'
@@ -39,11 +37,6 @@ interface EditorPaneProps {
   glossary?: GlossaryEntry[]
   /** クイック作成（name のみで即作成→挿入）。省略時は作成行を出さない。 */
   onCreateEntry?: (name: string) => Promise<GlossaryEntry> | GlossaryEntry
-  /**
-   * 小説の推敲チェック用：他の話の表記ゆれ集計（`createVariantCountCache` の結果）。
-   * いまの話の分はここで足して「作品全体で混ざっているか」を判定する。省略時はいまの話だけで判定。
-   */
-  variantBase?: VariantCounts
 }
 
 interface SuggestState {
@@ -69,7 +62,6 @@ export function EditorPane({
   scriptMode = false,
   readOnly = false,
   onCreateEntry,
-  variantBase,
 }: EditorPaneProps & { ref?: React.Ref<EditorPaneHandle> }) {
   const taRef = useRef<HTMLTextAreaElement>(null)
   // 登場人物表（用語集の「人物」）に無い話者も知らせる。名前と別名のどちらでも通す。
@@ -80,16 +72,10 @@ export function EditorPane({
         .flatMap((e) => [e.name, ...e.aliases]),
     [glossary],
   )
-  const { disabled: disabledRules, toggle: toggleRule } = useProofreadPrefs()
+  // 脚本の書式チェックだけを本文の下に出す。小説の推敲は推敲画面へ移した（COT-40）。
   const notices = useMemo(
-    () =>
-      scriptMode
-        ? proofreadScript(parseEpisodeBody(value), { cast })
-        : proofreadNovel(parseEpisodeBody(value), {
-            disabled: disabledRules,
-            baseCounts: variantBase,
-          }),
-    [scriptMode, value, cast, disabledRules, variantBase],
+    () => (scriptMode ? proofreadScript(parseEpisodeBody(value), { cast }) : []),
+    [scriptMode, value, cast],
   )
   // 候補を押すと該当行を選択する。本文は書き換えない。
   const jumpToBlock = useCallback(
@@ -464,19 +450,7 @@ export function EditorPane({
           notices={notices}
           onJump={jumpToBlock}
         />
-      ) : (
-        <ProofreadPanel
-          title="推敲チェック"
-          intro="原稿の作法と表記ゆれの確認候補です。本文は自動で書き換えません。意図した表現なら、そのまま使えます。"
-          notices={notices}
-          onJump={jumpToBlock}
-          toggles={{
-            items: NOVEL_RULES,
-            disabled: disabledRules,
-            onToggle: (id) => toggleRule(id as (typeof NOVEL_RULES)[number]['id']),
-          }}
-        />
-      )}
+      ) : null}
 
       {open && suggest ? (
         narrow ? (

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { countVariants, mergeCounts, VARIANT_GROUPS, variantNoticesForLine } from './variants'
+import { countVariants, mergeCounts, VARIANT_GROUPS, variantFindingsForLine } from './variants'
 
 const count = (gid: string, label: string, ...texts: string[]) =>
   countVariants(texts)[gid]?.[label]?.count ?? 0
@@ -94,41 +94,67 @@ describe('mergeCounts', () => {
   })
 })
 
-describe('variantNoticesForLine', () => {
+describe('variantFindingsForLine（出現ごと・COT-40）', () => {
   it('作品内で混在している組だけ、この行にある書き方を先頭にして 1 件', () => {
     const counts = countVariants(['出来た', 'できた', 'できる', 'できない'])
-    expect(variantNoticesForLine('　その場を動くことが出来なかった。', counts)).toEqual([
-      '「出来る」と「できる」が混ざっています（この作品で 出来る 1件・できる 3件）。どちらかに揃えると読みやすくなります。',
+    const line = '　その場を動くことが出来なかった。'
+    expect(variantFindingsForLine(line, counts)).toEqual([
+      {
+        start: line.indexOf('出来な'),
+        end: line.indexOf('出来な') + 3,
+        text: '出来な',
+        message:
+          '「出来る」と「できる」が混ざっています（この作品で 出来る 1件・できる 3件）。どちらかに揃えると読みやすくなります。',
+      },
     ])
   })
   it('統一されている語は何も言わない', () => {
     const counts = countVariants(['できた', 'できる'])
-    expect(variantNoticesForLine('　できることは何もない。', counts)).toEqual([])
+    expect(variantFindingsForLine('　できることは何もない。', counts)).toEqual([])
   })
   it('この行に無い組は候補にしない', () => {
     const counts = countVariants(['出来た', 'できた'])
-    expect(variantNoticesForLine('　夜の校舎に、私は立っていた。', counts)).toEqual([])
+    expect(variantFindingsForLine('　夜の校舎に、私は立っていた。', counts)).toEqual([])
   })
   it('3 つの書き方は「・」でつなぐ', () => {
     const counts = countVariants(['それがいい', 'それはよい', '良い天気'])
-    expect(variantNoticesForLine('　良い天気だ。', counts)[0]).toMatch(
+    expect(variantFindingsForLine('　良い天気だ。', counts)[0]?.message).toMatch(
       /^「良い」・「いい」・「よい」が混ざっています/,
     )
   })
-  it('数の書き方は助数詞ごとに実例と件数を添え、1 行 1 件にまとめる', () => {
+  it('数の書き方は数の出現ごとに、その助数詞の実例と件数を添える', () => {
     const counts = countVariants(['一人の足音', '2人、いや3人', '三年前', '5年後'])
-    expect(
-      variantNoticesForLine('　一人の足音ではない。2人、いや3人はいる。5年後だ。', counts),
-    ).toEqual([
-      '数の書き方が算用数字と漢数字で混ざっています：人（2人・一人／算用 2件・漢数字 1件）・年（5年・三年／算用 1件・漢数字 1件）。',
+    const hits = variantFindingsForLine(
+      '　一人の足音ではない。2人、いや3人はいる。5年後だ。',
+      counts,
+    )
+    expect(hits.map((h) => [h.text, h.message])).toEqual([
+      [
+        '一人',
+        '数の書き方が算用数字と漢数字で混ざっています：人（一人・2人／漢数字 1件・算用 2件）。',
+      ],
+      [
+        '2人',
+        '数の書き方が算用数字と漢数字で混ざっています：人（2人・一人／算用 2件・漢数字 1件）。',
+      ],
+      [
+        '3人',
+        '数の書き方が算用数字と漢数字で混ざっています：人（3人・一人／算用 2件・漢数字 1件）。',
+      ],
+      [
+        '5年',
+        '数の書き方が算用数字と漢数字で混ざっています：年（5年・三年／算用 1件・漢数字 1件）。',
+      ],
     ])
   })
   it('助数詞が違う使い分け（2026年と一人）は混在にしない', () => {
     const counts = countVariants(['2026年の冬', '一人で歩いた'])
-    expect(variantNoticesForLine('　2026年の冬、一人で歩いた。', counts)).toEqual([])
+    expect(variantFindingsForLine('　2026年の冬、一人で歩いた。', counts)).toEqual([])
   })
-  it('1 行に同じ組の語が複数回あっても 1 件', () => {
+  it('1 行に同じ組の語が複数回あれば出現ごとに返す（COT-30 の 1 行 1 件はやめた）', () => {
     const counts = countVariants(['出来た', 'できた'])
-    expect(variantNoticesForLine('　出来た。出来なかった。できた。', counts)).toHaveLength(1)
+    expect(
+      variantFindingsForLine('　出来た。出来なかった。できた。', counts).map((h) => h.text),
+    ).toEqual(['出来た', '出来な', 'できた'])
   })
 })

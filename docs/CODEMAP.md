@@ -34,7 +34,8 @@ Cloudflare Pages Functions
 |---|---|
 | 本文の記法ボタン・ショートカット | `src/ui/components/EditorPane/notation.ts`（一覧・表示・キー判定を共有。PC/スマホの出し分けは `notationItems(scriptMode, surface)`）、挿入と脚本の Tab 字下げ／Enter 継続は `editor-pane.tsx` |
 | 脚本形式（柱・ト書き・セリフ）の判別・原稿用紙の組版・書き出し | 判別 `src/core/script/index.ts`、書式チェック `src/core/script/proofread.ts`、原稿用紙（禁則・頁割り・前付け）`src/core/script/layout.ts`、紙のプレビュー `src/ui/components/ScriptSheet/`、脚本の Word `src/core/exporter/toDocx.ts`・テキスト `src/core/exporter/toScriptText.ts`、形式・梗概（`Work.synopsis`）は `src/ui/components/WorkMetaDialog/`、公開 v7 は `src/ui/_api/publish.ts`。EPUB・なろう・カクヨムは小説専用 |
-| **小説の推敲チェック**（原稿の作法・表記ゆれの確認候補・項目のオン／オフ）を変える（COT-30） | ルールは `src/core/proofread/rules.ts`（字下げ・閉じ括弧前の句読点・！？の後の空白・三点リーダー／ダッシュ・半角の約物・同じ語の連続）、表記ゆれ辞書と作品全体の集計は `src/core/proofread/variants.ts`（組は「表示名＋正規表現」・数の書き方は助数詞ごと）、入口は `src/core/proofread/index.ts`（`proofreadNovel`・`createVariantCountCache`＝話ごとの集計キャッシュ）。表示は `src/ui/components/EditorPane/proofread-panel.tsx`（脚本の書式チェックと共用の `<details>`）、項目のオン／オフは `src/ui/hooks/use-proofread-prefs.ts`（localStorage `ns-proofread-off`）。他話の集計は `App.tsx` が `variantBase` で渡す。設計は `docs/specs/COT-30/` |
+| **小説の推敲**（推敲画面・指摘ごとの直す／このまま・執筆画面の「直す箇所」・項目のオン／オフ）を変える（COT-40。COT-30 の本文下の推敲チェックを置き換え） | 指摘のルールは `src/core/proofread/rules.ts`（作法・出現ごと・位置つき）と `variants.ts`（表記ゆれ辞書・`variantFindingsForLine`）、入口は `src/core/proofread/index.ts`（`proofreadNovel`＝位置つきの `Finding[]`・辞書と自動の表記ゆれの重なりをまとめる）。判断（直す／このまま）・照合・「直す箇所」の判定と位置決めは `src/core/proofread/decisions.ts`（`decide` `undecide` `classify` `withNth` `occurrencesOf` `openFixes` `locateFix`）、保存は `src/core/storage/proofreadRepository.ts`（`proofread:<workId>:<episodeId>`・同期とバックアップに相乗り）。画面は `src/ui/components/ProofreadView/`（`activeScreen === 'proofread'`・PC＋無料会員以上＋小説）、執筆画面の一覧は `src/ui/components/FixListButton/`、入口と「本文で直す」は `App.tsx`（`enterProofread`・`pendingFix`）。判断の読み書きは `src/ui/hooks/use-proofread-record.ts`、項目のオン／オフは `src/ui/hooks/use-proofread-prefs.ts`（localStorage `ns-proofread-off`）。脚本の書式チェックは `EditorPane/proofread-panel.tsx` のまま。設計は `docs/specs/COT-40/` |
+| **推敲のくわしい確認**（形態素解析：表記ゆれの自動発見・一文の中の同じ助詞・ら抜き言葉・よく使う言葉）を変える | ルールは `src/core/proofread/morph/`（`token.ts`＝lindera の出力→位置つきトークン・`auto-variant.ts`・`doubled-particle.ts`・`ra-nuki.ts`・`frequent-words.ts`。テストは `morph/__fixtures__/samples.json`＝`scripts/gen-morph-fixtures.mjs` で実物から作る）、セリフと地の文は `dialogue-ratio.ts`＋`quotes.ts`、用語集のユーザー辞書は `user-dict.ts`。解析器は `src/ui/proofread/`（`analyzer.worker.ts`＝Worker・`analyzer-engine.ts`＝本体（Node テスト可）・`analyzer-client.ts`＝起動停止と状態・`unzip.ts`・`protocol.ts`）と `src/ui/hooks/use-morph-analyzer.ts`。辞書は `scripts/fetch-dict.mjs`（版と SHA-256 を固定・`public/dict/` へ）、プリキャッシュ除外は `vite.config.ts` と `scripts/check-precache.mjs`。依存の例外は `docs/requirement/03-architecture.md` §3 |
 | 記法（ルビ・傍点・`[[参照]]`）の解釈を変える | `src/core/parser/parseNotation.ts` + `src/core/schema/index.ts` |
 | プレビューのマークダウン（見出し・リスト・表・引用）を変える | `src/core/markdown/index.ts`（本文は非対応。効くのはプロット・世界観・用語集の記法つき欄） |
 | 書き出し（EPUB/なろう/カクヨム/HTML）の出力を変える | `src/core/exporter/` 配下（形式ごとに1ファイル） |
@@ -88,7 +89,7 @@ Cloudflare Pages Functions
 | モジュール | 責務 | 主な export |
 |---|---|---|
 | `script/` | 脚本の行判別（柱・ト書き・セリフ・***場面転換）・話者分割・字下げ除去・原稿用紙の組版 | `classifyScriptBlock` `splitSpeaker` `stripLeadingSpace` `ScriptLine`、`proofread.ts` の `proofreadScript`（書式の確認候補）、`layout.ts` の `layoutScriptBlocks` `paginate` `composeScriptSheet` `normalizeScriptText`（20字×20行などへの流し込み・禁則・頁割り・表紙／登場人物表／梗概） |
-| `proofread/` | 小説の推敲チェック（COT-30）。作法ルール（`rules.ts`・`checkLine`）・表記ゆれ辞書と集計（`variants.ts`・`VARIANT_GROUPS` `countVariants` `mergeCounts` `variantNoticesForLine`）・入口（`index.ts`・`proofreadNovel` `countVariantsInBlocks` `createVariantCountCache` `NOVEL_RULES` `ProofNotice` `NovelRuleId`）。脚本の `script/proofread.ts` とは別 | 純TS・React 非依存。`tools/novel-textlint/fixtures/` を回帰に使う |
+| `proofread/` | 小説の推敲（COT-30→COT-40）。作法ルール（`rules.ts`・`checkLine`＝出現ごと・位置つき）・表記ゆれ辞書と集計（`variants.ts`・`VARIANT_GROUPS` `countVariants` `mergeCounts` `variantFindingsForLine`）・入口（`index.ts`・`proofreadNovel`＝`Finding[]` `countVariantsInBlocks` `createVariantCountCache`）・型（`types.ts`・`Finding` `NovelRuleId` `NOVEL_RULES` `MORPH_RULES` `novelRuleLabel` `ProofNotice`）・判断（`decisions.ts`・`ProofreadRecordSchema` `decide` `openFixes` `locateFix` `occurrencesOf`）・品詞ルール（`morph/`）・セリフと地の文（`dialogue-ratio.ts` `quotes.ts`）・ユーザー辞書（`user-dict.ts`）。脚本の `script/proofread.ts` とは別 | 純TS・React 非依存・lindera を import しない（トークン列を受け取る）。`tools/novel-textlint/fixtures/` と `morph/__fixtures__/` を回帰に使う |
 | `schema/` | **正本 block スキーマ（Zod）**。全データの型の源 | `Block` `Inline` `Episode` `Work` `WorkFormat` `WorkFormatSchema`（`Work.synopsis`＝脚本の梗概） `GlossaryEntry`（`authorNote`・`dialog` は公開時に落とす） `DialogAnswer` `WorkPlatform` `PLATFORM_GENRES` |
 | `plot/` | プロット（幕/ライン/ビート/伏線/秘密）＋**世界観設定**（`Plot.world`・作者専用） | `PlotSection` `PlotLine` `PlotBeat` `Foreshadow` `Secret` / `beatsInStoryOrder` `sectionOfBeat` `linesOfBeat` `foreshadowsOfBeat` `secretsHiddenAt` / `WorldNote` `WORLD_SLOTS` `WORLD_CUSTOM_SLOT` `worldNoteLabel` `worldNotesInOrder` `setWorldNote` `removeWorldNote` |
 | `structure/` | 構造レイヤー（outline/chart/mindmap）のノード・辺 | `StructureNode` `StructureEdge` `StructureKind` `emptyStructure` `addNode` `pickPrimaryStructure` |
@@ -100,7 +101,7 @@ Cloudflare Pages Functions
 ### 変換
 | モジュール | 責務 |
 |---|---|
-| `src/core/parser/parseNotation.ts` | 記法テキスト → 正本 Block。`parseEpisodeBody` `parseInlines` |
+| `src/core/parser/parseNotation.ts` | 記法テキスト → 正本 Block。`parseEpisodeBody` `parseInlines`、`plainOffsetMap`（表示文字の位置 → 行の位置・推敲の「直す箇所」の選択に使う） |
 | `src/core/parser/reconcileBlockIds.ts` | 保存の再パースで振り直された block id を旧 blocks から引き継ぐ（演出譜 Staging のアンカー安定化。editorStore.save と mcp-edit の setEpisode が通す） |
 | `src/core/exporter/toEpub.ts` | 正本 → EPUB（`episodeToXhtml` + `zip/`） |
 | `src/core/exporter/toHtml.ts` | 正本 → 安全な HTML（プレビュー兼用・全エスケープ済み。`inlinesToHtml` も公開） |
@@ -118,7 +119,7 @@ Cloudflare Pages Functions
 ### 永続化（`storage/`）
 `KeyValueStore`（`src/core/storage/types.ts`）を `IdbStore`（本番）と `MemoryStore`（テスト）が実装。
 その上に薄いリポジトリ: `WorkRepository`（作品・ゴミ箱・`WorkSummary`）、`StructureRepository`、
-`PlotRepository`、`StagingRepository`（演出譜・`staging:<workId>:<episodeId>` の決定的 id）、
+`PlotRepository`、`StagingRepository`（演出譜・`staging:<workId>:<episodeId>` の決定的 id）、`ProofreadRepository`（推敲の判断・`proofread:<workId>:<episodeId>`・読むとき Zod を通す・同期の列挙は `listRaw`）、
 `GameAssetRepository`（持ち込み背景・`gameasset:` プレフィクス・同期には載せない）、
 `IdeaRepository`、`ActivityRepository`。スナップショットは `snapshot/`。
 `src/core/storage/workMutationLock.ts` の `withWorkMutationLock` は作品単位のローカル書き込み排他（Web Locks / 同タブPromiseキュー）。`IdbStore` はtransaction完了を保存成功とする。
@@ -166,7 +167,7 @@ Cloudflare Pages Functions
 |---|---|
 | `src/ui/main.tsx` | フォント読込・`createRoot`・Provider 積み上げ |
 | `src/ui/Root.tsx` | **ハッシュルーティングの分岐点**（下表）。リポジトリ生成と会員判定の配線 |
-| `src/ui/App.tsx` | 執筆画面本体（`#/write`）。エディタ・プレビュー・用語集・履歴パネルの統括。**約840行 / 最も密度が高い** |
+| `src/ui/App.tsx` | 執筆画面本体（`#/write`）。エディタ・プレビュー・用語集・履歴パネル・推敲画面への入口と「直す箇所」の統括。**約1,100行 / 最も密度が高い** |
 | `src/ui/store/editorStore.ts` | 自前ストア。`getSnapshot`/`subscribe` + 作品・話・用語集・ゴミ箱・プロフィール、作品操作キュー・`workOperation`・`getSearchSources`・`replaceWorkMatches`・`navigateWorkMatch` |
 | `src/ui/store/createDefaultStore.ts` | 本番のリポジトリ配線 |
 | `src/ui/hooks/use-editor-store.ts` | `useSyncExternalStore` の薄いラッパ |
@@ -177,10 +178,10 @@ Cloudflare Pages Functions
 ・ `/admin/templates` 運営テンプレの管理（**staff だけ描く**・それ以外は通常の入口に倒す・`use-staff.ts`）
 
 ### 画面（`components/` — PascalCase ディレクトリ + kebab ファイル・1ファイル1コンポーネント）
-- **執筆**: `EditorPane/`（textarea + 記法バー + `@` サジェスト + この話の置換・`selectRange`）, `WorkSearchPanel/`（全話検索・1件/全件置換）, `PreviewPane/`, `HistoryPanel/`
+- **執筆**: `EditorPane/`（textarea + 記法バー + `@` サジェスト + この話の置換・`selectRange`・本文の下は脚本の書式チェックだけ）, `WorkSearchPanel/`（全話検索・1件/全件置換）, `PreviewPane/`, `HistoryPanel/`, `FixListButton/`（ツールバーの「直す箇所 N」と一覧・PC とスマホ）
 - **作品管理**: `Library/`（カード/リスト・作品メニュー）, `TrashDialog/`, `WorkMetaDialog/`, `TitlePromptDialog/`
 - **用語集**: `GlossaryView/`（左：一覧（対話の進み具合・「対話の途中」チップ）／右：「フォーム｜対話」の二面。`dialog-pane.tsx`＝対話ペイン・`dialog-note-section.tsx`＝フォームの対話ノート・`pill.tsx`＝丸いチップ・`visibility-label.tsx`＝「読者に見せる／作者だけ」の印・「＋ 新しく登録」は名前の無い項目を対話で開き、名前を答えた時点で登録（「登録」ボタンは無い）。会話は登録された項目へ引き継ぐ（`markSaved`・`initialSession`・一度使ったら捨てる）。名前の前に書いた内容を捨てるときだけ確認。対話ノートはフォームからも直せる（行を押すと入力欄・旧鍵は `answerOf` で今の問いに畳んで表示））, `GlossaryEntryForm/`（本文からのクイック作成・パネル編集用モーダル。`formValuesToFieldPatch`＝フォーム値→パッチの写像・`GLOSSARY_CATEGORIES`＝core の `DIALOG_CATEGORIES`）, `GlossaryPeek/`
-- **構想の道具（無料アカウント登録で解禁・遅延ロード）**: `MindmapView/`, `CorrelationChartView/`, `OutlineView/`, `PlotView/`（`plot-view.tsx` ＋ 世界観設定タブ `world-view.tsx`）, `StructureCanvas/`, `StagingView/`（サウンドノベルの演出エディタ：行一覧＋話者/表情/背景/BGM/効果音/場面の切れ目・背景と立ち絵の持ち込み・素材の管理 `asset-manager.tsx`＝一覧/削除/クラウド保管・テンプレの一覧 `template-picker.tsx`＝分類タブ＋サムネイル・書き出しと図鑑でも共用）
+- **構想の道具（無料アカウント登録で解禁・遅延ロード）**: `MindmapView/`, `CorrelationChartView/`, `OutlineView/`, `PlotView/`（`plot-view.tsx` ＋ 世界観設定タブ `world-view.tsx`）, `StructureCanvas/`, `ProofreadView/`（推敲画面・PC 専用・小説だけ：読むだけの本文＋指摘の一覧（未判断／直す／このまま）＋分析（よく使う言葉・セリフと地の文）・`proofread-text.tsx` `finding-list.tsx` `analysis-panel.tsx` `rule-toggles.tsx`）, `StagingView/`（サウンドノベルの演出エディタ：行一覧＋話者/表情/背景/BGM/効果音/場面の切れ目・背景と立ち絵の持ち込み・素材の管理 `asset-manager.tsx`＝一覧/削除/クラウド保管・テンプレの一覧 `template-picker.tsx`＝分類タブ＋サムネイル・書き出しと図鑑でも共用）
 - **執筆画面の右パネル（遅延ロードしない）**: `PlotPeek/`（この話のビート一覧 `plot-peek.tsx` ＋ 読み取り専用のビート詳細 `beat-detail.tsx`）
 - **入出力**: `ExportDialog/`, `ImportDialog/`, `BackupDialog/`, `CloudBackupDialog/`, `AiPullDialog/`
 - **同期/課金**: `SyncOnboarding/`, `SyncLostDialog/`, `RestoreGrace/`, `McpConnectDialog/`, `SaveStateIndicator/`, `BackupNudgeDialog/`
@@ -234,7 +235,8 @@ Cloudflare Pages Functions
 `useEditorStore` / `useAutosave` / `useAutoSync` / `useAutoBackup` / `useLiveSnapshot` / `useSyncStatus`
 / `useHashRoute` / `useIsNarrow`（+ `NARROW_MAX_PX` `NARROW_QUERY`） / `useKeyboardInset`
 / `useLocalFlag`（localStorage 永続の真偽フラグ） / `usePreferences`（+ `setTheme` `setReadingSize`）
-/ `useProofreadPrefs`（+ `toggleProofreadRule` `reloadProofreadPrefs`・推敲チェックの項目オン／オフ・localStorage `ns-proofread-off`）
+/ `useProofreadPrefs`（+ `toggleProofreadRule` `reloadProofreadPrefs`・推敲の項目オン／オフ・localStorage `ns-proofread-off`）
+/ `useProofreadRecord`（`use-proofread-record.ts`・1 話ぶんの推敲の判断の読み書き・sync-applied で読み直し） / `useMorphAnalyzer`（`use-morph-analyzer.ts`・推敲画面の解析 Worker の起動停止と状態）
 / `usePenName` `useOpenProfile` `useAccountPenNameSync` `useSaveProfile`（+ `PenNameContext` `ProfileEditContext`・`use-pen-name.ts`）
 / `useBackupMarks`（+ `markLocalBackup` `markCloudBackup` `readBackupMarks`） / `readNudgeAck` `acknowledgeNudge`
 / `useSerialSave`（`use-serial-save.ts`・最新値へ fn を積み保存を直列化する変更経路。描画時点の値へ当てて保存しない＝プロット画面が使用）
@@ -262,13 +264,14 @@ Cloudflare Pages Functions
 |---|---|
 | `_api/` | サーバ呼び出しの薄いクライアント（`sync` `backup` `billing` `publish` `author` `mcp` `board` `game-assets` `game-templates`＝目録/実体の取得と staff の管理 API） |
 | `_utils/` | 純関数（`caretCoordinates` `focus-when-ready` `imageResizer` `exporters` `download` `format` `clipboard` `cover-tone` `audioMeta`＝音声ファイルの data URL 化と長さ計測・`sePlayer`＝効果音の試聴・`bgmPlayer`＝BGM の試聴（Web Audio・ループ区間つき・トグルで 1 曲だけ）） |
-| `hooks/` | React ライフサイクル依存のみ（`use-autosave` `use-auto-sync` `use-auto-backup` `use-live-snapshot` `use-preferences` `use-proofread-prefs` `use-narrow` `use-keyboard-inset` `use-pen-name` `use-staff`＝運営か・`enabled` のときだけ `/api/board/me` を見る 等） |
+| `hooks/` | React ライフサイクル依存のみ（`use-autosave` `use-auto-sync` `use-auto-backup` `use-live-snapshot` `use-preferences` `use-proofread-prefs` `use-proofread-record` `use-morph-analyzer` `use-narrow` `use-keyboard-inset` `use-pen-name` `use-staff`＝運営か・`enabled` のときだけ `/api/board/me` を見る 等） |
 | `sync/` | 同期クライアント。`src/ui/sync/sync-service.ts` が本体（約800行）・`sync-gate` `sync-status` `sync-touch` |
 | `src/ui/backup/backup-service.ts` | クラウド全体バックアップの実行 |
 | `game/` | 持ち込み素材のクラウド保管の配線（`asset-hosting.ts`＝API 結線と下り取り込み `pullHostedAssets`。ローカルが正・上りは追加時と明示操作のみ）／運営テンプレの目録を画面へ配る `template-catalog.ts`（`useTemplateCatalog`＝アプリで1つの `useSyncExternalStore`・localStorage に控え、`templateBgSrc` `templateSpriteSrc`、`resolveTemplateBackgrounds` `resolveTemplateSes` `resolveTemplateBgms`＝演出譜が指す目録の実体を素材の形にして書き出し・投稿へ、`templateSpriteDataUrl`） |
 | `plot/` | プロットの表示ヘルパ（React 非依存・`beat-ui.ts` に `STATUS_UI` `LINE_PALETTE` `lineColorOf` `beatStripeColor` `plainOf` `fmtCount`）。プロット画面と執筆画面のパネルで色・表記を揃える |
 | `board/` | 掲示板の表示ヘルパ（React 非依存・`board-ui.ts` に `KIND_UI`／`STATUS_UI` の色・`kindOrder`・`creatableKindOrder(role)`・未読件数・抜粋） |
 | `structure/` | React Flow アダプタ（`flow-adapter` `tree-layout` `use-structure-flow` `ensure-structure`） |
+| `proofread/` | 推敲の解析 Worker と窓口（`analyzer.worker.ts` `analyzer-engine.ts` `analyzer-client.ts` `unzip.ts` `protocol.ts`）。`lindera-wasm` を import するのはここの Worker だけ |
 | `auth/` | Clerk 配線（`auth-provider` `clerk-gate` `derive-status` `cloud-pricing`） |
 
 ---
@@ -347,20 +350,21 @@ Clerk へ登録済みのクライアントの互換。消すとトークン更�
 ## 5. 開発コマンド・規約
 
 ```bash
-pnpm dev            # Vite 開発サーバ (localhost:5173)
-pnpm test           # Vitest（ユニット・101ファイル）
+pnpm dev            # Vite 開発サーバ (localhost:5173)。predev で推敲の辞書を取得（取れなくても続行）
+pnpm test           # Vitest（ユニット・約200ファイル）。pretest で推敲の辞書を取得（取れなくても続行）
 pnpm typecheck      # tsc -b --noEmit
 pnpm lint           # biome check .
 pnpm format         # biome format --write .
-pnpm build          # tsc -b && vite build
+pnpm build          # tsc -b && vite build。prebuild で推敲の辞書を取得（取れなければ失敗）、postbuild で scripts/check-precache.mjs（.wasm と dict/ がプリキャッシュに無いか）
 pnpm test:e2e       # Playwright（e2e/smoke.spec.ts, e2e/mobile.spec.ts）
 pnpm d1:migrate:local / :remote
+node scripts/gen-morph-fixtures.mjs   # 推敲の品詞ルールのテスト用フィクスチャを実物の lindera で作り直す（手で回す）
 pnpm templates:copy-to-prod [--dry-run]   # 運営テンプレ素材を R2 の stg バケット → 本番へ写す（scripts/copy-templates.mjs・要 wrangler 認証）
 pnpm --dir tools/novel-textlint lint:novel <file>   # 小説原稿の textlint（CI 対象外）
 uv run .claude/skills/natural-japanese/scripts/lint.py <file>   # 仕事の文書の AI 臭 lint（要 uv・CI 対象外）
 ```
 
-- CI（`.github/workflows/ci.yml`）は main / stg への push・PR で lint → typecheck → test → build → e2e。
+- CI（`.github/workflows/ci.yml`）は main / stg への push・PR で lint → typecheck → test → build → e2e。推敲の辞書（`public/dict/`）は `actions/cache` に載せる（キーは `scripts/fetch-dict.mjs` のハッシュ）。
 - Node 22 / pnpm 10.29.3（`mise.toml` で固定）。環境別は `mise.staging.toml` / `mise.production.toml`。
 - インポートエイリアス `@/` → `src/`。
 - Biome: シングルクォート・セミコロンなし・幅100・スペース2。
@@ -385,6 +389,7 @@ uv run .claude/skills/natural-japanese/scripts/lint.py <file>   # 仕事の文�
 | `docs/requirement/09-board.md` | 掲示板（記名式スレッド・お知らせ・アンケート・外部リンクの OGP）の設計と決定表 |
 | `docs/requirement/10-mcp-oauth.md` | MCP の OAuth（ChatGPT で繋がらなかった原因の実測と診断・Phase 1 の撤去・自前 認可サーバーの設計と、2026-09 の ChatGPT 実地確認） |
 | `docs/requirement/11-glossary-dialog.md` | 用語集の「対話」（一問一答で項目を育てる）の決定表・`GlossaryEntry.dialog` の形・MCP 契約（`get_glossary` の出力、`upsert_glossary_entry` の `dialog` パッチ、`get_glossary_questions`）・質問の正本（付録 A） |
+| `docs/specs/COT-40/` | 推敲画面（直す／このまま・「直す箇所」・形態素解析）の要件・設計・実装メモ・プロトタイプ |
 | `docs/requirement/12-ai-search.md` | 検索・AI 検索からの流入（COT-22〜28 の leaf 側）の決定表・置いたものと見張り・本番後の手作業（MCP Registry・Cloudflare・Bing） |
 | `public/board-guidelines.html` | 掲示板ガイドライン（`/board-guidelines` で公開・通報や上限の文言はここと揃える） |
 | `docs/requirement/99-open-questions.md` | 未決事項 |

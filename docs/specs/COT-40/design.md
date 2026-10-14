@@ -286,3 +286,14 @@ e2e は常にゲストで動く（`playwright.config.ts`）ので、無料会員
 - 旧版タブによる判断の消失（requirements.md 仮定 A5）：原稿には影響しない。退避一覧に載せないので戻せない
 - ユーザー辞書の副作用：試験で「ユイナと」の「と」がフィラーになった。助詞の判定に漏れが出るだけで誤検知は増えない
 - 出現ごとに出すことで、COT-30 より件数が増える。推敲画面は作者が開いたときだけ見るので、執筆中のノイズにはならない
+
+## 実装メモ（2026-10-14・実装時に設計から変えた点と計測）
+
+- 前提の確認：`lindera-wasm` 6.2.0 は Worker の中で `init()`→辞書 zip の展開→`loadDictionaryFromBytes` まで動いた。計測（headless Chromium・dev サーバ）は、準備 0.56秒、1万字の解析 75ms、30万字（30話）の作品全体の解析 1.3秒、ブラウザ全体のメモリの増え方 約205MB。本番ビルド（`vite preview`）では、初回の準備 0.41秒（wasm と辞書を取得）、2回目 0.29秒（辞書は Cache Storage から読み、`/dict/` へは行かない）
+- Worker の本体は `src/ui/proofread/analyzer-engine.ts` に分けた（lindera と辞書の取得を外から渡す）。`analyzer.worker.ts` はメッセージの受け渡しだけ。Node のテスト（`analyzer.node.test.ts`）で実物の lindera と辞書を動かせる。型は `src/ui/proofread/protocol.ts`
+- Worker からは、いまの話のトークンを `MorphToken` の配列のまま返す（`RawToken` に詰め直さない）。作品全体のトークンは Worker の中だけに持つ方針は変えていない
+- 同期の列挙は `ProofreadRepository.listRaw()`（生のまま）を使い、Zod で読めない判断は masked に回す。`list()` のように黙って外すと、同期の計画が「端末で消した」と受け取り、ほかの端末の判断まで消すため。`sync-service.ts` の `recordLost` は proofread のとき何もしない（退避一覧に載せない設計を型でも守る）
+- 一文の中の同じ助詞：目視で「何かが動いた気がした」の「が動いた気が」に出たので、述語（動詞・形容詞・助動詞）を挟む場合は別の節として出さない判定を足した（requirements.md FR-8b に追記）
+- 品詞ルールのテストは、実際の lindera の出力を `scripts/gen-morph-fixtures.mjs` で `morph/__fixtures__/samples.json` に固定して使う（テスト専用の読み口は `morph/fixtures.ts`）
+- `variants.ts` の `variantNoticesForLine`（COT-30 の1行1件）は `variantFindingsForLine`（出現ごと）に置き換えた
+- 手動の確認で残っているもの：stg での Safari・Firefox の動作、実機のメモリ

@@ -81,8 +81,19 @@ describe('leader-odd（三点リーダー・ダッシュ）', () => {
     expect(hits.find((h) => h.code === 'leader-odd')?.message).toContain('中黒')
     expect(codes('「単語の・区切りなら・大丈夫」')).not.toContain('leader-odd')
   })
-  it('1 行に 1 件まで', () => {
-    expect(codes('…と―と・・').filter((c) => c === 'leader-odd')).toHaveLength(1)
+  it('出現ごとに 1 件ずつ返す（COT-40。COT-30 の「1 行に 1 件まで」はやめた）', () => {
+    expect(
+      checkLine('…と―と・・')
+        .filter((h) => h.code === 'leader-odd')
+        .map((h) => h.text),
+    ).toEqual(['…と', 'と―と', '・・'])
+  })
+  it('奇数の連なりは前後 1 文字を含めて取る。重なり合う出現もそれぞれ返す', () => {
+    const hits = checkLine('ご…ご…ごめん').filter((h) => h.code === 'leader-odd')
+    expect(hits.map((h) => [h.start, h.end, h.text])).toEqual([
+      [0, 3, 'ご…ご'],
+      [2, 5, 'ご…ご'],
+    ])
   })
 })
 
@@ -133,6 +144,42 @@ describe('successive-word（同じ語の連続）', () => {
     ]) {
       expect(codes(t), t).not.toContain('successive-word')
     }
+  })
+})
+
+describe('位置と文字列（COT-40）', () => {
+  it('字下げは段落の先頭 1 文字で、段落の頭に結び付く', () => {
+    expect(checkLine('彼は言った。')[0]).toMatchObject({
+      code: 'indent',
+      start: 0,
+      end: 1,
+      text: '彼',
+      anchor: 'lineStart',
+    })
+    expect(checkLine('𠮷野は言った。')[0]).toMatchObject({ text: '𠮷', end: 2 })
+  })
+  it('各項目は直せば消える文字列と範囲を持つ', () => {
+    const line = '　「待って。」と、彼女は言った！そして…、光がが揺れて!'
+    const pick = (code: string) =>
+      checkLine(line)
+        .filter((h) => h.code === code)
+        .map((h) => h.text)
+    expect(pick('punct-before-close')).toEqual(['。」'])
+    expect(pick('space-after-exclamation')).toEqual(['！そ'])
+    expect(pick('leader-odd')).toEqual(['て…、'])
+    expect(pick('successive-word')).toEqual(['がが'])
+    expect(pick('halfwidth-punct')).toEqual(['て!'])
+    for (const h of checkLine(line)) expect(line.slice(h.start, h.end)).toBe(h.text)
+  })
+  it('同じ項目が 1 行に複数あれば出現ごとに返す', () => {
+    expect(checkLine('「行こう。」「うん。」').map((h) => h.code)).toEqual([
+      'punct-before-close',
+      'punct-before-close',
+    ])
+    expect(codes('　光がが揺れ、影をを見た')).toEqual(['successive-word', 'successive-word'])
+  })
+  it('助詞の重複と漢字の繰り返しが重なるときは 1 件にする', () => {
+    expect(checkLine('　言った言った').filter((h) => h.code === 'successive-word')).toHaveLength(1)
   })
 })
 

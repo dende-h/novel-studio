@@ -3,7 +3,13 @@ import { resolve } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import { parseEpisodeBody } from '../parser/parseNotation'
 import type { Episode } from '../schema'
-import { countVariantsInBlocks, createVariantCountCache, proofreadNovel } from './index'
+import {
+  countAutoVariants,
+  countVariantsInBlocks,
+  createVariantCountCache,
+  proofreadNovel,
+} from './index'
+import { sampleTokens } from './morph/fixtures'
 import * as variants from './variants'
 
 // vitest はリポジトリルートを cwd にして走る（vite.config.ts）
@@ -20,8 +26,8 @@ describe('proofreadNovel', () => {
       [2, 'punct-before-close'],
       [3, 'indent'],
       [4, 'halfwidth-punct'],
-      [7, 'leader-odd'],
       [7, 'successive-word'],
+      [7, 'leader-odd'],
     ])
   })
   it('記法（ルビ・傍点・参照）の記号は候補の原因にならない（解いたプレーン文字列を検査する）', () => {
@@ -51,6 +57,7 @@ describe('proofreadNovel', () => {
       'indent',
       'halfwidth-punct',
       'variant',
+      'variant',
     ])
     expect(
       proofreadNovel(blocks, { disabled: new Set(['indent', 'variant']) }).map((n) => n.code),
@@ -64,8 +71,13 @@ describe('proofreadNovel', () => {
     const base = countVariantsInBlocks(parseEpisodeBody('　出来た。'))
     expect(proofreadNovel(blocks, { baseCounts: base })).toEqual([
       {
+        blockId: blocks[0]?.id,
         blockIndex: 0,
         code: 'variant',
+        start: 1,
+        end: 4,
+        text: 'できる',
+        anchor: 'contains',
         message:
           '「できる」と「出来る」が混ざっています（この作品で できる 1件・出来る 1件）。どちらかに揃えると読みやすくなります。',
       },
@@ -100,5 +112,50 @@ describe('createVariantCountCache', () => {
   })
   it('空の配列は空の集計', () => {
     expect(createVariantCountCache()([])).toEqual({})
+  })
+})
+
+describe('くわしい確認（morph）との合流', () => {
+  const morphOf = (texts: string[]) => {
+    const tokens = texts.map((t) => sampleTokens(t))
+    return {
+      tokens,
+      workVariants: countAutoVariants(tokens, new Set()),
+      excluded: new Set<string>(),
+    }
+  }
+
+  it('辞書の表記ゆれは、解析器の有無で文字列も範囲も変わらない。重なる自動の指摘は出さない', () => {
+    const text = '鳥が飛んできた。彼にもできた。出来なかった。'
+    const blocks = parseEpisodeBody(text)
+    const dict = proofreadNovel(blocks).filter((f) => f.code === 'variant')
+    const withMorph = proofreadNovel(blocks, { morph: morphOf([text]) }).filter(
+      (f) => f.code === 'variant',
+    )
+    for (const d of dict) expect(withMorph).toContainEqual(d)
+    for (const m of withMorph) {
+      const overlapsDict = dict.some((d) => d.start < m.end && m.start < d.end)
+      if (overlapsDict) expect(dict).toContainEqual(m)
+    }
+  })
+  it('自動の表記ゆれ・同じ助詞・ら抜きを出し、項目をオフにすると出さない', () => {
+    const texts = [
+      '子供と子どもが遊ぶ。',
+      '私は彼は好きだ。',
+      '食べれる。起きれる。寝れない。来れない。見れる。',
+    ]
+    const blocks = parseEpisodeBody(texts.join('\n'))
+    const morph = morphOf(texts)
+    const codes = proofreadNovel(blocks, { morph }).map((f) => f.code)
+    expect(codes).toEqual(expect.arrayContaining(['variant', 'doubled-particle', 'ra-nuki']))
+    const off = proofreadNovel(blocks, {
+      morph,
+      disabled: new Set(['variant', 'doubled-particle', 'ra-nuki', 'indent']),
+    })
+    expect(off).toEqual([])
+  })
+  it('解析器が無ければ品詞を使う指摘は出さない', () => {
+    const blocks = parseEpisodeBody('　私は彼は好きだ。')
+    expect(proofreadNovel(blocks)).toEqual([])
   })
 })

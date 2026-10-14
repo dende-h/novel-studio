@@ -384,13 +384,17 @@ function mixedGroups(counts: VariantCounts): VariantGroup[] {
   })
 }
 
-/** その行に含まれる書き方（マスク後）。 */
-function formsInLine(group: VariantGroup, text: string): { form: VariantForm; example: string }[] {
+/** その行に含まれる書き方の出現（マスク後に探し、位置は元の行と同じ）。 */
+function formsInLine(
+  group: VariantGroup,
+  text: string,
+): { form: VariantForm; start: number; end: number }[] {
   const masked = mask(text, group.exclude)
-  const out: { form: VariantForm; example: string }[] = []
+  const out: { form: VariantForm; start: number; end: number }[] = []
   for (const form of group.forms) {
-    const m = re(form.re).exec(masked)
-    if (m) out.push({ form, example: m[0] })
+    for (const m of masked.matchAll(re(form.re))) {
+      out.push({ form, start: m.index, end: m.index + m[0].length })
+    }
   }
   return out
 }
@@ -400,41 +404,43 @@ function joinLabels(labels: string[]): string {
   return quoted.length === 2 ? quoted.join('と') : quoted.join('・')
 }
 
+/** 表記ゆれの出現 1 件（`text` は正規表現の一致そのもの。前後の文脈の文字を含むことがある）。 */
+export interface VariantHit {
+  start: number
+  end: number
+  text: string
+  message: string
+}
+
 /**
- * 1 行分の表記ゆれ候補。語の組は組ごとに 1 件、数の書き方は助数詞をまとめて 1 件。
- * counts は作品全体（他の話＋いまの話）の集計。
+ * 1 行分の表記ゆれ（出現ごとに 1 件・COT-40）。counts は作品全体（他の話＋いまの話）の集計。
+ * 説明は、その出現の書き方を先頭に、作品内で使われているほかの書き方と件数を添える。
+ * 数の書き方は、その出現の助数詞の分だけを書く。
  */
-export function variantNoticesForLine(text: string, counts: VariantCounts): string[] {
+export function variantFindingsForLine(text: string, counts: VariantCounts): VariantHit[] {
   if (!text.trim()) return []
-  const messages: string[] = []
-  const numeralParts: string[] = []
+  const hits: VariantHit[] = []
   for (const group of mixedGroups(counts)) {
-    const present = formsInLine(group, text)
-    if (present.length === 0) continue
     const tallies = counts[group.id] ?? {}
-    const presentLabels = new Set(present.map((p) => p.form.label))
-    const ordered = [
-      ...group.forms.filter((f) => presentLabels.has(f.label)),
-      ...group.forms.filter(
-        (f) => !presentLabels.has(f.label) && (tallies[f.label]?.count ?? 0) > 0,
-      ),
-    ]
-    const stats = ordered.map((f) => `${f.label} ${tallies[f.label]?.count ?? 0}件`).join('・')
-    if (group.kind === 'numeral') {
-      const counter = group.id.slice('numeral:'.length)
-      const examples = ordered.map(
-        (f) =>
-          present.find((p) => p.form.label === f.label)?.example ?? tallies[f.label]?.example ?? '',
-      )
-      numeralParts.push(`${counter}（${examples.join('・')}／${stats}）`)
-    } else {
-      messages.push(
-        `${joinLabels(ordered.map((f) => f.label))}が混ざっています（この作品で ${stats}）。どちらかに揃えると読みやすくなります。`,
-      )
+    for (const occ of formsInLine(group, text)) {
+      const ordered = [
+        occ.form,
+        ...group.forms.filter((f) => f !== occ.form && (tallies[f.label]?.count ?? 0) > 0),
+      ]
+      const stats = ordered.map((f) => `${f.label} ${tallies[f.label]?.count ?? 0}件`).join('・')
+      const matched = text.slice(occ.start, occ.end)
+      let message: string
+      if (group.kind === 'numeral') {
+        const counter = group.id.slice('numeral:'.length)
+        const examples = ordered.map((f) =>
+          f === occ.form ? matched : (tallies[f.label]?.example ?? ''),
+        )
+        message = `数の書き方が算用数字と漢数字で混ざっています：${counter}（${examples.join('・')}／${stats}）。`
+      } else {
+        message = `${joinLabels(ordered.map((f) => f.label))}が混ざっています（この作品で ${stats}）。どちらかに揃えると読みやすくなります。`
+      }
+      hits.push({ start: occ.start, end: occ.end, text: matched, message })
     }
   }
-  if (numeralParts.length > 0) {
-    messages.push(`数の書き方が算用数字と漢数字で混ざっています：${numeralParts.join('・')}。`)
-  }
-  return messages
+  return hits.sort((a, b) => a.start - b.start)
 }

@@ -5,6 +5,7 @@ import { type UserGameAsset, UserGameAssetSchema } from '../game/assets'
 import { type IdeaNote, IdeaNoteSchema } from '../idea'
 import { type Plot, PlotSchema } from '../plot'
 import { type Profile, ProfileSchema } from '../profile'
+import { type ProofreadRecord, ProofreadRecordSchema } from '../proofread/decisions'
 import { type Work, WorkSchema } from '../schema'
 import { type Structure, StructureSchema } from '../structure'
 
@@ -38,6 +39,8 @@ const CloudBackupSchema = z.object({
   plots: z.array(PlotSchema).optional().default([]),
   /** 演出譜（サウンドノベルの Staging）。旧バックアップには無いので既定 []。 */
   stagings: z.array(StagingSchema).optional().default([]),
+  /** 推敲の判断（直す／このまま・話ごと）。旧バックアップには無いので既定 []。 */
+  proofreads: z.array(ProofreadRecordSchema).optional().default([]),
   /** 持ち込みのゲーム素材（背景画像）。旧バックアップには無いので既定 []。 */
   gameAssets: z.array(UserGameAssetSchema).optional().default([]),
 })
@@ -53,6 +56,7 @@ export interface BackupState {
   structures: Structure[]
   plots: Plot[]
   stagings: Staging[]
+  proofreads: ProofreadRecord[]
   gameAssets: UserGameAsset[]
 }
 

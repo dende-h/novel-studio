@@ -28,6 +28,26 @@ const state: BackupState = {
   stagings: [
     { workId: 'w1', episodeId: 'e1', cues: [{ blockId: 'b1', speaker: '光' }], updatedAt: 40 },
   ],
+  proofreads: [
+    {
+      workId: 'w1',
+      episodeId: 'e1',
+      decisions: [
+        {
+          blockId: 'b1',
+          code: 'variant',
+          text: '出来る',
+          nth: 0,
+          occurrence: 1,
+          anchor: 'contains',
+          verdict: 'fix',
+          message: '「できる」と書く箇所があります',
+          decidedAt: 45,
+        },
+      ],
+      updatedAt: 45,
+    },
+  ],
   gameAssets: [
     {
       id: 'ga1',
@@ -84,6 +104,53 @@ describe('serializeBackup / deserializeBackup（全体バックアップの直�
     expect(deserializeBackup(old).structures).toEqual([])
   })
 
+  it('proofreads 欠落の旧バックアップも既定 [] で読め、ほかの項目は残る（後方互換）', () => {
+    const old = JSON.stringify({
+      version: 1,
+      createdAt: 1,
+      works: [work('w1')],
+      trash: [],
+      profile: {},
+      activity: [],
+      ideas: [],
+      structures: [],
+      plots: [],
+      stagings: [{ workId: 'w1', episodeId: 'e1', cues: [], updatedAt: 1 }],
+      gameAssets: [],
+    })
+    const back = deserializeBackup(old)
+    expect(back.proofreads).toEqual([])
+    expect(back.works.map((w) => w.id)).toEqual(['w1'])
+    expect(back.stagings).toHaveLength(1)
+  })
+
+  it('推敲の判断を往復できる（未知の verdict・code も落とさない）', () => {
+    const withUnknown: BackupState = {
+      ...state,
+      proofreads: [
+        ...state.proofreads,
+        {
+          workId: 'w2',
+          episodeId: 'e9',
+          decisions: [
+            {
+              blockId: 'b2',
+              code: 'future-rule',
+              text: '何か',
+              nth: 2,
+              anchor: 'lineStart',
+              verdict: 'later',
+              decidedAt: 60,
+            },
+          ],
+          updatedAt: 60,
+        },
+      ],
+    }
+    const back = deserializeBackup(serializeBackup(withUnknown, 0))
+    expect(back.proofreads).toEqual(withUnknown.proofreads)
+  })
+
   it('version 不正は弾く（壊れた/将来形のバックアップを復元しない）', () => {
     const bad = JSON.stringify({ version: 999, createdAt: 1, works: [], trash: [], profile: {} })
     expect(() => deserializeBackup(bad)).toThrow()
@@ -105,6 +172,7 @@ describe('serializeBackup / deserializeBackup（全体バックアップの直�
         structures: [],
         plots: [],
         stagings: [],
+        proofreads: [],
         gameAssets: [],
       },
       0,
