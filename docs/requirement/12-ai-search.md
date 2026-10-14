@@ -48,6 +48,10 @@ SW（PWA）のナビゲーション置き換えから、llms.txt・robots.txt・
 
 ### 3-1. MCP Registry へ載せる（COT-24 の延長・D-AIS-REGISTRY）
 
+> **2026-10-14 公開済み**（`org.cotonoha-leaf/leaf` 版 1.10.0・status active）。以下は版を上げて出し直すときの手順。
+> `icons[].sizes` は文字列の配列（`["400x400"]`）。文字列にすると `mcp-publisher validate` で落ちる（PR #48 で直した）。
+> 出す前に `./mcp-publisher validate` を通す。
+
 前提：本番の `https://cotonoha-leaf.org/.well-known/mcp-registry-auth` が 200 で公開鍵を返すこと
 （リダイレクト・チャレンジがあると認証に落ちる）。秘密鍵は `~/.config/cotonoha-leaf/mcp-registry-ed25519.pem`
 （権限 600・2026-10-08 作成）。失くしたら鍵を作り直し、公開鍵のファイルを差し替えて本番に出す。
@@ -62,6 +66,7 @@ curl "https://registry.modelcontextprotocol.io/v0.1/servers?search=org.cotonoha-
 ```
 
 署名の時刻は Registry の時計と ±15 秒以内である必要がある（WSL の時計がずれていたら合わせる）。
+mcp-publisher はリリースの添付ファイルに書かれた sha256 と照合してから使う（`gh release view <tag> --repo modelcontextprotocol/registry --json assets`）。
 
 ### 3-2. Cloudflare で grove の学習用クローラーを止める（COT-25 を D-AIS-TRAIN に合わせて）
 
@@ -92,6 +97,9 @@ leaf と grove は同じゾーン（`cotonoha-leaf.org`）にある。**ゾー�
 3. 確認：sitemap が「成功」、`site:cotonoha-leaf.org` の Bing 検索で `/lp/` と `/lp/ai/` が出る。
 
 ### 3-4. 構造化データの確認（COT-22）
+
+> **2026-10-14 確認済み**：`/`・`/lp/`・`/lp/ai/` とも Validator でエラー 0・警告 0。
+> CLI からは `curl -s -X POST https://validator.schema.org/validate --data-urlencode url=<URL>`（先頭の `)]}'` を外すと JSON・`totalNumErrors`）。
 
 - schema.org の Validator（https://validator.schema.org/）で `/`・`/lp/`・`/lp/ai/` がエラー 0。
 - Google のリッチリザルトテストの「エラー 0」は完了条件にしない。ソフトウェアアプリのリッチリザルトは
