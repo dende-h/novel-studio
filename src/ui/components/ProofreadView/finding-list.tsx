@@ -80,6 +80,7 @@ export function FindingList({
         return (
           <li
             key={key}
+            data-finding-key={key}
             className={cn(
               'rounded-lg border bg-surface-container-lowest p-3',
               key === activeKey

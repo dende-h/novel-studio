@@ -225,6 +225,51 @@ describe('ProofreadView（推敲画面・COT-40）', () => {
     expect(screen.getByText('未判断 1 ・ 直す 0 ・ このまま 0')).toBeInTheDocument()
   })
 
+  it('本文の印を押すと、右の一覧をその指摘のカードまで送る（直すの印なら「直す」へ切り替えてから）', async () => {
+    const original = Element.prototype.scrollIntoView
+    const spy = vi.fn()
+    Element.prototype.scrollIntoView = spy
+    try {
+      await renderView(
+        work([
+          {
+            id: 'e1',
+            title: '第一話',
+            body: '「待って。」\n彼は言った。\n　光がが揺れた。\n　「行こう!」',
+          },
+        ]),
+      )
+      const scrolledCards = () =>
+        spy.mock.contexts.filter(
+          (el): el is HTMLElement => el instanceof HTMLElement && el.tagName === 'LI',
+        )
+      fireEvent.click(screen.getByRole('button', { name: '指摘を選ぶ：がが' }))
+      await act(async () => {})
+      expect(scrolledCards().at(-1)).toBe(findingCard(/同じ語の連続「がが」/))
+      expect(findingCard(/同じ語の連続「がが」/)).toHaveClass('border-primary')
+
+      // 「直す」にした指摘の印から選ぶと、絞り込みを「直す」に替えてからそのカードまで送る
+      fireEvent.click(
+        within(findingCard(/閉じ括弧の前の句読点/)).getByRole('button', { name: '直す' }),
+      )
+      await act(async () => {})
+      fireEvent.click(screen.getByRole('button', { name: '指摘を選ぶ：。」' }))
+      await act(async () => {})
+      expect(screen.getByRole('button', { name: '直す 1' })).toHaveAttribute('aria-pressed', 'true')
+      expect(scrolledCards().at(-1)).toBe(findingCard(/閉じ括弧の前の句読点「。」」/))
+      // カードを押したとき（一覧から選ぶ）は一覧を送らない（本文の段落を送るだけ）
+      spy.mockClear()
+      fireEvent.click(screen.getByRole('button', { name: /本文で見る：閉じ括弧の前の句読点/ }))
+      await act(async () => {})
+      expect(scrolledCards()).toEqual([])
+      expect(spy.mock.contexts.some((el) => el instanceof HTMLElement && el.tagName === 'P')).toBe(
+        true,
+      )
+    } finally {
+      Element.prototype.scrollIntoView = original
+    }
+  })
+
   it('話を切り替えると、その話の指摘と判断を出す', async () => {
     await renderView(
       work([

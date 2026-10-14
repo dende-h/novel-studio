@@ -55,6 +55,12 @@ const SELECT_CLASS =
 
 const fmtMb = (bytes: number) => (bytes / 1024 / 1024).toFixed(1)
 
+/** 動きを減らす設定の人には、なめらかに送らず一度で送る。 */
+const scrollBehavior = (): ScrollBehavior =>
+  typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+    ? 'auto'
+    : 'smooth'
+
 const ZERO: DialogueRatio = { dialogue: 0, narration: 0 }
 const NO_GLOSSARY: NonNullable<Work['glossary']> = []
 
@@ -87,6 +93,9 @@ export function ProofreadView({
   const [word, setWord] = useState<string | null>(null)
   const [rulesOpen, setRulesOpen] = useState(false)
   const textRef = useRef<HTMLDivElement>(null)
+  const listRef = useRef<HTMLDivElement>(null)
+  // 本文の印から選んだ指摘。一覧（絞り込みが変わることがある）を描き直したあとで、そのカードまで送る。
+  const [scrollToKey, setScrollToKey] = useState<string | null>(null)
 
   // 作品全体を Worker で解析する（準備ができたとき・話や本文が変わったとき）
   const ready = analyzer.status === 'ready'
@@ -162,14 +171,22 @@ export function ProofreadView({
     setActiveKey(findingKey(f))
     textRef.current
       ?.querySelector(`#proofread-p-${f.blockIndex}`)
-      ?.scrollIntoView?.({ block: 'center', behavior: 'smooth' })
+      ?.scrollIntoView?.({ block: 'center', behavior: scrollBehavior() })
   }, [])
   const selectFromText = (f: FindingN) => {
     const key = findingKey(f)
     setTab('findings')
     setFilter(groups.fix.some((g) => findingKey(g) === key) ? 'fix' : 'pending')
     setActiveKey(key)
+    setScrollToKey(key)
   }
+  useEffect(() => {
+    if (!scrollToKey || tab !== 'findings') return
+    const cards = listRef.current?.querySelectorAll<HTMLElement>('[data-finding-key]') ?? []
+    const card = [...cards].find((el) => el.dataset.findingKey === scrollToKey)
+    card?.scrollIntoView?.({ block: 'center', behavior: scrollBehavior() })
+    setScrollToKey(null)
+  })
 
   // 分析（セリフと地の文はくわしい確認を使わない）
   const ratios = useMemo(
@@ -299,7 +316,7 @@ export function ProofreadView({
                   </Chip>
                 ))}
               </fieldset>
-              <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-4">
+              <div ref={listRef} className="min-h-0 flex-1 overflow-y-auto px-4 pb-4">
                 {findings.length === 0 &&
                 episode?.blocks.some((b) => plainTextOfBlock(b).trim()) ? (
                   <p className="p-6 text-center text-on-surface-variant text-sm">
