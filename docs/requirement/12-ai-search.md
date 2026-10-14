@@ -70,25 +70,31 @@ mcp-publisher はリリースの添付ファイルに書かれた sha256 と照�
 
 ### 3-2. Cloudflare で grove の学習用クローラーを止める（COT-25 を D-AIS-TRAIN に合わせて）
 
+> **2026-10-14 設定済み**。grove では GPTBot・ClaudeBot・CCBot が 403、OAI-SearchBot・Claude-SearchBot・
+> ChatGPT-User は 200。leaf はすべて 200（学習も許可）。
+
 leaf と grove は同じゾーン（`cotonoha-leaf.org`）にある。**ゾーン全体で止めると leaf も止まる**ので、
-ホスト名で分ける。
+AI Crawl Control の一括ブロックや「Block AI bots」は使わず、grove のホスト名に限ったカスタムルールを 1 本置く。
 
-1. ダッシュボード → ゾーン `cotonoha-leaf.org` → **AI Crawl Control** を開き、用途が Training の
-   クローラー（GPTBot・ClaudeBot・CCBot・Bytespider・meta-externalagent など）を Block にする。
-   Search と Agent（OAI-SearchBot・Claude-SearchBot・PerplexityBot・ChatGPT-User・Claude-User）は Allow のまま。
-   「Block AI Scrapers and Crawlers」の一括トグルは使わない（引用用まで止まる）。
-2. AI Crawl Control が作る WAF カスタムルール「AI Crawl Control」を開き、式に
-   `and http.host eq "grove.cotonoha-leaf.org"` を足す（この編集は、のちのダッシュボード操作でも保たれる）。
-3. Security Settings の「Configure AI bot policies」が、leaf を巻き込む設定（Block on all pages）に
-   なっていないか確かめる。
-4. 確認：
-   - `curl -A GPTBot https://grove.cotonoha-leaf.org/` → 403
-   - `curl -A GPTBot https://cotonoha-leaf.org/lp/` → 200（leaf は許可）
-   - `curl -A OAI-SearchBot https://grove.cotonoha-leaf.org/` → 200
-5. 1 週間後に AI Crawl Control の統計で Blocked と、許可したクローラーのアクセス数を見る。
+- 場所：ドメイン `cotonoha-leaf.org` →「セキュリティ」→「セキュリティルール」→ カスタムルール
+- アクション：ブロック
+- 式：
 
-`cf.verified_bot_category`（`AI Crawler` など）で書く方法もあるが、Bot Management の変数で、
-無料プランで使えるかは確かめられていない。上の手順は無料プランでも通る。
+```
+(http.host eq "grove.cotonoha-leaf.org" and (http.user_agent contains "GPTBot" or http.user_agent contains "ClaudeBot" or http.user_agent contains "anthropic-ai" or http.user_agent contains "CCBot" or http.user_agent contains "Bytespider" or http.user_agent contains "meta-externalagent" or http.user_agent contains "Amazonbot" or http.user_agent contains "cohere-ai" or http.user_agent contains "Diffbot" or http.user_agent contains "omgili" or http.user_agent contains "Timpibot" or http.user_agent contains "Google-CloudVertexBot"))
+```
+
+- 「セキュリティ」→「設定」の「AI ボットポリシーを設定」は、leaf を巻き込む「すべてのページでブロック」にしない。
+  Bot Fight モードはオフのまま（オンにすると MCP クライアントや Registry の認証がチャレンジされうる）。
+- Google-Extended・Applebot-Extended は robots.txt でしか止められない（grove の robots.txt＝COT-20）。
+- 名前を偽る無名のスクレイパーは止められない（UA の一致で判定しているため）。
+- 確認：
+
+```bash
+curl -s -o /dev/null -w '%{http_code}\n' -A 'Mozilla/5.0 (compatible; GPTBot/1.0)' https://grove.cotonoha-leaf.org/   # 403
+curl -s -o /dev/null -w '%{http_code}\n' -A 'Mozilla/5.0 (compatible; GPTBot/1.0)' https://cotonoha-leaf.org/lp/   # 200
+curl -s -o /dev/null -w '%{http_code}\n' -A 'Mozilla/5.0 (compatible; OAI-SearchBot/1.0)' https://grove.cotonoha-leaf.org/   # 200
+```
 
 ### 3-3. Bing Webmaster Tools（COT-26）
 
@@ -111,8 +117,8 @@ leaf と grove は同じゾーン（`cotonoha-leaf.org`）にある。**ゾー�
 | チケット | 中身 | 状態 |
 |---|---|---|
 | COT-18〜21 | grove の sitemap・JSON-LD・robots（学習用は拒否）・llms.txt | 未着手（novel-platform リポ） |
-| COT-25 | §3-2 | 本番に出たあと |
-| COT-26 | §3-3 | 本番に出たあと |
+| COT-25 | §3-2 | 済（2026-10-14・grove だけのカスタムルール） |
+| COT-26 | §3-3 | サイト登録済み・インデックス待ち（2026-10-14） |
 | COT-27 | 参照元を「AI 検索／検索／SNS」に分けて週次で見る | 未着手（`referer_host` は `functions/api/hit.ts` が記録済み） |
 | COT-28 | note・Zenn の紹介記事と相互リンク | 未着手 |
 | — | Claude のコネクタ一覧・ChatGPT のアプリ一覧への掲載申請 | 未検討（Registry とは別の窓口） |
