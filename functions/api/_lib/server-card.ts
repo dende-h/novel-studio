@@ -40,7 +40,7 @@ export function buildServerCard(origin: string) {
     description: MCP_SERVER_DESCRIPTION,
     version: SERVER_INFO.version,
     websiteUrl: `${origin}/lp/ai/`,
-    icons: [{ src: `${origin}/app_icon.png`, mimeType: 'image/png', sizes: '400x400' }],
+    icons: [{ src: `${origin}/app_icon.png`, mimeType: 'image/png', sizes: ['400x400'] }],
     remotes: [{ type: 'streamable-http', url: `${origin}/api/mcp` }],
   }
 }

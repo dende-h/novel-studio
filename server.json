@@ -9,7 +9,7 @@
     {
       "src": "https://cotonoha-leaf.org/app_icon.png",
       "mimeType": "image/png",
-      "sizes": "400x400"
+      "sizes": ["400x400"]
     }
   ],
   "remotes": [
