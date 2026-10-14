@@ -1,16 +1,24 @@
 <?xml version="1.0" encoding="UTF-8"?>
+<!-- 静的ページを足したら、ここにも足す（functions/static-seo.test.ts が public/ の HTML と突き合わせる）。
+     lastmod はそのページの中身を直した日。規約類や LP を直したら、同じコミットで書き換える。 -->
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
     <loc>https://cotonoha-leaf.org/</loc>
-    <lastmod>2026-07-26</lastmod>
+    <lastmod>2026-10-08</lastmod>
     <changefreq>weekly</changefreq>
     <priority>1.0</priority>
   </url>
   <url>
     <loc>https://cotonoha-leaf.org/lp/</loc>
-    <lastmod>2026-07-26</lastmod>
+    <lastmod>2026-10-08</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.9</priority>
+  </url>
+  <url>
+    <loc>https://cotonoha-leaf.org/lp/ai/</loc>
+    <lastmod>2026-10-08</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
   </url>
   <url>
     <loc>https://cotonoha-leaf.org/terms</loc>

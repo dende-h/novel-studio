@@ -27,7 +27,17 @@ export default defineConfig({
         // SPA のナビゲーションフォールバック（index.html 差し替え）の対象からも除外する。
         // これを怠ると古い manifest/work レスポンスが返り、同期が壊れる（Phase 2 の必須対策）。
         // /lp/ は独立した静的 LP。SPA フォールバックでアプリに差し替えられないよう除外する。
-        navigateFallbackDenylist: [/^\/api\//, /^\/lp/, /^\/game-templates\//],
+        // クローラー・AI 向けのテキスト（llms.txt・robots.txt・sitemap.xml・.well-known）も同じ。
+        // 一度アプリを開いた人がブラウザで直接開いたとき、アプリの画面に化けないように。
+        navigateFallbackDenylist: [
+          /^\/api\//,
+          /^\/lp/,
+          /^\/game-templates\//,
+          /^\/llms(-full)?\.txt$/,
+          /^\/robots\.txt$/,
+          /^\/sitemap\.xml$/,
+          /^\/\.well-known\//,
+        ],
         runtimeCaching: [
           {
             urlPattern: ({ url }) => url.pathname.startsWith('/api/'),

@@ -37,6 +37,25 @@ test('入口にマイライブラリ見出しが出る', async ({ page }) => {
 })
 
 /**
+ * AI 向けの案内（COT-24）。/llms.txt はかつて SPA のフォールバックで index.html が 200 で返る
+ * 「ソフト 404」だった。静的ファイルを置いたいまはテキストで返り、未知のパスはこれまでどおり
+ * アプリに落ちること（静的ファイルの追加でフォールバックを壊していないこと）を確かめる。
+ */
+test('/llms.txt はテキストで返り、未知のパスは従来どおりアプリに落ちる', async ({
+  page,
+  request,
+}) => {
+  for (const path of ['/llms.txt', '/llms-full.txt']) {
+    const res = await request.get(path)
+    expect(res.ok(), path).toBe(true)
+    expect(res.headers()['content-type'], path).toContain('text/plain')
+    expect(await res.text(), path).toMatch(/^# コトノハ-leaf-/)
+  }
+  await page.goto('/no-such-page-for-e2e')
+  await expect(page.getByRole('heading', { name: 'マイライブラリ' })).toBeVisible()
+})
+
+/**
  * 参照 [[ ]] にルビ・傍点を重ねた書き方（記法ボタンを続けて押すと自然にこの形になる）。
  * プレビューでリンクと装飾の両方が効き、保存→再読込（blocks 往復）でも記法が失われないこと。
  */

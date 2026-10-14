@@ -57,7 +57,7 @@ import { WorkFormatSchema } from '../../../src/core/schema'
 
 /** クライアントが未指定のときに名乗る MCP プロトコル版（十分に新しい安定版）。 */
 const DEFAULT_PROTOCOL_VERSION = '2025-06-18'
-const SERVER_INFO = { name: 'novel-studio', version: '1.10.0' } as const
+export const SERVER_INFO = { name: 'novel-studio', version: '1.10.0' } as const
 
 /**
  * クライアント（AI）へ最初に渡す使い方。MCP の `initialize` が返す標準の instructions。
