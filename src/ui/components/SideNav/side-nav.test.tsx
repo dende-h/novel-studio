@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { SideNav } from './side-nav'
 
 // 作品を開いている（エディタ）状態の基本 props。
-// この状態でのみ 戻るリンク／作品カード／本文を書く・用語集／草稿の話リスト が現れる。
+// この状態でのみ 戻るリンク／作品カード／本文を書く・用語集／原稿の話リスト が現れる。
 const baseProps = {
   active: 'episodes' as const,
   onNavigateCollection: () => {},
@@ -27,6 +27,42 @@ describe('SideNav（サイドバー）', () => {
     )
     fireEvent.click(screen.getByRole('button', { name: '第一話' }))
     expect(onSelectEpisode).toHaveBeenCalledWith('e1')
+  })
+
+  it('話リストの見出しは「原稿」で、右の＋から話を追加する（文字のボタンは出さない）', () => {
+    const onClick = vi.fn()
+    render(
+      <SideNav
+        {...baseProps}
+        cta={{ label: '新しいエピソード', onClick }}
+        episodes={[{ id: 'e1', title: '第一話' }]}
+        currentEpisodeId="e1"
+        onSelectEpisode={() => {}}
+      />,
+    )
+    expect(screen.getByText('原稿')).toBeInTheDocument()
+    expect(screen.queryByText('草稿')).toBeNull()
+    // 追加口はアイコンだけ（名前は aria-label）。見出しの外に全幅の文字ボタンは残さない。
+    expect(screen.queryByText('新しいエピソード')).toBeNull()
+    const add = screen.getByRole('button', { name: '新しいエピソード' })
+    fireEvent.click(add)
+    expect(onClick).toHaveBeenCalledTimes(1)
+  })
+
+  it('話が 0 件でも「原稿」の見出しと＋は出る（最初の話をサイドバーから足せる）', () => {
+    render(<SideNav {...baseProps} episodes={[]} />)
+    expect(screen.getByText('原稿')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '新しいエピソード' })).not.toBeDisabled()
+  })
+
+  it('cta.disabled のとき＋は押せない', () => {
+    render(
+      <SideNav
+        {...baseProps}
+        cta={{ label: '新しいエピソード', onClick: () => {}, disabled: true }}
+      />,
+    )
+    expect(screen.getByRole('button', { name: '新しいエピソード' })).toBeDisabled()
   })
 
   it('話の削除ボタンで onDeleteEpisode を呼ぶ', () => {
