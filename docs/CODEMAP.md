@@ -39,6 +39,7 @@ Cloudflare Pages Functions
 | 記法（ルビ・傍点・`[[参照]]`）の解釈を変える | `src/core/parser/parseNotation.ts` + `src/core/schema/index.ts` |
 | プレビューのマークダウン（見出し・リスト・表・引用）を変える | `src/core/markdown/index.ts`（本文は非対応。効くのはプロット・世界観・用語集の記法つき欄） |
 | 書き出し（EPUB/なろう/カクヨム/HTML）の出力を変える | `src/core/exporter/` 配下（形式ごとに1ファイル） |
+| テキスト（.txt／貼り付け）の取り込み＝見出し行で話に分けて新しい作品にする（COT-31） | 分割・文字コード判別・Work 組み立ては `src/core/importer/`（`splitEpisodes` `decodeTextFile` `buildImportedWork`）、画面は `src/ui/components/TextImportDialog/`、入口はライブラリ「データ管理」→「テキストから作品を作る」（`src/ui/components/Library/library.tsx`）。JSON バックアップの取り込みは別（`ImportDialog/`） |
 | サウンドノベル書き出し（ゲーム化・演出譜）を変える | `src/core/game/`（判別・演出譜・テンプレ背景・持ち込み背景・`stage.ts`＝立ち絵の席（左・中央・右）を行ごとに解く `resolveStages`＝書き出しと画面が共用・`continuity.ts`＝「この行で何が効いているか」の解決）+ `src/core/exporter/toNovelGame.ts`（プレイヤー本体は `novelGamePlayer.ts`。**場面の切れ目＝暗転＋間**（D-GAME-SCENE-CURTAIN）は同ファイルの `changeScene`＝幕 `#curtain` を下ろして BGM・環境音を絞り、幕の下で背景・立ち絵を組んでフェードで明ける。時間は `CURTAIN_OUT/HOLD/IN`）。演出エディタは `src/ui/components/StagingView/`（欄の説明は `field-helps.tsx`、アプリ内プレビューは `preview-dialog.tsx`＝`buildNovelGameHtml` を sandbox iframe に流し込む・`startAt` でその行から）、永続化は `src/core/storage/stagingRepository.ts`（演出譜）と `gameAssetRepository.ts`（持ち込み背景） |
 | サウンドノベルの効果音（合成SE＋運営テンプレの音声ファイル）を変える／**出す・しまう** | **いまは画面・MCP・書き出しから外している**（D-GAME-SE-HOLD）。出し入れは `src/core/game/features.ts` の `GAME_FEATURES.se` だけ（演出エディタの欄とレーン・`resolveTemplateSes`・exporter の `se` 読み飛ばし・MCP のスキーマと `setStagingCues`・管理ページのタブが揃って切り替わる。フラグを立てた状態の検証は各 `*.test` が `vi.mock('@/core/game/features')` で、落ちた状態は `*.features.test`）。合成レシピは `src/core/game/sePresets.ts`（`PRESET_SES`＝12 種・`presetSe` `sePeriod`＝環境音のループ周期。レシピの語彙は白/ピンク/ブラウンのノイズ・hp/bp/lp・a/s のエンベロープ・mf/md の揺らぎ・rv の残響。鳴らし方は `Cue.seRepeat`＝1回/2回/ループ・止めるのは予約キー `SE_STOP`）。音声ファイル（目録 kind `se`・mp3/m4a）は `templates.ts` の `mergeSeCatalog` で合成に重なり、exporter がシナリオ `ses[key]` を `{steps}`（合成）か `{src}`（ファイル・zip は `assets/se/<slug>.mp3`・投稿は契約 v6 の `asset:<id>`）で載せる。解釈はプレイヤー（`novelGamePlayer.ts` の `playSe` `startLoopSe`＝`src` は fetch→decodeAudioData）とアプリ試聴 `src/ui/_utils/sePlayer.ts`（`playCatalogSe`）の2箇所——**両方を同時に直す** |
 | サウンドノベルの **BGM**（運営のオリジナル曲・D-GAME-BGM）を変える | **組み込みの枠 24 曲**は `src/core/game/bgmPresets.ts`（`PRESET_BGMS`＝slug・曲名・分類 calm/emotion/tense/scene・用途。音の実体は無い・制作プロンプトは `docs/game/bgm-presets.md`）。目録の kind `bgm`（`src/core/game/templates.ts` の `mergeBgmCatalog`＝枠に目録を重ねる・`isBgmReady`＝実体の有無（無ければ「準備中」で選べるが鳴らない・`BGM_PENDING_LABEL` は `template-picker.tsx`）・`catalogBgmKeys`・命名 `bgm-<曲調>-<曲名>.mp3`・ループ区間は `TemplateEntry.loopStart/loopEnd`）。演出は `Cue.bgm`（`preset:bgm/<slug>` か予約キー `BGM_STOP`＝`src/core/game/index.ts`。**次の曲か stop か場面の切れ目（暗転）まで続く**＝`continuity.ts` の bgm レーン・プレイヤーの `bgmAt`・exporter の載せ直し判定の 3 箇所が `sceneBreak` で揃って下ろす）。書き出しは `toNovelGame.ts`（曲が変わるページにだけ `pages[].bgm`・使った曲だけ `bgms[key]`＝zip は `assets/bgm/<slug>.mp3`・投稿は契約 v6 の `asset:tpl-bgm-<slug>`）、プレイヤーは `novelGamePlayer.ts` の `startBgm` `syncBgm`（Web Audio のループ区間・file:// は `<audio loop>` に倒す・メニューの BGM あり/なし）。画面へは `src/ui/game/template-catalog.ts` の `resolveTemplateBgms` `templateBgmKeysOf`（プレビュー・書き出し・投稿の 3 箇所が呼ぶ）、演出エディタの欄は `staging-view.tsx`、試聴は `src/ui/_utils/bgmPlayer.ts`（`toggleCatalogBgm`＝ループ区間ごと・`BgmPreviewButton` は `template-picker.tsx`）。MCP は `set_staging` の `bgm` と `get_staging` の一覧。**プレイヤーとアプリ試聴の 2 箇所を同時に直す** |
@@ -107,6 +108,7 @@ Cloudflare Pages Functions
 | `src/core/exporter/toHtml.ts` | 正本 → 安全な HTML（プレビュー兼用・全エスケープ済み。`inlinesToHtml` も公開） |
 | `src/core/markdown/index.ts` | 生テキスト → プレビュー HTML の軽量マークダウン（`markdownToHtml` `stripMarkdown` `InlineRenderer`。行内は既定で parseInlines へ委譲＝[[用語]]・ルビが生きるが、**第3引数で差し替えられる**＝掲示板はここを使う） |
 | `src/core/exporter/toNarou.ts` / `src/core/exporter/toKakuyomu.ts` | 各投稿サイト記法 |
+| `src/core/importer/` | .txt／貼り付けの取り込み（書き出しの逆方向）。`text.ts`＝UTF-8→Shift_JIS 復号と制御文字検査・BOM/CRLF 正規化・容量上限（`MAX_IMPORT_BYTES` 生テキスト／`MAX_WORK_JSON_BYTES` 保存 JSON）、`split.ts`＝見出し行／区切り行／ファイル単位の分割と手直し（`splitEpisodes` `applyEdits` `episodeKey`）、`build.ts`＝`buildImportedWork`（→ `Work`・スキーマ変更なし） |
 | `src/core/exporter/toNovelGame.ts` | 正本＋演出譜 → サウンドノベル zip の中身（`buildNovelGameFiles`）と grove 同梱用の自己完結HTML（`buildNovelGameHtml`＝素材 data URL 内包・契約 v4）。プレイヤー（index.html の CSS/JS 一式）は `novelGamePlayer.ts`（メニュー＝速度・BGM・効果音・「ここまでを保存」・一文カード・クレジット・はじめから・「タイトルに戻る」。セーブは `saveKey` の 1 席に自動＋明示、終了は `backToTitle`＝親へ `quit`） |
 | `src/core/exporter/toPlainText.ts` / `plotToPlainText.ts` / `structureToPlainText.ts` / `stagingToPlainText.ts` | AI 投げ込み用の平文（`glossaryToPlainText`＝作者メモと対話ノートも鍵つきで出す、演出譜の `stagingToPlainText` 含む） |
 | `src/core/exporter/blocksToNotation.ts` | 正本 → 記法（往復変換） |
@@ -183,7 +185,7 @@ Cloudflare Pages Functions
 - **用語集**: `GlossaryView/`（左：一覧（対話の進み具合・「対話の途中」チップ）／右：「フォーム｜対話」の二面。`dialog-pane.tsx`＝対話ペイン・`dialog-note-section.tsx`＝フォームの対話ノート・`pill.tsx`＝丸いチップ・`visibility-label.tsx`＝「読者に見せる／作者だけ」の印・「＋ 新しく登録」は名前の無い項目を対話で開き、名前を答えた時点で登録（「登録」ボタンは無い）。会話は登録された項目へ引き継ぐ（`markSaved`・`initialSession`・一度使ったら捨てる）。名前の前に書いた内容を捨てるときだけ確認。対話ノートはフォームからも直せる（行を押すと入力欄・旧鍵は `answerOf` で今の問いに畳んで表示））, `GlossaryEntryForm/`（本文からのクイック作成・パネル編集用モーダル。`formValuesToFieldPatch`＝フォーム値→パッチの写像・`GLOSSARY_CATEGORIES`＝core の `DIALOG_CATEGORIES`）, `GlossaryPeek/`
 - **構想の道具（無料アカウント登録で解禁・遅延ロード）**: `MindmapView/`, `CorrelationChartView/`, `OutlineView/`, `PlotView/`（`plot-view.tsx` ＋ 世界観設定タブ `world-view.tsx`）, `StructureCanvas/`, `ProofreadView/`（推敲画面・PC 専用・小説だけ：読むだけの本文＋指摘の一覧（未判断／直す／このまま）＋分析（よく使う言葉・セリフと地の文）・`proofread-text.tsx` `finding-list.tsx` `analysis-panel.tsx` `rule-toggles.tsx`）, `StagingView/`（サウンドノベルの演出エディタ：行一覧＋話者/表情/背景/BGM/効果音/場面の切れ目・背景と立ち絵の持ち込み・素材の管理 `asset-manager.tsx`＝一覧/削除/クラウド保管・テンプレの一覧 `template-picker.tsx`＝分類タブ＋サムネイル・書き出しと図鑑でも共用）
 - **執筆画面の右パネル（遅延ロードしない）**: `PlotPeek/`（この話のビート一覧 `plot-peek.tsx` ＋ 読み取り専用のビート詳細 `beat-detail.tsx`）
-- **入出力**: `ExportDialog/`, `ImportDialog/`, `BackupDialog/`, `CloudBackupDialog/`, `AiPullDialog/`
+- **入出力**: `ExportDialog/`, `ImportDialog/`（JSON バックアップ）, `TextImportDialog/`（.txt／貼り付け→話に分けて新規作品。左：入力と分け方 `source-pane.tsx`／右：プレビューと手直し `preview-pane.tsx`／状態は `use-text-import.ts`・lg 未満は 2 ステップ）, `BackupDialog/`, `CloudBackupDialog/`, `AiPullDialog/`
 - **同期/課金**: `SyncOnboarding/`, `SyncLostDialog/`, `RestoreGrace/`, `McpConnectDialog/`, `SaveStateIndicator/`, `BackupNudgeDialog/`
 - **掲示板（遅延ロード・未ログインでも読める）**: `BoardPage/`（`board-page.tsx` 一覧 ／ `thread-view.tsx` スレ詳細 ／ `thread-list.tsx` `board-body.tsx` `link-card.tsx` `poll-card.tsx` `name-dialog.tsx` `new-thread-dialog.tsx` `report-dialog.tsx` `staff-controls.tsx`）
 - **その他**: `ActivityPage/`, `IdeaboxPage/`, `PublishPage/`, `SettingsPage/`（staff には管理ページの入口）, `HelpPage/`, `ProfileDialog/`, `FirstRunDialog/`
@@ -356,7 +358,7 @@ pnpm typecheck      # tsc -b --noEmit
 pnpm lint           # biome check .
 pnpm format         # biome format --write .
 pnpm build          # tsc -b && vite build。prebuild で推敲の辞書を取得（取れなければ失敗）、postbuild で scripts/check-precache.mjs（.wasm と dict/ がプリキャッシュに無いか）
-pnpm test:e2e       # Playwright（e2e/smoke.spec.ts, e2e/mobile.spec.ts）
+pnpm test:e2e       # Playwright（e2e/smoke.spec.ts, e2e/mobile.spec.ts, e2e/work-search*.spec.ts, e2e/text-import.spec.ts）
 pnpm d1:migrate:local / :remote
 node scripts/gen-morph-fixtures.mjs   # 推敲の品詞ルールのテスト用フィクスチャを実物の lindera で作り直す（手で回す）
 pnpm templates:copy-to-prod [--dry-run]   # 運営テンプレ素材を R2 の stg バケット → 本番へ写す（scripts/copy-templates.mjs・要 wrangler 認証）
@@ -393,4 +395,5 @@ uv run .claude/skills/natural-japanese/scripts/lint.py <file>   # 仕事の文�
 | `docs/requirement/12-ai-search.md` | 検索・AI 検索からの流入（COT-22〜28 の leaf 側）の決定表・置いたものと見張り・本番後の手作業（MCP Registry・Cloudflare・Bing） |
 | `public/board-guidelines.html` | 掲示板ガイドライン（`/board-guidelines` で公開・通報や上限の文言はここと揃える） |
 | `docs/requirement/99-open-questions.md` | 未決事項 |
+| `docs/specs/<ISSUE>/` | linear-spec の成果物（要件・設計・プロトタイプ・仕様書・実装依頼）。`COT-6` 脚本・`COT-29` 検索置換・`COT-30`／`COT-40` 推敲・`COT-31` テキストの取り込み |
 | `design/stitch/*/index.html` | 画面のデザインカンプ（+ スクリーンショット） |
