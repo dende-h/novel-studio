@@ -1,0 +1,192 @@
+{
+  "baseURL": "http://localhost:5174",
+  "outDir": "docs/specs/COT-59/screens",
+  "shots": [
+    {
+      "name": "proofread-analysis",
+      "viewports": [
+        "desktop"
+      ],
+      "steps": [
+        {
+          "goto": "/"
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "新しい作品"
+          }
+        },
+        {
+          "fill": {
+            "label": "作品タイトル",
+            "value": "黒鉄の王都"
+          }
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "作成",
+            "exact": true
+          }
+        },
+        {
+          "waitFor": {
+            "role": "heading",
+            "name": "黒鉄の王都"
+          }
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "「黒鉄の王都」を執筆"
+          }
+        },
+        {
+          "click": {
+            "text": "新しいエピソードを追加"
+          }
+        },
+        {
+          "fill": {
+            "label": "話タイトル",
+            "value": "第一話　城門"
+          }
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "追加",
+            "exact": true
+          }
+        },
+        {
+          "waitFor": {
+            "selector": "textarea[aria-label=\"本文\"]"
+          }
+        },
+        {
+          "fill": {
+            "selector": "textarea[aria-label=\"本文\"]",
+            "value": "「リリアーナ様、お待ちください」\n　アルヴェインが叫んだ。王都グランヴェルの城門を、|黒鉄《くろがね》騎士団が固めていた。\n　リリアーナは振り返らない。エルフの[[シェリス]]が肩をすくめる。\n「アルヴェインは心配性ね」\n　朔夜は湊斗の手を取った。「湊斗、行こう」朔夜の声は震えていた。\n　灯里ちゃんが手を振る。湊斗は灯里に笑い返した。ふと見ると、窓の外はゆっくりと暮れていた。\n　グランヴェルの夜は長い。シェリスはリリアーナの隣に座り、スマートフォンのような光る石を眺めていた。"
+          }
+        },
+        {
+          "wait": 500
+        },
+        {
+          "eval": "document.activeElement && document.activeElement.blur()"
+        },
+        {
+          "wait": 900
+        },
+        {
+          "click": {
+            "text": "推敲",
+            "exact": true
+          }
+        },
+        {
+          "wait": 4000
+        },
+        {
+          "click": {
+            "role": "tab",
+            "name": "分析"
+          }
+        },
+        {
+          "wait": 2500
+        }
+      ]
+    },
+    {
+      "name": "glossary-quick-create",
+      "viewports": [
+        "desktop"
+      ],
+      "steps": [
+        {
+          "goto": "/"
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "新しい作品"
+          }
+        },
+        {
+          "fill": {
+            "label": "作品タイトル",
+            "value": "黒鉄の王都"
+          }
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "作成",
+            "exact": true
+          }
+        },
+        {
+          "waitFor": {
+            "role": "heading",
+            "name": "黒鉄の王都"
+          }
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "「黒鉄の王都」を執筆"
+          }
+        },
+        {
+          "click": {
+            "text": "新しいエピソードを追加"
+          }
+        },
+        {
+          "fill": {
+            "label": "話タイトル",
+            "value": "第一話　城門"
+          }
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "追加",
+            "exact": true
+          }
+        },
+        {
+          "waitFor": {
+            "selector": "textarea[aria-label=\"本文\"]"
+          }
+        },
+        {
+          "fill": {
+            "selector": "textarea[aria-label=\"本文\"]",
+            "value": "「リリアーナ様、お待ちください」\n　アルヴェインが叫んだ。王都グランヴェルの城門を、|黒鉄《くろがね》騎士団が固めていた。\n　リリアーナは振り返らない。エルフの[[シェリス]]が肩をすくめる。\n「アルヴェインは心配性ね」\n　朔夜は湊斗の手を取った。「湊斗、行こう」朔夜の声は震えていた。\n　灯里ちゃんが手を振る。湊斗は灯里に笑い返した。ふと見ると、窓の外はゆっくりと暮れていた。\n　グランヴェルの夜は長い。シェリスはリリアーナの隣に座り、スマートフォンのような光る石を眺めていた。"
+          }
+        },
+        {
+          "wait": 500
+        },
+        {
+          "eval": "document.activeElement && document.activeElement.blur()"
+        },
+        {
+          "wait": 900
+        },
+        {
+          "click": {
+            "selector": ".ref--unresolved"
+          }
+        },
+        {
+          "wait": 800
+        }
+      ]
+    }
+  ]
+}
