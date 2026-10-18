@@ -5,11 +5,13 @@ import type { IdeaNote } from '@/core/idea'
 import type { Plot } from '@/core/plot'
 import { ProfileRepository } from '@/core/profile'
 import type { ProofreadRecord } from '@/core/proofread/decisions'
+import type { NameDismissals } from '@/core/proofread/name-dismissals'
 import type { Work } from '@/core/schema'
 import { SnapshotRepository } from '@/core/snapshot/snapshotRepository'
 import { ActivityRepository } from '@/core/storage/activityRepository'
 import { IdeaRepository } from '@/core/storage/ideaRepository'
 import { MemoryStore } from '@/core/storage/memoryStore'
+import { NameDismissalRepository } from '@/core/storage/nameDismissalRepository'
 import { PlotRepository } from '@/core/storage/plotRepository'
 import { ProofreadRepository } from '@/core/storage/proofreadRepository'
 import { StagingRepository } from '@/core/storage/stagingRepository'
@@ -186,6 +188,7 @@ function makeEnv(
   const plots = new PlotRepository(store)
   const stagings = new StagingRepository(store)
   const proofreads = new ProofreadRepository(store)
+  const proofreadNames = new NameDismissalRepository(store)
   const activityRepo = new ActivityRepository(store)
   const bases = new SyncBaseRepository(store)
   const lost = new Map<string, SyncLostEntry>()
@@ -200,6 +203,7 @@ function makeEnv(
     plots,
     stagings,
     proofreads,
+    proofreadNames,
     bases,
     saveLost: async (entry) => {
       lost.set(entry.syncId, entry)
@@ -232,6 +236,7 @@ function makeEnv(
     plots,
     stagings,
     proofreads,
+    proofreadNames,
     activityRepo,
     bases,
     lost,
@@ -860,6 +865,90 @@ describe('推敲の判断の同期（proofread:<workId>:<episodeId>・退避一�
   })
 })
 
+const mkNames = (workId: string, updatedAt: number, ...texts: string[]): NameDismissals => ({
+  workId,
+  words: (texts.length > 0 ? texts : ['アカリ']).map((text) => ({ text, at: updatedAt })),
+  updatedAt,
+})
+
+describe('推敲で外した語の同期（proofread-names:<workId>・退避一覧に載せない）', () => {
+  it('ローカルの外した語を push し、作品 id の同期 id でリモートに載る', async () => {
+    const { proofreadNames, bases, remote, service } = makeEnv()
+    await proofreadNames.save(mkNames('w1', 100, 'アカリ', 'ユキ'))
+    const summary = await service.reconcile()
+    expect(summary?.pushed).toBe(1)
+    const json = remote.rows.get('proofread-names:w1')?.json ?? ''
+    expect(JSON.parse(json)).toEqual(mkNames('w1', 100, 'アカリ', 'ユキ'))
+    expect(await bases.get('proofread-names:w1')).toBeDefined()
+    // 推敲の判断・作品として送っていない
+    expect(remote.rows.has('proofread:w1')).toBe(false)
+    expect(remote.rows.has('w1')).toBe(false)
+  })
+
+  it('他端末の外した語を pull し、updatedAt を刻印せずそのまま保存する', async () => {
+    const remote = makeFakeRemote()
+    await remote.seedItem('proofread-names:w9', JSON.stringify(mkNames('w9', 777, 'ミナト')), 777)
+    const { proofreadNames, proofreads, repo, service } = makeEnv(remote)
+    const summary = await service.reconcile()
+    expect(summary?.pulled).toBe(1)
+    expect(await proofreadNames.get('w9')).toEqual(mkNames('w9', 777, 'ミナト'))
+    // 作品・推敲の判断として取り込んでいない
+    expect(await repo.getWork('proofread-names:w9')).toBeUndefined()
+    expect(await proofreads.list()).toEqual([])
+  })
+
+  it('壊れたリモートの記録・中身の作品 id が食い違う記録は取り込まず、ローカルを触らない', async () => {
+    const remote = makeFakeRemote()
+    await remote.seedItem('proofread-names:w9', JSON.stringify({ workId: 'w9' }), 777)
+    await remote.seedItem('proofread-names:w8', JSON.stringify(mkNames('w7', 777)), 777)
+    const { proofreadNames, service } = makeEnv(remote)
+    const summary = await service.reconcile()
+    expect(summary?.pulled).toBe(0)
+    expect(await proofreadNames.list()).toEqual([])
+  })
+
+  it('競合はリモートが新しければリモートを採り、負けた記録を synclost へ退避しない', async () => {
+    const { proofreadNames, lost, remote, service } = makeEnv()
+    await proofreadNames.save(mkNames('w1', 100, 'v1'))
+    await service.reconcile()
+    await proofreadNames.save(mkNames('w1', 150, 'ローカル'))
+    await remote.seedItem('proofread-names:w1', JSON.stringify(mkNames('w1', 300, 'リモート')), 300)
+    const summary = await service.reconcile()
+    expect(summary?.conflicts).toEqual([{ workId: 'proofread-names:w1', winner: 'remote' }])
+    expect((await proofreadNames.get('w1'))?.words.map((w) => w.text)).toEqual(['リモート'])
+    expect(lost.size).toBe(0)
+  })
+
+  it('削除は両方向へ伝播する（リモート tombstone→退避なしで削除／ローカル削除→purge）', async () => {
+    const { proofreadNames, lost, remote, service } = makeEnv()
+    await proofreadNames.save(mkNames('w1', 100, '消える語'))
+    await proofreadNames.save(mkNames('w2', 100))
+    await service.reconcile()
+    const row = remote.rows.get('proofread-names:w1')
+    if (!row) throw new Error('seed 失敗')
+    remote.rows.set('proofread-names:w1', { ...row, deleted: 1, json: '', updatedAt: 900 })
+    await proofreadNames.removeByWork('w2')
+    const summary = await service.reconcile()
+    expect(summary?.changedLocal).toBe(true)
+    expect(await proofreadNames.get('w1')).toBeUndefined()
+    expect(lost.size).toBe(0)
+    expect(remote.rows.get('proofread-names:w2')?.deleted).toBe(1)
+  })
+
+  it('未同期の外した語がリモートの削除で消えても synclost へ退避しない', async () => {
+    const { proofreadNames, lost, remote, service } = makeEnv()
+    await proofreadNames.save(mkNames('w1', 100))
+    await service.reconcile()
+    await proofreadNames.save(mkNames('w1', 200, '未同期の語'))
+    const row = remote.rows.get('proofread-names:w1')
+    if (!row) throw new Error('seed 失敗')
+    remote.rows.set('proofread-names:w1', { ...row, deleted: 1, json: '', updatedAt: 900 })
+    await service.reconcile()
+    expect(await proofreadNames.get('w1')).toBeUndefined()
+    expect(lost.size).toBe(0)
+  })
+})
+
 describe('プロフィールの同期（profile:me・LWW）', () => {
   it('設定済みプロフィール（updatedAt あり）を push し base を記録する', async () => {
     const { profile, bases, remote, service } = makeEnv()
@@ -1076,6 +1165,26 @@ describe('壊れたローカルレコードの隔離（masked）', () => {
     expect(remote.rows.get('proofread:w1:e1')?.deleted).toBe(0)
     expect(await bases.get('proofread:w1:e1')).toBeDefined()
     expect(await store.get('proofread:w1:e1')).toEqual({ workId: 'w1', decisions: 'broken' })
+  })
+
+  it('読めない外した語の記録も masked に回し、リモートの記録を消さない（COT-59）', async () => {
+    const { store, remote, bases, service } = makeEnv()
+    await store.set('proofread-names:w1', { workId: 'w1', words: 'broken' })
+    // 中身の作品 id がキーと食い違う記録も読めないものとして扱う
+    await store.set('proofread-names:w2', mkNames('w3', 10))
+    for (const id of ['proofread-names:w1', 'proofread-names:w2']) {
+      await bases.set({ workId: id, baseHash: 'h-old', remoteUpdatedAt: 1, syncedAt: 1 })
+      await remote.seedItem(id, JSON.stringify(mkNames('w1', 50, 'リモートの語')), 50)
+    }
+
+    await service.reconcile()
+    for (const id of ['proofread-names:w1', 'proofread-names:w2']) {
+      expect(remote.rows.get(id)?.deleted).toBe(0)
+      expect(remote.rows.get(id)?.json).toContain('リモートの語')
+      expect(await bases.get(id)).toBeDefined()
+    }
+    expect(await store.get('proofread-names:w1')).toEqual({ workId: 'w1', words: 'broken' })
+    expect(await store.get('proofread-names:w2')).toEqual(mkNames('w3', 10))
   })
 })
 

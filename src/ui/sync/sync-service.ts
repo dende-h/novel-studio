@@ -4,12 +4,14 @@ import { IdeaNoteSchema } from '@/core/idea'
 import { PlotSchema } from '@/core/plot'
 import { ProfileRepository, ProfileSchema } from '@/core/profile'
 import { ProofreadRecordSchema } from '@/core/proofread/decisions'
+import { NameDismissalsSchema } from '@/core/proofread/name-dismissals'
 import { type Work, WorkSchema } from '@/core/schema'
 import { createSnapshot } from '@/core/snapshot'
 import { SnapshotRepository } from '@/core/snapshot/snapshotRepository'
 import { ActivityRepository } from '@/core/storage/activityRepository'
 import { IdbStore } from '@/core/storage/idbStore'
 import { IdeaRepository } from '@/core/storage/ideaRepository'
+import { NameDismissalRepository } from '@/core/storage/nameDismissalRepository'
 import { PlotRepository } from '@/core/storage/plotRepository'
 import { ProofreadRepository, proofreadIdOf } from '@/core/storage/proofreadRepository'
 import { StagingRepository, stagingIdOf } from '@/core/storage/stagingRepository'
@@ -87,12 +89,21 @@ export interface SyncService {
 }
 
 /**
- * 同期 id の種別。Work は素の id、構造・ネタ帳・プロフィール・プロット・演出譜・推敲の判断は
- * 種別プレフィックス付き id（`structure:<id>` / `idea:<id>` / `profile:me` / `plot:<id>` /
- * `staging:<workId>:<episodeId>` / `proofread:<workId>:<episodeId>`）で同じ D1 `works`
+ * 同期 id の種別。Work は素の id、構造・ネタ帳・プロフィール・プロット・演出譜・推敲の判断・
+ * 推敲で外した語は種別プレフィックス付き id（`structure:<id>` / `idea:<id>` / `profile:me` /
+ * `plot:<id>` / `staging:<workId>:<episodeId>` / `proofread:<workId>:<episodeId>` /
+ * `proofread-names:<workId>`）で同じ D1 `works`
  * テーブル・API に相乗りする（D-SYNC2-ITEMS・サーバ無改修。旧クライアントは未知の種類を読み飛ばす）。
  */
-type ItemKind = 'work' | 'structure' | 'idea' | 'profile' | 'plot' | 'staging' | 'proofread'
+type ItemKind =
+  | 'work'
+  | 'structure'
+  | 'idea'
+  | 'profile'
+  | 'plot'
+  | 'staging'
+  | 'proofread'
+  | 'proofreadNames'
 
 /** プロフィールは端末に 1 件だけの singleton（決定的 id）。 */
 const PROFILE_SYNC_ID = 'profile:me'
@@ -110,10 +121,12 @@ const kindOf = (syncId: string): ItemKind =>
             ? 'staging'
             : syncId.startsWith('proofread:')
               ? 'proofread'
-              : 'work'
+              : syncId.startsWith('proofread-names:')
+                ? 'proofreadNames'
+                : 'work'
 
 const rawIdOf = (syncId: string): string =>
-  syncId.replace(/^(?:structure|idea|profile|plot|staging|proofread):/, '')
+  syncId.replace(/^(?:structure|idea|profile|plot|staging|proofread|proofread-names):/, '')
 
 /** ネタ帳の 1 行目を退避一覧の見出しに使う（長文は切り詰める）。 */
 const ideaTitle = (text: string | undefined): string | undefined => {
@@ -138,6 +151,8 @@ export interface SyncDeps {
   stagings: StagingRepository
   /** 推敲の判断（COT-40）。競合・削除の伝播でも synclost へ退避しない（退避一覧を押し出さないため）。 */
   proofreads: ProofreadRepository
+  /** 推敲で候補から外した語（COT-59・作品ごと）。推敲の判断と同じく synclost へ退避しない。 */
+  proofreadNames: NameDismissalRepository
   bases: SyncBaseRepository
   /**
    * 競合の敗者・purge 直前の内容の退避先（`synclost:<syncId>`・1 アイテム 1 世代・件数上限つき）。
@@ -313,6 +328,20 @@ export function createSyncService(deps: SyncDeps): SyncService {
         maskedIds.add(syncId)
       }
     }
+    // 推敲で外した語（COT-59・作品ごと）も推敲の判断と同じ流儀。読めない記録は masked に回す。
+    const nameRows = await deps.proofreadNames.listRaw()
+    for (const { id, raw } of nameRows) {
+      const syncId = `proofread-names:${id}`
+      try {
+        const r = NameDismissalsSchema.parse(raw)
+        if (r.workId !== id) throw new Error('id mismatch')
+        const str = canonicalJson(NameDismissalsSchema, r)
+        canon.set(syncId, str)
+        localItems.push({ workId: syncId, updatedAt: r.updatedAt, hash: await sha256Hex(str) })
+      } catch {
+        maskedIds.add(syncId)
+      }
+    }
     // プロフィール（ペンネーム・アバター）も 1 レコードとして相乗りする。
     // updatedAt が無い＝一度も設定していない端末は push しない（新端末では remote から
     // 普通に pull される。ローカル欠落と誤認した purgeRemote も起きない：プロフィールは
@@ -417,8 +446,8 @@ export function createSyncService(deps: SyncDeps): SyncService {
       json?: string,
     ) => {
       const kind = kindOf(syncId)
-      // 推敲の判断は退避一覧に載せない（件数上限のある一覧でほかの退避を押し出さないため）。
-      if (kind === 'proofread') return
+      // 推敲の判断・外した語は退避一覧に載せない（件数上限のある一覧でほかの退避を押し出さないため）。
+      if (kind === 'proofread' || kind === 'proofreadNames') return
       await deps.saveLost({
         syncId,
         at: deps.now(),
@@ -579,6 +608,21 @@ export function createSyncService(deps: SyncDeps): SyncService {
                   }
                 }
                 await deps.proofreads.put(pulled)
+              } else if (kind === 'proofreadNames') {
+                // 推敲で外した語も推敲の判断と同じく素通し put・負けた側は synclost へ退避しない。
+                const pulled = NameDismissalsSchema.parse(JSON.parse(got.json))
+                // 中身の workId が同期 id と食い違う記録は、別の作品の記録を上書きしうるので採らない。
+                if (pulled.workId !== rawId) throw new Error('id mismatch')
+                const cur = await deps.proofreadNames.getById(rawId)
+                currentJson = cur ? canonicalJson(NameDismissalsSchema, cur) : undefined
+                if (currentJson !== undefined) {
+                  const currentHash = await sha256Hex(currentJson)
+                  if (currentHash !== planHash.get(op.workId)) {
+                    replanNeeded = true
+                    break
+                  }
+                }
+                await deps.proofreadNames.put(pulled)
               } else {
                 // プロフィール：競合の敗者は synclost へ退避してから LWW 勝者を採用する。
                 const pulled = ProfileSchema.parse(JSON.parse(got.json))
@@ -748,6 +792,9 @@ export function createSyncService(deps: SyncDeps): SyncService {
           } else if (kind === 'proofread') {
             // 推敲の判断は synclost へ退避せずに消す（pull の競合と同じ理由）。
             await deps.proofreads.removeById(rawIdOf(op.workId))
+          } else if (kind === 'proofreadNames') {
+            // 推敲で外した語も退避せずに消す（推敲の判断と同じ理由）。
+            await deps.proofreadNames.removeById(rawIdOf(op.workId))
           } else {
             break // プロフィールはローカルから消さない（tombstone が来ても保持＝防御）
           }
@@ -914,6 +961,7 @@ export function createDefaultSyncService(
     plots: new PlotRepository(store),
     stagings: new StagingRepository(store),
     proofreads: new ProofreadRepository(store),
+    proofreadNames: new NameDismissalRepository(store),
     bases: new SyncBaseRepository(store),
     // 競合の敗者・purge 直前の内容の 1 世代退避（synclost:<syncId>・件数上限つき押し出し）。
     saveLost: (entry) => new SyncLostRepository(store).save(entry),

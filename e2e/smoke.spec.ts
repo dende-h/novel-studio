@@ -37,6 +37,24 @@ test('入口にマイライブラリ見出しが出る', async ({ page }) => {
 })
 
 /**
+ * 解析辞書のライセンス表記（COT-59）。辞書は IPADIC に SudachiDict の今の言葉を足したもの。
+ * 表記は scripts/fetch-dict.mjs が辞書の zip から public/dict/ に取り出す（ヘルプはゲストでも見られる）。
+ */
+test('ヘルプから解析辞書のライセンス表記（IPADIC・SudachiDict）を開ける', async ({ page, request }) => {
+  await page.goto('/#/help')
+  const notices: [string, string, string][] = [
+    ['IPADIC のライセンス表記', '/dict/NOTICE-ipadic.txt', 'mecab-ipadic'],
+    ['SudachiDict のライセンス表記', '/dict/NOTICE-sudachidict.txt', 'Apache License'],
+  ]
+  for (const [name, path, text] of notices) {
+    await expect(page.getByRole('link', { name })).toHaveAttribute('href', path)
+    const res = await request.get(path)
+    expect(res.status()).toBe(200)
+    expect(await res.text()).toContain(text)
+  }
+})
+
+/**
  * AI 向けの案内（COT-24）。/llms.txt はかつて SPA のフォールバックで index.html が 200 で返る
  * 「ソフト 404」だった。静的ファイルを置いたいまはテキストで返り、未知のパスはこれまでどおり
  * アプリに落ちること（静的ファイルの追加でフォールバックを壊していないこと）を確かめる。

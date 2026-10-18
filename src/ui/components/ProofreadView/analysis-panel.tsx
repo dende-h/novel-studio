@@ -1,8 +1,11 @@
+import type { ReactNode } from 'react'
 import type { DialogueRatio, FrequentWord } from '@/core/proofread'
 import { dialoguePercent } from '@/core/proofread'
 import { cn } from '@/lib/utils'
 
 interface AnalysisPanelProps {
+  /** 先頭に置く欄（用語集に無い名前・COT-59）。 */
+  names?: ReactNode
   /** null＝くわしい確認がまだ（準備中・作品全体を解析中）、'error'＝使えない。 */
   frequent: ReadonlyArray<FrequentWord> | null | 'error'
   word: string | null
@@ -31,8 +34,9 @@ function RatioRow({ label, ratio }: { label: string; ratio: DialogueRatio }) {
   )
 }
 
-/** 推敲画面の「分析」（COT-40）。指摘ではないので判断のボタンは付けない。 */
+/** 推敲画面の「分析」（COT-40）。指摘ではないので判断のボタンは付けない（先頭の名前の欄は COT-59）。 */
 export function AnalysisPanel({
+  names,
   frequent,
   word,
   onWord,
@@ -42,6 +46,7 @@ export function AnalysisPanel({
 }: AnalysisPanelProps) {
   return (
     <div className="space-y-6">
+      {names}
       <section>
         <h3 className="mb-1 font-medium text-on-surface text-xs">
           よく使う言葉（作品全体・副詞と形容詞）

@@ -35,7 +35,8 @@ Cloudflare Pages Functions
 | 本文の記法ボタン・ショートカット | `src/ui/components/EditorPane/notation.ts`（一覧・表示・キー判定を共有。PC/スマホの出し分けは `notationItems(scriptMode, surface)`）、挿入と脚本の Tab 字下げ／Enter 継続は `editor-pane.tsx` |
 | 脚本形式（柱・ト書き・セリフ）の判別・原稿用紙の組版・書き出し | 判別 `src/core/script/index.ts`、書式チェック `src/core/script/proofread.ts`、原稿用紙（禁則・頁割り・前付け）`src/core/script/layout.ts`、紙のプレビュー `src/ui/components/ScriptSheet/`、脚本の Word `src/core/exporter/toDocx.ts`・テキスト `src/core/exporter/toScriptText.ts`、形式・梗概（`Work.synopsis`）は `src/ui/components/WorkMetaDialog/`、公開 v7 は `src/ui/_api/publish.ts`。EPUB・なろう・カクヨムは小説専用 |
 | **小説の推敲**（推敲画面・指摘ごとの直す／このまま・執筆画面の「直す箇所」・項目のオン／オフ）を変える（COT-40。COT-30 の本文下の推敲チェックを置き換え） | 指摘のルールは `src/core/proofread/rules.ts`（作法・出現ごと・位置つき）と `variants.ts`（表記ゆれ辞書・`variantFindingsForLine`）、入口は `src/core/proofread/index.ts`（`proofreadNovel`＝位置つきの `Finding[]`・辞書と自動の表記ゆれの重なりをまとめる）。判断（直す／このまま）・照合・「直す箇所」の判定と位置決めは `src/core/proofread/decisions.ts`（`decide` `undecide` `classify` `withNth` `occurrencesOf` `openFixes` `locateFix`）、保存は `src/core/storage/proofreadRepository.ts`（`proofread:<workId>:<episodeId>`・同期とバックアップに相乗り）。画面は `src/ui/components/ProofreadView/`（`activeScreen === 'proofread'`・PC＋無料会員以上＋小説）、執筆画面の一覧は `src/ui/components/FixListButton/`、入口と「本文で直す」は `App.tsx`（`enterProofread`・`pendingFix`）。判断の読み書きは `src/ui/hooks/use-proofread-record.ts`、確認する項目（既定は未選択・作者が選ぶ）は `src/ui/hooks/use-proofread-prefs.ts`（localStorage `ns-proofread-on`）と `ProofreadView/rule-toggles.tsx`（ホバーで項目の説明＝core の `NOVEL_RULES[].description`）。脚本の書式チェックは `EditorPane/proofread-panel.tsx` のまま。設計は `docs/specs/COT-40/` |
-| **推敲のくわしい確認**（形態素解析：表記ゆれの自動発見・一文の中の同じ助詞・ら抜き言葉・よく使う言葉）を変える | ルールは `src/core/proofread/morph/`（`token.ts`＝lindera の出力→位置つきトークン・`auto-variant.ts`・`doubled-particle.ts`・`ra-nuki.ts`・`frequent-words.ts`。テストは `morph/__fixtures__/samples.json`＝`scripts/gen-morph-fixtures.mjs` で実物から作る）、セリフと地の文は `dialogue-ratio.ts`＋`quotes.ts`、用語集のユーザー辞書は `user-dict.ts`。解析器は `src/ui/proofread/`（`analyzer.worker.ts`＝Worker・`analyzer-engine.ts`＝本体（Node テスト可）・`analyzer-client.ts`＝起動停止と状態・`unzip.ts`・`protocol.ts`）と `src/ui/hooks/use-morph-analyzer.ts`。辞書は `scripts/fetch-dict.mjs`（版と SHA-256 を固定・`public/dict/` へ）、プリキャッシュ除外は `vite.config.ts` と `scripts/check-precache.mjs`。依存の例外は `docs/requirement/03-architecture.md` §3 |
+| **推敲のくわしい確認**（形態素解析：表記ゆれの自動発見・一文の中の同じ助詞・ら抜き言葉・よく使う言葉）を変える | ルールは `src/core/proofread/morph/`（`token.ts`＝lindera の出力→位置つきトークン・`auto-variant.ts`・`doubled-particle.ts`・`ra-nuki.ts`・`frequent-words.ts`。テストは `morph/__fixtures__/samples.json`＝`scripts/gen-morph-fixtures.mjs` で実物から作る）、セリフと地の文は `dialogue-ratio.ts`＋`quotes.ts`、用語集のユーザー辞書は `user-dict.ts`。解析器は `src/ui/proofread/`（`analyzer.worker.ts`＝Worker・`analyzer-engine.ts`＝本体（Node テスト可）・`analyzer-client.ts`＝起動停止と状態・`unzip.ts`・`protocol.ts`）と `src/ui/hooks/use-morph-analyzer.ts`。辞書（IPADIC＋SudachiDict の今の言葉・COT-59）は `scripts/build-dict.mjs`（手で回して作る・足す語の選び方は `src/core/proofread/morph/dict-supplement.ts`）→ GitHub Release → `scripts/fetch-dict.mjs`（URL と SHA-256 を固定・`public/dict/` へ・名前は `scripts/dict-file.mjs`）、ライセンス表記の元は `scripts/dict/`。テストの `morph/__fixtures__/samples.json` は COT-40 の辞書の出力を基準に残す（作り直さない）、名前の候補の例文は `names.json`・`fictional-names.json`。プリキャッシュ除外は `vite.config.ts` と `scripts/check-precache.mjs`。依存の例外は `docs/requirement/03-architecture.md` §3 |
+| **用語集に無い名前**（推敲画面の「分析」の候補一覧・用語集に登録・外す／戻す）を変える（COT-59） | 候補づくりは `src/core/proofread/morph/name-candidates.ts`（`findNameCandidates`＝手がかり6種・回数の線・分類と読みの推定・`HONORIFIC_STOP_WORDS`、`inlineSignalsOf`＝ルビと `[[ ]]`）。Worker では `src/ui/proofread/analyzer-engine.ts` の `analyze` が `names` を返す（解析前に全角空白を半角へ＝`forTokenizer`）。欄は `src/ui/components/ProofreadView/name-candidates-section.tsx`（行が消えたときのフォーカス）、絞り込み（いまの用語集・外した語・作り直し中は前回の結果）は `proofread-view.tsx`。登録は `App.tsx` の `quickCreate`／`registerName`（`GlossaryEntryForm` の `onCloseAutoFocus` で閉じた結果を返す）。外した語は `src/core/proofread/name-dismissals.ts`＋`src/core/storage/nameDismissalRepository.ts`（`proofread-names:<workId>`・同期の種類 `proofreadNames`・バックアップの欄 `nameDismissals`）と `src/ui/hooks/use-name-dismissals.ts`。設計は `docs/specs/COT-59/` |
 | 記法（ルビ・傍点・`[[参照]]`）の解釈を変える | `src/core/parser/parseNotation.ts` + `src/core/schema/index.ts` |
 | プレビューのマークダウン（見出し・リスト・表・引用）を変える | `src/core/markdown/index.ts`（本文は非対応。効くのはプロット・世界観・用語集の記法つき欄） |
 | 書き出し（EPUB/なろう/カクヨム/HTML）の出力を変える | `src/core/exporter/` 配下（形式ごとに1ファイル） |
@@ -90,7 +91,7 @@ Cloudflare Pages Functions
 | モジュール | 責務 | 主な export |
 |---|---|---|
 | `script/` | 脚本の行判別（柱・ト書き・セリフ・***場面転換）・話者分割・字下げ除去・原稿用紙の組版 | `classifyScriptBlock` `splitSpeaker` `stripLeadingSpace` `ScriptLine`、`proofread.ts` の `proofreadScript`（書式の確認候補）、`layout.ts` の `layoutScriptBlocks` `paginate` `composeScriptSheet` `normalizeScriptText`（20字×20行などへの流し込み・禁則・頁割り・表紙／登場人物表／梗概） |
-| `proofread/` | 小説の推敲（COT-30→COT-40）。作法ルール（`rules.ts`・`checkLine`＝出現ごと・位置つき）・表記ゆれ辞書と集計（`variants.ts`・`VARIANT_GROUPS` `countVariants` `mergeCounts` `variantFindingsForLine`）・入口（`index.ts`・`proofreadNovel`＝`Finding[]` `countVariantsInBlocks` `createVariantCountCache`）・型（`types.ts`・`Finding` `NovelRuleId` `NOVEL_RULES` `MORPH_RULES` `novelRuleLabel` `ProofNotice`）・判断（`decisions.ts`・`ProofreadRecordSchema` `decide` `openFixes` `locateFix` `occurrencesOf`）・品詞ルール（`morph/`）・セリフと地の文（`dialogue-ratio.ts` `quotes.ts`）・ユーザー辞書（`user-dict.ts`）。脚本の `script/proofread.ts` とは別 | 純TS・React 非依存・lindera を import しない（トークン列を受け取る）。`tools/novel-textlint/fixtures/` と `morph/__fixtures__/` を回帰に使う |
+| `proofread/` | 小説の推敲（COT-30→COT-40）。作法ルール（`rules.ts`・`checkLine`＝出現ごと・位置つき）・表記ゆれ辞書と集計（`variants.ts`・`VARIANT_GROUPS` `countVariants` `mergeCounts` `variantFindingsForLine`）・入口（`index.ts`・`proofreadNovel`＝`Finding[]` `countVariantsInBlocks` `createVariantCountCache`）・型（`types.ts`・`Finding` `NovelRuleId` `NOVEL_RULES` `MORPH_RULES` `novelRuleLabel` `ProofNotice`）・判断（`decisions.ts`・`ProofreadRecordSchema` `decide` `openFixes` `locateFix` `occurrencesOf`）・品詞ルール（`morph/`）・セリフと地の文（`dialogue-ratio.ts` `quotes.ts`）・ユーザー辞書（`user-dict.ts`）・名前の候補（`morph/name-candidates.ts`・COT-59）・辞書に足す語の選び方（`morph/dict-supplement.ts`・build-dict.mjs が読むので import を持たない）・外した語（`name-dismissals.ts`・`NameDismissalsSchema` `dismissName` `restoreName`）。脚本の `script/proofread.ts` とは別 | 純TS・React 非依存・lindera を import しない（トークン列を受け取る）。`tools/novel-textlint/fixtures/` と `morph/__fixtures__/` を回帰に使う |
 | `schema/` | **正本 block スキーマ（Zod）**。全データの型の源 | `Block` `Inline` `Episode` `Work` `WorkFormat` `WorkFormatSchema`（`Work.synopsis`＝脚本の梗概） `GlossaryEntry`（`authorNote`・`dialog` は公開時に落とす） `DialogAnswer` `WorkPlatform` `PLATFORM_GENRES` |
 | `plot/` | プロット（幕/ライン/ビート/伏線/秘密）＋**世界観設定**（`Plot.world`・作者専用） | `PlotSection` `PlotLine` `PlotBeat` `Foreshadow` `Secret` / `beatsInStoryOrder` `sectionOfBeat` `linesOfBeat` `foreshadowsOfBeat` `secretsHiddenAt` / `WorldNote` `WORLD_SLOTS` `WORLD_CUSTOM_SLOT` `worldNoteLabel` `worldNotesInOrder` `setWorldNote` `removeWorldNote` |
 | `structure/` | 構造レイヤー（outline/chart/mindmap）のノード・辺 | `StructureNode` `StructureEdge` `StructureKind` `emptyStructure` `addNode` `pickPrimaryStructure` |
@@ -121,7 +122,7 @@ Cloudflare Pages Functions
 ### 永続化（`storage/`）
 `KeyValueStore`（`src/core/storage/types.ts`）を `IdbStore`（本番）と `MemoryStore`（テスト）が実装。
 その上に薄いリポジトリ: `WorkRepository`（作品・ゴミ箱・`WorkSummary`）、`StructureRepository`、
-`PlotRepository`、`StagingRepository`（演出譜・`staging:<workId>:<episodeId>` の決定的 id）、`ProofreadRepository`（推敲の判断・`proofread:<workId>:<episodeId>`・読むとき Zod を通す・同期の列挙は `listRaw`）、
+`PlotRepository`、`StagingRepository`（演出譜・`staging:<workId>:<episodeId>` の決定的 id）、`ProofreadRepository`（推敲の判断・`proofread:<workId>:<episodeId>`・読むとき Zod を通す・同期の列挙は `listRaw`）、`NameDismissalRepository`（推敲で外した語・`proofread-names:<workId>`・接頭辞を `proofread:` で始めない＝推敲の判断の復元で消えないため）、
 `GameAssetRepository`（持ち込み背景・`gameasset:` プレフィクス・同期には載せない）、
 `IdeaRepository`、`ActivityRepository`。スナップショットは `snapshot/`。
 `src/core/storage/workMutationLock.ts` の `withWorkMutationLock` は作品単位のローカル書き込み排他（Web Locks / 同タブPromiseキュー）。`IdbStore` はtransaction完了を保存成功とする。
@@ -171,7 +172,7 @@ Cloudflare Pages Functions
 | `src/ui/Root.tsx` | **ハッシュルーティングの分岐点**（下表）。リポジトリ生成と会員判定の配線 |
 | `src/ui/App.tsx` | 執筆画面本体（`#/write`）。エディタ・プレビュー・用語集・履歴パネル・推敲画面への入口と「直す箇所」の統括。**約1,100行 / 最も密度が高い** |
 | `src/ui/store/editorStore.ts` | 自前ストア。`getSnapshot`/`subscribe` + 作品・話・用語集・ゴミ箱・プロフィール、作品操作キュー・`workOperation`・`getSearchSources`・`replaceWorkMatches`・`navigateWorkMatch` |
-| `src/ui/store/createDefaultStore.ts` | 本番のリポジトリ配線 |
+| `src/ui/store/createDefaultStore.ts` | 本番のリポジトリ配線（`createDefaultProofreadRepository` `createDefaultNameDismissalRepository` ほか） |
 | `src/ui/hooks/use-editor-store.ts` | `useSyncExternalStore` の薄いラッパ |
 
 ### ルート（`src/ui/hooks/use-hash-route.ts`・`location.hash` が唯一の真実）
@@ -238,7 +239,7 @@ Cloudflare Pages Functions
 / `useHashRoute` / `useIsNarrow`（+ `NARROW_MAX_PX` `NARROW_QUERY`） / `useKeyboardInset`
 / `useLocalFlag`（localStorage 永続の真偽フラグ） / `usePreferences`（+ `setTheme` `setReadingSize`）
 / `useProofreadPrefs`（+ `toggleProofreadRule` `reloadProofreadPrefs`・推敲画面で選んだ確認項目（既定は未選択）・localStorage `ns-proofread-on`）
-/ `useProofreadRecord`（`use-proofread-record.ts`・1 話ぶんの推敲の判断の読み書き・sync-applied で読み直し） / `useMorphAnalyzer`（`use-morph-analyzer.ts`・推敲画面の解析 Worker の起動停止と状態）
+/ `useProofreadRecord`（`use-proofread-record.ts`・1 話ぶんの推敲の判断の読み書き・sync-applied で読み直し） / `useNameDismissals`（`use-name-dismissals.ts`・推敲で外した語の読み書き・sync-applied で読み直し） / `useMorphAnalyzer`（`use-morph-analyzer.ts`・推敲画面の解析 Worker の起動停止と状態）
 / `usePenName` `useOpenProfile` `useAccountPenNameSync` `useSaveProfile`（+ `PenNameContext` `ProfileEditContext`・`use-pen-name.ts`）
 / `useBackupMarks`（+ `markLocalBackup` `markCloudBackup` `readBackupMarks`） / `readNudgeAck` `acknowledgeNudge`
 / `useSerialSave`（`use-serial-save.ts`・最新値へ fn を積み保存を直列化する変更経路。描画時点の値へ当てて保存しない＝プロット画面が使用）
@@ -266,7 +267,7 @@ Cloudflare Pages Functions
 |---|---|
 | `_api/` | サーバ呼び出しの薄いクライアント（`sync` `backup` `billing` `publish` `author` `mcp` `board` `game-assets` `game-templates`＝目録/実体の取得と staff の管理 API） |
 | `_utils/` | 純関数（`caretCoordinates` `focus-when-ready` `imageResizer` `exporters` `download` `format` `clipboard` `cover-tone` `audioMeta`＝音声ファイルの data URL 化と長さ計測・`sePlayer`＝効果音の試聴・`bgmPlayer`＝BGM の試聴（Web Audio・ループ区間つき・トグルで 1 曲だけ）） |
-| `hooks/` | React ライフサイクル依存のみ（`use-autosave` `use-auto-sync` `use-auto-backup` `use-live-snapshot` `use-preferences` `use-proofread-prefs` `use-proofread-record` `use-morph-analyzer` `use-narrow` `use-keyboard-inset` `use-pen-name` `use-staff`＝運営か・`enabled` のときだけ `/api/board/me` を見る 等） |
+| `hooks/` | React ライフサイクル依存のみ（`use-autosave` `use-auto-sync` `use-auto-backup` `use-live-snapshot` `use-preferences` `use-proofread-prefs` `use-proofread-record` `use-name-dismissals` `use-morph-analyzer` `use-narrow` `use-keyboard-inset` `use-pen-name` `use-staff`＝運営か・`enabled` のときだけ `/api/board/me` を見る 等） |
 | `sync/` | 同期クライアント。`src/ui/sync/sync-service.ts` が本体（約800行）・`sync-gate` `sync-status` `sync-touch` |
 | `src/ui/backup/backup-service.ts` | クラウド全体バックアップの実行 |
 | `game/` | 持ち込み素材のクラウド保管の配線（`asset-hosting.ts`＝API 結線と下り取り込み `pullHostedAssets`。ローカルが正・上りは追加時と明示操作のみ）／運営テンプレの目録を画面へ配る `template-catalog.ts`（`useTemplateCatalog`＝アプリで1つの `useSyncExternalStore`・localStorage に控え、`templateBgSrc` `templateSpriteSrc`、`resolveTemplateBackgrounds` `resolveTemplateSes` `resolveTemplateBgms`＝演出譜が指す目録の実体を素材の形にして書き出し・投稿へ、`templateSpriteDataUrl`） |
@@ -360,7 +361,8 @@ pnpm format         # biome format --write .
 pnpm build          # tsc -b && vite build。prebuild で推敲の辞書を取得（取れなければ失敗）、postbuild で scripts/check-precache.mjs（.wasm と dict/ がプリキャッシュに無いか）
 pnpm test:e2e       # Playwright（e2e/smoke.spec.ts, e2e/mobile.spec.ts, e2e/work-search*.spec.ts, e2e/text-import.spec.ts）
 pnpm d1:migrate:local / :remote
-node scripts/gen-morph-fixtures.mjs   # 推敲の品詞ルールのテスト用フィクスチャを実物の lindera で作り直す（手で回す）
+node scripts/gen-morph-fixtures.mjs --names   # 名前の候補のテスト用フィクスチャ（names.json）をいまの辞書で作り直す（手で回す。samples.json は --dict <COT-40 の辞書> のときだけ）
+node scripts/build-dict.mjs   # 推敲の解析辞書（IPADIC＋SudachiDict）を固定した元データから作り直す（手で回す。できた zip は GitHub Release へ）
 pnpm templates:copy-to-prod [--dry-run]   # 運営テンプレ素材を R2 の stg バケット → 本番へ写す（scripts/copy-templates.mjs・要 wrangler 認証）
 pnpm --dir tools/novel-textlint lint:novel <file>   # 小説原稿の textlint（CI 対象外）
 uv run .claude/skills/natural-japanese/scripts/lint.py <file>   # 仕事の文書の AI 臭 lint（要 uv・CI 対象外）
@@ -392,8 +394,9 @@ uv run .claude/skills/natural-japanese/scripts/lint.py <file>   # 仕事の文�
 | `docs/requirement/10-mcp-oauth.md` | MCP の OAuth（ChatGPT で繋がらなかった原因の実測と診断・Phase 1 の撤去・自前 認可サーバーの設計と、2026-09 の ChatGPT 実地確認） |
 | `docs/requirement/11-glossary-dialog.md` | 用語集の「対話」（一問一答で項目を育てる）の決定表・`GlossaryEntry.dialog` の形・MCP 契約（`get_glossary` の出力、`upsert_glossary_entry` の `dialog` パッチ、`get_glossary_questions`）・質問の正本（付録 A） |
 | `docs/specs/COT-40/` | 推敲画面（直す／このまま・「直す箇所」・形態素解析）の要件・設計・実装メモ・プロトタイプ |
+| `docs/specs/COT-59/` | 用語集に無い名前の候補と辞書の最新化（SudachiDict）の要件・設計・実装メモ・プロトタイプ |
 | `docs/requirement/12-ai-search.md` | 検索・AI 検索からの流入（COT-22〜28 の leaf 側）の決定表・置いたものと見張り・本番後の手作業（MCP Registry・Cloudflare・Bing） |
 | `public/board-guidelines.html` | 掲示板ガイドライン（`/board-guidelines` で公開・通報や上限の文言はここと揃える） |
 | `docs/requirement/99-open-questions.md` | 未決事項 |
-| `docs/specs/<ISSUE>/` | linear-spec の成果物（要件・設計・プロトタイプ・仕様書・実装依頼）。`COT-6` 脚本・`COT-29` 検索置換・`COT-30`／`COT-40` 推敲・`COT-31` テキストの取り込み |
+| `docs/specs/<ISSUE>/` | linear-spec の成果物（要件・設計・プロトタイプ・仕様書・実装依頼）。`COT-6` 脚本・`COT-29` 検索置換・`COT-30`／`COT-40` 推敲・`COT-31` テキストの取り込み・`COT-59` 用語集に無い名前 |
 | `design/stitch/*/index.html` | 画面のデザインカンプ（+ スクリーンショット） |

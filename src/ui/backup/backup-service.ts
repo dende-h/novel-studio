@@ -4,6 +4,7 @@ import { ActivityRepository } from '@/core/storage/activityRepository'
 import { GameAssetRepository } from '@/core/storage/gameAssetRepository'
 import { IdbStore } from '@/core/storage/idbStore'
 import { IdeaRepository } from '@/core/storage/ideaRepository'
+import { NameDismissalRepository } from '@/core/storage/nameDismissalRepository'
 import { PlotRepository } from '@/core/storage/plotRepository'
 import { ProofreadRepository } from '@/core/storage/proofreadRepository'
 import { StagingRepository } from '@/core/storage/stagingRepository'
@@ -100,6 +101,7 @@ export function createBackupService(deps: BackupDeps): BackupService {
         plots: backup.plots,
         stagings: backup.stagings,
         proofreads: backup.proofreads,
+        nameDismissals: backup.nameDismissals,
         gameAssets: backup.gameAssets,
       })
       return true
@@ -129,6 +131,7 @@ export function createBackupService(deps: BackupDeps): BackupService {
         plots: backup.plots,
         stagings: backup.stagings,
         proofreads: backup.proofreads,
+        nameDismissals: backup.nameDismissals,
         gameAssets: backup.gameAssets,
       })
       // 取り込み済みなので AI 編集の目印を消し、以後の自動 push を通常運転に戻す
@@ -153,6 +156,7 @@ export function createLocalBackupIO(): Pick<BackupDeps, 'gather' | 'replaceAll'>
   const plotRepo = new PlotRepository(store)
   const stagingRepo = new StagingRepository(store)
   const proofreadRepo = new ProofreadRepository(store)
+  const nameDismissalRepo = new NameDismissalRepository(store)
   const gameAssetRepo = new GameAssetRepository(store)
   const syncBases = new SyncBaseRepository(store)
   return {
@@ -166,6 +170,7 @@ export function createLocalBackupIO(): Pick<BackupDeps, 'gather' | 'replaceAll'>
       plots: await plotRepo.list(),
       stagings: await stagingRepo.list(),
       proofreads: await proofreadRepo.list(),
+      nameDismissals: await nameDismissalRepo.list(),
       gameAssets: await gameAssetRepo.list(),
     }),
     // 全置換は自動同期と**排他**で行う（sync-gate）。同期は 5〜10 秒おきに走るので、
@@ -182,6 +187,7 @@ export function createLocalBackupIO(): Pick<BackupDeps, 'gather' | 'replaceAll'>
         await plotRepo.replaceAll(state.plots)
         await stagingRepo.replaceAll(state.stagings)
         await proofreadRepo.replaceAll(state.proofreads)
+        await nameDismissalRepo.replaceAll(state.nameDismissals)
         await gameAssetRepo.replaceAll(state.gameAssets)
         // 同期 base（最後に同期した点の記録）は復元後の実態と食い違うため全消しする。
         // 消すとこの端末は「新品」として三方向差分に入り、復元で消えた作品を誤って

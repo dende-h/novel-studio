@@ -45,6 +45,7 @@ import { WorkMetaDialog } from '@/ui/components/WorkMetaDialog/work-meta-dialog'
 import { WorkSearchPanel } from '@/ui/components/WorkSearchPanel/work-search-panel'
 import { useAutosave } from '@/ui/hooks/use-autosave'
 import { useEditorStore } from '@/ui/hooks/use-editor-store'
+import type { NameDismissalRepo } from '@/ui/hooks/use-name-dismissals'
 import { useIsNarrow } from '@/ui/hooks/use-narrow'
 import { useOpenProfile } from '@/ui/hooks/use-pen-name'
 import { type ProofreadRecordRepo, useProofreadRecord } from '@/ui/hooks/use-proofread-record'
@@ -76,6 +77,8 @@ interface AppProps {
   gameAssetRepo?: GameAssetRepository
   /** 推敲の判断（COT-40・直す／このまま）のリポジトリ。Root で sync-touch に包んで渡す。 */
   proofreadRepo?: ProofreadRecordRepo
+  /** 推敲画面で候補から外した語（COT-59）のリポジトリ。Root で sync-touch に包んで渡す。 */
+  nameDismissalRepo?: NameDismissalRepo
   /** 構想の道具（プロット・アウトライン・相関図・マインドマップ）を出すか＝無料アカウント登録で true。 */
   canUseStructure?: boolean
   /** ネタ帳（マインドマップの取り込み用）。 */
@@ -145,6 +148,7 @@ export function App({
   stagingRepo,
   gameAssetRepo,
   proofreadRepo,
+  nameDismissalRepo,
   canUseStructure,
   ideaRepo,
 }: AppProps) {
@@ -179,8 +183,13 @@ export function App({
   } | null>(null)
   // 用語集パネルで選択中の entry（id で引いて常に最新を見る）。
   const [peekId, setPeekId] = useState<string | null>(null)
-  // 未解決 @参照クリックで起動するクイック作成（プリフィルする名前。'' は空フォーム）。
-  const [quickCreateName, setQuickCreateName] = useState<string | null>(null)
+  // クイック作成の初期値（null は閉じている）。未解決の @参照・GlossaryPeek（名前だけ／空フォーム）と、
+  // 推敲画面の「用語集に登録」（名前・読み・カテゴリ入り・COT-59）から開く。
+  const [quickCreate, setQuickCreate] = useState<Partial<GlossaryEntry> | null>(null)
+  // 推敲画面から開いたときだけ、閉じたときに「作成したか」を返す。フォーカスの行き先は推敲画面が決める
+  // （このダイアログはトリガーを持たないので、閉じると既定ではフォーカスが body に落ちる）。
+  const registerResolveRef = useRef<((result: 'created' | 'cancelled') => void) | null>(null)
+  const registerCreatedRef = useRef(false)
   // 用語集パネルからの編集対象。作成と同じくその場のモーダルで完結させる（本文から離れさせない）。
   const [editEntryId, setEditEntryId] = useState<string | null>(null)
   // ツールバーの記法ボタンから本文へ挿入するためのハンドル（選択範囲は EditorPane が持つ）。
@@ -386,6 +395,26 @@ export function App({
     [store],
   )
 
+  /** 推敲画面の「用語集に登録」（COT-59）。名前・読み・カテゴリ入りで開き、閉じたら結果を返す。 */
+  const registerName = useCallback(
+    (draft: { name: string; reading?: string; category?: string }) =>
+      new Promise<'created' | 'cancelled'>((resolve) => {
+        registerResolveRef.current?.('cancelled')
+        registerResolveRef.current = resolve
+        registerCreatedRef.current = false
+        setQuickCreate({ name: draft.name, reading: draft.reading, category: draft.category })
+      }),
+    [],
+  )
+  /** 推敲画面から開いたときだけ既定の戻り先を止め、結果を返す（handler は常に同じものを渡す）。 */
+  const onQuickCreateCloseAutoFocus = useCallback((event: Event) => {
+    const resolve = registerResolveRef.current
+    if (!resolve) return
+    event.preventDefault()
+    registerResolveRef.current = null
+    resolve(registerCreatedRef.current ? 'created' : 'cancelled')
+  }, [])
+
   // プレビューの @参照クリック：解決済み→用語集パネルで表示、未解決→当該名でクイック作成。
   const onRefClick = useCallback(
     (name: string) => {
@@ -396,7 +425,7 @@ export function App({
         setPeekId(entry.id)
         setGlossaryPanelOpen(true)
       } else {
-        setQuickCreateName(name)
+        setQuickCreate({ name })
       }
     },
     [work?.glossary],
@@ -538,14 +567,14 @@ export function App({
               entry={peekEntry}
               appearances={peekEntry ? getAppearances(peekEntry) : null}
               onSelect={(id) => setPeekId(id)}
-              onQuickCreate={(name) => setQuickCreateName(name)}
+              onQuickCreate={(name) => setQuickCreate({ name })}
               onClose={() => setGlossaryPanelOpen(false)}
               // 作成と同じくその場のモーダルで編集する（用語集ページへ飛ばさない）。
               // パネルは開いたままにして、編集後にチップ一覧へ自然に戻れるようにする。
               onEdit={() => {
                 if (peekEntry) setEditEntryId(peekEntry.id)
               }}
-              onNewEntry={() => setQuickCreateName('')}
+              onNewEntry={() => setQuickCreate({ name: '' })}
             />
           ) : historyOpen && episode && onEpisodes ? (
             <HistoryPanel
@@ -571,6 +600,8 @@ export function App({
                 work={work}
                 currentEpisodeId={state.currentEpisodeId}
                 repo={proofreadRepo}
+                namesRepo={nameDismissalRepo}
+                onRegisterName={registerName}
                 onFixInEditor={(target) => {
                   setPendingFix(target)
                   if (target.episodeId !== state.currentEpisodeId)
@@ -1045,19 +1076,21 @@ export function App({
           glossary={work?.glossary ?? []}
           onCreateEntry={createPlainGlossaryEntry}
         />
-        {/* 未解決 @参照クリックからのクイック作成（名前プリフィル）。 */}
+        {/* クイック作成（未解決 @参照・GlossaryPeek・推敲画面の「用語集に登録」）。 */}
         <GlossaryEntryForm
-          open={quickCreateName !== null}
+          open={quickCreate !== null}
           onOpenChange={(o) => {
-            if (!o) setQuickCreateName(null)
+            if (!o) setQuickCreate(null)
           }}
           mode="create"
-          initial={quickCreateName !== null ? { name: quickCreateName } : undefined}
+          initial={quickCreate ?? undefined}
           onSubmit={async (values) => {
             await store.addGlossaryEntry({ name: values.name, ...formValuesToFieldPatch(values) })
+            registerCreatedRef.current = true
           }}
           glossary={work?.glossary ?? []}
           onCreateEntry={createPlainGlossaryEntry}
+          onCloseAutoFocus={onQuickCreateCloseAutoFocus}
         />
         <ExportDialog
           open={exportOpen}

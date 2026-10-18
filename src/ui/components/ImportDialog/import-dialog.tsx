@@ -185,13 +185,14 @@ export function ImportDialog({ open, onOpenChange, onImport, onRestoreAll }: Imp
                 <li>構造データ：{phase.backup.structures.length}</li>
                 <li>サウンドノベルの演出：{phase.backup.stagings.length}</li>
                 <li>推敲の判断：{phase.backup.proofreads.length}話</li>
+                <li>推敲で外した語：{phase.backup.nameDismissals.length}作品</li>
                 <li>持ち込み背景：{phase.backup.gameAssets.length}</li>
                 <li>執筆記録：{phase.backup.activity.length}日</li>
               </ul>
               <p className="flex items-start gap-2 rounded-md bg-destructive/10 p-3 text-destructive text-xs">
                 <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden />
                 <span>
-                  現在のすべてのデータ（作品・用語集・プロット・構造データ・ネタ帳・推敲の判断・執筆記録・ゴミ箱・プロフィール）が、このバックアップの内容に置き換わります。この操作は取り消せません。
+                  現在のすべてのデータ（作品・用語集・プロット・構造データ・ネタ帳・推敲の判断・推敲で外した語・執筆記録・ゴミ箱・プロフィール）が、このバックアップの内容に置き換わります。この操作は取り消せません。
                 </span>
               </p>
             </div>

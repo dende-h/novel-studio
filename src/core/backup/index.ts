@@ -6,6 +6,7 @@ import { type IdeaNote, IdeaNoteSchema } from '../idea'
 import { type Plot, PlotSchema } from '../plot'
 import { type Profile, ProfileSchema } from '../profile'
 import { type ProofreadRecord, ProofreadRecordSchema } from '../proofread/decisions'
+import { type NameDismissals, NameDismissalsSchema } from '../proofread/name-dismissals'
 import { type Work, WorkSchema } from '../schema'
 import { type Structure, StructureSchema } from '../structure'
 
@@ -41,10 +42,19 @@ const CloudBackupSchema = z.object({
   stagings: z.array(StagingSchema).optional().default([]),
   /** 推敲の判断（直す／このまま・話ごと）。旧バックアップには無いので既定 []。 */
   proofreads: z.array(ProofreadRecordSchema).optional().default([]),
+  /**
+   * 推敲で候補から外した語（COT-59・作品ごと）。旧バックアップには無いので既定 []。
+   * 壊れた要素は null にして捨てる（1件の不正でバックアップ全体の復元を止めない）。
+   * null は deserializeBackup で取り除く。
+   */
+  nameDismissals: z.array(NameDismissalsSchema.nullable().catch(null)).optional().default([]),
   /** 持ち込みのゲーム素材（背景画像）。旧バックアップには無いので既定 []。 */
   gameAssets: z.array(UserGameAssetSchema).optional().default([]),
 })
-export type CloudBackup = z.infer<typeof CloudBackupSchema>
+/** 検証後の全体バックアップ。外した語は壊れた要素（null）を取り除いた後の形。 */
+export type CloudBackup = Omit<z.infer<typeof CloudBackupSchema>, 'nameDismissals'> & {
+  nameDismissals: NameDismissals[]
+}
 
 /** バックアップ対象のローカル全状態。 */
 export interface BackupState {
@@ -57,6 +67,7 @@ export interface BackupState {
   plots: Plot[]
   stagings: Staging[]
   proofreads: ProofreadRecord[]
+  nameDismissals: NameDismissals[]
   gameAssets: UserGameAsset[]
 }
 
@@ -68,7 +79,11 @@ export function serializeBackup(state: BackupState, createdAt: number): string {
 
 /** バックアップ JSON を検証して復元用の全状態に戻す（version/スキーマ不正は throw）。 */
 export function deserializeBackup(json: string): CloudBackup {
-  return CloudBackupSchema.parse(JSON.parse(json))
+  const parsed = CloudBackupSchema.parse(JSON.parse(json))
+  return {
+    ...parsed,
+    nameDismissals: parsed.nameDismissals.filter((r): r is NameDismissals => r !== null),
+  }
 }
 
 /**

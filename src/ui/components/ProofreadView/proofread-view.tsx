@@ -5,6 +5,8 @@ import {
   createVariantCountCache,
   type DialogueRatio,
   dialogueRatio,
+  inlineSignalsOf,
+  type NameCandidate,
   proofreadNovel,
 } from '@/core/proofread'
 import {
@@ -19,12 +21,15 @@ import {
   type Verdict,
   withNth,
 } from '@/core/proofread/decisions'
+import { dismissName, restoreName } from '@/core/proofread/name-dismissals'
 import { NOVEL_RULES } from '@/core/proofread/types'
+import { glossaryTerms } from '@/core/proofread/user-dict'
 import type { Work } from '@/core/schema'
 import { cn } from '@/lib/utils'
 import { Button } from '@/ui/components/ui/button'
 import { Progress } from '@/ui/components/ui/progress'
 import { useMorphAnalyzer } from '@/ui/hooks/use-morph-analyzer'
+import { type NameDismissalRepo, useNameDismissals } from '@/ui/hooks/use-name-dismissals'
 import { useProofreadPrefs } from '@/ui/hooks/use-proofread-prefs'
 import { type ProofreadRecordRepo, useProofreadRecord } from '@/ui/hooks/use-proofread-record'
 import type { MorphAnalyzerClient } from '@/ui/proofread/analyzer-client'
@@ -32,6 +37,7 @@ import { textsHash } from '@/ui/proofread/analyzer-engine'
 import type { AnalysisResult } from '@/ui/proofread/protocol'
 import { AnalysisPanel } from './analysis-panel'
 import { type FindingFilter, FindingList } from './finding-list'
+import { NameCandidatesSection } from './name-candidates-section'
 import { ProofreadText } from './proofread-text'
 import { RuleToggles } from './rule-toggles'
 
@@ -46,6 +52,14 @@ interface ProofreadViewProps {
   repo: ProofreadRecordRepo
   /** 「本文で直す」。執筆画面へ戻り、その話を開いて該当箇所を選ぶ（App が配線する）。 */
   onFixInEditor: (target: FixInEditorTarget) => void
+  /** 候補から外した語（COT-59）。省略時は外した語を保存しない。 */
+  namesRepo?: NameDismissalRepo
+  /** 名前の候補を用語集に登録する（App のクイック作成を開き、閉じたら「作成したか」を返す・COT-59）。 */
+  onRegisterName?: (draft: {
+    name: string
+    reading?: string
+    category?: string
+  }) => Promise<'created' | 'cancelled'>
   /** テスト用：解析器の窓口を差し替える。 */
   createAnalyzer?: () => MorphAnalyzerClient
   now?: () => number
@@ -74,6 +88,8 @@ export function ProofreadView({
   currentEpisodeId,
   repo,
   onFixInEditor,
+  namesRepo,
+  onRegisterName,
   createAnalyzer,
   now = Date.now,
 }: ProofreadViewProps) {
@@ -110,7 +126,8 @@ export function ProofreadView({
     () =>
       work.episodes.map((e) => {
         const texts = e.blocks.map(plainTextOfBlock)
-        return { id: e.id, hash: textsHash(texts), texts }
+        // ルビと [[ ]] は名前の候補だけに使う（トークンのキャッシュはハッシュ＝本文の文字で決まる）
+        return { id: e.id, hash: textsHash(texts), texts, ...inlineSignalsOf(e.blocks) }
       }),
     [work.episodes],
   )
@@ -204,6 +221,34 @@ export function ProofreadView({
   const workRatio = ratios.reduce((sum, r) => addRatio(sum, r.ratio), ZERO)
   const frequent =
     analyzer.status === 'error' ? 'error' : ready && analysis ? analysis.frequent : null
+
+  // 用語集に無い名前（COT-59）。用語集が変わると解析器は作り直されるが、その間も前回の結果を
+  // いまの用語集と外した語で絞って出し続ける（準備中にするのは、まだ一度も結果が無いときだけ）。
+  const { record: dismissals, save: saveDismissals } = useNameDismissals(namesRepo, work.id)
+  const dismissedWords = useMemo(() => (dismissals?.words ?? []).map((w) => w.text), [dismissals])
+  const glossaryNow = useMemo(
+    () => new Set(glossaryTerms(work.glossary ?? NO_GLOSSARY)),
+    [work.glossary],
+  )
+  const names = useMemo<ReadonlyArray<NameCandidate> | null | 'error'>(() => {
+    if (analyzer.status === 'error') return 'error'
+    if (!analysis) return null
+    const hidden = new Set(dismissedWords)
+    return analysis.names.filter((c) => !hidden.has(c.name) && !glossaryNow.has(c.name))
+  }, [analyzer.status, analysis, dismissedWords, glossaryNow])
+  const inThisEpisode = (name: string) =>
+    episode?.blocks.some((b) => plainTextOfBlock(b).includes(name)) ?? false
+  const dismiss = (name: string) => {
+    if (word === name) setWord(null)
+    void saveDismissals(dismissName(dismissals, work.id, name, now()))
+  }
+  const restore = (name: string) => {
+    if (dismissals) void saveDismissals(restoreName(dismissals, name, now()))
+  }
+  const register = (c: NameCandidate) =>
+    onRegisterName
+      ? onRegisterName({ name: c.name, reading: c.reading, category: c.category })
+      : Promise.resolve('cancelled' as const)
 
   const marks = [
     ...groups.pending.map((f) => ({ finding: f, state: 'pending' as const })),
@@ -353,6 +398,18 @@ export function ProofreadView({
           ) : (
             <div className="min-h-0 flex-1 overflow-y-auto p-4">
               <AnalysisPanel
+                names={
+                  <NameCandidatesSection
+                    candidates={names}
+                    dismissed={dismissedWords}
+                    selected={word}
+                    inThisEpisode={inThisEpisode}
+                    onSelect={setWord}
+                    onRegister={register}
+                    onDismiss={dismiss}
+                    onRestore={restore}
+                  />
+                }
                 frequent={frequent}
                 word={word}
                 onWord={setWord}

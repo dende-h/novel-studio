@@ -44,12 +44,12 @@ jobs:
       - name: 依存関係をインストール
         run: mise exec -- pnpm install --frozen-lockfile
 
-      # 推敲画面の形態素解析の辞書（COT-40）。scripts/fetch-dict.mjs が版とハッシュを持つので、それをキーにする
+      # 推敲画面の形態素解析の辞書（COT-40・COT-59）。scripts/fetch-dict.mjs と dict-file.mjs が名前とハッシュを持つので、それをキーにする
       - name: 推敲の辞書のキャッシュ
         uses: actions/cache@v5
         with:
           path: public/dict
-          key: ipadic-${{ hashFiles('scripts/fetch-dict.mjs') }}
+          key: ipadic-${{ hashFiles('scripts/fetch-dict.mjs', 'scripts/dict-file.mjs') }}
 
       - name: 本番ビルド（VITE_* は MISE_ENV に応じた値が反映される）
         run: mise exec -- pnpm build

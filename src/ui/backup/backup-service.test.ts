@@ -2,8 +2,10 @@ import 'fake-indexeddb/auto'
 import { describe, expect, it, vi } from 'vitest'
 import { type BackupState, deserializeBackup, serializeBackup } from '@/core/backup'
 import type { ProofreadRecord } from '@/core/proofread/decisions'
+import type { NameDismissals } from '@/core/proofread/name-dismissals'
 import type { Work } from '@/core/schema'
 import { IdbStore } from '@/core/storage/idbStore'
+import { NameDismissalRepository } from '@/core/storage/nameDismissalRepository'
 import { ProofreadRepository } from '@/core/storage/proofreadRepository'
 import { isSyncSuspended, syncEpoch } from '@/ui/sync/sync-gate'
 import {
@@ -33,6 +35,12 @@ const proofread = (workId: string, episodeId: string, updatedAt: number): Proofr
   updatedAt,
 })
 
+const names = (workId: string, updatedAt: number, text = 'アカリ'): NameDismissals => ({
+  workId,
+  words: [{ text, at: updatedAt }],
+  updatedAt,
+})
+
 function makeDeps(over: Partial<BackupDeps> = {}) {
   const state = {
     works: [work('a')],
@@ -44,6 +52,7 @@ function makeDeps(over: Partial<BackupDeps> = {}) {
     plots: [],
     stagings: [],
     proofreads: [],
+    nameDismissals: [],
     gameAssets: [],
   }
   const created: string[] = []
@@ -98,6 +107,7 @@ describe('createLocalBackupService（ローカル・ファイルバックアッ�
       plots: [],
       stagings: [],
       proofreads: [],
+      nameDismissals: [],
       gameAssets: [],
     }
     const svc = createLocalBackupService(io(state), () => 999)
@@ -119,6 +129,7 @@ describe('createLocalBackupService（ローカル・ファイルバックアッ�
       plots: [],
       stagings: [],
       proofreads: [],
+      nameDismissals: [],
       gameAssets: [],
     }
     const svc = createLocalBackupService(
@@ -163,6 +174,7 @@ describe('createLocalBackupService（ローカル・ファイルバックアッ�
           { workId: 'w1', episodeId: 'e1', cues: [{ blockId: 'b1', speaker: '光' }], updatedAt: 4 },
         ],
         proofreads: [proofread('w1', 'e1', 4)],
+        nameDismissals: [],
         gameAssets: [],
       },
       5,
@@ -194,6 +206,7 @@ describe('createLocalBackupService（ローカル・ファイルバックアッ�
       plots: [],
       stagings: [],
       proofreads: [],
+      nameDismissals: [],
       gameAssets: [],
     }
     await expect(createLocalBackupService(io(empty)).restorePlaintext('not json')).rejects.toThrow()
@@ -235,6 +248,7 @@ describe('createBackupService', () => {
           plots: [],
           stagings: [],
           proofreads: [],
+          nameDismissals: [],
           gameAssets: [],
         },
         5,
@@ -259,6 +273,7 @@ describe('createBackupService', () => {
           plots: [],
           stagings: [],
           proofreads: [],
+          nameDismissals: [],
           gameAssets: [],
         },
         5,
@@ -287,6 +302,7 @@ describe('createBackupService', () => {
           plots: [],
           stagings: [],
           proofreads: [],
+          nameDismissals: [],
           gameAssets: [],
         },
         5,
@@ -325,6 +341,7 @@ describe('createBackupService', () => {
         plots: [],
         stagings: [],
         proofreads: [],
+        nameDismissals: [],
         gameAssets: [],
       },
       50,
@@ -353,6 +370,7 @@ describe('createBackupService', () => {
         plots: [],
         stagings: [],
         proofreads: [],
+        nameDismissals: [],
         gameAssets: [],
       },
       50,
@@ -381,6 +399,7 @@ describe('createBackupService', () => {
         plots: [],
         stagings: [],
         proofreads: [],
+        nameDismissals: [],
         gameAssets: [],
       },
       50,
@@ -408,6 +427,7 @@ describe('createBackupService', () => {
         plots: [],
         stagings: [],
         proofreads: [proofread('w1', 'e1', 7)],
+        nameDismissals: [],
         gameAssets: [],
       },
       50,
@@ -462,6 +482,7 @@ describe('createBackupService', () => {
           plots: [],
           stagings: [],
           proofreads: [proofread('w1', 'e2', 8)],
+          nameDismissals: [],
           gameAssets: [],
         },
         5,
@@ -479,6 +500,48 @@ describe('createBackupService', () => {
     expect(deserializeBackup(created[0] ?? '{}').proofreads).toEqual([proofread('w1', 'e1', 3)])
   })
 
+  it('復元・ライブ取り込みは推敲で外した語も全置換に渡し、backupNow は直列化する', async () => {
+    const withNames = (n: NameDismissals[]) =>
+      serializeBackup(
+        {
+          works: [work('r')],
+          trash: [],
+          profile: {},
+          activity: [],
+          ideas: [],
+          structures: [],
+          plots: [],
+          stagings: [],
+          proofreads: [],
+          nameDismissals: n,
+          gameAssets: [],
+        },
+        50,
+      )
+    const restored: unknown[] = []
+    const { deps, remote, created, state } = makeDeps({
+      replaceAll: async (s) => {
+        restored.push(s.nameDismissals)
+      },
+    })
+    remote.set('target', withNames([names('w1', 7)]))
+    remote.set('live', withNames([names('w2', 8, 'ユキ')]))
+    // 欄の無い旧バックアップは、外した語を空として渡す
+    remote.set(
+      'old',
+      JSON.stringify({ version: 1, createdAt: 1, works: [work('r')], trash: [], profile: {} }),
+    )
+    const svc = createBackupService(deps)
+    await svc.restore('target')
+    await svc.pullLive()
+    expect(await svc.restore('old')).toBe(true)
+    expect(restored).toEqual([[names('w1', 7)], [names('w2', 8, 'ユキ')], []])
+
+    const gathered = { ...state, nameDismissals: [names('w3', 3)] }
+    await createBackupService({ ...deps, gather: async () => gathered }).backupNow()
+    expect(deserializeBackup(created.at(-1) ?? '{}').nameDismissals).toEqual([names('w3', 3)])
+  })
+
   it('backupCurrent:true のときだけ、置換前に現在を安全退避してから全置換する', async () => {
     const target = serializeBackup(
       {
@@ -491,6 +554,7 @@ describe('createBackupService', () => {
         plots: [],
         stagings: [],
         proofreads: [],
+        nameDismissals: [],
         gameAssets: [],
       },
       50,
@@ -546,6 +610,7 @@ describe('全置換（復元・AI の変更の取り込み）は自動同期と�
       plots: [],
       stagings: [],
       proofreads: [],
+      nameDismissals: [],
       gameAssets: [],
     })
     // 置換の最中は保留＝走っている reconcile が base を書き戻さない（誤 purge の防止）。
@@ -567,6 +632,7 @@ describe('createLocalBackupIO（IndexedDB 上の全状態）', () => {
     plots: [],
     stagings: [],
     proofreads: [],
+    nameDismissals: [],
     gameAssets: [],
   })
 
@@ -584,5 +650,31 @@ describe('createLocalBackupIO（IndexedDB 上の全状態）', () => {
     await io.replaceAll({ ...emptyState(), proofreads: [proofread('w2', 'e9', 5)] })
     expect(await repo.list()).toEqual([proofread('w2', 'e9', 5)])
     expect((await io.gather()).proofreads).toEqual([proofread('w2', 'e9', 5)])
+  })
+
+  it('gather は推敲で外した語を集め、replaceAll は外した語だけを全置換する', async () => {
+    const io = createLocalBackupIO()
+    const kv = new IdbStore('novel-studio')
+    const repo = new NameDismissalRepository(kv)
+    const proofreads = new ProofreadRepository(kv)
+    await io.replaceAll(emptyState())
+    await repo.save(names('w1', 1))
+    await repo.save(names('w2', 2))
+    await proofreads.save(proofread('w1', 'e1', 1))
+
+    const gathered = await io.gather()
+    expect(gathered.nameDismissals.map((r) => r.workId).sort()).toEqual(['w1', 'w2'])
+    // 推敲の判断（proofread:）の一覧に外した語（proofread-names:）が混ざらない
+    expect(gathered.proofreads).toEqual([proofread('w1', 'e1', 1)])
+
+    // 復元：バックアップに無い記録は消え、バックアップの記録だけが残る
+    await io.replaceAll({
+      ...emptyState(),
+      proofreads: [proofread('w1', 'e1', 1)],
+      nameDismissals: [names('w9', 5, 'ミナト')],
+    })
+    expect(await repo.list()).toEqual([names('w9', 5, 'ミナト')])
+    expect((await io.gather()).nameDismissals).toEqual([names('w9', 5, 'ミナト')])
+    expect(await proofreads.list()).toEqual([proofread('w1', 'e1', 1)])
   })
 })

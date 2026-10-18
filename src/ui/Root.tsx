@@ -48,6 +48,7 @@ import {
   createDefaultActivityRepository,
   createDefaultGameAssetRepository,
   createDefaultIdeaRepository,
+  createDefaultNameDismissalRepository,
   createDefaultPlotRepository,
   createDefaultProofreadRepository,
   createDefaultStagingRepository,
@@ -189,6 +190,12 @@ function RootRoutes({ store }: RootProps) {
   // 推敲の判断（COT-40）も演出譜と同じ。判断を保存するたびに push の契機を作る。
   const proofreadRepo = useMemo(
     () => withSyncTouch(createDefaultProofreadRepository(), ['save', 'remove', 'removeByWork']),
+    [],
+  )
+  // 推敲で候補から外した語（COT-59）も推敲の判断と同じ。外す・戻すたびに push の契機を作る。
+  const nameDismissalRepo = useMemo(
+    () =>
+      withSyncTouch(createDefaultNameDismissalRepository(), ['save', 'removeById', 'removeByWork']),
     [],
   )
   // 持ち込みゲーム素材（背景画像）。純ローカル＝同期に載せないので sync-touch は不要。
@@ -459,6 +466,7 @@ function RootRoutes({ store }: RootProps) {
           stagingRepo={stagingRepo}
           gameAssetRepo={gameAssetRepo}
           proofreadRepo={proofreadRepo}
+          nameDismissalRepo={nameDismissalRepo}
           canUseStructure={canUseCreativeTools}
           ideaRepo={ideaRepo}
         />

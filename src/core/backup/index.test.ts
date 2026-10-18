@@ -48,6 +48,16 @@ const state: BackupState = {
       updatedAt: 45,
     },
   ],
+  nameDismissals: [
+    {
+      workId: 'w1',
+      words: [
+        { text: 'アカリ', at: 46 },
+        { text: '星見台', at: 47 },
+      ],
+      updatedAt: 47,
+    },
+  ],
   gameAssets: [
     {
       id: 'ga1',
@@ -151,6 +161,48 @@ describe('serializeBackup / deserializeBackup（全体バックアップの直�
     expect(back.proofreads).toEqual(withUnknown.proofreads)
   })
 
+  it('推敲で外した語を往復できる', () => {
+    const back = deserializeBackup(serializeBackup(state, 0))
+    expect(back.nameDismissals).toEqual(state.nameDismissals)
+  })
+
+  it('nameDismissals 欠落の旧バックアップも既定 [] で読め、ほかの項目は残る（後方互換）', () => {
+    const old = JSON.stringify({
+      version: 1,
+      createdAt: 1,
+      works: [work('w1')],
+      trash: [],
+      profile: {},
+      proofreads: state.proofreads,
+    })
+    const back = deserializeBackup(old)
+    expect(back.nameDismissals).toEqual([])
+    expect(back.works.map((w) => w.id)).toEqual(['w1'])
+    expect(back.proofreads).toEqual(state.proofreads)
+  })
+
+  it('外した語の壊れた要素だけを捨て、ほかの要素とバックアップ全体は復元できる', () => {
+    const ok = { workId: 'w2', words: [{ text: 'ユキ', at: 5 }], updatedAt: 5 }
+    // words を持たない旧い形は既定 [] で読める（壊れた扱いにしない）
+    const noWords = { workId: 'w3', updatedAt: 6 }
+    const json = JSON.stringify({
+      ...JSON.parse(serializeBackup(state, 9)),
+      nameDismissals: [
+        ok,
+        { workId: 'w4', words: 'broken', updatedAt: 7 },
+        null,
+        'garbage',
+        { words: [], updatedAt: 8 },
+        noWords,
+      ],
+    })
+    const back = deserializeBackup(json)
+    expect(back.nameDismissals).toEqual([ok, { workId: 'w3', words: [], updatedAt: 6 }])
+    expect(back.works.map((w) => w.id)).toEqual(['w1', 'w2'])
+    expect(back.proofreads).toEqual(state.proofreads)
+    expect(back.createdAt).toBe(9)
+  })
+
   it('version 不正は弾く（壊れた/将来形のバックアップを復元しない）', () => {
     const bad = JSON.stringify({ version: 999, createdAt: 1, works: [], trash: [], profile: {} })
     expect(() => deserializeBackup(bad)).toThrow()
@@ -173,6 +225,7 @@ describe('serializeBackup / deserializeBackup（全体バックアップの直�
         plots: [],
         stagings: [],
         proofreads: [],
+        nameDismissals: [],
         gameAssets: [],
       },
       0,
@@ -180,6 +233,7 @@ describe('serializeBackup / deserializeBackup（全体バックアップの直�
     const back = deserializeBackup(json)
     expect(back.works).toEqual([])
     expect(back.trash).toEqual([])
+    expect(back.nameDismissals).toEqual([])
   })
 })
 

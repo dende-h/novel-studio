@@ -1,7 +1,10 @@
 import {
   countAutoVariants,
+  findNameCandidates,
   frequentWords,
+  isUnknownToken,
   type MorphToken,
+  type NameSourceEpisode,
   type RawToken,
   toMorphTokens,
 } from '@/core/proofread'
@@ -40,6 +43,13 @@ const DICT_FILES = [
 ] as const
 
 const SPACE = /\s/u
+
+/**
+ * 解析器に渡す前に全角空白を半角に替える（COT-59）。IPADIC は全角空白を辞書に無い名詞として扱い、
+ * 次の語の解析まで崩す（字下げの「　灯里ちゃん」で 灯 が接尾になる・「！　すぐ」の ！　 が1語の名詞になる）。
+ * 1文字を1文字に替えるので、元の文字列の位置はずれない（toMorphTokens は元の文字列で位置を付ける）。
+ */
+export const forTokenizer = (text: string) => text.replace(/\u3000/gu, ' ')
 const countChars = (text: string) => {
   let n = 0
   for (const ch of text) if (!SPACE.test(ch)) n++
@@ -76,7 +86,7 @@ export function createAnalyzerEngine(
   const tokenize = (text: string): RawToken[] => {
     if (!tokenizer) throw new Error('解析器の準備ができていません')
     const out: RawToken[] = []
-    for (const t of tokenizer.tokenize(text)) {
+    for (const t of tokenizer.tokenize(forTokenizer(text))) {
       out.push([t.surface, ...t.details])
       t.free?.()
     }
@@ -111,6 +121,7 @@ export function createAnalyzerEngine(
 
     analyze(episodes, currentId, onProgress) {
       const blocksOfWork: MorphToken[][] = []
+      const nameSources: NameSourceEpisode[] = []
       let current: MorphToken[][] = []
       let totalChars = 0
       const seen = new Set<string>()
@@ -123,6 +134,7 @@ export function createAnalyzerEngine(
           cache.set(key, tokens)
         }
         blocksOfWork.push(...tokens)
+        nameSources.push({ texts: ep.texts, tokens, rubies: ep.rubies, refs: ep.refs })
         if (ep.id === currentId) current = tokens
         for (const t of ep.texts) totalChars += countChars(t)
         onProgress?.(i + 1, episodes.length)
@@ -132,6 +144,16 @@ export function createAnalyzerEngine(
         currentTokens: current,
         workVariants: countAutoVariants(blocksOfWork, excluded),
         frequent: frequentWords(blocksOfWork, totalChars, excluded),
+        names: findNameCandidates(nameSources, excluded, (base, reading) => {
+          // ルビの親文字が辞書の1語で、読みがルビと同じなら読み仮名（候補にしない）
+          const t = toMorphTokens(tokenize(base), base)
+          return (
+            t.length === 1 &&
+            t[0] !== undefined &&
+            !isUnknownToken(t[0]) &&
+            t[0].reading === reading
+          )
+        }),
       }
     },
   }

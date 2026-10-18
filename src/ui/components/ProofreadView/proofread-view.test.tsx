@@ -1,11 +1,13 @@
 import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { parseEpisodeBody } from '@/core/parser/parseNotation'
-import { countAutoVariants, frequentWords } from '@/core/proofread'
+import { countAutoVariants, frequentWords, type NameCandidate } from '@/core/proofread'
 import type { ProofreadRecord } from '@/core/proofread/decisions'
 import { sampleTokens } from '@/core/proofread/morph/fixtures'
+import type { NameDismissals } from '@/core/proofread/name-dismissals'
 import { NOVEL_RULES } from '@/core/proofread/types'
 import type { Work } from '@/core/schema'
+import type { NameDismissalRepo } from '@/ui/hooks/use-name-dismissals'
 import { reloadProofreadPrefs } from '@/ui/hooks/use-proofread-prefs'
 import type { AnalyzerState, MorphAnalyzerClient } from '@/ui/proofread/analyzer-client'
 import type { AnalysisResult } from '@/ui/proofread/protocol'
@@ -48,6 +50,7 @@ function fakeAnalyzer(result: Partial<AnalysisResult> = {}) {
       currentTokens: [],
       workVariants: { groups: [], groupOf: {} },
       frequent: [],
+      names: [],
       ...result,
     })),
     set(s) {
@@ -60,23 +63,40 @@ function fakeAnalyzer(result: Partial<AnalysisResult> = {}) {
 
 async function renderView(
   w: Work,
-  opts: { repo?: ReturnType<typeof fakeRepo>; analyzer?: ReturnType<typeof fakeAnalyzer> } = {},
+  opts: {
+    repo?: ReturnType<typeof fakeRepo>
+    analyzer?: ReturnType<typeof fakeAnalyzer>
+    namesRepo?: NameDismissalRepo
+    onRegisterName?: (draft: {
+      name: string
+      reading?: string
+      category?: string
+    }) => Promise<'created' | 'cancelled'>
+  } = {},
 ) {
   const repo = opts.repo ?? fakeRepo()
   const analyzer = opts.analyzer ?? fakeAnalyzer()
   const onFixInEditor = vi.fn()
-  const view = render(
+  const ui = (next: Work) => (
     <ProofreadView
-      work={w}
+      work={next}
       currentEpisodeId={w.episodes[0]?.id ?? null}
       repo={repo}
       onFixInEditor={onFixInEditor}
+      namesRepo={opts.namesRepo}
+      onRegisterName={opts.onRegisterName}
       createAnalyzer={() => analyzer}
       now={() => 1000}
-    />,
+    />
   )
+  const view = render(ui(w))
   await act(async () => {})
-  return { ...view, repo, analyzer, onFixInEditor }
+  /** 作品（用語集など）を替えて描き直す。 */
+  const rerenderWork = async (next: Work) => {
+    view.rerender(ui(next))
+    await act(async () => {})
+  }
+  return { ...view, repo, analyzer, onFixInEditor, rerenderWork }
 }
 
 /** 一覧の指摘カード（「確認する項目」のチップと名前が重なるので、カードの「本文で見る」ボタンから辿る）。 */
@@ -320,5 +340,224 @@ describe('ProofreadView（推敲画面・COT-40）', () => {
     expect(
       screen.getByRole('button', { name: '本文で見る：同じ語の連続「がが」' }),
     ).toBeInTheDocument()
+  })
+})
+
+/** 外した語の偽の repo。 */
+function fakeNamesRepo(initial?: NameDismissals, opts: { broken?: boolean } = {}) {
+  let row = initial
+  return {
+    get row() {
+      return row
+    },
+    get: vi.fn(async () => {
+      if (opts.broken) throw new Error('壊れた記録')
+      return row
+    }),
+    save: vi.fn(async (r: NameDismissals) => {
+      row = r
+    }),
+  }
+}
+
+const NAMES: NameCandidate[] = [
+  { name: '湊斗', count: 3, episodes: 2, signals: ['split-kanji'] },
+  {
+    name: 'リリアーナ',
+    count: 2,
+    episodes: 1,
+    signals: ['katakana'],
+    category: '人物',
+    reading: 'りりあーな',
+  },
+  {
+    name: '新宿',
+    count: 2,
+    episodes: 1,
+    signals: ['dict-proper'],
+    category: '場所',
+    reading: 'しんじゅく',
+  },
+  { name: 'レオンハルト', count: 2, episodes: 1, signals: ['katakana'], reading: 'れおんはると' },
+]
+const NAME_BODY = '「リリアーナ様」\n　湊斗は新宿にいた。湊斗が笑う。'
+
+/** 分析タブを開いた状態で、名前の候補を返す解析器を準備できたところまで進める。 */
+async function openNames(
+  opts: Parameters<typeof renderView>[1] & {
+    names?: NameCandidate[]
+    glossary?: Work['glossary']
+  } = {},
+) {
+  const analyzer = fakeAnalyzer({ names: opts.names ?? NAMES })
+  const w = { ...work([{ id: 'e1', title: '第一話', body: NAME_BODY }]), glossary: opts.glossary }
+  const view = await renderView(w, { ...opts, analyzer })
+  await act(async () => analyzer.set({ status: 'ready', work: null }))
+  await act(async () => {})
+  fireEvent.click(screen.getByRole('tab', { name: '分析' }))
+  return { ...view, w }
+}
+/** 名前の行の、名前のボタン（押すと本文に印を付ける）。 */
+const nameButton = (name: string) =>
+  screen
+    .getAllByRole('button', { name: new RegExp(`^${name}`) })
+    .find((b) => b.hasAttribute('aria-pressed')) as HTMLElement
+const namesSection = () => screen.getByRole('region', { name: '用語集に無い名前（作品全体）' })
+
+describe('用語集に無い名前（COT-59）', () => {
+  it('前回の結果が無く準備中なら準備中、使えないなら使えない、0件ならその旨を出す', async () => {
+    const analyzer = fakeAnalyzer({ names: [] })
+    await renderView(work([{ id: 'e1', title: '第一話', body: NAME_BODY }]), { analyzer })
+    fireEvent.click(screen.getByRole('tab', { name: '分析' }))
+    const section = namesSection
+    expect(
+      within(section()).getByText('くわしい確認の準備ができると表示します。'),
+    ).toBeInTheDocument()
+    await act(async () => analyzer.set({ status: 'ready', work: null }))
+    await act(async () => {})
+    expect(
+      within(section()).getByText('用語集に無い名前は見つかりませんでした。'),
+    ).toBeInTheDocument()
+    await act(async () => analyzer.set({ status: 'error', reason: 'memory' }))
+    expect(within(section()).getByText('くわしい確認は、いまは使えません。')).toBeInTheDocument()
+  })
+
+  it('行に名前・分類・回数・話数と、名前を含めて読み上げるボタンを出す', async () => {
+    await openNames()
+    expect(screen.getByText('人物・2回・1話')).toBeInTheDocument()
+    expect(screen.getByText('3回・2話')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'リリアーナを用語集に登録' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'リリアーナを外す' })).toBeInTheDocument()
+  })
+
+  it('名前を押すと本文に点線の枠が付き、もう一度で消える。この話に無い名前なら補足が替わる', async () => {
+    const { container } = await openNames()
+    fireEvent.click(nameButton('湊斗'))
+    expect(nameButton('湊斗')).toHaveAttribute('aria-pressed', 'true')
+    expect([...container.querySelectorAll('[data-word-mark]')].map((el) => el.textContent)).toEqual(
+      ['湊斗', '湊斗'],
+    )
+    expect(screen.getByText('名前を押すと、この話の本文に点線の枠が付きます。')).toBeInTheDocument()
+    fireEvent.click(nameButton('湊斗'))
+    expect(container.querySelectorAll('[data-word-mark]')).toHaveLength(0)
+    fireEvent.click(nameButton('レオンハルト'))
+    expect(screen.getByText('この話には出てきません。')).toBeInTheDocument()
+  })
+
+  it('よく使う言葉を選んでいるときに名前を押すと、言葉の選択が外れる', async () => {
+    const analyzer = fakeAnalyzer({
+      names: NAMES,
+      frequent: frequentWords([sampleTokens(FREQ)], 10000, new Set()),
+    })
+    await renderView(work([{ id: 'e1', title: '第一話', body: NAME_BODY }]), { analyzer })
+    await act(async () => analyzer.set({ status: 'ready', work: null }))
+    await act(async () => {})
+    fireEvent.click(screen.getByRole('tab', { name: '分析' }))
+    const fu = () => screen.getByRole('button', { name: /ふと/ })
+    fireEvent.click(fu())
+    expect(fu()).toHaveAttribute('aria-pressed', 'true')
+    fireEvent.click(nameButton('湊斗'))
+    expect(fu()).toHaveAttribute('aria-pressed', 'false')
+    expect(nameButton('湊斗')).toHaveAttribute('aria-pressed', 'true')
+  })
+
+  it('外すと一覧から消えて「外した語」に入り、フォーカスは次の行へ。戻すと一覧に戻る', async () => {
+    const namesRepo = fakeNamesRepo()
+    await openNames({ namesRepo })
+    fireEvent.click(screen.getByRole('button', { name: 'リリアーナを外す' }))
+    await act(async () => {})
+    expect(screen.queryByRole('button', { name: 'リリアーナを外す' })).toBeNull()
+    expect(namesRepo.save).toHaveBeenCalledWith({
+      workId: 'w',
+      words: [{ text: 'リリアーナ', at: 1000 }],
+      updatedAt: 1000,
+    })
+    expect(document.activeElement).toBe(nameButton('新宿'))
+    expect(screen.getByText('外した語（1）')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'リリアーナを戻す' }))
+    await act(async () => {})
+    expect(screen.getByRole('button', { name: 'リリアーナを外す' })).toBeInTheDocument()
+    expect(namesRepo.row?.words).toEqual([])
+    expect(screen.queryByText(/外した語（/)).toBeNull()
+  })
+
+  it('最後の行を外すと前の行へ、全部外すと見出しへフォーカスを移す', async () => {
+    await openNames({ names: NAMES.slice(0, 2), namesRepo: fakeNamesRepo() })
+    fireEvent.click(screen.getByRole('button', { name: 'リリアーナを外す' }))
+    await act(async () => {})
+    expect(document.activeElement).toBe(nameButton('湊斗'))
+    fireEvent.click(screen.getByRole('button', { name: '湊斗を外す' }))
+    await act(async () => {})
+    expect(document.activeElement).toBe(
+      screen.getByRole('heading', { name: '用語集に無い名前（作品全体）' }),
+    )
+  })
+
+  it('本文から無くなった外した語も「外した語」に並び、記録が壊れていても一覧は出る', async () => {
+    const { unmount } = await openNames({
+      namesRepo: fakeNamesRepo({ workId: 'w', words: [{ text: 'エルフ', at: 1 }], updatedAt: 1 }),
+    })
+    expect(screen.getByText('外した語（1）')).toBeInTheDocument()
+    expect(screen.getByText('エルフ')).toBeInTheDocument()
+    unmount()
+    await openNames({ namesRepo: fakeNamesRepo(undefined, { broken: true }) })
+    expect(screen.getByRole('button', { name: 'リリアーナを外す' })).toBeInTheDocument()
+  })
+
+  it('用語集にある名前は出さず、くわしい確認の作り直し中も前回の一覧を出し続ける', async () => {
+    const { analyzer, rerenderWork, w } = await openNames()
+    await rerenderWork({
+      ...w,
+      glossary: [{ id: 'g1', name: '新宿', aliases: [], createdAt: 1, updatedAt: 1 }],
+    })
+    expect(screen.queryByRole('button', { name: '新宿を外す' })).toBeNull()
+    await act(async () => analyzer.set({ status: 'loading', loaded: 0, total: 0 }))
+    expect(screen.getByRole('button', { name: 'リリアーナを外す' })).toBeInTheDocument()
+    expect(
+      within(namesSection()).queryByText('くわしい確認の準備ができると表示します。'),
+    ).toBeNull()
+  })
+
+  it('「用語集に登録」は名前・読み・分類を渡し、作成で行が消えたら次の行、キャンセルなら押したボタンへ戻す', async () => {
+    let resolve: (r: 'created' | 'cancelled') => void = () => {}
+    const onRegisterName = vi.fn(
+      () =>
+        new Promise<'created' | 'cancelled'>((r) => {
+          resolve = r
+        }),
+    )
+    const { rerenderWork, w } = await openNames({ onRegisterName })
+    fireEvent.click(screen.getByRole('button', { name: 'リリアーナを用語集に登録' }))
+    expect(onRegisterName).toHaveBeenCalledWith({
+      name: 'リリアーナ',
+      reading: 'りりあーな',
+      category: '人物',
+    })
+    await act(async () => resolve('cancelled'))
+    expect(document.activeElement).toBe(
+      screen.getByRole('button', { name: 'リリアーナを用語集に登録' }),
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'リリアーナを用語集に登録' }))
+    await rerenderWork({
+      ...w,
+      glossary: [{ id: 'g1', name: 'リリアーナ', aliases: [], createdAt: 1, updatedAt: 1 }],
+    })
+    expect(screen.queryByRole('button', { name: 'リリアーナを用語集に登録' })).toBeNull()
+    await act(async () => resolve('created'))
+    expect(document.activeElement).toBe(nameButton('新宿'))
+  })
+
+  it('名前を直して作成した（行が残った）なら、その行の名前のボタンへ戻す', async () => {
+    let resolve: (r: 'created' | 'cancelled') => void = () => {}
+    const onRegisterName = vi.fn(
+      () =>
+        new Promise<'created' | 'cancelled'>((r) => {
+          resolve = r
+        }),
+    )
+    await openNames({ onRegisterName })
+    fireEvent.click(screen.getByRole('button', { name: '新宿を用語集に登録' }))
+    await act(async () => resolve('created'))
+    expect(document.activeElement).toBe(nameButton('新宿'))
   })
 })

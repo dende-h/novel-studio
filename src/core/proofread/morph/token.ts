@@ -12,6 +12,8 @@ export interface MorphToken {
   end: number
   pos: string
   pos1: string
+  /** 細分類2（固有名詞なら 人名・地域・組織・一般、接尾なら 人名・地域 など）。 */
+  pos2: string
   ctype: string
   cform: string
   base: string
@@ -42,6 +44,7 @@ export function toMorphTokens(raw: ReadonlyArray<RawToken>, text: string): Morph
       end,
       pos: d(0),
       pos1: d(1),
+      pos2: d(2),
       ctype: d(4),
       cform: d(5),
       base: d(6),
@@ -49,4 +52,9 @@ export function toMorphTokens(raw: ReadonlyArray<RawToken>, text: string): Morph
     })
   }
   return out
+}
+
+/** 辞書に無い語（未知語）。IPADIC の未知語は原形が `*` になる（ユーザー辞書・足した語は原形を持つ）。 */
+export function isUnknownToken(t: Pick<MorphToken, 'base'>): boolean {
+  return t.base === '*' || t.base === ''
 }

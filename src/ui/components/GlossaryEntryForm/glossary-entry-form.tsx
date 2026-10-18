@@ -72,6 +72,11 @@ interface GlossaryEntryFormProps {
   glossary?: GlossaryEntry[]
   /** 候補に無い語をその場で用語集に登録する（作成した名前を返す。失敗は null）。 */
   onCreateEntry?: (name: string) => Promise<string | null>
+  /**
+   * 閉じたあとのフォーカスの行き先を呼び出し側で決める（Radix の onCloseAutoFocus をそのまま渡す）。
+   * このダイアログはトリガーを持たないので、渡さなければフォーカスは body に落ちる（推敲画面の登録・COT-59）。
+   */
+  onCloseAutoFocus?: (event: Event) => void
 }
 
 /**
@@ -88,6 +93,7 @@ export function GlossaryEntryForm({
   onSubmit,
   glossary,
   onCreateEntry,
+  onCloseAutoFocus,
 }: GlossaryEntryFormProps) {
   const uid = useId()
   const [name, setName] = useState('')
@@ -169,7 +175,7 @@ export function GlossaryEntryForm({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent className="sm:max-w-lg" onCloseAutoFocus={onCloseAutoFocus}>
         <DialogHeader>
           <DialogTitle className="font-serif text-on-surface">
             {isEdit ? '用語を編集' : '用語集に登録'}

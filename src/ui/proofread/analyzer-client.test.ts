@@ -20,7 +20,12 @@ function fakeWorker() {
   return w
 }
 
-const result = { currentTokens: [], workVariants: { groups: [], groupOf: {} }, frequent: [] }
+const result = {
+  currentTokens: [],
+  workVariants: { groups: [], groupOf: {} },
+  frequent: [],
+  names: [],
+}
 
 describe('createMorphAnalyzerClient（COT-40）', () => {
   it('起動で init を送り、進み具合 → 準備完了の状態になる', () => {

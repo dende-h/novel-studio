@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { sampleTokens } from './fixtures'
-import { toMorphTokens } from './token'
+import { isUnknownToken, toMorphTokens } from './token'
 
 describe('toMorphTokens', () => {
   it('表層形を前から探して位置を付ける（全角空白・記号を含む）', () => {
@@ -31,5 +31,23 @@ describe('toMorphTokens', () => {
       ['来', 5, 6],
     ])
     expect(tokens[0]).toMatchObject({ pos1: '*', base: '*', reading: '*' })
+  })
+
+  it('細分類2（pos2）を写す', () => {
+    const tokens = sampleTokens('宮森は言った。')
+    expect(tokens[0]).toMatchObject({ surface: '宮森', pos1: '固有名詞', pos2: '人名' })
+  })
+})
+
+describe('isUnknownToken', () => {
+  it('原形が * の語を辞書に無い語とみなす', () => {
+    const tokens = toMorphTokens(
+      [
+        ['アルヴェイン', '名詞', '一般', '*', '*', '*', '*', '*'],
+        ['宮森', '名詞', '固有名詞', '人名', '姓', '*', '*', '宮森', 'ミヤモリ', 'ミヤモリ'],
+      ],
+      'アルヴェイン宮森',
+    )
+    expect(tokens.map(isUnknownToken)).toEqual([true, false])
   })
 })

@@ -72,6 +72,7 @@ describe('ImportDialog（バックアップ取り込み）', () => {
         plots: [],
         stagings: [],
         proofreads: [],
+        nameDismissals: [],
         gameAssets: [],
       },
       Date.parse('2026-07-19T00:00:00Z'),
@@ -107,13 +108,14 @@ describe('ImportDialog（バックアップ取り込み）', () => {
           { workId: 'a', episodeId: 'e1', decisions: [decision], updatedAt: 1 },
           { workId: 'a', episodeId: 'e2', decisions: [decision], updatedAt: 1 },
         ],
+        nameDismissals: [],
         gameAssets: [],
       },
       Date.parse('2026-07-19T00:00:00Z'),
     )
     pick(json)
     expect(await screen.findByText('推敲の判断：2話')).toBeInTheDocument()
-    expect(screen.getByText(/ネタ帳・推敲の判断・執筆記録/)).toBeInTheDocument()
+    expect(screen.getByText(/ネタ帳・推敲の判断・推敲で外した語・執筆記録/)).toBeInTheDocument()
   })
 
   it('推敲の判断の無い旧い全体バックアップでも内訳は 0話 で出る', async () => {
@@ -128,5 +130,25 @@ describe('ImportDialog（バックアップ取り込み）', () => {
       }),
     )
     expect(await screen.findByText('推敲の判断：0話')).toBeInTheDocument()
+    expect(screen.getByText('推敲で外した語：0作品')).toBeInTheDocument()
+  })
+
+  it('全体バックアップの内訳に推敲で外した語の作品数を出す（壊れた記録は数えない）', async () => {
+    render(<ImportDialog open onOpenChange={() => {}} onImport={vi.fn()} onRestoreAll={vi.fn()} />)
+    pick(
+      JSON.stringify({
+        version: 1,
+        createdAt: Date.parse('2026-07-19T00:00:00Z'),
+        works: [makeWork('a', '銀河')],
+        trash: [],
+        profile: {},
+        nameDismissals: [
+          { workId: 'a', words: [{ text: 'アカリ', at: 1 }], updatedAt: 1 },
+          { workId: 'b', words: [], updatedAt: 2 },
+          { workId: 'c', words: 'broken', updatedAt: 3 },
+        ],
+      }),
+    )
+    expect(await screen.findByText('推敲で外した語：2作品')).toBeInTheDocument()
   })
 })
