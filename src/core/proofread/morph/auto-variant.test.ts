@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { autoVariantHits, countAutoVariants, isSpellingVariant } from './auto-variant'
+import { autoGroupKey, autoVariantHits, countAutoVariants, isSpellingVariant } from './auto-variant'
 import { sampleTokens } from './fixtures'
 
 const none = new Set<string>()
@@ -68,5 +68,43 @@ describe('表記ゆれの自動発見（FR-8a）', () => {
     const counts = countAutoVariants(work(texts), excluded)
     expect(autoVariantHits(sampleTokens('子供と子どもが遊ぶ。'), counts, excluded)).toEqual([])
     expect(countAutoVariants(work(['宮森は言った。']), none).groups).toEqual([])
+  })
+})
+
+describe('表記の好みと組（COT-62）', () => {
+  const work = (texts: string[]) => texts.map((t) => sampleTokens(t))
+  const text = '子供と子どもが遊ぶ。'
+  const counts = countAutoVariants(work([text]), none)
+
+  it('自動の組のキーは原形をソートしてつなぐ。指摘に組と書き方を付ける', () => {
+    const [kodomo] = autoVariantHits(sampleTokens(text), counts, none)
+    expect(kodomo?.variant).toEqual({
+      group: autoGroupKey(['子供', '子ども']),
+      form: '子供',
+      forms: ['子ども', '子供'].sort(),
+    })
+    expect(kodomo?.rule?.key).toBe(`variant:${autoGroupKey(['子ども', '子供'])}`)
+  })
+
+  it('好みの書き方は出さず、ほかの書き方は好みの説明で出す', () => {
+    const group = autoGroupKey(['子供', '子ども'])
+    const pref = [{ group, preferred: '子ども', forms: ['子ども', '子供'] }]
+    const hits = autoVariantHits(sampleTokens(text), counts, none, pref)
+    expect(hits.map((h) => h.text)).toEqual(['子供'])
+    expect(hits[0]?.message).toBe('「子供」は、この作品の表記「子ども」と違います。')
+  })
+
+  it('組の集計に無くても、好みの組のほかの書き方は出す', () => {
+    const group = autoGroupKey(['子供', '子ども'])
+    const pref = [{ group, preferred: '子ども', forms: ['子ども', '子供'] }]
+    const onlyKodomo = '仕事の事を考えた。'
+    expect(
+      autoVariantHits(sampleTokens(onlyKodomo), countAutoVariants([], none), none, pref),
+    ).toEqual([])
+    expect(
+      autoVariantHits(sampleTokens(text), countAutoVariants([], none), none, pref).map(
+        (h) => h.text,
+      ),
+    ).toEqual(['子供'])
   })
 })

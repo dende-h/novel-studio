@@ -17,6 +17,8 @@ export function raNukiHits(tokens: ReadonlyArray<MorphToken>, text: string): Mor
     const next = tokens[i + 1]
     let end = -1
     let fixed = ''
+    // 例外（COT-62）のキーは原形のら抜きの形。活用で文字列が変わっても（食べれる・食べれない）同じ例外に当たる
+    let form = ''
     if (
       t.ctype.startsWith('一段') &&
       t.cform === '未然形' &&
@@ -26,9 +28,11 @@ export function raNukiHits(tokens: ReadonlyArray<MorphToken>, text: string): Mor
     ) {
       end = next.end
       fixed = `${t.surface}ら${next.surface}`
+      form = `${t.base.slice(0, -1)}れる`
     } else if (SINGLE.has(t.base) && t.surface.length >= 2) {
       end = t.end
       fixed = `${t.surface.slice(0, 1)}ら${t.surface.slice(1)}`
+      form = t.base
     }
     if (end < 0) return
     const matched = text.slice(t.start, end)
@@ -37,6 +41,7 @@ export function raNukiHits(tokens: ReadonlyArray<MorphToken>, text: string): Mor
       end,
       text: matched,
       message: `「${matched}」はら抜き言葉です。地の文では「${fixed}」が一般的です。`,
+      rule: { key: `ra-nuki:${form}`, label: form },
     })
   })
   return hits

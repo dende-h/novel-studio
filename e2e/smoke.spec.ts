@@ -42,6 +42,9 @@ test('入口にマイライブラリ見出しが出る', async ({ page }) => {
  */
 test('ヘルプから解析辞書のライセンス表記（IPADIC・SudachiDict）を開ける', async ({ page, request }) => {
   await page.goto('/#/help')
+  // 推敲の作品の決まり（COT-62）と、用語集の名前の扱いの説明
+  await expect(page.getByText(/作品の決まりにできます。決まりは「この作品の決まり」から戻せます。/)).toBeVisible()
+  await expect(page.getByText(/用語集に登録した名前は、推敲でもひとつの言葉として扱います。/)).toBeVisible()
   const notices: [string, string, string][] = [
     ['IPADIC のライセンス表記', '/dict/NOTICE-ipadic.txt', 'mecab-ipadic'],
     ['SudachiDict のライセンス表記', '/dict/NOTICE-sudachidict.txt', 'Apache License'],

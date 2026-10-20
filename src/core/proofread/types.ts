@@ -33,7 +33,40 @@ export interface Finding {
   text: string
   anchor: 'contains' | 'lineStart'
   message: string
+  /** 作品の例外（COT-62）に使うキーと表示名。無い項目は例外を作れない（字下げ・一文の中の同じ助詞など）。 */
+  rule?: RuleRef
+  /** 表記ゆれの組と書き方（COT-62・表記の好みと書き分けの例外に使う）。 */
+  variant?: VariantRef
 }
+
+/** 例外のキー（'ra-nuki:<ら抜きの原形>' / 'successive-word:<文字列>' / 'variant:<組>'）と表示名。 */
+export interface RuleRef {
+  key: string
+  label: string
+}
+
+/** 表記ゆれの組（COT-62）。 */
+export interface VariantRef {
+  /** 'dict:<VariantGroup.id>'（数は 'dict:numeral:<助数詞>'）/ 'auto:<原形をソートして | でつないだもの>' */
+  group: string
+  /** この出現の書き方（辞書の組は書き方の名前、数は '算用'／'漢数字'、自動の組は原形）。 */
+  form: string
+  /** 組の書き方（そろえる先の候補）。 */
+  forms: string[]
+  /** 数の書き方なら助数詞。 */
+  numeral?: string
+}
+
+/** 表記の好み（COT-62）。表記ゆれの指摘を作るときに当てる。 */
+export interface VariantPreference {
+  group: string
+  preferred: string
+  forms: ReadonlyArray<string>
+}
+
+/** 数の書き方の表示名（'算用' → 算用数字）。 */
+export const formDisplay = (variant: Pick<VariantRef, 'numeral'>, form: string): string =>
+  variant.numeral ? (form === '算用' ? '算用数字' : form) : form
 
 /** 品詞を使う項目（くわしい確認）。解析器の準備ができるまで指摘を出さない。 */
 export const MORPH_RULES: ReadonlySet<NovelRuleId> = new Set(['doubled-particle', 'ra-nuki'])

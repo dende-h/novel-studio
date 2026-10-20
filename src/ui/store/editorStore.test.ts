@@ -5,6 +5,7 @@ import { ActivityRepository } from '../../core/storage/activityRepository'
 import { MemoryStore } from '../../core/storage/memoryStore'
 import { NameDismissalRepository } from '../../core/storage/nameDismissalRepository'
 import { ProofreadRepository } from '../../core/storage/proofreadRepository'
+import { ProofreadRulesRepository } from '../../core/storage/proofreadRulesRepository'
 import { WorkRepository } from '../../core/storage/workRepository'
 import { createEditorStore, type EditorStore } from './editorStore'
 
@@ -640,6 +641,74 @@ describe('editorStore（自前ストア・useSyncExternalStore 用）', () => {
     expect(removed).toEqual([id, id2, id3])
     expect(await names.get(id3)).toBeUndefined()
     expect(await names.get(keep)).toBeDefined()
+  })
+
+  it('作品の完全削除で推敲の作品の決まりも消え、ゴミ箱へ移すだけなら残る（purge・emptyTrash・期限切れ）', async () => {
+    const kv = new MemoryStore()
+    const rules = new ProofreadRulesRepository(kv)
+    const removed: string[] = []
+    let t = 0
+    const s = createEditorStore({
+      repo: new WorkRepository(kv),
+      snapshotRepo: new SnapshotRepository(kv),
+      profileRepo: new ProfileRepository(kv),
+      activityRepo: new ActivityRepository(kv),
+      proofreadRulesRepo: {
+        removeByWork: async (workId) => {
+          removed.push(workId)
+          await rules.removeByWork(workId)
+        },
+      },
+      genId: () => `x${Math.random()}`,
+      now: () => t,
+      snapshotMinIntervalMs: 0,
+      trashTtlMs: 1000,
+    })
+    const record = (workId: string) => ({
+      workId,
+      exceptions: [{ key: 'ra-nuki:見れる', label: '見れる', at: 1 }],
+      preferences: [],
+      declined: [],
+      updatedAt: 1,
+    })
+
+    await s.createWork('消される作品')
+    const id = s.getSnapshot().work?.id as string
+    await s.createWork('残る作品')
+    const keep = s.getSnapshot().work?.id as string
+    await rules.save(record(id))
+    await rules.save(record(keep))
+
+    // ゴミ箱へ移すだけなら決まりは残る
+    await s.trashWork(id)
+    expect(await rules.get(id)).toBeDefined()
+    expect(removed).toEqual([])
+
+    // 完全削除で、その作品の記録だけが消える
+    await s.purgeWork(id)
+    expect(removed).toEqual([id])
+    expect(await rules.get(id)).toBeUndefined()
+    expect(await rules.get(keep)).toBeDefined()
+
+    // emptyTrash 経由でも消える
+    await s.createWork('もう一つ')
+    const id2 = s.getSnapshot().work?.id as string
+    await rules.save(record(id2))
+    await s.trashWork(id2)
+    await s.emptyTrash()
+    expect(removed).toEqual([id, id2])
+    expect(await rules.get(id2)).toBeUndefined()
+
+    // 期限切れ（30日・ここでは trashTtlMs）の自動 purge でも消える
+    await s.createWork('期限切れ')
+    const id3 = s.getSnapshot().work?.id as string
+    await rules.save(record(id3))
+    await s.trashWork(id3)
+    t = 5000
+    await s.init()
+    expect(removed).toEqual([id, id2, id3])
+    expect(await rules.get(id3)).toBeUndefined()
+    expect(await rules.get(keep)).toBeDefined()
   })
 
   it('emptyTrash はゴミ箱を全件空にする', async () => {

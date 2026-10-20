@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { countVariants, mergeCounts, VARIANT_GROUPS, variantFindingsForLine } from './variants'
+import {
+  countVariants,
+  mergeCounts,
+  VARIANT_GROUPS,
+  variantFindingsForLine,
+  variantFormOf,
+  variantSpansForLine,
+} from './variants'
 
 const count = (gid: string, label: string, ...texts: string[]) =>
   countVariants(texts)[gid]?.[label]?.count ?? 0
@@ -105,6 +112,9 @@ describe('variantFindingsForLine（出現ごと・COT-40）', () => {
         text: '出来な',
         message:
           '「出来る」と「できる」が混ざっています（この作品で 出来る 1件・できる 3件）。どちらかに揃えると読みやすくなります。',
+        // 作品の決まり（COT-62）で使う組と書き方
+        rule: { key: 'variant:dict:dekiru', label: '出来る・できる' },
+        variant: { group: 'dict:dekiru', form: '出来る', forms: ['出来る', 'できる'] },
       },
     ])
   })
@@ -156,5 +166,52 @@ describe('variantFindingsForLine（出現ごと・COT-40）', () => {
     expect(
       variantFindingsForLine('　出来た。出来なかった。できた。', counts).map((h) => h.text),
     ).toEqual(['出来た', '出来な', 'できた'])
+  })
+})
+
+describe('表記の好み・位置・書き方の当て直し（COT-62）', () => {
+  const kodomoPref = [{ group: 'dict:kodomo', preferred: '子ども', forms: ['子供', '子ども'] }]
+
+  it('好みのある組は、混ざっていなくても好みでない書き方を出し、好みの書き方は出さない', () => {
+    const line = '　子供が笑った。子どもも笑った。'
+    const counts = countVariants([line])
+    const hits = variantFindingsForLine(line, counts, kodomoPref)
+    expect(hits.map((h) => h.text)).toEqual(['子供'])
+    expect(hits[0]?.message).toBe('「子供」は、この作品の表記「子ども」と違います。')
+    const only = '　子供が笑った。'
+    expect(
+      variantFindingsForLine(only, countVariants([only]), kodomoPref).map((h) => h.text),
+    ).toEqual(['子供'])
+    expect(variantFindingsForLine(only, countVariants([only]))).toEqual([])
+  })
+
+  it('数の書き方は助数詞ごと。好みの説明は算用数字／漢数字', () => {
+    const line = '　3人と三人がいた。3日たった。'
+    const counts = countVariants([line, '三日'])
+    const pref = [{ group: 'dict:numeral:人', preferred: '漢数字', forms: ['算用', '漢数字'] }]
+    const hits = variantFindingsForLine(line, counts, pref)
+    expect(hits.map((h) => [h.text, h.variant.group])).toEqual([
+      ['3人', 'dict:numeral:人'],
+      ['3日', 'dict:numeral:日'],
+    ])
+    expect(hits[0]?.message).toBe('「3人」は、この作品の数の書き方（漢数字）と違います。')
+    expect(hits[0]?.variant.numeral).toBe('人')
+  })
+
+  it('variantSpansForLine は好みで隠した書き方の位置も返す', () => {
+    const line = '　子供が笑った。子どもも笑った。'
+    const spans = variantSpansForLine(line, countVariants([line]), kodomoPref)
+    expect(spans.map((s) => line.slice(s.start, s.end))).toEqual(['子供', '子ども'])
+  })
+
+  it('variantFormOf は判断の文字列を組の書き方に当て直す', () => {
+    expect(variantFormOf('dict:koto', 'た事が')).toBe('事')
+    expect(variantFormOf('dict:koto', 'る事に')).toBe('事')
+    expect(variantFormOf('dict:koto', 'ることが')).toBe('こと')
+    expect(variantFormOf('dict:numeral:人', '3人')).toBe('算用')
+    expect(variantFormOf('dict:numeral:人', '5人')).toBe('算用')
+    expect(variantFormOf('dict:numeral:人', '五人')).toBe('漢数字')
+    expect(variantFormOf('auto:子ども|子供', '子供')).toBeUndefined()
+    expect(variantFormOf('dict:koto', '関係ない')).toBeUndefined()
   })
 })

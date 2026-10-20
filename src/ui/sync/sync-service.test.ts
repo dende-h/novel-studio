@@ -6,6 +6,7 @@ import type { Plot } from '@/core/plot'
 import { ProfileRepository } from '@/core/profile'
 import type { ProofreadRecord } from '@/core/proofread/decisions'
 import type { NameDismissals } from '@/core/proofread/name-dismissals'
+import type { ProofreadRules } from '@/core/proofread/work-rules'
 import type { Work } from '@/core/schema'
 import { SnapshotRepository } from '@/core/snapshot/snapshotRepository'
 import { ActivityRepository } from '@/core/storage/activityRepository'
@@ -14,6 +15,7 @@ import { MemoryStore } from '@/core/storage/memoryStore'
 import { NameDismissalRepository } from '@/core/storage/nameDismissalRepository'
 import { PlotRepository } from '@/core/storage/plotRepository'
 import { ProofreadRepository } from '@/core/storage/proofreadRepository'
+import { ProofreadRulesRepository } from '@/core/storage/proofreadRulesRepository'
 import { StagingRepository } from '@/core/storage/stagingRepository'
 import { StructureRepository } from '@/core/storage/structureRepository'
 import { withWorkMutationLock } from '@/core/storage/workMutationLock'
@@ -189,6 +191,7 @@ function makeEnv(
   const stagings = new StagingRepository(store)
   const proofreads = new ProofreadRepository(store)
   const proofreadNames = new NameDismissalRepository(store)
+  const proofreadRules = new ProofreadRulesRepository(store)
   const activityRepo = new ActivityRepository(store)
   const bases = new SyncBaseRepository(store)
   const lost = new Map<string, SyncLostEntry>()
@@ -204,6 +207,7 @@ function makeEnv(
     stagings,
     proofreads,
     proofreadNames,
+    proofreadRules,
     bases,
     saveLost: async (entry) => {
       lost.set(entry.syncId, entry)
@@ -237,6 +241,7 @@ function makeEnv(
     stagings,
     proofreads,
     proofreadNames,
+    proofreadRules,
     activityRepo,
     bases,
     lost,
@@ -949,6 +954,113 @@ describe('推敲で外した語の同期（proofread-names:<workId>・退避一�
   })
 })
 
+const mkRules = (workId: string, updatedAt: number, ...labels: string[]): ProofreadRules => ({
+  workId,
+  exceptions: (labels.length > 0 ? labels : ['見れる']).map((label) => ({
+    key: `ra-nuki:${label}`,
+    label,
+    at: updatedAt,
+  })),
+  preferences: [],
+  declined: [],
+  updatedAt,
+})
+
+describe('推敲の作品の決まりの同期（proofread-rules:<workId>・退避一覧に載せない）', () => {
+  it('ローカルの決まりを push し、作品 id の同期 id でリモートに載る', async () => {
+    const { proofreadRules, bases, remote, service } = makeEnv()
+    await proofreadRules.save(mkRules('w1', 100, '見れる', '来れる'))
+    const summary = await service.reconcile()
+    expect(summary?.pushed).toBe(1)
+    const json = remote.rows.get('proofread-rules:w1')?.json ?? ''
+    expect(JSON.parse(json)).toEqual(mkRules('w1', 100, '見れる', '来れる'))
+    expect(await bases.get('proofread-rules:w1')).toBeDefined()
+    // 推敲の判断・外した語・作品として送っていない
+    expect(remote.rows.has('proofread:w1')).toBe(false)
+    expect(remote.rows.has('proofread-names:w1')).toBe(false)
+    expect(remote.rows.has('w1')).toBe(false)
+  })
+
+  it('他端末の決まりを pull し、updatedAt を刻印せずそのまま保存する', async () => {
+    const remote = makeFakeRemote()
+    await remote.seedItem('proofread-rules:w9', JSON.stringify(mkRules('w9', 777, '出れる')), 777)
+    const { proofreadRules, proofreadNames, proofreads, repo, service } = makeEnv(remote)
+    const summary = await service.reconcile()
+    expect(summary?.pulled).toBe(1)
+    expect(await proofreadRules.get('w9')).toEqual(mkRules('w9', 777, '出れる'))
+    // 作品・推敲の判断・外した語として取り込んでいない
+    expect(await repo.getWork('proofread-rules:w9')).toBeUndefined()
+    expect(await proofreads.list()).toEqual([])
+    expect(await proofreadNames.list()).toEqual([])
+  })
+
+  it('中の配列を省いたリモートの記録も、空の決まりとして取り込む', async () => {
+    const remote = makeFakeRemote()
+    await remote.seedItem('proofread-rules:w9', JSON.stringify({ workId: 'w9', updatedAt: 5 }), 5)
+    const { proofreadRules, service } = makeEnv(remote)
+    const summary = await service.reconcile()
+    expect(summary?.pulled).toBe(1)
+    expect(await proofreadRules.get('w9')).toEqual({
+      workId: 'w9',
+      exceptions: [],
+      preferences: [],
+      declined: [],
+      updatedAt: 5,
+    })
+  })
+
+  it('壊れたリモートの記録・中身の作品 id が食い違う記録は取り込まず、ローカルを触らない', async () => {
+    const remote = makeFakeRemote()
+    await remote.seedItem('proofread-rules:w9', JSON.stringify({ workId: 'w9' }), 777)
+    await remote.seedItem('proofread-rules:w8', JSON.stringify(mkRules('w7', 777)), 777)
+    const { proofreadRules, service } = makeEnv(remote)
+    const summary = await service.reconcile()
+    expect(summary?.pulled).toBe(0)
+    expect(await proofreadRules.list()).toEqual([])
+  })
+
+  it('競合はリモートが新しければリモートを採り、負けた記録を synclost へ退避しない', async () => {
+    const { proofreadRules, lost, remote, service } = makeEnv()
+    await proofreadRules.save(mkRules('w1', 100, 'v1'))
+    await service.reconcile()
+    await proofreadRules.save(mkRules('w1', 150, 'ローカル'))
+    await remote.seedItem('proofread-rules:w1', JSON.stringify(mkRules('w1', 300, 'リモート')), 300)
+    const summary = await service.reconcile()
+    expect(summary?.conflicts).toEqual([{ workId: 'proofread-rules:w1', winner: 'remote' }])
+    expect((await proofreadRules.get('w1'))?.exceptions.map((e) => e.label)).toEqual(['リモート'])
+    expect(lost.size).toBe(0)
+  })
+
+  it('削除は両方向へ伝播する（リモート tombstone→退避なしで削除／ローカル削除→purge）', async () => {
+    const { proofreadRules, lost, remote, service } = makeEnv()
+    await proofreadRules.save(mkRules('w1', 100, '消える決まり'))
+    await proofreadRules.save(mkRules('w2', 100))
+    await service.reconcile()
+    const row = remote.rows.get('proofread-rules:w1')
+    if (!row) throw new Error('seed 失敗')
+    remote.rows.set('proofread-rules:w1', { ...row, deleted: 1, json: '', updatedAt: 900 })
+    await proofreadRules.removeByWork('w2')
+    const summary = await service.reconcile()
+    expect(summary?.changedLocal).toBe(true)
+    expect(await proofreadRules.get('w1')).toBeUndefined()
+    expect(lost.size).toBe(0)
+    expect(remote.rows.get('proofread-rules:w2')?.deleted).toBe(1)
+  })
+
+  it('未同期の決まりがリモートの削除で消えても synclost へ退避しない', async () => {
+    const { proofreadRules, lost, remote, service } = makeEnv()
+    await proofreadRules.save(mkRules('w1', 100))
+    await service.reconcile()
+    await proofreadRules.save(mkRules('w1', 200, '未同期の決まり'))
+    const row = remote.rows.get('proofread-rules:w1')
+    if (!row) throw new Error('seed 失敗')
+    remote.rows.set('proofread-rules:w1', { ...row, deleted: 1, json: '', updatedAt: 900 })
+    await service.reconcile()
+    expect(await proofreadRules.get('w1')).toBeUndefined()
+    expect(lost.size).toBe(0)
+  })
+})
+
 describe('プロフィールの同期（profile:me・LWW）', () => {
   it('設定済みプロフィール（updatedAt あり）を push し base を記録する', async () => {
     const { profile, bases, remote, service } = makeEnv()
@@ -1185,6 +1297,30 @@ describe('壊れたローカルレコードの隔離（masked）', () => {
     }
     expect(await store.get('proofread-names:w1')).toEqual({ workId: 'w1', words: 'broken' })
     expect(await store.get('proofread-names:w2')).toEqual(mkNames('w3', 10))
+  })
+
+  it('読めない作品の決まりの記録も masked に回し、リモートの記録を消さない（COT-62）', async () => {
+    const { store, remote, bases, service } = makeEnv()
+    await store.set('proofread-rules:w1', { workId: 'w1', exceptions: 'broken', updatedAt: 1 })
+    // 中身の作品 id がキーと食い違う記録も読めないものとして扱う
+    await store.set('proofread-rules:w2', mkRules('w3', 10))
+    for (const id of ['proofread-rules:w1', 'proofread-rules:w2']) {
+      await bases.set({ workId: id, baseHash: 'h-old', remoteUpdatedAt: 1, syncedAt: 1 })
+      await remote.seedItem(id, JSON.stringify(mkRules('w1', 50, 'リモートの決まり')), 50)
+    }
+
+    await service.reconcile()
+    for (const id of ['proofread-rules:w1', 'proofread-rules:w2']) {
+      expect(remote.rows.get(id)?.deleted).toBe(0)
+      expect(remote.rows.get(id)?.json).toContain('リモートの決まり')
+      expect(await bases.get(id)).toBeDefined()
+    }
+    expect(await store.get('proofread-rules:w1')).toEqual({
+      workId: 'w1',
+      exceptions: 'broken',
+      updatedAt: 1,
+    })
+    expect(await store.get('proofread-rules:w2')).toEqual(mkRules('w3', 10))
   })
 })
 

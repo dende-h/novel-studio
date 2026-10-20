@@ -5,8 +5,15 @@ import { doubledParticleHits } from './morph/doubled-particle'
 import { raNukiHits } from './morph/ra-nuki'
 import type { MorphToken } from './morph/token'
 import { checkLine } from './rules'
-import type { Finding, NovelRuleId } from './types'
-import { countVariants, mergeCounts, type VariantCounts, variantFindingsForLine } from './variants'
+import type { Finding, NovelRuleId, RuleRef, VariantRef } from './types'
+import {
+  countVariants,
+  mergeCounts,
+  type VariantCounts,
+  variantFindingsForLine,
+  variantSpansForLine,
+} from './variants'
+import { applyExceptions, type WorkRules } from './work-rules'
 
 export type { DialogueRatio } from './dialogue-ratio'
 export { addRatio, dialoguePercent, dialogueRatio } from './dialogue-ratio'
@@ -42,6 +49,8 @@ export interface ProofreadNovelOptions {
     /** 用語集の名前・別名（指摘の対象から外す）。 */
     excluded: ReadonlySet<string>
   }
+  /** 作品の決まり（COT-62）。例外に当たる指摘を外し、表記の好みを表記ゆれに当てる。 */
+  rules?: WorkRules
 }
 
 const CODE_ORDER: Record<NovelRuleId, number> = {
@@ -69,6 +78,7 @@ export function proofreadNovel(
   opts: ProofreadNovelOptions = {},
 ): Finding[] {
   const disabled = opts.disabled ?? new Set<NovelRuleId>()
+  const preferences = opts.rules?.preferences
   const texts = blocks.map(plainTextOfBlock)
   const counts = disabled.has('variant')
     ? null
@@ -78,20 +88,29 @@ export function proofreadNovel(
     const blockId = (blocks[blockIndex] as Block).id
     const push = (
       code: NovelRuleId,
-      h: { start: number; end: number; text: string; message: string },
+      h: {
+        start: number
+        end: number
+        text: string
+        message: string
+        rule?: RuleRef
+        variant?: VariantRef
+      },
       anchor: Finding['anchor'] = 'contains',
     ) => findings.push({ blockId, blockIndex, code, anchor, ...h })
     for (const h of checkLine(text)) {
       if (!disabled.has(h.code)) push(h.code, h, h.anchor)
     }
-    const dictVariants = counts ? variantFindingsForLine(text, counts) : []
+    const dictVariants = counts ? variantFindingsForLine(text, counts, preferences) : []
     for (const v of dictVariants) push('variant', v)
+    // 自動の表記ゆれとの重なりは、好みを当てる前の辞書の出現で見る（好みで隠した書き方が自動で出直さないように）
+    const dictSpans = counts ? variantSpansForLine(text, counts, preferences) : []
     const morph = opts.morph
     const tokens = morph?.tokens[blockIndex]
     if (!morph || !tokens || !text.trim()) return
     if (!disabled.has('variant')) {
-      for (const h of autoVariantHits(tokens, morph.workVariants, morph.excluded)) {
-        if (!dictVariants.some((d) => overlaps(d, h))) push('variant', h)
+      for (const h of autoVariantHits(tokens, morph.workVariants, morph.excluded, preferences)) {
+        if (!dictSpans.some((d) => overlaps(d, h))) push('variant', h)
       }
     }
     if (!disabled.has('doubled-particle')) {
@@ -101,7 +120,8 @@ export function proofreadNovel(
       for (const h of raNukiHits(tokens, text)) push('ra-nuki', h)
     }
   })
-  return findings.sort(
+  const kept = opts.rules ? applyExceptions(findings, opts.rules.exceptions) : findings
+  return kept.sort(
     (a, b) =>
       a.blockIndex - b.blockIndex || a.start - b.start || CODE_ORDER[a.code] - CODE_ORDER[b.code],
   )

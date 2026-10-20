@@ -58,6 +58,33 @@ const state: BackupState = {
       updatedAt: 47,
     },
   ],
+  proofreadRules: [
+    {
+      workId: 'w1',
+      exceptions: [
+        { key: 'ra-nuki:見れる', label: '見れる', at: 48 },
+        {
+          key: 'variant:dict:kodomo',
+          label: '子供・子ども',
+          forms: ['子供', '子ども'],
+          at: 48,
+        },
+      ],
+      preferences: [
+        {
+          group: 'dict:numeral:人',
+          preferred: '漢数字',
+          forms: ['算用', '漢数字'],
+          numeral: '人',
+          at: 49,
+        },
+      ],
+      declined: [
+        { kind: 'exception', key: 'successive-word:言った', label: '言った言った', at: 49 },
+      ],
+      updatedAt: 49,
+    },
+  ],
   gameAssets: [
     {
       id: 'ga1',
@@ -203,6 +230,60 @@ describe('serializeBackup / deserializeBackup（全体バックアップの直�
     expect(back.createdAt).toBe(9)
   })
 
+  it('推敲の作品の決まりを往復できる（COT-62）', () => {
+    const back = deserializeBackup(serializeBackup(state, 0))
+    expect(back.proofreadRules).toEqual(state.proofreadRules)
+  })
+
+  it('proofreadRules 欠落の旧バックアップも既定 [] で読め、ほかの項目は残る（後方互換）', () => {
+    const old = JSON.stringify({
+      version: 1,
+      createdAt: 1,
+      works: [work('w1')],
+      trash: [],
+      profile: {},
+      proofreads: state.proofreads,
+      nameDismissals: state.nameDismissals,
+    })
+    const back = deserializeBackup(old)
+    expect(back.proofreadRules).toEqual([])
+    expect(back.works.map((w) => w.id)).toEqual(['w1'])
+    expect(back.proofreads).toEqual(state.proofreads)
+    expect(back.nameDismissals).toEqual(state.nameDismissals)
+  })
+
+  it('作品の決まりの壊れた要素だけを捨て、ほかの要素とバックアップ全体は復元できる', () => {
+    const ok = {
+      workId: 'w2',
+      exceptions: [{ key: 'ra-nuki:来れる', label: '来れる', at: 5 }],
+      preferences: [],
+      declined: [],
+      updatedAt: 5,
+    }
+    // 中の配列を持たない形は既定 [] で読める（壊れた扱いにしない）
+    const bare = { workId: 'w3', updatedAt: 6 }
+    const json = JSON.stringify({
+      ...JSON.parse(serializeBackup(state, 9)),
+      proofreadRules: [
+        ok,
+        { workId: 'w4', exceptions: 'broken', updatedAt: 7 },
+        null,
+        'garbage',
+        { exceptions: [], updatedAt: 8 },
+        { workId: 'w5' },
+        bare,
+      ],
+    })
+    const back = deserializeBackup(json)
+    expect(back.proofreadRules).toEqual([
+      ok,
+      { workId: 'w3', exceptions: [], preferences: [], declined: [], updatedAt: 6 },
+    ])
+    expect(back.works.map((w) => w.id)).toEqual(['w1', 'w2'])
+    expect(back.nameDismissals).toEqual(state.nameDismissals)
+    expect(back.createdAt).toBe(9)
+  })
+
   it('version 不正は弾く（壊れた/将来形のバックアップを復元しない）', () => {
     const bad = JSON.stringify({ version: 999, createdAt: 1, works: [], trash: [], profile: {} })
     expect(() => deserializeBackup(bad)).toThrow()
@@ -226,6 +307,7 @@ describe('serializeBackup / deserializeBackup（全体バックアップの直�
         stagings: [],
         proofreads: [],
         nameDismissals: [],
+        proofreadRules: [],
         gameAssets: [],
       },
       0,
@@ -234,6 +316,7 @@ describe('serializeBackup / deserializeBackup（全体バックアップの直�
     expect(back.works).toEqual([])
     expect(back.trash).toEqual([])
     expect(back.nameDismissals).toEqual([])
+    expect(back.proofreadRules).toEqual([])
   })
 })
 

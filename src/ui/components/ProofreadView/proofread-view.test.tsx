@@ -6,9 +6,11 @@ import type { ProofreadRecord } from '@/core/proofread/decisions'
 import { sampleTokens } from '@/core/proofread/morph/fixtures'
 import type { NameDismissals } from '@/core/proofread/name-dismissals'
 import { NOVEL_RULES } from '@/core/proofread/types'
+import type { ProofreadRules } from '@/core/proofread/work-rules'
 import type { Work } from '@/core/schema'
 import type { NameDismissalRepo } from '@/ui/hooks/use-name-dismissals'
 import { reloadProofreadPrefs } from '@/ui/hooks/use-proofread-prefs'
+import type { ProofreadRulesRepo } from '@/ui/hooks/use-proofread-rules'
 import type { AnalyzerState, MorphAnalyzerClient } from '@/ui/proofread/analyzer-client'
 import type { AnalysisResult } from '@/ui/proofread/protocol'
 import { ProofreadView } from './proofread-view'
@@ -22,15 +24,17 @@ const work = (episodes: { id: string; title: string; body: string }[]): Work => 
   episodes: episodes.map((e) => ({ id: e.id, title: e.title, blocks: parseEpisodeBody(e.body) })),
 })
 
-function fakeRepo(initial?: ProofreadRecord) {
+function fakeRepo(initial?: ProofreadRecord, others: ProofreadRecord[] = []) {
   const rows = new Map<string, ProofreadRecord>()
-  if (initial) rows.set(`${initial.workId}:${initial.episodeId}`, initial)
+  for (const r of [...others, ...(initial ? [initial] : [])])
+    rows.set(`${r.workId}:${r.episodeId}`, r)
   return {
     rows,
     get: vi.fn(async (w: string, e: string) => rows.get(`${w}:${e}`)),
     save: vi.fn(async (r: ProofreadRecord) => {
       rows.set(`${r.workId}:${r.episodeId}`, r)
     }),
+    listByWork: vi.fn(async (w: string) => [...rows.values()].filter((r) => r.workId === w)),
   }
 }
 
@@ -67,6 +71,7 @@ async function renderView(
     repo?: ReturnType<typeof fakeRepo>
     analyzer?: ReturnType<typeof fakeAnalyzer>
     namesRepo?: NameDismissalRepo
+    rulesRepo?: ProofreadRulesRepo
     onRegisterName?: (draft: {
       name: string
       reading?: string
@@ -84,6 +89,7 @@ async function renderView(
       repo={repo}
       onFixInEditor={onFixInEditor}
       namesRepo={opts.namesRepo}
+      rulesRepo={opts.rulesRepo}
       onRegisterName={opts.onRegisterName}
       createAnalyzer={() => analyzer}
       now={() => 1000}
@@ -559,5 +565,192 @@ describe('用語集に無い名前（COT-59）', () => {
     fireEvent.click(screen.getByRole('button', { name: '新宿を用語集に登録' }))
     await act(async () => resolve('created'))
     expect(document.activeElement).toBe(nameButton('新宿'))
+  })
+})
+
+/** 作品の決まりの偽の repo。 */
+function fakeRulesRepo(initial?: ProofreadRules) {
+  let row = initial
+  return {
+    get row() {
+      return row
+    },
+    get: vi.fn(async () => row),
+    save: vi.fn(async (r: ProofreadRules) => {
+      row = r
+    }),
+  }
+}
+
+// 同じ語の連続（正規表現の項目）と辞書の表記ゆれは、解析器の準備を待たずに出る
+const RULE_BODY = '　彼は言った言った。\n　子供が笑った。子どもも走った。\n　夜だった。'
+const ruleWork = () => work([{ id: 'e1', title: '第一話', body: RULE_BODY }])
+const keepDecision = (episodeId: string, n: number): ProofreadRecord => ({
+  workId: 'w',
+  episodeId,
+  decisions: Array.from({ length: n }, (_, i) => ({
+    blockId: `x${i}`,
+    code: 'successive-word',
+    text: '言った言った',
+    nth: 0,
+    anchor: 'contains',
+    verdict: 'keep',
+    decidedAt: 1,
+  })),
+  updatedAt: 1,
+})
+const cardOf = (text: RegExp) => findingCard(text)
+
+describe('作品の決まり（COT-62）', () => {
+  it('言葉に結び付く項目のカードにだけ、例外とメニューのボタンが出る', async () => {
+    await renderView(ruleWork(), { rulesRepo: fakeRulesRepo() })
+    expect(
+      within(cardOf(/同じ語の連続「言った言った」/)).getByRole('button', {
+        name: '言った言ったをこの作品では指摘しない',
+      }),
+    ).toBeInTheDocument()
+    expect(
+      within(cardOf(/表記ゆれ「子供」/)).getByRole('button', {
+        name: '子ども・子供の決まりを選ぶ',
+      }),
+    ).toBeInTheDocument()
+  })
+
+  it('「この作品では指摘しない」で例外ができ、カードが消え、次のカードへフォーカスが移る', async () => {
+    const rulesRepo = fakeRulesRepo()
+    await renderView(ruleWork(), { rulesRepo })
+    fireEvent.click(screen.getByRole('button', { name: '言った言ったをこの作品では指摘しない' }))
+    await act(async () => {})
+    expect(rulesRepo.row?.exceptions).toEqual([
+      { key: 'successive-word:言った言った', label: '言った言った', at: 1000 },
+    ])
+    expect(screen.queryByRole('button', { name: /^本文で見る：同じ語の連続/ })).toBeNull()
+    expect(document.activeElement).toBe(
+      screen.getAllByRole('button', { name: /^本文で見る：/ })[0] as HTMLElement,
+    )
+    expect(screen.getByRole('button', { name: 'この作品の決まり（1）' })).toBeInTheDocument()
+  })
+
+  it('メニューの「子どもにそろえる」で好みになり、好みの書き方が消えて説明が替わる', async () => {
+    const rulesRepo = fakeRulesRepo()
+    await renderView(ruleWork(), { rulesRepo })
+    const trigger = within(cardOf(/表記ゆれ「子供」/)).getByRole('button', {
+      name: '子ども・子供の決まりを選ぶ',
+    })
+    fireEvent.keyDown(trigger, { key: 'Enter' })
+    fireEvent.click(await screen.findByRole('menuitem', { name: '子どもにそろえる' }))
+    await act(async () => {})
+    expect(rulesRepo.row?.preferences).toMatchObject([
+      { group: 'dict:kodomo', preferred: '子ども' },
+    ])
+    expect(screen.queryByRole('button', { name: /^本文で見る：表記ゆれ「子ども」/ })).toBeNull()
+    expect(
+      within(cardOf(/表記ゆれ「子供」/)).getByText(
+        '「子供」は、この作品の表記「子ども」と違います。',
+      ),
+    ).toBeInTheDocument()
+  })
+
+  it('「書き分けを許す」で組のどの書き方も出なくなる', async () => {
+    const rulesRepo = fakeRulesRepo()
+    await renderView(ruleWork(), { rulesRepo })
+    const trigger = within(cardOf(/表記ゆれ「子供」/)).getByRole('button', {
+      name: '子ども・子供の決まりを選ぶ',
+    })
+    fireEvent.keyDown(trigger, { key: 'Enter' })
+    fireEvent.click(await screen.findByRole('menuitem', { name: '書き分けを許す' }))
+    await act(async () => {})
+    expect(screen.queryByRole('button', { name: /^本文で見る：表記ゆれ/ })).toBeNull()
+  })
+
+  it('決まりの一覧：0件の案内・行・戻す（フォーカスは次の行）・提案しない言葉', async () => {
+    const rulesRepo = fakeRulesRepo({
+      workId: 'w',
+      exceptions: [
+        { key: 'successive-word:言った言った', label: '言った言った', at: 1 },
+        { key: 'ra-nuki:見れる', label: '見れる', at: 2 },
+      ],
+      preferences: [],
+      declined: [{ kind: 'exception', key: 'ra-nuki:来れる', label: '来れる', at: 3 }],
+      updatedAt: 3,
+    })
+    await renderView(ruleWork(), { rulesRepo })
+    fireEvent.click(screen.getByRole('button', { name: 'この作品の決まり（2）' }))
+    expect(screen.getByText('— 同じ語の連続は指摘しない', { exact: false })).toBeInTheDocument()
+    expect(screen.getByText('提案しない言葉（1）')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: '言った言ったの決まりを戻す' }))
+    await act(async () => {})
+    expect(rulesRepo.row?.exceptions.map((x) => x.key)).toEqual(['ra-nuki:見れる'])
+    expect(document.activeElement).toBe(
+      screen.getByRole('button', { name: '見れるの決まりを戻す' }),
+    )
+    expect(screen.getByRole('button', { name: /^本文で見る：同じ語の連続/ })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: '来れるの提案を戻す' }))
+    await act(async () => {})
+    expect(rulesRepo.row?.declined).toEqual([])
+    fireEvent.click(screen.getByRole('button', { name: '見れるの決まりを戻す' }))
+    await act(async () => {})
+    expect(
+      screen.getByText('決まりはまだありません。指摘のカードから作れます。'),
+    ).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'この作品の決まり' })).toBeInTheDocument()
+    expect(document.activeElement).toBe(screen.getByRole('heading', { name: 'この作品の決まり' }))
+  })
+
+  it('同じ言葉を全話で3回「このまま」にすると提案が出て、「指摘しない」で例外になる', async () => {
+    const rulesRepo = fakeRulesRepo()
+    const repo = fakeRepo(undefined, [keepDecision('e0', 2)])
+    await renderView(ruleWork(), { repo, rulesRepo })
+    const status = () =>
+      screen.getAllByRole('status').find((el) => el.textContent?.includes('このまま')) ?? null
+    expect(status()).toBeNull()
+    fireEvent.click(
+      within(cardOf(/同じ語の連続「言った言った」/)).getByRole('button', { name: 'このまま' }),
+    )
+    await act(async () => {})
+    expect(
+      screen.getByText(
+        '「言った言った」を3回このままにしました。この作品では指摘しないようにしますか？',
+      ),
+    ).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'このまま 1' }))
+    expect(screen.queryByText(/を3回このままにしました/)).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: /^未判断 \d+$/ }))
+    fireEvent.click(screen.getByRole('button', { name: '指摘しない' }))
+    await act(async () => {})
+    expect(rulesRepo.row?.exceptions.map((x) => x.key)).toEqual(['successive-word:言った言った'])
+    expect(screen.queryByText(/を3回このままにしました/)).toBeNull()
+  })
+
+  it('「提案しない」は覚えて、同じ提案を出さない。未判断が0件になった直後にも提案は出る', async () => {
+    const rulesRepo = fakeRulesRepo()
+    const repo = fakeRepo(undefined, [keepDecision('e0', 2)])
+    await renderView(work([{ id: 'e1', title: '第一話', body: '　彼は言った言った。' }]), {
+      repo,
+      rulesRepo,
+    })
+    fireEvent.click(
+      within(cardOf(/同じ語の連続「言った言った」/)).getByRole('button', { name: 'このまま' }),
+    )
+    await act(async () => {})
+    expect(screen.getByText('未判断の指摘はありません')).toBeInTheDocument()
+    expect(screen.getByText(/を3回このままにしました/)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: '提案しない' }))
+    await act(async () => {})
+    expect(rulesRepo.row?.declined.map((d) => d.key)).toEqual(['successive-word:言った言った'])
+    expect(screen.queryByText(/を3回このままにしました/)).toBeNull()
+  })
+
+  it('状態の入れ物（role=status）は常にあり、推敲画面に「辞書」の文字が無い（準備中を含む）', async () => {
+    const analyzer = fakeAnalyzer()
+    const { container } = await renderView(ruleWork(), { analyzer, rulesRepo: fakeRulesRepo() })
+    await act(async () => analyzer.set({ status: 'loading', loaded: 1_000_000, total: 12_000_000 }))
+    expect(screen.getByText(/初回だけ時間がかかります/)).toBeInTheDocument()
+    expect(container.textContent).not.toContain('辞書')
+    const labels = [...container.querySelectorAll('[aria-label]')].map((el) =>
+      el.getAttribute('aria-label'),
+    )
+    expect(labels.some((l) => l?.includes('辞書'))).toBe(false)
+    expect(container.querySelector('[role="status"][aria-live="polite"]')).not.toBeNull()
   })
 })

@@ -49,6 +49,7 @@ import type { NameDismissalRepo } from '@/ui/hooks/use-name-dismissals'
 import { useIsNarrow } from '@/ui/hooks/use-narrow'
 import { useOpenProfile } from '@/ui/hooks/use-pen-name'
 import { type ProofreadRecordRepo, useProofreadRecord } from '@/ui/hooks/use-proofread-record'
+import type { ProofreadRulesRepo } from '@/ui/hooks/use-proofread-rules'
 import type { EditorStore } from '@/ui/store/editorStore'
 
 interface AppProps {
@@ -79,6 +80,8 @@ interface AppProps {
   proofreadRepo?: ProofreadRecordRepo
   /** 推敲画面で候補から外した語（COT-59）のリポジトリ。Root で sync-touch に包んで渡す。 */
   nameDismissalRepo?: NameDismissalRepo
+  /** 推敲の作品の決まり（COT-62・例外・表記の好み）のリポジトリ。Root で sync-touch に包んで渡す。 */
+  proofreadRulesRepo?: ProofreadRulesRepo
   /** 構想の道具（プロット・アウトライン・相関図・マインドマップ）を出すか＝無料アカウント登録で true。 */
   canUseStructure?: boolean
   /** ネタ帳（マインドマップの取り込み用）。 */
@@ -149,6 +152,7 @@ export function App({
   gameAssetRepo,
   proofreadRepo,
   nameDismissalRepo,
+  proofreadRulesRepo,
   canUseStructure,
   ideaRepo,
 }: AppProps) {
@@ -601,6 +605,7 @@ export function App({
                 currentEpisodeId={state.currentEpisodeId}
                 repo={proofreadRepo}
                 namesRepo={nameDismissalRepo}
+                rulesRepo={proofreadRulesRepo}
                 onRegisterName={registerName}
                 onFixInEditor={(target) => {
                   setPendingFix(target)

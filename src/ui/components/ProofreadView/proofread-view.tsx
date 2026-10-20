@@ -24,6 +24,18 @@ import {
 import { dismissName, restoreName } from '@/core/proofread/name-dismissals'
 import { NOVEL_RULES } from '@/core/proofread/types'
 import { glossaryTerms } from '@/core/proofread/user-dict'
+import {
+  addException,
+  decline,
+  type ProofreadRules,
+  type RuleSuggestion,
+  removeRule,
+  ruleRows,
+  setPreference,
+  suggestRule,
+  undecline,
+  workRulesOf,
+} from '@/core/proofread/work-rules'
 import type { Work } from '@/core/schema'
 import { cn } from '@/lib/utils'
 import { Button } from '@/ui/components/ui/button'
@@ -32,14 +44,18 @@ import { useMorphAnalyzer } from '@/ui/hooks/use-morph-analyzer'
 import { type NameDismissalRepo, useNameDismissals } from '@/ui/hooks/use-name-dismissals'
 import { useProofreadPrefs } from '@/ui/hooks/use-proofread-prefs'
 import { type ProofreadRecordRepo, useProofreadRecord } from '@/ui/hooks/use-proofread-record'
+import { type ProofreadRulesRepo, useProofreadRules } from '@/ui/hooks/use-proofread-rules'
 import type { MorphAnalyzerClient } from '@/ui/proofread/analyzer-client'
 import { textsHash } from '@/ui/proofread/analyzer-engine'
 import type { AnalysisResult } from '@/ui/proofread/protocol'
+import { subscribeSyncApplied } from '@/ui/sync/sync-touch'
 import { AnalysisPanel } from './analysis-panel'
 import { type FindingFilter, FindingList } from './finding-list'
 import { NameCandidatesSection } from './name-candidates-section'
 import { ProofreadText } from './proofread-text'
+import { RuleSuggestionBox } from './rule-suggestion'
 import { RuleToggles } from './rule-toggles'
+import { WorkRulesPanel } from './work-rules-panel'
 
 export interface FixInEditorTarget {
   episodeId: string
@@ -60,6 +76,8 @@ interface ProofreadViewProps {
     reading?: string
     category?: string
   }) => Promise<'created' | 'cancelled'>
+  /** 推敲の作品の決まり（COT-62・例外・表記の好み・提案しない言葉）。省略時は決まりを保存しない。 */
+  rulesRepo?: ProofreadRulesRepo
   /** テスト用：解析器の窓口を差し替える。 */
   createAnalyzer?: () => MorphAnalyzerClient
   now?: () => number
@@ -90,6 +108,7 @@ export function ProofreadView({
   onFixInEditor,
   namesRepo,
   onRegisterName,
+  rulesRepo,
   createAnalyzer,
   now = Date.now,
 }: ProofreadViewProps) {
@@ -115,6 +134,13 @@ export function ProofreadView({
   const [word, setWord] = useState<string | null>(null)
   // 「確認する項目」は開いた状態で始める（何を確かめるかを作者が選ぶ）
   const [rulesOpen, setRulesOpen] = useState(true)
+  // 作品の決まり（COT-62）。一覧の欄は閉じた状態で始める
+  const { record: workRulesRecord, save: saveRules } = useProofreadRules(rulesRepo, work.id)
+  const workRules = useMemo(() => workRulesOf(workRulesRecord), [workRulesRecord])
+  const [workRulesOpen, setWorkRulesOpen] = useState(false)
+  // 直前に判断した指摘（決まりの提案に使う。話を替えたら忘れる）
+  const [lastAction, setLastAction] = useState<{ finding: FindingN; verdict: Verdict } | null>(null)
+  const pendingChipRef = useRef<HTMLButtonElement>(null)
   const textRef = useRef<HTMLDivElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
   // 本文の印から選んだ指摘。一覧（絞り込みが変わることがある）を描き直したあとで、そのカードまで送る。
@@ -162,8 +188,11 @@ export function ProofreadView({
     [ready, analysis, episode?.id, excluded],
   )
   const findings = useMemo<FindingN[]>(
-    () => (episode ? withNth(proofreadNovel(episode.blocks, { disabled, baseCounts, morph })) : []),
-    [episode, disabled, baseCounts, morph],
+    () =>
+      episode
+        ? withNth(proofreadNovel(episode.blocks, { disabled, baseCounts, morph, rules: workRules }))
+        : [],
+    [episode, disabled, baseCounts, morph, workRules],
   )
   const groups = useMemo(() => classify(findings, record), [findings, record])
 
@@ -175,6 +204,8 @@ export function ProofreadView({
     if (!episode) return
     persist(decide(record, ids, fs, verdict, now(), episode.blocks))
     setActiveKey(null)
+    const last = fs[fs.length - 1]
+    setLastAction(last ? { finding: last, verdict } : null)
   }
   const undo = (f: FindingN) => {
     if (!record) return
@@ -191,6 +222,81 @@ export function ProofreadView({
     const open = openFixes({ ...record, decisions: [decision] }, episode.blocks)
     if (open.length > 0) onFixInEditor({ episodeId: episode.id, decision })
   }
+  // 作品の全話の判断（COT-62・提案の回数を数える）。ほかの話は話を替えたときと同期の取り込みのあとに読み直し、
+  // いまの話は画面の最新の記録（判断を保存する前から反映される）を使う
+  const [otherRecords, setOtherRecords] = useState<ProofreadRecord[]>([])
+  const canCount = typeof repo.listByWork === 'function'
+  const currentEpisodeIdNow = episode?.id
+  useEffect(() => {
+    if (typeof repo.listByWork !== 'function') return
+    let alive = true
+    const load = () => {
+      void repo.listByWork?.(work.id).then(
+        (rows) => {
+          if (alive) setOtherRecords(rows.filter((r) => r.episodeId !== currentEpisodeIdNow))
+        },
+        () => {},
+      )
+    }
+    load()
+    const off = subscribeSyncApplied(load)
+    return () => {
+      alive = false
+      off()
+    }
+  }, [repo, work.id, currentEpisodeIdNow])
+  const workRecords = useMemo(
+    () => [...otherRecords, ...(record ? [record] : [])],
+    [otherRecords, record],
+  )
+  const suggestion = useMemo<RuleSuggestion | null>(
+    () =>
+      canCount
+        ? suggestRule({ last: lastAction, records: workRecords, rules: workRulesRecord })
+        : null,
+    [canCount, lastAction, workRecords, workRulesRecord],
+  )
+  const saveRulesNow = (next: ProofreadRules) => {
+    if (next !== workRulesRecord) void saveRules(next)
+  }
+  // 決まりで指摘が0件になると一覧（FindingList）ごと消えるので、そのときは「未判断」のチップへフォーカスを移す
+  const ruleActedRef = useRef(false)
+  const exceptFinding = (f: FindingN) => {
+    ruleActedRef.current = true
+    saveRulesNow(addException(workRulesRecord, work.id, f, now()))
+  }
+  const preferForm = (f: FindingN, form: string) => {
+    ruleActedRef.current = true
+    if (f.variant) saveRulesNow(setPreference(workRulesRecord, work.id, f.variant, form, now()))
+  }
+  const focusPendingChip = useCallback(() => pendingChipRef.current?.focus(), [])
+  useEffect(() => {
+    if (!ruleActedRef.current) return
+    ruleActedRef.current = false
+    if (findings.length === 0) focusPendingChip()
+  }, [findings, focusPendingChip])
+  const acceptSuggestion = (s: RuleSuggestion, target?: string) => {
+    if (s.kind === 'exception')
+      saveRulesNow(addException(workRulesRecord, work.id, s.finding, now()))
+    else if (target) saveRulesNow(setPreference(workRulesRecord, work.id, s.variant, target, now()))
+    setLastAction(null)
+    requestAnimationFrame(() => {
+      const first = listRef.current?.querySelector<HTMLButtonElement>('[data-card-select]')
+      if (first) first.focus()
+      else focusPendingChip()
+    })
+  }
+  const declineSuggestion = (s: RuleSuggestion) => {
+    saveRulesNow(decline(workRulesRecord, work.id, s, now()))
+    setLastAction(null)
+    requestAnimationFrame(() => {
+      const first = listRef.current?.querySelector<HTMLButtonElement>('[data-card-select]')
+      if (first) first.focus()
+      else focusPendingChip()
+    })
+  }
+  const ruleCount = ruleRows(workRulesRecord).length
+
   const select = useCallback((f: FindingN) => {
     setActiveKey(findingKey(f))
     textRef.current
@@ -280,6 +386,7 @@ export function ProofreadView({
                 setEpisodeId(e.target.value)
                 setActiveKey(null)
                 setWord(null)
+                setLastAction(null)
               }}
               className={SELECT_CLASS}
             >
@@ -299,11 +406,33 @@ export function ProofreadView({
           >
             確認する項目
           </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            aria-expanded={workRulesOpen}
+            onClick={() => setWorkRulesOpen((v) => !v)}
+          >
+            {ruleCount > 0 ? `この作品の決まり（${ruleCount}）` : 'この作品の決まり'}
+          </Button>
           <AnalyzerStatus state={analyzer} onRetry={retry} />
         </div>
         {rulesOpen ? (
           <div className="mt-3">
             <RuleToggles enabled={enabled} onToggle={toggle} morph={morphState} />
+          </div>
+        ) : null}
+        {workRulesOpen ? (
+          <div className="mt-3">
+            <WorkRulesPanel
+              rules={workRulesRecord}
+              onRemove={(id) => {
+                if (workRulesRecord) saveRulesNow(removeRule(workRulesRecord, id, now()))
+              }}
+              onUndecline={(key) => {
+                if (workRulesRecord) saveRulesNow(undecline(workRulesRecord, key, now()))
+              }}
+            />
           </div>
         ) : null}
       </header>
@@ -358,6 +487,7 @@ export function ProofreadView({
                 ).map(([key, label]) => (
                   <Chip
                     key={key}
+                    ref={key === 'pending' ? pendingChipRef : undefined}
                     active={filter === key}
                     onClick={() => {
                       setFilter(key)
@@ -368,6 +498,16 @@ export function ProofreadView({
                   </Chip>
                 ))}
               </fieldset>
+              {/* 決まりの提案（COT-62）。一覧のスクロールの外に置き、下のカードで判断しても見えるようにする */}
+              <RuleSuggestionBox
+                suggestion={filter === 'pending' ? suggestion : null}
+                onAccept={(target) => {
+                  if (suggestion) acceptSuggestion(suggestion, target)
+                }}
+                onDecline={() => {
+                  if (suggestion) declineSuggestion(suggestion)
+                }}
+              />
               <div ref={listRef} className="min-h-0 flex-1 overflow-y-auto px-4 pb-4">
                 {enabled.size === 0 ? (
                   <p className="p-6 text-center text-on-surface-variant text-sm">
@@ -391,6 +531,9 @@ export function ProofreadView({
                     onKeepAll={(fs) => setVerdict(fs, 'keep')}
                     onUndo={undo}
                     onFixInEditor={fixInEditor}
+                    onExcept={exceptFinding}
+                    onPrefer={preferForm}
+                    onEmptyFocus={focusPendingChip}
                   />
                 )}
               </div>
@@ -438,13 +581,21 @@ function Chip({
   active,
   onClick,
   children,
+  ref,
 }: {
   active: boolean
   onClick: () => void
   children: ReactNode
+  ref?: React.Ref<HTMLButtonElement>
 }) {
   return (
-    <button type="button" aria-pressed={active} onClick={onClick} className={chipClass(active)}>
+    <button
+      ref={ref}
+      type="button"
+      aria-pressed={active}
+      onClick={onClick}
+      className={chipClass(active)}
+    >
       {children}
     </button>
   )
@@ -478,13 +629,13 @@ function AnalyzerStatus({
   const loaded = state.status === 'loading' ? state.loaded : 0
   return (
     <div className="flex items-center gap-2 text-on-surface-variant text-xs tabular-nums">
-      <span>くわしい確認の準備をしています{total > 0 ? '（辞書の読み込みは初回のみ）' : ''}</span>
+      <span>くわしい確認の準備をしています{total > 0 ? '（初回だけ時間がかかります）' : ''}</span>
       {total > 0 ? (
         <>
           <Progress
             value={Math.min(100, (loaded / total) * 100)}
             className="w-28"
-            aria-label="辞書の読み込み"
+            aria-label="くわしい確認の準備"
           />
           <span>
             {fmtMb(loaded)} / {fmtMb(total)}MB

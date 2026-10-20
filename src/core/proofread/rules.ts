@@ -1,4 +1,4 @@
-import type { NovelRuleId } from './types'
+import type { NovelRuleId, RuleRef } from './types'
 
 /**
  * 原稿の作法ルール（行単位・プレーン文字列）。
@@ -14,6 +14,8 @@ export interface RuleHit {
   end: number
   text: string
   anchor: 'contains' | 'lineStart'
+  /** 作品の例外（COT-62）に使うキーと表示名。同じ語の連続だけが持つ。 */
+  rule?: RuleRef
 }
 
 /** 段落の頭に置いてよい文字（全角空白・開き括弧・記法の記号）。 */
@@ -99,6 +101,7 @@ function successiveWords(text: string): RuleHit[] {
     if (out.some((h) => h.start < e && s < h.end)) continue
     out.push(hit('successive-word', message(m[0]), text, s, e))
   }
+  for (const h of out) h.rule = { key: `successive-word:${h.text}`, label: h.text }
   return out.sort((a, b) => a.start - b.start)
 }
 

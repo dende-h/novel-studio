@@ -1,3 +1,5 @@
+import type { RuleRef, VariantPreference, VariantRef } from './types'
+
 /**
  * 表記ゆれ辞書（初版）と、作品全体の集計・行ごとの候補。
  *
@@ -410,25 +412,121 @@ export interface VariantHit {
   end: number
   text: string
   message: string
+  /** 例外（書き分けを許す・COT-62）のキーと表示名。 */
+  rule: RuleRef
+  /** 組と書き方（COT-62）。 */
+  variant: VariantRef
+}
+
+const DICT = 'dict:'
+
+/** 辞書の組の表示名（例外の一覧・メニュー用）。数は「人」の数、語は書き方を並べる。 */
+function groupLabel(group: VariantGroup): string {
+  return group.kind === 'numeral'
+    ? `「${group.id.slice('numeral:'.length)}」の数`
+    : group.forms.map((f) => f.label).join('・')
+}
+
+function refOf(group: VariantGroup, form: VariantForm): { rule: RuleRef; variant: VariantRef } {
+  const key = `${DICT}${group.id}`
+  return {
+    rule: { key: `variant:${key}`, label: groupLabel(group) },
+    variant: {
+      group: key,
+      form: form.label,
+      forms: group.forms.map((f) => f.label),
+      ...(group.kind === 'numeral' ? { numeral: group.id.slice('numeral:'.length) } : {}),
+    },
+  }
+}
+
+/** 辞書の組の好み（COT-62）を組の id で引く。 */
+function dictPreferences(
+  preferences: ReadonlyArray<VariantPreference> | undefined,
+): Map<string, VariantPreference> {
+  const out = new Map<string, VariantPreference>()
+  for (const p of preferences ?? []) {
+    if (p.group.startsWith(DICT)) out.set(p.group.slice(DICT.length), p)
+  }
+  return out
+}
+
+/** 見る組：作品内で混ざっている組と、好みを決めた組（混ざっていなくても好みでない書き方を指摘する）。 */
+function groupsToCheck(
+  counts: VariantCounts,
+  prefs: ReadonlyMap<string, VariantPreference>,
+): VariantGroup[] {
+  const mixed = new Set(mixedGroups(counts))
+  return VARIANT_GROUPS.filter((g) => mixed.has(g) || prefs.has(g.id))
+}
+
+/**
+ * 判断に残った文字列を、辞書の組の書き方に当て直す（COT-62・提案の数え方）。辞書の組の文字列には前後の
+ * 文字が入る（「た事が」「る事に」はどちらも「事」）。数は「3人」「5人」がどちらも「算用」。当たらなければ undefined。
+ */
+export function variantFormOf(group: string, text: string): string | undefined {
+  if (!group.startsWith(DICT)) return undefined
+  const g = VARIANT_GROUPS.find((x) => x.id === group.slice(DICT.length))
+  if (!g) return undefined
+  return formsInLine(g, text)[0]?.form.label
+}
+
+/**
+ * 1 行分の表記ゆれの出現の位置（好みを当てる前・COT-62）。自動の表記ゆれとの重なりの判定に使う。
+ * 好みで隠した書き方も含めないと、その書き方が自動の表記ゆれとして出直してしまう。
+ */
+export function variantSpansForLine(
+  text: string,
+  counts: VariantCounts,
+  preferences?: ReadonlyArray<VariantPreference>,
+): { start: number; end: number }[] {
+  if (!text.trim()) return []
+  const out: { start: number; end: number }[] = []
+  for (const group of groupsToCheck(counts, dictPreferences(preferences))) {
+    for (const occ of formsInLine(group, text)) out.push({ start: occ.start, end: occ.end })
+  }
+  return out.sort((a, b) => a.start - b.start)
 }
 
 /**
  * 1 行分の表記ゆれ（出現ごとに 1 件・COT-40）。counts は作品全体（他の話＋いまの話）の集計。
  * 説明は、その出現の書き方を先頭に、作品内で使われているほかの書き方と件数を添える。
  * 数の書き方は、その出現の助数詞の分だけを書く。
+ * 表記の好み（COT-62）を決めた組は、好みの書き方を出さず、ほかの書き方を好みの説明で出す（混ざっていなくても）。
  */
-export function variantFindingsForLine(text: string, counts: VariantCounts): VariantHit[] {
+export function variantFindingsForLine(
+  text: string,
+  counts: VariantCounts,
+  preferences?: ReadonlyArray<VariantPreference>,
+): VariantHit[] {
   if (!text.trim()) return []
+  const prefs = dictPreferences(preferences)
   const hits: VariantHit[] = []
-  for (const group of mixedGroups(counts)) {
+  for (const group of groupsToCheck(counts, prefs)) {
     const tallies = counts[group.id] ?? {}
+    const pref = prefs.get(group.id)
     for (const occ of formsInLine(group, text)) {
+      const matched = text.slice(occ.start, occ.end)
+      if (pref) {
+        if (occ.form.label === pref.preferred) continue
+        const message =
+          group.kind === 'numeral'
+            ? `「${matched}」は、この作品の数の書き方（${pref.preferred === '算用' ? '算用数字' : pref.preferred}）と違います。`
+            : `「${occ.form.label}」は、この作品の表記「${pref.preferred}」と違います。`
+        hits.push({
+          start: occ.start,
+          end: occ.end,
+          text: matched,
+          message,
+          ...refOf(group, occ.form),
+        })
+        continue
+      }
       const ordered = [
         occ.form,
         ...group.forms.filter((f) => f !== occ.form && (tallies[f.label]?.count ?? 0) > 0),
       ]
       const stats = ordered.map((f) => `${f.label} ${tallies[f.label]?.count ?? 0}件`).join('・')
-      const matched = text.slice(occ.start, occ.end)
       let message: string
       if (group.kind === 'numeral') {
         const counter = group.id.slice('numeral:'.length)
@@ -439,7 +537,13 @@ export function variantFindingsForLine(text: string, counts: VariantCounts): Var
       } else {
         message = `${joinLabels(ordered.map((f) => f.label))}が混ざっています（この作品で ${stats}）。どちらかに揃えると読みやすくなります。`
       }
-      hits.push({ start: occ.start, end: occ.end, text: matched, message })
+      hits.push({
+        start: occ.start,
+        end: occ.end,
+        text: matched,
+        message,
+        ...refOf(group, occ.form),
+      })
     }
   }
   return hits.sort((a, b) => a.start - b.start)

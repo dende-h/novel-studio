@@ -189,6 +189,8 @@ export interface EditorStoreDeps {
   proofreadRepo?: { removeByWork(workId: string): Promise<void> }
   /** 推敲で候補から外した語（COT-59）。作品の完全削除で一緒に消す（ゴミ箱へ移すだけなら残す）。 */
   nameDismissalRepo?: { removeByWork(workId: string): Promise<void> }
+  /** 推敲の作品の決まり（COT-62）。作品の完全削除で一緒に消す（ゴミ箱へ移すだけなら残す）。 */
+  proofreadRulesRepo?: { removeByWork(workId: string): Promise<void> }
   genId: () => string
   now: () => number
   /** 履歴の集約間隔(ms)。連続編集中はこの間隔内の保存を最新版へ合体し、版の氾濫を防ぐ。 */
@@ -224,6 +226,7 @@ export function createEditorStore({
   stagingRepo,
   proofreadRepo,
   nameDismissalRepo,
+  proofreadRulesRepo,
   genId,
   now,
   snapshotMinIntervalMs,
@@ -242,8 +245,8 @@ export function createEditorStore({
 
   /**
    * 作品の完全削除に伴う後始末。履歴（版）に加え、その作品の構造レイヤー・プロット・
-   * 演出譜・推敲の判断・推敲で外した語も消す。残すと本人には見えないまま端末に溜まり、
-   * 同期にも載り続けるため。
+   * 演出譜・推敲の判断・推敲で外した語・推敲の作品の決まりも消す。残すと本人には見えない
+   * まま端末に溜まり、同期にも載り続けるため。
    */
   const purgeWorkArtifacts = async (workId: string) => {
     await snapshotRepo.clear(workId)
@@ -252,6 +255,7 @@ export function createEditorStore({
     await stagingRepo?.removeByWork(workId)
     await proofreadRepo?.removeByWork(workId)
     await nameDismissalRepo?.removeByWork(workId)
+    await proofreadRulesRepo?.removeByWork(workId)
   }
   const set = (patch: Partial<EditorState>) => {
     state = { ...state, ...patch }

@@ -1,9 +1,17 @@
+import { useEffect, useRef, useState } from 'react'
 import { plainTextOfBlock } from '@/core/game'
 import { type FindingN, findingKey } from '@/core/proofread/decisions'
-import { novelRuleLabel } from '@/core/proofread/types'
+import { formDisplay, novelRuleLabel } from '@/core/proofread/types'
 import type { Block } from '@/core/schema'
 import { cn } from '@/lib/utils'
 import { Button } from '@/ui/components/ui/button'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/ui/components/ui/dropdown-menu'
 
 export type FindingFilter = 'pending' | 'fix' | 'keep'
 
@@ -20,6 +28,12 @@ interface FindingListProps {
   onKeepAll: (fs: FindingN[]) => void
   onUndo: (f: FindingN) => void
   onFixInEditor: (f: FindingN) => void
+  /** この作品では指摘しない（例外・COT-62）。ら抜き言葉・同じ語の連続と、表記ゆれの「書き分けを許す」。 */
+  onExcept?: (f: FindingN) => void
+  /** 表記の好みを決める（COT-62）。 */
+  onPrefer?: (f: FindingN, form: string) => void
+  /** 決まりでカードが消えて、ほかにカードが無いときのフォーカスの行き先。 */
+  onEmptyFocus?: () => void
 }
 
 const EXCERPT = 20
@@ -66,13 +80,35 @@ export function FindingList({
   onKeepAll,
   onUndo,
   onFixInEditor,
+  onExcept,
+  onPrefer,
+  onEmptyFocus,
 }: FindingListProps) {
+  const listRef = useRef<HTMLUListElement>(null)
+  // 決まり（例外・好み）でカードが消えたら、次のカードの「本文で見る」へ移す（無ければ前のカード）
+  const [pendingFocus, setPendingFocus] = useState<{ key: string; index: number } | null>(null)
+  const keysJoined = findings.map(findingKey).join('\n')
+  useEffect(() => {
+    if (!pendingFocus) return
+    const keys = keysJoined ? keysJoined.split('\n') : []
+    if (keys.includes(pendingFocus.key)) return // 保存待ち
+    const cards = listRef.current?.querySelectorAll<HTMLButtonElement>('[data-card-select]') ?? []
+    const next = cards[pendingFocus.index] ?? cards[pendingFocus.index - 1]
+    if (next) next.focus()
+    else onEmptyFocus?.()
+    setPendingFocus(null)
+  }, [pendingFocus, keysJoined, onEmptyFocus])
+  const byRule = (f: FindingN, index: number, run: () => void) => {
+    setPendingFocus({ key: findingKey(f), index })
+    run()
+  }
+
   if (findings.length === 0) {
     return <p className="p-6 text-center text-on-surface-variant text-sm">{EMPTY[filter]}</p>
   }
   return (
-    <ul className="space-y-2">
-      {findings.map((f) => {
+    <ul ref={listRef} className="space-y-2">
+      {findings.map((f, index) => {
         const key = findingKey(f)
         const text = plainTextOfBlock(blocks[f.blockIndex] as Block)
         const same =
@@ -90,6 +126,7 @@ export function FindingList({
           >
             <button
               type="button"
+              data-card-select=""
               onClick={() => onSelect(f)}
               className="block w-full space-y-1 text-left"
               aria-label={`本文で見る：${novelRuleLabel(f.code)}「${f.text}」`}
@@ -109,6 +146,23 @@ export function FindingList({
                   <Button type="button" size="sm" variant="outline" onClick={() => onKeep(f)}>
                     このまま
                   </Button>
+                  {f.variant && onPrefer && onExcept ? (
+                    <VariantRuleMenu
+                      f={f}
+                      onPrefer={(form) => byRule(f, index, () => onPrefer(f, form))}
+                      onAllow={() => byRule(f, index, () => onExcept(f))}
+                    />
+                  ) : f.rule && onExcept ? (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      aria-label={`${f.rule.label}をこの作品では指摘しない`}
+                      onClick={() => byRule(f, index, () => onExcept(f))}
+                    >
+                      この作品では指摘しない
+                    </Button>
+                  ) : null}
                   {same.length >= 2 ? (
                     <Button type="button" size="sm" variant="ghost" onClick={() => onKeepAll(same)}>
                       同じ指摘をすべてこのまま（{same.length}件）
@@ -139,5 +193,42 @@ export function FindingList({
         )
       })}
     </ul>
+  )
+}
+
+/** 表記ゆれのカードの「この作品の決まりにする」（COT-62）。書き方ごとの「◯◯にそろえる」と「書き分けを許す」。 */
+function VariantRuleMenu({
+  f,
+  onPrefer,
+  onAllow,
+}: {
+  f: FindingN
+  onPrefer: (form: string) => void
+  onAllow: () => void
+}) {
+  const v = f.variant
+  if (!v) return null
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          type="button"
+          size="sm"
+          variant="ghost"
+          aria-label={`${v.numeral ? `「${v.numeral}」の数` : v.forms.join('・')}の決まりを選ぶ`}
+        >
+          この作品の決まりにする
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start">
+        {v.forms.map((form) => (
+          <DropdownMenuItem key={form} onSelect={() => onPrefer(form)}>
+            {formDisplay(v, form)}にそろえる
+          </DropdownMenuItem>
+        ))}
+        <DropdownMenuSeparator />
+        <DropdownMenuItem onSelect={onAllow}>書き分けを許す</DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   )
 }

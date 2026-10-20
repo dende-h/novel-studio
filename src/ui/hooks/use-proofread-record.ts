@@ -6,6 +6,8 @@ import { subscribeSyncApplied } from '@/ui/sync/sync-touch'
 export interface ProofreadRecordRepo {
   get(workId: string, episodeId: string): Promise<ProofreadRecord | undefined>
   save(record: ProofreadRecord): Promise<void>
+  /** 作品の全話の判断（COT-62・決まりの提案の回数を数える）。無ければ提案を出さない。 */
+  listByWork?(workId: string): Promise<ProofreadRecord[]>
 }
 
 /**

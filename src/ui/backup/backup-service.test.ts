@@ -3,10 +3,12 @@ import { describe, expect, it, vi } from 'vitest'
 import { type BackupState, deserializeBackup, serializeBackup } from '@/core/backup'
 import type { ProofreadRecord } from '@/core/proofread/decisions'
 import type { NameDismissals } from '@/core/proofread/name-dismissals'
+import type { ProofreadRules } from '@/core/proofread/work-rules'
 import type { Work } from '@/core/schema'
 import { IdbStore } from '@/core/storage/idbStore'
 import { NameDismissalRepository } from '@/core/storage/nameDismissalRepository'
 import { ProofreadRepository } from '@/core/storage/proofreadRepository'
+import { ProofreadRulesRepository } from '@/core/storage/proofreadRulesRepository'
 import { isSyncSuspended, syncEpoch } from '@/ui/sync/sync-gate'
 import {
   type BackupDeps,
@@ -41,6 +43,14 @@ const names = (workId: string, updatedAt: number, text = 'アカリ'): NameDismi
   updatedAt,
 })
 
+const rules = (workId: string, updatedAt: number, label = '見れる'): ProofreadRules => ({
+  workId,
+  exceptions: [{ key: `ra-nuki:${label}`, label, at: updatedAt }],
+  preferences: [],
+  declined: [],
+  updatedAt,
+})
+
 function makeDeps(over: Partial<BackupDeps> = {}) {
   const state = {
     works: [work('a')],
@@ -53,6 +63,7 @@ function makeDeps(over: Partial<BackupDeps> = {}) {
     stagings: [],
     proofreads: [],
     nameDismissals: [],
+    proofreadRules: [],
     gameAssets: [],
   }
   const created: string[] = []
@@ -108,6 +119,7 @@ describe('createLocalBackupService（ローカル・ファイルバックアッ�
       stagings: [],
       proofreads: [],
       nameDismissals: [],
+      proofreadRules: [],
       gameAssets: [],
     }
     const svc = createLocalBackupService(io(state), () => 999)
@@ -130,6 +142,7 @@ describe('createLocalBackupService（ローカル・ファイルバックアッ�
       stagings: [],
       proofreads: [],
       nameDismissals: [],
+      proofreadRules: [],
       gameAssets: [],
     }
     const svc = createLocalBackupService(
@@ -175,6 +188,7 @@ describe('createLocalBackupService（ローカル・ファイルバックアッ�
         ],
         proofreads: [proofread('w1', 'e1', 4)],
         nameDismissals: [],
+        proofreadRules: [],
         gameAssets: [],
       },
       5,
@@ -207,6 +221,7 @@ describe('createLocalBackupService（ローカル・ファイルバックアッ�
       stagings: [],
       proofreads: [],
       nameDismissals: [],
+      proofreadRules: [],
       gameAssets: [],
     }
     await expect(createLocalBackupService(io(empty)).restorePlaintext('not json')).rejects.toThrow()
@@ -249,6 +264,7 @@ describe('createBackupService', () => {
           stagings: [],
           proofreads: [],
           nameDismissals: [],
+          proofreadRules: [],
           gameAssets: [],
         },
         5,
@@ -274,6 +290,7 @@ describe('createBackupService', () => {
           stagings: [],
           proofreads: [],
           nameDismissals: [],
+          proofreadRules: [],
           gameAssets: [],
         },
         5,
@@ -303,6 +320,7 @@ describe('createBackupService', () => {
           stagings: [],
           proofreads: [],
           nameDismissals: [],
+          proofreadRules: [],
           gameAssets: [],
         },
         5,
@@ -342,6 +360,7 @@ describe('createBackupService', () => {
         stagings: [],
         proofreads: [],
         nameDismissals: [],
+        proofreadRules: [],
         gameAssets: [],
       },
       50,
@@ -371,6 +390,7 @@ describe('createBackupService', () => {
         stagings: [],
         proofreads: [],
         nameDismissals: [],
+        proofreadRules: [],
         gameAssets: [],
       },
       50,
@@ -400,6 +420,7 @@ describe('createBackupService', () => {
         stagings: [],
         proofreads: [],
         nameDismissals: [],
+        proofreadRules: [],
         gameAssets: [],
       },
       50,
@@ -428,6 +449,7 @@ describe('createBackupService', () => {
         stagings: [],
         proofreads: [proofread('w1', 'e1', 7)],
         nameDismissals: [],
+        proofreadRules: [],
         gameAssets: [],
       },
       50,
@@ -483,6 +505,7 @@ describe('createBackupService', () => {
           stagings: [],
           proofreads: [proofread('w1', 'e2', 8)],
           nameDismissals: [],
+          proofreadRules: [],
           gameAssets: [],
         },
         5,
@@ -514,6 +537,7 @@ describe('createBackupService', () => {
           stagings: [],
           proofreads: [],
           nameDismissals: n,
+          proofreadRules: [],
           gameAssets: [],
         },
         50,
@@ -542,6 +566,49 @@ describe('createBackupService', () => {
     expect(deserializeBackup(created.at(-1) ?? '{}').nameDismissals).toEqual([names('w3', 3)])
   })
 
+  it('復元・ライブ取り込みは推敲の作品の決まりも全置換に渡し、backupNow は直列化する', async () => {
+    const withRules = (r: ProofreadRules[]) =>
+      serializeBackup(
+        {
+          works: [work('r')],
+          trash: [],
+          profile: {},
+          activity: [],
+          ideas: [],
+          structures: [],
+          plots: [],
+          stagings: [],
+          proofreads: [],
+          nameDismissals: [],
+          proofreadRules: r,
+          gameAssets: [],
+        },
+        50,
+      )
+    const restored: unknown[] = []
+    const { deps, remote, created, state } = makeDeps({
+      replaceAll: async (s) => {
+        restored.push(s.proofreadRules)
+      },
+    })
+    remote.set('target', withRules([rules('w1', 7)]))
+    remote.set('live', withRules([rules('w2', 8, '来れる')]))
+    // 欄の無い旧バックアップは、決まりを空として渡す
+    remote.set(
+      'old',
+      JSON.stringify({ version: 1, createdAt: 1, works: [work('r')], trash: [], profile: {} }),
+    )
+    const svc = createBackupService(deps)
+    await svc.restore('target')
+    await svc.pullLive()
+    expect(await svc.restore('old')).toBe(true)
+    expect(restored).toEqual([[rules('w1', 7)], [rules('w2', 8, '来れる')], []])
+
+    const gathered = { ...state, proofreadRules: [rules('w3', 3)] }
+    await createBackupService({ ...deps, gather: async () => gathered }).backupNow()
+    expect(deserializeBackup(created.at(-1) ?? '{}').proofreadRules).toEqual([rules('w3', 3)])
+  })
+
   it('backupCurrent:true のときだけ、置換前に現在を安全退避してから全置換する', async () => {
     const target = serializeBackup(
       {
@@ -555,6 +622,7 @@ describe('createBackupService', () => {
         stagings: [],
         proofreads: [],
         nameDismissals: [],
+        proofreadRules: [],
         gameAssets: [],
       },
       50,
@@ -611,6 +679,7 @@ describe('全置換（復元・AI の変更の取り込み）は自動同期と�
       stagings: [],
       proofreads: [],
       nameDismissals: [],
+      proofreadRules: [],
       gameAssets: [],
     })
     // 置換の最中は保留＝走っている reconcile が base を書き戻さない（誤 purge の防止）。
@@ -633,6 +702,7 @@ describe('createLocalBackupIO（IndexedDB 上の全状態）', () => {
     stagings: [],
     proofreads: [],
     nameDismissals: [],
+    proofreadRules: [],
     gameAssets: [],
   })
 
@@ -676,5 +746,36 @@ describe('createLocalBackupIO（IndexedDB 上の全状態）', () => {
     expect(await repo.list()).toEqual([names('w9', 5, 'ミナト')])
     expect((await io.gather()).nameDismissals).toEqual([names('w9', 5, 'ミナト')])
     expect(await proofreads.list()).toEqual([proofread('w1', 'e1', 1)])
+  })
+
+  it('gather は推敲の作品の決まりを集め、replaceAll は決まりだけを全置換する（COT-62）', async () => {
+    const io = createLocalBackupIO()
+    const kv = new IdbStore('novel-studio')
+    const repo = new ProofreadRulesRepository(kv)
+    const proofreads = new ProofreadRepository(kv)
+    const nameRepo = new NameDismissalRepository(kv)
+    await io.replaceAll(emptyState())
+    await repo.save(rules('w1', 1))
+    await repo.save(rules('w2', 2))
+    await proofreads.save(proofread('w1', 'e1', 1))
+    await nameRepo.save(names('w1', 1))
+
+    const gathered = await io.gather()
+    expect(gathered.proofreadRules.map((r) => r.workId).sort()).toEqual(['w1', 'w2'])
+    // 推敲の判断（proofread:）・外した語（proofread-names:）の一覧に決まり（proofread-rules:）が混ざらない
+    expect(gathered.proofreads).toEqual([proofread('w1', 'e1', 1)])
+    expect(gathered.nameDismissals).toEqual([names('w1', 1)])
+
+    // 復元：バックアップに無い記録は消え、バックアップの記録だけが残る
+    await io.replaceAll({
+      ...emptyState(),
+      proofreads: [proofread('w1', 'e1', 1)],
+      nameDismissals: [names('w1', 1)],
+      proofreadRules: [rules('w9', 5, '出れる')],
+    })
+    expect(await repo.list()).toEqual([rules('w9', 5, '出れる')])
+    expect((await io.gather()).proofreadRules).toEqual([rules('w9', 5, '出れる')])
+    expect(await proofreads.list()).toEqual([proofread('w1', 'e1', 1)])
+    expect(await nameRepo.list()).toEqual([names('w1', 1)])
   })
 })

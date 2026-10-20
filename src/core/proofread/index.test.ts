@@ -80,6 +80,8 @@ describe('proofreadNovel', () => {
         anchor: 'contains',
         message:
           '「できる」と「出来る」が混ざっています（この作品で できる 1件・出来る 1件）。どちらかに揃えると読みやすくなります。',
+        rule: { key: 'variant:dict:dekiru', label: '出来る・できる' },
+        variant: { group: 'dict:dekiru', form: 'できる', forms: ['出来る', 'できる'] },
       },
     ])
   })
@@ -157,5 +159,77 @@ describe('くわしい確認（morph）との合流', () => {
   it('解析器が無ければ品詞を使う指摘は出さない', () => {
     const blocks = parseEpisodeBody('　私は彼は好きだ。')
     expect(proofreadNovel(blocks)).toEqual([])
+  })
+})
+
+describe('作品の決まり（COT-62）', () => {
+  const morphOf = (texts: string[]) => {
+    const tokens = texts.map((t) => sampleTokens(t))
+    return {
+      tokens,
+      workVariants: countAutoVariants(tokens, new Set()),
+      excluded: new Set<string>(),
+    }
+  }
+  const none = { exceptions: [], preferences: [] }
+
+  it('決まりが無ければ今までと同じ指摘', () => {
+    const texts = ['子供と子どもが遊ぶ。', '食べれる。起きれる。寝れない。来れない。見れる。']
+    const blocks = parseEpisodeBody(texts.join('\n'))
+    const morph = morphOf(texts)
+    expect(proofreadNovel(blocks, { morph, rules: none })).toEqual(
+      proofreadNovel(blocks, { morph }),
+    )
+  })
+
+  it('例外に当たる指摘を取り除く（ら抜きの活用違い・同じ語の連続）', () => {
+    const texts = ['食べれる。起きれる。寝れない。来れない。見れる。']
+    const blocks = parseEpisodeBody(`${texts[0]}\n　彼は言った言った`)
+    const morph = { ...morphOf(texts), tokens: [...morphOf(texts).tokens, []] }
+    const rules = {
+      exceptions: [
+        { key: 'ra-nuki:見れる', label: '見れる', at: 1 },
+        { key: 'ra-nuki:来れる', label: '来れる', at: 1 },
+        { key: 'successive-word:言った言った', label: '言った言った', at: 1 },
+      ],
+      preferences: [],
+    }
+    const found = proofreadNovel(blocks, { morph, rules })
+    expect(found.filter((f) => f.code === 'ra-nuki').map((f) => f.text)).toEqual([
+      '食べれる',
+      '起きれる',
+      '寝れ',
+    ])
+    expect(found.some((f) => f.code === 'successive-word')).toBe(false)
+  })
+
+  it('辞書の組に好み＋くわしい確認あり：好みの書き方が自動の表記ゆれとして出直さない', () => {
+    const text = '子供と子どもが遊ぶ。'
+    const blocks = parseEpisodeBody(text)
+    const rules = {
+      exceptions: [],
+      preferences: [
+        { group: 'dict:kodomo', preferred: '子ども', forms: ['子ども', '子供'], at: 1 },
+      ],
+    }
+    const variants = proofreadNovel(blocks, { morph: morphOf([text]), rules }).filter(
+      (f) => f.code === 'variant',
+    )
+    expect(variants.map((f) => [f.text, f.message])).toEqual([
+      ['子供', '「子供」は、この作品の表記「子ども」と違います。'],
+    ])
+  })
+
+  it('書き分けを許す（辞書の組の例外）と、どの書き方も出さない', () => {
+    const text = '子供と子どもが遊ぶ。'
+    const blocks = parseEpisodeBody(text)
+    const rules = {
+      exceptions: [
+        { key: 'variant:dict:kodomo', label: '子ども・子供', forms: ['子ども', '子供'], at: 1 },
+      ],
+      preferences: [],
+    }
+    const found = proofreadNovel(blocks, { rules })
+    expect(found.filter((f) => f.code === 'variant')).toEqual([])
   })
 })

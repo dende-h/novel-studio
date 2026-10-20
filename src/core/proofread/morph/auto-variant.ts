@@ -1,3 +1,4 @@
+import type { VariantPreference } from '../types'
 import type { MorphHit } from './hit'
 import type { MorphToken } from './token'
 
@@ -110,14 +111,37 @@ export function countAutoVariants(
 }
 
 /** 1 段落の自動の表記ゆれ（出現ごと）。範囲は該当トークン、text は表層形。 */
+/** 自動の組のキー（COT-62）。書き方の原形をソートして | でつなぐ。 */
+export const autoGroupKey = (bases: ReadonlyArray<string>) => `auto:${[...bases].sort().join('|')}`
+
+/**
+ * 自動の表記ゆれの指摘。表記の好み（COT-62・`auto:` の組）は組の集計より先に見る：
+ * 原形が好みの書き方なら出さず、好みの組のほかの書き方なら、組の集計に無くても好みの説明で出す。
+ */
 export function autoVariantHits(
   tokens: ReadonlyArray<MorphToken>,
   counts: AutoVariantCounts,
   excluded: ReadonlySet<string>,
+  preferences?: ReadonlyArray<VariantPreference>,
 ): MorphHit[] {
+  const prefs = (preferences ?? []).filter((p) => p.group.startsWith('auto:'))
   const hits: MorphHit[] = []
   for (const t of tokens) {
     if (!isAutoVariantTarget(t, excluded)) continue
+    const pref = prefs.find((p) => p.forms.includes(t.base))
+    if (pref) {
+      if (t.base === pref.preferred) continue
+      const forms = [...pref.forms]
+      hits.push({
+        start: t.start,
+        end: t.end,
+        text: t.surface,
+        message: `「${t.base}」は、この作品の表記「${pref.preferred}」と違います。`,
+        rule: { key: `variant:${pref.group}`, label: forms.join('・') },
+        variant: { group: pref.group, form: t.base, forms },
+      })
+      continue
+    }
     const g = counts.groupOf[nodeOf(t)]
     if (g === undefined) continue
     const forms = counts.groups[g]?.forms ?? []
@@ -128,11 +152,15 @@ export function autoVariantHits(
     const labels = ordered.map((f) => `「${f.base}」`)
     const joined = labels.length === 2 ? labels.join('と') : labels.join('・')
     const stats = ordered.map((f) => `${f.base} ${f.count}件`).join('・')
+    const bases = [t.base, ...others.map((f) => f.base)].sort()
+    const group = autoGroupKey(bases)
     hits.push({
       start: t.start,
       end: t.end,
       text: t.surface,
       message: `${joined}が混ざっています（この作品で ${stats}）。どちらかに揃えると読みやすくなります。`,
+      rule: { key: `variant:${group}`, label: bases.join('・') },
+      variant: { group, form: t.base, forms: bases },
     })
   }
   return hits

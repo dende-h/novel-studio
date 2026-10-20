@@ -147,6 +147,17 @@ describe('successive-word（同じ語の連続）', () => {
   })
 })
 
+describe('例外のキー（COT-62）', () => {
+  it('同じ語の連続だけが、指摘の文字列をキーに持つ', () => {
+    const hits = checkLine('　彼は言った言った。…')
+    expect(hits.find((h) => h.code === 'successive-word')?.rule).toEqual({
+      key: 'successive-word:言った言った',
+      label: '言った言った',
+    })
+    expect(hits.find((h) => h.code === 'leader-odd')?.rule).toBeUndefined()
+  })
+})
+
 describe('位置と文字列（COT-40）', () => {
   it('字下げは段落の先頭 1 文字で、段落の頭に結び付く', () => {
     expect(checkLine('彼は言った。')[0]).toMatchObject({

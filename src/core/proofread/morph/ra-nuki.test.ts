@@ -29,4 +29,13 @@ describe('ら抜き言葉（FR-8c）', () => {
     )
     expect(kure?.message).toBe('「来れ」はら抜き言葉です。地の文では「来られ」が一般的です。')
   })
+  it('例外（COT-62）のキーは原形のら抜きの形。活用が違っても同じキー', () => {
+    expect(hits('食べれる。起きれる。寝れない。来れない。見れる。').map((h) => h.rule)).toEqual([
+      { key: 'ra-nuki:食べれる', label: '食べれる' },
+      { key: 'ra-nuki:起きれる', label: '起きれる' },
+      { key: 'ra-nuki:寝れる', label: '寝れる' },
+      { key: 'ra-nuki:来れる', label: '来れる' },
+      { key: 'ra-nuki:見れる', label: '見れる' },
+    ])
+  })
 })

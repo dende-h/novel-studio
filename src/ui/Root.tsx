@@ -51,6 +51,7 @@ import {
   createDefaultNameDismissalRepository,
   createDefaultPlotRepository,
   createDefaultProofreadRepository,
+  createDefaultProofreadRulesRepository,
   createDefaultStagingRepository,
   createDefaultStructureRepository,
 } from './store/createDefaultStore'
@@ -196,6 +197,16 @@ function RootRoutes({ store }: RootProps) {
   const nameDismissalRepo = useMemo(
     () =>
       withSyncTouch(createDefaultNameDismissalRepository(), ['save', 'removeById', 'removeByWork']),
+    [],
+  )
+  // 推敲の作品の決まり（COT-62）も外した語と同じ。決まりを足す・戻すたびに push の契機を作る。
+  const proofreadRulesRepo = useMemo(
+    () =>
+      withSyncTouch(createDefaultProofreadRulesRepository(), [
+        'save',
+        'removeById',
+        'removeByWork',
+      ]),
     [],
   )
   // 持ち込みゲーム素材（背景画像）。純ローカル＝同期に載せないので sync-touch は不要。
@@ -467,6 +478,7 @@ function RootRoutes({ store }: RootProps) {
           gameAssetRepo={gameAssetRepo}
           proofreadRepo={proofreadRepo}
           nameDismissalRepo={nameDismissalRepo}
+          proofreadRulesRepo={proofreadRulesRepo}
           canUseStructure={canUseCreativeTools}
           ideaRepo={ideaRepo}
         />

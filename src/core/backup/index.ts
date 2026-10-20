@@ -7,6 +7,7 @@ import { type Plot, PlotSchema } from '../plot'
 import { type Profile, ProfileSchema } from '../profile'
 import { type ProofreadRecord, ProofreadRecordSchema } from '../proofread/decisions'
 import { type NameDismissals, NameDismissalsSchema } from '../proofread/name-dismissals'
+import { type ProofreadRules, ProofreadRulesSchema } from '../proofread/work-rules'
 import { type Work, WorkSchema } from '../schema'
 import { type Structure, StructureSchema } from '../structure'
 
@@ -48,12 +49,21 @@ const CloudBackupSchema = z.object({
    * null は deserializeBackup で取り除く。
    */
   nameDismissals: z.array(NameDismissalsSchema.nullable().catch(null)).optional().default([]),
+  /**
+   * 推敲の作品の決まり（COT-62・作品ごと・例外／表記の好み／提案しない言葉）。旧バックアップには
+   * 無いので既定 []。壊れた要素は外した語と同じく null にして deserializeBackup で捨てる。
+   */
+  proofreadRules: z.array(ProofreadRulesSchema.nullable().catch(null)).optional().default([]),
   /** 持ち込みのゲーム素材（背景画像）。旧バックアップには無いので既定 []。 */
   gameAssets: z.array(UserGameAssetSchema).optional().default([]),
 })
-/** 検証後の全体バックアップ。外した語は壊れた要素（null）を取り除いた後の形。 */
-export type CloudBackup = Omit<z.infer<typeof CloudBackupSchema>, 'nameDismissals'> & {
+/** 検証後の全体バックアップ。外した語・作品の決まりは壊れた要素（null）を取り除いた後の形。 */
+export type CloudBackup = Omit<
+  z.infer<typeof CloudBackupSchema>,
+  'nameDismissals' | 'proofreadRules'
+> & {
   nameDismissals: NameDismissals[]
+  proofreadRules: ProofreadRules[]
 }
 
 /** バックアップ対象のローカル全状態。 */
@@ -68,6 +78,7 @@ export interface BackupState {
   stagings: Staging[]
   proofreads: ProofreadRecord[]
   nameDismissals: NameDismissals[]
+  proofreadRules: ProofreadRules[]
   gameAssets: UserGameAsset[]
 }
 
@@ -83,6 +94,7 @@ export function deserializeBackup(json: string): CloudBackup {
   return {
     ...parsed,
     nameDismissals: parsed.nameDismissals.filter((r): r is NameDismissals => r !== null),
+    proofreadRules: parsed.proofreadRules.filter((r): r is ProofreadRules => r !== null),
   }
 }
 
