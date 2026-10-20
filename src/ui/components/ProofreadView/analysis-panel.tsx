@@ -86,7 +86,7 @@ export function AnalysisPanel({
               ))}
             </ol>
             <p className="mt-1.5 text-[11px] text-on-surface-variant">
-              言葉を押すと、この話の本文に点線の枠が付きます。
+              言葉を押すと、この話の本文にマーカーが引かれます。
             </p>
           </>
         )}

@@ -77,7 +77,7 @@ export function ProofreadText({ blocks, marks, activeKey, word, onSelect }: Proo
                   <span
                     key={segKey}
                     data-word-mark=""
-                    className="rounded-sm outline-1 outline-primary outline-offset-1 outline-dotted"
+                    className="box-decoration-clone bg-[linear-gradient(transparent_55%,var(--word-marker)_55%)]"
                   >
                     {s.text}
                   </span>

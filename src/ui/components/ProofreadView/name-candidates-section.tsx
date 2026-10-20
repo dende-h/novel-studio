@@ -8,7 +8,7 @@ interface NameCandidatesSectionProps {
   candidates: ReadonlyArray<NameCandidate> | null | 'error'
   /** 外した語（外した順）。 */
   dismissed: ReadonlyArray<string>
-  /** 本文に点線の枠を付けている語（よく使う言葉と共用）。 */
+  /** 本文にマーカーを引いている語（よく使う言葉と共用）。 */
   selected: string | null
   /** その名前がいま開いている話に出てくるか。 */
   inThisEpisode: (name: string) => boolean
@@ -162,7 +162,7 @@ export function NameCandidatesSection({
           <p className="mt-1.5 text-[11px] text-on-surface-variant">
             {selected && candidates.some((c) => c.name === selected) && !inThisEpisode(selected)
               ? 'この話には出てきません。'
-              : '名前を押すと、この話の本文に点線の枠が付きます。'}
+              : '名前を押すと、この話の本文にマーカーが引かれます。'}
           </p>
         </>
       )}

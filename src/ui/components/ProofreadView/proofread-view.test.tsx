@@ -436,14 +436,16 @@ describe('用語集に無い名前（COT-59）', () => {
     expect(screen.getByRole('button', { name: 'リリアーナを外す' })).toBeInTheDocument()
   })
 
-  it('名前を押すと本文に点線の枠が付き、もう一度で消える。この話に無い名前なら補足が替わる', async () => {
+  it('名前を押すと本文にマーカーが引かれ、もう一度で消える。この話に無い名前なら補足が替わる', async () => {
     const { container } = await openNames()
     fireEvent.click(nameButton('湊斗'))
     expect(nameButton('湊斗')).toHaveAttribute('aria-pressed', 'true')
     expect([...container.querySelectorAll('[data-word-mark]')].map((el) => el.textContent)).toEqual(
       ['湊斗', '湊斗'],
     )
-    expect(screen.getByText('名前を押すと、この話の本文に点線の枠が付きます。')).toBeInTheDocument()
+    expect(
+      screen.getByText('名前を押すと、この話の本文にマーカーが引かれます。'),
+    ).toBeInTheDocument()
     fireEvent.click(nameButton('湊斗'))
     expect(container.querySelectorAll('[data-word-mark]')).toHaveLength(0)
     fireEvent.click(nameButton('レオンハルト'))
