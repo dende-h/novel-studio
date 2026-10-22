@@ -609,6 +609,24 @@ export function Library({
             ))}
           </div>
         </fieldset>
+        {/* 書きためた原稿から作る入口（データ管理の「テキストから作品を作る」と同じダイアログ） */}
+        <div className="flex flex-wrap items-center justify-between gap-3 border-outline-variant/30 border-t pt-4">
+          <p className="text-on-surface-variant text-xs">
+            書きためた原稿があるときは、.txt や貼り付けた本文から作れます。
+          </p>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              setNewOpen(false)
+              setTextImportOpen(true)
+            }}
+          >
+            <FileText className="size-4" />
+            テキストから作る
+          </Button>
+        </div>
       </TitlePromptDialog>
       <ExportDialog
         open={exportOpen}

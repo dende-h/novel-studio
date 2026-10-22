@@ -50,7 +50,8 @@ export function HelpPage() {
       <Section title="基本の使い方">
         <div className="rounded-lg border border-outline-variant/30 bg-surface-container-lowest px-4 py-1">
           <HowTo term="作品をつくる">
-            マイライブラリの「新規プロジェクト」から作品を作成します。タイトルはあとから変更できます。
+            マイライブラリの「新規プロジェクト」から作品を作成します。タイトルはあとから変更できます。書きためた原稿は、同じ画面の「テキストから作る」で
+            .txt や貼り付けた本文から作品にできます。
           </HowTo>
           <HowTo term="本文を書く">
             作品を開いて「本文を書く」へ。話（エピソード）ごとに分けて執筆でき、書いた内容はこの端末に自動保存されます。
