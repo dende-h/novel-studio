@@ -35,3 +35,20 @@ export function frequentWords(
       per10k: totalChars > 0 ? Math.round((count / totalChars) * 100000) / 10 : 0,
     }))
 }
+
+const NO_EXCLUDED: ReadonlySet<string> = new Set()
+
+/**
+ * その語（原形）が出る箇所を段落ごとに返す（本文のマーカー用）。数えた語と同じ判定で拾うので、
+ * 活用した形（「小さい」→「小さく」）にも付き、別の語の一部（「ふと」→「ふとん」）には付かない。
+ */
+export function frequentWordRanges(
+  tokensByBlock: ReadonlyArray<ReadonlyArray<MorphToken>>,
+  base: string,
+): { start: number; end: number }[][] {
+  return tokensByBlock.map((tokens) =>
+    tokens
+      .filter((t) => t.base === base && isFrequentTarget(t, NO_EXCLUDED))
+      .map((t) => ({ start: t.start, end: t.end })),
+  )
+}

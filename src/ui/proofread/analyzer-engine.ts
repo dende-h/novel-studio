@@ -124,6 +124,7 @@ export function createAnalyzerEngine(
       const nameSources: NameSourceEpisode[] = []
       let current: MorphToken[][] = []
       let totalChars = 0
+      let currentChars = 0
       const seen = new Set<string>()
       episodes.forEach((ep, i) => {
         const key = `${ep.id}:${ep.hash}`
@@ -135,8 +136,12 @@ export function createAnalyzerEngine(
         }
         blocksOfWork.push(...tokens)
         nameSources.push({ texts: ep.texts, tokens, rubies: ep.rubies, refs: ep.refs })
-        if (ep.id === currentId) current = tokens
-        for (const t of ep.texts) totalChars += countChars(t)
+        const chars = ep.texts.reduce((sum, t) => sum + countChars(t), 0)
+        if (ep.id === currentId) {
+          current = tokens
+          currentChars = chars
+        }
+        totalChars += chars
         onProgress?.(i + 1, episodes.length)
       })
       for (const key of cache.keys()) if (!seen.has(key)) cache.delete(key)
@@ -144,6 +149,7 @@ export function createAnalyzerEngine(
         currentTokens: current,
         workVariants: countAutoVariants(blocksOfWork, excluded),
         frequent: frequentWords(blocksOfWork, totalChars, excluded),
+        frequentCurrent: frequentWords(current, currentChars, excluded),
         names: findNameCandidates(nameSources, excluded, (base, reading) => {
           // ルビの親文字が辞書の1語で、読みがルビと同じなら読み仮名（候補にしない）
           const t = toMorphTokens(tokenize(base), base)

@@ -24,6 +24,7 @@ const result = {
   currentTokens: [],
   workVariants: { groups: [], groupOf: {} },
   frequent: [],
+  frequentCurrent: [],
   names: [],
 }
 

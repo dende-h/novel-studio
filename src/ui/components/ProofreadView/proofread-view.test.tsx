@@ -54,6 +54,7 @@ function fakeAnalyzer(result: Partial<AnalysisResult> = {}) {
       currentTokens: [],
       workVariants: { groups: [], groupOf: {} },
       frequent: [],
+      frequentCurrent: [],
       names: [],
       ...result,
     })),
@@ -204,7 +205,7 @@ describe('ProofreadView（推敲画面・COT-40）', () => {
     const analyzer = fakeAnalyzer({
       currentTokens: tokens,
       workVariants: countAutoVariants([], new Set()),
-      frequent: frequentWords([freqTokens], 10000, new Set()),
+      frequentCurrent: frequentWords([freqTokens], 10000, new Set()),
     })
     await renderView(work([{ id: 'e1', title: '第一話', body: RA }]), { analyzer })
     expect(screen.queryByRole('button', { name: /本文で見る：ら抜き言葉/ })).toBeNull()
@@ -219,6 +220,53 @@ describe('ProofreadView（推敲画面・COT-40）', () => {
     fireEvent.click(screen.getByRole('button', { name: /ふと/ }))
     expect(screen.getByRole('button', { name: /ふと/ })).toHaveAttribute('aria-pressed', 'true')
     expect(screen.getByText('セリフと地の文')).toBeInTheDocument()
+  })
+
+  it('よく使う言葉は「この話」で始まり、「作品全体」に切り替えられる。作品全体でこの話に無い語を選ぶと補足が替わる', async () => {
+    const analyzer = fakeAnalyzer({
+      currentTokens: [sampleTokens(FREQ)],
+      frequentCurrent: frequentWords([sampleTokens(FREQ)], 10000, new Set()),
+      frequent: [
+        { base: 'とても', count: 9, per10k: 3 },
+        { base: 'ふと', count: 4, per10k: 1.3 },
+      ],
+    })
+    await renderView(work([{ id: 'e1', title: '第一話', body: FREQ }]), { analyzer })
+    await act(async () => analyzer.set({ status: 'ready', work: null }))
+    await act(async () => {})
+    fireEvent.click(screen.getByRole('tab', { name: '分析' }))
+    const scope = (name: string) => screen.getByRole('button', { name })
+    expect(scope('この話')).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.queryByRole('button', { name: /とても/ })).toBeNull()
+    expect(screen.getByRole('button', { name: /ゆっくり/ })).toBeInTheDocument()
+    fireEvent.click(scope('作品全体'))
+    expect(scope('作品全体')).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.queryByRole('button', { name: /ゆっくり/ })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: /とても/ }))
+    expect(screen.getByText('この話には出てきません。')).toBeInTheDocument()
+    // この話の一覧に無い語の選択は、切り替えると外れる
+    fireEvent.click(scope('この話'))
+    expect(screen.queryByText('この話には出てきません。')).toBeNull()
+    expect(screen.getByRole('button', { name: /ふと/ })).toHaveAttribute('aria-pressed', 'false')
+  })
+
+  it('よく使う言葉の印は解析の語の位置に付く（活用した形にも付く）', async () => {
+    const analyzer = fakeAnalyzer({
+      currentTokens: [sampleTokens(FREQ)],
+      frequentCurrent: frequentWords([sampleTokens(FREQ)], 10000, new Set()),
+    })
+    const { container } = await renderView(work([{ id: 'e1', title: '第一話', body: FREQ }]), {
+      analyzer,
+    })
+    await act(async () => analyzer.set({ status: 'ready', work: null }))
+    await act(async () => {})
+    fireEvent.click(screen.getByRole('tab', { name: '分析' }))
+    const marks = () =>
+      [...container.querySelectorAll('[data-word-mark]')].map((el) => el.textContent)
+    fireEvent.click(screen.getByRole('button', { name: /小さい/ }))
+    expect(marks()).toEqual(['小さく'])
+    fireEvent.click(screen.getByRole('button', { name: /ふと/ }))
+    expect(marks()).toEqual(['ふと', 'ふと'])
   })
 
   it('準備に失敗したら、くわしい確認は使えない旨ともう一度試すを出し、ほかの項目は動き続ける', async () => {
@@ -455,7 +503,7 @@ describe('用語集に無い名前（COT-59）', () => {
   it('よく使う言葉を選んでいるときに名前を押すと、言葉の選択が外れる', async () => {
     const analyzer = fakeAnalyzer({
       names: NAMES,
-      frequent: frequentWords([sampleTokens(FREQ)], 10000, new Set()),
+      frequentCurrent: frequentWords([sampleTokens(FREQ)], 10000, new Set()),
     })
     await renderView(work([{ id: 'e1', title: '第一話', body: NAME_BODY }]), { analyzer })
     await act(async () => analyzer.set({ status: 'ready', work: null }))

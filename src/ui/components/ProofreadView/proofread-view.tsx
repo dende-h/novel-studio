@@ -5,6 +5,7 @@ import {
   createVariantCountCache,
   type DialogueRatio,
   dialogueRatio,
+  frequentWordRanges,
   inlineSignalsOf,
   type NameCandidate,
   proofreadNovel,
@@ -49,7 +50,7 @@ import type { MorphAnalyzerClient } from '@/ui/proofread/analyzer-client'
 import { textsHash } from '@/ui/proofread/analyzer-engine'
 import type { AnalysisResult } from '@/ui/proofread/protocol'
 import { subscribeSyncApplied } from '@/ui/sync/sync-touch'
-import { AnalysisPanel } from './analysis-panel'
+import { AnalysisPanel, type FrequentScope } from './analysis-panel'
 import { type FindingFilter, FindingList } from './finding-list'
 import { NameCandidatesSection } from './name-candidates-section'
 import { ProofreadText } from './proofread-text'
@@ -131,7 +132,9 @@ export function ProofreadView({
   const [filter, setFilter] = useState<FindingFilter>('pending')
   const [tab, setTab] = useState<'findings' | 'analysis'>('findings')
   const [activeKey, setActiveKey] = useState<string | null>(null)
-  const [word, setWord] = useState<string | null>(null)
+  // 分析タブで選んだ語。名前の候補は文字列で、よく使う言葉は解析のトークンで本文に印を付ける
+  const [word, setWord] = useState<{ text: string; from: 'name' | 'frequent' } | null>(null)
+  const [frequentScope, setFrequentScope] = useState<FrequentScope>('episode')
   // 「確認する項目」は開いた状態で始める（何を確かめるかを作者が選ぶ）
   const [rulesOpen, setRulesOpen] = useState(true)
   // 作品の決まり（COT-62）。一覧の欄は閉じた状態で始める
@@ -325,8 +328,21 @@ export function ProofreadView({
   )
   const currentRatio = ratios.find((r) => r.id === episode?.id)?.ratio ?? ZERO
   const workRatio = ratios.reduce((sum, r) => addRatio(sum, r.ratio), ZERO)
-  const frequent =
-    analyzer.status === 'error' ? 'error' : ready && analysis ? analysis.frequent : null
+  // よく使う言葉。「この話」は推敲の単位に合わせた既定。解析し直している間（別の話の結果）は準備中にする
+  const frequentOf = (scope: FrequentScope) =>
+    scope === 'work' ? (analysis?.frequent ?? null) : (morph && analysis?.frequentCurrent) || null
+  const frequent = analyzer.status === 'error' ? 'error' : ready ? frequentOf(frequentScope) : null
+  const wordRanges = useMemo(
+    () => (word?.from === 'frequent' && morph ? frequentWordRanges(morph.tokens, word.text) : null),
+    [word, morph],
+  )
+  const changeFrequentScope = (scope: FrequentScope) => {
+    setFrequentScope(scope)
+    // 選んでいた言葉が切り替えた先の一覧に無ければ、選択を外す（一覧に無い語の印を残さない）
+    if (word?.from === 'frequent' && !frequentOf(scope)?.some((w) => w.base === word.text)) {
+      setWord(null)
+    }
+  }
 
   // 用語集に無い名前（COT-59）。用語集が変わると解析器は作り直されるが、その間も前回の結果を
   // いまの用語集と外した語で絞って出し続ける（準備中にするのは、まだ一度も結果が無いときだけ）。
@@ -345,7 +361,7 @@ export function ProofreadView({
   const inThisEpisode = (name: string) =>
     episode?.blocks.some((b) => plainTextOfBlock(b).includes(name)) ?? false
   const dismiss = (name: string) => {
-    if (word === name) setWord(null)
+    if (word?.text === name) setWord(null)
     void saveDismissals(dismissName(dismissals, work.id, name, now()))
   }
   const restore = (name: string) => {
@@ -448,7 +464,8 @@ export function ProofreadView({
               blocks={episode.blocks}
               marks={marks}
               activeKey={activeKey}
-              word={tab === 'analysis' ? word : null}
+              word={tab === 'analysis' && word?.from === 'name' ? word.text : null}
+              wordRanges={tab === 'analysis' ? wordRanges : null}
               onSelect={selectFromText}
             />
           )}
@@ -545,17 +562,20 @@ export function ProofreadView({
                   <NameCandidatesSection
                     candidates={names}
                     dismissed={dismissedWords}
-                    selected={word}
+                    selected={word?.from === 'name' ? word.text : null}
                     inThisEpisode={inThisEpisode}
-                    onSelect={setWord}
+                    onSelect={(name) => setWord(name ? { text: name, from: 'name' } : null)}
                     onRegister={register}
                     onDismiss={dismiss}
                     onRestore={restore}
                   />
                 }
                 frequent={frequent}
-                word={word}
-                onWord={setWord}
+                scope={frequentScope}
+                onScope={changeFrequentScope}
+                word={word?.from === 'frequent' ? word.text : null}
+                wordInEpisode={wordRanges?.some((r) => r.length > 0) ?? false}
+                onWord={(base) => setWord(base ? { text: base, from: 'frequent' } : null)}
                 current={currentRatio}
                 work={workRatio}
                 episodes={ratios}

@@ -20,7 +20,7 @@ export { addRatio, dialoguePercent, dialogueRatio } from './dialogue-ratio'
 export type { AutoVariantCounts } from './morph/auto-variant'
 export { countAutoVariants, emptyAutoVariants } from './morph/auto-variant'
 export type { FrequentWord } from './morph/frequent-words'
-export { frequentWords } from './morph/frequent-words'
+export { frequentWordRanges, frequentWords } from './morph/frequent-words'
 export type {
   KnownReading,
   NameCandidate,

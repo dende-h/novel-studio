@@ -10,8 +10,10 @@ interface ProofreadTextProps {
   /** 印を付ける指摘（「このまま」は渡さない＝印なし）。 */
   marks: ReadonlyArray<{ finding: FindingN; state: MarkState }>
   activeKey: string | null
-  /** よく使う言葉の印（分析タブで選んだ語）。 */
+  /** 本文から文字列で探して印を付ける語（分析タブで選んだ名前の候補）。 */
   word: string | null
+  /** 位置で印を付ける箇所（段落ごと・分析タブで選んだよく使う言葉。解析のトークンから作る）。 */
+  wordRanges?: ReadonlyArray<ReadonlyArray<{ start: number; end: number }>> | null
   onSelect: (finding: FindingN) => void
 }
 
@@ -25,12 +27,16 @@ function segmentsOf(
   text: string,
   marks: ReadonlyArray<{ finding: FindingN; state: MarkState }>,
   word: string | null,
+  wordRanges: ReadonlyArray<{ start: number; end: number }> | undefined,
 ): Segment[] {
   const ranges: { start: number; end: number; seg: Segment }[] = marks.map((m) => ({
     start: m.finding.start,
     end: m.finding.end,
     seg: { kind: 'finding', text: '', finding: m.finding, state: m.state },
   }))
+  for (const w of wordRanges ?? []) {
+    ranges.push({ start: w.start, end: w.end, seg: { kind: 'word', text: '' } })
+  }
   if (word) {
     let at = text.indexOf(word)
     while (at !== -1) {
@@ -52,7 +58,14 @@ function segmentsOf(
 }
 
 /** 推敲画面の本文（読むだけ）。段落ごとに記法を解いた文字で描き、指摘に印を付ける（COT-40）。 */
-export function ProofreadText({ blocks, marks, activeKey, word, onSelect }: ProofreadTextProps) {
+export function ProofreadText({
+  blocks,
+  marks,
+  activeKey,
+  word,
+  wordRanges,
+  onSelect,
+}: ProofreadTextProps) {
   return (
     <div className="preview mx-auto max-w-3xl space-y-1 font-serif text-[16px] text-on-surface leading-[2.1]">
       {blocks.map((block, i) => {
@@ -69,7 +82,7 @@ export function ProofreadText({ blocks, marks, activeKey, word, onSelect }: Proo
               activeHere && 'bg-surface-container-low',
             )}
           >
-            {segmentsOf(text, mine, word).map((s, k) => {
+            {segmentsOf(text, mine, word, wordRanges?.[i]).map((s, k) => {
               const segKey = `${i}-${k}`
               if (s.kind === 'text') return <span key={segKey}>{s.text}</span>
               if (s.kind === 'word') {

@@ -59,6 +59,7 @@ run('解析の本体（実物の lindera と辞書）', () => {
     const group = r.workVariants.groups.find((g) => g.forms.some((f) => f.base === '子供'))
     expect(group?.forms.map((f) => f.base).sort()).toEqual(['子ども', '子供'])
     expect(r.frequent[0]).toMatchObject({ base: 'ふと', count: 2 })
+    expect(r.frequentCurrent[0]).toMatchObject({ base: 'ふと', count: 1 })
   })
 })
 

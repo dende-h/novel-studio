@@ -21,7 +21,10 @@ export interface AnalysisResult {
   /** いまの話のトークン（段落ごと）。作品全体のトークンは Worker の中だけに持つ。 */
   currentTokens: MorphToken[][]
   workVariants: AutoVariantCounts
+  /** よく使う言葉（作品全体）。 */
   frequent: FrequentWord[]
+  /** よく使う言葉（いまの話）。 */
+  frequentCurrent: FrequentWord[]
   /** 用語集に無い名前の候補（作品全体・COT-59）。用語集の語は除いてある。 */
   names: NameCandidate[]
 }

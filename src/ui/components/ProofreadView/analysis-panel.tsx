@@ -3,12 +3,19 @@ import type { DialogueRatio, FrequentWord } from '@/core/proofread'
 import { dialoguePercent } from '@/core/proofread'
 import { cn } from '@/lib/utils'
 
+export type FrequentScope = 'episode' | 'work'
+
 interface AnalysisPanelProps {
   /** 先頭に置く欄（用語集に無い名前・COT-59）。 */
   names?: ReactNode
   /** null＝くわしい確認がまだ（準備中・作品全体を解析中）、'error'＝使えない。 */
   frequent: ReadonlyArray<FrequentWord> | null | 'error'
+  /** よく使う言葉を数える範囲（この話／作品全体）。 */
+  scope: FrequentScope
+  onScope: (scope: FrequentScope) => void
   word: string | null
+  /** 選んだ言葉がこの話に出てくるか（作品全体で選んだときの補足に使う）。 */
+  wordInEpisode: boolean
   onWord: (base: string | null) => void
   current: DialogueRatio
   work: DialogueRatio
@@ -16,6 +23,11 @@ interface AnalysisPanelProps {
 }
 
 const fmt = (n: number) => n.toLocaleString('ja-JP')
+
+const SCOPES = [
+  ['episode', 'この話'],
+  ['work', '作品全体'],
+] as const
 
 function RatioRow({ label, ratio }: { label: string; ratio: DialogueRatio }) {
   const pct = dialoguePercent(ratio)
@@ -38,7 +50,10 @@ function RatioRow({ label, ratio }: { label: string; ratio: DialogueRatio }) {
 export function AnalysisPanel({
   names,
   frequent,
+  scope,
+  onScope,
   word,
+  wordInEpisode,
   onWord,
   current,
   work,
@@ -48,9 +63,28 @@ export function AnalysisPanel({
     <div className="space-y-6">
       {names}
       <section>
-        <h3 className="mb-1 font-medium text-on-surface text-xs">
-          よく使う言葉（作品全体・副詞と形容詞）
-        </h3>
+        <div className="mb-1 flex items-center justify-between gap-2">
+          <h3 className="font-medium text-on-surface text-xs">よく使う言葉（副詞と形容詞）</h3>
+          <fieldset className="flex gap-1 border-0 p-0">
+            <legend className="sr-only">よく使う言葉を数える範囲</legend>
+            {SCOPES.map(([key, label]) => (
+              <button
+                key={key}
+                type="button"
+                aria-pressed={scope === key}
+                onClick={() => onScope(key)}
+                className={cn(
+                  'rounded-full px-2.5 py-0.5 font-medium text-[11px] transition-colors',
+                  scope === key
+                    ? 'bg-primary text-primary-foreground'
+                    : 'border border-outline-variant/40 bg-surface-container-lowest text-on-surface-variant hover:bg-surface-container-high',
+                )}
+              >
+                {label}
+              </button>
+            ))}
+          </fieldset>
+        </div>
         {frequent === 'error' ? (
           <p className="py-3 text-on-surface-variant text-xs">くわしい確認は、いまは使えません。</p>
         ) : frequent === null ? (
@@ -58,7 +92,11 @@ export function AnalysisPanel({
             くわしい確認の準備ができると表示します。
           </p>
         ) : frequent.length === 0 ? (
-          <p className="py-3 text-on-surface-variant text-xs">まだ数えられる言葉がありません。</p>
+          <p className="py-3 text-on-surface-variant text-xs">
+            {scope === 'episode'
+              ? 'この話には数えられる言葉がありません。'
+              : 'まだ数えられる言葉がありません。'}
+          </p>
         ) : (
           <>
             <ol className="space-y-0.5">
@@ -86,7 +124,9 @@ export function AnalysisPanel({
               ))}
             </ol>
             <p className="mt-1.5 text-[11px] text-on-surface-variant">
-              言葉を押すと、この話の本文にマーカーが引かれます。
+              {word && !wordInEpisode
+                ? 'この話には出てきません。'
+                : '言葉を押すと、この話の本文にマーカーが引かれます。'}
             </p>
           </>
         )}

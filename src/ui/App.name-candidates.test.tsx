@@ -60,6 +60,7 @@ vi.mock('@/ui/proofread/analyzer-client', async (importOriginal) => {
           currentTokens: [],
           workVariants: { groups: [], groupOf: {} },
           frequent: [],
+          frequentCurrent: [],
           names: CANDIDATES,
         }),
       }
