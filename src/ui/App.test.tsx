@@ -1,13 +1,19 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ProfileRepository } from '../core/profile'
+import { proofreadNovel } from '../core/proofread'
+import { decide, withNth } from '../core/proofread/decisions'
+import { NOVEL_RULES } from '../core/proofread/types'
 import { SnapshotRepository } from '../core/snapshot/snapshotRepository'
 import { ActivityRepository } from '../core/storage/activityRepository'
 import { MemoryStore } from '../core/storage/memoryStore'
+import { ProofreadRepository } from '../core/storage/proofreadRepository'
 import { StructureRepository } from '../core/storage/structureRepository'
 import type { KeyValueStore } from '../core/storage/types'
 import { WorkRepository } from '../core/storage/workRepository'
 import { App } from './App'
+import { ToastProvider } from './components/Toast/toast'
+import { reloadProofreadPrefs } from './hooks/use-proofread-prefs'
 import { createEditorStore, type EditorStore } from './store/editorStore'
 
 const makeStore = (kv: KeyValueStore = new MemoryStore()): EditorStore => {
@@ -421,5 +427,130 @@ describe('App の掲示板導線', () => {
   it('onNavigateBoard を渡さなければ行を出さない（行き先の無い行を作らない）', () => {
     render(<App store={makeStore()} />)
     expect(screen.queryByRole('button', { name: '掲示板' })).toBeNull()
+  })
+})
+
+describe('App（推敲画面と「直す箇所」・COT-40）', () => {
+  const setWidth = (width: number) => {
+    const { happyDOM } = window as unknown as {
+      happyDOM: { setViewport: (v: { width: number }) => void }
+    }
+    act(() => {
+      happyDOM.setViewport({ width })
+    })
+  }
+  // 推敲画面の「確認する項目」は既定で何も選ばれていないので、すべて選んだ状態から始める
+  beforeEach(() => {
+    localStorage.setItem('ns-proofread-on', JSON.stringify(NOVEL_RULES.map((r) => r.id)))
+    reloadProofreadPrefs()
+  })
+  afterEach(() => {
+    setWidth(1280)
+    localStorage.removeItem('ns-proofread-on')
+    reloadProofreadPrefs()
+  })
+
+  /** 本文を保存し、全指摘を「直す」にした判断を置く。 */
+  const seedWithFix = async (kv: KeyValueStore, bodies: string[]) => {
+    const store = makeStore(kv)
+    await store.createWork('作品ワン')
+    for (const [i, body] of bodies.entries()) {
+      await store.createEpisode(`第${i + 1}話`)
+      store.setDraft(body)
+      await store.save()
+    }
+    const repo = new ProofreadRepository(kv)
+    const work = store.getSnapshot().work
+    for (const ep of work?.episodes ?? []) {
+      const fs = withNth(proofreadNovel(ep.blocks))
+      if (fs.length > 0) {
+        await repo.save(
+          decide(undefined, { workId: work?.id ?? '', episodeId: ep.id }, fs, 'fix', 1, ep.blocks),
+        )
+      }
+    }
+    return { store, repo, work }
+  }
+
+  it('無料・有料（canUseStructure）の小説で、広い画面なら「推敲」の行が出る。ゲスト・狭幅・脚本では出ない', async () => {
+    const kv = new MemoryStore()
+    const { store, repo } = await seedWithFix(kv, ['　夜だった。'])
+    const { unmount } = render(<App store={store} proofreadRepo={repo} canUseStructure />)
+    expect(await screen.findByRole('button', { name: '推敲' })).toBeInTheDocument()
+    unmount()
+    const guest = render(<App store={store} proofreadRepo={repo} />)
+    await screen.findByRole('textbox', { name: '本文' })
+    expect(screen.queryByRole('button', { name: '推敲' })).toBeNull()
+    guest.unmount()
+    setWidth(390)
+    const narrow = render(<App store={store} proofreadRepo={repo} canUseStructure />)
+    await screen.findByRole('textbox', { name: '本文' })
+    expect(screen.queryByRole('button', { name: '推敲' })).toBeNull()
+    narrow.unmount()
+    setWidth(1280)
+    const scriptStore = makeStore(new MemoryStore())
+    await scriptStore.createWork('脚本', 'script')
+    await scriptStore.createEpisode('第一話')
+    render(<App store={scriptStore} proofreadRepo={repo} canUseStructure />)
+    await screen.findByRole('textbox', { name: '本文' })
+    expect(scriptStore.getSnapshot().work?.format).toBe('script')
+    expect(screen.queryByRole('button', { name: '推敲' })).toBeNull()
+  })
+
+  it('推敲へ入るときは未保存の本文を先に保存する。保存に失敗したら移らずトースト', async () => {
+    const kv = new MemoryStore()
+    const { store, repo } = await seedWithFix(kv, ['　夜だった。'])
+    render(
+      <ToastProvider>
+        <App store={store} proofreadRepo={repo} canUseStructure />
+      </ToastProvider>,
+    )
+    const ta = await screen.findByRole('textbox', { name: '本文' })
+    fireEvent.change(ta, { target: { value: '　朝だった。' } })
+    const save = vi.spyOn(store, 'save')
+    fireEvent.click(screen.getByRole('button', { name: '推敲' }))
+    await waitFor(() => expect(screen.queryByRole('textbox', { name: '本文' })).toBeNull())
+    expect(save).toHaveBeenCalled()
+    expect(store.getSnapshot().dirty).toBe(false)
+
+    fireEvent.click(screen.getByRole('button', { name: '本文を書く' }))
+    await screen.findByRole('textbox', { name: '本文' })
+    save.mockRejectedValueOnce(new Error('disk'))
+    fireEvent.click(screen.getByRole('button', { name: '推敲' }))
+    expect(
+      await screen.findByText(/保存できませんでした。下書きは残っています/),
+    ).toBeInTheDocument()
+    expect(screen.getByRole('textbox', { name: '本文' })).toBeInTheDocument()
+  })
+
+  it('「直す箇所」は件数を出し、選ぶと本文を選択し、直すと件数が減る（PC・スマホとも）', async () => {
+    const kv = new MemoryStore()
+    const { store, repo } = await seedWithFix(kv, ['「待って。」光がが揺れた'])
+    render(<App store={store} proofreadRepo={repo} />)
+    const button = await screen.findByRole('button', { name: /直すと決めた箇所 \d件/ })
+    expect(button).toHaveAccessibleName('直すと決めた箇所 2件')
+    fireEvent.click(button)
+    fireEvent.click(screen.getByRole('button', { name: 'その箇所へ移る：同じ語の連続「がが」' }))
+    const ta = screen.getByRole('textbox', { name: '本文' }) as HTMLTextAreaElement
+    await waitFor(() => expect(ta.value.slice(ta.selectionStart, ta.selectionEnd)).toBe('がが'))
+    fireEvent.change(ta, { target: { value: '「待って」光がが揺れた' } })
+    expect(await screen.findByRole('button', { name: '直すと決めた箇所 1件' })).toBeInTheDocument()
+    setWidth(390)
+    expect(screen.getByRole('button', { name: '直すと決めた箇所 1件' })).toBeInTheDocument()
+  })
+
+  it('本文で直す：別の話の指摘なら、その話を開いてから選ぶ', async () => {
+    const kv = new MemoryStore()
+    const { store, repo, work } = await seedWithFix(kv, ['　夜だった。', '　光がが揺れた。'])
+    store.openEpisode(work?.episodes[0]?.id ?? '')
+    render(<App store={store} proofreadRepo={repo} canUseStructure />)
+    fireEvent.click(await screen.findByRole('button', { name: '推敲' }))
+    const select = await screen.findByRole('combobox', { name: /話/ })
+    fireEvent.change(select, { target: { value: work?.episodes[1]?.id } })
+    fireEvent.click(await screen.findByRole('button', { name: '直す 1' }))
+    fireEvent.click(await screen.findByRole('button', { name: '本文で直す' }))
+    const ta = (await screen.findByRole('textbox', { name: '本文' })) as HTMLTextAreaElement
+    expect(store.getSnapshot().currentEpisodeId).toBe(work?.episodes[1]?.id)
+    await waitFor(() => expect(ta.value.slice(ta.selectionStart, ta.selectionEnd)).toBe('がが'))
   })
 })

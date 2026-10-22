@@ -1,0 +1,389 @@
+<title>推敲の決まり</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;600;700&family=Noto+Serif+JP:wght@400;500&display=swap">
+<style>
+/* レイアウト：仕様の読み物（上）＋「現状スクショ｜変更後モック」。モックはアプリのトークン（src/ui/index.css）を写す */
+:root {
+  --background: #fdfcfb;
+  --foreground: #4b5160;
+  --card: #fefeff;
+  --primary: #2c5b27;
+  --primary-foreground: #ffffff;
+  --border: #e4e6eb;
+  --surface-container-lowest: #fefeff;
+  --surface-container-low: #f9f7f5;
+  --surface-container: #f3f1ec;
+  --surface-container-high: #edeae3;
+  --on-surface: #1f2430;
+  --on-surface-variant: #6b7381;
+  --outline-variant: #9da3ae;
+  --primary-container: #e3ece1;
+  --on-primary-container: #234420;
+  --secondary-container: #f2e6d4;
+  --on-secondary-container: #92703f;
+  --mark: #c08a4a;
+  --doc-bg: #f6f4ef;
+  --doc-rule: #e2ddd2;
+  --badge: #92703f;
+  --shadow: rgba(31, 36, 48, .14);
+  --font-ui: "Noto Sans JP", system-ui, sans-serif;
+  --font-reading: "Noto Serif JP", "Hiragino Mincho ProN", serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --background: #181611; --foreground: #d7d2c8; --card: #201d16; --primary: #44863a; --primary-foreground: #ffffff;
+    --border: #322e26; --surface-container-lowest: #1f1c16; --surface-container-low: #232019; --surface-container: #29251e;
+    --surface-container-high: #322d25; --on-surface: #ece8e1; --on-surface-variant: #a49e92;
+    --outline-variant: #645e53; --primary-container: #294424; --on-primary-container: #cae4c3; --secondary-container: #38301f;
+    --on-secondary-container: #e0c398; --mark: #d9a566; --doc-bg: #12100c; --doc-rule: #2c2820; --badge: #dcbd8e; --shadow: rgba(0, 0, 0, .5);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --background: #181611; --foreground: #d7d2c8; --card: #201d16; --primary: #44863a; --primary-foreground: #ffffff;
+  --border: #322e26; --surface-container-lowest: #1f1c16; --surface-container-low: #232019; --surface-container: #29251e;
+  --surface-container-high: #322d25; --on-surface: #ece8e1; --on-surface-variant: #a49e92;
+  --outline-variant: #645e53; --primary-container: #294424; --on-primary-container: #cae4c3; --secondary-container: #38301f;
+  --on-secondary-container: #e0c398; --mark: #d9a566; --doc-bg: #12100c; --doc-rule: #2c2820; --badge: #dcbd8e; --shadow: rgba(0, 0, 0, .5);
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body { background: var(--doc-bg); color: var(--foreground); font-family: var(--font-ui); line-height: 1.6; }
+.wrap { max-width: 1280px; margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 32px 64px; display: grid; gap: 36px; }
+h1, h2 { color: var(--on-surface); text-wrap: balance; margin: 0; }
+h1 { font-size: 1.6rem; font-weight: 600; }
+h2 { font-size: 1.2rem; font-weight: 600; }
+p { margin: 0; }
+.lead { max-width: 70ch; display: grid; gap: 8px; color: var(--on-surface-variant); }
+.meta { font-size: .8rem; color: var(--on-surface-variant); }
+.num { display: inline-grid; place-items: center; min-width: 1.35em; height: 1.35em; border-radius: 999px; background: var(--badge); color: var(--doc-bg); font-size: .72rem; font-weight: 600; padding-inline: 4px; vertical-align: middle; font-family: var(--font-ui); }
+.legend { display: grid; grid-template-columns: repeat(auto-fit, minmax(290px, 1fr)); gap: 6px 20px; font-size: .85rem; }
+.legend div { display: flex; gap: 8px; align-items: baseline; min-width: 0; }
+section.screen { display: grid; gap: 14px; border-top: 1px solid var(--doc-rule); padding-top: 24px; }
+.pair { display: grid; grid-template-columns: minmax(0, .8fr) minmax(0, 1.2fr); gap: 16px; align-items: start; }
+.col { display: grid; gap: 8px; min-width: 0; }
+.col > .label { font-size: .78rem; letter-spacing: .06em; color: var(--on-surface-variant); }
+.shot { width: 100%; max-width: 100%; border: 1px solid var(--doc-rule); border-radius: 6px; background: var(--card); }
+.note { font-size: .82rem; color: var(--on-surface-variant); background: var(--surface-container-low); border: 1px dashed var(--doc-rule); border-radius: 6px; padding: 10px 12px; }
+.states { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: .8rem; }
+.states button { font: inherit; border: 1px solid var(--doc-rule); background: var(--card); color: var(--foreground); border-radius: 999px; padding: 4px 12px; cursor: pointer; }
+.states button[aria-pressed="true"] { background: var(--primary); border-color: var(--primary); color: var(--primary-foreground); }
+button:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+@media (max-width: 1000px) { .pair { grid-template-columns: 1fr; } }
+
+/* ===== 推敲画面のモック ===== */
+.app { border: 1px solid var(--border); border-radius: 8px; overflow: hidden; background: var(--background); color: var(--foreground); font-size: 13px; position: relative; }
+.pf-head { padding: 12px 16px; border-bottom: 1px solid var(--border); display: grid; gap: 8px; }
+.pf-row { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; }
+.pf-row .t { font-family: var(--font-reading); font-size: 18px; color: var(--primary); }
+.pf-row .s { font-size: 11px; color: var(--on-surface-variant); font-variant-numeric: tabular-nums; }
+.grow { flex: 1; }
+.sel { font: inherit; font-size: 12px; height: 30px; border: 1px solid var(--outline-variant); border-radius: 6px; padding-inline: 8px; background: var(--surface-container-lowest); color: var(--on-surface); }
+.btn { font: inherit; font-size: 12px; height: 30px; padding-inline: 10px; border-radius: 6px; border: 1px solid var(--border); background: var(--card); color: var(--on-surface); cursor: pointer; display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+.btn.primary { background: var(--primary); border-color: var(--primary); color: var(--primary-foreground); }
+.btn.ghost { border-color: transparent; background: transparent; color: var(--on-surface); }
+.btn.ghost:hover { background: var(--surface-container-high); }
+.btn.xs { height: 24px; font-size: 11px; padding-inline: 8px; }
+.btn[aria-expanded="true"] { background: var(--surface-container-high); }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { font: inherit; font-size: 11px; font-weight: 500; border-radius: 999px; padding: 3px 10px; border: 1px solid color-mix(in srgb, var(--outline-variant) 40%, transparent); background: var(--surface-container-lowest); color: var(--on-surface-variant); }
+.chip.on { background: var(--primary-container); color: var(--on-primary-container); border-color: transparent; }
+.chip.dark { background: var(--primary); color: var(--primary-foreground); border-color: transparent; }
+.rules { border: 1px solid var(--border); border-radius: 8px; background: var(--surface-container-lowest); padding: 10px 12px; display: grid; gap: 6px; }
+.rules h4 { margin: 0; font-size: 12px; font-weight: 500; color: var(--on-surface); }
+.rules ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.rules .scroll { max-height: 12rem; overflow-y: auto; display: grid; gap: 6px; }
+.toggles { display: flex; flex-wrap: wrap; gap: 6px; }
+.rules li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: center; font-size: 12px; padding: 2px 4px; border-radius: 6px; }
+.rules li:hover { background: var(--surface-container-low); }
+.rules .what { color: var(--on-surface); overflow-wrap: anywhere; }
+.rules .why { color: var(--on-surface-variant); font-size: 11px; }
+.rules .empty { font-size: 12px; color: var(--on-surface-variant); padding: 4px 0; }
+.rules details summary { cursor: pointer; font-size: 11.5px; color: var(--on-surface-variant); }
+.pf-body { display: grid; grid-template-columns: minmax(0, 1fr) 340px; min-height: 560px; }
+.pf-text { padding: 18px 20px; font-family: var(--font-reading); font-size: 13.5px; line-height: 2.1; color: var(--on-surface); min-width: 0; }
+.pf-text u { text-decoration: underline wavy var(--mark); text-underline-offset: 4px; text-decoration-thickness: 1px; }
+.pf-side { border-left: 1px solid var(--border); background: var(--surface-container-lowest); padding: 10px 10px 16px; display: grid; gap: 8px; align-content: start; min-width: 0; }
+.cards { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.card { border: 1px solid color-mix(in srgb, var(--outline-variant) 30%, transparent); border-radius: 8px; background: var(--surface-container-lowest); padding: 10px; display: grid; gap: 4px; position: relative; }
+.card .rl { font-size: 10.5px; color: var(--on-surface-variant); }
+.card .ex { font-family: var(--font-reading); font-size: 12.5px; color: var(--on-surface); }
+.card .ex u { text-decoration: underline wavy var(--mark); text-underline-offset: 4px; }
+.card .msg { font-size: 11.5px; color: var(--on-surface); line-height: 1.6; }
+.acts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; position: relative; }
+.menu { position: absolute; left: 0; top: calc(100% + 4px); z-index: 2; min-width: 190px; background: var(--card); border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 8px 24px var(--shadow); padding: 4px; display: grid; }
+.menu button { font: inherit; font-size: 12px; text-align: left; border: 0; background: none; color: var(--on-surface); padding: 6px 10px; border-radius: 6px; cursor: pointer; }
+.menu button:hover, .menu button:focus-visible { background: var(--surface-container-high); outline: none; }
+.menu hr { border: 0; border-top: 1px solid var(--border); margin: 4px 0; }
+.suggest { border: 1px solid var(--primary); background: var(--primary-container); color: var(--on-primary-container); border-radius: 8px; padding: 10px; display: grid; gap: 8px; font-size: 12px; line-height: 1.6; }
+.suggest .acts { margin: 0; }
+.tag { margin-right: 4px; }
+@media (max-width: 760px) { .pf-body { grid-template-columns: 1fr; } .pf-side { border-left: 0; border-top: 1px solid var(--border); } }
+.help { font-size: 13px; line-height: 1.9; max-width: 66ch; }
+.help ins { text-decoration: none; background: var(--primary-container); color: var(--on-primary-container); border-radius: 3px; padding-inline: 2px; }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+<div class="wrap">
+  <header class="lead">
+    <p class="meta">仕様プロトタイプ（COT-62・docs/specs/COT-62/）</p>
+    <h1>推敲の決まり</h1>
+    <p>推敲画面で、作品ごとの決まりを作れるようにします。わざと使っている言葉は「この作品では指摘しない」、表記ゆれは「◯◯にそろえる」。同じ「このまま」や「直す」が重なったら、決まりにするかを、絞り込みのチップと一覧の間（一覧のスクロールの外）で提案します。決まりは「この作品の決まり」から戻せます。画面の文言に「辞書」は使いません（準備中の表示も「（初回だけ時間がかかります）」に言い換えます）。</p>
+    <p>番号は design.md の UI 節と対応しています。モックのボタンは押せます（状態の切り替えでも見られます）。</p>
+  </header>
+
+  <div class="legend">
+    <div><span class="num">1</span><span>見出しに「この作品の決まり（N）」</span></div>
+    <div><span class="num">2</span><span>決まりの一覧（戻す・提案しない言葉）</span></div>
+    <div><span class="num">3</span><span>ら抜き言葉・同じ語の連続のカードに「この作品では指摘しない」</span></div>
+    <div><span class="num">4</span><span>表記ゆれのカードに「この作品の決まりにする」のメニュー</span></div>
+    <div><span class="num">5</span><span>好みに合わない書き方の説明</span></div>
+    <div><span class="num">6</span><span>未判断の一覧の上の提案</span></div>
+  </div>
+
+  <section class="screen" aria-labelledby="s1">
+    <h2 id="s1">推敲画面（指摘タブ・PC だけ）</h2>
+    <div class="states" role="group" aria-label="状態">
+      <span class="meta">状態：</span>
+      <button type="button" data-state="none" aria-pressed="true">決まりなし</button>
+      <button type="button" data-state="some" aria-pressed="false">決まりあり（例外1・好み1）</button>
+      <button type="button" data-state="sug-ex" aria-pressed="false">提案：例外</button>
+      <button type="button" data-state="sug-pref" aria-pressed="false">提案：表記の好み</button>
+      <button type="button" data-state="sug-num" aria-pressed="false">提案：数</button>
+      <button type="button" data-state="many" aria-pressed="false">決まりが多い（30件）</button>
+    </div>
+    <div class="pair">
+      <div class="col">
+        <span class="label">現状</span>
+        <img class="shot" src="screens/proofread-findings-desktop.png" alt="現状の推敲画面。表記ゆれ・ら抜き言葉・同じ語の連続の指摘カードに、直す・このまま・同じ指摘をすべてこのままのボタンがある">
+        <p class="note">撮影は、作業ツリーとは別の一時コピーで会員の判定だけを外したもの（推敲画面は無料のアカウント登録から）。確認する項目は表記ゆれ・同じ語の連続・ら抜き言葉を選んだ状態。</p>
+      </div>
+      <div class="col">
+        <span class="label">変更後</span>
+        <div class="app" id="app"></div>
+        <p class="note">カードの「直す」「このまま」は、このモックでは動きません（決まりと提案の動きだけを見せる）。表記ゆれのメニューは shadcn の DropdownMenu を使います。</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="screen" aria-labelledby="s2">
+    <h2 id="s2">ヘルプ（推敲する）</h2>
+    <div class="help">
+      <p>…本文は自動で書き換えません。確かめたい項目は「確認する項目」で選びます。<ins>わざと使っている言葉は「この作品では指摘しない」、表記ゆれは「◯◯にそろえる」で、作品の決まりにできます。決まりは「この作品の決まり」から戻せます。用語集に登録した名前は、推敲でもひとつの言葉として扱います。</ins>「分析」には…</p>
+    </div>
+    <p class="note">緑の下地が足す文。取り込み画面は件数の一覧に「推敲の決まり：N作品」、警告文の列挙に「推敲の決まり」を足すだけなので、モックは省略。</p>
+  </section>
+</div>
+
+<script>
+const PARAS = [
+  '　子供たちが笑った。子どもの声が廊下に響く。',
+  '　ここからでも海が見れる。窓を開けると、子供の頃の匂いがした。',
+  '　食べれるものは少なかった。彼は「言った言った」と笑った。',
+  '　今日も海が見れる場所へ向かう。',
+]
+// 指摘（いまの話・決まりを当てる前）
+const BASE = [
+  { id: 'v1', p: 0, s: 1, e: 3, code: 'variant', label: '表記ゆれ', form: '子供', group: 'kodomo', forms: ['子供', '子ども'] },
+  { id: 'v2', p: 0, s: 10, e: 13, code: 'variant', label: '表記ゆれ', form: '子ども', group: 'kodomo', forms: ['子供', '子ども'] },
+  { id: 'r1', p: 1, s: 9, e: 12, code: 'ra-nuki', label: 'ら抜き言葉', key: 'ra-nuki:見れる', word: '見れる', fixed: '見られる' },
+  { id: 'v3', p: 1, s: 20, e: 22, code: 'variant', label: '表記ゆれ', form: '子供', group: 'kodomo', forms: ['子供', '子ども'] },
+  { id: 'r2', p: 2, s: 1, e: 5, code: 'ra-nuki', label: 'ら抜き言葉', key: 'ra-nuki:食べれる', word: '食べれる', fixed: '食べられる' },
+  { id: 'w1', p: 2, s: 17, e: 23, code: 'successive-word', label: '同じ語の連続', key: 'successive-word:言った言った', word: '言った言った' },
+  { id: 'r3', p: 3, s: 6, e: 9, code: 'ra-nuki', label: 'ら抜き言葉', key: 'ra-nuki:見れる', word: '見れる', fixed: '見られる' },
+]
+const empty = () => ({ exceptions: [], preferences: [], declined: [] })
+let rules = empty()
+let suggestion = null
+let rulesOpen = false
+let menuFor = null
+
+const esc = (s) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]))
+const ruleKeyOf = (f) => (f.code === 'variant' ? `variant:${f.group}` : f.key)
+
+function applyRules() {
+  const out = []
+  for (const f of BASE) {
+    if (rules.exceptions.some((x) => x.key === ruleKeyOf(f))) continue
+    const pref = f.code === 'variant' ? rules.preferences.find((p) => p.group === f.group) : null
+    if (pref && f.form === pref.preferred) continue
+    const text = PARAS[f.p].slice(f.s, f.e)
+    let msg
+    if (f.code === 'variant') {
+      msg = pref
+        ? `「${text}」は、この作品の表記「${pref.preferred}」と違います。`
+        : `「子供」と「子ども」が混ざっています（この作品で 子供 2件・子ども 1件）。どちらかに揃えると読みやすくなります。`
+    } else if (f.code === 'ra-nuki') msg = `「${text}」はら抜き言葉です。地の文では「${f.fixed}」が一般的です。`
+    else msg = `同じ語が続いています（${text}）。打ち間違いでなければ、そのままで構いません。`
+    out.push({ ...f, text, msg, pref: !!pref })
+  }
+  return out
+}
+
+function ruleRows() {
+  const rows = []
+  for (const x of rules.exceptions) {
+    rows.push({ key: x.key, what: `「${x.label}」`, why: x.kind === 'variant' ? '書き分けを許す' : x.kind === 'ra-nuki' ? 'ら抜き言葉は指摘しない' : '同じ語の連続は指摘しない' })
+  }
+  for (const p of rules.preferences) rows.push(p.group.startsWith('numeral:') ? { key: `pref:${p.group}`, what: '「人」の数は漢数字にそろえる', why: '' } : { key: `pref:${p.group}`, what: `「${p.preferred}」にそろえる（${p.forms.join('・')}）`, why: '' })
+  return rows
+}
+
+function render() {
+  const findings = applyRules()
+  const rows = ruleRows()
+  const n = rows.length
+  const app = document.getElementById('app')
+  const textHtml = PARAS.map((para, i) => {
+    let html = ''
+    let cur = 0
+    for (const f of findings.filter((x) => x.p === i).sort((a, b) => a.s - b.s)) {
+      html += esc(para.slice(cur, f.s)) + `<u>${esc(para.slice(f.s, f.e))}</u>`
+      cur = f.e
+    }
+    return `<p>${html + esc(para.slice(cur))}</p>`
+  }).join('')
+  const rulesPanel = rulesOpen
+    ? `<div class="rules" id="rules"><h4 tabindex="-1" id="rules-h"><span class="num tag">2</span>この作品の決まり</h4><div class="scroll">${
+        n === 0
+          ? '<p class="empty">決まりはまだありません。指摘のカードから作れます。</p>'
+          : `<ul>${rows.map((r) => `<li><span class="what">${esc(r.what)}${r.why ? ` <span class="why">— ${esc(r.why)}</span>` : ''}</span><button type="button" class="btn ghost xs" data-undo="${esc(r.key)}" aria-label="${esc(r.what.replace(/[「」]/g, ''))}の決まりを戻す">戻す</button></li>`).join('')}</ul>`
+      }${
+        rules.declined.length
+          ? `<details open><summary>提案しない言葉（${rules.declined.length}）</summary><ul>${rules.declined.map((d) => `<li><span class="what">「${esc(d.label)}」 <span class="why">— ${d.kind === 'exception' ? 'このままの提案' : 'そろえる提案'}</span></span><button type="button" class="btn ghost xs" data-undecline="${esc(d.key)}" aria-label="${esc(d.label)}の提案を戻す">戻す</button></li>`).join('')}</ul></details>`
+          : ''
+      }</div></div>`
+    : ''
+  const sugInner = suggestion
+    ? `<div class="suggest"><p><span class="num tag">6</span>${
+        suggestion.kind === 'exception'
+          ? '「見れる」を3回このままにしました。この作品では指摘しないようにしますか？'
+          : suggestion.kind === 'numeral'
+            ? '算用数字の「人」を2回直すと決めました。この作品の「人」は漢数字にそろえますか？'
+            : '「子供」を2回直すと決めました。この作品は「子ども」にそろえますか？'
+      }</p><div class="acts"><button type="button" class="btn primary xs" data-sug="accept">${suggestion.kind === 'exception' ? '指摘しない' : suggestion.kind === 'numeral' ? '漢数字にそろえる' : '子どもにそろえる'}</button><button type="button" class="btn ghost xs" data-sug="decline">提案しない</button></div></div>`
+    : ''
+  const cards = findings
+    .map((f, i) => {
+      const para = PARAS[f.p]
+      const ex = esc(para.slice(Math.max(0, f.s - 8), f.s)) + `<u>${esc(f.text)}</u>` + esc(para.slice(f.e, f.e + 10))
+      const same = findings.filter((g) => g.code === f.code && g.text === f.text).length
+      let ruleBtn = ''
+      if (f.code === 'variant') {
+        const open = menuFor === f.id
+        ruleBtn = `<button type="button" class="btn ghost" data-menu="${f.id}" aria-haspopup="menu" aria-expanded="${open}" aria-label="${f.forms.join('・')}の決まりを選ぶ">${i === 0 ? '<span class="num tag">4</span>' : ''}この作品の決まりにする ▾</button>${
+          open
+            ? `<div class="menu" role="menu">${f.forms.map((form) => `<button type="button" role="menuitem" data-prefer="${f.group}|${form}">${form}にそろえる</button>`).join('')}<hr><button type="button" role="menuitem" data-allow="${f.group}">書き分けを許す</button></div>`
+            : ''
+        }`
+      } else {
+        const first = findings.findIndex((x) => x.code !== 'variant') === i
+        ruleBtn = `<button type="button" class="btn ghost" data-except="${f.id}" aria-label="${esc(f.word)}をこの作品では指摘しない">${first ? '<span class="num tag">3</span>' : ''}この作品では指摘しない</button>`
+      }
+      return `<li class="card"><span class="rl">${f.label}</span><p class="ex">${ex}</p><p class="msg">${f.pref ? '<span class="num tag">5</span>' : ''}${esc(f.msg)}</p><div class="acts"><button type="button" class="btn primary">直す</button><button type="button" class="btn">このまま</button>${ruleBtn}${same >= 2 ? `<button type="button" class="btn ghost">同じ指摘をすべてこのまま（${same}件）</button>` : ''}</div></li>`
+    })
+    .join('')
+  app.innerHTML = `
+    <div class="pf-head">
+      <div class="pf-row">
+        <div><div class="t">推敲</div><div class="s">未判断 ${findings.length} ・ 直す 0 ・ このまま 0</div></div>
+        <span class="grow"></span>
+        <label class="s">話 <select class="sel"><option>第一話　帰郷</option></select></label>
+        <button type="button" class="btn" aria-expanded="true">確認する項目</button>
+        <button type="button" class="btn" id="rules-btn" aria-expanded="${rulesOpen}"><span class="num tag">1</span>${n ? `この作品の決まり（${n}）` : 'この作品の決まり'}</button>
+      </div>
+      <div class="toggles" aria-label="確認する項目（既定で開いている）"><span class="chip">字下げ</span><span class="chip">閉じ括弧の前の句読点</span><span class="chip">！？の後の空白</span><span class="chip">三点リーダー・ダッシュ</span><span class="chip">半角の約物</span><span class="chip on">同じ語の連続</span><span class="chip on">表記ゆれ</span><span class="chip">一文の中の同じ助詞</span><span class="chip on">ら抜き言葉</span></div>
+      ${rulesPanel}
+    </div>
+    <div class="pf-body">
+      <div class="pf-text">${textHtml}</div>
+      <aside class="pf-side">
+        <div class="chips"><span class="chip dark">指摘</span><span class="chip">分析</span></div>
+        <div class="chips"><span class="chip dark">未判断 ${findings.length}</span><span class="chip">直す 0</span><span class="chip">このまま 0</span></div>
+        <div role="status" aria-live="polite">${sugInner}</div>
+        <ul class="cards">${cards || '<li class="meta" style="padding:16px;text-align:center">未判断の指摘はありません</li>'}</ul>
+      </aside>
+    </div>`
+}
+
+function setState(s) {
+  rules = empty()
+  suggestion = null
+  menuFor = null
+  rulesOpen = s === 'some'
+  if (s === 'some') {
+    rules.exceptions.push({ key: 'ra-nuki:見れる', label: '見れる', kind: 'ra-nuki' })
+    rules.preferences.push({ group: 'kodomo', preferred: '子ども', forms: ['子供', '子ども'] })
+  }
+  if (s === 'sug-ex') suggestion = { kind: 'exception' }
+  if (s === 'sug-pref') suggestion = { kind: 'preference' }
+  if (s === 'sug-num') suggestion = { kind: 'numeral' }
+  if (s === 'many') {
+    rulesOpen = true
+    const words = ['見れる', '来れる', '着れる', '寝れる', '出れる', '居れる', '起きれる', '決めれる', '借りれる', '投げれる', '止めれる', '答えれる', '考えれる', '覚えれる', '伝えれる', '建てれる', '避けれる', '比べれる', '調べれる', '続けれる', '集めれる', '分けれる', '変えれる', '迎えれる', '超えれる', '与えれる', '並べれる', '受けれる']
+    for (const w of words) rules.exceptions.push({ key: `ra-nuki:${w}`, label: w, kind: 'ra-nuki' })
+    rules.preferences.push({ group: 'kodomo', preferred: '子ども', forms: ['子供', '子ども'] })
+    rules.exceptions.push({ key: 'successive-word:言った言った', label: '言った言った', kind: 'successive-word' })
+  }
+  render()
+}
+
+document.querySelector('.states').addEventListener('click', (e) => {
+  const b = e.target.closest('button[data-state]')
+  if (!b) return
+  document.querySelectorAll('.states button').forEach((x) => x.setAttribute('aria-pressed', String(x === b)))
+  setState(b.dataset.state)
+})
+
+document.getElementById('app').addEventListener('click', (e) => {
+  const t = e.target.closest('button')
+  if (!t) return
+  if (t.id === 'rules-btn') { rulesOpen = !rulesOpen; render(); return }
+  if (t.dataset.menu) { menuFor = menuFor === t.dataset.menu ? null : t.dataset.menu; render(); return }
+  if (t.dataset.prefer) {
+    const [group, form] = t.dataset.prefer.split('|')
+    rules.exceptions = rules.exceptions.filter((x) => x.key !== `variant:${group}`)
+    rules.preferences = rules.preferences.filter((p) => p.group !== group)
+    rules.preferences.push({ group, preferred: form, forms: ['子供', '子ども'] })
+    menuFor = null; render(); return
+  }
+  if (t.dataset.allow) {
+    const group = t.dataset.allow
+    rules.preferences = rules.preferences.filter((p) => p.group !== group)
+    rules.exceptions.push({ key: `variant:${group}`, label: '子供・子ども', kind: 'variant' })
+    menuFor = null; render(); return
+  }
+  if (t.dataset.except) {
+    const f = BASE.find((x) => x.id === t.dataset.except)
+    if (!rules.exceptions.some((x) => x.key === f.key)) rules.exceptions.push({ key: f.key, label: f.word, kind: f.code })
+    render(); return
+  }
+  if (t.dataset.undo) {
+    const k = t.dataset.undo
+    rules.exceptions = rules.exceptions.filter((x) => x.key !== k)
+    rules.preferences = rules.preferences.filter((p) => `pref:${p.group}` !== k)
+    const before = [...document.querySelectorAll('[data-undo]')].map((b) => b.dataset.undo)
+    const idx = before.indexOf(k)
+    render()
+    const after = [...document.querySelectorAll('[data-undo]')]
+    const next = after[idx] ?? after[idx - 1]
+    ;(next ?? document.getElementById('rules-h'))?.focus()
+    return
+  }
+  if (t.dataset.undecline) { rules.declined = rules.declined.filter((d) => d.key !== t.dataset.undecline); render(); return }
+  if (t.dataset.sug === 'accept') {
+    if (suggestion.kind === 'exception') rules.exceptions.push({ key: 'ra-nuki:見れる', label: '見れる', kind: 'ra-nuki' })
+    else if (suggestion.kind === 'preference') rules.preferences.push({ group: 'kodomo', preferred: '子ども', forms: ['子供', '子ども'] })
+    else rules.preferences.push({ group: 'numeral:人', preferred: '漢数字', forms: ['算用', '漢数字'] })
+    suggestion = null; render(); return
+  }
+  if (t.dataset.sug === 'decline') {
+    rules.declined.push(suggestion.kind === 'exception' ? { kind: 'exception', key: 'ra-nuki:見れる', label: '見れる' } : suggestion.kind === 'numeral' ? { kind: 'preference', key: 'numeral:人|算用', label: '算用数字の人' } : { kind: 'preference', key: 'kodomo|子供', label: '子供' })
+    suggestion = null; render(); return
+  }
+})
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && menuFor) { menuFor = null; render() } })
+render()
+</script>

@@ -71,6 +71,9 @@ describe('ImportDialog（バックアップ取り込み）', () => {
         structures: [],
         plots: [],
         stagings: [],
+        proofreads: [],
+        nameDismissals: [],
+        proofreadRules: [],
         gameAssets: [],
       },
       Date.parse('2026-07-19T00:00:00Z'),
@@ -79,5 +82,101 @@ describe('ImportDialog（バックアップ取り込み）', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'すべて置き換えて復元' }))
     await waitFor(() => expect(onRestoreAll).toHaveBeenCalledWith(json))
     expect(await screen.findByText(/全体を復元しました/)).toBeInTheDocument()
+  })
+
+  it('全体バックアップの内訳に推敲の判断の話数を出し、置き換えの警告にも推敲の判断を含める', async () => {
+    render(<ImportDialog open onOpenChange={() => {}} onImport={vi.fn()} onRestoreAll={vi.fn()} />)
+    const decision = {
+      blockId: 'b1',
+      code: 'variant',
+      text: '出来る',
+      nth: 0,
+      anchor: 'contains',
+      verdict: 'fix',
+      decidedAt: 1,
+    }
+    const json = serializeBackup(
+      {
+        works: [makeWork('a', '銀河')],
+        trash: [],
+        profile: {},
+        activity: [],
+        ideas: [],
+        structures: [],
+        plots: [],
+        stagings: [],
+        proofreads: [
+          { workId: 'a', episodeId: 'e1', decisions: [decision], updatedAt: 1 },
+          { workId: 'a', episodeId: 'e2', decisions: [decision], updatedAt: 1 },
+        ],
+        nameDismissals: [],
+        proofreadRules: [],
+        gameAssets: [],
+      },
+      Date.parse('2026-07-19T00:00:00Z'),
+    )
+    pick(json)
+    expect(await screen.findByText('推敲の判断：2話')).toBeInTheDocument()
+    expect(
+      screen.getByText(/ネタ帳・推敲の判断・推敲で外した語・推敲の決まり・執筆記録/),
+    ).toBeInTheDocument()
+  })
+
+  it('推敲の判断の無い旧い全体バックアップでも内訳は 0話 で出る', async () => {
+    render(<ImportDialog open onOpenChange={() => {}} onImport={vi.fn()} onRestoreAll={vi.fn()} />)
+    pick(
+      JSON.stringify({
+        version: 1,
+        createdAt: Date.parse('2026-07-19T00:00:00Z'),
+        works: [makeWork('a', '銀河')],
+        trash: [],
+        profile: {},
+      }),
+    )
+    expect(await screen.findByText('推敲の判断：0話')).toBeInTheDocument()
+    expect(screen.getByText('推敲で外した語：0作品')).toBeInTheDocument()
+    expect(screen.getByText('推敲の決まり：0作品')).toBeInTheDocument()
+  })
+
+  it('全体バックアップの内訳に推敲で外した語の作品数を出す（壊れた記録は数えない）', async () => {
+    render(<ImportDialog open onOpenChange={() => {}} onImport={vi.fn()} onRestoreAll={vi.fn()} />)
+    pick(
+      JSON.stringify({
+        version: 1,
+        createdAt: Date.parse('2026-07-19T00:00:00Z'),
+        works: [makeWork('a', '銀河')],
+        trash: [],
+        profile: {},
+        nameDismissals: [
+          { workId: 'a', words: [{ text: 'アカリ', at: 1 }], updatedAt: 1 },
+          { workId: 'b', words: [], updatedAt: 2 },
+          { workId: 'c', words: 'broken', updatedAt: 3 },
+        ],
+      }),
+    )
+    expect(await screen.findByText('推敲で外した語：2作品')).toBeInTheDocument()
+  })
+
+  it('全体バックアップの内訳に推敲の決まりの作品数を出す（壊れた記録は数えない）', async () => {
+    render(<ImportDialog open onOpenChange={() => {}} onImport={vi.fn()} onRestoreAll={vi.fn()} />)
+    pick(
+      JSON.stringify({
+        version: 1,
+        createdAt: Date.parse('2026-07-19T00:00:00Z'),
+        works: [makeWork('a', '銀河')],
+        trash: [],
+        profile: {},
+        proofreadRules: [
+          {
+            workId: 'a',
+            exceptions: [{ key: 'ra-nuki:見れる', label: '見れる', at: 1 }],
+            updatedAt: 1,
+          },
+          { workId: 'b', updatedAt: 2 },
+          { workId: 'c', exceptions: 'broken', updatedAt: 3 },
+        ],
+      }),
+    )
+    expect(await screen.findByText('推敲の決まり：2作品')).toBeInTheDocument()
   })
 })

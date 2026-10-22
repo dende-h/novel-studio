@@ -1,0 +1,116 @@
+{
+  "baseURL": "http://localhost:5174",
+  "outDir": "docs/specs/COT-62/screens",
+  "shots": [
+    {
+      "name": "proofread-findings",
+      "viewports": [
+        "desktop"
+      ],
+      "steps": [
+        {
+          "goto": "/"
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "新しい作品"
+          }
+        },
+        {
+          "fill": {
+            "label": "作品タイトル",
+            "value": "海辺の町"
+          }
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "作成",
+            "exact": true
+          }
+        },
+        {
+          "waitFor": {
+            "role": "heading",
+            "name": "海辺の町"
+          }
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "「海辺の町」を執筆"
+          }
+        },
+        {
+          "click": {
+            "text": "新しいエピソードを追加"
+          }
+        },
+        {
+          "fill": {
+            "label": "話タイトル",
+            "value": "第一話　帰郷"
+          }
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "追加",
+            "exact": true
+          }
+        },
+        {
+          "waitFor": {
+            "selector": "textarea[aria-label=\"本文\"]"
+          }
+        },
+        {
+          "fill": {
+            "selector": "textarea[aria-label=\"本文\"]",
+            "value": "　子供たちが笑った。子どもの声が廊下に響く。\n　ここからでも海が見れる。窓を開けると、子供の頃の匂いがした。\n　食べれるものは少なかった。彼は「言った言った」と笑った。\n　今日も海が見れる場所へ向かう。"
+          }
+        },
+        {
+          "wait": 500
+        },
+        {
+          "eval": "document.activeElement && document.activeElement.blur()"
+        },
+        {
+          "wait": 1200
+        },
+        {
+          "click": {
+            "text": "推敲",
+            "exact": true
+          }
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "表記ゆれ",
+            "exact": true
+          }
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "ら抜き言葉",
+            "exact": true
+          }
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "同じ語の連続",
+            "exact": true
+          }
+        },
+        {
+          "wait": 5000
+        }
+      ]
+    }
+  ]
+}

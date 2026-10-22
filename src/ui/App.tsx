@@ -4,6 +4,8 @@ import { localDateKey } from '@/core/activity'
 import { blocksToHtml } from '@/core/exporter/toHtml'
 import { findAppearances, resolvedNameSet, resolveRef } from '@/core/glossary'
 import { parseEpisodeBody } from '@/core/parser/parseNotation'
+import { reconcileBlockIds } from '@/core/parser/reconcileBlockIds'
+import { locateFix, openFixes, type ProofreadDecision, undecide } from '@/core/proofread/decisions'
 import type { GlossaryEntry } from '@/core/schema'
 import { layoutScriptBlocks, paginate } from '@/core/script/layout'
 import { countEpisodeChars, countWorkChars } from '@/core/stats'
@@ -22,6 +24,7 @@ import { notationItems, notationShortcut } from '@/ui/components/EditorPane/nota
 import { ErrorBoundary } from '@/ui/components/ErrorBoundary/error-boundary'
 import { ExportDialog } from '@/ui/components/ExportDialog/export-dialog'
 import { FieldHelp } from '@/ui/components/FieldHelp/field-help'
+import { FixListButton } from '@/ui/components/FixListButton/fix-list-button'
 import {
   formValuesToFieldPatch,
   GlossaryEntryForm,
@@ -42,8 +45,11 @@ import { WorkMetaDialog } from '@/ui/components/WorkMetaDialog/work-meta-dialog'
 import { WorkSearchPanel } from '@/ui/components/WorkSearchPanel/work-search-panel'
 import { useAutosave } from '@/ui/hooks/use-autosave'
 import { useEditorStore } from '@/ui/hooks/use-editor-store'
+import type { NameDismissalRepo } from '@/ui/hooks/use-name-dismissals'
 import { useIsNarrow } from '@/ui/hooks/use-narrow'
 import { useOpenProfile } from '@/ui/hooks/use-pen-name'
+import { type ProofreadRecordRepo, useProofreadRecord } from '@/ui/hooks/use-proofread-record'
+import type { ProofreadRulesRepo } from '@/ui/hooks/use-proofread-rules'
 import type { EditorStore } from '@/ui/store/editorStore'
 
 interface AppProps {
@@ -70,6 +76,12 @@ interface AppProps {
   stagingRepo?: StagingRepository
   /** 持ち込みゲーム素材（背景画像）のリポジトリ。 */
   gameAssetRepo?: GameAssetRepository
+  /** 推敲の判断（COT-40・直す／このまま）のリポジトリ。Root で sync-touch に包んで渡す。 */
+  proofreadRepo?: ProofreadRecordRepo
+  /** 推敲画面で候補から外した語（COT-59）のリポジトリ。Root で sync-touch に包んで渡す。 */
+  nameDismissalRepo?: NameDismissalRepo
+  /** 推敲の作品の決まり（COT-62・例外・表記の好み）のリポジトリ。Root で sync-touch に包んで渡す。 */
+  proofreadRulesRepo?: ProofreadRulesRepo
   /** 構想の道具（プロット・アウトライン・相関図・マインドマップ）を出すか＝無料アカウント登録で true。 */
   canUseStructure?: boolean
   /** ネタ帳（マインドマップの取り込み用）。 */
@@ -84,6 +96,8 @@ const CorrelationChartView = lazy(
 const OutlineView = lazy(() => import('@/ui/components/OutlineView/outline-view'))
 const PlotView = lazy(() => import('@/ui/components/PlotView/plot-view'))
 const StagingView = lazy(() => import('@/ui/components/StagingView/staging-view'))
+/** 推敲画面（COT-40）。解析 Worker を抱えるので、開いたときだけ読み込む。 */
+const ProofreadView = lazy(() => import('@/ui/components/ProofreadView/proofread-view'))
 
 /** 自動保存：本文の入力が止まってから保存するまでの待ち時間(ms)。純ローカル処理なので
  * 短くても安い。同期の push 猶予（保存後 1.5 秒）と直列に効くため、ここも短く保つ。 */
@@ -136,6 +150,9 @@ export function App({
   plotRepo,
   stagingRepo,
   gameAssetRepo,
+  proofreadRepo,
+  nameDismissalRepo,
+  proofreadRulesRepo,
   canUseStructure,
   ideaRepo,
 }: AppProps) {
@@ -148,7 +165,7 @@ export function App({
   const [metaOpen, setMetaOpen] = useState(false)
   const [historyOpen, setHistoryOpen] = useState(false)
   const [activeScreen, setActiveScreen] = useState<
-    'episodes' | 'glossary' | 'outline' | 'mindmap' | 'chart' | 'plot' | 'staging'
+    'episodes' | 'glossary' | 'outline' | 'mindmap' | 'chart' | 'plot' | 'staging' | 'proofread'
   >('episodes')
   // プレビューの組み方向（日本語小説の標準＝縦書きが既定。ツールバーで切替）。
   const [orientation, setOrientation] = useState<'vertical' | 'horizontal'>('vertical')
@@ -163,10 +180,20 @@ export function App({
   const [plotPanelOpen, setPlotPanelOpen] = useState(false)
   // パネル等からプロット画面へ飛ぶときの着地ビート（PlotView が消費して null に戻す）。
   const [plotFocusBeatId, setPlotFocusBeatId] = useState<string | null>(null)
+  // 推敲画面の「本文で直す」から戻ったときに選ぶ箇所（EditorPane の描画後に selectRange して null に戻す）。
+  const [pendingFix, setPendingFix] = useState<{
+    episodeId: string
+    decision: ProofreadDecision
+  } | null>(null)
   // 用語集パネルで選択中の entry（id で引いて常に最新を見る）。
   const [peekId, setPeekId] = useState<string | null>(null)
-  // 未解決 @参照クリックで起動するクイック作成（プリフィルする名前。'' は空フォーム）。
-  const [quickCreateName, setQuickCreateName] = useState<string | null>(null)
+  // クイック作成の初期値（null は閉じている）。未解決の @参照・GlossaryPeek（名前だけ／空フォーム）と、
+  // 推敲画面の「用語集に登録」（名前・読み・カテゴリ入り・COT-59）から開く。
+  const [quickCreate, setQuickCreate] = useState<Partial<GlossaryEntry> | null>(null)
+  // 推敲画面から開いたときだけ、閉じたときに「作成したか」を返す。フォーカスの行き先は推敲画面が決める
+  // （このダイアログはトリガーを持たないので、閉じると既定ではフォーカスが body に落ちる）。
+  const registerResolveRef = useRef<((result: 'created' | 'cancelled') => void) | null>(null)
+  const registerCreatedRef = useRef(false)
   // 用語集パネルからの編集対象。作成と同じくその場のモーダルで完結させる（本文から離れさせない）。
   const [editEntryId, setEditEntryId] = useState<string | null>(null)
   // ツールバーの記法ボタンから本文へ挿入するためのハンドル（選択範囲は EditorPane が持つ）。
@@ -212,6 +239,10 @@ export function App({
   const plotAvailable = Boolean(work && canUseStructure && plotRepo && !narrow)
   // 演出（サウンドノベル）も同じ条件（アカウント登録＝D-GAME-ACCOUNT と同じ線・PC 専用＝D-GAME-PC）。
   const stagingAvailable = Boolean(work && canUseStructure && stagingRepo && !narrow)
+  // 推敲（COT-40）も同じ線（無料のアカウント登録・PC 専用）。脚本の作品には出さない（脚本は書式チェックのまま）。
+  const proofreadAvailable = Boolean(
+    work && work.format !== 'script' && canUseStructure && proofreadRepo && !narrow,
+  )
   // 広い画面で構造ツールを開いたまま縮める／回転すると、入口が消えても activeScreen が
   // 残って操作不能な画面に閉じ込められる。CSS では state を戻せないので JS で戻す。
   useEffect(() => {
@@ -221,7 +252,8 @@ export function App({
         activeScreen === 'mindmap' ||
         activeScreen === 'chart' ||
         activeScreen === 'plot' ||
-        activeScreen === 'staging')
+        activeScreen === 'staging' ||
+        activeScreen === 'proofread')
     ) {
       setActiveScreen('episodes')
     }
@@ -281,6 +313,61 @@ export function App({
     }
   }
 
+  // 推敲画面（COT-40）は保存済みの本文を読むので、書き出し・公開と同じく先に保存してから移る。
+  const enterProofread = async () => {
+    try {
+      if (episode) await store.save()
+      setActiveScreen('proofread')
+    } catch {
+      show('保存できませんでした。下書きは残っています。もう一度お試しください')
+    }
+  }
+
+  // 執筆画面の「直す箇所」（COT-40）：推敲画面で「直す」と決めた判断のうち、まだ直っていないもの。
+  // 下書きを id 付きの段落に読み直して（保存の reconcile と同じ）照合するので、保存を待たずに件数が減る。
+  const isNovel = Boolean(work && work.format !== 'script')
+  const { record: proofreadRecord, save: saveProofread } = useProofreadRecord(
+    isNovel ? proofreadRepo : undefined,
+    work?.id,
+    episode?.id,
+  )
+  const hasFixDecision = Boolean(proofreadRecord?.decisions.some((d) => d.verdict === 'fix'))
+  const draftBlocks = useMemo(
+    () =>
+      hasFixDecision && episode
+        ? reconcileBlockIds(episode.blocks, parseEpisodeBody(state.draft))
+        : [],
+    [hasFixDecision, episode, state.draft],
+  )
+  const fixes = useMemo(
+    () => (hasFixDecision ? openFixes(proofreadRecord, draftBlocks) : []),
+    [hasFixDecision, proofreadRecord, draftBlocks],
+  )
+  const selectFix = (range: { start: number; end: number; whole: boolean }) => {
+    setPane('editor')
+    requestAnimationFrame(() => editorRef.current?.selectRange(range.start, range.end))
+    if (range.whole) show('その箇所だけを選べなかったため、段落全体を選びました')
+  }
+
+  // 「本文で直す」：話を開いて執筆画面に戻り、EditorPane が描かれてから選ぶ。
+  // 話を切り替えた直後は判断の記録がまだ前の話のものなので、渡された判断 1 件だけで位置を求める。
+  useEffect(() => {
+    if (!pendingFix || activeScreen !== 'episodes') return
+    if (state.currentEpisodeId !== pendingFix.episodeId || !episode || !editorRef.current) return
+    const blocks = reconcileBlockIds(episode.blocks, parseEpisodeBody(state.draft))
+    const [fix] = openFixes(
+      {
+        workId: work?.id ?? '',
+        episodeId: episode.id,
+        updatedAt: 0,
+        decisions: [pendingFix.decision],
+      },
+      blocks,
+    )
+    setPendingFix(null)
+    if (fix) selectFix(locateFix(fix, state.draft))
+  })
+
   const getAppearances = useCallback(
     (entry: GlossaryEntry) =>
       work ? findAppearances(work, entry) : { episodeIds: [], refCount: 0 },
@@ -312,6 +399,26 @@ export function App({
     [store],
   )
 
+  /** 推敲画面の「用語集に登録」（COT-59）。名前・読み・カテゴリ入りで開き、閉じたら結果を返す。 */
+  const registerName = useCallback(
+    (draft: { name: string; reading?: string; category?: string }) =>
+      new Promise<'created' | 'cancelled'>((resolve) => {
+        registerResolveRef.current?.('cancelled')
+        registerResolveRef.current = resolve
+        registerCreatedRef.current = false
+        setQuickCreate({ name: draft.name, reading: draft.reading, category: draft.category })
+      }),
+    [],
+  )
+  /** 推敲画面から開いたときだけ既定の戻り先を止め、結果を返す（handler は常に同じものを渡す）。 */
+  const onQuickCreateCloseAutoFocus = useCallback((event: Event) => {
+    const resolve = registerResolveRef.current
+    if (!resolve) return
+    event.preventDefault()
+    registerResolveRef.current = null
+    resolve(registerCreatedRef.current ? 'created' : 'cancelled')
+  }, [])
+
   // プレビューの @参照クリック：解決済み→用語集パネルで表示、未解決→当該名でクイック作成。
   const onRefClick = useCallback(
     (name: string) => {
@@ -322,7 +429,7 @@ export function App({
         setPeekId(entry.id)
         setGlossaryPanelOpen(true)
       } else {
-        setQuickCreateName(name)
+        setQuickCreate({ name })
       }
     },
     [work?.glossary],
@@ -410,6 +517,7 @@ export function App({
             onNavigateOutline={structureAvailable ? () => setActiveScreen('outline') : undefined}
             onNavigatePlot={plotAvailable ? () => setActiveScreen('plot') : undefined}
             onNavigateStaging={stagingAvailable ? () => setActiveScreen('staging') : undefined}
+            onNavigateProofread={proofreadAvailable ? () => void enterProofread() : undefined}
             cta={{
               label: '新しいエピソード',
               onClick: () => setNewEpisodeOpen(true),
@@ -463,14 +571,14 @@ export function App({
               entry={peekEntry}
               appearances={peekEntry ? getAppearances(peekEntry) : null}
               onSelect={(id) => setPeekId(id)}
-              onQuickCreate={(name) => setQuickCreateName(name)}
+              onQuickCreate={(name) => setQuickCreate({ name })}
               onClose={() => setGlossaryPanelOpen(false)}
               // 作成と同じくその場のモーダルで編集する（用語集ページへ飛ばさない）。
               // パネルは開いたままにして、編集後にチップ一覧へ自然に戻れるようにする。
               onEdit={() => {
                 if (peekEntry) setEditEntryId(peekEntry.id)
               }}
-              onNewEntry={() => setQuickCreateName('')}
+              onNewEntry={() => setQuickCreate({ name: '' })}
             />
           ) : historyOpen && episode && onEpisodes ? (
             <HistoryPanel
@@ -490,7 +598,24 @@ export function App({
         activeScreen を key にしているので、別の画面へ移れば境界は張り直される。
       */}
         <ErrorBoundary key={activeScreen} fallback={(retry) => <ScreenFailure retry={retry} />}>
-          {activeScreen === 'staging' && work && stagingRepo ? (
+          {activeScreen === 'proofread' && work && proofreadRepo ? (
+            <Suspense fallback={<ScreenLoading />}>
+              <ProofreadView
+                work={work}
+                currentEpisodeId={state.currentEpisodeId}
+                repo={proofreadRepo}
+                namesRepo={nameDismissalRepo}
+                rulesRepo={proofreadRulesRepo}
+                onRegisterName={registerName}
+                onFixInEditor={(target) => {
+                  setPendingFix(target)
+                  if (target.episodeId !== state.currentEpisodeId)
+                    store.openEpisode(target.episodeId)
+                  setActiveScreen('episodes')
+                }}
+              />
+            </Suspense>
+          ) : activeScreen === 'staging' && work && stagingRepo ? (
             <Suspense fallback={<ScreenLoading />}>
               <StagingView
                 repo={stagingRepo}
@@ -685,6 +810,18 @@ export function App({
                   </div>
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
+                  {isNovel ? (
+                    <FixListButton
+                      fixes={fixes}
+                      blocks={draftBlocks}
+                      onJump={(fix) => selectFix(locateFix(fix, state.draft))}
+                      onRemove={(decision) => {
+                        if (proofreadRecord)
+                          void saveProofread(undecide(proofreadRecord, decision, Date.now()))
+                      }}
+                      onOpenProofread={proofreadAvailable ? () => void enterProofread() : undefined}
+                    />
+                  ) : null}
                   <Button
                     variant="ghost"
                     size="sm"
@@ -944,19 +1081,21 @@ export function App({
           glossary={work?.glossary ?? []}
           onCreateEntry={createPlainGlossaryEntry}
         />
-        {/* 未解決 @参照クリックからのクイック作成（名前プリフィル）。 */}
+        {/* クイック作成（未解決 @参照・GlossaryPeek・推敲画面の「用語集に登録」）。 */}
         <GlossaryEntryForm
-          open={quickCreateName !== null}
+          open={quickCreate !== null}
           onOpenChange={(o) => {
-            if (!o) setQuickCreateName(null)
+            if (!o) setQuickCreate(null)
           }}
           mode="create"
-          initial={quickCreateName !== null ? { name: quickCreateName } : undefined}
+          initial={quickCreate ?? undefined}
           onSubmit={async (values) => {
             await store.addGlossaryEntry({ name: values.name, ...formValuesToFieldPatch(values) })
+            registerCreatedRef.current = true
           }}
           glossary={work?.glossary ?? []}
           onCreateEntry={createPlainGlossaryEntry}
+          onCloseAutoFocus={onQuickCreateCloseAutoFocus}
         />
         <ExportDialog
           open={exportOpen}

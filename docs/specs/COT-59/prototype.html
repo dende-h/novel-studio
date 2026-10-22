@@ -1,0 +1,371 @@
+<title>用語集に無い名前</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;600;700&family=Noto+Serif+JP:wght@400;500&display=swap">
+<style>
+/* レイアウト：仕様の読み物（上）＋画面ごとに「現状スクショ｜変更後モック」。モックはアプリのトークン（src/ui/index.css）をそのまま写す */
+:root {
+  --background: #fdfcfb;
+  --foreground: #4b5160;
+  --card: #fefeff;
+  --primary: #2c5b27;
+  --primary-foreground: #ffffff;
+  --border: #e4e6eb;
+  --surface-container-lowest: #fefeff;
+  --surface-container-low: #f9f7f5;
+  --surface-container: #f3f1ec;
+  --surface-container-high: #edeae3;
+  --on-surface: #1f2430;
+  --on-surface-variant: #6b7381;
+  --outline-variant: #9da3ae;
+  --primary-container: #e3ece1;
+  --on-primary-container: #234420;
+  --secondary-container: #f2e6d4;
+  --on-secondary-container: #92703f;
+  --doc-bg: #f6f4ef;
+  --doc-rule: #e2ddd2;
+  --badge: #92703f;
+  --scrim: rgba(31, 36, 48, .38);
+  --font-ui: "Noto Sans JP", system-ui, sans-serif;
+  --font-reading: "Noto Serif JP", "Hiragino Mincho ProN", serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --background: #181611; --foreground: #d7d2c8; --card: #201d16; --primary: #44863a; --primary-foreground: #ffffff;
+    --border: #322e26; --surface-container-lowest: #1f1c16; --surface-container-low: #232019; --surface-container: #29251e;
+    --surface-container-high: #322d25; --on-surface: #ece8e1; --on-surface-variant: #a49e92;
+    --outline-variant: #645e53; --primary-container: #294424; --on-primary-container: #cae4c3; --secondary-container: #38301f;
+    --on-secondary-container: #e0c398; --doc-bg: #12100c; --doc-rule: #2c2820; --badge: #dcbd8e; --scrim: rgba(0, 0, 0, .55);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --background: #181611; --foreground: #d7d2c8; --card: #201d16; --primary: #44863a; --primary-foreground: #ffffff;
+  --border: #322e26; --surface-container-lowest: #1f1c16; --surface-container-low: #232019; --surface-container: #29251e;
+  --surface-container-high: #322d25; --on-surface: #ece8e1; --on-surface-variant: #a49e92;
+  --outline-variant: #645e53; --primary-container: #294424; --on-primary-container: #cae4c3; --secondary-container: #38301f;
+  --on-secondary-container: #e0c398; --doc-bg: #12100c; --doc-rule: #2c2820; --badge: #dcbd8e; --scrim: rgba(0, 0, 0, .55);
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body { background: var(--doc-bg); color: var(--foreground); font-family: var(--font-ui); line-height: 1.6; }
+.wrap { max-width: 1240px; margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 32px 64px; display: grid; gap: 40px; }
+h1, h2, h3 { color: var(--on-surface); text-wrap: balance; margin: 0; }
+h1 { font-size: 1.6rem; font-weight: 600; }
+h2 { font-size: 1.2rem; font-weight: 600; }
+p { margin: 0; }
+.lead { max-width: 68ch; display: grid; gap: 8px; color: var(--on-surface-variant); }
+.meta { font-size: .8rem; color: var(--on-surface-variant); }
+.num { display: inline-grid; place-items: center; min-width: 1.35em; height: 1.35em; border-radius: 999px; background: var(--badge); color: var(--doc-bg); font-size: .72rem; font-weight: 600; padding-inline: 4px; vertical-align: middle; }
+.legend { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 6px 20px; font-size: .85rem; }
+.legend div { display: flex; gap: 8px; align-items: baseline; min-width: 0; }
+section.screen { display: grid; gap: 14px; border-top: 1px solid var(--doc-rule); padding-top: 24px; }
+.pair { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start; }
+.col { display: grid; gap: 8px; min-width: 0; }
+.col > .label { font-size: .78rem; letter-spacing: .06em; color: var(--on-surface-variant); }
+.shot { width: 100%; max-width: 100%; border: 1px solid var(--doc-rule); border-radius: 6px; background: var(--card); }
+.note { font-size: .82rem; color: var(--on-surface-variant); background: var(--surface-container-low); border: 1px dashed var(--doc-rule); border-radius: 6px; padding: 10px 12px; }
+.states { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: .8rem; }
+.states button { font: inherit; border: 1px solid var(--doc-rule); background: var(--card); color: var(--foreground); border-radius: 999px; padding: 4px 12px; cursor: pointer; }
+.states button[aria-pressed="true"] { background: var(--primary); border-color: var(--primary); color: var(--primary-foreground); }
+button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+@media (max-width: 900px) { .pair { grid-template-columns: 1fr; } }
+
+/* ===== アプリのモック（推敲画面） ===== */
+.app { border: 1px solid var(--border); border-radius: 8px; overflow: hidden; background: var(--background); color: var(--foreground); font-size: 13px; position: relative; }
+.pf-head { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: center; padding: 10px 14px; border-bottom: 1px solid var(--border); }
+.pf-head .t { font-family: var(--font-reading); font-size: 17px; color: var(--primary); }
+.pf-head .s { font-size: 11px; color: var(--on-surface-variant); }
+.pf-body { display: grid; grid-template-columns: minmax(0, 1fr) 300px; min-height: 520px; }
+.pf-text { padding: 16px 18px; font-family: var(--font-reading); font-size: 13.5px; line-height: 2.05; color: var(--on-surface); min-width: 0; }
+.pf-text p + p { margin-top: 2px; }
+.mark { border-radius: 2px; outline: 1px dotted var(--primary); outline-offset: 1px; }
+.pf-side { border-left: 1px solid var(--border); background: var(--surface-container-lowest); display: grid; grid-template-rows: auto 1fr; min-width: 0; }
+.tabs { display: flex; gap: 6px; padding: 10px 12px 6px; }
+.chip { font: inherit; font-size: 11.5px; font-weight: 500; border-radius: 999px; padding: 3px 11px; border: 1px solid color-mix(in srgb, var(--outline-variant) 40%, transparent); background: var(--surface-container-lowest); color: var(--on-surface-variant); }
+.chip.on { background: var(--primary); border-color: transparent; color: var(--primary-foreground); }
+.panel { padding: 6px 12px 16px; display: grid; gap: 20px; align-content: start; overflow-y: auto; }
+.sec h4 { margin: 0 0 2px; font-size: 12px; font-weight: 500; color: var(--on-surface); position: relative; }
+.hint { font-size: 10.5px; color: var(--on-surface-variant); }
+.empty { padding: 10px 0; font-size: 12px; color: var(--on-surface-variant); }
+.names { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 2px; }
+.nrow { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px; align-items: center; border-radius: 6px; padding: 4px 6px; }
+.nrow:hover { background: var(--surface-container-low); }
+.nrow.sel { background: var(--primary-container); }
+.nbtn { font: inherit; text-align: left; background: none; border: 0; padding: 0; color: var(--on-surface); cursor: pointer; display: grid; gap: 0; min-width: 0; }
+.nbtn .n { font-size: 12.5px; overflow-wrap: anywhere; }
+.nrow.sel .nbtn .n { color: var(--on-primary-container); font-weight: 500; }
+.nbtn .m { font-size: 10.5px; color: var(--on-surface-variant); font-variant-numeric: tabular-nums; }
+.acts { display: flex; gap: 4px; }
+.xs { font: inherit; font-size: 11px; height: 24px; padding-inline: 8px; border-radius: 6px; border: 1px solid var(--border); background: var(--card); color: var(--on-surface); cursor: pointer; white-space: nowrap; }
+.xs.ghost { border-color: transparent; background: transparent; color: var(--on-surface-variant); }
+.xs.ghost:hover { background: var(--surface-container-high); }
+details.dismissed { margin-top: 8px; font-size: 11.5px; }
+details.dismissed summary { cursor: pointer; color: var(--on-surface-variant); }
+details.dismissed ul { list-style: none; padding: 0; margin: 6px 0 0; display: grid; gap: 2px; }
+details.dismissed li { display: flex; justify-content: space-between; align-items: center; padding: 2px 6px; color: var(--on-surface); }
+.freq { list-style: none; margin: 4px 0 0; padding: 0; display: grid; gap: 1px; }
+.freq button { font: inherit; width: 100%; display: grid; grid-template-columns: 1.4em 1fr auto auto; gap: 8px; align-items: center; text-align: left; font-size: 12px; padding: 4px 6px; border: 0; border-radius: 6px; background: none; color: var(--on-surface); cursor: pointer; font-variant-numeric: tabular-nums; }
+.freq button:hover { background: var(--surface-container-low); }
+.freq button.sel { background: var(--primary-container); color: var(--on-primary-container); }
+.freq .k { color: var(--on-surface-variant); }
+.freq .r { font-size: 10.5px; color: var(--on-surface-variant); }
+.ratio { display: grid; grid-template-columns: 5em 1fr 2.6em; gap: 8px; align-items: center; font-size: 11.5px; font-variant-numeric: tabular-nums; }
+.bar { height: 8px; border-radius: 999px; background: var(--secondary-container); overflow: hidden; }
+.bar span { display: block; height: 100%; background: var(--primary); }
+.sec { position: relative; }
+
+/* ダイアログ（既存の GlossaryEntryForm を写したもの） */
+.scrim { position: absolute; inset: 0; background: var(--scrim); display: grid; place-items: start center; padding-top: 28px; }
+.dialog { width: min(420px, calc(100% - 24px)); background: var(--card); border-radius: 10px; border: 1px solid var(--border); padding: 18px 20px; display: grid; gap: 10px; box-shadow: 0 10px 30px rgba(0,0,0,.18); }
+.dialog h5 { margin: 0; font-family: var(--font-reading); font-size: 16px; font-weight: 500; color: var(--on-surface); }
+.field { display: grid; gap: 4px; font-size: 12px; color: var(--on-surface); }
+.field input, .field select { font: inherit; font-size: 13px; height: 32px; border-radius: 6px; border: 1px solid var(--border); background: var(--surface-container-lowest); color: var(--on-surface); padding-inline: 10px; }
+.field input.filled, .field select.filled { border-color: var(--primary); box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary) 18%, transparent); }
+.two { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.fold { font-size: 11px; color: var(--on-surface-variant); border-top: 1px dashed var(--border); padding-top: 8px; }
+.dlg-acts { display: flex; justify-content: flex-end; gap: 8px; }
+.btn { font: inherit; font-size: 12.5px; height: 32px; padding-inline: 14px; border-radius: 6px; border: 1px solid var(--border); background: var(--card); color: var(--on-surface); cursor: pointer; }
+.btn.primary { background: var(--primary); border-color: var(--primary); color: var(--primary-foreground); }
+.help { font-size: 13px; line-height: 1.9; max-width: 62ch; }
+.help a { color: var(--primary); }
+.help ins { text-decoration: none; background: var(--primary-container); color: var(--on-primary-container); border-radius: 3px; padding-inline: 2px; }
+@media (max-width: 700px) { .pf-body { grid-template-columns: 1fr; } .pf-side { border-left: 0; border-top: 1px solid var(--border); } }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+<div class="wrap">
+  <header class="lead">
+    <p class="meta">仕様プロトタイプ（COT-59・docs/specs/COT-59/）</p>
+    <h1>用語集に無い名前</h1>
+    <p>推敲画面の「分析」で、本文に出てくるのに用語集に無い名前を一覧にします。名前・読み・カテゴリが入った状態で登録フォームを開けます。名前でない語は外せます。候補づくりは端末の中だけで行い、AI は使いません。</p>
+    <p>番号は design.md の UI 節と対応しています。モックの中のボタンは押せます。</p>
+  </header>
+
+  <div class="legend">
+    <div><span class="num">1</span><span>「分析」の先頭に「用語集に無い名前（作品全体）」</span></div>
+    <div><span class="num">2</span><span>行は2段：名前／カテゴリ・回数・話数。右に「用語集に登録」「外す」</span></div>
+    <div><span class="num">3</span><span>名前を押すと本文の出現に点線の枠（よく使う言葉と排他）</span></div>
+    <div><span class="num">4</span><span>一覧の下の補足。この話に無い名前なら「この話には出てきません。」</span></div>
+    <div><span class="num">5</span><span>「外した語（N）」を開くと「戻す」</span></div>
+    <div><span class="num">6</span><span>既存の「よく使う言葉」「セリフと地の文」はそのまま下に</span></div>
+    <div><span class="num">7</span><span>登録フォームを名前・読み・カテゴリ入りで開く</span></div>
+  </div>
+
+  <section class="screen" aria-labelledby="s1">
+    <h2 id="s1">推敲画面の「分析」タブ（PC だけ）</h2>
+    <div class="states" role="group" aria-label="欄の状態">
+      <span class="meta">状態：</span>
+      <button type="button" data-state="list" aria-pressed="true">候補あり</button>
+      <button type="button" data-state="loading" aria-pressed="false">準備中・解析中</button>
+      <button type="button" data-state="empty" aria-pressed="false">0件</button>
+      <button type="button" data-state="error" aria-pressed="false">使えない</button>
+    </div>
+    <div class="pair">
+      <div class="col">
+        <span class="label">現状</span>
+        <img class="shot" src="screens/proofread-analysis-desktop.png" alt="現状の推敲画面。右の分析タブに、よく使う言葉とセリフと地の文だけがある">
+        <p class="note">撮影は、作業ツリーとは別の一時コピーで会員の判定だけを外したもの（推敲画面は無料のアカウント登録から）。</p>
+      </div>
+      <div class="col">
+        <span class="label">変更後</span>
+        <div class="app" id="app">
+          <div class="pf-head">
+            <span class="t">推敲</span>
+            <span class="s">未判断 0 ・ 直す 0 ・ このまま 0</span>
+          </div>
+          <div class="pf-body">
+            <div class="pf-text" id="text"></div>
+            <aside class="pf-side">
+              <div class="tabs"><span class="chip">指摘</span><span class="chip on">分析</span></div>
+              <div class="panel">
+                <div class="sec">
+                  <h4><span class="num" style="margin-right:4px">1</span>用語集に無い名前（作品全体）</h4>
+                  <p class="hint">用語集に無い名前の候補です。2回以上出てくる語と、ルビや [[ ]] を付けた語を挙げます。</p>
+                  <div id="names"></div>
+                </div>
+                <div class="sec">
+                  <h4><span class="num" style="margin-right:4px">6</span>よく使う言葉（作品全体・副詞と形容詞）</h4>
+                  <ol class="freq" id="freq"></ol>
+                  <p class="hint" style="margin-top:4px">言葉を押すと、この話の本文に点線の枠が付きます。</p>
+                </div>
+                <div class="sec">
+                  <h4>セリフと地の文</h4>
+                  <div style="display:grid;gap:6px;margin-top:6px">
+                    <div class="ratio"><span>この話</span><span class="bar"><span style="width:17%"></span></span><span>17％</span></div>
+                    <div class="ratio"><span>作品全体</span><span class="bar"><span style="width:17%"></span></span><span>17％</span></div>
+                  </div>
+                </div>
+              </div>
+            </aside>
+          </div>
+          <div class="scrim" id="scrim" hidden>
+            <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="dlg-title">
+              <h5 id="dlg-title">用語集に登録 <span class="num">7</span></h5>
+              <label class="field">名前<input id="f-name" class="filled"></label>
+              <div class="two">
+                <label class="field">読み<input id="f-reading" placeholder="ゆぐどらしる"></label>
+                <label class="field">カテゴリ
+                  <select id="f-cat"><option value="">未分類</option><option>人物</option><option>場所</option><option>組織</option><option>用語</option><option>アイテム</option><option>生物</option></select>
+                </label>
+              </div>
+              <p class="fold">別名・公開情報・作者メモ・サムネイル画像（いまのフォームのまま・省略）</p>
+              <div class="dlg-acts">
+                <button type="button" class="btn" id="f-cancel">キャンセル</button>
+                <button type="button" class="btn primary" id="f-ok">作成</button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <p class="note">右の欄は実物の幅（約 384px）より少し狭く描いています。行の右の「用語集に登録」「外す」は高さ 24px の小ボタン（Button size="xs"）。名前を押した行は淡い緑。</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="screen" aria-labelledby="s2">
+    <h2 id="s2">用語集に登録（既存のダイアログ）</h2>
+    <div class="pair">
+      <div class="col">
+        <span class="label">現状（本文の未登録の [[シェリス]] から開いたもの）</span>
+        <img class="shot" src="screens/glossary-quick-create-desktop.png" alt="現状の用語集に登録ダイアログ。名前だけが入り、読みは空、カテゴリは未分類">
+      </div>
+      <div class="col">
+        <span class="label">変更後 <span class="num">7</span></span>
+        <p class="note">フォームそのものは変えません。推敲画面の「用語集に登録」から開くと、名前に加えて、推定できた読み（ひらがな）とカテゴリ（人物・場所・組織）が入った状態で開きます。推定できない項目は、今と同じ空欄・未分類です。上のモックで「リリアーナ」の「用語集に登録」を押すと、入った状態を確かめられます。作成すると一覧からすぐ消えます。</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="screen" aria-labelledby="s3">
+    <h2 id="s3">ヘルプ（辞書のライセンス表記）</h2>
+    <div class="help">
+      <p>推敲画面のくわしい確認は、端末の中で文章を解析します。原稿は外に送りません。解析には、Lindera と IPADIC を使っています（<a href="#s3">ライセンス表記</a>）。<ins>今の言葉は SudachiDict から足しています（<a href="#s3">ライセンス表記</a>・Apache-2.0。一部に UniDic を含みます）。</ins></p>
+    </div>
+    <p class="note">緑の下地が足す文。既存の文の言い回しは実装時に help-page.tsx の現物に合わせる。スマホ版は対象外（推敲画面は PC だけ）。</p>
+  </section>
+</div>
+
+<script>
+const PARAS = [
+  '「リリアーナ様、お待ちください」',
+  '　アルヴェインが叫んだ。王都グランヴェルの城門を、黒鉄騎士団が固めていた。',
+  '　リリアーナは振り返らない。エルフのシェリスが肩をすくめる。',
+  '「アルヴェインは心配性ね」',
+  '　朔夜は湊斗の手を取った。「湊斗、行こう」朔夜の声は震えていた。',
+  '　灯里ちゃんが手を振る。湊斗は灯里に笑い返した。ふと見ると、窓の外はゆっくりと暮れていた。',
+  '　グランヴェルの夜は長い。シェリスはリリアーナの隣に座り、スマートフォンのような光る石を眺めていた。',
+]
+const ALL = [
+  { name: 'リリアーナ', count: 3, category: '人物', reading: 'りりあーな' },
+  { name: '湊斗', count: 3 },
+  { name: 'アルヴェイン', count: 2, reading: 'あるゔぇいん' },
+  { name: 'グランヴェル', count: 2, reading: 'ぐらんゔぇる' },
+  { name: 'シェリス', count: 2, reading: 'しぇりす' },
+  { name: '朔夜', count: 2 },
+  { name: '灯里', count: 2, category: '人物' },
+  { name: '黒鉄', count: 1, reading: 'くろがね' },
+  { name: 'レオンハルト', count: 4, other: true },
+]
+const FREQ = [['ふと', 1], ['ゆっくり', 1], ['長い', 1]]
+let state = 'list'
+let selected = null
+let selectedWord = null
+let dismissed = []
+let registered = []
+let editing = null
+
+const esc = (s) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]))
+const visible = () => ALL.filter((c) => !dismissed.includes(c.name) && !registered.includes(c.name)).sort((x, y) => y.count - x.count || x.name.localeCompare(y.name, 'ja'))
+
+function renderText() {
+  const target = selected ?? selectedWord
+  document.getElementById('text').innerHTML = PARAS.map((p) => {
+    let html = esc(p)
+    if (target && !(selected && ALL.find((c) => c.name === selected)?.other)) {
+      html = html.split(esc(target)).join(`<span class="mark">${esc(target)}</span>`)
+    }
+    return `<p>${html}</p>`
+  }).join('')
+}
+
+function renderNames() {
+  const box = document.getElementById('names')
+  if (state === 'loading') { box.innerHTML = '<p class="empty">くわしい確認の準備ができると表示します。</p>'; return }
+  if (state === 'error') { box.innerHTML = '<p class="empty">くわしい確認は、いまは使えません。</p>'; return }
+  const list = state === 'empty' ? [] : visible()
+  let html = ''
+  if (list.length === 0) {
+    html += '<p class="empty">用語集に無い名前は見つかりませんでした。</p>'
+  } else {
+    html += '<ul class="names">' + list.map((c, i) => {
+      const meta = [c.category, `${c.count}回`, '1話'].filter(Boolean).join('・')
+      const sel = selected === c.name
+      return `<li class="nrow${sel ? ' sel' : ''}">
+        <button type="button" class="nbtn" data-pick="${esc(c.name)}" aria-pressed="${sel}">
+          <span class="n">${i === 0 ? '<span class="num" style="margin-right:4px">2</span>' : ''}${esc(c.name)}</span><span class="m">${meta}</span>
+        </button>
+        <span class="acts">
+          <button type="button" class="xs" data-reg="${esc(c.name)}" aria-label="${esc(c.name)}を用語集に登録">用語集に登録</button>
+          <button type="button" class="xs ghost" data-dis="${esc(c.name)}" aria-label="${esc(c.name)}を外す">外す</button>
+        </span>
+      </li>`
+    }).join('') + '</ul>'
+    const cur = ALL.find((c) => c.name === selected)
+    html += `<p class="hint" style="margin-top:4px"><span class="num" style="margin-right:4px">4</span>${cur?.other ? 'この話には出てきません。' : '名前を押すと、この話の本文に点線の枠が付きます。'}</p>`
+  }
+  if (state === 'list' && dismissed.length > 0) {
+    html += `<details class="dismissed" open><summary><span class="num" style="margin-right:4px">5</span>外した語（${dismissed.length}）</summary><ul>` +
+      dismissed.map((n) => `<li><span>${esc(n)}</span><button type="button" class="xs ghost" data-res="${esc(n)}" aria-label="${esc(n)}を戻す">戻す</button></li>`).join('') +
+      '</ul></details>'
+  }
+  box.innerHTML = html
+}
+
+function renderFreq() {
+  document.getElementById('freq').innerHTML = FREQ.map(([w, n], i) =>
+    `<li><button type="button" class="${selectedWord === w ? 'sel' : ''}" data-word="${w}" aria-pressed="${selectedWord === w}"><span class="k">${i + 1}</span><span>${w}</span><span>${n}件</span><span class="r">1万字あたり 45.9</span></button></li>`).join('')
+}
+
+function render() { renderNames(); renderFreq(); renderText() }
+
+document.querySelector('.states').addEventListener('click', (e) => {
+  const b = e.target.closest('button[data-state]')
+  if (!b) return
+  state = b.dataset.state
+  document.querySelectorAll('.states button').forEach((x) => x.setAttribute('aria-pressed', String(x === b)))
+  selected = null
+  render()
+})
+
+document.getElementById('app').addEventListener('click', (e) => {
+  const pick = e.target.closest('[data-pick]')
+  const reg = e.target.closest('[data-reg]')
+  const dis = e.target.closest('[data-dis]')
+  const res = e.target.closest('[data-res]')
+  const word = e.target.closest('[data-word]')
+  if (pick) { const n = pick.dataset.pick; selected = selected === n ? null : n; selectedWord = null; render() }
+  else if (word) { const w = word.dataset.word; selectedWord = selectedWord === w ? null : w; selected = null; render() }
+  else if (dis) { const n = dis.dataset.dis; dismissed.push(n); if (selected === n) selected = null; render() }
+  else if (res) { const n = res.dataset.res; dismissed = dismissed.filter((x) => x !== n); render() }
+  else if (reg) {
+    const c = ALL.find((x) => x.name === reg.dataset.reg)
+    editing = c
+    const name = document.getElementById('f-name'); name.value = c.name
+    const rd = document.getElementById('f-reading'); rd.value = c.reading ?? ''; rd.classList.toggle('filled', !!c.reading)
+    const cat = document.getElementById('f-cat'); cat.value = c.category ?? ''; cat.classList.toggle('filled', !!c.category)
+    document.getElementById('scrim').hidden = false
+    name.focus()
+  }
+})
+document.getElementById('f-cancel').addEventListener('click', () => { document.getElementById('scrim').hidden = true; editing = null })
+document.getElementById('f-ok').addEventListener('click', () => {
+  const name = document.getElementById('f-name').value.trim()
+  document.getElementById('scrim').hidden = true
+  if (editing && name === editing.name) registered.push(name)
+  if (selected === name) selected = null
+  editing = null
+  render()
+})
+render()
+</script>

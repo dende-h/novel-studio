@@ -3,6 +3,7 @@ import {
   CloudUpload,
   Database,
   Download,
+  FileText,
   LayoutGrid,
   List,
   Plus,
@@ -38,6 +39,7 @@ import { ExportDialog } from '@/ui/components/ExportDialog/export-dialog'
 import { ImportDialog } from '@/ui/components/ImportDialog/import-dialog'
 import { SaveStateIndicator } from '@/ui/components/SaveStateIndicator/save-state-indicator'
 import { SideNav } from '@/ui/components/SideNav/side-nav'
+import { TextImportDialog } from '@/ui/components/TextImportDialog/text-import-dialog'
 import { TitlePromptDialog } from '@/ui/components/TitlePromptDialog/title-prompt-dialog'
 import { useToast } from '@/ui/components/Toast/toast'
 import { TrashDialog } from '@/ui/components/TrashDialog/trash-dialog'
@@ -178,6 +180,7 @@ export function Library({
   /** 公開切り替えの通信中の作品 id（多重送信を防ぐ）。 */
   const [publishBusyId, setPublishBusyId] = useState<string | null>(null)
   const [importOpen, setImportOpen] = useState(false)
+  const [textImportOpen, setTextImportOpen] = useState(false)
   const [backupOpen, setBackupOpen] = useState(false)
   const [trashOpen, setTrashOpen] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<WorkSummary | null>(null)
@@ -477,6 +480,14 @@ export function Library({
                             setImportOpen(true)
                           }}
                         />
+                        <DataMenuItem
+                          icon={<FileText className="size-[15px]" />}
+                          label="テキストから作品を作る"
+                          onClick={() => {
+                            setDataMenuOpen(false)
+                            setTextImportOpen(true)
+                          }}
+                        />
                         {onOpenCloudBackup ? (
                           <DataMenuItem
                             icon={<CloudUpload className="size-[15px]" />}
@@ -629,6 +640,13 @@ export function Library({
         onOpenChange={setImportOpen}
         onImport={(works) => store.importWorks(works)}
         onRestoreAll={(json) => localBackup.restorePlaintext(json)}
+      />
+      <TextImportDialog
+        open={textImportOpen}
+        onOpenChange={setTextImportOpen}
+        defaultAuthor={state.profile.penName ?? ''}
+        onCreate={(work) => store.importWorks([work])}
+        onWrite={(id) => handleWrite(id)}
       />
       <WorkMetaDialog
         open={metaTarget !== null}

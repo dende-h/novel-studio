@@ -1,0 +1,660 @@
+<title>COT-40 推敲画面</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Noto+Sans+JP:wght@400;500;700&family=Noto+Serif+JP:wght@400;600&display=swap">
+<style>
+/* レイアウト：仕様の読み物（上）＋画面ごとに「現状スクショ｜変更後モック」の2段。モックはアプリのトークン（src/ui/index.css）をそのまま写す */
+:root {
+  --background: #fdfcfb;
+  --foreground: #4b5160;
+  --card: #fefeff;
+  --primary: #2c5b27;
+  --primary-foreground: #ffffff;
+  --border: #e4e6eb;
+  --surface-container-lowest: #fefeff;
+  --surface-container-low: #f9f7f5;
+  --surface-container: #f3f1ec;
+  --surface-container-high: #edeae3;
+  --surface-variant: #f3ede4;
+  --on-surface: #1f2430;
+  --on-surface-variant: #6b7381;
+  --outline-variant: #9da3ae;
+  --primary-container: #e3ece1;
+  --on-primary-container: #234420;
+  --secondary-container: #f2e6d4;
+  --on-secondary-container: #92703f;
+  --secondary-color: #b98f63;
+  --error: #dc2626;
+  --doc-bg: #f6f4ef;
+  --doc-rule: #e2ddd2;
+  --badge: #92703f;
+  --font-ui: "Inter", "Noto Sans JP", system-ui, sans-serif;
+  --font-editor: "Noto Sans JP", system-ui, sans-serif;
+  --font-reading: "Noto Serif JP", "Hiragino Mincho ProN", serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --background: #181611; --foreground: #d7d2c8; --card: #201d16; --primary: #44863a; --primary-foreground: #ffffff;
+    --border: #322e26; --surface-container-lowest: #1f1c16; --surface-container-low: #232019; --surface-container: #29251e;
+    --surface-container-high: #322d25; --surface-variant: #201d16; --on-surface: #ece8e1; --on-surface-variant: #a49e92;
+    --outline-variant: #645e53; --primary-container: #294424; --on-primary-container: #cae4c3; --secondary-container: #38301f;
+    --on-secondary-container: #e0c398; --secondary-color: #cba576; --error: #e5544e; --doc-bg: #12100c; --doc-rule: #2c2820; --badge: #dcbd8e;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --background: #181611; --foreground: #d7d2c8; --card: #201d16; --primary: #44863a; --primary-foreground: #ffffff;
+  --border: #322e26; --surface-container-lowest: #1f1c16; --surface-container-low: #232019; --surface-container: #29251e;
+  --surface-container-high: #322d25; --surface-variant: #201d16; --on-surface: #ece8e1; --on-surface-variant: #a49e92;
+  --outline-variant: #645e53; --primary-container: #294424; --on-primary-container: #cae4c3; --secondary-container: #38301f;
+  --on-secondary-container: #e0c398; --secondary-color: #cba576; --error: #e5544e; --doc-bg: #12100c; --doc-rule: #2c2820; --badge: #dcbd8e;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body { background: var(--doc-bg); color: var(--foreground); font-family: var(--font-ui); line-height: 1.6; }
+.wrap { max-width: 1240px; margin: 0 auto; padding-inline: 16px; padding-block: 32px 64px; display: grid; gap: 40px; }
+h1, h2, h3 { color: var(--on-surface); text-wrap: balance; margin: 0; }
+h1 { font-size: 1.6rem; font-weight: 600; }
+h2 { font-size: 1.2rem; font-weight: 600; }
+h3 { font-size: .95rem; font-weight: 600; }
+p { margin: 0; }
+.lead { max-width: 68ch; display: grid; gap: 8px; color: var(--on-surface-variant); }
+.meta { font-size: .8rem; color: var(--on-surface-variant); }
+.num { display: inline-grid; place-items: center; min-width: 1.35em; height: 1.35em; border-radius: 999px; background: var(--badge); color: var(--doc-bg); font-size: .72rem; font-weight: 600; font-family: var(--font-ui); padding-inline: 4px; vertical-align: middle; }
+.legend { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 6px 20px; font-size: .85rem; }
+.legend div { display: flex; gap: 8px; align-items: baseline; min-width: 0; }
+section.screen { display: grid; gap: 14px; border-top: 1px solid var(--doc-rule); padding-top: 24px; }
+.pair { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start; }
+.pair.stack { grid-template-columns: 1fr; }
+.col { display: grid; gap: 8px; min-width: 0; }
+.col > .label { font-size: .78rem; letter-spacing: .06em; color: var(--on-surface-variant); }
+.shot { width: 100%; border: 1px solid var(--doc-rule); border-radius: 6px; background: var(--card); }
+.note { font-size: .82rem; color: var(--on-surface-variant); background: var(--surface-container-low); border: 1px dashed var(--doc-rule); border-radius: 6px; padding: 10px 12px; }
+.mobile-pair { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 393px)); gap: 24px; justify-content: start; }
+.states { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: .8rem; }
+.states button { font: inherit; border: 1px solid var(--doc-rule); background: var(--card); color: var(--foreground); border-radius: 999px; padding: 4px 12px; cursor: pointer; }
+.states button[aria-pressed="true"] { background: var(--primary); border-color: var(--primary); color: var(--primary-foreground); }
+button:focus-visible, select:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+
+/* ===== アプリのモック ===== */
+.app { border: 1px solid var(--border); border-radius: 8px; overflow: hidden; background: var(--background); color: var(--foreground); font-family: var(--font-ui); font-size: 13px; position: relative; }
+.topbar { display: flex; align-items: center; gap: 10px; height: 44px; padding-inline: 14px; border-bottom: 1px solid var(--border); background: var(--surface-container-lowest); }
+.logo { font-weight: 700; color: var(--on-surface); font-family: var(--font-editor); letter-spacing: .02em; }
+.crumb { color: var(--on-surface-variant); font-size: 12px; }
+.spacer { flex: 1; }
+.iconbtn { width: 30px; height: 30px; display: inline-grid; place-items: center; border-radius: 999px; border: 1px solid var(--border); color: var(--on-surface-variant); background: transparent; }
+.btn { font: inherit; display: inline-flex; align-items: center; gap: 6px; border-radius: 6px; border: 1px solid var(--border); background: var(--card); color: var(--on-surface); padding: 5px 10px; cursor: pointer; min-height: 30px; }
+.btn.ghost { border-color: transparent; background: transparent; color: var(--on-surface-variant); }
+.btn.primary { background: var(--primary); border-color: var(--primary); color: var(--primary-foreground); }
+.btn.soft { background: var(--primary-container); border-color: transparent; color: var(--on-primary-container); }
+.btn.small { min-height: 26px; padding: 3px 9px; font-size: 12px; }
+.body3 { display: grid; grid-template-columns: 186px 1fr; min-height: 470px; }
+.sidenav { background: var(--surface-container-low); border-right: 1px solid var(--border); padding: 12px 10px; display: grid; align-content: start; gap: 4px; }
+.sidenav .back { color: var(--on-surface-variant); font-size: 12px; padding: 4px 6px 10px; }
+.workcard { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 8px; display: flex; gap: 8px; align-items: center; margin-bottom: 6px; }
+.cover { width: 28px; height: 36px; border-radius: 3px; background: var(--secondary-container); display: grid; place-items: center; color: var(--on-secondary-container); font-family: var(--font-reading); }
+.navrow { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 6px; color: var(--on-surface-variant); position: relative; }
+.navrow.active { background: var(--card); color: var(--primary); font-weight: 600; box-shadow: 0 1px 2px rgb(0 0 0 / .05); }
+.navrow .num { position: absolute; right: 4px; }
+.navsec { font-size: 11px; color: var(--on-surface-variant); padding: 10px 8px 2px; }
+.main { display: grid; grid-template-rows: auto 1fr auto; min-width: 0; }
+.toolbar { display: flex; align-items: center; gap: 10px; padding: 6px 12px; border-bottom: 1px solid var(--border); background: var(--surface-container-lowest); min-height: 46px; flex-wrap: wrap; }
+.toolbar .eptitle { font-weight: 600; color: var(--on-surface); }
+.notation { display: flex; gap: 12px; color: var(--on-surface-variant); font-size: 11px; }
+.notation span small { display: block; font-size: 9px; opacity: .7; font-family: ui-monospace, monospace; }
+.toolgroup { display: flex; align-items: center; gap: 6px; margin-left: auto; position: relative; }
+.seg { display: inline-flex; border-radius: 6px; overflow: hidden; font-size: 11px; }
+.seg span { padding: 4px 8px; color: var(--on-surface-variant); }
+.seg span.on { background: var(--primary); color: var(--primary-foreground); }
+.fixchip { font: inherit; display: inline-flex; align-items: center; gap: 6px; border-radius: 999px; border: 1px solid transparent; background: var(--secondary-container); color: var(--on-secondary-container); padding: 4px 10px; cursor: pointer; font-weight: 600; font-size: 12px; position: relative; }
+.fixchip .count { font-variant-numeric: tabular-nums; }
+.fixchip .num { position: absolute; top: -9px; right: -9px; }
+.split { display: grid; grid-template-columns: 1fr 1fr; min-height: 0; }
+.editor { padding: 22px 26px; font-family: var(--font-editor); font-size: 14px; line-height: 2.1; color: var(--on-surface); white-space: pre-wrap; word-break: break-all; position: relative; }
+.editor .sel { background: #b6d3ff; color: #102040; border-radius: 1px; }
+.preview { background: var(--surface-variant); padding: 20px; writing-mode: vertical-rl; font-family: var(--font-reading); font-size: 13px; line-height: 2.2; color: var(--on-surface); overflow: hidden; max-height: 420px; }
+.status { display: flex; justify-content: space-between; padding: 6px 12px; border-top: 1px solid var(--border); color: var(--on-surface-variant); font-size: 11px; background: var(--surface-container-lowest); }
+.removed { position: absolute; left: 196px; bottom: 34px; display: flex; gap: 6px; align-items: center; font-size: 11px; color: var(--on-surface-variant); background: var(--card); border: 1px dashed var(--outline-variant); border-radius: 6px; padding: 4px 8px; }
+
+.popover { position: absolute; top: calc(100% + 6px); left: 0; width: 360px; background: var(--card); border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 10px 30px rgb(0 0 0 / .12); z-index: 5; padding: 8px; display: grid; gap: 2px; font-size: 12px; }
+.popover h4 { margin: 2px 6px 6px; font-size: 12px; color: var(--on-surface); font-weight: 600; display: flex; justify-content: space-between; align-items: center; }
+.fixlist { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.fixitem { display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: center; border-radius: 8px; }
+.fixitem .go { font: inherit; text-align: left; display: grid; gap: 2px; border: 0; background: transparent; padding: 8px; border-radius: 8px; cursor: pointer; color: inherit; }
+.fixitem .go:hover, .fixitem .go:focus-visible { background: var(--surface-container-low); }
+.fixitem .rule { font-size: 11px; color: var(--on-surface-variant); }
+.fixitem .ex { font-family: var(--font-editor); color: var(--on-surface); }
+.fixitem .ex b { background: var(--secondary-container); font-weight: 500; border-radius: 2px; padding: 0 1px; }
+.fixitem .msg { color: var(--on-surface-variant); font-size: 11px; }
+.popover .open { font: inherit; border: 0; border-top: 1px solid var(--border); background: transparent; margin-top: 4px; padding: 8px 6px 2px; color: var(--primary); font-weight: 600; display: flex; justify-content: space-between; align-items: center; cursor: pointer; }
+
+/* スマホ枠 */
+.phone { width: 100%; max-width: 393px; border: 1px solid var(--border); border-radius: 18px; overflow: hidden; background: var(--background); font-family: var(--font-ui); font-size: 14px; position: relative; }
+.phone .topbar { height: 54px; }
+.phone .toolbar { min-height: 54px; }
+.phone .editor { font-size: 16px; line-height: 2.2; padding: 20px 22px; min-height: 360px; }
+.toolgroup .popover { left: auto; right: 0; }
+.phone .popover { left: 8px; right: 8px; width: auto; top: 112px; }
+.phone .fixchip .num { top: -10px; right: -6px; }
+
+/* 推敲画面 */
+.pv { display: grid; grid-template-rows: auto 1fr; min-width: 0; }
+.pvhead { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 10px 14px; border-bottom: 1px solid var(--border); background: var(--surface-container-lowest); position: relative; }
+.pvhead h3 { font-size: 22px; font-family: var(--font-reading); font-weight: 600; }
+.pvhead .heading { display: grid; gap: 2px; flex-basis: 100%; }
+.pvhead .sub { font-size: 12px; color: var(--on-surface-variant); }
+.pvhead .desc { font-size: 11px; color: var(--on-surface-variant); opacity: .8; }
+.pvhead select { font: inherit; border: 1px solid var(--border); border-radius: 6px; background: var(--card); color: var(--on-surface); padding: 4px 8px; }
+.pvhead .num { margin-left: -4px; }
+.analyzer { display: inline-flex; align-items: center; gap: 8px; font-size: 12px; color: var(--on-surface-variant); }
+.bar { width: 120px; height: 6px; border-radius: 999px; background: var(--surface-container-high); overflow: hidden; }
+.bar i { display: block; height: 100%; width: 34%; background: var(--primary); }
+.analyzer.err { color: var(--error); }
+.togglebox { position: absolute; top: calc(100% + 4px); left: 14px; z-index: 4; background: var(--card); border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 10px 30px rgb(0 0 0 / .1); padding: 10px; width: min(560px, 90%); display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { font: inherit; min-height: 44px; border-radius: 999px; border: 1px solid transparent; padding: 0 12px; font-size: 12px; cursor: pointer; background: var(--primary-container); color: var(--on-primary-container); display: inline-flex; align-items: center; gap: 6px; }
+.chip.off { background: transparent; border-color: color-mix(in srgb, var(--outline-variant) 40%, transparent); color: var(--on-surface-variant); }
+.chip .tag { font-size: 10px; color: var(--on-secondary-container); background: var(--secondary-container); border-radius: 999px; padding: 0 6px; }
+.pvbody { display: grid; grid-template-columns: minmax(0, 1fr) 384px; min-height: 0; }
+.pvtext { padding: 26px 34px; font-family: var(--font-reading); font-size: 15px; line-height: 2.15; color: var(--on-surface); display: grid; gap: 2px; align-content: start; max-height: 560px; overflow: auto; position: relative; }
+.pvtext p { white-space: pre-wrap; border-radius: 4px; padding: 0 4px; }
+.pvtext p.focus { background: var(--surface-container-low); }
+.pvtext .num { position: absolute; top: 8px; left: 8px; }
+mark.f { background: transparent; color: inherit; text-decoration: underline wavy var(--secondary-color); text-underline-offset: 5px; text-decoration-thickness: 1.5px; cursor: pointer; }
+mark.f.fix { background: var(--secondary-container); text-decoration: none; border-radius: 2px; }
+mark.f.keep { text-decoration: none; cursor: default; }
+mark.f.active { outline: 2px solid var(--primary); outline-offset: 1px; border-radius: 2px; }
+mark.w { background: transparent; color: inherit; outline: 1.5px dotted var(--primary); outline-offset: 1px; border-radius: 2px; }
+.pvside { border-left: 1px solid var(--border); background: var(--surface-container-low); display: grid; grid-template-rows: auto auto 1fr; min-height: 0; position: relative; }
+.tabs { display: flex; gap: 6px; padding: 12px 12px 0; align-items: center; }
+.tab, .filters .chip { font: inherit; display: inline-flex; align-items: center; border-radius: 999px; padding: 4px 12px; font-size: 12px; font-weight: 500; cursor: pointer; border: 1px solid color-mix(in srgb, var(--outline-variant) 40%, transparent); background: var(--surface-container-lowest); color: var(--on-surface-variant); min-height: 0; }
+.tab[aria-selected="true"], .filters .chip.on { background: var(--primary); border-color: var(--primary); color: var(--primary-foreground); }
+.filters { display: flex; gap: 6px; padding: 10px 12px; flex-wrap: wrap; }
+.list { overflow: auto; padding: 0 12px 14px; display: grid; gap: 8px; align-content: start; max-height: 470px; }
+.fcard { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; display: grid; gap: 6px; cursor: pointer; }
+.fcard.active { border-color: var(--primary); box-shadow: 0 0 0 1px var(--primary); }
+.fcard .rule { font-size: 11px; color: var(--on-surface-variant); display: flex; justify-content: space-between; gap: 8px; }
+.fcard .ex { font-family: var(--font-reading); color: var(--on-surface); font-size: 13px; }
+.fcard .ex b { font-weight: 600; text-decoration: underline wavy var(--secondary-color); text-underline-offset: 4px; }
+.fcard .ex b.fix { text-decoration: none; background: var(--secondary-container); border-radius: 2px; }
+.fcard .ex b.keep { text-decoration: none; }
+.fcard .msg { font-size: 12px; color: var(--foreground); }
+.fcard .acts { display: flex; flex-wrap: wrap; gap: 6px; }
+.empty { padding: 28px 14px; text-align: center; color: var(--on-surface-variant); font-size: 13px; }
+.analysis { padding: 12px; display: grid; gap: 18px; align-content: start; overflow: auto; max-height: 520px; }
+.analysis h4 { margin: 0 0 6px; font-size: 12px; color: var(--on-surface); font-weight: 600; }
+.words { display: grid; gap: 2px; font-size: 12px; }
+.words button { font: inherit; display: grid; grid-template-columns: 1.6em 1fr auto auto; gap: 8px; align-items: center; border: 0; background: transparent; padding: 5px 6px; border-radius: 6px; color: var(--on-surface); cursor: pointer; text-align: left; font-variant-numeric: tabular-nums; }
+.words button[aria-pressed="true"] { background: var(--primary-container); color: var(--on-primary-container); }
+.words .rank { color: var(--on-surface-variant); }
+.words .per { color: var(--on-surface-variant); font-size: 11px; }
+.ratio { display: grid; gap: 8px; font-size: 12px; }
+.ratio .row { display: grid; grid-template-columns: 5.5em 1fr 3.4em; gap: 8px; align-items: center; font-variant-numeric: tabular-nums; }
+.ratio .track { height: 10px; border-radius: 999px; overflow: hidden; display: flex; background: var(--surface-container-high); }
+.ratio .track i { display: block; background: var(--primary); }
+.ratio .track s { display: block; background: var(--secondary-container); text-decoration: none; flex: 1; }
+.keys { display: flex; gap: 12px; font-size: 11px; color: var(--on-surface-variant); }
+.keys span::before { content: ""; display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 4px; vertical-align: -1px; background: var(--primary); }
+.keys span + span::before { background: var(--secondary-container); }
+.overflow { overflow-x: auto; }
+.overflow > .app { min-width: 1080px; }
+.marklegend { display: flex; flex-wrap: wrap; gap: 14px; font-size: .8rem; color: var(--on-surface-variant); }
+.marklegend span { font-family: var(--font-reading); color: var(--on-surface); }
+.marklegend .lab { font-family: var(--font-ui); color: var(--on-surface-variant); }
+@media (max-width: 860px) { .pair { grid-template-columns: 1fr; } }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; scroll-behavior: auto !important; } }
+</style>
+
+<div class="wrap">
+  <header class="lead">
+    <p class="meta">Linear COT-40 ／ 要件 COT-41 ・ 設計 COT-42 ／ docs/specs/COT-40/</p>
+    <h1>推敲画面と「直す箇所」のプロトタイプ</h1>
+    <p>小説の推敲を、執筆画面とは別の「推敲」画面に移します。指摘ごとに「直す」か「このまま」かを選び、直すと決めたものだけを執筆画面に出します。番号は design.md の UI 節と対応しています。</p>
+    <p class="meta">モックの文章とデータは説明用の例です。色はアプリのトークン（src/ui/index.css の --secondary-container・--secondary-color・--primary など）だけを使っています。本文の選択色だけはブラウザの選択表示をまねたものです。</p>
+  </header>
+
+  <section class="legend" aria-label="番号の対応">
+    <div><span class="num">1</span><span>エディタ下の「推敲チェック」を無くす（小説）</span></div>
+    <div><span class="num">2</span><span>ツールバーに「直す箇所 N」（1件以上のときだけ）</span></div>
+    <div><span class="num">3</span><span>押すと直すと決めた箇所の一覧（その箇所へ移る／外す）</span></div>
+    <div><span class="num">4</span><span>選ぶと本文の該当文字列を選択</span></div>
+    <div><span class="num">5</span><span>サイドナビに「推敲」（無料会員以上・PC）</span></div>
+    <div><span class="num">6</span><span>推敲画面のヘッダ（話・確認する項目・解析の状態）</span></div>
+    <div><span class="num">7</span><span>本文は読むだけ。指摘に印</span></div>
+    <div><span class="num">8</span><span>「指摘｜分析」と絞り込み</span></div>
+    <div><span class="num">9</span><span>指摘のカードと判断のボタン</span></div>
+    <div><span class="num">10</span><span>分析（よく使う言葉・セリフと地の文）</span></div>
+  </section>
+
+  <!-- ===== 執筆画面 PC ===== -->
+  <section class="screen" aria-labelledby="h-editor">
+    <h2 id="h-editor">執筆画面（PC）</h2>
+    <div class="pair stack">
+      <div class="col" style="max-width:900px">
+        <span class="label">現状</span>
+        <img class="shot" src="screens/editor-novel-desktop.png" alt="現状の執筆画面。本文の下に推敲チェックの欄が開き、確認する項目のチップと候補の一覧が本文欄の下半分を占めている">
+        <p class="meta">本文の下に「推敲チェック（確認候補 9件）」が常にあり、開くと本文欄の下半分を占める。</p>
+      </div>
+      <div class="col">
+        <span class="label">変更後（「直す箇所」を押して開いた状態）</span>
+        <div class="app" id="ed-desktop">
+          <div class="topbar"><span class="logo">コトノハ-leaf-</span><span class="crumb">／ 夜の校舎</span><span class="spacer"></span><span class="crumb">✓ 保存済み</span><span class="iconbtn" aria-hidden="true">⟲</span><span class="btn small">書き出し</span></div>
+          <div class="body3">
+            <nav class="sidenav" aria-label="サイドナビ（モック）">
+              <span class="back">← マイライブラリ</span>
+              <div class="workcard"><span class="cover">夜</span><div><div style="color:var(--on-surface);font-weight:600">夜の校舎</div><div class="meta" style="font-size:10px">3話 ・ 6,240字</div></div></div>
+              <span class="navrow active">✎ 本文を書く</span>
+              <span class="navrow">✓ 推敲 <span class="num">5</span></span>
+              <span class="navrow">▤ 用語集</span>
+              <span class="navrow">◇ プロット</span>
+              <span class="navsec">草稿</span>
+              <span class="navrow active" style="font-weight:500">第一話</span>
+              <span class="navrow">第二話</span>
+              <span class="navrow">第三話</span>
+            </nav>
+            <div class="main">
+              <div class="toolbar">
+                <span class="eptitle">第一話</span>
+                <div class="notation"><span>ルビ<small>Ctrl+I</small></span><span>傍点<small>Ctrl+B</small></span><span>用語引用<small>Ctrl+K</small></span></div>
+                <div class="toolgroup">
+                  <button type="button" class="fixchip" id="ed-chip" aria-haspopup="dialog" aria-expanded="true" aria-label="直すと決めた箇所 3件">直す箇所 <span class="count" id="ed-count">3</span><span class="num">2</span></button>
+                  <span class="btn ghost small">⌕ 検索・置換</span>
+                  <span class="seg"><span>横書き</span><span class="on">縦書き</span></span>
+                  <span class="btn ghost small">▤ 用語集</span>
+                  <div class="popover" id="ed-pop" role="dialog" aria-label="直すと決めた箇所"></div>
+                </div>
+              </div>
+              <div class="split">
+                <div class="editor" id="ed-text" aria-label="本文（モック）"></div>
+                <div class="preview" aria-hidden="true">　夜の校舎に、私はひとりで立っていた。
+「もう帰ろうよ。」
+彼は言った。しかし私は、その場を動くことが出来なかった。子供の頃から、できることは少なかった。
+「待って!すぐ終わるから」
+　廊下の奥で、何かが動いた気がした。非常口の緑の光がが揺れて…、足音がこちらへ近づいてきた。</div>
+              </div>
+              <div class="status"><span>自動保存 ON</span><span>8段落 ・ 238文字 ・ 今日 +0字</span></div>
+            </div>
+          </div>
+          <span class="removed"><span class="num">1</span>ここにあった「推敲チェック」の欄は無くなる（脚本の書式チェックは残る）</span>
+        </div>
+        <div class="states" role="group" aria-label="執筆画面の状態">
+          <span class="meta">状態：</span>
+          <button type="button" data-ed="open" aria-pressed="true">一覧を開く</button>
+          <button type="button" data-ed="closed" aria-pressed="false">閉じる</button>
+          <button type="button" data-ed="zero" aria-pressed="false">0件（ボタンを出さない）</button>
+          <button type="button" data-ed="reset" aria-pressed="false">最初に戻す</button>
+        </div>
+        <p class="meta"><span class="num">3</span> 一覧の項目（その箇所へ移る）を押すと <span class="num">4</span> 本文のその文字列が選択されます（モックでも動きます）。参照の中にかかるなど、その箇所だけを選べないときは段落全体を選び、トーストで知らせます。本文を直して文字列が消えると、項目は一覧から消えます。</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== 執筆画面 スマホ ===== -->
+  <section class="screen" aria-labelledby="h-mobile">
+    <h2 id="h-mobile">執筆画面（スマホ・幅 393px）</h2>
+    <p class="meta">スマホに推敲画面は出しません（ユーザー決定）。PC で判断した結果が同期で届き、「直す箇所」だけを使えます。</p>
+    <div class="mobile-pair">
+      <div class="col">
+        <span class="label">現状</span>
+        <img class="shot" src="screens/editor-novel-mobile.png" alt="現状のスマホの執筆画面。本文の下に推敲チェックの欄と候補が続く">
+      </div>
+      <div class="col">
+        <span class="label">変更後（一覧を開いた状態）</span>
+        <div class="phone" id="ed-mobile">
+          <div class="topbar"><span aria-hidden="true">☰</span><span class="logo">コトノハ-leaf-</span><span class="spacer"></span><span style="color:var(--primary)">✓</span><span class="iconbtn" aria-hidden="true">⟲</span><span class="iconbtn" aria-hidden="true">↓</span></div>
+          <div class="toolbar">
+            <span class="seg" style="font-size:13px"><span class="on" style="padding:6px 12px">本文</span><span style="padding:6px 12px">プレビュー</span></span>
+            <div class="toolgroup">
+              <button type="button" class="fixchip" id="mb-chip" aria-label="直すと決めた箇所 3件" aria-expanded="true">✓ <span class="count" id="mb-count">3</span><span class="num">2</span></button>
+              <span class="iconbtn" style="border:0" aria-hidden="true">⌕</span>
+              <span class="iconbtn" style="border:0" aria-hidden="true">▤</span>
+            </div>
+          </div>
+          <div class="editor" id="mb-text"></div>
+          <div class="popover" id="mb-pop" role="dialog" aria-label="直すと決めた箇所"></div>
+          <div class="status"><span>8段落 ・ 238文字</span><span></span></div>
+        </div>
+        <p class="meta"><span class="num">3</span> スマホでは全幅のカードで開きます（検索・置換と同じ）。末尾の「推敲画面を開く」は出しません。</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== 推敲画面 PC ===== -->
+  <section class="screen" aria-labelledby="h-proof">
+    <h2 id="h-proof">推敲画面（PC・無料会員以上）</h2>
+    <div class="pair">
+      <div class="col">
+        <span class="label">現状（参考：会員の PC 画面の骨格＝プロット画面）</span>
+        <img class="shot" src="screens/ref-plot.webp" alt="プロット画面。左にサイドナビ（本文を書く・用語集・プロット・アウトライン・相関図・マインドマップ・草稿の話の一覧）、中央に明朝の見出しとチップのタブ、右に詳細の欄">
+        <p class="meta"><span class="num">5</span> 「推敲」の行は、この画像の「本文を書く」と「用語集」の間に入ります。見出しの組み方とチップのタブはこの画面に合わせます。</p>
+      </div>
+      <div class="col">
+        <p class="note">推敲画面そのものは撮影できません。無料会員以上の画面で、撮影はゲストで動くためです。同じ作りの演出エディタも同じ理由で撮れません。代わりに LP 用のプロット画面の画像（public/lp/shots/plot.webp）を参考に載せています。</p>
+      </div>
+    </div>
+    <div class="states" role="group" aria-label="推敲画面の状態">
+      <span class="meta">状態：</span>
+      <button type="button" data-pv="ready" aria-pressed="true">解析の準備ができた</button>
+      <button type="button" data-pv="loading" aria-pressed="false">初回・準備中</button>
+      <button type="button" data-pv="error" aria-pressed="false">準備に失敗</button>
+      <button type="button" data-pv="none" aria-pressed="false">指摘0件</button>
+      <button type="button" data-pv="blank" aria-pressed="false">空の話</button>
+    </div>
+    <div class="overflow">
+      <div class="app" id="pv-app">
+        <div class="topbar"><span class="logo">コトノハ-leaf-</span><span class="crumb">／ 夜の校舎</span><span class="spacer"></span><span class="crumb">✓ 保存済み</span><span class="btn small">書き出し</span></div>
+        <div class="body3" style="grid-template-columns:186px 1fr">
+          <nav class="sidenav" aria-label="サイドナビ（モック）">
+            <span class="back">← マイライブラリ</span>
+            <div class="workcard"><span class="cover">夜</span><div><div style="color:var(--on-surface);font-weight:600">夜の校舎</div><div class="meta" style="font-size:10px">3話 ・ 6,240字</div></div></div>
+            <span class="navrow">✎ 本文を書く</span>
+            <span class="navrow active">✓ 推敲 <span class="num">5</span></span>
+            <span class="navrow">▤ 用語集</span>
+            <span class="navrow">◇ プロット</span>
+            <span class="navrow">▦ アウトライン</span>
+            <span class="navrow">◎ 演出</span>
+            <span class="navsec">草稿</span>
+            <span class="navrow">第一話</span>
+            <span class="navrow">第二話</span>
+            <span class="navrow">第三話</span>
+          </nav>
+          <div class="pv">
+            <div class="pvhead">
+              <div class="heading"><h3>推敲 <span class="num">6</span></h3><span class="sub" id="pv-counts"></span><span class="desc">指摘ごとに、直すか、このままにするかを選べます。直すと決めた箇所だけが本文の画面に出ます。</span></div>
+              <select id="pv-ep" aria-label="推敲する話"><option>第一話</option><option>第二話</option><option>第三話</option></select>
+              <button type="button" class="btn small" id="pv-rules" aria-expanded="false">確認する項目</button>
+              <span class="spacer"></span>
+              <span class="analyzer" id="pv-analyzer"></span>
+              <div class="togglebox" id="pv-togglebox" hidden></div>
+            </div>
+            <div class="pvbody">
+              <div class="pvtext" id="pv-text" aria-label="本文（読むだけ）"></div>
+              <aside class="pvside">
+                <div class="tabs" role="tablist" aria-label="指摘と分析">
+                  <button type="button" class="tab" role="tab" id="tab-find" aria-selected="true">指摘</button>
+                  <button type="button" class="tab" role="tab" id="tab-ana" aria-selected="false">分析</button>
+                  <span class="num" style="margin-left:auto;align-self:center">8</span>
+                </div>
+                <div class="filters" id="pv-filters" role="group" aria-label="絞り込み"></div>
+                <div class="list" id="pv-list"></div>
+                <div class="analysis" id="pv-analysis" hidden></div>
+              </aside>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="marklegend" aria-label="印の見え方">
+      <span class="lab">印：</span>
+      <span><mark class="f">子供</mark> <span class="lab">未判断（波線）</span></span>
+      <span><mark class="f fix">がが</mark> <span class="lab">直す（塗り）</span></span>
+      <span>…、 <span class="lab">このまま（印なし）</span></span>
+      <span><mark class="w">ふと</mark> <span class="lab">よく使う言葉（点線の枠）</span></span>
+    </div>
+    <p class="meta"><span class="num">7</span> 本文の印を押すと右の該当カードが選ばれ、カードを押すと本文の段落へ送られます。<span class="num">9</span> 「直す」「このまま」「未判断に戻す」「同じ指摘をすべてこのまま」はモックでも動きます。<span class="num">10</span> 分析タブで語を押すと、本文に点線の枠が付きます。</p>
+  </section>
+</div>
+
+<script>
+(() => {
+  // ---- 推敲画面のデータ（例） ----
+  const PARAS = [
+    '　夜の校舎に、私はひとりで立っていた。',
+    '「もう帰ろうよ。」',
+    '彼は言った。しかし私は、その場を動くことが出来なかった。子供の頃から、できることは少なかった。',
+    '「待って!すぐ終わるから」',
+    '　廊下の奥で、何かが動いた気がした。非常口の緑の光がが揺れて…、足音がこちらへ近づいてきた。',
+    '　一人の足音ではない。2人、いや3人はいる。子どもの声も混じっていた。',
+    '　この窓からなら、校庭まで見れる。出来ることなら、ふと、今すぐ帰りたかった。',
+    '　私は昇降口で靴箱の前で立ち止まった。ふと、誰かの視線を感じた。',
+  ]
+  const RULES = [
+    { id: 'indent', label: '字下げ' },
+    { id: 'punct', label: '閉じ括弧の前の句読点' },
+    { id: 'excl', label: '！？の後の空白' },
+    { id: 'leader', label: '三点リーダー・ダッシュ' },
+    { id: 'half', label: '半角の約物' },
+    { id: 'succ', label: '同じ語の連続' },
+    { id: 'variant', label: '表記ゆれ' },
+    { id: 'particle', label: '一文の中の同じ助詞', morph: true },
+    { id: 'ranuki', label: 'ら抜き言葉', morph: true },
+  ]
+  const ruleLabel = (id) => RULES.find((r) => r.id === id).label
+  const INITIAL = [
+    { p: 1, text: '。」', rule: 'punct', msg: '閉じ括弧の前の句読点（。、）は付けないのが一般的です。', st: 'fix' },
+    { p: 2, text: '彼', rule: 'indent', msg: '段落の頭は全角空白を1つ空けるのが一般的です。会話文（「）はそのままで構いません。', st: 'pending' },
+    { p: 2, text: '出来な', rule: 'variant', msg: '「出来る」と「できる」が混ざっています（この作品で 出来る 2件・できる 9件）。どちらかに揃えると読みやすくなります。', st: 'pending' },
+    { p: 2, text: '子供', rule: 'variant', morph: true, msg: '「子供」と「子ども」が混ざっています（この作品で 子供 3件・子ども 12件）。どちらかに揃えると読みやすくなります。', st: 'pending' },
+    { p: 3, text: 'て!す', rule: 'half', msg: '和文では感嘆符・疑問符は全角（！ ？）を使います。', st: 'fix' },
+    { p: 4, text: 'がが', rule: 'succ', msg: '同じ語が続いています（がが）。打ち間違いでなければ、そのままで構いません。', st: 'fix' },
+    { p: 4, text: 'て…、', rule: 'leader', msg: '三点リーダー（…）は2つ単位（……）で使うのが一般的です。', st: 'keep' },
+    { p: 5, text: '一人', rule: 'variant', msg: '数の書き方が算用数字と漢数字で混ざっています：人（一人・2人／算用 4件・漢数字 2件）。', st: 'pending' },
+    { p: 5, text: '子ども', rule: 'variant', morph: true, msg: '「子供」と「子ども」が混ざっています（この作品で 子供 3件・子ども 12件）。どちらかに揃えると読みやすくなります。', st: 'pending' },
+    { p: 6, text: '見れる', rule: 'ranuki', morph: true, msg: '「見れる」はら抜き言葉です。地の文では「見られる」が一般的です。', st: 'pending' },
+    { p: 6, text: '出来る', rule: 'variant', msg: '「出来る」と「できる」が混ざっています（この作品で 出来る 2件・できる 9件）。どちらかに揃えると読みやすくなります。', st: 'pending' },
+    { p: 7, text: 'で靴箱の前で', rule: 'particle', morph: true, msg: '同じ文の中で「で」が続いています。言い換えると読みやすくなることがあります。', st: 'pending' },
+  ]
+  let findings = INITIAL.map((f, i) => ({ ...f, id: i }))
+  let pvState = 'ready'
+  let filter = 'pending'
+  let activeId = null
+  let tab = 'find'
+  let word = null
+  const off = new Set()
+
+  const $ = (s) => document.querySelector(s)
+  const esc = (s) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c])
+
+  const visible = () =>
+    findings.filter((f) => !off.has(f.rule) && !(f.morph && pvState !== 'ready') && pvState !== 'none' && pvState !== 'blank')
+
+  function renderAnalyzer() {
+    const el = $('#pv-analyzer')
+    el.className = 'analyzer'
+    if (pvState === 'loading') el.innerHTML = 'くわしい確認の準備をしています（初回のみ） <span class="bar" role="progressbar" aria-valuenow="40" aria-valuemin="0" aria-valuemax="100"><i></i></span> 4.2 / 10.5MB'
+    else if (pvState === 'error') { el.className = 'analyzer err'; el.innerHTML = 'くわしい確認は、いまは使えません。 <button type="button" class="btn small">もう一度試す</button>' }
+    else el.innerHTML = '<span style="color:var(--primary)">✓</span> くわしい確認も済みました'
+  }
+
+  function renderToggles() {
+    $('#pv-togglebox').innerHTML = RULES.map((r) => {
+      const tag = r.morph && pvState === 'loading' ? '<span class="tag">準備中</span>' : r.morph && pvState === 'error' ? '<span class="tag">使えません</span>' : ''
+      return `<button type="button" class="chip${off.has(r.id) ? ' off' : ''}" aria-pressed="${!off.has(r.id)}" data-rule="${r.id}">${r.label}${tag}</button>`
+    }).join('')
+  }
+
+  function paraHtml(text, pi) {
+    if (pvState === 'blank') return ''
+    const marks = []
+    for (const f of visible()) {
+      if (f.p !== pi) continue
+      const at = text.indexOf(f.text)
+      if (at >= 0) marks.push({ s: at, e: at + f.text.length, cls: `f ${f.st === 'fix' ? 'fix' : f.st === 'keep' ? 'keep' : ''}${f.id === activeId ? ' active' : ''}`, id: f.id })
+    }
+    if (word && tab === 'ana') {
+      let at = text.indexOf(word)
+      while (at >= 0) { marks.push({ s: at, e: at + word.length, cls: 'w' }); at = text.indexOf(word, at + 1) }
+    }
+    marks.sort((a, b) => a.s - b.s)
+    let out = ''; let i = 0
+    for (const m of marks) {
+      if (m.s < i) continue
+      out += esc(text.slice(i, m.s))
+      out += `<mark class="${m.cls}"${m.id != null ? ` data-id="${m.id}"` : ''}>${esc(text.slice(m.s, m.e))}</mark>`
+      i = m.e
+    }
+    return out + esc(text.slice(i))
+  }
+
+  function renderText() {
+    const el = $('#pv-text')
+    if (pvState === 'blank') { el.innerHTML = '<span class="num">7</span><p class="empty">この話にはまだ本文がありません</p>'; return }
+    const act = findings.find((f) => f.id === activeId)
+    el.innerHTML = '<span class="num">7</span>' + PARAS.map((t, i) => `<p data-p="${i}" class="${act && act.p === i ? 'focus' : ''}">${paraHtml(t, i)}</p>`).join('')
+  }
+
+  function excerpt(f, st) {
+    const t = PARAS[f.p]; const at = t.indexOf(f.text)
+    const s = Math.max(0, at - 20); const e = Math.min(t.length, at + f.text.length + 20)
+    return `${s > 0 ? '…' : ''}${esc(t.slice(s, at))}<b class="${st}">${esc(f.text)}</b>${esc(t.slice(at + f.text.length, e))}${e < t.length ? '…' : ''}`
+  }
+
+  function renderList() {
+    const v = visible()
+    const count = (st) => v.filter((f) => f.st === st).length
+    $('#pv-filters').innerHTML = [['pending', '未判断'], ['fix', '直す'], ['keep', 'このまま']]
+      .map(([k, l]) => `<button type="button" class="chip${filter === k ? ' on' : ' off'}" aria-pressed="${filter === k}" data-filter="${k}">${l} ${count(k)}</button>`).join('')
+    const items = v.filter((f) => f.st === filter)
+    const el = $('#pv-list')
+    if (pvState === 'blank') { el.innerHTML = ''; return }
+    if (!v.length) { el.innerHTML = '<p class="empty">確認する項目では、気になる箇所は見つかりませんでした</p>'; return }
+    if (!items.length) { el.innerHTML = `<p class="empty">${filter === 'pending' ? '未判断の指摘はありません' : filter === 'fix' ? '直すと決めた指摘はありません' : 'このままにした指摘はありません'}</p>`; return }
+    el.innerHTML = items.map((f, idx) => {
+      const same = v.filter((g) => g.st === 'pending' && g.rule === f.rule && g.text === f.text).length
+      let acts = ''
+      if (f.st === 'pending') {
+        acts = `<button type="button" class="btn small primary" data-act="fix">直す</button><button type="button" class="btn small" data-act="keep">このまま</button>`
+        if (same >= 2) acts += `<button type="button" class="btn small ghost" data-act="keepall">同じ指摘をすべてこのまま（${same}件）</button>`
+      } else if (f.st === 'fix') {
+        acts = `<button type="button" class="btn small soft" data-act="goto">本文で直す</button><button type="button" class="btn small ghost" data-act="undo">未判断に戻す</button>`
+      } else {
+        acts = `<button type="button" class="btn small ghost" data-act="undo">未判断に戻す</button>`
+      }
+      return `<article class="fcard${f.id === activeId ? ' active' : ''}" data-id="${f.id}" tabindex="0">
+        <div class="rule"><span>${ruleLabel(f.rule)}</span><span>${idx === 0 ? '<span class="num">9</span>' : ''}</span></div>
+        <div class="ex">${excerpt(f, f.st)}</div>
+        <p class="msg">${esc(f.msg)}</p>
+        <div class="acts">${acts}</div>
+      </article>`
+    }).join('')
+  }
+
+  function renderAnalysis() {
+    const el = $('#pv-analysis')
+    if (pvState !== 'ready') {
+      const msg = pvState === 'loading' ? 'くわしい確認の準備ができると表示します。' : 'くわしい確認は、いまは使えません。'
+      el.innerHTML = `<div><h4>よく使う言葉（作品全体・副詞と形容詞）</h4><p class="empty" style="padding:12px">${msg}</p></div>` + ratioHtml()
+      return
+    }
+    const W = [['ふと', 24, 3.8], ['小さく', 18, 2.9], ['思わず', 15, 2.4], ['ゆっくり', 12, 1.9], ['暗い', 10, 1.6], ['もう', 9, 1.4], ['ただ', 9, 1.4], ['静かに', 8, 1.3], ['少し', 7, 1.1], ['冷たい', 6, 1.0]]
+    el.innerHTML = `<div><h4>よく使う言葉（作品全体・副詞と形容詞）</h4><div class="words">${W.map(([w, c, p], i) =>
+      `<button type="button" aria-pressed="${word === w}" data-word="${w}"><span class="rank">${i + 1}</span><span>${w}</span><span>${c}件</span><span class="per">1万字あたり ${p}</span></button>`).join('')}</div>
+      <p class="meta" style="margin-top:6px">語を押すと、この話の本文に点線の枠が付きます。</p></div>` + ratioHtml()
+  }
+  function ratioHtml() {
+    const rows = [['この話', 18], ['作品全体', 31], ['第一話', 18], ['第二話', 42], ['第三話', 35]]
+    return `<div><h4>セリフと地の文</h4><div class="keys"><span>セリフ（「」『』の中）</span><span>地の文</span></div><div class="ratio" style="margin-top:8px">${rows.map(([n, d], i) =>
+      `<div class="row"${i === 2 ? ' style="margin-top:6px"' : ''}><span>${n}</span><span class="track" role="img" aria-label="${n} セリフ ${d}％ 地の文 ${100 - d}％"><i style="width:${d}%"></i><s></s></span><span>${d}％</span></div>`).join('')}</div>
+      <p class="meta" style="margin-top:6px">この話：セリフ 412字・地の文 1,876字</p></div>`
+  }
+
+  function renderPv() {
+    renderAnalyzer(); renderToggles(); renderText()
+    const v = visible(); const c = (st) => v.filter((f) => f.st === st).length
+    $('#pv-counts').textContent = pvState === 'blank' ? '本文なし' : `未判断 ${c('pending')} ・ 直す ${c('fix')} ・ このまま ${c('keep')}`
+    $('#tab-find').setAttribute('aria-selected', String(tab === 'find'))
+    $('#tab-ana').setAttribute('aria-selected', String(tab === 'ana'))
+    $('#pv-filters').hidden = tab !== 'find'
+    $('#pv-list').hidden = tab !== 'find'
+    $('#pv-analysis').hidden = tab !== 'ana'
+    if (tab === 'find') renderList(); else renderAnalysis()
+    renderEditors()
+  }
+
+  // ---- 推敲画面の操作 ----
+  document.querySelectorAll('[data-pv]').forEach((b) => b.addEventListener('click', () => {
+    pvState = b.dataset.pv
+    document.querySelectorAll('[data-pv]').forEach((x) => x.setAttribute('aria-pressed', String(x === b)))
+    activeId = null; renderPv()
+  }))
+  $('#pv-rules').addEventListener('click', (e) => {
+    const box = $('#pv-togglebox'); box.hidden = !box.hidden; e.currentTarget.setAttribute('aria-expanded', String(!box.hidden))
+  })
+  $('#pv-togglebox').addEventListener('click', (e) => {
+    const r = e.target.closest('[data-rule]'); if (!r) return
+    off.has(r.dataset.rule) ? off.delete(r.dataset.rule) : off.add(r.dataset.rule); renderPv()
+  })
+  $('#tab-find').addEventListener('click', () => { tab = 'find'; renderPv() })
+  $('#tab-ana').addEventListener('click', () => { tab = 'ana'; renderPv() })
+  $('#pv-filters').addEventListener('click', (e) => {
+    const c = e.target.closest('[data-filter]'); if (!c) return
+    filter = c.dataset.filter; renderPv()
+  })
+  $('#pv-analysis').addEventListener('click', (e) => {
+    const w = e.target.closest('[data-word]'); if (!w) return
+    word = word === w.dataset.word ? null : w.dataset.word; renderPv()
+  })
+  $('#pv-list').addEventListener('click', (e) => {
+    const card = e.target.closest('.fcard'); if (!card) return
+    const f = findings.find((x) => x.id === Number(card.dataset.id))
+    const act = e.target.closest('[data-act]')?.dataset.act
+    if (act === 'fix') f.st = 'fix'
+    else if (act === 'keep') f.st = 'keep'
+    else if (act === 'undo') f.st = 'pending'
+    else if (act === 'keepall') findings.filter((g) => g.st === 'pending' && g.rule === f.rule && g.text === f.text).forEach((g) => { g.st = 'keep' })
+    else if (act === 'goto') { activeId = f.id; edSelect(f); document.getElementById('ed-desktop').scrollIntoView({ behavior: 'smooth', block: 'center' }) }
+    activeId = act && act !== 'goto' ? null : f.id
+    renderPv()
+    if (!act) document.querySelector(`#pv-text p[data-p="${f.p}"]`)?.scrollIntoView({ block: 'nearest' })
+  })
+  $('#pv-text').addEventListener('click', (e) => {
+    const m = e.target.closest('mark[data-id]'); if (!m) return
+    const f = findings.find((x) => x.id === Number(m.dataset.id)); if (!f || f.st === 'keep') return
+    filter = f.st; activeId = f.id; tab = 'find'; renderPv()
+  })
+
+  // ---- 執筆画面のモック（推敲画面の「直す」と連動） ----
+  let edMode = 'open'
+  let selected = null
+  const draft = () => PARAS.join('\n')
+  function openFixes() { return findings.filter((f) => f.st === 'fix') }
+  function edTextHtml() {
+    const all = draft()
+    if (!selected) return esc(all)
+    const lineStart = PARAS.slice(0, selected.p).reduce((n, t) => n + t.length + 1, 0)
+    const at = lineStart + PARAS[selected.p].indexOf(selected.text)
+    return esc(all.slice(0, at)) + `<span class="sel">${esc(selected.text)}</span>` + esc(all.slice(at + selected.text.length))
+  }
+  function popHtml(isMobile) {
+    const items = openFixes()
+    return `<h4><span>直すと決めた箇所</span>${isMobile ? '' : '<span class="num">3</span>'}</h4><ul class="fixlist">` + items.map((f) => {
+      const t = PARAS[f.p]; const at = t.indexOf(f.text)
+      const ex = `${esc(t.slice(Math.max(0, at - 6), at))}<b>${esc(f.text)}</b>${esc(t.slice(at + f.text.length, at + f.text.length + 6))}`
+      return `<li class="fixitem"><button type="button" class="go" data-go="${f.id}" aria-label="その箇所へ移る：${ruleLabel(f.rule)}「${esc(f.text)}」"><span class="rule">${ruleLabel(f.rule)}</span><span class="ex">${ex}</span><span class="msg">${esc(f.msg)}</span></button><button type="button" class="btn small ghost" data-remove="${f.id}" aria-label="外す：${ruleLabel(f.rule)}「${esc(f.text)}」">外す</button></li>`
+    }).join('') + '</ul>' + (isMobile ? '' : '<button type="button" class="open"><span>推敲画面を開く</span><span aria-hidden="true">→</span></button>')
+  }
+  function renderEditors() {
+    const n = openFixes().length
+    const show = edMode !== 'zero' && n > 0
+    for (const [chip, count, pop, text, mobile] of [['#ed-chip', '#ed-count', '#ed-pop', '#ed-text', false], ['#mb-chip', '#mb-count', '#mb-pop', '#mb-text', true]]) {
+      $(chip).hidden = !show
+      $(count).textContent = n
+      $(chip).setAttribute('aria-label', `直すと決めた箇所 ${n}件`)
+      $(chip).setAttribute('aria-expanded', String(show && edMode === 'open'))
+      $(pop).hidden = !(show && edMode === 'open')
+      $(pop).innerHTML = popHtml(mobile)
+      $(text).innerHTML = edTextHtml()
+    }
+  }
+  function edSelect(f) { selected = f; edMode = 'closed'; syncEdButtons(); renderEditors() }
+  function syncEdButtons() { document.querySelectorAll('[data-ed]').forEach((x) => x.setAttribute('aria-pressed', String(x.dataset.ed === edMode))) }
+  for (const pop of ['#ed-pop', '#mb-pop']) {
+    $(pop).addEventListener('click', (e) => {
+      const rm = e.target.closest('[data-remove]')
+      if (rm) { const f = findings.find((x) => x.id === Number(rm.dataset.remove)); f.st = 'pending'; renderPv(); return }
+      const it = e.target.closest('[data-go]'); if (!it) return
+      edSelect(findings.find((x) => x.id === Number(it.dataset.go)))
+    })
+  }
+  for (const chip of ['#ed-chip', '#mb-chip']) {
+    $(chip).addEventListener('click', () => { edMode = edMode === 'open' ? 'closed' : 'open'; syncEdButtons(); renderEditors() })
+  }
+  document.querySelectorAll('[data-ed]').forEach((b) => b.addEventListener('click', () => {
+    if (b.dataset.ed === 'reset') { findings = INITIAL.map((f, i) => ({ ...f, id: i })); selected = null; edMode = 'open'; activeId = null; filter = 'pending' }
+    else { edMode = b.dataset.ed; if (edMode !== 'closed') selected = null }
+    syncEdButtons(); renderPv()
+  }))
+
+  renderPv()
+})()
+</script>

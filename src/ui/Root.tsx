@@ -48,7 +48,10 @@ import {
   createDefaultActivityRepository,
   createDefaultGameAssetRepository,
   createDefaultIdeaRepository,
+  createDefaultNameDismissalRepository,
   createDefaultPlotRepository,
+  createDefaultProofreadRepository,
+  createDefaultProofreadRulesRepository,
   createDefaultStagingRepository,
   createDefaultStructureRepository,
 } from './store/createDefaultStore'
@@ -183,6 +186,27 @@ function RootRoutes({ store }: RootProps) {
   // 演出譜（サウンドノベルの Staging）も同じ。編集は Repository 直書きなので sync-touch で push の契機を作る。
   const stagingRepo = useMemo(
     () => withSyncTouch(createDefaultStagingRepository(), ['save', 'remove', 'removeByWork']),
+    [],
+  )
+  // 推敲の判断（COT-40）も演出譜と同じ。判断を保存するたびに push の契機を作る。
+  const proofreadRepo = useMemo(
+    () => withSyncTouch(createDefaultProofreadRepository(), ['save', 'remove', 'removeByWork']),
+    [],
+  )
+  // 推敲で候補から外した語（COT-59）も推敲の判断と同じ。外す・戻すたびに push の契機を作る。
+  const nameDismissalRepo = useMemo(
+    () =>
+      withSyncTouch(createDefaultNameDismissalRepository(), ['save', 'removeById', 'removeByWork']),
+    [],
+  )
+  // 推敲の作品の決まり（COT-62）も外した語と同じ。決まりを足す・戻すたびに push の契機を作る。
+  const proofreadRulesRepo = useMemo(
+    () =>
+      withSyncTouch(createDefaultProofreadRulesRepository(), [
+        'save',
+        'removeById',
+        'removeByWork',
+      ]),
     [],
   )
   // 持ち込みゲーム素材（背景画像）。純ローカル＝同期に載せないので sync-touch は不要。
@@ -452,6 +476,9 @@ function RootRoutes({ store }: RootProps) {
           plotRepo={plotRepo}
           stagingRepo={stagingRepo}
           gameAssetRepo={gameAssetRepo}
+          proofreadRepo={proofreadRepo}
+          nameDismissalRepo={nameDismissalRepo}
+          proofreadRulesRepo={proofreadRulesRepo}
           canUseStructure={canUseCreativeTools}
           ideaRepo={ideaRepo}
         />

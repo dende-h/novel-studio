@@ -37,6 +37,27 @@ test('入口にマイライブラリ見出しが出る', async ({ page }) => {
 })
 
 /**
+ * 解析辞書のライセンス表記（COT-59）。辞書は IPADIC に SudachiDict の今の言葉を足したもの。
+ * 表記は scripts/fetch-dict.mjs が辞書の zip から public/dict/ に取り出す（ヘルプはゲストでも見られる）。
+ */
+test('ヘルプから解析辞書のライセンス表記（IPADIC・SudachiDict）を開ける', async ({ page, request }) => {
+  await page.goto('/#/help')
+  // 推敲の作品の決まり（COT-62）と、用語集の名前の扱いの説明
+  await expect(page.getByText(/作品の決まりにできます。決まりは「この作品の決まり」から戻せます。/)).toBeVisible()
+  await expect(page.getByText(/用語集に登録した名前は、推敲でもひとつの言葉として扱います。/)).toBeVisible()
+  const notices: [string, string, string][] = [
+    ['IPADIC のライセンス表記', '/dict/NOTICE-ipadic.txt', 'mecab-ipadic'],
+    ['SudachiDict のライセンス表記', '/dict/NOTICE-sudachidict.txt', 'Apache License'],
+  ]
+  for (const [name, path, text] of notices) {
+    await expect(page.getByRole('link', { name })).toHaveAttribute('href', path)
+    const res = await request.get(path)
+    expect(res.status()).toBe(200)
+    expect(await res.text()).toContain(text)
+  }
+})
+
+/**
  * AI 向けの案内（COT-24）。/llms.txt はかつて SPA のフォールバックで index.html が 200 で返る
  * 「ソフト 404」だった。静的ファイルを置いたいまはテキストで返り、未知のパスはこれまでどおり
  * アプリに落ちること（静的ファイルの追加でフォールバックを壊していないこと）を確かめる。
@@ -552,4 +573,31 @@ test('脚本形式を保存し、縦横プレビュー・再読込・小説へ�
   await expect(page.locator('.preview')).toBeVisible()
   await expect(page.getByRole('button', { name: '柱', exact: true })).toHaveCount(0)
   await expect(page.getByRole('textbox', { name: '本文' })).toHaveValue(body)
+})
+
+/**
+ * 推敲（COT-40）。小説の本文の下に推敲チェックは出さない（推敲画面へ移した）。
+ * 推敲画面を開かない限り、解析器（wasm）と辞書（/dict/）は取りに行かない。
+ * 推敲画面そのものは無料会員以上なので、ゲストで走る e2e では入口が無いことだけを見る。
+ */
+test('小説では本文の下に推敲チェックを出さず、執筆画面では解析器と辞書を取りに行かない', async ({
+  page,
+}) => {
+  const heavy: string[] = []
+  page.on('request', (req) => {
+    const url = new URL(req.url())
+    if (url.pathname.endsWith('.wasm') || url.pathname.startsWith('/dict/')) heavy.push(url.pathname)
+  })
+  await page.goto('/')
+  await createWork(page, '推敲E2E')
+  await openWriter(page, '推敲E2E')
+  await addEpisode(page, '第一話')
+  await page
+    .getByRole('textbox', { name: '本文' })
+    .fill('彼は言った。「待って!すぐ終わるから。」\n　光がが揺れて…、出来ることは、できることだ。')
+  await expect(page.getByText('保存済み')).toBeVisible()
+  await expect(page.getByText(/推敲チェック/)).toHaveCount(0)
+  await expect(page.getByRole('button', { name: '推敲', exact: true })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: /直すと決めた箇所/ })).toHaveCount(0)
+  expect(heavy).toEqual([])
 })

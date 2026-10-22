@@ -78,6 +78,12 @@
    */
   --ref-link: var(--forest-600);
   --ref-link-hover: var(--forest-900);
+
+  /*
+   * 推敲画面で選んだ言葉に引くマーカー（文字の下半分）。「直す」と決めた箇所の麦色の面と
+   * 見分けがつくよう、蛍光ペンの黄にする。
+   */
+  --word-marker: #fae39c;
 }
 
 /*
@@ -147,6 +153,8 @@
   --ref-link: var(--forest-800);
   --ref-link-hover: var(--forest-900);
   --paper-100: #201d16;
+  /* 暗い読書面のマーカー。明るい文字（--on-surface）が読める暗さの黄土色。 */
+  --word-marker: #7a6524;
 }
 
 /*

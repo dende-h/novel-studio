@@ -14,6 +14,7 @@ import {
   PenLine,
   Plus,
   Settings,
+  SpellCheck,
   Sprout,
   StickyNote,
   Trash2,
@@ -39,6 +40,7 @@ export type NavKey =
   | 'glossary'
   | 'plot'
   | 'staging'
+  | 'proofread'
   | 'outline'
   | 'mindmap'
   | 'chart'
@@ -69,14 +71,17 @@ interface SideNavProps {
    * 空のビルド（投稿先未設定）ではリンク自体を出さない。
    */
   platformHref?: string
-  /** 主要 CTA（新しい作品 / 新しいエピソード）。作成導線が無い画面（執筆の記録）では省略。 */
+  /**
+   * 主要 CTA（新しい作品 / 新しいエピソード）。作成導線が無い画面（執筆の記録）では省略。
+   * ライブラリでは全幅ボタン、作品モードでは「原稿」見出し右の＋（label は aria-label/title）。
+   */
   cta?: { label: string; onClick: () => void; disabled?: boolean }
   /** 作者プロフィール（ペンネーム・アバター）。onEditProfile と併せて指定時のみ表示。 */
   profile?: { penName?: string; avatar?: string }
   /** プロフィール編集を開く。指定時のみプロフィール欄を表示。 */
   onEditProfile?: () => void
   /**
-   * 開いている作品のタイトル。指定時は「作品モード」（戻るリンク＋作品カード＋本文/用語集ナビ＋草稿）。
+   * 開いている作品のタイトル。指定時は「作品モード」（戻るリンク＋作品カード＋本文/用語集ナビ＋原稿）。
    * 省略時（ライブラリ・執筆の記録）は「ライブラリモード」（プロフィール＋CTA＋メインナビ）。
    */
   workTitle?: string
@@ -94,6 +99,8 @@ interface SideNavProps {
   onNavigatePlot?: () => void
   /** 演出（サウンドノベル）へ切替（作品オープン＋アカウント登録時のみ） */
   onNavigateStaging?: () => void
+  /** 推敲へ切替（COT-40。小説＋アカウント登録＋PC のときのみ） */
+  onNavigateProofread?: () => void
   /** アウトラインへ切替（作品オープン＋アカウント登録時のみ） */
   onNavigateOutline?: () => void
   /** マインドマップへ切替（作品オープン＋アカウント登録時のみ） */
@@ -154,6 +161,7 @@ export function SideNav({
   onNavigateGlossary,
   onNavigatePlot,
   onNavigateStaging,
+  onNavigateProofread,
   onNavigateOutline,
   onNavigateMindmap,
   onNavigateChart,
@@ -175,6 +183,9 @@ export function SideNav({
   // 作品が開いていれば作品モード（戻る＋作品カード＋本文/用語集）、未オープンはライブラリモード。
   const workOpen = workTitle !== undefined
   const workInitial = (workTitle ?? '').trim().charAt(0) || '無'
+  const episodeCount = episodes?.length ?? 0
+  // 原稿の欄は話が 0 件でも追加口（＋）のために出す。追加口も話も無いときだけ省く。
+  const showManuscript = workOpen && (cta !== undefined || episodeCount > 0)
   return (
     // 1 ページに nav が複数あるとき（執筆の記録の年タブ等）、支援技術が区別できるよう名前を付ける。
     <nav
@@ -250,6 +261,14 @@ export function SideNav({
               active={active === 'episodes'}
               onClick={onNavigateEpisodes}
             />
+            {onNavigateProofread ? (
+              <NavRow
+                icon={SpellCheck}
+                label="推敲"
+                active={active === 'proofread'}
+                onClick={onNavigateProofread}
+              />
+            ) : null}
             <NavRow
               icon={BookMarked}
               label="用語集"
@@ -298,76 +317,88 @@ export function SideNav({
             ) : null}
           </div>
 
-          {/* 草稿（話リスト） */}
-          {episodes && episodes.length > 0 ? (
-            <div className="flex min-h-0 flex-1 flex-col">
-              <div className="shrink-0 px-3 pt-2 pb-1.5 font-medium text-[11px] text-on-surface-variant/60 tracking-widest">
-                草稿
-              </div>
-              <ScrollArea className="min-h-0 flex-1">
-                <ul className="space-y-0.5">
-                  {episodes.map((e) => {
-                    const isCurrent = e.id === currentEpisodeId
-                    return (
-                      <li key={e.id} className="group relative flex items-center">
-                        <button
-                          type="button"
-                          onClick={() => onSelectEpisode?.(e.id)}
-                          aria-current={isCurrent ? 'true' : undefined}
-                          className={cn(
-                            'flex min-w-0 flex-1 items-center gap-2.5 rounded-md px-3 py-2 text-left text-[13px] transition-colors',
-                            isCurrent
-                              ? 'bg-surface-container-lowest font-medium text-primary shadow-xs'
-                              : 'text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface',
-                          )}
-                        >
-                          <FileText className="size-[15px] shrink-0" />
-                          <span className="min-w-0 flex-1 truncate">{e.title}</span>
-                        </button>
-                        {onRenameEpisode || onDeleteEpisode ? (
-                          <span className="absolute right-1.5 flex items-center gap-0.5 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
-                            {onRenameEpisode ? (
-                              <button
-                                type="button"
-                                onClick={() => onRenameEpisode(e.id)}
-                                aria-label={`「${e.title}」のタイトルを変更`}
-                                className="rounded bg-surface-container-low/90 p-1 text-on-surface-variant/70 transition-colors hover:text-primary"
-                              >
-                                <Pencil className="size-3.5" />
-                              </button>
-                            ) : null}
-                            {onDeleteEpisode ? (
-                              <button
-                                type="button"
-                                onClick={() => onDeleteEpisode(e.id)}
-                                aria-label={`「${e.title}」を削除`}
-                                className="rounded bg-surface-container-low/90 p-1 text-on-surface-variant/70 transition-colors hover:text-destructive"
-                              >
-                                <Trash2 className="size-3.5" />
-                              </button>
-                            ) : null}
-                          </span>
-                        ) : null}
-                      </li>
-                    )
-                  })}
-                </ul>
-              </ScrollArea>
-            </div>
-          ) : null}
-
-          {/* 新しいエピソード */}
-          {cta ? (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={cta.onClick}
-              disabled={cta.disabled}
-              className="w-full justify-center gap-1.5 text-on-surface-variant hover:text-primary"
+          {/* 原稿（話リスト）。見出し右の＋で話を足す。 */}
+          {showManuscript ? (
+            // 残りの高さをすべて話リストに充てる（下の余白と分け合わない）。窓が低いときは
+            // 見出し＋最大4話半を下限に残し（半端な1行で続きがあると分かる）、足りない分は
+            // サイドバー全体のスクロールに任せる。
+            // 下限は明示しないと、中の ScrollArea の内容高さが自動の最小値になり内側で
+            // スクロールしなくなる（行の高さ≒2.375rem・見出し 2rem）。
+            <div
+              className="flex flex-1 flex-col"
+              style={{
+                minHeight: `calc(2rem + ${Math.min(episodeCount, 4.5)} * 2.375rem)`,
+              }}
             >
-              <Plus className="size-4" />
-              {cta.label}
-            </Button>
+              <div className="flex h-8 shrink-0 items-center justify-between pr-1.5 pl-3">
+                <span className="font-medium text-[11px] text-on-surface-variant/60 tracking-widest">
+                  原稿
+                </span>
+                {cta ? (
+                  <button
+                    type="button"
+                    onClick={cta.onClick}
+                    disabled={cta.disabled}
+                    aria-label={cta.label}
+                    title={cta.label}
+                    className="flex size-6 items-center justify-center rounded-md text-on-surface-variant transition-colors hover:bg-surface-container-high hover:text-primary disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent disabled:hover:text-on-surface-variant"
+                  >
+                    <Plus className="size-4" />
+                  </button>
+                ) : null}
+              </div>
+              {episodes && episodes.length > 0 ? (
+                <ScrollArea className="min-h-0 flex-1">
+                  <ul className="space-y-0.5">
+                    {episodes.map((e) => {
+                      const isCurrent = e.id === currentEpisodeId
+                      return (
+                        <li key={e.id} className="group relative flex items-center">
+                          <button
+                            type="button"
+                            onClick={() => onSelectEpisode?.(e.id)}
+                            aria-current={isCurrent ? 'true' : undefined}
+                            className={cn(
+                              'flex min-w-0 flex-1 items-center gap-2.5 rounded-md px-3 py-2 text-left text-[13px] transition-colors',
+                              isCurrent
+                                ? 'bg-surface-container-lowest font-medium text-primary shadow-xs'
+                                : 'text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface',
+                            )}
+                          >
+                            <FileText className="size-[15px] shrink-0" />
+                            <span className="min-w-0 flex-1 truncate">{e.title}</span>
+                          </button>
+                          {onRenameEpisode || onDeleteEpisode ? (
+                            <span className="absolute right-1.5 flex items-center gap-0.5 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
+                              {onRenameEpisode ? (
+                                <button
+                                  type="button"
+                                  onClick={() => onRenameEpisode(e.id)}
+                                  aria-label={`「${e.title}」のタイトルを変更`}
+                                  className="rounded bg-surface-container-low/90 p-1 text-on-surface-variant/70 transition-colors hover:text-primary"
+                                >
+                                  <Pencil className="size-3.5" />
+                                </button>
+                              ) : null}
+                              {onDeleteEpisode ? (
+                                <button
+                                  type="button"
+                                  onClick={() => onDeleteEpisode(e.id)}
+                                  aria-label={`「${e.title}」を削除`}
+                                  className="rounded bg-surface-container-low/90 p-1 text-on-surface-variant/70 transition-colors hover:text-destructive"
+                                >
+                                  <Trash2 className="size-3.5" />
+                                </button>
+                              ) : null}
+                            </span>
+                          ) : null}
+                        </li>
+                      )
+                    })}
+                  </ul>
+                </ScrollArea>
+              ) : null}
+            </div>
           ) : null}
         </>
       ) : (
@@ -459,7 +490,8 @@ export function SideNav({
         </>
       )}
 
-      <div className="flex-1" />
+      {/* 原稿があるときはそちらが残りの高さを埋めるので、余白は要らない。 */}
+      {showManuscript ? null : <div className="flex-1" />}
 
       {/* フッター */}
       <div className="space-y-0.5">

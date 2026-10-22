@@ -36,3 +36,6 @@ playwright-report
 # Python (natural-japanese スキルのスクリプト実行時に生成される)
 __pycache__/
 *.pyc
+
+# 推敲画面の形態素解析の辞書（scripts/fetch-dict.mjs がビルド時に取得・ハッシュ照合する）
+public/dict/

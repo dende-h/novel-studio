@@ -1,0 +1,710 @@
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { plainTextOfBlock } from '@/core/game'
+import {
+  addRatio,
+  createVariantCountCache,
+  type DialogueRatio,
+  dialogueRatio,
+  type FrequentKind,
+  frequentWordRanges,
+  inlineSignalsOf,
+  type NameCandidate,
+  proofreadNovel,
+  sentenceEndings,
+} from '@/core/proofread'
+import {
+  classify,
+  decide,
+  type FindingN,
+  findingKey,
+  openFixes,
+  type ProofreadDecision,
+  type ProofreadRecord,
+  undecide,
+  type Verdict,
+  withNth,
+} from '@/core/proofread/decisions'
+import { dismissName, restoreName } from '@/core/proofread/name-dismissals'
+import { NOVEL_RULES } from '@/core/proofread/types'
+import { glossaryTerms } from '@/core/proofread/user-dict'
+import {
+  addException,
+  decline,
+  type ProofreadRules,
+  type RuleSuggestion,
+  removeRule,
+  ruleRows,
+  setPreference,
+  suggestRule,
+  undecline,
+  workRulesOf,
+} from '@/core/proofread/work-rules'
+import type { Work } from '@/core/schema'
+import { cn } from '@/lib/utils'
+import { Button } from '@/ui/components/ui/button'
+import { Progress } from '@/ui/components/ui/progress'
+import { useMorphAnalyzer } from '@/ui/hooks/use-morph-analyzer'
+import { type NameDismissalRepo, useNameDismissals } from '@/ui/hooks/use-name-dismissals'
+import { useProofreadPrefs } from '@/ui/hooks/use-proofread-prefs'
+import { type ProofreadRecordRepo, useProofreadRecord } from '@/ui/hooks/use-proofread-record'
+import { type ProofreadRulesRepo, useProofreadRules } from '@/ui/hooks/use-proofread-rules'
+import type { MorphAnalyzerClient } from '@/ui/proofread/analyzer-client'
+import { textsHash } from '@/ui/proofread/analyzer-engine'
+import type { AnalysisResult } from '@/ui/proofread/protocol'
+import { subscribeSyncApplied } from '@/ui/sync/sync-touch'
+import { AnalysisPanel, type EndingPick, type FrequentScope } from './analysis-panel'
+import { type FindingFilter, FindingList } from './finding-list'
+import { NameCandidatesSection } from './name-candidates-section'
+import { ProofreadText } from './proofread-text'
+import { RuleSuggestionBox } from './rule-suggestion'
+import { RuleToggles } from './rule-toggles'
+import { WorkRulesPanel } from './work-rules-panel'
+
+export interface FixInEditorTarget {
+  episodeId: string
+  decision: ProofreadDecision
+}
+
+interface ProofreadViewProps {
+  work: Work
+  currentEpisodeId: string | null
+  repo: ProofreadRecordRepo
+  /** 「本文で直す」。執筆画面へ戻り、その話を開いて該当箇所を選ぶ（App が配線する）。 */
+  onFixInEditor: (target: FixInEditorTarget) => void
+  /** 候補から外した語（COT-59）。省略時は外した語を保存しない。 */
+  namesRepo?: NameDismissalRepo
+  /** 名前の候補を用語集に登録する（App のクイック作成を開き、閉じたら「作成したか」を返す・COT-59）。 */
+  onRegisterName?: (draft: {
+    name: string
+    reading?: string
+    category?: string
+  }) => Promise<'created' | 'cancelled'>
+  /** 推敲の作品の決まり（COT-62・例外・表記の好み・提案しない言葉）。省略時は決まりを保存しない。 */
+  rulesRepo?: ProofreadRulesRepo
+  /** テスト用：解析器の窓口を差し替える。 */
+  createAnalyzer?: () => MorphAnalyzerClient
+  now?: () => number
+}
+
+const SELECT_CLASS =
+  'w-56 rounded-md border border-outline-variant bg-surface-container-lowest px-3 py-2 text-base text-on-surface outline-none focus:border-primary md:text-sm'
+
+const fmtMb = (bytes: number) => (bytes / 1024 / 1024).toFixed(1)
+
+/** 動きを減らす設定の人には、なめらかに送らず一度で送る。 */
+const scrollBehavior = (): ScrollBehavior =>
+  typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+    ? 'auto'
+    : 'smooth'
+
+const ZERO: DialogueRatio = { dialogue: 0, narration: 0 }
+const NO_GLOSSARY: NonNullable<Work['glossary']> = []
+
+/**
+ * 推敲画面（COT-40）。本文は読むだけで、指摘ごとに「直す／このまま」を選ぶ。
+ * くわしい確認（形態素解析）は、この画面を開いている間だけ Worker で動かす。
+ */
+export function ProofreadView({
+  work,
+  currentEpisodeId,
+  repo,
+  onFixInEditor,
+  namesRepo,
+  onRegisterName,
+  rulesRepo,
+  createAnalyzer,
+  now = Date.now,
+}: ProofreadViewProps) {
+  const [episodeId, setEpisodeId] = useState(currentEpisodeId ?? work.episodes[0]?.id ?? '')
+  const episode = work.episodes.find((e) => e.id === episodeId) ?? work.episodes[0]
+  const { enabled, toggle } = useProofreadPrefs()
+  // 選んでいない項目は指摘も集計も作らない（最初は何も選ばれていない）
+  const disabled = useMemo(
+    () => new Set(NOVEL_RULES.map((r) => r.id).filter((id) => !enabled.has(id))),
+    [enabled],
+  )
+  const { record, save } = useProofreadRecord(repo, work.id, episode?.id)
+  const {
+    state: analyzer,
+    client,
+    excluded,
+    retry,
+  } = useMorphAnalyzer(work.glossary ?? NO_GLOSSARY, createAnalyzer)
+  const [analysis, setAnalysis] = useState<(AnalysisResult & { episodeId: string }) | null>(null)
+  const [filter, setFilter] = useState<FindingFilter>('pending')
+  const [tab, setTab] = useState<'findings' | 'analysis'>('findings')
+  const [activeKey, setActiveKey] = useState<string | null>(null)
+  // 分析タブで選んだもの。名前の候補は文字列で、よく使う言葉（種類つき）と文末（text は種類か 'runs'）は
+  // 解析のトークンの位置で本文に印を付ける。どれか1つだけを選べる
+  const [word, setWord] = useState<{
+    text: string
+    from: 'name' | FrequentKind | 'ending'
+  } | null>(null)
+  const [frequentScope, setFrequentScope] = useState<FrequentScope>('episode')
+  // 「確認する項目」は開いた状態で始める（何を確かめるかを作者が選ぶ）
+  const [rulesOpen, setRulesOpen] = useState(true)
+  // 作品の決まり（COT-62）。一覧の欄は閉じた状態で始める
+  const { record: workRulesRecord, save: saveRules } = useProofreadRules(rulesRepo, work.id)
+  const workRules = useMemo(() => workRulesOf(workRulesRecord), [workRulesRecord])
+  const [workRulesOpen, setWorkRulesOpen] = useState(false)
+  // 直前に判断した指摘（決まりの提案に使う。話を替えたら忘れる）
+  const [lastAction, setLastAction] = useState<{ finding: FindingN; verdict: Verdict } | null>(null)
+  const pendingChipRef = useRef<HTMLButtonElement>(null)
+  const textRef = useRef<HTMLDivElement>(null)
+  const listRef = useRef<HTMLDivElement>(null)
+  // 本文の印から選んだ指摘。一覧（絞り込みが変わることがある）を描き直したあとで、そのカードまで送る。
+  const [scrollToKey, setScrollToKey] = useState<string | null>(null)
+
+  // 作品全体を Worker で解析する（準備ができたとき・話や本文が変わったとき）
+  const ready = analyzer.status === 'ready'
+  const episodesPayload = useMemo(
+    () =>
+      work.episodes.map((e) => {
+        const texts = e.blocks.map(plainTextOfBlock)
+        // ルビと [[ ]] は名前の候補だけに使う（トークンのキャッシュはハッシュ＝本文の文字で決まる）
+        return { id: e.id, hash: textsHash(texts), texts, ...inlineSignalsOf(e.blocks) }
+      }),
+    [work.episodes],
+  )
+  useEffect(() => {
+    if (!ready || !episode) return
+    let alive = true
+    client.analyze(episodesPayload, episode.id).then(
+      (r) => {
+        if (alive) setAnalysis({ ...r, episodeId: episode.id })
+      },
+      () => {
+        // 止めた・落ちたときは状態（error）の表示に任せる
+      },
+    )
+    return () => {
+      alive = false
+    }
+  }, [ready, client, episodesPayload, episode])
+
+  // 他の話の辞書の表記ゆれ集計（話ごとにキャッシュ）
+  const variantCache = useMemo(() => createVariantCountCache(), [])
+  const baseCounts = useMemo(
+    () => variantCache(work.episodes.filter((e) => e.id !== episode?.id)),
+    [variantCache, work.episodes, episode?.id],
+  )
+
+  const morph = useMemo(
+    () =>
+      ready && analysis && analysis.episodeId === episode?.id
+        ? { tokens: analysis.currentTokens, workVariants: analysis.workVariants, excluded }
+        : undefined,
+    [ready, analysis, episode?.id, excluded],
+  )
+  const findings = useMemo<FindingN[]>(
+    () =>
+      episode
+        ? withNth(proofreadNovel(episode.blocks, { disabled, baseCounts, morph, rules: workRules }))
+        : [],
+    [episode, disabled, baseCounts, morph, workRules],
+  )
+  const groups = useMemo(() => classify(findings, record), [findings, record])
+
+  const ids = { workId: work.id, episodeId: episode?.id ?? '' }
+  const persist = (next: ProofreadRecord) => {
+    void save(next)
+  }
+  const setVerdict = (fs: FindingN[], verdict: Verdict) => {
+    if (!episode) return
+    persist(decide(record, ids, fs, verdict, now(), episode.blocks))
+    setActiveKey(null)
+    const last = fs[fs.length - 1]
+    setLastAction(last ? { finding: last, verdict } : null)
+  }
+  const undo = (f: FindingN) => {
+    if (!record) return
+    persist(undecide(record, f, now()))
+    setActiveKey(null)
+  }
+  const fixInEditor = (f: FindingN) => {
+    if (!episode || !record) return
+    const decision = record.decisions.find(
+      (d) => d.blockId === f.blockId && d.code === f.code && d.text === f.text && d.nth === f.nth,
+    )
+    if (!decision) return
+    // まだ直っていない判断だけを渡す（直っていれば移る先が無い）
+    const open = openFixes({ ...record, decisions: [decision] }, episode.blocks)
+    if (open.length > 0) onFixInEditor({ episodeId: episode.id, decision })
+  }
+  // 作品の全話の判断（COT-62・提案の回数を数える）。ほかの話は話を替えたときと同期の取り込みのあとに読み直し、
+  // いまの話は画面の最新の記録（判断を保存する前から反映される）を使う
+  const [otherRecords, setOtherRecords] = useState<ProofreadRecord[]>([])
+  const canCount = typeof repo.listByWork === 'function'
+  const currentEpisodeIdNow = episode?.id
+  useEffect(() => {
+    if (typeof repo.listByWork !== 'function') return
+    let alive = true
+    const load = () => {
+      void repo.listByWork?.(work.id).then(
+        (rows) => {
+          if (alive) setOtherRecords(rows.filter((r) => r.episodeId !== currentEpisodeIdNow))
+        },
+        () => {},
+      )
+    }
+    load()
+    const off = subscribeSyncApplied(load)
+    return () => {
+      alive = false
+      off()
+    }
+  }, [repo, work.id, currentEpisodeIdNow])
+  const workRecords = useMemo(
+    () => [...otherRecords, ...(record ? [record] : [])],
+    [otherRecords, record],
+  )
+  const suggestion = useMemo<RuleSuggestion | null>(
+    () =>
+      canCount
+        ? suggestRule({ last: lastAction, records: workRecords, rules: workRulesRecord })
+        : null,
+    [canCount, lastAction, workRecords, workRulesRecord],
+  )
+  const saveRulesNow = (next: ProofreadRules) => {
+    if (next !== workRulesRecord) void saveRules(next)
+  }
+  // 決まりで指摘が0件になると一覧（FindingList）ごと消えるので、そのときは「未判断」のチップへフォーカスを移す
+  const ruleActedRef = useRef(false)
+  const exceptFinding = (f: FindingN) => {
+    ruleActedRef.current = true
+    saveRulesNow(addException(workRulesRecord, work.id, f, now()))
+  }
+  const preferForm = (f: FindingN, form: string) => {
+    ruleActedRef.current = true
+    if (f.variant) saveRulesNow(setPreference(workRulesRecord, work.id, f.variant, form, now()))
+  }
+  const focusPendingChip = useCallback(() => pendingChipRef.current?.focus(), [])
+  useEffect(() => {
+    if (!ruleActedRef.current) return
+    ruleActedRef.current = false
+    if (findings.length === 0) focusPendingChip()
+  }, [findings, focusPendingChip])
+  const acceptSuggestion = (s: RuleSuggestion, target?: string) => {
+    if (s.kind === 'exception')
+      saveRulesNow(addException(workRulesRecord, work.id, s.finding, now()))
+    else if (target) saveRulesNow(setPreference(workRulesRecord, work.id, s.variant, target, now()))
+    setLastAction(null)
+    requestAnimationFrame(() => {
+      const first = listRef.current?.querySelector<HTMLButtonElement>('[data-card-select]')
+      if (first) first.focus()
+      else focusPendingChip()
+    })
+  }
+  const declineSuggestion = (s: RuleSuggestion) => {
+    saveRulesNow(decline(workRulesRecord, work.id, s, now()))
+    setLastAction(null)
+    requestAnimationFrame(() => {
+      const first = listRef.current?.querySelector<HTMLButtonElement>('[data-card-select]')
+      if (first) first.focus()
+      else focusPendingChip()
+    })
+  }
+  const ruleCount = ruleRows(workRulesRecord).length
+
+  const select = useCallback((f: FindingN) => {
+    setActiveKey(findingKey(f))
+    textRef.current
+      ?.querySelector(`#proofread-p-${f.blockIndex}`)
+      ?.scrollIntoView?.({ block: 'center', behavior: scrollBehavior() })
+  }, [])
+  const selectFromText = (f: FindingN) => {
+    const key = findingKey(f)
+    setTab('findings')
+    setFilter(groups.fix.some((g) => findingKey(g) === key) ? 'fix' : 'pending')
+    setActiveKey(key)
+    setScrollToKey(key)
+  }
+  useEffect(() => {
+    if (!scrollToKey || tab !== 'findings') return
+    const cards = listRef.current?.querySelectorAll<HTMLElement>('[data-finding-key]') ?? []
+    const card = [...cards].find((el) => el.dataset.findingKey === scrollToKey)
+    card?.scrollIntoView?.({ block: 'center', behavior: scrollBehavior() })
+    setScrollToKey(null)
+  })
+
+  // 分析（セリフと地の文はくわしい確認を使わない）
+  const ratios = useMemo(
+    () => work.episodes.map((e) => ({ id: e.id, title: e.title, ratio: dialogueRatio(e.blocks) })),
+    [work.episodes],
+  )
+  const currentRatio = ratios.find((r) => r.id === episode?.id)?.ratio ?? ZERO
+  const workRatio = ratios.reduce((sum, r) => addRatio(sum, r.ratio), ZERO)
+  // よく使う言葉。「この話」は推敲の単位に合わせた既定。解析し直している間（別の話の結果）は準備中にする
+  const frequentOf = (scope: FrequentScope) => {
+    if (!analysis) return null
+    if (scope === 'work') return { words: analysis.frequent, conjunctions: analysis.conjunctions }
+    return morph
+      ? { words: analysis.frequentCurrent, conjunctions: analysis.conjunctionsCurrent }
+      : null
+  }
+  const frequent = analyzer.status === 'error' ? 'error' : ready ? frequentOf(frequentScope) : null
+  const picked =
+    word && (word.from === 'modifier' || word.from === 'conjunction')
+      ? { base: word.text, kind: word.from }
+      : null
+  // 文末の偏り（地の文）。この話はトークンから画面側で数え、作品全体は Worker の集計を使う
+  const endingStats = useMemo(
+    () =>
+      morph && episode ? sentenceEndings(episode.blocks.map(plainTextOfBlock), morph.tokens) : null,
+    [morph, episode],
+  )
+  const endings =
+    analyzer.status === 'error'
+      ? 'error'
+      : ready && analysis && endingStats
+        ? {
+            current: { counts: endingStats.counts, runs: endingStats.runs.length },
+            work: analysis.endings,
+          }
+        : null
+  const wordRanges = useMemo(() => {
+    if (!word || word.from === 'name' || !morph) return null
+    if (word.from !== 'ending') return frequentWordRanges(morph.tokens, word.text, word.from)
+    if (!endingStats || !episode) return null
+    const hits =
+      word.text === 'runs'
+        ? endingStats.runs.flat()
+        : endingStats.endings.filter((e) => e.kind === word.text)
+    const byBlock = episode.blocks.map((): { start: number; end: number }[] => [])
+    for (const e of hits) byBlock[e.block]?.push({ start: e.start, end: e.end })
+    return byBlock
+  }, [word, morph, endingStats, episode])
+  const changeFrequentScope = (scope: FrequentScope) => {
+    setFrequentScope(scope)
+    // 選んでいた言葉が切り替えた先の一覧に無ければ、選択を外す（一覧に無い語の印を残さない）
+    if (!picked) return
+    const next = frequentOf(scope)
+    const list = picked.kind === 'conjunction' ? next?.conjunctions : next?.words
+    if (!list?.some((w) => w.base === picked.base)) setWord(null)
+  }
+
+  // 用語集に無い名前（COT-59）。用語集が変わると解析器は作り直されるが、その間も前回の結果を
+  // いまの用語集と外した語で絞って出し続ける（準備中にするのは、まだ一度も結果が無いときだけ）。
+  const { record: dismissals, save: saveDismissals } = useNameDismissals(namesRepo, work.id)
+  const dismissedWords = useMemo(() => (dismissals?.words ?? []).map((w) => w.text), [dismissals])
+  const glossaryNow = useMemo(
+    () => new Set(glossaryTerms(work.glossary ?? NO_GLOSSARY)),
+    [work.glossary],
+  )
+  const names = useMemo<ReadonlyArray<NameCandidate> | null | 'error'>(() => {
+    if (analyzer.status === 'error') return 'error'
+    if (!analysis) return null
+    const hidden = new Set(dismissedWords)
+    return analysis.names.filter((c) => !hidden.has(c.name) && !glossaryNow.has(c.name))
+  }, [analyzer.status, analysis, dismissedWords, glossaryNow])
+  const inThisEpisode = (name: string) =>
+    episode?.blocks.some((b) => plainTextOfBlock(b).includes(name)) ?? false
+  const dismiss = (name: string) => {
+    if (word?.from === 'name' && word.text === name) setWord(null)
+    void saveDismissals(dismissName(dismissals, work.id, name, now()))
+  }
+  const restore = (name: string) => {
+    if (dismissals) void saveDismissals(restoreName(dismissals, name, now()))
+  }
+  const register = (c: NameCandidate) =>
+    onRegisterName
+      ? onRegisterName({ name: c.name, reading: c.reading, category: c.category })
+      : Promise.resolve('cancelled' as const)
+
+  const marks = [
+    ...groups.pending.map((f) => ({ finding: f, state: 'pending' as const })),
+    ...groups.fix.map((f) => ({ finding: f, state: 'fix' as const })),
+  ]
+  const shown = groups[filter]
+  const morphState: 'ready' | 'loading' | 'error' =
+    analyzer.status === 'error' ? 'error' : ready ? 'ready' : 'loading'
+
+  return (
+    <div className="flex min-h-0 flex-1 flex-col font-sans">
+      <header className="relative shrink-0 border-outline-variant/30 border-b px-6 py-4">
+        <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
+          <div>
+            <h2 className="font-serif text-primary text-xl">推敲</h2>
+            <p className="mt-0.5 text-on-surface-variant text-xs tabular-nums">
+              未判断 {groups.pending.length} ・ 直す {groups.fix.length} ・ このまま{' '}
+              {groups.keep.length}
+            </p>
+            <p className="mt-0.5 text-on-surface-variant/80 text-xs">
+              指摘ごとに、直すか、このままにするかを選べます。直すと決めた箇所だけが本文の画面に出ます。
+            </p>
+          </div>
+          <label className="ml-auto flex items-center gap-2 text-on-surface-variant text-xs">
+            話
+            <select
+              value={episode?.id ?? ''}
+              onChange={(e) => {
+                setEpisodeId(e.target.value)
+                setActiveKey(null)
+                setWord(null)
+                setLastAction(null)
+              }}
+              className={SELECT_CLASS}
+            >
+              {work.episodes.map((e) => (
+                <option key={e.id} value={e.id}>
+                  {e.title || '無題'}
+                </option>
+              ))}
+            </select>
+          </label>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            aria-expanded={rulesOpen}
+            onClick={() => setRulesOpen((v) => !v)}
+          >
+            確認する項目
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            aria-expanded={workRulesOpen}
+            onClick={() => setWorkRulesOpen((v) => !v)}
+          >
+            {ruleCount > 0 ? `この作品の決まり（${ruleCount}）` : 'この作品の決まり'}
+          </Button>
+          <AnalyzerStatus state={analyzer} onRetry={retry} />
+        </div>
+        {rulesOpen ? (
+          <div className="mt-3">
+            <RuleToggles enabled={enabled} onToggle={toggle} morph={morphState} />
+          </div>
+        ) : null}
+        {workRulesOpen ? (
+          <div className="mt-3">
+            <WorkRulesPanel
+              rules={workRulesRecord}
+              onRemove={(id) => {
+                if (workRulesRecord) saveRulesNow(removeRule(workRulesRecord, id, now()))
+              }}
+              onUndecline={(key) => {
+                if (workRulesRecord) saveRulesNow(undecline(workRulesRecord, key, now()))
+              }}
+            />
+          </div>
+        ) : null}
+      </header>
+
+      <div className="flex min-h-0 flex-1">
+        <div ref={textRef} className="min-h-0 flex-1 overflow-y-auto px-8 py-6">
+          {!episode || episode.blocks.every((b) => !plainTextOfBlock(b).trim()) ? (
+            <p className="p-6 text-center text-on-surface-variant text-sm">
+              この話にはまだ本文がありません
+            </p>
+          ) : (
+            <ProofreadText
+              blocks={episode.blocks}
+              marks={marks}
+              activeKey={activeKey}
+              word={tab === 'analysis' && word?.from === 'name' ? word.text : null}
+              wordRanges={tab === 'analysis' ? wordRanges : null}
+              onSelect={selectFromText}
+            />
+          )}
+        </div>
+
+        <aside className="flex w-96 shrink-0 flex-col border-outline-variant/30 border-l bg-surface-container-low">
+          <div className="flex gap-1.5 px-4 pt-4" role="tablist" aria-label="指摘と分析">
+            {(
+              [
+                ['findings', '指摘'],
+                ['analysis', '分析'],
+              ] as const
+            ).map(([key, label]) => (
+              <button
+                key={key}
+                type="button"
+                role="tab"
+                aria-selected={tab === key}
+                onClick={() => setTab(key)}
+                className={chipClass(tab === key)}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          {tab === 'findings' ? (
+            <>
+              <fieldset className="flex flex-wrap gap-1.5 border-0 px-4 pt-3 pb-2">
+                <legend className="sr-only">絞り込み</legend>
+                {(
+                  [
+                    ['pending', '未判断'],
+                    ['fix', '直す'],
+                    ['keep', 'このまま'],
+                  ] as const
+                ).map(([key, label]) => (
+                  <Chip
+                    key={key}
+                    ref={key === 'pending' ? pendingChipRef : undefined}
+                    active={filter === key}
+                    onClick={() => {
+                      setFilter(key)
+                      setActiveKey(null)
+                    }}
+                  >
+                    {label} {groups[key].length}
+                  </Chip>
+                ))}
+              </fieldset>
+              {/* 決まりの提案（COT-62）。一覧のスクロールの外に置き、下のカードで判断しても見えるようにする */}
+              <RuleSuggestionBox
+                suggestion={filter === 'pending' ? suggestion : null}
+                onAccept={(target) => {
+                  if (suggestion) acceptSuggestion(suggestion, target)
+                }}
+                onDecline={() => {
+                  if (suggestion) declineSuggestion(suggestion)
+                }}
+              />
+              <div ref={listRef} className="min-h-0 flex-1 overflow-y-auto px-4 pb-4">
+                {enabled.size === 0 ? (
+                  <p className="p-6 text-center text-on-surface-variant text-sm">
+                    上の「確認する項目」から、確かめたい項目を選んでください
+                  </p>
+                ) : findings.length === 0 &&
+                  episode?.blocks.some((b) => plainTextOfBlock(b).trim()) ? (
+                  <p className="p-6 text-center text-on-surface-variant text-sm">
+                    確認する項目では、気になる箇所は見つかりませんでした
+                  </p>
+                ) : (
+                  <FindingList
+                    filter={filter}
+                    findings={shown}
+                    pending={groups.pending}
+                    blocks={episode?.blocks ?? []}
+                    activeKey={activeKey}
+                    onSelect={select}
+                    onFix={(f) => setVerdict([f], 'fix')}
+                    onKeep={(f) => setVerdict([f], 'keep')}
+                    onKeepAll={(fs) => setVerdict(fs, 'keep')}
+                    onUndo={undo}
+                    onFixInEditor={fixInEditor}
+                    onExcept={exceptFinding}
+                    onPrefer={preferForm}
+                    onEmptyFocus={focusPendingChip}
+                  />
+                )}
+              </div>
+            </>
+          ) : (
+            <div className="min-h-0 flex-1 overflow-y-auto p-4">
+              <AnalysisPanel
+                names={
+                  <NameCandidatesSection
+                    candidates={names}
+                    dismissed={dismissedWords}
+                    selected={word?.from === 'name' ? word.text : null}
+                    inThisEpisode={inThisEpisode}
+                    onSelect={(name) => setWord(name ? { text: name, from: 'name' } : null)}
+                    onRegister={register}
+                    onDismiss={dismiss}
+                    onRestore={restore}
+                  />
+                }
+                frequent={frequent}
+                scope={frequentScope}
+                onScope={changeFrequentScope}
+                selected={picked}
+                wordInEpisode={wordRanges?.some((r) => r.length > 0) ?? false}
+                onWord={(w) => setWord(w ? { text: w.base, from: w.kind } : null)}
+                endings={endings}
+                selectedEnding={word?.from === 'ending' ? (word.text as EndingPick) : null}
+                onEnding={(pick) => setWord(pick ? { text: pick, from: 'ending' } : null)}
+                current={currentRatio}
+                work={workRatio}
+                episodes={ratios}
+              />
+            </div>
+          )}
+        </aside>
+      </div>
+    </div>
+  )
+}
+
+/** プロット画面の ViewTab と同じ見た目の丸いチップ（選択中は bg-primary）。 */
+const chipClass = (active: boolean) =>
+  cn(
+    'inline-flex items-center rounded-full px-3 py-1 font-medium text-[12px] tabular-nums transition-colors',
+    active
+      ? 'bg-primary text-primary-foreground'
+      : 'border border-outline-variant/40 bg-surface-container-lowest text-on-surface-variant hover:bg-surface-container-high',
+  )
+
+function Chip({
+  active,
+  onClick,
+  children,
+  ref,
+}: {
+  active: boolean
+  onClick: () => void
+  children: ReactNode
+  ref?: React.Ref<HTMLButtonElement>
+}) {
+  return (
+    <button
+      ref={ref}
+      type="button"
+      aria-pressed={active}
+      onClick={onClick}
+      className={chipClass(active)}
+    >
+      {children}
+    </button>
+  )
+}
+
+function AnalyzerStatus({
+  state,
+  onRetry,
+}: {
+  state: ReturnType<typeof useMorphAnalyzer>['state']
+  onRetry: () => void
+}) {
+  if (state.status === 'error') {
+    return (
+      <p className="flex items-center gap-2 text-error text-xs">
+        くわしい確認は、いまは使えません。
+        <Button type="button" variant="outline" size="sm" onClick={onRetry}>
+          もう一度試す
+        </Button>
+      </p>
+    )
+  }
+  if (state.status === 'ready') {
+    return state.work ? (
+      <p className="text-on-surface-variant text-xs tabular-nums">
+        作品全体を確認しています（{state.work.done} / {state.work.total}話）
+      </p>
+    ) : null
+  }
+  const total = state.status === 'loading' ? state.total : 0
+  const loaded = state.status === 'loading' ? state.loaded : 0
+  return (
+    <div className="flex items-center gap-2 text-on-surface-variant text-xs tabular-nums">
+      <span>くわしい確認の準備をしています{total > 0 ? '（初回だけ時間がかかります）' : ''}</span>
+      {total > 0 ? (
+        <>
+          <Progress
+            value={Math.min(100, (loaded / total) * 100)}
+            className="w-28"
+            aria-label="くわしい確認の準備"
+          />
+          <span>
+            {fmtMb(loaded)} / {fmtMb(total)}MB
+          </span>
+        </>
+      ) : null}
+    </div>
+  )
+}
+export default ProofreadView

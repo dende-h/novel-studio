@@ -679,6 +679,33 @@ it('場面転換は脚本で、選択した本文を消さず現在行の前に 
   expect(ta.selectionStart).toBe(6)
 })
 
+// --- 推敲チェックは推敲画面へ移した（COT-40） -----------------------------------
+
+describe('本文の下の確認候補（COT-40：小説は出さない・脚本はそのまま）', () => {
+  const sample = '「もう帰ろうよ。」\n彼は言った。\n　できることは何もない。'
+
+  it('小説では本文の下に推敲チェックを出さない', () => {
+    render(<EditorPane value={sample} onChange={() => {}} />)
+    expect(screen.queryByText(/推敲チェック/)).toBeNull()
+    expect(screen.queryByText(/確認候補/)).toBeNull()
+    expect(screen.queryByRole('group', { name: '確認する項目' })).toBeNull()
+  })
+
+  it('脚本では従来の書式チェックが出て、候補を押すと該当行を選択し、本文は変えない', () => {
+    const onChange = vi.fn()
+    render(
+      <EditorPane
+        scriptMode
+        value={'○夜の校舎・廊下（夜）\nユイ「もう帰ろうよ。」'}
+        onChange={onChange}
+      />,
+    )
+    expect(screen.getByText(/脚本の書式チェック（確認候補/)).toBeInTheDocument()
+    expect(screen.queryByRole('group', { name: '確認する項目' })).toBeNull()
+    expect(onChange).not.toHaveBeenCalled()
+  })
+})
+
 describe('EditorPane（検索結果の選択）', () => {
   it('UTF-16の一致範囲を選択し本文へフォーカスする', () => {
     const ref = { current: null as EditorPaneHandle | null }

@@ -22,7 +22,11 @@ export default defineConfig({
         //      旧ハッシュの clerk-gate がサーバに無く 404 になる
         // なお節約になるのは 1.6KB のこのチャンクだけで、実体の Clerk SDK（約88KB）は
         // もともと precache されている。外す利得はほぼ無く、失うものが大きい。
-        globIgnores: ['lp/**'],
+        // 推敲画面の解析器（lindera の wasm 1.7MB）も precache に入れない。推敲画面を開いた人だけが
+        // 取りに行き、下の runtimeCaching で 2 回目以降はオフラインでも読める（COT-40）。辞書の zip は
+        // public/dict/ に置くが、既定の globPatterns（js/wasm/css/html）に zip は入らない。
+        // 入れ忘れると 2MiB 超のアセットで vite-plugin-pwa が build を止める。
+        globIgnores: ['lp/**', '**/*.wasm'],
         // 同期 API（/api/*）は絶対にキャッシュしない。SW をネットワーク直行（NetworkOnly）にし、
         // SPA のナビゲーションフォールバック（index.html 差し替え）の対象からも除外する。
         // これを怠ると古い manifest/work レスポンスが返り、同期が壊れる（Phase 2 の必須対策）。
@@ -37,11 +41,25 @@ export default defineConfig({
           /^\/robots\.txt$/,
           /^\/sitemap\.xml$/,
           /^\/\.well-known\//,
+          // 推敲画面の辞書と、そのライセンス表記（ヘルプからリンクする）。
+          /^\/dict\//,
         ],
         runtimeCaching: [
           {
             urlPattern: ({ url }) => url.pathname.startsWith('/api/'),
             handler: 'NetworkOnly',
+          },
+          // 推敲画面の解析器（wasm）。ファイル名に内容ハッシュが付くので、取ったら手元を先に。
+          // 辞書の zip は Worker が Cache Storage（ns-dict-v1）に自分で置くので、ここでは扱わない。
+          {
+            urlPattern: ({ url }) =>
+              url.pathname.startsWith('/assets/') && url.pathname.endsWith('.wasm'),
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'proofread-analyzer',
+              expiration: { maxEntries: 4 },
+              cacheableResponse: { statuses: [0, 200] },
+            },
           },
           // 運営テンプレ（背景・立ち絵）。目録は変わりうるので網を先に、実体は URL に内容ハッシュが
           // 付く（?v=）ので取ったら手元を先に。precache には入れない（1 枚 100KB 超×百枚を
@@ -64,6 +82,10 @@ export default defineConfig({
       },
     }),
   ],
+  // 推敲画面の解析 Worker（COT-40）は ES モジュールで出す（lindera-wasm が import.meta.url で wasm を引くため）。
+  worker: { format: 'es' },
+  // lindera-wasm は wasm を import.meta.url で引くので、依存の事前バンドルから外す（README の指示）。
+  optimizeDeps: { exclude: ['lindera-wasm'] },
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),

@@ -73,12 +73,24 @@ export function parseInlines(line: string): Inline[] {
   return scanInlines(line, true)
 }
 
-function scanInlines(line: string, allowRef: boolean): Inline[] {
+/**
+ * 走査の途中で、出した inline と、その表示文字が行のどこから始まるかを知らせる口（COT-40）。
+ * 表示文字が行の中で 1 文字ずつ連続している inline（地の文字・傍点の中身・ルビの親文字）は開始位置を、
+ * 参照（中に装飾が入れ子になりうる）は null を渡す。
+ */
+type ScanTrace = (inline: Inline, sourceStart: number | null) => void
+
+function scanInlines(line: string, allowRef: boolean, trace?: ScanTrace): Inline[] {
   const inlines: Inline[] = []
   let buf = ''
+  let bufStart = 0
+  const emit = (inline: Inline, sourceStart: number | null) => {
+    inlines.push(inline)
+    trace?.(inline, sourceStart)
+  }
   const flush = () => {
     if (buf) {
-      inlines.push({ type: 'text', text: buf })
+      emit({ type: 'text', text: buf }, bufStart)
       buf = ''
     }
   }
@@ -93,8 +105,9 @@ function scanInlines(line: string, allowRef: boolean): Inline[] {
       const children = parseRefChildren(inner)
       flush()
       // 装飾が無い ref は children を持たせない（従来データと同形＝差分を作らない）。
-      inlines.push(
+      emit(
         children.every((c) => c.type === 'text') ? { type: 'ref', name: inner } : refOf(children),
+        null,
       )
       i = end === -1 ? line.length : end + 2
       continue
@@ -108,12 +121,13 @@ function scanInlines(line: string, allowRef: boolean): Inline[] {
         // 傍点で ref を囲んだ形（《《[[言葉]]》》）は ref を外側へ持ち上げて正規化する。
         const refInner = allowRef ? soleRefInner(inner) : null
         flush()
-        inlines.push(
+        emit(
           refInner === null
             ? { type: 'emphasisDots', text: inner }
             : refOf([
                 { type: 'emphasisDots', text: refPlainText(parseRefChildren(refInner.trim())) },
               ]),
+          refInner === null ? i + 2 : null,
         )
         i = end + 2
         continue
@@ -130,12 +144,13 @@ function scanInlines(line: string, allowRef: boolean): Inline[] {
         // ルビで ref を囲んだ形（｜[[言葉]]《ことば》）も ref を外側へ持ち上げる。
         const refInner = allowRef ? soleRefInner(base) : null
         flush()
-        inlines.push(
+        emit(
           refInner === null
             ? { type: 'ruby', base, reading }
             : refOf([
                 { type: 'ruby', base: refPlainText(parseRefChildren(refInner.trim())), reading },
               ]),
+          refInner === null ? i + 1 : null,
         )
         i = close + 1
         continue
@@ -146,14 +161,45 @@ function scanInlines(line: string, allowRef: boolean): Inline[] {
     const auto = AUTO_RUBY_RE.exec(line.slice(i))
     if (auto) {
       flush()
-      inlines.push({ type: 'ruby', base: auto[1] as string, reading: auto[2] as string })
+      emit({ type: 'ruby', base: auto[1] as string, reading: auto[2] as string }, i)
       i += auto[0].length
       continue
     }
 
+    if (!buf) bufStart = i
     buf += line[i]
     i++
   }
   flush()
   return inlines
+}
+
+/** inline の表示文字（core/game の plainTextOfInline と同じ。ルビは親文字だけ）。 */
+function inlinePlain(inline: Inline | RefChild): string {
+  switch (inline.type) {
+    case 'text':
+    case 'emphasisDots':
+      return inline.text
+    case 'ruby':
+      return inline.base
+    case 'ref':
+      return inline.children ? inline.children.map(inlinePlain).join('') : inline.name
+  }
+}
+
+/**
+ * 1 行の表示文字（plainTextOfInlines(parseInlines(line)) と同じ文字列）と、各表示文字の行の中の位置（COT-40）。
+ * 地の文字・傍点の中身・ルビの親文字は 1 文字ずつ正確に対応する。ルビの読みと記法の記号は対応先にならない。
+ * 参照（[[…]]）の中は装飾が入れ子になりうるので null（位置を移せない）。
+ * 推敲の「直す箇所」で、プレーン文字列の位置を記法つきの下書きの位置へ移すのに使う。
+ */
+export function plainOffsetMap(line: string): { plainText: string; sourceOf: (number | null)[] } {
+  let plainText = ''
+  const sourceOf: (number | null)[] = []
+  scanInlines(line, true, (inline, start) => {
+    const plain = inlinePlain(inline)
+    plainText += plain
+    for (let k = 0; k < plain.length; k++) sourceOf.push(start === null ? null : start + k)
+  })
+  return { plainText, sourceOf }
 }

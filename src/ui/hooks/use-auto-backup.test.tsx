@@ -2,6 +2,7 @@ import { act, renderHook } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { BackupService, BackupSummary } from '@/ui/backup/backup-service'
 import type { EditorStore } from '@/ui/store/editorStore'
+import { touchSync } from '@/ui/sync/sync-touch'
 import { useAutoBackup } from './use-auto-backup'
 import { markCloudBackup, readBackupMarks } from './use-backup-marks'
 
@@ -143,6 +144,36 @@ describe('useAutoBackup', () => {
     })
     expect(backupNow).toHaveBeenCalledTimes(2)
     expect(readBackupMarks().cloudBackupAt).toBe(Date.now())
+  })
+
+  it('store を通らない変更（sync-touch）だけでも静止 5 分で backupNow する', async () => {
+    const { store } = makeStore()
+    const { service, backupNow } = makeService()
+    renderHook(() => useAutoBackup(store, service, true))
+
+    act(() => touchSync()) // 推敲の判断の保存など、Repository 直書きの変更
+    await act(async () => {
+      vi.advanceTimersByTime(IDLE_MS - 1)
+    })
+    expect(backupNow).not.toHaveBeenCalled()
+    await act(async () => {
+      vi.advanceTimersByTime(1)
+    })
+    expect(backupNow).toHaveBeenCalledTimes(1)
+  })
+
+  it('アンマウント後は sync-touch を購読しない', async () => {
+    const { store } = makeStore()
+    const { service, backupNow } = makeService()
+    const { unmount } = renderHook(() => useAutoBackup(store, service, true))
+    await act(async () => {
+      unmount()
+    })
+    act(() => touchSync())
+    await act(async () => {
+      vi.advanceTimersByTime(IDLE_MS * 2)
+    })
+    expect(backupNow).not.toHaveBeenCalled()
   })
 
   it('enabled=false では一切バックアップしない', async () => {

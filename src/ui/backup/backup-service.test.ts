@@ -1,7 +1,14 @@
 import 'fake-indexeddb/auto'
 import { describe, expect, it, vi } from 'vitest'
 import { type BackupState, deserializeBackup, serializeBackup } from '@/core/backup'
+import type { ProofreadRecord } from '@/core/proofread/decisions'
+import type { NameDismissals } from '@/core/proofread/name-dismissals'
+import type { ProofreadRules } from '@/core/proofread/work-rules'
 import type { Work } from '@/core/schema'
+import { IdbStore } from '@/core/storage/idbStore'
+import { NameDismissalRepository } from '@/core/storage/nameDismissalRepository'
+import { ProofreadRepository } from '@/core/storage/proofreadRepository'
+import { ProofreadRulesRepository } from '@/core/storage/proofreadRulesRepository'
 import { isSyncSuspended, syncEpoch } from '@/ui/sync/sync-gate'
 import {
   type BackupDeps,
@@ -11,6 +18,38 @@ import {
 } from './backup-service'
 
 const work = (id: string): Work => ({ id, title: id, episodes: [], updatedAt: 1 })
+
+const proofread = (workId: string, episodeId: string, updatedAt: number): ProofreadRecord => ({
+  workId,
+  episodeId,
+  decisions: [
+    {
+      blockId: 'b1',
+      code: 'variant',
+      text: '出来る',
+      nth: 0,
+      occurrence: 0,
+      anchor: 'contains',
+      verdict: 'fix',
+      decidedAt: updatedAt,
+    },
+  ],
+  updatedAt,
+})
+
+const names = (workId: string, updatedAt: number, text = 'アカリ'): NameDismissals => ({
+  workId,
+  words: [{ text, at: updatedAt }],
+  updatedAt,
+})
+
+const rules = (workId: string, updatedAt: number, label = '見れる'): ProofreadRules => ({
+  workId,
+  exceptions: [{ key: `ra-nuki:${label}`, label, at: updatedAt }],
+  preferences: [],
+  declined: [],
+  updatedAt,
+})
 
 function makeDeps(over: Partial<BackupDeps> = {}) {
   const state = {
@@ -22,6 +61,9 @@ function makeDeps(over: Partial<BackupDeps> = {}) {
     structures: [],
     plots: [],
     stagings: [],
+    proofreads: [],
+    nameDismissals: [],
+    proofreadRules: [],
     gameAssets: [],
   }
   const created: string[] = []
@@ -75,6 +117,9 @@ describe('createLocalBackupService（ローカル・ファイルバックアッ�
       structures: [],
       plots: [],
       stagings: [],
+      proofreads: [],
+      nameDismissals: [],
+      proofreadRules: [],
       gameAssets: [],
     }
     const svc = createLocalBackupService(io(state), () => 999)
@@ -95,6 +140,9 @@ describe('createLocalBackupService（ローカル・ファイルバックアッ�
       structures: [],
       plots: [],
       stagings: [],
+      proofreads: [],
+      nameDismissals: [],
+      proofreadRules: [],
       gameAssets: [],
     }
     const svc = createLocalBackupService(
@@ -138,6 +186,9 @@ describe('createLocalBackupService（ローカル・ファイルバックアッ�
         stagings: [
           { workId: 'w1', episodeId: 'e1', cues: [{ blockId: 'b1', speaker: '光' }], updatedAt: 4 },
         ],
+        proofreads: [proofread('w1', 'e1', 4)],
+        nameDismissals: [],
+        proofreadRules: [],
         gameAssets: [],
       },
       5,
@@ -147,6 +198,8 @@ describe('createLocalBackupService（ローカル・ファイルバックアッ�
     expect(restored?.ideas.map((i) => i.id)).toEqual(['i2'])
     // 構造データ（アウトライン／相関図／マインドマップ）
     expect(restored?.structures.map((s) => s.id)).toEqual(['st1'])
+    // 推敲の判断（直す／このまま）
+    expect(restored?.proofreads).toEqual([proofread('w1', 'e1', 4)])
     // プロット。ビート・秘密の真相・世界観設定まで、中身ごと戻ること
     expect(restored?.plots[0]).toMatchObject({
       id: 'pl1',
@@ -166,6 +219,9 @@ describe('createLocalBackupService（ローカル・ファイルバックアッ�
       structures: [],
       plots: [],
       stagings: [],
+      proofreads: [],
+      nameDismissals: [],
+      proofreadRules: [],
       gameAssets: [],
     }
     await expect(createLocalBackupService(io(empty)).restorePlaintext('not json')).rejects.toThrow()
@@ -206,6 +262,9 @@ describe('createBackupService', () => {
           structures: [],
           plots: [],
           stagings: [],
+          proofreads: [],
+          nameDismissals: [],
+          proofreadRules: [],
           gameAssets: [],
         },
         5,
@@ -229,6 +288,9 @@ describe('createBackupService', () => {
           structures: [],
           plots: [],
           stagings: [],
+          proofreads: [],
+          nameDismissals: [],
+          proofreadRules: [],
           gameAssets: [],
         },
         5,
@@ -256,6 +318,9 @@ describe('createBackupService', () => {
           structures: [],
           plots: [],
           stagings: [],
+          proofreads: [],
+          nameDismissals: [],
+          proofreadRules: [],
           gameAssets: [],
         },
         5,
@@ -293,6 +358,9 @@ describe('createBackupService', () => {
         structures: [],
         plots: [],
         stagings: [],
+        proofreads: [],
+        nameDismissals: [],
+        proofreadRules: [],
         gameAssets: [],
       },
       50,
@@ -320,6 +388,9 @@ describe('createBackupService', () => {
         structures: [],
         plots: [],
         stagings: [],
+        proofreads: [],
+        nameDismissals: [],
+        proofreadRules: [],
         gameAssets: [],
       },
       50,
@@ -347,6 +418,9 @@ describe('createBackupService', () => {
         structures: [],
         plots: [],
         stagings: [],
+        proofreads: [],
+        nameDismissals: [],
+        proofreadRules: [],
         gameAssets: [],
       },
       50,
@@ -362,6 +436,179 @@ describe('createBackupService', () => {
     expect(restored).toEqual([note])
   })
 
+  it('復元は推敲の判断（proofreads）もローカルへ全置換する', async () => {
+    const target = serializeBackup(
+      {
+        works: [work('r')],
+        trash: [],
+        profile: {},
+        activity: [],
+        ideas: [],
+        structures: [],
+        plots: [],
+        stagings: [],
+        proofreads: [proofread('w1', 'e1', 7)],
+        nameDismissals: [],
+        proofreadRules: [],
+        gameAssets: [],
+      },
+      50,
+    )
+    let restored: unknown
+    const { deps, remote } = makeDeps({
+      replaceAll: async (s) => {
+        restored = s.proofreads
+      },
+    })
+    remote.set('target', target)
+    await createBackupService(deps).restore('target')
+    expect(restored).toEqual([proofread('w1', 'e1', 7)])
+  })
+
+  it('proofreads の無い旧バックアップの復元は、推敲の判断を空として渡す', async () => {
+    const old = JSON.stringify({
+      version: 1,
+      createdAt: 1,
+      works: [work('r')],
+      trash: [],
+      profile: {},
+    })
+    let restored: unknown
+    const { deps, remote } = makeDeps({
+      replaceAll: async (s) => {
+        restored = s.proofreads
+      },
+    })
+    remote.set('old', old)
+    expect(await createBackupService(deps).restore('old')).toBe(true)
+    expect(restored).toEqual([])
+  })
+
+  it('pullLive は推敲の判断（proofreads）も取り込む', async () => {
+    let restored: unknown
+    const { deps, remote } = makeDeps({
+      replaceAll: async (s) => {
+        restored = s.proofreads
+      },
+    })
+    remote.set(
+      'live',
+      serializeBackup(
+        {
+          works: [work('L')],
+          trash: [],
+          profile: {},
+          activity: [],
+          ideas: [],
+          structures: [],
+          plots: [],
+          stagings: [],
+          proofreads: [proofread('w1', 'e2', 8)],
+          nameDismissals: [],
+          proofreadRules: [],
+          gameAssets: [],
+        },
+        5,
+      ),
+    )
+    await createBackupService(deps).pullLive()
+    expect(restored).toEqual([proofread('w1', 'e2', 8)])
+  })
+
+  it('backupNow は推敲の判断（proofreads）も直列化する', async () => {
+    const { deps, created, state } = makeDeps()
+    const withProofread = { ...state, proofreads: [proofread('w1', 'e1', 3)] }
+    const svc = createBackupService({ ...deps, gather: async () => withProofread })
+    await svc.backupNow()
+    expect(deserializeBackup(created[0] ?? '{}').proofreads).toEqual([proofread('w1', 'e1', 3)])
+  })
+
+  it('復元・ライブ取り込みは推敲で外した語も全置換に渡し、backupNow は直列化する', async () => {
+    const withNames = (n: NameDismissals[]) =>
+      serializeBackup(
+        {
+          works: [work('r')],
+          trash: [],
+          profile: {},
+          activity: [],
+          ideas: [],
+          structures: [],
+          plots: [],
+          stagings: [],
+          proofreads: [],
+          nameDismissals: n,
+          proofreadRules: [],
+          gameAssets: [],
+        },
+        50,
+      )
+    const restored: unknown[] = []
+    const { deps, remote, created, state } = makeDeps({
+      replaceAll: async (s) => {
+        restored.push(s.nameDismissals)
+      },
+    })
+    remote.set('target', withNames([names('w1', 7)]))
+    remote.set('live', withNames([names('w2', 8, 'ユキ')]))
+    // 欄の無い旧バックアップは、外した語を空として渡す
+    remote.set(
+      'old',
+      JSON.stringify({ version: 1, createdAt: 1, works: [work('r')], trash: [], profile: {} }),
+    )
+    const svc = createBackupService(deps)
+    await svc.restore('target')
+    await svc.pullLive()
+    expect(await svc.restore('old')).toBe(true)
+    expect(restored).toEqual([[names('w1', 7)], [names('w2', 8, 'ユキ')], []])
+
+    const gathered = { ...state, nameDismissals: [names('w3', 3)] }
+    await createBackupService({ ...deps, gather: async () => gathered }).backupNow()
+    expect(deserializeBackup(created.at(-1) ?? '{}').nameDismissals).toEqual([names('w3', 3)])
+  })
+
+  it('復元・ライブ取り込みは推敲の作品の決まりも全置換に渡し、backupNow は直列化する', async () => {
+    const withRules = (r: ProofreadRules[]) =>
+      serializeBackup(
+        {
+          works: [work('r')],
+          trash: [],
+          profile: {},
+          activity: [],
+          ideas: [],
+          structures: [],
+          plots: [],
+          stagings: [],
+          proofreads: [],
+          nameDismissals: [],
+          proofreadRules: r,
+          gameAssets: [],
+        },
+        50,
+      )
+    const restored: unknown[] = []
+    const { deps, remote, created, state } = makeDeps({
+      replaceAll: async (s) => {
+        restored.push(s.proofreadRules)
+      },
+    })
+    remote.set('target', withRules([rules('w1', 7)]))
+    remote.set('live', withRules([rules('w2', 8, '来れる')]))
+    // 欄の無い旧バックアップは、決まりを空として渡す
+    remote.set(
+      'old',
+      JSON.stringify({ version: 1, createdAt: 1, works: [work('r')], trash: [], profile: {} }),
+    )
+    const svc = createBackupService(deps)
+    await svc.restore('target')
+    await svc.pullLive()
+    expect(await svc.restore('old')).toBe(true)
+    expect(restored).toEqual([[rules('w1', 7)], [rules('w2', 8, '来れる')], []])
+
+    const gathered = { ...state, proofreadRules: [rules('w3', 3)] }
+    await createBackupService({ ...deps, gather: async () => gathered }).backupNow()
+    expect(deserializeBackup(created.at(-1) ?? '{}').proofreadRules).toEqual([rules('w3', 3)])
+  })
+
   it('backupCurrent:true のときだけ、置換前に現在を安全退避してから全置換する', async () => {
     const target = serializeBackup(
       {
@@ -373,6 +620,9 @@ describe('createBackupService', () => {
         structures: [],
         plots: [],
         stagings: [],
+        proofreads: [],
+        nameDismissals: [],
+        proofreadRules: [],
         gameAssets: [],
       },
       50,
@@ -427,6 +677,9 @@ describe('全置換（復元・AI の変更の取り込み）は自動同期と�
       structures: [],
       plots: [],
       stagings: [],
+      proofreads: [],
+      nameDismissals: [],
+      proofreadRules: [],
       gameAssets: [],
     })
     // 置換の最中は保留＝走っている reconcile が base を書き戻さない（誤 purge の防止）。
@@ -434,5 +687,95 @@ describe('全置換（復元・AI の変更の取り込み）は自動同期と�
     await running
     expect(isSyncSuspended()).toBe(false)
     expect(syncEpoch()).toBe(before + 2) // 開始と終了で世代が進む＝実行中の同期は stale になる
+  })
+})
+
+describe('createLocalBackupIO（IndexedDB 上の全状態）', () => {
+  const emptyState = (): BackupState => ({
+    works: [],
+    trash: [],
+    profile: {},
+    activity: [],
+    ideas: [],
+    structures: [],
+    plots: [],
+    stagings: [],
+    proofreads: [],
+    nameDismissals: [],
+    proofreadRules: [],
+    gameAssets: [],
+  })
+
+  it('gather は推敲の判断を集め、replaceAll は推敲の判断を全置換する', async () => {
+    const io = createLocalBackupIO()
+    const repo = new ProofreadRepository(new IdbStore('novel-studio'))
+    await io.replaceAll(emptyState())
+    await repo.save(proofread('w1', 'e1', 1))
+    await repo.save(proofread('w1', 'e2', 2))
+
+    const gathered = await io.gather()
+    expect(gathered.proofreads.map((r) => r.episodeId).sort()).toEqual(['e1', 'e2'])
+
+    // 復元：バックアップに無い判断は消え、バックアップの判断だけが残る
+    await io.replaceAll({ ...emptyState(), proofreads: [proofread('w2', 'e9', 5)] })
+    expect(await repo.list()).toEqual([proofread('w2', 'e9', 5)])
+    expect((await io.gather()).proofreads).toEqual([proofread('w2', 'e9', 5)])
+  })
+
+  it('gather は推敲で外した語を集め、replaceAll は外した語だけを全置換する', async () => {
+    const io = createLocalBackupIO()
+    const kv = new IdbStore('novel-studio')
+    const repo = new NameDismissalRepository(kv)
+    const proofreads = new ProofreadRepository(kv)
+    await io.replaceAll(emptyState())
+    await repo.save(names('w1', 1))
+    await repo.save(names('w2', 2))
+    await proofreads.save(proofread('w1', 'e1', 1))
+
+    const gathered = await io.gather()
+    expect(gathered.nameDismissals.map((r) => r.workId).sort()).toEqual(['w1', 'w2'])
+    // 推敲の判断（proofread:）の一覧に外した語（proofread-names:）が混ざらない
+    expect(gathered.proofreads).toEqual([proofread('w1', 'e1', 1)])
+
+    // 復元：バックアップに無い記録は消え、バックアップの記録だけが残る
+    await io.replaceAll({
+      ...emptyState(),
+      proofreads: [proofread('w1', 'e1', 1)],
+      nameDismissals: [names('w9', 5, 'ミナト')],
+    })
+    expect(await repo.list()).toEqual([names('w9', 5, 'ミナト')])
+    expect((await io.gather()).nameDismissals).toEqual([names('w9', 5, 'ミナト')])
+    expect(await proofreads.list()).toEqual([proofread('w1', 'e1', 1)])
+  })
+
+  it('gather は推敲の作品の決まりを集め、replaceAll は決まりだけを全置換する（COT-62）', async () => {
+    const io = createLocalBackupIO()
+    const kv = new IdbStore('novel-studio')
+    const repo = new ProofreadRulesRepository(kv)
+    const proofreads = new ProofreadRepository(kv)
+    const nameRepo = new NameDismissalRepository(kv)
+    await io.replaceAll(emptyState())
+    await repo.save(rules('w1', 1))
+    await repo.save(rules('w2', 2))
+    await proofreads.save(proofread('w1', 'e1', 1))
+    await nameRepo.save(names('w1', 1))
+
+    const gathered = await io.gather()
+    expect(gathered.proofreadRules.map((r) => r.workId).sort()).toEqual(['w1', 'w2'])
+    // 推敲の判断（proofread:）・外した語（proofread-names:）の一覧に決まり（proofread-rules:）が混ざらない
+    expect(gathered.proofreads).toEqual([proofread('w1', 'e1', 1)])
+    expect(gathered.nameDismissals).toEqual([names('w1', 1)])
+
+    // 復元：バックアップに無い記録は消え、バックアップの記録だけが残る
+    await io.replaceAll({
+      ...emptyState(),
+      proofreads: [proofread('w1', 'e1', 1)],
+      nameDismissals: [names('w1', 1)],
+      proofreadRules: [rules('w9', 5, '出れる')],
+    })
+    expect(await repo.list()).toEqual([rules('w9', 5, '出れる')])
+    expect((await io.gather()).proofreadRules).toEqual([rules('w9', 5, '出れる')])
+    expect(await proofreads.list()).toEqual([proofread('w1', 'e1', 1)])
+    expect(await nameRepo.list()).toEqual([names('w1', 1)])
   })
 })

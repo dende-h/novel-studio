@@ -30,10 +30,16 @@ src/
 |---|---|
 | 受け入れる土台 | React・Vite（ビルド時）・Tailwind（ランタイム依存なし）・Zod（正本検証の核） |
 | コピーして所有 | shadcn/ui・nuqs・ユーティリティは自前 |
-| 依存が正当化される核 | なし（エディタは A1=textarea＋自前パーサで回避済み。将来 WYSIWYG 化する時のみ ProseMirror/CodeMirror6 を検討） |
+| 依存が正当化される核 | 形態素解析の `lindera-wasm`（COT-40・下記）だけ。エディタは A1=textarea＋自前パーサで回避済み（将来 WYSIWYG 化する時のみ ProseMirror/CodeMirror6 を検討） |
 | 避ける | 重い抽象ラッパ・大型UIライブラリ・churn の激しい依存・グローバル state ライブラリ（Redux/Zustand） |
 
 > 新しい依存を足す前に「**コピーして所有できないか**」を先に検討する。
+
+**例外：形態素解析（COT-40・2026-10-14）**。推敲画面の「くわしい確認」（表記ゆれの自動発見・一文の中の同じ助詞・ら抜き言葉・よく使う言葉）は品詞の解析が要り、辞書つきの解析器を自前で持つのは現実的でないため `lindera-wasm`（MIT・wasm 1.7MB）を足した。COT-30 の「依存を足さない」（`docs/specs/COT-40/` 参照）はこれで上書きする。囲い方：
+- 解析器を import するのは Worker（`src/ui/proofread/analyzer.worker.ts`）だけ。`src/core/` はトークン列（自前の型）を受け取る純関数だけを持つ
+- 辞書は npm ではなく `scripts/fetch-dict.mjs` がビルド時に SHA-256 を照合して `public/dict/` に置く。npm の版と辞書の版は必ず揃える（6.x の間に辞書の形式が変わった前例あり）
+- 辞書の中身（COT-59・2026-10-18〜）：IPADIC 6.2.0 に SudachiDict 20260723（Apache-2.0）の普通名詞 70,752 語を足して作り直したもの（zip 12.0MB・`lindera-ipadic-6.2.0-sudachi20260723.zip`）。`scripts/build-dict.mjs` を手で回して作り、このリポジトリの GitHub Release（タグ `dict-ipadic-sudachi-20260723`）に置く。作り直しは固定した元データ（IPADIC のソース・SudachiDict・lindera CLI）から行い、語を足さない作り直しが公式の辞書とバイト単位で一致することを毎回確かめる。足す語の選び方は `src/core/proofread/morph/dict-supplement.ts`。版を上げるときは build-dict.mjs の定数を替えて回し、Release を新しいタグで作って、`scripts/dict-file.mjs`（名前）と fetch-dict.mjs（URL とハッシュ）を替える
+- 推敲画面を開いたときだけ取得し、Service Worker のプリキャッシュには入れない（`scripts/check-precache.mjs` が build 後に確かめる）
 
 ## 4. component / コード設計（旧 novel-platform の思想を継承・確定）
 

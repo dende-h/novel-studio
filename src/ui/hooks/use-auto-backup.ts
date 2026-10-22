@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react'
 import type { BackupService } from '@/ui/backup/backup-service'
 import { markCloudBackup, readBackupMarks } from '@/ui/hooks/use-backup-marks'
 import type { EditorStore } from '@/ui/store/editorStore'
+import { subscribeSyncTouch } from '@/ui/sync/sync-touch'
 
 /** 編集が止まってから自動バックアップを試みるまでの静止時間（執筆の邪魔をしない）。 */
 const IDLE_MS = 5 * 60_000
@@ -70,11 +71,15 @@ export function useAutoBackup(
     }
 
     const unsub = store.subscribe(schedule)
+    // store を通らないローカル変更（推敲の判断・構造・ネタ帳など Repository 直書き）も
+    // 静止判定に数える。ラッパー（withSyncTouch）が変更のたびに鳴らす。
+    const unsubTouch = subscribeSyncTouch(schedule)
     document.addEventListener('visibilitychange', onVisibility)
     window.addEventListener('pagehide', flush)
 
     return () => {
       unsub()
+      unsubTouch()
       document.removeEventListener('visibilitychange', onVisibility)
       window.removeEventListener('pagehide', flush)
       flush() // 無効化/アンマウント時にも条件を満たせば送る（fire-and-forget）
