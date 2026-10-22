@@ -1,7 +1,7 @@
 import { CheckCircle2, PenLine } from 'lucide-react'
-import { useId, useState } from 'react'
+import { useEffect, useId, useState } from 'react'
 import { buildImportedWork, MAX_WORK_JSON_BYTES, workJsonBytes } from '@/core/importer'
-import type { Work } from '@/core/schema'
+import type { Work, WorkFormat } from '@/core/schema'
 import { cn } from '@/lib/utils'
 import { Button } from '@/ui/components/ui/button'
 import {
@@ -25,6 +25,8 @@ interface TextImportDialogProps {
   onOpenChange: (open: boolean) => void
   /** 著者の既定値（プロフィールのペンネーム）。 */
   defaultAuthor?: string
+  /** 開いたときに選ばれている形式（「新しいプロジェクト」で選んだ形式。データ管理からは小説）。 */
+  defaultFormat?: WorkFormat
   /** 組み立てた Work を保存する（`store.importWorks([work])`）。 */
   onCreate: (work: Work) => Promise<void>
   /** 「執筆を始める」：作った作品を開いて執筆画面へ。 */
@@ -46,6 +48,7 @@ export function TextImportDialog({
   open,
   onOpenChange,
   defaultAuthor = '',
+  defaultFormat = 'novel',
   onCreate,
   onWrite,
   genId = defaultGenId,
@@ -59,6 +62,11 @@ export function TextImportDialog({
   const uid = useId()
   const titleId = `${uid}-title`
   const authorId = `${uid}-author`
+  const [format, setFormat] = useState<WorkFormat>(defaultFormat)
+  // 開くたびに、呼び出し元が選んでいた形式に戻す
+  useEffect(() => {
+    if (open) setFormat(defaultFormat)
+  }, [open, defaultFormat])
 
   const reset = () => {
     actions.reset()
@@ -88,6 +96,7 @@ export function TextImportDialog({
         {
           title: workTitle.trim(),
           author: state.author,
+          format,
           episodes: preview.episodes.map((e) => ({ title: e.title, body: e.body })),
         },
         genId,
@@ -124,6 +133,23 @@ export function TextImportDialog({
           placeholder="ペンネーム（未設定）"
         />
       </div>
+      <fieldset className="flex flex-col gap-1.5">
+        <legend className="mb-1.5 font-medium text-sm">形式</legend>
+        <div className="flex gap-6">
+          {(['novel', 'script'] as const).map((f) => (
+            <label key={f} className="flex items-center gap-2 text-sm">
+              <input
+                type="radio"
+                name={`${uid}-format`}
+                value={f}
+                checked={format === f}
+                onChange={() => setFormat(f)}
+              />
+              {f === 'novel' ? '小説' : '脚本'}
+            </label>
+          ))}
+        </div>
+      </fieldset>
     </div>
   )
 
