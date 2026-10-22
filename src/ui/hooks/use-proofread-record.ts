@@ -11,8 +11,15 @@ export interface ProofreadRecordRepo {
 }
 
 /**
+ * 保存した判断を、同じ話を見ている別の画面へ知らせる口。執筆画面（「直す箇所」）は画面を切り替えても
+ * 残り続けるので、推敲画面で決めた「直す」を読み直さずに受け取る。
+ */
+const savedListeners = new Set<(record: ProofreadRecord) => void>()
+
+/**
  * 1 話ぶんの推敲の判断（COT-40）。話が変わったら読み直し、同期の取り込み（sync-applied）でも読み直す。
- * 保存は画面の値を先に替えてから repo へ書く（判断のボタンをすぐ反映させる）。
+ * 保存は画面の値を先に替えてから repo へ書く（判断のボタンをすぐ反映させる）。同じ話を持つ
+ * 別の画面（このフックの別の呼び出し）にも、保存した値を渡す。
  */
 export function useProofreadRecord(
   repo: ProofreadRecordRepo | undefined,
@@ -48,10 +55,20 @@ export function useProofreadRecord(
     return subscribeSyncApplied(load)
   }, [load])
 
+  useEffect(() => {
+    const onSaved = (record: ProofreadRecord) => {
+      const k = `${record.workId}:${record.episodeId}`
+      if (keyRef.current === k) setState({ key: k, record })
+    }
+    savedListeners.add(onSaved)
+    return () => {
+      savedListeners.delete(onSaved)
+    }
+  }, [])
+
   const save = useCallback(
     async (next: ProofreadRecord) => {
-      const k = `${next.workId}:${next.episodeId}`
-      if (keyRef.current === k) setState({ key: k, record: next })
+      for (const listener of savedListeners) listener(next)
       await repo?.save(next)
     },
     [repo],
