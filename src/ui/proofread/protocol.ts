@@ -1,4 +1,10 @@
-import type { AutoVariantCounts, FrequentWord, MorphToken, NameCandidate } from '@/core/proofread'
+import type {
+  AutoVariantCounts,
+  EndingKind,
+  FrequentWord,
+  MorphToken,
+  NameCandidate,
+} from '@/core/proofread'
 
 /** 推敲画面の解析 Worker とのやりとり（COT-40）。型だけ（実行時のコードは持たない）。 */
 export type AnalyzerFailure = 'offline' | 'memory' | 'unsupported' | 'unknown'
@@ -21,10 +27,15 @@ export interface AnalysisResult {
   /** いまの話のトークン（段落ごと）。作品全体のトークンは Worker の中だけに持つ。 */
   currentTokens: MorphToken[][]
   workVariants: AutoVariantCounts
-  /** よく使う言葉（作品全体）。 */
+  /** よく使う言葉（作品全体）。副詞・形容詞・形容動詞。 */
   frequent: FrequentWord[]
   /** よく使う言葉（いまの話）。 */
   frequentCurrent: FrequentWord[]
+  /** よく使う接続詞（作品全体・いまの話）。 */
+  conjunctions: FrequentWord[]
+  conjunctionsCurrent: FrequentWord[]
+  /** 文末の偏り（作品全体の地の文）。いまの話の分は画面側でトークンから数える。 */
+  endings: { counts: Record<EndingKind, number>; runs: number }
   /** 用語集に無い名前の候補（作品全体・COT-59）。用語集の語は除いてある。 */
   names: NameCandidate[]
 }

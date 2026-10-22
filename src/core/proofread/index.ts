@@ -19,7 +19,7 @@ export type { DialogueRatio } from './dialogue-ratio'
 export { addRatio, dialoguePercent, dialogueRatio } from './dialogue-ratio'
 export type { AutoVariantCounts } from './morph/auto-variant'
 export { countAutoVariants, emptyAutoVariants } from './morph/auto-variant'
-export type { FrequentWord } from './morph/frequent-words'
+export type { FrequentKind, FrequentWord } from './morph/frequent-words'
 export { frequentWordRanges, frequentWords } from './morph/frequent-words'
 export type {
   KnownReading,
@@ -29,6 +29,13 @@ export type {
   NameSourceEpisode,
 } from './morph/name-candidates'
 export { findNameCandidates, inlineSignalsOf } from './morph/name-candidates'
+export type { EndingKind, EndingStats, SentenceEnding } from './morph/sentence-endings'
+export {
+  ENDING_KINDS,
+  ENDING_RUN_MIN,
+  emptyEndingCounts,
+  sentenceEndings,
+} from './morph/sentence-endings'
 export type { MorphToken, RawToken } from './morph/token'
 export { isUnknownToken, toMorphTokens } from './morph/token'
 export type { Finding, NovelRuleId, ProofNotice } from './types'

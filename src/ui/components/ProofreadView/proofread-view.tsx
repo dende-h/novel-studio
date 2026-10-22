@@ -5,10 +5,12 @@ import {
   createVariantCountCache,
   type DialogueRatio,
   dialogueRatio,
+  type FrequentKind,
   frequentWordRanges,
   inlineSignalsOf,
   type NameCandidate,
   proofreadNovel,
+  sentenceEndings,
 } from '@/core/proofread'
 import {
   classify,
@@ -50,7 +52,7 @@ import type { MorphAnalyzerClient } from '@/ui/proofread/analyzer-client'
 import { textsHash } from '@/ui/proofread/analyzer-engine'
 import type { AnalysisResult } from '@/ui/proofread/protocol'
 import { subscribeSyncApplied } from '@/ui/sync/sync-touch'
-import { AnalysisPanel, type FrequentScope } from './analysis-panel'
+import { AnalysisPanel, type EndingPick, type FrequentScope } from './analysis-panel'
 import { type FindingFilter, FindingList } from './finding-list'
 import { NameCandidatesSection } from './name-candidates-section'
 import { ProofreadText } from './proofread-text'
@@ -132,8 +134,12 @@ export function ProofreadView({
   const [filter, setFilter] = useState<FindingFilter>('pending')
   const [tab, setTab] = useState<'findings' | 'analysis'>('findings')
   const [activeKey, setActiveKey] = useState<string | null>(null)
-  // 分析タブで選んだ語。名前の候補は文字列で、よく使う言葉は解析のトークンで本文に印を付ける
-  const [word, setWord] = useState<{ text: string; from: 'name' | 'frequent' } | null>(null)
+  // 分析タブで選んだもの。名前の候補は文字列で、よく使う言葉（種類つき）と文末（text は種類か 'runs'）は
+  // 解析のトークンの位置で本文に印を付ける。どれか1つだけを選べる
+  const [word, setWord] = useState<{
+    text: string
+    from: 'name' | FrequentKind | 'ending'
+  } | null>(null)
   const [frequentScope, setFrequentScope] = useState<FrequentScope>('episode')
   // 「確認する項目」は開いた状態で始める（何を確かめるかを作者が選ぶ）
   const [rulesOpen, setRulesOpen] = useState(true)
@@ -329,19 +335,52 @@ export function ProofreadView({
   const currentRatio = ratios.find((r) => r.id === episode?.id)?.ratio ?? ZERO
   const workRatio = ratios.reduce((sum, r) => addRatio(sum, r.ratio), ZERO)
   // よく使う言葉。「この話」は推敲の単位に合わせた既定。解析し直している間（別の話の結果）は準備中にする
-  const frequentOf = (scope: FrequentScope) =>
-    scope === 'work' ? (analysis?.frequent ?? null) : (morph && analysis?.frequentCurrent) || null
+  const frequentOf = (scope: FrequentScope) => {
+    if (!analysis) return null
+    if (scope === 'work') return { words: analysis.frequent, conjunctions: analysis.conjunctions }
+    return morph
+      ? { words: analysis.frequentCurrent, conjunctions: analysis.conjunctionsCurrent }
+      : null
+  }
   const frequent = analyzer.status === 'error' ? 'error' : ready ? frequentOf(frequentScope) : null
-  const wordRanges = useMemo(
-    () => (word?.from === 'frequent' && morph ? frequentWordRanges(morph.tokens, word.text) : null),
-    [word, morph],
+  const picked =
+    word && (word.from === 'modifier' || word.from === 'conjunction')
+      ? { base: word.text, kind: word.from }
+      : null
+  // 文末の偏り（地の文）。この話はトークンから画面側で数え、作品全体は Worker の集計を使う
+  const endingStats = useMemo(
+    () =>
+      morph && episode ? sentenceEndings(episode.blocks.map(plainTextOfBlock), morph.tokens) : null,
+    [morph, episode],
   )
+  const endings =
+    analyzer.status === 'error'
+      ? 'error'
+      : ready && analysis && endingStats
+        ? {
+            current: { counts: endingStats.counts, runs: endingStats.runs.length },
+            work: analysis.endings,
+          }
+        : null
+  const wordRanges = useMemo(() => {
+    if (!word || word.from === 'name' || !morph) return null
+    if (word.from !== 'ending') return frequentWordRanges(morph.tokens, word.text, word.from)
+    if (!endingStats || !episode) return null
+    const hits =
+      word.text === 'runs'
+        ? endingStats.runs.flat()
+        : endingStats.endings.filter((e) => e.kind === word.text)
+    const byBlock = episode.blocks.map((): { start: number; end: number }[] => [])
+    for (const e of hits) byBlock[e.block]?.push({ start: e.start, end: e.end })
+    return byBlock
+  }, [word, morph, endingStats, episode])
   const changeFrequentScope = (scope: FrequentScope) => {
     setFrequentScope(scope)
     // 選んでいた言葉が切り替えた先の一覧に無ければ、選択を外す（一覧に無い語の印を残さない）
-    if (word?.from === 'frequent' && !frequentOf(scope)?.some((w) => w.base === word.text)) {
-      setWord(null)
-    }
+    if (!picked) return
+    const next = frequentOf(scope)
+    const list = picked.kind === 'conjunction' ? next?.conjunctions : next?.words
+    if (!list?.some((w) => w.base === picked.base)) setWord(null)
   }
 
   // 用語集に無い名前（COT-59）。用語集が変わると解析器は作り直されるが、その間も前回の結果を
@@ -361,7 +400,7 @@ export function ProofreadView({
   const inThisEpisode = (name: string) =>
     episode?.blocks.some((b) => plainTextOfBlock(b).includes(name)) ?? false
   const dismiss = (name: string) => {
-    if (word?.text === name) setWord(null)
+    if (word?.from === 'name' && word.text === name) setWord(null)
     void saveDismissals(dismissName(dismissals, work.id, name, now()))
   }
   const restore = (name: string) => {
@@ -573,9 +612,12 @@ export function ProofreadView({
                 frequent={frequent}
                 scope={frequentScope}
                 onScope={changeFrequentScope}
-                word={word?.from === 'frequent' ? word.text : null}
+                selected={picked}
                 wordInEpisode={wordRanges?.some((r) => r.length > 0) ?? false}
-                onWord={(base) => setWord(base ? { text: base, from: 'frequent' } : null)}
+                onWord={(w) => setWord(w ? { text: w.base, from: w.kind } : null)}
+                endings={endings}
+                selectedEnding={word?.from === 'ending' ? (word.text as EndingPick) : null}
+                onEnding={(pick) => setWord(pick ? { text: pick, from: 'ending' } : null)}
                 current={currentRatio}
                 work={workRatio}
                 episodes={ratios}

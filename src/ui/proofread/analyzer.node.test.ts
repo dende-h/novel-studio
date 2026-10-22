@@ -60,6 +60,8 @@ run('解析の本体（実物の lindera と辞書）', () => {
     expect(group?.forms.map((f) => f.base).sort()).toEqual(['子ども', '子供'])
     expect(r.frequent[0]).toMatchObject({ base: 'ふと', count: 2 })
     expect(r.frequentCurrent[0]).toMatchObject({ base: 'ふと', count: 1 })
+    // 文末（作品全体）：遊ぶ／見た／笑った／気づいた
+    expect(r.endings.counts).toMatchObject({ ta: 3, present: 1 })
   })
 })
 

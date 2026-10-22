@@ -55,6 +55,9 @@ function fakeAnalyzer(result: Partial<AnalysisResult> = {}) {
       workVariants: { groups: [], groupOf: {} },
       frequent: [],
       frequentCurrent: [],
+      conjunctions: [],
+      conjunctionsCurrent: [],
+      endings: { counts: { ta: 0, present: 0, noun: 0, other: 0 }, runs: 0 },
       names: [],
       ...result,
     })),
@@ -267,6 +270,82 @@ describe('ProofreadView（推敲画面・COT-40）', () => {
     expect(marks()).toEqual(['小さく'])
     fireEvent.click(screen.getByRole('button', { name: /ふと/ }))
     expect(marks()).toEqual(['ふと', 'ふと'])
+  })
+
+  it('接続詞は別の一覧に出し、押すと接続詞の箇所にだけ印が付く（副詞の同じ語には付かない）', async () => {
+    const body = '　また会おう。また、雨だ。'
+    const tok = (surface: string, start: number, pos: string) => ({
+      surface,
+      start,
+      end: start + surface.length,
+      pos,
+      pos1: '*',
+      pos2: '*',
+      ctype: '*',
+      cform: '*',
+      base: surface,
+      reading: '*',
+    })
+    const tokens = [[tok('また', 1, '副詞'), tok('また', 7, '接続詞')]]
+    const analyzer = fakeAnalyzer({
+      currentTokens: tokens,
+      frequentCurrent: frequentWords(tokens, 13, new Set()),
+      conjunctionsCurrent: frequentWords(tokens, 13, new Set(), 5, 'conjunction'),
+    })
+    const { container } = await renderView(work([{ id: 'e1', title: '第一話', body }]), {
+      analyzer,
+    })
+    await act(async () => analyzer.set({ status: 'ready', work: null }))
+    await act(async () => {})
+    fireEvent.click(screen.getByRole('tab', { name: '分析' }))
+    const button = (list: string) =>
+      within(screen.getByRole('list', { name: list })).getByRole('button', { name: /また/ })
+    const marked = () =>
+      [...container.querySelectorAll('[data-word-mark]')].map(
+        (el) => el.previousElementSibling?.textContent ?? '',
+      )
+    fireEvent.click(button('接続詞'))
+    expect(button('接続詞')).toHaveAttribute('aria-pressed', 'true')
+    expect(button('副詞・形容詞・形容動詞')).toHaveAttribute('aria-pressed', 'false')
+    expect(marked()).toEqual(['　また会おう。'])
+    fireEvent.click(button('副詞・形容詞・形容動詞'))
+    expect(marked()).toEqual(['　'])
+  })
+
+  it('文末の偏り：この話の文数と割合に作品全体の割合を並べ、押すと文末に印が付く。無い種類は押せない', async () => {
+    const lines = [
+      '材料不足で代替素材で製品を作った。',
+      '私も彼も笑った。',
+      '何かが動いた気がした。',
+      '宮森は言った。',
+      '私は彼は好きだ。',
+    ]
+    const analyzer = fakeAnalyzer({
+      currentTokens: lines.map((l) => sampleTokens(l)),
+      endings: { counts: { ta: 30, present: 10, noun: 0, other: 0 }, runs: 2 },
+    })
+    const { container } = await renderView(
+      work([{ id: 'e1', title: '第一話', body: lines.join('\n') }]),
+      { analyzer },
+    )
+    await act(async () => analyzer.set({ status: 'ready', work: null }))
+    await act(async () => {})
+    fireEvent.click(screen.getByRole('tab', { name: '分析' }))
+    const row = (name: RegExp) => screen.getByRole('button', { name })
+    expect(row(/^〜た：この話 4文（80％）、作品全体 75％$/)).toBeInTheDocument()
+    expect(row(/^体言止め：/)).toBeDisabled()
+    const runs = row(/^同じ文末が4文以上続くところ：この話 1か所、作品全体 2か所$/)
+    const marks = () =>
+      [...container.querySelectorAll('[data-word-mark]')].map((el) => el.textContent)
+    fireEvent.click(row(/^〜た：/))
+    expect(row(/^〜た：/)).toHaveAttribute('aria-pressed', 'true')
+    expect(marks()).toEqual(['た', 'た', 'た', 'た'])
+    fireEvent.click(row(/^〜る・〜い・〜だ など：/))
+    expect(marks()).toEqual(['だ'])
+    fireEvent.click(runs)
+    expect(marks()).toHaveLength(4)
+    fireEvent.click(runs)
+    expect(marks()).toEqual([])
   })
 
   it('準備に失敗したら、くわしい確認は使えない旨ともう一度試すを出し、ほかの項目は動き続ける', async () => {

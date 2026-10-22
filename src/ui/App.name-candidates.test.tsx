@@ -61,6 +61,9 @@ vi.mock('@/ui/proofread/analyzer-client', async (importOriginal) => {
           workVariants: { groups: [], groupOf: {} },
           frequent: [],
           frequentCurrent: [],
+          conjunctions: [],
+          conjunctionsCurrent: [],
+          endings: { counts: { ta: 0, present: 0, noun: 0, other: 0 }, runs: 0 },
           names: CANDIDATES,
         }),
       }

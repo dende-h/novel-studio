@@ -1,11 +1,14 @@
 import {
   countAutoVariants,
+  ENDING_KINDS,
+  emptyEndingCounts,
   findNameCandidates,
   frequentWords,
   isUnknownToken,
   type MorphToken,
   type NameSourceEpisode,
   type RawToken,
+  sentenceEndings,
   toMorphTokens,
 } from '@/core/proofread'
 import type { AnalysisResult, AnalyzeEpisode, AnalyzerFailure } from './protocol'
@@ -125,6 +128,8 @@ export function createAnalyzerEngine(
       let current: MorphToken[][] = []
       let totalChars = 0
       let currentChars = 0
+      const endingCounts = emptyEndingCounts()
+      let endingRuns = 0
       const seen = new Set<string>()
       episodes.forEach((ep, i) => {
         const key = `${ep.id}:${ep.hash}`
@@ -142,6 +147,9 @@ export function createAnalyzerEngine(
           currentChars = chars
         }
         totalChars += chars
+        const ends = sentenceEndings(ep.texts, tokens)
+        for (const k of ENDING_KINDS) endingCounts[k] += ends.counts[k]
+        endingRuns += ends.runs.length
         onProgress?.(i + 1, episodes.length)
       })
       for (const key of cache.keys()) if (!seen.has(key)) cache.delete(key)
@@ -150,6 +158,9 @@ export function createAnalyzerEngine(
         workVariants: countAutoVariants(blocksOfWork, excluded),
         frequent: frequentWords(blocksOfWork, totalChars, excluded),
         frequentCurrent: frequentWords(current, currentChars, excluded),
+        conjunctions: frequentWords(blocksOfWork, totalChars, excluded, 5, 'conjunction'),
+        conjunctionsCurrent: frequentWords(current, currentChars, excluded, 5, 'conjunction'),
+        endings: { counts: endingCounts, runs: endingRuns },
         names: findNameCandidates(nameSources, excluded, (base, reading) => {
           // ルビの親文字が辞書の1語で、読みがルビと同じなら読み仮名（候補にしない）
           const t = toMorphTokens(tokenize(base), base)
