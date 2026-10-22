@@ -75,6 +75,25 @@ describe('TextImportDialog', () => {
     expect(onWrite).toHaveBeenCalledWith(work.id)
   })
 
+  it('形式は既定の小説か、開いたときに渡された形式で始まり、脚本を選ぶと脚本の作品になる', async () => {
+    vi.useFakeTimers()
+    const { onCreate } = renderDialog({ defaultFormat: 'script' })
+    expect(screen.getByRole('radio', { name: '脚本' })).toBeChecked()
+    pasteText('第1話\n○公園（夕方）')
+    await act(async () => {
+      vi.advanceTimersByTime(300)
+    })
+    vi.useRealTimers()
+    fireEvent.click(screen.getByRole('button', { name: '作品を作る' }))
+    await waitFor(() => expect(onCreate).toHaveBeenCalledTimes(1))
+    expect((onCreate.mock.calls[0]?.[0] as Work).format).toBe('script')
+  })
+
+  it('形式を指定せずに開くと小説が選ばれている', () => {
+    renderDialog()
+    expect(screen.getByRole('radio', { name: '小説' })).toBeChecked()
+  })
+
   it('貼り付けでは「ファイルごとに1話」が選べない', () => {
     renderDialog()
     switchToPaste()

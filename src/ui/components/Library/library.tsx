@@ -181,6 +181,8 @@ export function Library({
   const [publishBusyId, setPublishBusyId] = useState<string | null>(null)
   const [importOpen, setImportOpen] = useState(false)
   const [textImportOpen, setTextImportOpen] = useState(false)
+  // 取り込みを開いたときに選ばれている形式（新しいプロジェクトから来たら、そこで選んだ形式）
+  const [textImportFormat, setTextImportFormat] = useState<WorkFormat>('novel')
   const [backupOpen, setBackupOpen] = useState(false)
   const [trashOpen, setTrashOpen] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<WorkSummary | null>(null)
@@ -485,6 +487,7 @@ export function Library({
                           label="テキストから作品を作る"
                           onClick={() => {
                             setDataMenuOpen(false)
+                            setTextImportFormat('novel')
                             setTextImportOpen(true)
                           }}
                         />
@@ -609,6 +612,25 @@ export function Library({
             ))}
           </div>
         </fieldset>
+        {/* 書きためた原稿から作る入口（データ管理の「テキストから作品を作る」と同じダイアログ） */}
+        <div className="flex flex-wrap items-center justify-between gap-3 border-outline-variant/30 border-t pt-4">
+          <p className="text-on-surface-variant text-xs">
+            書きためた原稿があるときは、.txt や貼り付けた本文から作れます。
+          </p>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              setNewOpen(false)
+              setTextImportFormat(newFormat)
+              setTextImportOpen(true)
+            }}
+          >
+            <FileText className="size-4" />
+            テキストから作る
+          </Button>
+        </div>
       </TitlePromptDialog>
       <ExportDialog
         open={exportOpen}
@@ -645,6 +667,7 @@ export function Library({
         open={textImportOpen}
         onOpenChange={setTextImportOpen}
         defaultAuthor={state.profile.penName ?? ''}
+        defaultFormat={textImportFormat}
         onCreate={(work) => store.importWorks([work])}
         onWrite={(id) => handleWrite(id)}
       />

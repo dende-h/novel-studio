@@ -28,6 +28,13 @@ describe('buildImportedWork', () => {
     expect(w.author).toBe('ペン')
     expect(w.updatedAt).toBe(now())
   })
+  it('脚本を選んだときだけ format を付ける（小説は欄を持たない）', () => {
+    const script = buildImportedWork({ title: 't', format: 'script', episodes: [] }, genId, now)
+    expect(script.format).toBe('script')
+    expect(() => WorkSchema.parse(script)).not.toThrow()
+    const novel = buildImportedWork({ title: 't', format: 'novel', episodes: [] }, genId, now)
+    expect('format' in novel).toBe(false)
+  })
   it('著者が空ならキーを付けない', () => {
     const w = buildImportedWork({ title: 't', author: '  ', episodes: [] }, genId, now)
     expect('author' in w).toBe(false)

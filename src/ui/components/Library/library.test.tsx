@@ -474,6 +474,31 @@ it('脚本バッジはカードとリストに表示し、小説には表示し�
   expect(screen.getAllByText('脚本', { exact: true })).toHaveLength(1)
 })
 
+it('新しい作品のダイアログから、テキストの取り込みへ移れる', () => {
+  const store = makeStore()
+  render(
+    <Library
+      store={store}
+      onEnterPublish={() => {}}
+      onEnterEditor={() => {}}
+      localBackup={fakeLocalBackup}
+      isMember={false}
+      onboarded={false}
+      activityRepo={fakeActivityRepo}
+    />,
+  )
+  fireEvent.click(screen.getByRole('button', { name: /新規プロジェクト/ }))
+  expect(
+    screen.getByText('書きためた原稿があるときは、.txt や貼り付けた本文から作れます。'),
+  ).toBeInTheDocument()
+  fireEvent.click(screen.getByRole('radio', { name: '脚本' }))
+  fireEvent.click(screen.getByRole('button', { name: 'テキストから作る' }))
+  expect(screen.queryByRole('dialog', { name: '新しいプロジェクト' })).toBeNull()
+  const dialog = screen.getByRole('dialog', { name: 'テキストから作品を作る' })
+  // 新しいプロジェクトで選んだ形式のまま開く
+  expect(within(dialog).getByRole('radio', { name: '脚本' })).toBeChecked()
+})
+
 it('新規作成時に脚本を選択でき、次の作成は小説に戻る', async () => {
   const store = makeStore()
   render(
