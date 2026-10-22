@@ -81,6 +81,7 @@ Cloudflare Pages Functions
 | 小説原稿の機械検査（textlint）のルール・AI臭辞書 | `tools/novel-textlint/`（アプリ本体とは独立。README 参照） |
 | note記事・設計文書・レポートなど仕事の文書を書く/直す | `.claude/skills/natural-japanese/`（coji/natural-japanese の同梱コピー。出自と更新手順は同 `UPSTREAM.md`） |
 | Linear の issue を要件定義・設計・UIプロトタイプ・仕様書・実装依頼まで仕上げる | `.claude/skills/linear-spec/`（撮影 `scripts/shoot.mjs`・テンプレ `templates.md`）＋敵対的レビュアー `.claude/agents/spec-adversary.md`。成果物は `docs/specs/<ISSUE>/` |
+| リリースの紹介一式（note 記事・記事用スクショ・X 用動画）を作る | `.claude/skills/release-promo/`（撮影用の一時コピー `scripts/setup-env.sh`・撮影と録画の部品 `scripts/promo-lib.mjs`・mp4 化 `scripts/encode.sh`・記事の規則 `references/article-style.md`・台本の雛形 `examples/`） |
 
 ---
 
