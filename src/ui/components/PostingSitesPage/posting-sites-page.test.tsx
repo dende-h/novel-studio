@@ -59,12 +59,11 @@ describe('PostingSitesPage（小説投稿サイトの紹介）', () => {
     expect(link.querySelector('[aria-hidden="true"]')).toHaveTextContent('バナーのないサイト')
   })
 
-  it('運営の方への連絡先として、ヘルプのお問い合わせフォームへ案内する', () => {
+  it('掲載を希望するサイトの運営の方を、公式 X へ案内する', () => {
     render(<PostingSitesPage />)
-    expect(screen.getByRole('heading', { name: '掲載しているサイトの運営の方へ' })).toBeVisible()
-    expect(screen.getByRole('link', { name: 'ヘルプのお問い合わせフォーム' })).toHaveAttribute(
-      'href',
-      '#/help',
-    )
+    expect(screen.getByRole('heading', { name: '掲載を希望するサイトの運営の方へ' })).toBeVisible()
+    const link = screen.getByRole('link', { name: /公式 X/ })
+    expect(link).toHaveAttribute('href', 'https://x.com/dendeiriamaka1')
+    expect(link).toHaveAttribute('target', '_blank')
   })
 })
