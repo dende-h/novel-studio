@@ -243,6 +243,14 @@ describe('SideNav（サイドバー）', () => {
     expect(link).toHaveAttribute('target', '_blank')
   })
 
+  it('小説投稿サイトの紹介への導線をフッターに出す（ライブラリ・作品の両モード）', () => {
+    const { unmount } = render(<SideNav active="collection" onNavigateCollection={() => {}} />)
+    expect(screen.getByRole('link', { name: '小説投稿サイト' })).toHaveAttribute('href', '#/sites')
+    unmount()
+    render(<SideNav {...baseProps} />)
+    expect(screen.getByRole('link', { name: '小説投稿サイト' })).toHaveAttribute('href', '#/sites')
+  })
+
   it('投稿先未設定のビルド（platformHref なし）では grove リンクを出さない', () => {
     render(<SideNav active="collection" onNavigateCollection={() => {}} />)
     expect(screen.queryByRole('link', { name: 'コトノハ-grove-' })).toBeNull()
