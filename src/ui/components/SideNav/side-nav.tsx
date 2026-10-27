@@ -14,6 +14,7 @@ import {
   PenLine,
   Plus,
   Settings,
+  Signpost,
   SpellCheck,
   Sprout,
   StickyNote,
@@ -508,6 +509,14 @@ export function SideNav({
             <ExternalLink aria-hidden className="size-3 shrink-0 text-on-surface-variant/50" />
           </a>
         ) : null}
+        {/* ほかの小説投稿サイトの紹介。アプリ内の一枚ものページ（設定・ヘルプと同じくハッシュで移る）。 */}
+        <a
+          href="#/sites"
+          className="flex w-full items-center gap-2.5 rounded-md px-3 py-2 font-medium font-sans text-[13px] text-on-surface-variant no-underline transition-colors hover:bg-surface-container-high hover:text-on-surface"
+        >
+          <Signpost className="size-[15px] shrink-0" />
+          <span className="flex-1 truncate">小説投稿サイト</span>
+        </a>
         <NavRow
           icon={Settings}
           label="設定"
