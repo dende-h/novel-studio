@@ -376,7 +376,7 @@ pnpm --dir tools/novel-textlint lint:novel <file>   # 小説原稿の textlint�
 uv run .claude/skills/natural-japanese/scripts/lint.py <file>   # 仕事の文書の AI 臭 lint（要 uv・CI 対象外）
 ```
 
-- CI（`.github/workflows/ci.yml`）は main / stg への push・PR で lint → typecheck → test → build → e2e。推敲の辞書（`public/dict/`）は `actions/cache` に載せる（キーは `scripts/fetch-dict.mjs` のハッシュ）。
+- CI（`.github/workflows/ci.yml`）は main / stg への push・PR で lint → typecheck → test → build → e2e。E2EのランナーはPlaywright 1.60が対応する `ubuntu-24.04` に固定。推敲の辞書（`public/dict/`）は `actions/cache` に載せる（キーは `scripts/fetch-dict.mjs` のハッシュ）。
 - Node 22 / pnpm 10.29.3（`mise.toml` で固定）。環境別は `mise.staging.toml` / `mise.production.toml`。
 - インポートエイリアス `@/` → `src/`。
 - Biome: シングルクォート・セミコロンなし・幅100・スペース2。
