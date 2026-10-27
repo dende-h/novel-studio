@@ -13,7 +13,7 @@ export function WritingModeControls({
     <>
       <Button
         variant="ghost"
-        className="h-11 gap-1.5 px-2 text-xs aria-pressed:bg-accent aria-pressed:text-primary"
+        className="h-11 gap-1.5 px-2 text-xs text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface"
         aria-label={mode.focus ? '集中モードを終了' : '集中モード'}
         aria-pressed={mode.focus}
         aria-keyshortcuts="Alt+Shift+F"
@@ -29,7 +29,7 @@ export function WritingModeControls({
       </Button>
       <Button
         variant="ghost"
-        className="h-11 gap-1.5 px-2 text-xs aria-pressed:bg-accent aria-pressed:text-primary"
+        className="h-11 gap-1.5 px-2 text-xs text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface"
         aria-label="入力行を中央に保つ"
         aria-pressed={mode.typewriter}
         title="入力行を中央に保つ"
@@ -44,7 +44,7 @@ export function WritingModeControls({
       {mode.focus && mode.fullscreenAvailable ? (
         <Button
           variant="ghost"
-          className="h-11 gap-1.5 px-2 text-xs aria-pressed:bg-accent aria-pressed:text-primary"
+          className="h-11 gap-1.5 px-2 text-xs text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface"
           aria-label={mode.fullscreen ? '全画面を終了' : '全画面にする'}
           onClick={() => void mode.toggleFullscreen()}
         >

@@ -29,7 +29,7 @@ import { isPublishAvailable } from '@/ui/_api/publish'
 import { AppShell } from '@/ui/components/AppShell/app-shell'
 import { ConfirmDialog } from '@/ui/components/ConfirmDialog/confirm-dialog'
 import { EditorPane, type EditorPaneHandle } from '@/ui/components/EditorPane/editor-pane'
-import { notationItems, notationShortcut } from '@/ui/components/EditorPane/notation'
+import { NotationButtons } from '@/ui/components/EditorPane/notation-buttons'
 import { ErrorBoundary } from '@/ui/components/ErrorBoundary/error-boundary'
 import { ExportDialog } from '@/ui/components/ExportDialog/export-dialog'
 import { FieldHelp } from '@/ui/components/FieldHelp/field-help'
@@ -44,7 +44,6 @@ import { GlossaryView } from '@/ui/components/GlossaryView/glossary-view'
 import { HistoryPanel } from '@/ui/components/HistoryPanel/history-panel'
 import { PlotPeek } from '@/ui/components/PlotPeek/plot-peek'
 import { PreviewPane } from '@/ui/components/PreviewPane/preview-pane'
-import { SaveStatus } from '@/ui/components/SaveStatus/save-status'
 import { SHEET_PRESETS } from '@/ui/components/ScriptSheet/script-sheet'
 import { ScriptSheetView } from '@/ui/components/ScriptSheet/script-sheet-view'
 import { SideNav } from '@/ui/components/SideNav/side-nav'
@@ -53,6 +52,7 @@ import { useToast } from '@/ui/components/Toast/toast'
 import { Button } from '@/ui/components/ui/button'
 import { WorkMetaDialog } from '@/ui/components/WorkMetaDialog/work-meta-dialog'
 import { WorkSearchPanel } from '@/ui/components/WorkSearchPanel/work-search-panel'
+import { FocusToolbar } from '@/ui/components/WritingModeControls/focus-toolbar'
 import { WritingModeControls } from '@/ui/components/WritingModeControls/writing-mode-controls'
 import { useAutosave } from '@/ui/hooks/use-autosave'
 import { useEditorStore } from '@/ui/hooks/use-editor-store'
@@ -496,15 +496,13 @@ export function App({
       <AppShell
         focusMode={focusMode}
         focusControls={
-          <div className="writing-focus-controls flex shrink-0 flex-wrap items-center gap-1 border-outline-variant/30 border-b bg-surface-container-lowest px-3">
-            <WritingModeControls
-              mode={writingMode}
-              onFocusEditor={() => editorRef.current?.focus()}
-            />
-            <div className="ml-auto py-2">
-              <SaveStatus dirty={state.dirty} status={state.status} alwaysLabel />
-            </div>
-          </div>
+          <FocusToolbar
+            mode={writingMode}
+            save={{ dirty: state.dirty, status: state.status }}
+            scriptMode={work?.format === 'script'}
+            onApply={(kind) => editorRef.current?.applyNotation(kind)}
+            onFocusEditor={() => editorRef.current?.focus()}
+          />
         }
         onBrandClick={onExit}
         workTitle={work?.title}
@@ -749,10 +747,6 @@ export function App({
                 )}
               >
                 <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2.5">
-                  <WritingModeControls
-                    mode={writingMode}
-                    onFocusEditor={() => editorRef.current?.focus()}
-                  />
                   {/* 狭幅では話タイトルを畳む（ドロワーの話一覧で分かる）。代わりに面の切替を置く。 */}
                   <span className="truncate font-medium font-sans text-[13px] text-on-surface max-lg:hidden">
                     {episode.title}
@@ -792,23 +786,10 @@ export function App({
                   {/* 記法の挿入（PC のみ。狭幅はキーボード直上の記法バーが担当する）。
                   選択があれば囲み、無ければ空の型を置く。ショートカットは EditorPane 側。 */}
                   <div className="flex flex-wrap items-center gap-1 max-lg:hidden">
-                    {notationItems(work?.format === 'script').map((item) => (
-                      <button
-                        key={item.kind}
-                        type="button"
-                        title={`${item.hint}（${notationShortcut(item)}）`}
-                        aria-label={item.label}
-                        // クリックで textarea のフォーカス・選択範囲を失うと挿入先が分からなくなる。
-                        onMouseDown={(e) => e.preventDefault()}
-                        onClick={() => editorRef.current?.applyNotation(item.kind)}
-                        className="flex min-h-11 shrink-0 flex-col justify-center items-center whitespace-nowrap rounded-md px-2.5 font-sans text-on-surface-variant text-xs transition-colors hover:bg-surface-container-high hover:text-on-surface"
-                      >
-                        {item.label}
-                        <kbd aria-hidden className="mt-0.5 text-[10px] leading-tight opacity-60">
-                          {notationShortcut(item)}
-                        </kbd>
-                      </button>
-                    ))}
+                    <NotationButtons
+                      scriptMode={work?.format === 'script'}
+                      onApply={(kind) => editorRef.current?.applyNotation(kind)}
+                    />
                     {work?.format === 'script' ? (
                       // 脚本の書き方（判別・字下げ・Tab 操作・自動で揃うもの）は ⓘ に畳む。
                       <FieldHelp
@@ -851,6 +832,22 @@ export function App({
                       </FieldHelp>
                     ) : null}
                   </div>
+                  <WritingModeControls
+                    mode={writingMode}
+                    onFocusEditor={() => editorRef.current?.focus()}
+                  />
+                  <Button
+                    variant="ghost"
+                    className="h-11 px-2 text-xs"
+                    aria-label="エディタの縦書き"
+                    aria-pressed={writingMode.vertical}
+                    onClick={() => {
+                      writingMode.toggleVertical()
+                      editorRef.current?.focus()
+                    }}
+                  >
+                    本文：{writingMode.vertical ? '縦書き' : '横書き'}
+                  </Button>
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
                   {isNovel ? (
@@ -885,7 +882,7 @@ export function App({
                   </Button>
                   {/* 組み方向の切替（プレビュー）。狭幅では本文タブの時に意味を持たないので畳む。 */}
                   <fieldset
-                    aria-label="本文の組み方向"
+                    aria-label="プレビューの組み方向"
                     className={cn(
                       'm-0 flex items-center gap-1 border-0 p-0',
                       pane === 'editor' && 'max-lg:hidden',
@@ -971,6 +968,7 @@ export function App({
                   <EditorPane
                     ref={editorRef}
                     focusMode={focusMode}
+                    vertical={writingMode.vertical}
                     typewriter={writingMode.typewriter}
                     readOnly={state.workOperation !== 'idle'}
                     scriptMode={work?.format === 'script'}

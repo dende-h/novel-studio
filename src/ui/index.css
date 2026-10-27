@@ -526,12 +526,27 @@
 }
 
 .writing-focus-editor {
-  max-width: 800px;
-  margin-inline: auto;
+  max-width: none;
+  margin-inline: 0;
 }
 
 @media (width < 1024px) {
   .writing-focus-editor .editor {
     padding-inline: 24px;
   }
+}
+
+.writing-vertical-editor .editor {
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+.writing-focus-editor .editor {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--outline-variant) 25%, transparent) transparent;
+}
+.writing-focus-editor .editor:hover,
+.writing-focus-editor .editor:focus-visible {
+  scrollbar-color: color-mix(in srgb, var(--outline-variant) 45%, transparent) transparent;
 }

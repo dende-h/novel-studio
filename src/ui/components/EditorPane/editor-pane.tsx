@@ -32,6 +32,7 @@ export interface EditorPaneHandle {
 }
 
 interface EditorPaneProps {
+  vertical?: boolean
   focusMode?: boolean
   typewriter?: boolean
   readOnly?: boolean
@@ -61,6 +62,7 @@ const isTrigger = (ch: string) => ch === '@' || ch === '＠'
 /** 本文エディタ（素の textarea＋自前パーサ方式 A1）。WYSIWYG は IME 問題ゆえ不採用。 */
 export function EditorPane({
   ref,
+  vertical = false,
   focusMode = false,
   typewriter = false,
   value,
@@ -317,10 +319,12 @@ export function EditorPane({
         el.focus({ preventScroll: true })
         el.setSelectionRange(start, end)
         const coordinates = getCaretCoordinates(el, start)
-        el.scrollTop = Math.max(0, el.scrollTop + coordinates.top - el.clientHeight / 3)
+        if (vertical)
+          el.scrollLeft = Math.min(0, el.scrollLeft + coordinates.left - el.clientWidth / 2)
+        else el.scrollTop = Math.max(0, el.scrollTop + coordinates.top - el.clientHeight / 3)
       },
     }),
-    [applyNotation],
+    [applyNotation, vertical],
   )
 
   // 挿入後にキャレットを [[名前]] の直後へ戻す。
@@ -337,11 +341,31 @@ export function EditorPane({
 
   useTypewriterScroll(taRef, {
     enabled: typewriter,
+    vertical,
     readOnly,
     value,
-    layout: `${focusMode}:${narrow}:${open}`,
+    layout: `${focusMode}:${narrow}:${open}:${vertical}`,
     onScroll: refresh,
   })
+
+  useLayoutEffect(() => {
+    const el = taRef.current
+    if (!el || !vertical) return
+    const wheel = (event: WheelEvent) => {
+      if (event.ctrlKey || Math.abs(event.deltaX) >= Math.abs(event.deltaY)) return
+      const previous = el.scrollLeft
+      const unit =
+        event.deltaMode === 1
+          ? Number.parseFloat(getComputedStyle(el).lineHeight) || 32
+          : event.deltaMode === 2
+            ? el.clientWidth
+            : 1
+      el.scrollLeft -= event.deltaY * unit
+      if (el.scrollLeft !== previous) event.preventDefault()
+    }
+    el.addEventListener('wheel', wheel, { passive: false })
+    return () => el.removeEventListener('wheel', wheel)
+  }, [vertical])
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (readOnly) return
@@ -427,6 +451,7 @@ export function EditorPane({
       className={cn(
         'relative flex h-full min-h-0 w-full flex-col bg-surface-container-lowest',
         focusMode && 'writing-focus-editor',
+        vertical && 'writing-vertical-editor',
       )}
     >
       {/* 本文（行数・文字数はエディタ画面下部のステータスバーが表示する） */}
@@ -436,7 +461,7 @@ export function EditorPane({
         aria-controls={open ? listId : undefined}
         // 狭幅のバーはハイライトの概念を持たない（確定はタップのみ）ので付けない。
         aria-activedescendant={open && !narrow ? optionId(activeIndex) : undefined}
-        className="editor min-h-0 flex-1 resize-none border-none bg-transparent px-9 py-7 text-on-surface leading-[2.1] outline-none placeholder:text-on-surface-variant/40"
+        className="editor min-h-0 min-w-0 w-full flex-1 resize-none border-none bg-transparent px-9 py-7 text-on-surface leading-[2.1] outline-none placeholder:text-on-surface-variant/40"
         value={value}
         readOnly={readOnly}
         onChange={(e) => {

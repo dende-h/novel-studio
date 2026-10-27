@@ -8,6 +8,9 @@
 
 // ミラーへ複製する字送り・余白関連のスタイル。これらが一致しないと座標がずれる。
 const MIRRORED: string[] = [
+  'writingMode',
+  'textOrientation',
+  'direction',
   'boxSizing',
   'width',
   'borderTopWidth',
@@ -34,6 +37,7 @@ const MIRRORED: string[] = [
 ]
 
 export interface CaretCoordinates {
+  width?: number
   top: number
   left: number
   height: number
@@ -44,6 +48,14 @@ export function getCaretCoordinates(el: HTMLTextAreaElement, position: number): 
   const win = doc.defaultView
   if (!win) return { top: 0, left: 0, height: 0 }
   try {
+    if (win.getComputedStyle(el).writingMode === 'vertical-rl') {
+      const measurer = createVerticalCaretMeasurer(el)
+      try {
+        return measurer.measure(position)
+      } finally {
+        measurer.dispose()
+      }
+    }
     const computed = win.getComputedStyle(el)
     const div = doc.createElement('div')
     const ds = div.style as unknown as Record<string, string>
@@ -88,6 +100,7 @@ export function createCaretMeasurer(el: HTMLTextAreaElement): {
   measure: (position: number) => CaretCoordinates
   dispose: () => void
 } {
+  if (getComputedStyle(el).writingMode === 'vertical-rl') return createVerticalCaretMeasurer(el)
   const doc = el.ownerDocument
   const mirror = doc.createElement('div')
   mirror.setAttribute('aria-hidden', 'true')
@@ -165,6 +178,57 @@ export function createCaretMeasurer(el: HTMLTextAreaElement): {
         }
       } catch {
         return { top: 0, left: 0, height: 0 }
+      }
+    },
+    dispose: () => mirror.remove(),
+  }
+}
+
+/** 縦書きは高さで折り返し、右端からの距離をtextareaの負のscrollLeftへ対応させる。 */
+function createVerticalCaretMeasurer(el: HTMLTextAreaElement) {
+  const mirror = el.ownerDocument.createElement('div')
+  mirror.setAttribute('aria-hidden', 'true')
+  const before = el.ownerDocument.createTextNode('')
+  const caret = el.ownerDocument.createElement('span')
+  const after = el.ownerDocument.createTextNode('')
+  mirror.append(before, caret, after)
+  el.ownerDocument.body.append(mirror)
+  return {
+    measure(position: number): CaretCoordinates {
+      try {
+        const style = getComputedStyle(el)
+        for (const key of MIRRORED)
+          mirror.style.setProperty(
+            key.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`),
+            String(style[key as keyof CSSStyleDeclaration]),
+          )
+        Object.assign(mirror.style, {
+          position: 'fixed',
+          visibility: 'hidden',
+          pointerEvents: 'none',
+          whiteSpace: 'pre-wrap',
+          overflowWrap: 'break-word',
+          left: '0',
+          top: '0',
+          boxSizing: 'border-box',
+          width: 'max-content',
+          minWidth: `${el.clientWidth}px`,
+          height: `${el.clientHeight}px`,
+        })
+        before.data = el.value.slice(0, position)
+        caret.textContent = el.value.slice(position, position + 1) || '.'
+        after.data = el.value.slice(position + 1)
+        const box = caret.getBoundingClientRect()
+        const origin = mirror.getBoundingClientRect()
+        const width = Number.parseFloat(style.lineHeight) || 0
+        return {
+          left: el.clientWidth + box.left - origin.right - el.scrollLeft,
+          top: box.top - origin.top - el.scrollTop,
+          width,
+          height: Number.parseFloat(style.fontSize) || 0,
+        }
+      } catch {
+        return { top: 0, left: 0, width: 0, height: 0 }
       }
     },
     dispose: () => mirror.remove(),

@@ -159,3 +159,20 @@ it('全画面の開始待ちの間に画面を離れたら、遅れて成功し�
   })
   expect(exit).toHaveBeenCalledOnce()
 })
+
+it('集中時の表示と本文の組み方向をそれぞれ端末に記憶する', () => {
+  const { result, unmount } = renderHook(() => useWritingMode(true))
+  expect(result.current.controlsVisible).toBe(true)
+  expect(result.current.showShortcuts).toBe(false)
+  expect(result.current.vertical).toBe(false)
+  act(() => {
+    result.current.toggleControls()
+    result.current.toggleShortcuts()
+    result.current.toggleVertical()
+  })
+  unmount()
+  const restored = renderHook(() => useWritingMode(true)).result
+  expect(restored.current.controlsVisible).toBe(false)
+  expect(restored.current.showShortcuts).toBe(true)
+  expect(restored.current.vertical).toBe(true)
+})

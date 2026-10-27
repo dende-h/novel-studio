@@ -26,6 +26,9 @@ function useWritingFlag(key: string) {
 export function useWritingMode(eligible: boolean) {
   const [preferredFocus, toggleFocus] = useWritingFlag('ns-writing-focus')
   const [typewriter, toggleTypewriter] = useWritingFlag('ns-writing-typewriter')
+  const [hideControls, toggleControls] = useWritingFlag('ns-writing-hide-controls')
+  const [showShortcuts, toggleShortcuts] = useWritingFlag('ns-writing-shortcuts')
+  const [vertical, toggleVertical] = useWritingFlag('ns-writing-vertical')
   const focus = eligible && preferredFocus
   const [fullscreen, setFullscreen] = useState(false)
   const owned = useRef(false)
@@ -146,6 +149,12 @@ export function useWritingMode(eligible: boolean) {
 
   return {
     focus,
+    controlsVisible: !hideControls,
+    toggleControls,
+    showShortcuts,
+    toggleShortcuts,
+    vertical,
+    toggleVertical,
     typewriter,
     toggleFocus,
     toggleTypewriter,

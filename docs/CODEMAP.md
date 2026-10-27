@@ -49,7 +49,7 @@ Cloudflare Pages Functions
 | 立ち絵（誰をどの席に立たせるか・登録） | **話者とは独立**（D-GAME-SPRITE-FREE）：`Cue.sprites`＝席（l/c/r）ごとの `{ pos, character, expression }`。旧式の `appear`/`expression` は `spriteCuesOf`（`src/core/game/index.ts`）が読み替える。演出エディタ（右の欄の並びは場面の切れ目→背景→切り替え方→BGM→話者→立ち絵→この行から見る→外す・外すのは `ConfirmDialog` 経由・ヘッダに「この話の演出をすべて外す」＝`clearAllCues`）は `src/ui/components/StagingView/staging-view.tsx` の `renderSeatEditor`（左・中央・右の 3 欄＝セリフでも地の文でも同じ。人物を選んでからその席で立ち絵を登録する）。席の選択肢は「変更しない(前の行を引継ぐ)」（既定・空）／「立ち絵なし」（D-GAME-CUE-LABELS）。cue の `hideSprite` はスキーマ・MCP・一覧の印に残るが画面の欄は無い（D-GAME-SPRITE-OFF）。図鑑からは `src/ui/components/GlossaryView/sprite-section.tsx`（人物ページの立ち絵欄）。正本はどちらも `gameAssetRepository.ts`（character/expression で紐づく） |
 | 持ち込み素材のクラウド保管（有料・枚数上限）を変える | API は `functions/api/game-assets.ts`、上限と判定は `src/core/game/assets.ts`（`HOSTED_ASSET_LIMIT` `hostedAssetVerdict`）、配線は `src/ui/game/asset-hosting.ts`（下り取り込み）、管理 UI は `src/ui/components/StagingView/asset-manager.tsx` |
 | **運営テンプレ（背景・立ち絵・効果音・BGM）の目録・管理ページ・配信**を変える（D-GAME-TEMPLATE-CMS） | 目録と合流は `src/core/game/templates.ts`（`TemplateManifest` `mergeBackgroundCatalog` `mergeSpriteCatalog` `mergeSeCatalog` `mergeBgmCatalog` `parseTemplateFilename`＝**ファイル名がキー**（画像は kind bg/sprite・音声は `bgm-` で始まれば bgm、それ以外は se）・`applyTemplatePatch`・読み方は寛容＝読めない項目を落とす）。画面へ配るのは `src/ui/game/template-catalog.ts`（`useTemplateCatalog` `resolveTemplateBackgrounds`＝書き出し・投稿へ画像を持ち込み素材と同じ経路で渡す・`setTemplateCatalog`）。一覧の部品は `StagingView/template-picker.tsx`。管理ページは `src/ui/components/AdminTemplatesPage/`（`#/admin/templates`・staff だけ・`use-staff.ts`）。サーバは読み口 `functions/game-templates/[[path]].ts` と管理 API `functions/api/admin/templates.ts`、R2 のキーは `functions/api/_lib/templates-store.ts`（`_templates/`）。**stg で入れた素材を本番へ写す**のは `scripts/copy-templates.mjs`（`pnpm templates:copy-to-prod`・バケットが環境で別なため）。組み込み SVG（`presets.ts` `spritePresets.ts`）は画像が入るまでの控え。BGM は枠だけ組み込み（`bgmPresets.ts`・管理ページに「曲なし」の印で並び、同じ名前の mp3 を入れると埋まる） |
-| 集中モード・入力行を中央に保つ（COT-45） | `src/ui/hooks/use-writing-mode.ts`（端末設定・Alt+Shift+F・全画面）、`use-typewriter-scroll.ts`（textareaの追従と可視領域）、`src/ui/components/WritingModeControls/`（入口と終了操作）、`App.tsx`・`AppShell/`・`EditorPane/`（周辺の表示切替）。仕様・検証は `docs/specs/COT-45/` |
+| 集中モード・入力行を中央に保つ（COT-45） | `src/ui/hooks/use-writing-mode.ts`（端末設定・Alt+Shift+F・全画面）、`use-typewriter-scroll.ts`（textareaの追従と可視領域）、`src/ui/components/WritingModeControls/`（ダッシュの右の入口・終了操作・`focus-toolbar.tsx`＝表示設定）、`EditorPane/notation-buttons.tsx`（共通の記法・ショートカット）、`App.tsx`・`AppShell/`・`EditorPane/`（周辺の表示切替）。仕様・検証は `docs/specs/COT-45/` |
 | エディタの入力・ショートカット・サジェスト | `src/ui/components/EditorPane/` |
 | 作品全体の検索・置換・一致への移動 | `src/core/search/workSearch.ts` + `src/ui/components/WorkSearchPanel/` + `src/ui/store/editorStore.ts`（この話の結果/個別置換は `src/ui/components/EditorPane/replace-panel.tsx`） |
 | 保存・自動保存・undo・開いている作品の状態 | `src/ui/store/editorStore.ts` |
@@ -244,7 +244,7 @@ Cloudflare Pages Functions
 
 `useEditorStore` / `useAutosave` / `useAutoSync` / `useAutoBackup` / `useLiveSnapshot` / `useSyncStatus`
 / `useHashRoute` / `useIsNarrow`（+ `NARROW_MAX_PX` `NARROW_QUERY`） / `useKeyboardInset`
-/ `useWritingMode`（端末設定 `ns-writing-focus` / `ns-writing-typewriter`・キー・全画面） / `useTypewriterScroll`（キャレット行の追従、IME・選択中は抑止）
+/ `useWritingMode`（端末設定 `ns-writing-focus` / `ns-writing-typewriter`・表示設定 `ns-writing-shortcuts` / `ns-writing-hide-controls`・縦書き `ns-writing-vertical`・キー・全画面） / `useTypewriterScroll`（キャレット行の追従、IME・選択中は抑止）
 / `useLocalFlag`（localStorage 永続の真偽フラグ） / `usePreferences`（+ `setTheme` `setReadingSize`）
 / `useProofreadPrefs`（+ `toggleProofreadRule` `reloadProofreadPrefs`・推敲画面で選んだ確認項目（既定は未選択）・localStorage `ns-proofread-on`）
 / `useProofreadRecord`（`use-proofread-record.ts`・1 話ぶんの推敲の判断の読み書き・sync-applied で読み直し） / `useNameDismissals`（`use-name-dismissals.ts`・推敲で外した語の読み書き・sync-applied で読み直し） / `useProofreadRules`（`use-proofread-rules.ts`・推敲の作品の決まりの読み書き・sync-applied で読み直し） / `useMorphAnalyzer`（`use-morph-analyzer.ts`・推敲画面の解析 Worker の起動停止と状態）
@@ -263,7 +263,7 @@ Cloudflare Pages Functions
 | `game-font.ts` | `loadGameFont`（サウンドノベル zip 同梱用の明朝 woff2＋OFL 全文を fetch） |
 | `sePlayer.ts` | `playPresetSe`（合成SEのアプリ内試聴。レシピ解釈はプレイヤー側 `novelGamePlayer.ts` と揃える契約） |
 | `imageResizer.ts` | `coverToDataUrl` `thumbnailToDataUrl` `gameBgToDataUrl`（持ち込み背景＝長辺1280 WebP＋tone 3色） `gameSpriteToDataUrl`（立ち絵＝長辺1080・透過保持） |
-| `caretCoordinates.ts` | `getCaretCoordinates`（単発のキャレット座標） / `createCaretMeasurer`（追従用の段落DOM再利用・`measure`/`dispose`） |
+| `caretCoordinates.ts` | `getCaretCoordinates`（単発のキャレット座標） / `createCaretMeasurer`（横書きは段落DOM再利用、縦書きは右端基準の列座標・`measure`/`dispose`） |
 | `focus-when-ready.ts` | `focusWhenReady`（見えてフォーカスを得るまで rAF で数フレーム focus() を試し直す・取り消し関数を返す。React Flow の未計測ノード＝visibility:hidden 向け。マインドマップが使用） |
 | `cover-tone.ts` | `coverTone` `COVER_TONES` |
 

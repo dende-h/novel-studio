@@ -2,6 +2,8 @@
 
 プロトタイプ: `docs/specs/COT-45/prototype.html`（ローカル）
 
+実装後の画面レビューによる追加・変更は `refinement.md` を優先する（本文全幅・表示設定・縦書き入力）。
+
 ## 方針
 Appで集中表示と端末設定を統括する。同じDOM位置のEditorPaneを維持し、周辺だけ非表示にする。追従はtextarea内のscrollTopで完結させる。全画面は明示操作とし、保存・同期ロジックを変えない。
 
