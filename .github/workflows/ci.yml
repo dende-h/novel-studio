@@ -61,7 +61,8 @@ jobs:
 
   e2e:
     name: E2E（Playwright）
-    runs-on: ubuntu-latest
+    # Playwright 1.60はUbuntu 26.04に未対応。ブラウザ依存を導入できる版へ固定する。
+    runs-on: ubuntu-24.04
     steps:
       - name: チェックアウト
         uses: actions/checkout@v6
