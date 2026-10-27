@@ -194,7 +194,7 @@ test('縦書き入力は同じ本文を保持し、集中時は全幅で列を�
   const value = ('夏の風が木々を揺らし、白い雲が流れる。'.repeat(12) + '\n').repeat(12)
   await ta.fill(value)
   await ta.evaluate((el) => { (window as Window & { original?: Element }).original = el; (el as HTMLTextAreaElement).setSelectionRange(1, 3) })
-  await page.getByRole('button', { name: 'エディタの縦書き' }).click()
+  await page.getByRole('group', { name: '本文の組み方向' }).getByRole('button', { name: '縦書き', exact: true }).click()
   await expect(ta).toHaveCSS('writing-mode', 'vertical-rl')
   expect(await ta.evaluate((el) => el === (window as Window & { original?: Element }).original)).toBe(true)
   expect(await ta.evaluate((el) => [(el as HTMLTextAreaElement).selectionStart, (el as HTMLTextAreaElement).selectionEnd])).toEqual([1, 3])

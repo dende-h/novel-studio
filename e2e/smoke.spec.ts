@@ -193,7 +193,7 @@ test('長い無改行の本文がプレビューの紙面内で折り返す（�
   expect(v.sh).toBeLessThanOrEqual(v.ch + 2)
 
   // 横書きに切替：紙面幅を超えて右へ飛び出さない（行へ折り返す）
-  await page.getByRole('button', { name: '横書き' }).click()
+  await page.getByRole('group', { name: 'プレビューの組み方向' }).getByRole('button', { name: '横書き' }).click()
   const h = await paper.evaluate((el) => ({ sw: el.scrollWidth, cw: el.clientWidth }))
   expect(h.sw).toBeLessThanOrEqual(h.cw + 2)
 })
@@ -547,10 +547,10 @@ test('脚本形式を保存し、縦横プレビュー・再読込・小説へ�
   )
   await expect(sheet.locator('.sheet-line--dialogue').first()).toHaveText('ユイ（声）「こんにちは」')
   await expect(sheet).toHaveClass(/sheet--vertical/)
-  await page.getByRole('button', { name: '横書き', exact: true }).click()
+  await page.getByRole('group', { name: 'プレビューの組み方向' }).getByRole('button', { name: '横書き', exact: true }).click()
   await expect(page.locator('.sheet')).toHaveClass(/sheet--horizontal/)
   await expect(page.getByText('横書き 40字×40行')).toBeVisible()
-  await page.getByRole('button', { name: '縦書き', exact: true }).click()
+  await page.getByRole('group', { name: 'プレビューの組み方向' }).getByRole('button', { name: '縦書き', exact: true }).click()
   await expect(page.getByText('保存済み')).toBeVisible()
   await page.goto('/')
   await openWriter(page, '脚本E2E')

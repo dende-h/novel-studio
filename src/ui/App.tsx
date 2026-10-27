@@ -836,18 +836,35 @@ export function App({
                     mode={writingMode}
                     onFocusEditor={() => editorRef.current?.focus()}
                   />
-                  <Button
-                    variant="ghost"
-                    className="h-11 px-2 text-xs"
-                    aria-label="エディタの縦書き"
-                    aria-pressed={writingMode.vertical}
-                    onClick={() => {
-                      writingMode.toggleVertical()
-                      editorRef.current?.focus()
-                    }}
+                  <fieldset
+                    aria-label="本文の組み方向"
+                    className="m-0 flex shrink-0 items-center gap-1 border-0 p-0"
                   >
-                    本文：{writingMode.vertical ? '縦書き' : '横書き'}
-                  </Button>
+                    <span className="mr-1 font-sans text-on-surface-variant text-xs">本文</span>
+                    {(['horizontal', 'vertical'] as const).map((direction) => {
+                      const vertical = direction === 'vertical'
+                      const selected = writingMode.vertical === vertical
+                      return (
+                        <button
+                          key={direction}
+                          type="button"
+                          aria-pressed={selected}
+                          onClick={() => {
+                            if (!selected) writingMode.toggleVertical()
+                            editorRef.current?.focus()
+                          }}
+                          className={cn(
+                            'flex h-11 items-center rounded-md px-2.5 font-sans text-xs transition-colors md:h-[26px]',
+                            selected
+                              ? 'bg-primary text-white'
+                              : 'text-on-surface-variant hover:bg-surface-container-high',
+                          )}
+                        >
+                          {vertical ? '縦書き' : '横書き'}
+                        </button>
+                      )
+                    })}
+                  </fieldset>
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
                   {isNovel ? (
