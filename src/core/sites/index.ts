@@ -43,6 +43,14 @@ export const POSTING_SITES: readonly PostingSite[] = [
       '人気になる前の作品を、読者と一緒に見つけるライトノベル投稿サイトです。PV 数だけでなく、保存率や読者の反応からも作品を紹介します。',
     banner: 'https://gensekikoro.com/og.jpg',
   },
+  // 2026-10 掲載の了承をいただいた
+  {
+    name: 'ノベル工房',
+    url: 'https://novel-koubou.com/',
+    intro:
+      '設定やプロットを整理しながら書き、そのまま公開できる創作ワークスペースです。読者は本文の行ごとに「イチオシ！」を付けられます。',
+    banner: 'https://novel-koubou.com/novel-kobo-og.png?v=20260920',
+  },
 ]
 
 /** カードに添えるドメイン。見た目と飛び先が同じだと分かるよう、名前の下に必ず出す。 */
