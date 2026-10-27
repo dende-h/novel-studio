@@ -13,7 +13,11 @@ export interface PostingSite {
   name: string
   /** サイトのトップ（https）。並びの key も兼ねる。 */
   url: string
-  /** 2行ほどの紹介文。こちらで書く（相手の OGP の説明文は使わない）。 */
+  /**
+   * 2〜3行の紹介文。各サイトが掲げている思想をなるべく相手の言葉のまま引く——
+   * LP のキャッチコピーや description が第一、「サイトについて」・ヘルプ・規約はその次。
+   * こちらで足すのは、語尾をそろえる程度と、長さに収めるための取捨にとどめる。
+   */
   intro: string
   /**
    * バナーにする og:image の URL（https）。足すときに相手のページの OGP を読んで写す。
@@ -32,7 +36,7 @@ export const POSTING_SITES: readonly PostingSite[] = [
     name: 'ラノベ書きっぱ！',
     url: 'https://kakippa.com/',
     intro:
-      'PV だけでなく「読み応え」で評価される場所をめざす投稿サイトです。短編も長編も、王道から実験的な作品まで載せられます。',
+      '書きたい物が読まれる小説投稿サイトです。PV だけでなく「読み応え」で評価される場所を目指しています。短編・長編を問わず投稿できます。',
     banner: 'https://kakippa.com/thumbneil.png',
   },
   // 2026-10 掲載の了承をいただいた
@@ -40,7 +44,7 @@ export const POSTING_SITES: readonly PostingSite[] = [
     name: '原石航路',
     url: 'https://gensekikoro.com/',
     intro:
-      '人気になる前の作品を、読者と一緒に見つけるライトノベル投稿サイトです。PV 数だけでなく、保存率や読者の反応からも作品を紹介します。',
+      'まだ知られていない物語に出会う小説投稿サイトです。PV 数だけでなく保存率や読者の反応も見て、埋もれた物語を見つけます。',
     banner: 'https://gensekikoro.com/og.jpg',
   },
   // 2026-10 掲載の了承をいただいた
@@ -48,8 +52,16 @@ export const POSTING_SITES: readonly PostingSite[] = [
     name: 'ノベル工房',
     url: 'https://novel-koubou.com/',
     intro:
-      '作家の権利と利益を大切にする、作家による創作プラットフォームです。設定やプロットを整理しながら書き、そのまま公開できます。',
+      '作家の権利と利益を大切にする、作家による創作プラットフォームです。物語の構想から執筆、作品の公開までを支援します。',
     banner: 'https://novel-koubou.com/novel-kobo-og.png?v=20260920',
+  },
+  // 2026-10 掲載の了承をいただいた
+  {
+    name: 'Show too Short',
+    url: 'https://show-too-short.com/',
+    intro:
+      'ショートショートや掌編小説を、無料で読める・投稿できる小説サイトです。5,000 文字以内で完結する一話完結の作品だけを扱います。',
+    banner: 'https://show-too-short.com/images/logo.png',
   },
 ]
 

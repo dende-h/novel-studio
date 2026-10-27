@@ -27,7 +27,9 @@ function SiteCard({ site }: { site: PostingSite }) {
       rel="noopener"
       className="group flex h-full flex-col overflow-hidden rounded-lg border border-outline-variant/30 bg-surface-container-lowest no-underline transition-colors hover:border-primary/40 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
     >
-      <span className="block aspect-[1200/630] border-outline-variant/20 border-b bg-surface-container-low">
+      {/* overflow-hidden は枠を比率どおりに保つため。無いと、OGP より縦長の画像（ロゴだけ等）で
+          aspect-ratio の自動最小高さが効き、枠が画像の高さまで伸びる。 */}
+      <span className="block aspect-[1200/630] overflow-hidden border-outline-variant/20 border-b bg-surface-container-low">
         {showBanner ? (
           <img
             src={site.banner}
