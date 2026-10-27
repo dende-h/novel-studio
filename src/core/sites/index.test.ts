@@ -21,6 +21,13 @@ describe('POSTING_SITES（小説投稿サイトの紹介）', () => {
     }
   })
 
+  it('バナーがあるなら https の画像 URL', () => {
+    for (const site of POSTING_SITES) {
+      if (site.banner === undefined) continue
+      expect(new URL(site.banner).protocol, site.name).toBe('https:')
+    }
+  })
+
   it('サイト名が空でない', () => {
     for (const site of POSTING_SITES) expect(site.name.trim()).not.toBe('')
   })

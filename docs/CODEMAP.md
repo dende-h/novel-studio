@@ -69,7 +69,7 @@ Cloudflare Pages Functions
 | **UI 部品・ヘルパを新規に作りたい** | まず §3「共通部品カタログ」で在庫を確認する（重複作成の防止） |
 | **掲示板**（記名式スレッド・お知らせ・アンケート・通報）の挙動 | 画面は `src/ui/components/BoardPage/`、判断は `src/core/board/`、SQL は `functions/api/_lib/board-store.ts`、窓口は `functions/api/board/` |
 | 掲示板に貼られた外部リンクの OGP（取得可否・画像の許可表） | `src/core/board/link.ts`（判定）+ `functions/api/_lib/board-link-fetch.ts`（取得とキャッシュ） |
-| **小説投稿サイトの紹介**（`#/sites`）に載せるサイトを足す・外す・紹介文を直す | 一覧は `src/core/sites/index.ts`（`POSTING_SITES`＝掲載の了承をいただいたサイトだけ・載せるのはサイト名・URL・紹介文。相手の OGP や画像は取りに行かない）、画面は `src/ui/components/PostingSitesPage/`、導線はサイドバーのフッター（`SideNav`） |
+| **小説投稿サイトの紹介**（`#/sites`）に載せるサイトを足す・外す・紹介文を直す | 一覧は `src/core/sites/index.ts`（`POSTING_SITES`＝掲載の了承をいただいたサイトだけ・サイト名・URL・紹介文・バナー＝相手の og:image の URL。足すときに相手の OGP を読んで写す）、画面は `src/ui/components/PostingSitesPage/`（バナーは相手のサーバから直接読む・複製しない・切り抜かない）、導線はサイドバーのフッター（`SideNav`）。閲覧者のアクセスが相手に届くことは `public/privacy.html` の 4 章に書いてある＝**読み込み方を変えたらここも直す** |
 | **ペンネーム（表示名）**の扱い — ヘッダ・サイドバー・新しい作品の著者・掲示板の表示名は同じ 1 つ | 判定は `src/core/profile/account.ts`、配線は `src/ui/hooks/use-pen-name.ts`、編集は `src/ui/components/ProfileDialog/`（Root が 1 つだけ持つ）、正本はサーバの `board_profiles.display_name` |
 | **コトノハ-grove- （grove）の作者名** — コトノハ-leaf- のペンネームとは**別物**（D-PENNAME-GROVE）。語も分ける（ペンネーム／作者名） | `src/ui/components/PublishPage/publish-page.tsx` の `AuthorNameCard`（投稿前に名前を見せる）＋ `author-register-card.tsx`（登録）。取得は `src/ui/_api/author.ts`。変更の口は コトノハ-grove- の `/settings` |
 | 未課金・解約アカウントの削除（reaper） | `src/core/billing/reap-policy.ts` + `functions/api/billing/reap.ts` + `functions/api/_lib/purge.ts` |
