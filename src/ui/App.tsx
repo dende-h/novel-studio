@@ -844,7 +844,6 @@ export function App({
                     aria-label="本文の組み方向"
                     className="m-0 flex shrink-0 items-center gap-1 border-0 p-0"
                   >
-                    <span className="mr-1 font-sans text-on-surface-variant text-xs">本文</span>
                     {(['horizontal', 'vertical'] as const).map((direction) => {
                       const vertical = direction === 'vertical'
                       const selected = writingMode.vertical === vertical
