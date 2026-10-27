@@ -104,6 +104,8 @@ interface LibraryProps {
   stagingRepo?: Pick<StagingRepository, 'get' | 'listByWork'>
   /** 持ち込み背景（演出が指す分だけ zip・v4 バンドルに同梱される）。 */
   gameAssetRepo?: Pick<GameAssetRepository, 'list'>
+  /** 見出しの下に出す案内（解約後の復元猶予など）。無ければ何も出さない。 */
+  notice?: React.ReactNode
 }
 
 /** データ管理メニューの 1 項目。 */
@@ -163,6 +165,7 @@ export function Library({
   onOpenCloudPlan,
   stagingRepo,
   gameAssetRepo,
+  notice,
 }: LibraryProps) {
   const state = useEditorStore(store)
   // コトノハ-grove- への投稿は Clerk JWT で認証する（執筆アカウント＝公開アカウント）。
@@ -542,6 +545,8 @@ export function Library({
               </div>
             </div>
           </header>
+
+          {notice}
 
           {query.trim() !== '' && visibleWorks.length === 0 ? (
             <p className="py-16 text-center text-[13px] text-on-surface-variant">

@@ -123,7 +123,6 @@ function RootRoutes({ store }: RootProps) {
     status,
     canRestore,
     graceUntil,
-    signOut,
     getToken,
     openSignIn,
     openSignUp,
@@ -147,6 +146,8 @@ function RootRoutes({ store }: RootProps) {
   // 会員のみクラウド全体バックアップ・復元を提供（IndexedDB＋/api/backup を結線）。
   // 単一アクティブセッションは撤去したので、複数端末に常時ログインでき、押し出しは起きない。
   // 会員に加え、解約後の復元猶予期間（canRestore）でも生成する（復元のみ許可・作成はサーバが 402）。
+  // 猶予中の人は無料アカウント（free）としてアプリを使い続けられる。復元の導線はライブラリの
+  // 案内（RestoreGrace）とデータ管理の「クラウドバックアップ」（復元専用で開く）に出す。
   const backupService = useMemo(
     () =>
       status === 'member' || canRestore
@@ -222,6 +223,7 @@ function RootRoutes({ store }: RootProps) {
    * 失ったときの損害が大きいため。登録しておけば、あとからクラウドへ引き上げられる。
    */
   const canUseCreativeTools = status === 'free' || status === 'member'
+  const isMember = status === 'member'
 
   const [backupOpen, setBackupOpen] = useState(false)
   const [aiPullOpen, setAiPullOpen] = useState(false)
@@ -351,42 +353,6 @@ function RootRoutes({ store }: RootProps) {
   // ヘッダーの導線から任意で開く一枚ものページにした。
   if (route === '/plan') return <SyncOnboarding onDismiss={() => navigate('/')} />
 
-  // 解約後の復元猶予期間：クラウドから復元 → ローカル → 無料のファイル書き出し でデータを持ち出せる
-  // 安全網。onboarding より先に判定する（猶予中も status は guest のため）。期限後はクラウド削除。
-  if (canRestore && graceUntil != null) {
-    return (
-      <>
-        <RestoreGrace
-          graceUntil={graceUntil}
-          onRestore={() => setBackupOpen(true)}
-          onExport={async () => {
-            const json = await localBackup.exportPlaintext()
-            triggerDownload({
-              filename: `kotonoha-backup-${new Date().toISOString().slice(0, 10)}.json`,
-              mime: 'application/json;charset=utf-8',
-              data: json,
-            })
-            show('ファイルに書き出しました')
-          }}
-          onSignOut={signOut}
-        />
-        {backupService ? (
-          <CloudBackupDialog
-            open={backupOpen}
-            onOpenChange={setBackupOpen}
-            service={backupService}
-            restoreOnly
-            onNotify={show}
-            onRestored={() => {
-              void store.init()
-              show('手元に戻りました。「ファイルに書き出す」で保存できます')
-            }}
-          />
-        ) : null}
-      </>
-    )
-  }
-
   if (route === '/activity') {
     return (
       <ActivityPage
@@ -490,9 +456,10 @@ function RootRoutes({ store }: RootProps) {
           onEnterEditor={() => navigate('/write')}
           onEnterPublish={() => navigate('/publish')}
           onOpenCloudBackup={backupService ? () => setBackupOpen(true) : undefined}
-          onOpenAiPull={backupService ? () => setAiPullOpen(true) : undefined}
+          // AI の取り込み・MCP は会員だけ（猶予中はサーバが 402 で弾く）。
+          onOpenAiPull={backupService && isMember ? () => setAiPullOpen(true) : undefined}
           aiEditPending={aiEditPending}
-          onOpenMcp={backupService ? () => setMcpOpen(true) : undefined}
+          onOpenMcp={backupService && isMember ? () => setMcpOpen(true) : undefined}
           onOpenSyncLost={syncService ? () => setSyncLostOpen(true) : undefined}
           syncLostCount={syncLostCount}
           onOpenActivity={() => navigate('/activity')}
@@ -501,13 +468,31 @@ function RootRoutes({ store }: RootProps) {
           onOpenSettings={() => navigate('/settings')}
           onOpenHelp={() => navigate('/help')}
           localBackup={localBackup}
-          isMember={status === 'member'}
+          isMember={isMember}
           onboarded={onboarded}
           activityRepo={activityRepo}
           stagingRepo={stagingRepo}
           gameAssetRepo={gameAssetRepo}
           // 無料の人向けクラウド導線＝サインアップ（→購読）。Clerk 未構成時はリンクを出さない。
           onOpenCloudPlan={available ? openSignUp : undefined}
+          notice={
+            canRestore && graceUntil != null ? (
+              <RestoreGrace
+                graceUntil={graceUntil}
+                onRestore={() => setBackupOpen(true)}
+                onExport={async () => {
+                  const json = await localBackup.exportPlaintext()
+                  triggerDownload({
+                    filename: `kotonoha-backup-${new Date().toISOString().slice(0, 10)}.json`,
+                    mime: 'application/json;charset=utf-8',
+                    data: json,
+                  })
+                  show('ファイルに書き出しました')
+                }}
+                onResume={() => navigate('/plan')}
+              />
+            ) : undefined
+          }
         />
       )}
       {/* 初回のみの保存説明。執筆画面（/write）には出さない＝執筆中の割り込みを避ける。 */}
@@ -517,11 +502,13 @@ function RootRoutes({ store }: RootProps) {
           open={backupOpen}
           onOpenChange={setBackupOpen}
           service={backupService}
+          // 猶予中は復元だけ（バックアップの作成はサーバが 402 で弾く）。
+          restoreOnly={!isMember}
           onNotify={show}
           onRestored={() => store.init()}
         />
       )}
-      {backupService && (
+      {backupService && isMember && (
         <AiPullDialog
           open={aiPullOpen}
           onOpenChange={setAiPullOpen}
@@ -539,7 +526,7 @@ function RootRoutes({ store }: RootProps) {
         repo={syncLostRepo}
         onChanged={refreshSyncLost}
       />
-      {backupService && (
+      {backupService && isMember && (
         <McpConnectDialog
           open={mcpOpen}
           onOpenChange={setMcpOpen}
