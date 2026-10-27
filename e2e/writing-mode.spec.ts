@@ -284,3 +284,29 @@ test('プレビューはホイールで横に読め、入力位置へ縦横と�
   await ta.dispatchEvent('compositionend')
   await expect.poll(() => preview.evaluate((el) => el.parentElement!.scrollTop)).toBeGreaterThan(1000)
 })
+
+test('縦書きで中央追従を保ったまま集中表示を解除してもプレビューに重ならない', async ({ page }) => {
+  await page.setViewportSize({ width: 1900, height: 920 })
+  const ta = await openWriter(page)
+  const value = ('縦書きの本文がプレビューと重ならず、入力位置を中央に保つ。'.repeat(30) + '\n').repeat(27)
+  await ta.fill(value)
+  await page.getByRole('group', { name: '本文の組み方向' }).getByRole('button', { name: '縦書き', exact: true }).click()
+  await page.getByRole('button', { name: '入力行を中央に保つ', exact: true }).click()
+  for (let i = 0; i < 2; i++) {
+    await page.getByRole('button', { name: '集中モード', exact: true }).click()
+    await placeCaret(ta, Math.floor(value.length / 2))
+    await expect.poll(() => caretError(ta)).toBeLessThanOrEqual(1)
+    await page.getByRole('button', { name: '集中モードを終了', exact: true }).click()
+    await expect(page.locator('article.preview')).toBeVisible()
+    await expect.poll(() => ta.evaluate((el) => {
+      const textarea = el.getBoundingClientRect()
+      const editor = el.parentElement!.getBoundingClientRect()
+      return textarea.right - editor.right
+    })).toBeLessThanOrEqual(1)
+    await expect.poll(() => caretError(ta)).toBeLessThanOrEqual(1)
+  }
+  await page.setViewportSize({ width: 1100, height: 760 })
+  await expect.poll(() => ta.evaluate((el) => el.getBoundingClientRect().right - el.parentElement!.getBoundingClientRect().right)).toBeLessThanOrEqual(1)
+  await expect.poll(() => caretError(ta)).toBeLessThanOrEqual(1)
+  await expect(ta).toHaveValue(value)
+})

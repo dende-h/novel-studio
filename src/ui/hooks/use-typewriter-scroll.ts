@@ -42,10 +42,16 @@ export function useTypewriterScroll(
       const line = Number.parseFloat(style.lineHeight)
       if (!Number.isFinite(line) || line <= 0) return
       const vertical = current.current.vertical
-      const target = vertical ? rect.left + el.clientWidth / 2 : (top + bottom) / 2
+      // 大きい左右paddingが残ると textarea は親より細くなれない。
+      // 集中解除・ペイン幅の変更では、親の幅を上限にして循環を断つ。
+      const availableWidth = Math.min(
+        el.clientWidth,
+        el.parentElement?.clientWidth ?? el.clientWidth,
+      )
+      const target = vertical ? rect.left + availableWidth / 2 : (top + bottom) / 2
       const nextPadding = Math.max(
         vertical ? 36 : 28,
-        (vertical ? el.clientWidth / 2 : target - rect.top) - line / 2,
+        (vertical ? availableWidth / 2 : target - rect.top) - line / 2,
       )
       const oldScroll = vertical ? el.scrollLeft : el.scrollTop
       if (vertical) {
@@ -104,6 +110,7 @@ export function useTypewriterScroll(
     document.addEventListener('selectionchange', selection)
     const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(schedule)
     observer?.observe(el)
+    if (el.parentElement) observer?.observe(el.parentElement)
     const preferences = new MutationObserver(schedule)
     preferences.observe(document.documentElement, {
       attributes: true,
