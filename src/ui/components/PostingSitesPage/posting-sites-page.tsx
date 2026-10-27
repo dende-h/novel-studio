@@ -4,6 +4,9 @@ import { POSTING_SITES, type PostingSite, siteHost } from '@/core/sites'
 import { coverTone } from '@/ui/_utils/cover-tone'
 import { PageLayout } from '@/ui/components/PageLayout/page-layout'
 
+/** 掲載の希望を受け付ける窓口（コトノハ-leaf- の公式 X）。 */
+const OFFICIAL_X_URL = 'https://x.com/dendeiriamaka1'
+
 /**
  * サイト 1 件の札。上にバナー（相手の og:image）、下にサイト名・ドメイン・紹介文。
  *
@@ -84,13 +87,20 @@ export function PostingSitesPage({
       </ul>
 
       <section className="mt-12 rounded-lg border border-outline-variant/30 bg-surface-container-low px-5 py-4">
-        <h2 className="font-medium text-[14px] text-on-surface">掲載しているサイトの運営の方へ</h2>
+        <h2 className="font-medium text-[14px] text-on-surface">
+          掲載を希望するサイトの運営の方へ
+        </h2>
         <p className="mt-1.5 text-[13px] text-on-surface-variant leading-relaxed">
-          掲載をやめたいとき、紹介文やバナーを直したいときは、
-          <a href="#/help" className="text-primary hover:underline">
-            ヘルプのお問い合わせフォーム
+          掲載は無料です。希望される場合は、
+          <a
+            href={OFFICIAL_X_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-primary hover:underline"
+          >
+            公式 X（@dendeiriamaka1）
           </a>
-          からお知らせください。すぐに対応します。
+          までご連絡ください。
         </p>
       </section>
     </PageLayout>
