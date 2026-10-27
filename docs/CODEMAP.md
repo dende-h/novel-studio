@@ -69,9 +69,12 @@ Cloudflare Pages Functions
 | **UI 部品・ヘルパを新規に作りたい** | まず §3「共通部品カタログ」で在庫を確認する（重複作成の防止） |
 | **掲示板**（記名式スレッド・お知らせ・アンケート・通報）の挙動 | 画面は `src/ui/components/BoardPage/`、判断は `src/core/board/`、SQL は `functions/api/_lib/board-store.ts`、窓口は `functions/api/board/` |
 | 掲示板に貼られた外部リンクの OGP（取得可否・画像の許可表） | `src/core/board/link.ts`（判定）+ `functions/api/_lib/board-link-fetch.ts`（取得とキャッシュ） |
+| **小説投稿サイトの紹介**（`#/sites`）に載せるサイトを足す・外す・紹介文を直す | 一覧は `src/core/sites/index.ts`（`POSTING_SITES`＝掲載の了承をいただいたサイトだけ・サイト名・URL・紹介文・バナー＝相手の og:image の URL。足すときに相手の OGP を読んで写す）、画面は `src/ui/components/PostingSitesPage/`（バナーは相手のサーバから直接読む・複製しない・切り抜かない）、導線はサイドバーのフッター（`SideNav`）。閲覧者のアクセスが相手に届くことは `public/privacy.html` の 4 章に書いてある＝**読み込み方を変えたらここも直す** |
 | **ペンネーム（表示名）**の扱い — ヘッダ・サイドバー・新しい作品の著者・掲示板の表示名は同じ 1 つ | 判定は `src/core/profile/account.ts`、配線は `src/ui/hooks/use-pen-name.ts`、編集は `src/ui/components/ProfileDialog/`（Root が 1 つだけ持つ）、正本はサーバの `board_profiles.display_name` |
 | **コトノハ-grove- （grove）の作者名** — コトノハ-leaf- のペンネームとは**別物**（D-PENNAME-GROVE）。語も分ける（ペンネーム／作者名） | `src/ui/components/PublishPage/publish-page.tsx` の `AuthorNameCard`（投稿前に名前を見せる）＋ `author-register-card.tsx`（登録）。取得は `src/ui/_api/author.ts`。変更の口は コトノハ-grove- の `/settings` |
-| 未課金・解約アカウントの削除（reaper） | `src/core/billing/reap-policy.ts` + `functions/api/billing/reap.ts` + `functions/api/_lib/purge.ts` |
+| **更新のお知らせ（リリースノート）**を足す（リリースのたびに 1 件・本番に出た日 JST・利用者に見える変更だけ） | `public/updates.html`（`/updates`・いちばん上へ足す・書き方は先頭のコメントと toc-copy）。導線は静的ページのフッター・`src/ui/components/PageLayout/`・LP のフッター・ヘルプの FAQ・`public/sitemap.xml`・`public/llms.txt` |
+| 解約後の復元猶予中の案内（ライブラリ上部・復元／書き出し／再開。アプリは塞がない・復元の前に端末のデータを自動で書き出す） | `src/ui/components/RestoreGrace/` + `src/ui/Root.tsx`（`canRestore`・Library の `notice`・`downloadLocalBackup`）+ `src/ui/components/CloudBackupDialog/`（`beforeRestore`）+ `src/ui/auth/clerk-gate.tsx` |
+| 解約して猶予が切れた人のクラウドデータ削除（reaper・ログインと掲示板は残す） | `src/core/billing/reap-policy.ts` + `functions/api/billing/reap.ts` + `functions/api/_lib/purge.ts` |
 | 画面遷移・ルート追加 | `src/ui/Root.tsx` + `src/ui/hooks/use-hash-route.ts` |
 | DB スキーマ | `migrations/*.sql` + `wrangler.toml` |
 | ランディングページ（機能紹介・プラン表・スクリーンショット） | `public/lp/index.html` + `public/lp/shots/`（AI 連携の案内ページは `public/lp/ai/index.html`。FAQ を直したら同じファイルの JSON-LD の FAQPage も直す） |
@@ -100,6 +103,7 @@ Cloudflare Pages Functions
 | `idea/` | ネタ帳のメモ | `IdeaNote` `normalizeIdeaText` |
 | `game/` | サウンドノベル化のドメイン（演出譜＝正本の外・blockId アンカー） | `Staging` `Cue` `SpriteCue`（席ごとの立ち絵・`SPRITE_POSITIONS`・`spriteCuesOf`＝旧式の読み替え） `AssetRef` `MASKED_SPEAKER` `BGM_STOP` / `classifyBlock` `toPages` `applyCues` `findOrphanCues` `suggestSceneBreaks` `suggestSpeaker` / テンプレ背景は `presets.ts`（`PRESET_BACKGROUNDS` `presetBgSvg` `buildGameCredits`・組み込み SVG＝画像が入るまでの控え・`BLACKOUT_BG_KEY`＝予約キー `blackout`「背景なし(ブラックアウト)」`blackoutBgSvg`）／テンプレ立ち絵（シルエット6種）は `spritePresets.ts`（`PRESET_SPRITES` `presetSpriteSvg`）／**運営テンプレの目録**は `templates.ts`（`TemplateManifest` `TemplateEntry` の Zod・`TemplateKind`＝bg/sprite/se/bgm・`mergeBackgroundCatalog` `mergeSpriteCatalog`＝組み込みに目録を重ねる・`mergeBgmCatalog`＝枠 24 曲に目録を重ねる・`isBgmReady`・`catalogBgmKeys`・`parseTemplateFilename` `parseTemplateTsv`・`templateAssetId`＝`tpl-<kind>-<slug>`・`templateUrl`・`applyTemplatePatch`・管理 API の入力 `TemplatePutInputSchema` `TemplatePatchInputSchema`）／持ち込み素材（背景・立ち絵）は `assets.ts`（`UserGameAsset`＝data URL＋tone 3色・キーは `userAssetKey`＝`user:<id>`、テンプレ由来の背景は `gameAssetKey` が `preset` のキーを返す。立ち絵の選定 `pickSprite` `spriteExpressionsOf`、無料枠 `FREE_IMPORT_LIMIT` `importVerdict`、クラウド保管の上限 `HOSTED_ASSET_LIMIT` と判定 `hostedAssetVerdict` もここ）／立ち絵の舞台は `stage.ts`（`resolveStages`＝席 3 つ・話者は明るさだけ・`SPRITE_POSITION_LABELS`）／合成SEレシピは `sePresets.ts`（`PRESET_SES`＝12 種 `presetSe` `seDuration` `sePeriod`・キーは `preset:se/<名>`）／**BGM の枠**は `bgmPresets.ts`（`PRESET_BGMS`＝24 曲・`presetBgm` `presetBgmBySlug` `PRESET_BGM_CATEGORY_LABELS`・実体は持たない）／**機能フラグ**は `features.ts`（`GAME_FEATURES`＝`{ se: false }`。データの形は残したまま画面・MCP・書き出しから外す 1 箇所） |
 | `profile/` | 作者プロフィール（ペンネーム・アバター）と、**アカウントとの突き合わせ**（`account.ts`）。どのアカウントの名前かの印は `profile` とは**別キー**（同期・バックアップに乗せない） | `Profile`（`penName` `avatar` `updatedAt`） `ProfileRepository`（+ `getAccountId` `saveAccountId`） / `penNameForAccount` `PenNameSync` |
+| `sites/` | 小説投稿サイトの紹介に載せるサイトの一覧（静的データ） | `PostingSite` `POSTING_SITES` `POSTING_SITE_INTRO_MAX` `siteHost` |
 | `board/` | **掲示板の共有契約**（Zod）と純ロジック。詳細は下表 | `BOARD_KINDS` `BOARD_LIMITS` `BoardThread` `BoardPost` `PollResult` `LinkCard` `BoardThreadDetail` `ThreadListResponse` `BoardMeResponse` `ModerateInputSchema` ほか（`types.ts`） |
 
 ### 変換
@@ -146,7 +150,7 @@ Cloudflare Pages Functions
 | `backup/` | クラウド全体バックアップの直列化（`CloudBackup` v1） |
 | `src/core/nudge/backup-nudge.ts` | バックアップ促しの判定（節目・クールダウン） |
 | `src/core/billing/stripe-event.ts` | Stripe イベント → `StripeAction` 解釈 |
-| `src/core/billing/reap-policy.ts` | アカウント削除の判定（`shouldReap`）。**解約後の猶予切れだけ**が対象＝無料アカウントに期限は無い |
+| `src/core/billing/reap-policy.ts` | クラウドデータ削除の判定（`shouldReap`）。**解約後の猶予切れだけ**が対象・ログインは消さない＝無料アカウントに期限は無い |
 | `src/core/mcp-edit/index.ts` | **MCP 経由の編集操作の純ロジック**（`createWork` `setEpisode` `upsertGlossaryEntry` `setPlotMeta` `setPlotWorldNote` `deletePlotWorldNote` `setStagingCues`（演出譜） 等）。サーバの MCP ツールはこれを呼ぶ |
 | `activity/` | 執筆記録（`localDateKey` `currentStreak` `buildHeatmap`） |
 | `stats/` | 文字数カウント |
@@ -179,7 +183,7 @@ Cloudflare Pages Functions
 
 ### ルート（`src/ui/hooks/use-hash-route.ts`・`location.hash` が唯一の真実）
 `/` ライブラリ ・ `/write` 執筆 ・ `/publish` 公開 ・ `/activity` 執筆の記録 ・ `/ideas` ネタ帳
-・ `/settings` ・ `/help` ・ `/plan` 同期の案内 ・ `/board` 掲示板 ・ `/board/<threadId>` スレ詳細
+・ `/settings` ・ `/help` ・ `/sites` 小説投稿サイトの紹介 ・ `/plan` 同期の案内 ・ `/board` 掲示板 ・ `/board/<threadId>` スレ詳細
 ・ `/admin/templates` 運営テンプレの管理（**staff だけ描く**・それ以外は通常の入口に倒す・`use-staff.ts`）
 
 ### 画面（`components/` — PascalCase ディレクトリ + kebab ファイル・1ファイル1コンポーネント）
@@ -191,7 +195,7 @@ Cloudflare Pages Functions
 - **入出力**: `ExportDialog/`, `ImportDialog/`（JSON バックアップ）, `TextImportDialog/`（.txt／貼り付け→話に分けて新規作品。左：入力と分け方 `source-pane.tsx`／右：プレビューと手直し `preview-pane.tsx`／状態は `use-text-import.ts`・lg 未満は 2 ステップ）, `BackupDialog/`, `CloudBackupDialog/`, `AiPullDialog/`
 - **同期/課金**: `SyncOnboarding/`, `SyncLostDialog/`, `RestoreGrace/`, `McpConnectDialog/`, `SaveStateIndicator/`, `BackupNudgeDialog/`
 - **掲示板（遅延ロード・未ログインでも読める）**: `BoardPage/`（`board-page.tsx` 一覧 ／ `thread-view.tsx` スレ詳細 ／ `thread-list.tsx` `board-body.tsx` `link-card.tsx` `poll-card.tsx` `name-dialog.tsx` `new-thread-dialog.tsx` `report-dialog.tsx` `staff-controls.tsx`）
-- **その他**: `ActivityPage/`, `IdeaboxPage/`, `PublishPage/`, `SettingsPage/`（staff には管理ページの入口）, `HelpPage/`, `ProfileDialog/`, `FirstRunDialog/`
+- **その他**: `ActivityPage/`, `IdeaboxPage/`, `PublishPage/`, `SettingsPage/`（staff には管理ページの入口）, `HelpPage/`, `PostingSitesPage/`（小説投稿サイトの紹介・`PageLayout` の一枚もの）, `ProfileDialog/`, `FirstRunDialog/`
 - **運営だけ（遅延ロード）**: `AdminTemplatesPage/`（テンプレ素材の管理：背景・立ち絵・BGM のタブ（効果音は `GAME_FEATURES.se` が立つと出る）。ドロップで一括投入＝ファイル名からキー・画像はブラウザで WebP/サムネ/tone・音声はそのまま長さだけ測る・表示名/分類/時間帯/非表示・BGM のループ区間（秒）・TSV の一括取り込み・音は試聴）
 - **共通**: `AppShell/`, `PageLayout/`, `SideNav/`, `TopAppBar/`, `Toast/`, `ConfirmDialog/`, `ErrorBoundary/`
 - `components/ui/` = shadcn/ui コピー品（**biome の lint 対象外**・手を入れない）→ 中身は次節のカタログ参照
@@ -308,7 +312,7 @@ Clerk へ登録済みのクライアントの互換。消すとトークン更�
 | `/game-templates/*` | **運営テンプレの公開読み口**（認証なし・`/api/` の外＝SW がキャッシュする）。`manifest.json`（目録・max-age=300）／`<kind>/<slug>[.thumb].<ext>`（ext は MIME から＝webp/png/jpg/mp3/m4a・`?v=<hash>`・immutable）。実装は `functions/game-templates/[[path]].ts` |
 | `/api/admin/templates` | 運営テンプレの管理（**staff だけ・それ以外は 404**）。GET=目録 / PUT=`?kind=&slug=` 投入・置き換え（kind bg/sprite は画像 1.5MB＋サムネ、se は mp3/m4a 2MB＋長さ、bgm は mp3/m4a 8MB＋長さ＋ループ区間） / PATCH=表示名・分類・時間帯・並び・非表示・BGM のループ区間・分類の表示名 / DELETE=非表示 |
 | `POST /api/hit` | 訪問者集計（Cookie なし） |
-| `/api/billing/{checkout,portal,status,reap}` | Stripe Checkout / Portal / 会員状態 / 未課金回収ジョブ |
+| `/api/billing/{checkout,portal,status,reap}` | Stripe Checkout / Portal / 会員状態 / 猶予切れのクラウドデータ削除ジョブ |
 | `POST /api/webhooks/stripe` | Stripe webhook → D1 `subscriptions` にミラー |
 | `GET /api/board/threads` | 掲示板の一覧（`?kind=` `?cursor=`）。**未ログインでも読める** |
 | `POST /api/board/threads` | スレ立て（本文＋任意でアンケート）。リンクカードの取得もここ |
@@ -370,7 +374,7 @@ pnpm --dir tools/novel-textlint lint:novel <file>   # 小説原稿の textlint�
 uv run .claude/skills/natural-japanese/scripts/lint.py <file>   # 仕事の文書の AI 臭 lint（要 uv・CI 対象外）
 ```
 
-- CI（`.github/workflows/ci.yml`）は main / stg への push・PR で lint → typecheck → test → build → e2e。推敲の辞書（`public/dict/`）は `actions/cache` に載せる（キーは `scripts/fetch-dict.mjs` のハッシュ）。
+- CI（`.github/workflows/ci.yml`）は main / stg への push・PR で lint → typecheck → test → build → e2e。E2EのランナーはPlaywright 1.60が対応する `ubuntu-24.04` に固定。推敲の辞書（`public/dict/`）は `actions/cache` に載せる（キーは `scripts/fetch-dict.mjs` のハッシュ）。
 - Node 22 / pnpm 10.29.3（`mise.toml` で固定）。環境別は `mise.staging.toml` / `mise.production.toml`。
 - インポートエイリアス `@/` → `src/`。
 - Biome: シングルクォート・セミコロンなし・幅100・スペース2。
@@ -399,6 +403,7 @@ uv run .claude/skills/natural-japanese/scripts/lint.py <file>   # 仕事の文�
 | `docs/specs/COT-59/` | 用語集に無い名前の候補と辞書の最新化（SudachiDict）の要件・設計・実装メモ・プロトタイプ |
 | `docs/specs/COT-62/` | 推敲の作品の決まり（例外・表記の好み・提案）の要件・設計・実装メモ・プロトタイプ |
 | `docs/requirement/12-ai-search.md` | 検索・AI 検索からの流入（COT-22〜28 の leaf 側）の決定表・置いたものと見張り・本番後の手作業（MCP Registry・Cloudflare・Bing） |
+| `public/updates.html` | 更新のお知らせ（`/updates` で公開・リリースのたびにいちばん上へ 1 件足す） |
 | `public/board-guidelines.html` | 掲示板ガイドライン（`/board-guidelines` で公開・通報や上限の文言はここと揃える） |
 | `docs/requirement/99-open-questions.md` | 未決事項 |
 | `docs/specs/<ISSUE>/` | linear-spec の成果物（要件・設計・プロトタイプ・仕様書・実装依頼）。`COT-6` 脚本・`COT-29` 検索置換・`COT-30`／`COT-40` 推敲・`COT-31` テキストの取り込み・`COT-59` 用語集に無い名前・`COT-62` 推敲の作品の決まり |
