@@ -48,7 +48,7 @@ export const POSTING_SITES: readonly PostingSite[] = [
     name: 'ノベル工房',
     url: 'https://novel-koubou.com/',
     intro:
-      '設定やプロットを整理しながら書き、そのまま公開できる創作ワークスペースです。読者は本文の行ごとに「イチオシ！」を付けられます。',
+      '作家の権利と利益を大切にする、作家による創作プラットフォームです。設定やプロットを整理しながら書き、そのまま公開できます。',
     banner: 'https://novel-koubou.com/novel-kobo-og.png?v=20260920',
   },
 ]
