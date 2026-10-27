@@ -1,0 +1,147 @@
+<!doctype html><html lang="ja"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>COT-45 UIプロトタイプ</title><style>:root {
+  color-scheme: light;
+  --radius: 0.5rem;
+
+  /* 本文（エディタ・プレビュー）の基準フォントサイズ。設定の「文字サイズ」で
+     <html> の style に上書きされる（小=13.5px / 中=既定 / 大=17px）。 */
+  --reading-font-size: 15px;
+
+  /* shadcn セマンティック */
+  --background: #fdfcfb; /* cream-50: ページ背景（無機質な白でなく紙の温度） */
+  --foreground: #4b5160; /* gray-700: 本文 */
+  --card: #fefeff;
+  --card-foreground: #1f2430;
+  --popover: #fefeff;
+  --popover-foreground: #1f2430;
+  --primary: #2c5b27; /* forest-700: ブランド緑 */
+  --primary-foreground: #ffffff;
+  --secondary: #f2e6d4; /* wheat-100 */
+  --secondary-foreground: #92703f; /* wheat-700 */
+  --muted: #f3f4f6;
+  --muted-foreground: #7d8494;
+  --accent: #f2f7f1; /* forest-50: hover 等の控えめな緑 */
+  --accent-foreground: #2c5b27;
+  --destructive: #dc2626;
+  --destructive-foreground: #ffffff;
+  --border: #e4e6eb; /* gray-200: subtle border */
+  --input: #d5d8dd; /* gray-300 */
+  --ring: #2c5b27;
+
+  /* Material 拡張（既存ユーティリティ名を維持したまま値だけ差し替え） */
+  --surface: #fdfcfb;
+  --surface-container-lowest: #fefeff; /* カード面 */
+  --surface-container-low: #f9f7f5; /* cream-100: サイドバー等の面 */
+  --surface-container: #f3f1ec;
+  --surface-container-high: #edeae3;
+  --surface-container-highest: #e7e3da;
+  --surface-bright: #fefeff;
+  --surface-variant: #f3ede4; /* paper-100: 読書面（プレビュー） */
+  --on-surface: #1f2430; /* gray-900: 見出し */
+  --on-surface-variant: #6b7381; /* gray-600: 補助テキスト */
+  --outline: #7d8494; /* gray-500 */
+  --outline-variant: #9da3ae; /* gray-400（/30〜/40 の透過利用で design の subtle 境界に一致） */
+  --primary-container: #e3ece1; /* forest-100 */
+  --on-primary-container: #234420; /* forest-800 */
+  --secondary-color: #b98f63; /* wheat-500 */
+  --secondary-container: #f2e6d4; /* wheat-100 */
+  --on-secondary-container: #92703f; /* wheat-700 */
+  --error: #dc2626;
+  --error-container: #fef2f2;
+  --on-error-container: #b91c1c;
+
+  /* デザイン固有の追加パレット（草・表紙トーン・アクセント） */
+  --forest-50: #f2f7f1;
+  --forest-100: #e3ece1;
+  --forest-400: #6b9660;
+  --forest-600: #35692f;
+  --forest-700: #2c5b27;
+  --forest-800: #234420;
+  --forest-900: #1a3014;
+  --wheat-500: #b98f63;
+  --wheat-700: #92703f;
+  --paper-100: #f3ede4;
+
+  /*
+   * プレビューの @参照リンク色。下線は引かない（縦書きではルビと同じ側に出て重なり、
+   * 読みが潰れる）ため、色だけで「図鑑に居る語」と分かる必要がある。地の文（--on-surface）
+   * が暗い青灰なので、暗さではなく緑の鮮やかさで見分けさせる＝forest-700 より一段明るい 600。
+   */
+  --ref-link: var(--forest-600);
+  --ref-link-hover: var(--forest-900);
+
+  /*
+   * 推敲画面で選んだ言葉に引くマーカー（文字の下半分）。「直す」と決めた箇所の麦色の面と
+   * 見分けがつくよう、蛍光ペンの黄にする。
+   */
+  --word-marker: #fae39c;
+}
+.dark {
+  color-scheme: dark;
+
+  /* shadcn セマンティック */
+  --background: #181611; /* 暖かい極暗（無機質な黒でなく紙の温度を残す） */
+  --foreground: #d7d2c8; /* 本文（暖色オフホワイト） */
+  --card: #201d16;
+  --card-foreground: #ece8e1;
+  --popover: #221f18;
+  --popover-foreground: #ece8e1;
+  --primary: #44863a; /* forest を持ち上げた緑（白文字≒AA・text-primary も可読） */
+  --primary-foreground: #ffffff;
+  --secondary: #38301f; /* 暗い wheat チップ */
+  --secondary-foreground: #dcbd8e;
+  --muted: #262319;
+  --muted-foreground: #9c968a;
+  --accent: #202c1c; /* hover 等の控えめな緑面 */
+  --accent-foreground: #a6d29b;
+  --destructive: #e5544e;
+  --destructive-foreground: #ffffff;
+  --border: #322e26;
+  --input: #423d33;
+  --ring: #5aa24d;
+
+  /* Material 拡張 */
+  --surface: #181611;
+  --surface-container-lowest: #1f1c16; /* カード面・トップバー */
+  --surface-container-low: #232019; /* サイドバー等の面 */
+  --surface-container: #29251e;
+  --surface-container-high: #322d25;
+  --surface-container-highest: #3a352b;
+  --surface-bright: #221f18;
+  --surface-variant: #201d16; /* 読書面（プレビュー） */
+  --on-surface: #ece8e1; /* 見出し */
+  --on-surface-variant: #a49e92; /* 補助テキスト */
+  --outline: #8b8578;
+  --outline-variant: #645e53; /* /30〜/40 の透過利用で subtle 境界 */
+  --primary-container: #294424;
+  --on-primary-container: #cae4c3;
+  --secondary-color: #cba576; /* wheat-500 相当 */
+  --secondary-container: #38301f;
+  --on-secondary-container: #e0c398;
+  --error: #e5544e;
+  --error-container: #3a1e1c;
+  --on-error-container: #f4b4b0;
+
+  /* デザイン固有の追加パレット（緑・表紙トーン・アクセント） */
+  --forest-50: #1d291b;
+  --forest-100: #24331f;
+  --forest-400: #5f8a54; /* @参照リンクの下線 */
+  --forest-600: #74ab68;
+  --forest-700: #8bc47e; /* @参照リンクの文字（暗い読書面で可読な明るい緑） */
+  --forest-800: #a9d69d;
+  --forest-900: #c6e8bb; /* @参照リンク hover（最も明るい） */
+  --wheat-500: #c9a274;
+  --wheat-700: #d8bd8e; /* 「-leaf-」等の wheat 文字（暗背景で可読な明るい麦色） */
+
+  /* 暗い読書面では「濃く」＝より明るく。明度の向きが逆なので light と別トークンにする。 */
+  --ref-link: var(--forest-800);
+  --ref-link-hover: var(--forest-900);
+  --paper-100: #201d16;
+  /* 暗い読書面のマーカー。明るい文字（--on-surface）が読める暗さの黄土色。 */
+  --word-marker: #7a6524;
+}
+*{box-sizing:border-box}body{margin:24px;background:var(--background);color:var(--on-surface);font:14px sans-serif}button,select{font:inherit;border:1px solid var(--outline-variant);border-radius:8px;background:var(--surface-container-lowest);color:var(--on-surface);padding:8px;min-height:44px}button[aria-pressed=true]{background:var(--primary);color:white}.options{display:flex;gap:12px;flex-wrap:wrap;margin:16px 0}.comparison{display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-bottom:32px}.before img{width:100%;display:block}.frame{background:var(--surface-container-lowest);border:1px solid var(--outline-variant);height:600px;display:flex;flex-direction:column;overflow:hidden}.tools{display:flex;align-items:center;gap:8px;padding:4px 12px;border-bottom:1px solid var(--border);flex-wrap:wrap}.status{font-size:12px;color:var(--on-surface-variant);margin-left:auto;white-space:nowrap}.body{width:100%;max-width:800px;margin:auto;flex:1;min-height:0}.paper{width:100%;height:100%;resize:none;border:0;background:transparent;color:var(--on-surface);font:15px/2.1 serif;padding:140px 36px 200px;outline:none}.mobile{width:393px;max-width:100%}.mobile .tools{padding:0 8px;gap:2px}.mobile .paper{padding:140px 24px 200px}.mobile button{font-size:12px}.normalnav{display:none;padding:12px;background:var(--surface-container-low)}.normal .normalnav{display:flex;gap:12px;align-items:center}.normal .full,.normal .status{display:none}.normal .tools{background:var(--surface-container-lowest)}.normal .paper{padding-top:28px}.empty .paper::placeholder{color:var(--on-surface-variant)}.keyboard .frame{height:390px}.caption{color:var(--on-surface-variant);font-size:12px}.notebar{display:none;background:var(--surface-container-low);padding:8px}.candidate .notebar{display:block}@media(max-width:900px){.comparison{grid-template-columns:1fr}}
+</style><h1>集中モードとタイプライタースクロール</h1><p>①入口　②本文に集中　③復帰操作と保存状態　④入力行を中央へ</p><p class="caption">仕様確認用モックです。全画面・追従の実装検証はアプリ実装時に行います。</p><div class="options"><button id="theme">テーマを切替</button><label>状態 <select id="state"><option value="saved">保存済み</option><option value="dirty">未保存</option><option value="saving">保存中</option><option value="empty">空本文</option><option value="error">保存失敗</option><option value="offline">オフライン</option><option value="free">無料会員</option><option value="keyboard">キーボード表示（概念図）</option><option value="candidate">入力候補</option></select></label></div><main id="comparisons"></main><script>
+const text='窓の外で、葉が揺れていた。\n書きかけの言葉に、もう一度目を戻す。\n\n静かな部屋に、キーを打つ音が響く。';
+const root=document.querySelector('#comparisons');for(const mode of ['desktop','mobile']){root.insertAdjacentHTML('beforeend',`<h2>${mode==='desktop'?'PC':'スマホ（393px）'}</h2><div class="comparison"><section class="before ${mode==='mobile'?'mobile':''}"><h3>現状</h3><img alt="現状の執筆画面" src="screens/writer-${mode}.png"></section><section class="after ${mode==='mobile'?'mobile':''}"><h3>変更後</h3><div class="frame"><div class="normalnav">第一話　｜　ルビ　傍点　用語引用　セリフ　｜　検索・置換　用語集</div><div class="tools"><button class="focus" aria-pressed="true">③ 集中モードを終了</button><button class="track" aria-label="入力行を中央に保つ" aria-pressed="true">④ 行を中央に</button><button class="full">全画面にする</button><span class="status" role="status">✓ 保存済み</span></div><div class="body"><textarea class="paper" aria-label="変更後の本文" placeholder="ここから書き始めましょう。">${text}</textarea></div><div class="notebar">入力候補：葉　葉音　＋新しく登録</div></div><p class="message" role="status"></p><p class="caption">② 周辺を隠し、本文の幅はPCで最大800px。モックの全画面ボタンは表示のみ切り替わります。</p></section></div>`)}
+document.querySelector('#theme').onclick=()=>document.documentElement.classList.toggle('dark');document.querySelectorAll('.focus').forEach(b=>b.onclick=()=>{const f=b.closest('.frame');f.classList.toggle('normal');b.textContent=f.classList.contains('normal')?'① 集中モード':'③ 集中モードを終了';b.setAttribute('aria-pressed',!f.classList.contains('normal'))});document.querySelectorAll('.track').forEach(b=>b.onclick=()=>{const on=b.getAttribute('aria-pressed')!=='true';b.setAttribute('aria-pressed',on);b.closest('.frame').querySelector('.paper').style.paddingTop=on?'140px':'28px'});document.querySelectorAll('.full').forEach(b=>b.onclick=()=>b.textContent=b.textContent==='全画面にする'?'全画面を終了':'全画面にする');document.querySelector('#state').onchange=e=>{const v=e.target.value;document.querySelectorAll('.after').forEach(s=>{s.classList.toggle('keyboard',v==='keyboard');s.classList.toggle('candidate',v==='candidate');s.querySelector('.paper').value=v==='empty'?'':text;s.querySelector('.status').textContent=({dirty:'○ 未保存',saving:'保存中…',error:'○ 未保存',empty:'ローカル保存'})[v]||'✓ 保存済み';s.querySelector('.message').textContent=v==='error'?'保存できませんでした。もう一度お試しください':v==='offline'?'オフライン：端末内に保存します':v==='free'?'無料会員：同じ機能を使えます':''})};
+</script></html>

@@ -1,11 +1,8 @@
 import {
-  Check,
-  CircleDot,
   CloudOff,
   CloudUpload,
   CreditCard,
   Download,
-  HardDrive,
   History,
   LoaderCircle,
   Menu,
@@ -15,19 +12,16 @@ import { lazy, Suspense } from 'react'
 import { cn } from '@/lib/utils'
 import { openBillingPortal } from '@/ui/_api/billing'
 import { useAuth } from '@/ui/auth/auth-context'
+import { type SaveState, SaveStatus } from '@/ui/components/SaveStatus/save-status'
 import { Button } from '@/ui/components/ui/button'
 import { useOpenProfile, usePenName } from '@/ui/hooks/use-pen-name'
 import { useSyncStatus } from '@/ui/hooks/use-sync-status'
-import type { SaveStatus } from '@/ui/store/editorStore'
+
+export type { SaveState } from '@/ui/components/SaveStatus/save-status'
 
 // 会員のアカウント操作（解約／サインアウト）は Clerk の UserButton。@clerk/clerk-react を含むので
 // 別チャンク化し、会員描画時だけ lazy import する（ゲストの主バンドルに Clerk を混ぜない）。
 const ClerkUserButton = lazy(() => import('@/ui/auth/clerk-user-button'))
-
-export interface SaveState {
-  dirty: boolean
-  status: SaveStatus
-}
 
 interface TopAppBarProps {
   /** ブランド表示。省略時は「コトノハ-leaf-」ロゴを描画する。 */
@@ -48,40 +42,6 @@ interface TopAppBarProps {
   /** サイドバー（ドロワー）の開閉トグル。狭幅でのみ表示。未指定なら非表示 */
   onToggleNav?: () => void
   navOpen?: boolean
-}
-
-function SaveIndicator({ dirty, status }: SaveState) {
-  if (status === 'saving') {
-    return (
-      <span className="flex items-center gap-1.5 font-sans text-on-surface-variant text-xs">
-        <LoaderCircle className="size-4 animate-spin" aria-hidden />
-        {/* 狭幅は横幅を稼ぐためラベルを視覚的に畳む。sr-only なので読み上げには残る。 */}
-        <span className="max-sm:sr-only">保存中…</span>
-      </span>
-    )
-  }
-  if (status === 'saved' && !dirty) {
-    return (
-      <span className="flex items-center gap-1.5 font-sans text-on-surface-variant text-xs">
-        <Check className="size-4 text-primary" aria-hidden />
-        <span className="max-sm:sr-only">保存済み</span>
-      </span>
-    )
-  }
-  if (dirty) {
-    return (
-      <span className="flex items-center gap-1.5 font-sans text-on-surface-variant text-xs">
-        <CircleDot className="size-4" aria-hidden />
-        <span className="max-sm:sr-only">未保存</span>
-      </span>
-    )
-  }
-  return (
-    <span className="flex items-center gap-1.5 font-sans text-on-surface-variant/60 text-xs">
-      <HardDrive className="size-4" aria-hidden />
-      <span className="max-sm:sr-only">ローカル保存</span>
-    </span>
-  )
 }
 
 /**
@@ -269,7 +229,7 @@ export function TopAppBar({
       </div>
       {/* 右側（状態表示とアカウント）は縮めない。左のロゴ側に幅を譲らせる。 */}
       <div className="flex shrink-0 items-center gap-3">
-        {saveStatus ? <SaveIndicator {...saveStatus} /> : null}
+        {saveStatus ? <SaveStatus {...saveStatus} /> : null}
         <SyncIndicator />
         {onToggleHistory ? (
           <button

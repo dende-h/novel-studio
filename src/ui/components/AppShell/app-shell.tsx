@@ -3,6 +3,8 @@ import { cn } from '@/lib/utils'
 import { type SaveState, TopAppBar } from '@/ui/components/TopAppBar/top-app-bar'
 
 interface AppShellProps {
+  focusMode?: boolean
+  focusControls?: ReactNode
   onBrandClick?: () => void
   /** ヘッダーのパンくずに出す作品タイトル（任意） */
   workTitle?: string
@@ -26,6 +28,8 @@ interface AppShellProps {
 
 /** トップバー＋サイドバー＋メイン（＋任意の右ペイン）の共通レイアウト。 */
 export function AppShell({
+  focusMode = false,
+  focusControls,
   onBrandClick,
   workTitle,
   saveStatus,
@@ -43,22 +47,30 @@ export function AppShell({
   // 別コンポーネントを返して AppShell ごと unmount されるため、閉じ直しは state 初期化で足りる。
   const [navOpen, setNavOpen] = useState(false)
   return (
-    <div className="flex h-dvh flex-col bg-background text-foreground">
-      <TopAppBar
-        onBrandClick={onBrandClick}
-        workTitle={workTitle}
-        saveStatus={saveStatus}
-        onExport={onExport}
-        exportDisabled={exportDisabled}
-        onPublish={onPublish}
-        onToggleHistory={onToggleHistory}
-        historyOpen={historyOpen}
-        onToggleNav={() => setNavOpen((v) => !v)}
-        navOpen={navOpen}
-      />
+    <div
+      className={cn(
+        'flex h-dvh flex-col bg-background text-foreground',
+        focusMode && 'writing-focus-shell',
+      )}
+    >
+      <div hidden={focusMode} className="shrink-0">
+        <TopAppBar
+          onBrandClick={onBrandClick}
+          workTitle={workTitle}
+          saveStatus={saveStatus}
+          onExport={onExport}
+          exportDisabled={exportDisabled}
+          onPublish={onPublish}
+          onToggleHistory={onToggleHistory}
+          historyOpen={historyOpen}
+          onToggleNav={() => setNavOpen((v) => !v)}
+          navOpen={navOpen}
+        />
+      </div>
+      {focusMode ? focusControls : null}
       <div className="relative flex min-h-0 flex-1">
         {/* 左サイドバー。lg 以上は行内の列、lg 未満は 248px を本文から奪わないようドロワー表示。 */}
-        {navOpen ? (
+        {navOpen && !focusMode ? (
           <button
             type="button"
             aria-label="メニューを閉じる"
@@ -74,6 +86,7 @@ export function AppShell({
           className={cn(
             'absolute inset-y-0 left-0 z-40 flex shrink-0 shadow-2xl lg:static lg:z-auto lg:shadow-none',
             !navOpen && 'max-lg:hidden',
+            focusMode && 'hidden!',
           )}
           // ナビ内の操作＝行き先が決まったとみなして閉じる。同一 AppShell 内の画面切替
           // （activeScreen）は unmount されないため、SideNav 側に prop を足さずここで拾う。
@@ -87,7 +100,7 @@ export function AppShell({
         {/* 右ペイン（履歴）。xl 以上は行内の列、xl 未満（対応下限〜）は本文を狭めないようオーバーレイ表示。 */}
         {aside ? (
           <>
-            {onCloseAside ? (
+            {onCloseAside && !focusMode ? (
               <button
                 type="button"
                 aria-label="履歴ドロワーを閉じる"
@@ -95,7 +108,12 @@ export function AppShell({
                 className="absolute inset-0 z-30 bg-black/30 xl:hidden"
               />
             ) : null}
-            <div className="absolute inset-y-0 right-0 z-40 flex shrink-0 shadow-2xl xl:static xl:z-auto xl:shadow-none">
+            <div
+              className={cn(
+                'absolute inset-y-0 right-0 z-40 flex shrink-0 shadow-2xl xl:static xl:z-auto xl:shadow-none',
+                focusMode && 'hidden!',
+              )}
+            >
               {aside}
             </div>
           </>

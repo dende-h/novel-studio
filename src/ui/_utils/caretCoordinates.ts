@@ -79,3 +79,94 @@ export function getCaretCoordinates(el: HTMLTextAreaElement, position: number): 
     return { top: 0, left: 0, height: 0 }
   }
 }
+
+/**
+ * 連続入力向けの計測器。段落のDOMを再利用し、変わった段落だけ再組版する。
+ * 使い終えたらdisposeする（単発の補完位置取得はgetCaretCoordinatesを使う）。
+ */
+export function createCaretMeasurer(el: HTMLTextAreaElement): {
+  measure: (position: number) => CaretCoordinates
+  dispose: () => void
+} {
+  const doc = el.ownerDocument
+  const mirror = doc.createElement('div')
+  mirror.setAttribute('aria-hidden', 'true')
+  Object.assign(mirror.style, {
+    position: 'fixed',
+    height: '0',
+    visibility: 'hidden',
+    pointerEvents: 'none',
+    whiteSpace: 'pre-wrap',
+    overflowWrap: 'break-word',
+    overflow: 'hidden',
+    left: '0',
+    top: '0',
+  })
+  const span = doc.createElement('span')
+  const nodes: HTMLDivElement[] = []
+  let lines: string[] = []
+  let activeLine = -1
+  let signature = ''
+  doc.body.append(mirror)
+
+  return {
+    measure(position) {
+      try {
+        const computed = getComputedStyle(el)
+        const lineHeight = Number.parseFloat(computed.lineHeight)
+        if (!Number.isFinite(lineHeight) || el.clientWidth <= 0)
+          return { top: 0, left: 0, height: 0 }
+        const values = MIRRORED.map((key) => computed[key as keyof CSSStyleDeclaration])
+        const nextSignature = `${values.join('|')}|${el.clientWidth}`
+        if (signature !== nextSignature) {
+          for (const key of MIRRORED)
+            mirror.style.setProperty(
+              key.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`),
+              String(computed[key as keyof CSSStyleDeclaration]),
+            )
+          mirror.style.boxSizing = 'border-box'
+          mirror.style.width = `${el.clientWidth + (Number.parseFloat(computed.borderLeftWidth) || 0) + (Number.parseFloat(computed.borderRightWidth) || 0)}px`
+          for (const node of nodes) node.style.minHeight = `${lineHeight}px`
+          signature = nextSignature
+        }
+        const nextLines = el.value.split('\n')
+        const previousNode = nodes[activeLine]
+        if (previousNode) previousNode.textContent = lines[activeLine] ?? ''
+        const caret = Math.max(0, Math.min(el.value.length, position))
+        const before = el.value.slice(0, caret)
+        const index = before.split('\n').length - 1
+        for (let i = 0; i < nextLines.length; i++) {
+          const text = nextLines[i] ?? ''
+          let node = nodes[i]
+          if (!node) {
+            node = doc.createElement('div')
+            node.style.minHeight = `${lineHeight}px`
+            mirror.append(node)
+            nodes.push(node)
+          }
+          if (lines[i] !== text || i === activeLine) node.textContent = text
+        }
+        while (nodes.length > nextLines.length) nodes.pop()?.remove()
+        lines = nextLines
+        activeLine = index
+        const node = nodes[index]
+        if (!node) return { top: 0, left: 0, height: 0 }
+        const text = lines[index] ?? ''
+        const column = caret - (before.lastIndexOf('\n') + 1)
+        node.textContent = text.slice(0, column)
+        span.textContent = text.slice(column, column + 1) || '.'
+        node.append(span, doc.createTextNode(text.slice(column + 1)))
+        const box = span.getBoundingClientRect()
+        const origin = mirror.getBoundingClientRect()
+        return {
+          top: box.top - origin.top - el.scrollTop,
+          left: box.left - origin.left - el.scrollLeft,
+          height: lineHeight,
+        }
+      } catch {
+        return { top: 0, left: 0, height: 0 }
+      }
+    },
+    dispose: () => mirror.remove(),
+  }
+}

@@ -725,3 +725,18 @@ describe('EditorPane（検索結果の選択）', () => {
     expect(onChange).not.toHaveBeenCalled()
   })
 })
+
+it('集中表示でも本文と選択を維持し、脚本チェックだけを隠す', () => {
+  const { rerender } = render(<EditorPane value="○公園（昼）" onChange={() => {}} scriptMode />)
+  const ta = screen.getByRole('textbox', { name: '本文' }) as HTMLTextAreaElement
+  ta.setSelectionRange(1, 3)
+  const details = screen.getByText(/脚本の書式チェック/).closest('details') as HTMLDetailsElement
+  details.open = true
+  rerender(<EditorPane value="○公園（昼）" onChange={() => {}} scriptMode focusMode />)
+  expect(screen.getByRole('textbox', { name: '本文' })).toBe(ta)
+  expect([ta.selectionStart, ta.selectionEnd]).toEqual([1, 3])
+  expect(screen.getByText(/脚本の書式チェック/)).not.toBeVisible()
+  rerender(<EditorPane value="○公園（昼）" onChange={() => {}} scriptMode />)
+  expect(screen.getByText(/脚本の書式チェック/)).toBeVisible()
+  expect(details.open).toBe(true)
+})

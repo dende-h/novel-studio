@@ -516,3 +516,22 @@
   letter-spacing: 0.05em;
   color: #555;
 }
+
+/* 集中表示では、キーボード表示後の可視領域に操作列と本文を収める。 */
+.writing-focus-shell {
+  position: fixed;
+  inset-inline: 0;
+  top: var(--writing-vv-top, 0px);
+  height: var(--writing-vv-height, 100dvh);
+}
+
+.writing-focus-editor {
+  max-width: 800px;
+  margin-inline: auto;
+}
+
+@media (width < 1024px) {
+  .writing-focus-editor .editor {
+    padding-inline: 24px;
+  }
+}

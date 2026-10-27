@@ -18,6 +18,7 @@ interface NotationBarProps {
 export function NotationBar({ onApply, items = notationItems(false, 'mobile') }: NotationBarProps) {
   return (
     <div
+      data-writing-obstruction
       role="toolbar"
       aria-label="記法の挿入"
       aria-orientation="horizontal"

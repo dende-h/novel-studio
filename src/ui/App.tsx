@@ -1,5 +1,14 @@
 import { BookMarked, Milestone, Plus, Replace } from 'lucide-react'
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import {
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 import { localDateKey } from '@/core/activity'
 import { blocksToHtml } from '@/core/exporter/toHtml'
 import { findAppearances, resolvedNameSet, resolveRef } from '@/core/glossary'
@@ -35,6 +44,7 @@ import { GlossaryView } from '@/ui/components/GlossaryView/glossary-view'
 import { HistoryPanel } from '@/ui/components/HistoryPanel/history-panel'
 import { PlotPeek } from '@/ui/components/PlotPeek/plot-peek'
 import { PreviewPane } from '@/ui/components/PreviewPane/preview-pane'
+import { SaveStatus } from '@/ui/components/SaveStatus/save-status'
 import { SHEET_PRESETS } from '@/ui/components/ScriptSheet/script-sheet'
 import { ScriptSheetView } from '@/ui/components/ScriptSheet/script-sheet-view'
 import { SideNav } from '@/ui/components/SideNav/side-nav'
@@ -43,6 +53,7 @@ import { useToast } from '@/ui/components/Toast/toast'
 import { Button } from '@/ui/components/ui/button'
 import { WorkMetaDialog } from '@/ui/components/WorkMetaDialog/work-meta-dialog'
 import { WorkSearchPanel } from '@/ui/components/WorkSearchPanel/work-search-panel'
+import { WritingModeControls } from '@/ui/components/WritingModeControls/writing-mode-controls'
 import { useAutosave } from '@/ui/hooks/use-autosave'
 import { useEditorStore } from '@/ui/hooks/use-editor-store'
 import type { NameDismissalRepo } from '@/ui/hooks/use-name-dismissals'
@@ -50,6 +61,7 @@ import { useIsNarrow } from '@/ui/hooks/use-narrow'
 import { useOpenProfile } from '@/ui/hooks/use-pen-name'
 import { type ProofreadRecordRepo, useProofreadRecord } from '@/ui/hooks/use-proofread-record'
 import type { ProofreadRulesRepo } from '@/ui/hooks/use-proofread-rules'
+import { useWritingMode } from '@/ui/hooks/use-writing-mode'
 import type { EditorStore } from '@/ui/store/editorStore'
 
 interface AppProps {
@@ -293,6 +305,15 @@ export function App({
 
   const episode = work?.episodes.find((e) => e.id === state.currentEpisodeId) ?? null
   const onEpisodes = activeScreen === 'episodes'
+  const writingMode = useWritingMode(Boolean(episode && onEpisodes))
+  const focusMode = writingMode.focus
+  const previousFocusMode = useRef(false)
+  useLayoutEffect(() => {
+    if (focusMode || (previousFocusMode.current && (pane === 'editor' || !narrow))) {
+      editorRef.current?.focus()
+    }
+    previousFocusMode.current = focusMode
+  }, [focusMode, pane, narrow])
 
   const openExport = async () => {
     try {
@@ -473,6 +494,18 @@ export function App({
   return (
     <div ref={appInteractionRef} className="h-full" aria-busy={state.workOperation !== 'idle'}>
       <AppShell
+        focusMode={focusMode}
+        focusControls={
+          <div className="writing-focus-controls flex shrink-0 flex-wrap items-center gap-1 border-outline-variant/30 border-b bg-surface-container-lowest px-3">
+            <WritingModeControls
+              mode={writingMode}
+              onFocusEditor={() => editorRef.current?.focus()}
+            />
+            <div className="ml-auto py-2">
+              <SaveStatus dirty={state.dirty} status={state.status} alwaysLabel />
+            </div>
+          </div>
+        }
         onBrandClick={onExit}
         workTitle={work?.title}
         saveStatus={{ dirty: state.dirty, status: state.status }}
@@ -708,8 +741,18 @@ export function App({
           ) : episode ? (
             <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col">
               {/* エディタツールバー */}
-              <div className="flex min-h-[46px] shrink-0 flex-wrap items-center justify-between gap-3 border-outline-variant/30 border-b bg-surface-container-lowest px-4 py-2">
+              <div
+                hidden={focusMode}
+                className={cn(
+                  'flex min-h-[46px] shrink-0 flex-wrap items-center justify-between gap-3 border-outline-variant/30 border-b bg-surface-container-lowest px-4 py-2',
+                  focusMode && 'hidden!',
+                )}
+              >
                 <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2.5">
+                  <WritingModeControls
+                    mode={writingMode}
+                    onFocusEditor={() => editorRef.current?.focus()}
+                  />
                   {/* 狭幅では話タイトルを畳む（ドロワーの話一覧で分かる）。代わりに面の切替を置く。 */}
                   <span className="truncate font-medium font-sans text-[13px] text-on-surface max-lg:hidden">
                     {episode.title}
@@ -921,11 +964,14 @@ export function App({
                 <div
                   className={cn(
                     'relative flex min-w-0 flex-[1.3_1_0%] flex-col border-outline-variant/30 lg:border-r',
-                    pane !== 'editor' && 'max-lg:hidden',
+                    pane !== 'editor' && !focusMode && 'max-lg:hidden',
+                    focusMode && 'border-r-0! bg-surface-container-lowest',
                   )}
                 >
                   <EditorPane
                     ref={editorRef}
+                    focusMode={focusMode}
+                    typewriter={writingMode.typewriter}
                     readOnly={state.workOperation !== 'idle'}
                     scriptMode={work?.format === 'script'}
                     value={state.draft}
@@ -934,46 +980,54 @@ export function App({
                     onCreateEntry={(name) => store.addGlossaryEntry({ name })}
                   />
                   {replaceOpen ? (
-                    <WorkSearchPanel
-                      sources={searchSources}
-                      busy={state.workOperation !== 'idle'}
-                      value={state.draft}
-                      onApply={(next, count, keepOpen = false) => {
-                        store.setDraft(next)
-                        if (!keepOpen) setReplaceOpen(false)
-                        show(`${count}件を置換しました`)
-                      }}
-                      onClose={closeSearch}
-                      onReplace={async (sources, query, replacement, target) => {
-                        if (!work) return
-                        const result = await store.replaceWorkMatches({
-                          workId: work.id,
-                          sources,
-                          query,
-                          replacement,
-                          target,
-                        })
-                        if (result.committed)
-                          show(result.warning ?? `${result.count}件を置換しました`)
-                      }}
-                      onNavigate={async (sources, query, match) => {
-                        if (!work) return
-                        const range = await store.navigateWorkMatch({
-                          workId: work.id,
-                          sources,
-                          query,
-                          match,
-                        })
-                        setPane('editor')
-                        if (narrow) setReplaceOpen(false)
-                        requestAnimationFrame(() =>
-                          editorRef.current?.selectRange(range.start, range.end),
-                        )
-                      }}
-                    />
+                    <div hidden={focusMode} className={focusMode ? 'hidden' : 'contents'}>
+                      <WorkSearchPanel
+                        sources={searchSources}
+                        busy={state.workOperation !== 'idle'}
+                        value={state.draft}
+                        onApply={(next, count, keepOpen = false) => {
+                          store.setDraft(next)
+                          if (!keepOpen) setReplaceOpen(false)
+                          show(`${count}件を置換しました`)
+                        }}
+                        onClose={closeSearch}
+                        onReplace={async (sources, query, replacement, target) => {
+                          if (!work) return
+                          const result = await store.replaceWorkMatches({
+                            workId: work.id,
+                            sources,
+                            query,
+                            replacement,
+                            target,
+                          })
+                          if (result.committed)
+                            show(result.warning ?? `${result.count}件を置換しました`)
+                        }}
+                        onNavigate={async (sources, query, match) => {
+                          if (!work) return
+                          const range = await store.navigateWorkMatch({
+                            workId: work.id,
+                            sources,
+                            query,
+                            match,
+                          })
+                          setPane('editor')
+                          if (narrow) setReplaceOpen(false)
+                          requestAnimationFrame(() =>
+                            editorRef.current?.selectRange(range.start, range.end),
+                          )
+                        }}
+                      />
+                    </div>
                   ) : null}
                 </div>
-                <div className={cn('min-w-0 flex-[1_1_0%]', pane !== 'preview' && 'max-lg:hidden')}>
+                <div
+                  className={cn(
+                    'min-w-0 flex-[1_1_0%]',
+                    pane !== 'preview' && 'max-lg:hidden',
+                    focusMode && 'hidden!',
+                  )}
+                >
                   {scriptPages ? (
                     <ScriptSheetView pages={scriptPages} preset={sheetPreset} />
                   ) : (
@@ -987,7 +1041,12 @@ export function App({
               </div>
 
               {/* ステータスバー */}
-              <div className="flex h-[38px] shrink-0 items-center justify-between border-outline-variant/30 border-t bg-surface-container-lowest px-4 max-lg:h-7">
+              <div
+                className={cn(
+                  'flex h-[38px] shrink-0 items-center justify-between border-outline-variant/30 border-t bg-surface-container-lowest px-4 max-lg:h-7',
+                  focusMode && 'hidden!',
+                )}
+              >
                 {/* 狭幅は縦を本文に譲る（TopAppBar+ツールバー+ここで既に 120px 超を消費している）。 */}
                 <span className="font-sans text-[11px] text-on-surface-variant/60 max-lg:hidden">
                   自動保存 ON

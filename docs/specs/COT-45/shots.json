@@ -1,0 +1,77 @@
+{
+  "outDir": "docs/specs/COT-45/screens",
+  "shots": [
+    {
+      "name": "writer",
+      "viewports": [
+        "desktop",
+        "mobile"
+      ],
+      "steps": [
+        {
+          "goto": "/"
+        },
+        {
+          "click": {
+            "selector": "button:has-text(\"新規プロジェクト\")"
+          }
+        },
+        {
+          "fill": {
+            "label": "作品タイトル",
+            "value": "集中モードの試し書き"
+          }
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "作成",
+            "exact": true
+          }
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "「集中モードの試し書き」を執筆"
+          }
+        },
+        {
+          "wait": 400
+        },
+        {
+          "eval": "(() => { const b=document.querySelector(\"button[aria-label=\\\"メニュー\\\"]\"); if(b && getComputedStyle(b).display!==\"none\") b.click() })()"
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "新しいエピソード",
+            "exact": true
+          }
+        },
+        {
+          "fill": {
+            "label": "話タイトル",
+            "value": "第一話"
+          }
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "追加",
+            "exact": true
+          }
+        },
+        {
+          "wait": 500
+        },
+        {
+          "fill": {
+            "label": "本文",
+            "value": "窓の外で、葉が揺れていた。\n書きかけの言葉に、もう一度目を戻す。\n\n静かな部屋に、キーを打つ音が響く。\n静かな部屋に、キーを打つ音が響く。\n静かな部屋に、キーを打つ音が響く。\n静かな部屋に、キーを打つ音が響く。\n静かな部屋に、キーを打つ音が響く。\n静かな部屋に、キーを打つ音が響く。\n静かな部屋に、キーを打つ音が響く。\n静かな部屋に、キーを打つ音が響く。\n静かな部屋に、キーを打つ音が響く。\n静かな部屋に、キーを打つ音が響く。\n静かな部屋に、キーを打つ音が響く。\n静かな部屋に、キーを打つ音が響く。\n静かな部屋に、キーを打つ音が響く。\n静かな部屋に、キーを打つ音が響く。\n静かな部屋に、キーを打つ音が響く。\n静かな部屋に、キーを打つ音が響く。\n静かな部屋に、キーを打つ音が響く。\n静かな部屋に、キーを打つ音が響く。\n静かな部屋に、キーを打つ音が響く。\n静かな部屋に、キーを打つ音が響く。",
+            "exact": true
+          }
+        }
+      ]
+    }
+  ]
+}

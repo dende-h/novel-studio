@@ -554,3 +554,30 @@ describe('App（推敲画面と「直す箇所」・COT-40）', () => {
     await waitFor(() => expect(ta.value.slice(ta.selectionStart, ta.selectionEnd)).toBe('がが'))
   })
 })
+
+it('集中モード中に保存が失敗しても下書きとエラー通知を残す', async () => {
+  const store = makeStore()
+  await seedWorkEpisode(store)
+  const save = vi.spyOn(store, 'save').mockRejectedValue(new Error('disk full'))
+  const view = render(
+    <ToastProvider>
+      <App store={store} />
+    </ToastProvider>,
+  )
+  try {
+    fireEvent.click(screen.getByRole('button', { name: /^集中モード$/ }))
+    const ta = screen.getByRole('textbox', { name: '本文' })
+    fireEvent.change(ta, { target: { value: 'まだ保存できていない本文' } })
+    expect(
+      await screen.findByText(/保存できませんでした。下書きは残っています/, {}, { timeout: 3000 }),
+    ).toBeVisible()
+    expect(ta).toHaveValue('まだ保存できていない本文')
+    expect(screen.queryByText('保存済み')).toBeNull()
+    expect(screen.getByRole('button', { name: '集中モードを終了' })).toBeVisible()
+  } finally {
+    view.unmount()
+    save.mockRestore()
+    localStorage.removeItem('ns-writing-focus')
+    localStorage.removeItem('ns-writing-typewriter')
+  }
+})

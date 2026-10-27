@@ -11,9 +11,11 @@ import { PERSON_CATEGORY, resolveRef, shouldTriggerSuggest, suggestRefs } from '
 import { needsRubyPipe, parseEpisodeBody } from '@/core/parser/parseNotation'
 import type { GlossaryEntry } from '@/core/schema'
 import { proofreadScript } from '@/core/script/proofread'
+import { cn } from '@/lib/utils'
 import { getCaretCoordinates } from '@/ui/_utils/caretCoordinates'
 import { useKeyboardInset } from '@/ui/hooks/use-keyboard-inset'
 import { useIsNarrow } from '@/ui/hooks/use-narrow'
+import { useTypewriterScroll } from '@/ui/hooks/use-typewriter-scroll'
 import { type NotationKind, notationForKey, notationItems } from './notation'
 import { NotationBar } from './notation-bar'
 import { ProofreadPanel } from './proofread-panel'
@@ -24,11 +26,14 @@ export type { NotationKind } from './notation'
 
 /** 外（ツールバー）から記法挿入を呼ぶためのハンドル。 */
 export interface EditorPaneHandle {
+  focus: () => void
   applyNotation: (kind: NotationKind) => void
   selectRange: (start: number, end: number) => void
 }
 
 interface EditorPaneProps {
+  focusMode?: boolean
+  typewriter?: boolean
   readOnly?: boolean
   scriptMode?: boolean
   value: string
@@ -56,6 +61,8 @@ const isTrigger = (ch: string) => ch === '@' || ch === '＠'
 /** 本文エディタ（素の textarea＋自前パーサ方式 A1）。WYSIWYG は IME 問題ゆえ不採用。 */
 export function EditorPane({
   ref,
+  focusMode = false,
+  typewriter = false,
   value,
   onChange,
   glossary = [],
@@ -301,6 +308,7 @@ export function EditorPane({
   useImperativeHandle(
     ref,
     () => ({
+      focus: () => taRef.current?.focus({ preventScroll: true }),
       applyNotation,
       selectRange: (start, end) => {
         const el = taRef.current
@@ -325,6 +333,14 @@ export function EditorPane({
       el.focus()
       el.setSelectionRange(pos, pos)
     }
+  })
+
+  useTypewriterScroll(taRef, {
+    enabled: typewriter,
+    readOnly,
+    value,
+    layout: `${focusMode}:${narrow}:${open}`,
+    onScroll: refresh,
   })
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -407,7 +423,12 @@ export function EditorPane({
   }
 
   return (
-    <div className="relative flex h-full min-h-0 w-full flex-col bg-surface-container-lowest">
+    <div
+      className={cn(
+        'relative flex h-full min-h-0 w-full flex-col bg-surface-container-lowest',
+        focusMode && 'writing-focus-editor',
+      )}
+    >
       {/* 本文（行数・文字数はエディタ画面下部のステータスバーが表示する） */}
       <textarea
         ref={taRef}
@@ -444,12 +465,14 @@ export function EditorPane({
       />
 
       {scriptMode ? (
-        <ProofreadPanel
-          title="脚本の書式チェック"
-          intro="ト書きの字下げ、柱の前の余白、！？の後ろの1マスは表示・書き出し時に自動で揃います。意図した表現なら、そのまま使えます。"
-          notices={notices}
-          onJump={jumpToBlock}
-        />
+        <div hidden={focusMode} className={focusMode ? 'hidden' : 'contents'}>
+          <ProofreadPanel
+            title="脚本の書式チェック"
+            intro="ト書きの字下げ、柱の前の余白、！？の後ろの1マスは表示・書き出し時に自動で揃います。意図した表現なら、そのまま使えます。"
+            notices={notices}
+            onJump={jumpToBlock}
+          />
+        </div>
       ) : null}
 
       {open && suggest ? (
@@ -476,7 +499,7 @@ export function EditorPane({
             onHover={setActiveIndex}
           />
         )
-      ) : narrow && focused ? (
+      ) : narrow && focused && !focusMode ? (
         // サジェストと同じ位置に出るので、候補が出ていない間だけ記法バーを見せる。
         <NotationBar onApply={applyNotation} items={notationItems(scriptMode, 'mobile')} />
       ) : null}
