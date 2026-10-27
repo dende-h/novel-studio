@@ -74,7 +74,7 @@ Cloudflare Pages Functions
 | **ペンネーム（表示名）**の扱い — ヘッダ・サイドバー・新しい作品の著者・掲示板の表示名は同じ 1 つ | 判定は `src/core/profile/account.ts`、配線は `src/ui/hooks/use-pen-name.ts`、編集は `src/ui/components/ProfileDialog/`（Root が 1 つだけ持つ）、正本はサーバの `board_profiles.display_name` |
 | **コトノハ-grove- （grove）の作者名** — コトノハ-leaf- のペンネームとは**別物**（D-PENNAME-GROVE）。語も分ける（ペンネーム／作者名） | `src/ui/components/PublishPage/publish-page.tsx` の `AuthorNameCard`（投稿前に名前を見せる）＋ `author-register-card.tsx`（登録）。取得は `src/ui/_api/author.ts`。変更の口は コトノハ-grove- の `/settings` |
 | 解約後の復元猶予中の案内（ライブラリ上部・復元／書き出し／再開。アプリは塞がない） | `src/ui/components/RestoreGrace/` + `src/ui/Root.tsx`（`canRestore`・Library の `notice`）+ `src/ui/auth/clerk-gate.tsx` |
-| 未課金・解約アカウントの削除（reaper） | `src/core/billing/reap-policy.ts` + `functions/api/billing/reap.ts` + `functions/api/_lib/purge.ts` |
+| 解約して猶予が切れた人のクラウドデータ削除（reaper・ログインと掲示板は残す） | `src/core/billing/reap-policy.ts` + `functions/api/billing/reap.ts` + `functions/api/_lib/purge.ts` |
 | 画面遷移・ルート追加 | `src/ui/Root.tsx` + `src/ui/hooks/use-hash-route.ts` |
 | DB スキーマ | `migrations/*.sql` + `wrangler.toml` |
 | ランディングページ（機能紹介・プラン表・スクリーンショット） | `public/lp/index.html` + `public/lp/shots/`（AI 連携の案内ページは `public/lp/ai/index.html`。FAQ を直したら同じファイルの JSON-LD の FAQPage も直す） |
@@ -150,7 +150,7 @@ Cloudflare Pages Functions
 | `backup/` | クラウド全体バックアップの直列化（`CloudBackup` v1） |
 | `src/core/nudge/backup-nudge.ts` | バックアップ促しの判定（節目・クールダウン） |
 | `src/core/billing/stripe-event.ts` | Stripe イベント → `StripeAction` 解釈 |
-| `src/core/billing/reap-policy.ts` | アカウント削除の判定（`shouldReap`）。**解約後の猶予切れだけ**が対象＝無料アカウントに期限は無い |
+| `src/core/billing/reap-policy.ts` | クラウドデータ削除の判定（`shouldReap`）。**解約後の猶予切れだけ**が対象・ログインは消さない＝無料アカウントに期限は無い |
 | `src/core/mcp-edit/index.ts` | **MCP 経由の編集操作の純ロジック**（`createWork` `setEpisode` `upsertGlossaryEntry` `setPlotMeta` `setPlotWorldNote` `deletePlotWorldNote` `setStagingCues`（演出譜） 等）。サーバの MCP ツールはこれを呼ぶ |
 | `activity/` | 執筆記録（`localDateKey` `currentStreak` `buildHeatmap`） |
 | `stats/` | 文字数カウント |
@@ -314,7 +314,7 @@ Clerk へ登録済みのクライアントの互換。消すとトークン更�
 | `/game-templates/*` | **運営テンプレの公開読み口**（認証なし・`/api/` の外＝SW がキャッシュする）。`manifest.json`（目録・max-age=300）／`<kind>/<slug>[.thumb].<ext>`（ext は MIME から＝webp/png/jpg/mp3/m4a・`?v=<hash>`・immutable）。実装は `functions/game-templates/[[path]].ts` |
 | `/api/admin/templates` | 運営テンプレの管理（**staff だけ・それ以外は 404**）。GET=目録 / PUT=`?kind=&slug=` 投入・置き換え（kind bg/sprite は画像 1.5MB＋サムネ、se は mp3/m4a 2MB＋長さ、bgm は mp3/m4a 8MB＋長さ＋ループ区間） / PATCH=表示名・分類・時間帯・並び・非表示・BGM のループ区間・分類の表示名 / DELETE=非表示 |
 | `POST /api/hit` | 訪問者集計（Cookie なし） |
-| `/api/billing/{checkout,portal,status,reap}` | Stripe Checkout / Portal / 会員状態 / 未課金回収ジョブ |
+| `/api/billing/{checkout,portal,status,reap}` | Stripe Checkout / Portal / 会員状態 / 猶予切れのクラウドデータ削除ジョブ |
 | `POST /api/webhooks/stripe` | Stripe webhook → D1 `subscriptions` にミラー |
 | `GET /api/board/threads` | 掲示板の一覧（`?kind=` `?cursor=`）。**未ログインでも読める** |
 | `POST /api/board/threads` | スレ立て（本文＋任意でアンケート）。リンクカードの取得もここ |
