@@ -59,3 +59,34 @@ describe('PreviewPane（@参照リンクの操作）', () => {
     expect(container.querySelector('[data-ref-name="アリス"]')?.getAttribute('tabindex')).toBeNull()
   })
 })
+
+describe('PreviewPane（縦書きのホイール）', () => {
+  it('縦のホイールを横へ変換し、Ctrl・横ジェスチャー・横書きはそのまま通す', () => {
+    const { container, rerender } = render(<PreviewPane html="<p>本文</p>" />)
+    const article = container.querySelector('article') as HTMLElement
+    const wheel = (options: WheelEventInit) => {
+      const event = new WheelEvent('wheel', { cancelable: true, ...options })
+      // happy-dom の WheelEvent は修飾キーを初期化しない。実ブラウザの値を補う。
+      Object.defineProperty(event, 'ctrlKey', { value: options.ctrlKey ?? false })
+      article.dispatchEvent(event)
+      return event.defaultPrevented
+    }
+    expect(wheel({ deltaY: 80 })).toBe(true)
+    expect(article.scrollLeft).toBe(-80)
+    expect(wheel({ deltaY: 80, ctrlKey: true })).toBe(false)
+    expect(wheel({ deltaY: 20, deltaX: 60 })).toBe(false)
+    expect(article.scrollLeft).toBe(-80)
+    rerender(<PreviewPane html="<p>本文</p>" orientation="horizontal" />)
+    expect(wheel({ deltaY: 80 })).toBe(false)
+    expect(article.scrollLeft).toBe(-80)
+  })
+
+  it('スクロール端ではホイールを奪わない', () => {
+    const { container } = render(<PreviewPane html="<p>本文</p>" />)
+    const article = container.querySelector('article') as HTMLElement
+    Object.defineProperty(article, 'scrollLeft', { get: () => 0, set: () => {} })
+    const event = new WheelEvent('wheel', { deltaY: 80, cancelable: true })
+    article.dispatchEvent(event)
+    expect(event.defaultPrevented).toBe(false)
+  })
+})

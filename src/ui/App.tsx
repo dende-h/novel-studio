@@ -43,7 +43,7 @@ import { GlossaryPeek } from '@/ui/components/GlossaryPeek/glossary-peek'
 import { GlossaryView } from '@/ui/components/GlossaryView/glossary-view'
 import { HistoryPanel } from '@/ui/components/HistoryPanel/history-panel'
 import { PlotPeek } from '@/ui/components/PlotPeek/plot-peek'
-import { PreviewPane } from '@/ui/components/PreviewPane/preview-pane'
+import { PreviewPane, type PreviewPosition } from '@/ui/components/PreviewPane/preview-pane'
 import { SHEET_PRESETS } from '@/ui/components/ScriptSheet/script-sheet'
 import { ScriptSheetView } from '@/ui/components/ScriptSheet/script-sheet-view'
 import { SideNav } from '@/ui/components/SideNav/side-nav'
@@ -179,6 +179,10 @@ export function App({
   const [activeScreen, setActiveScreen] = useState<
     'episodes' | 'glossary' | 'outline' | 'mindmap' | 'chart' | 'plot' | 'staging' | 'proofread'
   >('episodes')
+  const [previewPosition, setPreviewPosition] = useState<PreviewPosition | null>(null)
+  const onCaretChange = useCallback((value: string, offset: number) => {
+    setPreviewPosition({ value, offset })
+  }, [])
   // プレビューの組み方向（日本語小説の標準＝縦書きが既定。ツールバーで切替）。
   const [orientation, setOrientation] = useState<'vertical' | 'horizontal'>('vertical')
   // 狭幅（lg 未満）で本文とプレビューのどちらを見せるか。縦書きは画面高＝行長のため
@@ -991,6 +995,7 @@ export function App({
                     scriptMode={work?.format === 'script'}
                     value={state.draft}
                     onChange={(v) => store.setDraft(v)}
+                    onCaretChange={onCaretChange}
                     glossary={work?.glossary ?? []}
                     onCreateEntry={(name) => store.addGlossaryEntry({ name })}
                   />
@@ -1048,6 +1053,8 @@ export function App({
                   ) : (
                     <PreviewPane
                       html={previewHtml}
+                      position={previewPosition?.value === state.draft ? previewPosition : null}
+                      followActive={!focusMode && (!narrow || pane === 'preview')}
                       onRefClick={onRefClick}
                       orientation={orientation}
                     />

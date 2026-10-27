@@ -230,3 +230,57 @@ test('縦書き入力は同じ本文を保持し、集中時は全幅で列を�
   await placeCaret(ta, value.length)
   await expect.poll(() => caretError(ta)).toBeLessThanOrEqual(1)
 })
+
+test('プレビューはホイールで横に読め、入力位置へ縦横とも追従する', async ({ page }) => {
+  const ta = await openWriter(page)
+  const text = Array.from({ length: 60 }, (_, i) => `段落${i}。${'漢字《かんじ》と《《強調》》の文章。'.repeat(i === 40 ? 80 : 12)}`).join('\n')
+  await ta.fill(text)
+  const preview = page.locator('article.preview')
+  const paragraph = preview.locator('p').nth(40)
+  const position = text.indexOf('段落40') + 8
+  await placeCaret(ta, position)
+  const visible = () => paragraph.evaluate((p) => {
+    const parent = p.closest('article')
+    if (!parent) return false
+    const a = parent.getBoundingClientRect()
+    const b = p.getBoundingClientRect()
+    return b.right > a.left && b.left < a.right && b.bottom > a.top && b.top < a.bottom
+  })
+  await expect.poll(visible).toBe(true)
+  const before = await preview.evaluate((el) => el.scrollLeft)
+  await preview.hover()
+  await page.mouse.wheel(0, 250)
+  await expect.poll(() => preview.evaluate((el) => el.scrollLeft)).toBeLessThan(before - 100)
+  const manual = await preview.evaluate((el) => el.scrollLeft)
+  await page.waitForTimeout(200)
+  expect(await preview.evaluate((el) => el.scrollLeft)).toBe(manual)
+  await placeCaret(ta, position)
+  await expect.poll(visible).toBe(true)
+  const endPosition = text.indexOf('\n段落41')
+  await placeCaret(ta, endPosition)
+  const tailVisible = () => paragraph.evaluate((p) => {
+    const article = p.closest('article')
+    if (!article || !p.lastChild) return false
+    const node = p.lastChild
+    const range = document.createRange()
+    const length = node.textContent?.length ?? 0
+    range.setStart(node, Math.max(0, length - 1))
+    range.setEnd(node, length)
+    const b = range.getBoundingClientRect()
+    const vertical = getComputedStyle(article).writingMode === 'vertical-rl'
+    const a = (vertical ? article : article.parentElement!).getBoundingClientRect()
+    return b.left >= a.left && b.right <= a.right && b.top >= a.top && b.bottom <= a.bottom
+  })
+  await expect.poll(tailVisible).toBe(true)
+  await page.getByRole('group', { name: 'プレビューの組み方向' }).getByRole('button', { name: '横書き', exact: true }).click()
+  await expect.poll(tailVisible).toBe(true)
+  await expect.poll(visible).toBe(true)
+  expect(await preview.evaluate((el) => el.parentElement!.scrollTop)).toBeGreaterThan(1000)
+  await placeCaret(ta, 0)
+  await expect.poll(() => preview.evaluate((el) => el.parentElement!.scrollTop)).toBeLessThan(100)
+  await ta.dispatchEvent('compositionstart')
+  await ta.fill(`${text}変換中`)
+  await expect.poll(() => preview.evaluate((el) => el.parentElement!.scrollTop)).toBeLessThan(100)
+  await ta.dispatchEvent('compositionend')
+  await expect.poll(() => preview.evaluate((el) => el.parentElement!.scrollTop)).toBeGreaterThan(1000)
+})

@@ -39,6 +39,7 @@ interface EditorPaneProps {
   scriptMode?: boolean
   value: string
   onChange: (value: string) => void
+  onCaretChange?: (value: string, offset: number) => void
   /** @ サジェストの候補となる辞書。省略時はサジェスト無効。 */
   glossary?: GlossaryEntry[]
   /** クイック作成（name のみで即作成→挿入）。省略時は作成行を出さない。 */
@@ -67,6 +68,7 @@ export function EditorPane({
   typewriter = false,
   value,
   onChange,
+  onCaretChange,
   glossary = [],
   scriptMode = false,
   readOnly = false,
@@ -327,6 +329,18 @@ export function EditorPane({
     [applyNotation, vertical],
   )
 
+  // setSelectionRange（記法挿入・検索からの移動）も拾う。React の onSelect は
+  // ネイティブ select イベントだけでは発火しないため、同じ textarea で購読する。
+  useLayoutEffect(() => {
+    const el = taRef.current
+    if (!el || !onCaretChange) return
+    const notify = () => {
+      if (!composingRef.current) onCaretChange(el.value, el.selectionStart)
+    }
+    el.addEventListener('select', notify)
+    return () => el.removeEventListener('select', notify)
+  }, [onCaretChange])
+
   // 挿入後にキャレットを [[名前]] の直後へ戻す。
   useLayoutEffect(() => {
     const pos = pendingCaretRef.current
@@ -466,10 +480,16 @@ export function EditorPane({
         readOnly={readOnly}
         onChange={(e) => {
           onChange(e.target.value)
-          if (!composingRef.current) refresh(e.currentTarget)
+          if (!composingRef.current) {
+            refresh(e.currentTarget)
+            onCaretChange?.(e.currentTarget.value, e.currentTarget.selectionStart)
+          }
         }}
         onSelect={(e) => {
-          if (!composingRef.current) refresh(e.currentTarget)
+          if (!composingRef.current) {
+            refresh(e.currentTarget)
+            onCaretChange?.(e.currentTarget.value, e.currentTarget.selectionStart)
+          }
         }}
         onKeyDown={handleKeyDown}
         onFocus={() => setFocused(true)}
@@ -480,6 +500,7 @@ export function EditorPane({
         onCompositionEnd={(e) => {
           composingRef.current = false
           refresh(e.currentTarget)
+          onCaretChange?.(e.currentTarget.value, e.currentTarget.selectionStart)
         }}
         placeholder={
           scriptMode
