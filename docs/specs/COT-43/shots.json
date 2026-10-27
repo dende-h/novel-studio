@@ -1,0 +1,944 @@
+{
+  "baseURL": "http://localhost:5173",
+  "outDir": "docs/specs/COT-43/screens",
+  "shots": [
+    {
+      "name": "editor-novel",
+      "viewports": [
+        "desktop"
+      ],
+      "steps": [
+        {
+          "goto": "/"
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "新しい作品",
+            "exact": true
+          }
+        },
+        {
+          "fill": {
+            "label": "作品タイトル",
+            "value": "月と剣"
+          }
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "作成",
+            "exact": true
+          }
+        },
+        {
+          "waitFor": {
+            "role": "heading",
+            "name": "月と剣"
+          }
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "「月と剣」を執筆"
+          }
+        },
+        {
+          "wait": 500
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "新しいエピソード",
+            "exact": true
+          }
+        },
+        {
+          "fill": {
+            "label": "話タイトル",
+            "value": "第一話　坂"
+          }
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "追加",
+            "exact": true
+          }
+        },
+        {
+          "waitFor": {
+            "role": "textbox",
+            "name": "本文"
+          }
+        },
+        {
+          "fill": {
+            "role": "textbox",
+            "name": "本文",
+            "value": "　月は、まだ低いところにあった。\n「行こう」\n　少年は剣を背負い直し、坂を下りはじめた。風が草を鳴らし、遠くで犬が一度だけ吠えた。\n\n　村の灯りは、もう見えない。｜振り返《ふりかえ》らないと決めたのは、自分だった。"
+          }
+        },
+        {
+          "wait": 1500
+        }
+      ]
+    },
+    {
+      "name": "editor-novel",
+      "viewports": [
+        "mobile"
+      ],
+      "steps": [
+        {
+          "goto": "/"
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "メニュー",
+            "exact": true
+          }
+        },
+        {
+          "wait": 300
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "新しい作品",
+            "exact": true
+          }
+        },
+        {
+          "fill": {
+            "label": "作品タイトル",
+            "value": "月と剣"
+          }
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "作成",
+            "exact": true
+          }
+        },
+        {
+          "waitFor": {
+            "role": "heading",
+            "name": "月と剣"
+          }
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "「月と剣」を執筆"
+          }
+        },
+        {
+          "wait": 500
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "メニュー",
+            "exact": true
+          }
+        },
+        {
+          "wait": 300
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "新しいエピソード",
+            "exact": true
+          }
+        },
+        {
+          "fill": {
+            "label": "話タイトル",
+            "value": "第一話　坂"
+          }
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "追加",
+            "exact": true
+          }
+        },
+        {
+          "waitFor": {
+            "role": "textbox",
+            "name": "本文"
+          }
+        },
+        {
+          "fill": {
+            "role": "textbox",
+            "name": "本文",
+            "value": "　月は、まだ低いところにあった。\n「行こう」\n　少年は剣を背負い直し、坂を下りはじめた。風が草を鳴らし、遠くで犬が一度だけ吠えた。\n\n　村の灯りは、もう見えない。｜振り返《ふりかえ》らないと決めたのは、自分だった。"
+          }
+        },
+        {
+          "wait": 1500
+        }
+      ]
+    },
+    {
+      "name": "library",
+      "viewports": [
+        "desktop"
+      ],
+      "steps": [
+        {
+          "goto": "/"
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "新しい作品",
+            "exact": true
+          }
+        },
+        {
+          "fill": {
+            "label": "作品タイトル",
+            "value": "月と剣"
+          }
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "作成",
+            "exact": true
+          }
+        },
+        {
+          "waitFor": {
+            "role": "heading",
+            "name": "月と剣"
+          }
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "「月と剣」を執筆"
+          }
+        },
+        {
+          "wait": 500
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "新しいエピソード",
+            "exact": true
+          }
+        },
+        {
+          "fill": {
+            "label": "話タイトル",
+            "value": "第一話　坂"
+          }
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "追加",
+            "exact": true
+          }
+        },
+        {
+          "waitFor": {
+            "role": "textbox",
+            "name": "本文"
+          }
+        },
+        {
+          "fill": {
+            "role": "textbox",
+            "name": "本文",
+            "value": "　月は、まだ低いところにあった。\n「行こう」\n　少年は剣を背負い直し、坂を下りはじめた。風が草を鳴らし、遠くで犬が一度だけ吠えた。\n\n　村の灯りは、もう見えない。｜振り返《ふりかえ》らないと決めたのは、自分だった。"
+          }
+        },
+        {
+          "wait": 1500
+        },
+        {
+          "goto": "/"
+        },
+        {
+          "waitFor": {
+            "role": "heading",
+            "name": "マイライブラリ"
+          }
+        },
+        {
+          "wait": 500
+        }
+      ]
+    },
+    {
+      "name": "library",
+      "viewports": [
+        "mobile"
+      ],
+      "steps": [
+        {
+          "goto": "/"
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "メニュー",
+            "exact": true
+          }
+        },
+        {
+          "wait": 300
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "新しい作品",
+            "exact": true
+          }
+        },
+        {
+          "fill": {
+            "label": "作品タイトル",
+            "value": "月と剣"
+          }
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "作成",
+            "exact": true
+          }
+        },
+        {
+          "waitFor": {
+            "role": "heading",
+            "name": "月と剣"
+          }
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "「月と剣」を執筆"
+          }
+        },
+        {
+          "wait": 500
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "メニュー",
+            "exact": true
+          }
+        },
+        {
+          "wait": 300
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "新しいエピソード",
+            "exact": true
+          }
+        },
+        {
+          "fill": {
+            "label": "話タイトル",
+            "value": "第一話　坂"
+          }
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "追加",
+            "exact": true
+          }
+        },
+        {
+          "waitFor": {
+            "role": "textbox",
+            "name": "本文"
+          }
+        },
+        {
+          "fill": {
+            "role": "textbox",
+            "name": "本文",
+            "value": "　月は、まだ低いところにあった。\n「行こう」\n　少年は剣を背負い直し、坂を下りはじめた。風が草を鳴らし、遠くで犬が一度だけ吠えた。\n\n　村の灯りは、もう見えない。｜振り返《ふりかえ》らないと決めたのは、自分だった。"
+          }
+        },
+        {
+          "wait": 1500
+        },
+        {
+          "goto": "/"
+        },
+        {
+          "waitFor": {
+            "role": "heading",
+            "name": "マイライブラリ"
+          }
+        },
+        {
+          "wait": 500
+        }
+      ]
+    },
+    {
+      "name": "export-novel",
+      "viewports": [
+        "desktop"
+      ],
+      "steps": [
+        {
+          "goto": "/"
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "新しい作品",
+            "exact": true
+          }
+        },
+        {
+          "fill": {
+            "label": "作品タイトル",
+            "value": "月と剣"
+          }
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "作成",
+            "exact": true
+          }
+        },
+        {
+          "waitFor": {
+            "role": "heading",
+            "name": "月と剣"
+          }
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "「月と剣」を執筆"
+          }
+        },
+        {
+          "wait": 500
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "新しいエピソード",
+            "exact": true
+          }
+        },
+        {
+          "fill": {
+            "label": "話タイトル",
+            "value": "第一話　坂"
+          }
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "追加",
+            "exact": true
+          }
+        },
+        {
+          "waitFor": {
+            "role": "textbox",
+            "name": "本文"
+          }
+        },
+        {
+          "fill": {
+            "role": "textbox",
+            "name": "本文",
+            "value": "　月は、まだ低いところにあった。\n「行こう」\n　少年は剣を背負い直し、坂を下りはじめた。風が草を鳴らし、遠くで犬が一度だけ吠えた。\n\n　村の灯りは、もう見えない。｜振り返《ふりかえ》らないと決めたのは、自分だった。"
+          }
+        },
+        {
+          "wait": 1500
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "書き出し"
+          }
+        },
+        {
+          "waitFor": {
+            "role": "heading",
+            "name": "プロジェクトの書き出し"
+          }
+        },
+        {
+          "wait": 400
+        }
+      ]
+    },
+    {
+      "name": "export-novel",
+      "viewports": [
+        "mobile"
+      ],
+      "steps": [
+        {
+          "goto": "/"
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "メニュー",
+            "exact": true
+          }
+        },
+        {
+          "wait": 300
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "新しい作品",
+            "exact": true
+          }
+        },
+        {
+          "fill": {
+            "label": "作品タイトル",
+            "value": "月と剣"
+          }
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "作成",
+            "exact": true
+          }
+        },
+        {
+          "waitFor": {
+            "role": "heading",
+            "name": "月と剣"
+          }
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "「月と剣」を執筆"
+          }
+        },
+        {
+          "wait": 500
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "メニュー",
+            "exact": true
+          }
+        },
+        {
+          "wait": 300
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "新しいエピソード",
+            "exact": true
+          }
+        },
+        {
+          "fill": {
+            "label": "話タイトル",
+            "value": "第一話　坂"
+          }
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "追加",
+            "exact": true
+          }
+        },
+        {
+          "waitFor": {
+            "role": "textbox",
+            "name": "本文"
+          }
+        },
+        {
+          "fill": {
+            "role": "textbox",
+            "name": "本文",
+            "value": "　月は、まだ低いところにあった。\n「行こう」\n　少年は剣を背負い直し、坂を下りはじめた。風が草を鳴らし、遠くで犬が一度だけ吠えた。\n\n　村の灯りは、もう見えない。｜振り返《ふりかえ》らないと決めたのは、自分だった。"
+          }
+        },
+        {
+          "wait": 1500
+        },
+        {
+          "click": {
+            "selector": "button:has(svg.lucide-download)"
+          }
+        },
+        {
+          "waitFor": {
+            "role": "heading",
+            "name": "プロジェクトの書き出し"
+          }
+        },
+        {
+          "wait": 400
+        }
+      ]
+    },
+    {
+      "name": "work-meta-novel",
+      "viewports": [
+        "desktop"
+      ],
+      "steps": [
+        {
+          "goto": "/"
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "新しい作品",
+            "exact": true
+          }
+        },
+        {
+          "fill": {
+            "label": "作品タイトル",
+            "value": "月と剣"
+          }
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "作成",
+            "exact": true
+          }
+        },
+        {
+          "waitFor": {
+            "role": "heading",
+            "name": "月と剣"
+          }
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "「月と剣」を執筆"
+          }
+        },
+        {
+          "wait": 500
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "新しいエピソード",
+            "exact": true
+          }
+        },
+        {
+          "fill": {
+            "label": "話タイトル",
+            "value": "第一話　坂"
+          }
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "追加",
+            "exact": true
+          }
+        },
+        {
+          "waitFor": {
+            "role": "textbox",
+            "name": "本文"
+          }
+        },
+        {
+          "fill": {
+            "role": "textbox",
+            "name": "本文",
+            "value": "　月は、まだ低いところにあった。\n「行こう」\n　少年は剣を背負い直し、坂を下りはじめた。風が草を鳴らし、遠くで犬が一度だけ吠えた。\n\n　村の灯りは、もう見えない。｜振り返《ふりかえ》らないと決めたのは、自分だった。"
+          }
+        },
+        {
+          "wait": 1500
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "作品情報を編集"
+          }
+        },
+        {
+          "wait": 600
+        }
+      ]
+    },
+    {
+      "name": "export-script",
+      "viewports": [
+        "desktop"
+      ],
+      "steps": [
+        {
+          "goto": "/"
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "新しい作品",
+            "exact": true
+          }
+        },
+        {
+          "fill": {
+            "label": "作品タイトル",
+            "value": "月と剣"
+          }
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "作成",
+            "exact": true
+          }
+        },
+        {
+          "waitFor": {
+            "role": "heading",
+            "name": "月と剣"
+          }
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "「月と剣」を執筆"
+          }
+        },
+        {
+          "wait": 500
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "新しいエピソード",
+            "exact": true
+          }
+        },
+        {
+          "fill": {
+            "label": "話タイトル",
+            "value": "第一話　坂"
+          }
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "追加",
+            "exact": true
+          }
+        },
+        {
+          "waitFor": {
+            "role": "textbox",
+            "name": "本文"
+          }
+        },
+        {
+          "fill": {
+            "role": "textbox",
+            "name": "本文",
+            "value": "　月は、まだ低いところにあった。\n「行こう」\n　少年は剣を背負い直し、坂を下りはじめた。風が草を鳴らし、遠くで犬が一度だけ吠えた。\n\n　村の灯りは、もう見えない。｜振り返《ふりかえ》らないと決めたのは、自分だった。"
+          }
+        },
+        {
+          "wait": 1500
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "作品情報を編集"
+          }
+        },
+        {
+          "wait": 400
+        },
+        {
+          "click": {
+            "label": "脚本"
+          }
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "保存",
+            "exact": true
+          }
+        },
+        {
+          "wait": 800
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "書き出し"
+          }
+        },
+        {
+          "waitFor": {
+            "role": "heading",
+            "name": "プロジェクトの書き出し"
+          }
+        },
+        {
+          "wait": 400
+        }
+      ]
+    },
+    {
+      "name": "work-meta-novel",
+      "viewports": [
+        "mobile"
+      ],
+      "steps": [
+        {
+          "goto": "/"
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "メニュー",
+            "exact": true
+          }
+        },
+        {
+          "wait": 300
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "新しい作品",
+            "exact": true
+          }
+        },
+        {
+          "fill": {
+            "label": "作品タイトル",
+            "value": "月と剣"
+          }
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "作成",
+            "exact": true
+          }
+        },
+        {
+          "waitFor": {
+            "role": "heading",
+            "name": "月と剣"
+          }
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "「月と剣」を執筆"
+          }
+        },
+        {
+          "wait": 500
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "メニュー",
+            "exact": true
+          }
+        },
+        {
+          "wait": 300
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "新しいエピソード",
+            "exact": true
+          }
+        },
+        {
+          "fill": {
+            "label": "話タイトル",
+            "value": "第一話　坂"
+          }
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "追加",
+            "exact": true
+          }
+        },
+        {
+          "waitFor": {
+            "role": "textbox",
+            "name": "本文"
+          }
+        },
+        {
+          "fill": {
+            "role": "textbox",
+            "name": "本文",
+            "value": "　月は、まだ低いところにあった。\n「行こう」\n　少年は剣を背負い直し、坂を下りはじめた。風が草を鳴らし、遠くで犬が一度だけ吠えた。\n\n　村の灯りは、もう見えない。｜振り返《ふりかえ》らないと決めたのは、自分だった。"
+          }
+        },
+        {
+          "wait": 1500
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "メニュー",
+            "exact": true
+          }
+        },
+        {
+          "wait": 300
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "作品情報を編集"
+          }
+        },
+        {
+          "wait": 600
+        }
+      ]
+    }
+  ]
+}

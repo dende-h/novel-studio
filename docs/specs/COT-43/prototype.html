@@ -1,0 +1,387 @@
+<title>応募原稿の書き出し</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Shippori+Mincho+B1:wght@500;700&family=Noto+Sans+JP:wght@400;500;700&display=swap">
+<style>
+/* レイアウト：画面ごとに「現状（スクショ）」と「変更後（モック）」を並べる。色と字はアプリの index.css を写す */
+:root {
+  --background: #fdfcfb; --foreground: #4b5160; --card: #fefeff;
+  --primary: #2c5b27; --primary-fg: #ffffff; --accent: #f2f7f1;
+  --secondary-container: #f2e6d4; --on-secondary-container: #92703f;
+  --surface-low: #f9f7f5; --surface-high: #edeae3; --surface-highest: #e7e3da; --surface-variant: #f3ede4;
+  --on-surface: #1f2430; --on-surface-variant: #6b7381; --outline-variant: rgba(157,163,174,.35);
+  --error: #dc2626; --marker: #b98f63; --paper-line: rgba(185,143,99,.45);
+  --font-sans: "Noto Sans JP", "Hiragino Sans", "Yu Gothic", system-ui, sans-serif;
+  --font-serif: "Shippori Mincho B1", "Hiragino Mincho ProN", "Yu Mincho", Georgia, serif;
+  --font-paper: "Yu Mincho", "YuMincho", "Hiragino Mincho ProN", "Noto Serif JP", serif;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --background: #181611; --foreground: #d7d2c8; --card: #201d16;
+  --primary: #44863a; --primary-fg: #ffffff; --accent: #202c1c;
+  --secondary-container: #38301f; --on-secondary-container: #e0c398;
+  --surface-low: #232019; --surface-high: #322d25; --surface-highest: #3a352b; --surface-variant: #201d16;
+  --on-surface: #ece8e1; --on-surface-variant: #a49e92; --outline-variant: rgba(100,94,83,.6);
+  --error: #e5544e; --marker: #cba576; --paper-line: rgba(203,165,118,.35); color-scheme: dark } }
+:root[data-theme="dark"] {
+  --background: #181611; --foreground: #d7d2c8; --card: #201d16;
+  --primary: #44863a; --primary-fg: #ffffff; --accent: #202c1c;
+  --secondary-container: #38301f; --on-secondary-container: #e0c398;
+  --surface-low: #232019; --surface-high: #322d25; --surface-highest: #3a352b; --surface-variant: #201d16;
+  --on-surface: #ece8e1; --on-surface-variant: #a49e92; --outline-variant: rgba(100,94,83,.6);
+  --error: #e5544e; --marker: #cba576; --paper-line: rgba(203,165,118,.35); color-scheme: dark }
+
+* { box-sizing: border-box }
+body { background: var(--background); color: var(--foreground); font-family: var(--font-sans); line-height: 1.7;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 32px 64px }
+.wrap { max-width: 1200px; margin: 0 auto; display: grid; gap: 40px }
+h1, h2, h3 { font-family: var(--font-serif); color: var(--on-surface); text-wrap: balance; margin: 0 }
+h1 { font-size: 1.9rem; color: var(--primary) }
+h2 { font-size: 1.35rem; padding-bottom: 8px; border-bottom: 1px solid var(--outline-variant) }
+h3 { font-size: 1rem }
+p { margin: 0 }
+.lead { color: var(--on-surface-variant); max-width: 68ch; display: grid; gap: 6px }
+.meta { font-size: 12px; color: var(--on-surface-variant); letter-spacing: .04em }
+.pair { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 20px; align-items: start }
+@media (max-width: 860px) { .pair { grid-template-columns: minmax(0,1fr) } }
+.col { display: grid; gap: 8px; min-width: 0 }
+.tag { font-size: 11px; letter-spacing: .08em; color: var(--on-surface-variant) }
+.shot { width: 100%; border: 1px solid var(--outline-variant); border-radius: 8px; display: block }
+.shot.mobile { max-width: 300px }
+.changes { margin: 0; padding-left: 0; list-style: none; display: grid; gap: 6px; font-size: 13px; max-width: 72ch }
+.changes li { display: grid; grid-template-columns: 1.6em minmax(0,1fr); gap: 6px }
+.n { display: inline-grid; place-items: center; width: 1.4em; height: 1.4em; border-radius: 50%; background: var(--marker); color: #fff; font-size: 11px; font-weight: 700; flex: none }
+.toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center }
+.seg { display: inline-flex; border: 1px solid var(--outline-variant); border-radius: 999px; overflow: hidden }
+.seg button { border: 0; background: transparent; color: var(--on-surface-variant); padding: 6px 14px; font: inherit; font-size: 13px; cursor: pointer }
+.seg button[aria-pressed="true"] { background: var(--primary); color: var(--primary-fg) }
+button:focus-visible, input:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px }
+
+/* --- 書き出しダイアログのモック --- */
+.dialog { background: var(--card); border: 1px solid var(--outline-variant); border-radius: 10px; overflow: hidden; color: var(--foreground) }
+.dialog.narrow { max-width: 393px }
+.dh { padding: 16px 24px; border-bottom: 1px solid var(--outline-variant) }
+.dh h3 { color: var(--primary); font-size: 1.2rem }
+.dh p { font-size: 13px; color: var(--on-surface-variant) }
+.db { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr) }
+.dialog.narrow .db { grid-template-columns: minmax(0, 1fr) }
+.formats { background: var(--surface-low); border-right: 1px solid var(--outline-variant); padding: 14px; display: grid; gap: 6px; align-content: start }
+.dialog.narrow .formats { border-right: 0; border-bottom: 1px solid var(--outline-variant) }
+.fmt { display: flex; gap: 10px; padding: 10px 12px; border-radius: 6px; font-size: 13px; position: relative }
+.fmt .t { font-weight: 500 }
+.fmt .d { font-size: 11px; color: var(--on-surface-variant) }
+.fmt.on { background: var(--surface-highest); border-left: 4px solid var(--primary) }
+.fmt.on .t { color: var(--primary) }
+.fmt.dim { color: var(--on-surface-variant) }
+.ico { width: 18px; height: 18px; flex: none; margin-top: 2px; stroke: currentColor; fill: none; stroke-width: 1.8 }
+.settings { padding: 20px 24px; display: grid; gap: 18px; min-width: 0 }
+.sec-title { font-family: var(--font-serif); color: var(--primary); font-size: 1.15rem; padding-bottom: 6px; border-bottom: 1px solid var(--outline-variant); display: flex; gap: 8px; align-items: center }
+.note { background: var(--surface-low); border-radius: 6px; padding: 10px 14px; font-size: 13px }
+.lbl { font-size: 11px; letter-spacing: .1em; color: var(--on-surface-variant); margin-bottom: 6px; display: flex; gap: 6px; align-items: center }
+.chips { display: flex; flex-wrap: wrap; gap: 8px }
+.chip { border: 1px solid var(--outline-variant); border-radius: 999px; padding: 5px 14px; font: inherit; font-size: 13px; background: transparent; color: var(--on-surface-variant); cursor: pointer }
+.chip[aria-pressed="true"] { border-color: var(--primary); color: var(--primary); background: color-mix(in srgb, var(--primary) 10%, transparent) }
+.hint { font-size: 12px; color: var(--on-surface-variant); margin-top: 6px }
+.nums { display: flex; gap: 12px; margin-top: 10px; flex-wrap: wrap }
+.nums label { font-size: 12px; display: grid; gap: 4px }
+.nums input { width: 6em; padding: 6px 8px; border-radius: 6px; border: 1px solid var(--outline-variant); background: var(--card); color: var(--on-surface); font: inherit; font-variant-numeric: tabular-nums }
+.nums input[aria-invalid="true"] { border-color: var(--error) }
+.err { color: var(--error); font-size: 12px; margin-top: 4px }
+.row2 { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap }
+.toggles { border: 1px solid var(--outline-variant); border-radius: 6px; padding: 12px; display: grid; gap: 10px }
+.tg { display: flex; justify-content: space-between; gap: 12px; align-items: center; font-size: 13px; color: var(--on-surface) }
+.tg small { display: block; color: var(--on-surface-variant); font-size: 11px }
+.sw { width: 34px; height: 20px; border-radius: 999px; background: var(--surface-highest); position: relative; flex: none; border: 0; cursor: pointer }
+.sw::after { content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; transition: transform .15s }
+.sw[aria-checked="true"] { background: var(--primary) }
+.sw[aria-checked="true"]::after { transform: translateX(14px) }
+@media (prefers-reduced-motion: reduce) { .sw::after { transition: none } }
+dl.info { border: 1px solid var(--outline-variant); border-radius: 6px; padding: 12px 16px; margin: 0; display: grid; grid-template-columns: 6em minmax(0,1fr); gap: 6px 12px; font-size: 13px }
+dl.info dt { color: var(--on-surface-variant); font-size: 12px }
+dl.info dd { margin: 0; color: var(--on-surface); font-variant-numeric: tabular-nums }
+.foot { display: flex; justify-content: flex-end; gap: 10px; padding: 14px 24px; border-top: 1px solid var(--outline-variant) }
+.dialog.narrow .foot { flex-direction: column-reverse }
+.btn { border-radius: 6px; padding: 8px 18px; font: inherit; font-size: 14px; font-weight: 500; border: 1px solid var(--outline-variant); background: var(--card); color: var(--primary) }
+.btn.p { background: var(--primary); color: var(--primary-fg); border-color: var(--primary) }
+.btn[disabled] { opacity: .45 }
+.empty-msg { color: var(--error); font-size: 12px }
+.mk { position: absolute; top: -6px; right: -6px }
+.relative { position: relative }
+
+/* --- 印刷用の頁（PDF）見本 --- */
+.paper-wrap { overflow-x: auto; padding-bottom: 4px }
+.paper { background: #fffdf8; color: #222; border: 1px solid var(--outline-variant); border-radius: 2px; position: relative; aspect-ratio: 297 / 210; width: 100%; max-width: 640px; display: flex; flex-direction: row-reverse; justify-content: center; padding: 6% 7%; gap: 0 }
+.pline { writing-mode: vertical-rl; font-family: var(--font-paper); display: flex; flex-direction: column; border-left: 1px dashed rgba(185,143,99,.25) }
+.pcell { display: block; text-align: center; line-height: 1 }
+.pnum { position: absolute; bottom: 3%; left: 0; right: 0; text-align: center; font-size: 10px; color: #555; font-family: var(--font-paper) }
+.ruby-rt { position: absolute; font-size: .45em; right: -.6em; top: 0 }
+
+/* --- ライブラリ・執筆画面のモック --- */
+.card-mock { width: 200px; border: 1px solid var(--outline-variant); border-radius: 8px; padding: 10px; background: var(--card); display: grid; gap: 6px; font-size: 12px }
+.cover { aspect-ratio: 3/4; background: var(--secondary-container); border-radius: 4px; display: grid; place-items: center; font-family: var(--font-serif); writing-mode: vertical-rl; color: var(--on-surface) }
+.badge { background: var(--accent); color: var(--primary); border-radius: 999px; padding: 1px 8px; font-size: 11px; font-weight: 500 }
+.hl { background: color-mix(in srgb, var(--marker) 25%, transparent); border-radius: 3px; padding: 0 3px }
+.status { display: flex; justify-content: space-between; border-top: 1px solid var(--outline-variant); padding: 8px 14px; font-size: 12px; color: var(--on-surface-variant); background: var(--card); border-radius: 0 0 8px 8px; font-variant-numeric: tabular-nums; gap: 12px; flex-wrap: wrap }
+.side-mock { width: 220px; border: 1px solid var(--outline-variant); border-radius: 8px; padding: 12px; display: flex; gap: 10px; background: var(--card) }
+.side-mock .av { width: 32px; height: 44px; border-radius: 4px; background: var(--secondary-container); display: grid; place-items: center; font-family: var(--font-serif) }
+.mocks { display: flex; flex-wrap: wrap; gap: 20px; align-items: flex-start }
+.field { display: grid; gap: 6px; font-size: 13px }
+.field .area { border: 1px solid var(--outline-variant); border-radius: 6px; min-height: 90px; padding: 8px 10px; color: var(--on-surface-variant); font-size: 13px; background: var(--card) }
+.field .lab { display: flex; justify-content: space-between; color: var(--on-surface); font-weight: 500 }
+.helpbox { background: var(--surface-low); border-radius: 6px; padding: 10px 12px; font-size: 12px; color: var(--on-surface-variant) }
+.small { font-size: 12px; color: var(--on-surface-variant) }
+</style>
+
+<div class="wrap">
+  <header class="lead">
+    <p class="meta">COT-43 ・ UIプロトタイプ ・ 要件 COT-66 ／ 設計 COT-67</p>
+    <h1>応募原稿の書き出しと原稿用紙換算</h1>
+    <p>小説を、公募の書式（字数×行数・用紙・縦書き・ページ番号）で Word か PDF（印刷）に組みます。原稿用紙の枚数は、ライブラリと執筆画面の字数の横に出します。番号は設計（design.md）の UI 節と対応しています。</p>
+  </header>
+
+  <!-- 1. 書き出しダイアログ -->
+  <section class="col" style="gap:16px" aria-labelledby="s1">
+    <h2 id="s1">書き出しダイアログ（小説の作品）</h2>
+    <div class="toolbar" role="group" aria-label="表示の切り替え">
+      <span class="small">幅</span>
+      <div class="seg" id="vp"><button aria-pressed="true" data-v="desktop">PC</button><button aria-pressed="false" data-v="mobile">スマホ（393px）</button></div>
+      <span class="small">状態</span>
+      <div class="seg" id="st"><button aria-pressed="true" data-s="normal">通常</button><button aria-pressed="false" data-s="custom">指定（B5・44字＝範囲外）</button><button aria-pressed="false" data-s="print">PDF（印刷）</button><button aria-pressed="false" data-s="empty">本文が空</button></div>
+    </div>
+    <div class="pair">
+      <div class="col">
+        <span class="tag">現状</span>
+        <img class="shot" id="shotExport" src="screens/export-novel-desktop.png" alt="現状の書き出しダイアログ。EPUB・Web投稿形式・サウンドノベル・フォルダ・AI に渡す の5形式">
+        <span class="tag">手本（脚本の作品の「脚本（提出用）」。チップ・前付けの枠・情報の枠をこれに揃える）</span>
+        <img class="shot" src="screens/export-script-desktop.png" alt="脚本の作品の書き出しダイアログ。出力のチップ、表紙・人物一覧表・あらすじのスイッチ、タイトル・著者・枚数の枠">
+      </div>
+      <div class="col">
+        <span class="tag">変更後</span>
+        <div class="dialog" id="dlg">
+          <div class="dh"><h3>プロジェクトの書き出し</h3><p>月と剣</p></div>
+          <div class="db">
+            <nav class="formats" aria-label="形式">
+              <div class="fmt dim"><svg class="ico" viewBox="0 0 24 24"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20V3H6.5A2.5 2.5 0 0 0 4 5.5z"/><path d="M8 7h8M8 11h6"/></svg><div><div class="t">EPUB / 電子書籍</div><div class="d">縦書き対応の電子書籍標準フォーマット</div></div></div>
+              <div class="fmt on relative"><svg class="ico" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M8 13h8M8 17h5"/></svg><div><div class="t">応募原稿</div><div class="d">公募の書式（字数×行数・用紙）で、縦書きの Word か PDF に組んで</div></div><span class="n mk">1</span></div>
+              <div class="fmt dim"><svg class="ico" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></svg><div><div class="t">Web投稿形式</div><div class="d">「小説家になろう」「カクヨム」などの投稿用記法</div></div></div>
+              <div class="fmt dim"><svg class="ico" viewBox="0 0 24 24"><rect x="2" y="7" width="20" height="10" rx="4"/><path d="M7 12h3M8.5 10.5v3M15 11h.01M17 13h.01"/></svg><div><div class="t">サウンドノベル</div><div class="d">ブラウザでそのまま遊べるゲーム形式（ZIP）</div></div></div>
+              <div class="fmt dim"><svg class="ico" viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg><div><div class="t">フォルダ(ZIP)</div><div class="d">話ごとのテキストをまとめて書き出し</div></div></div>
+              <div class="fmt dim"><svg class="ico" viewBox="0 0 24 24"><path d="M12 3l1.8 4.7L18.5 9l-4.7 1.8L12 15.5l-1.8-4.7L5.5 9l4.7-1.3z"/></svg><div><div class="t">AI に渡す</div><div class="d">ChatGPT・Gemini などに読ませる（コピー / ファイル）</div></div></div>
+            </nav>
+            <div class="settings">
+              <div class="sec-title">応募原稿 設定 <span class="n">2</span></div>
+              <div class="note">縦書き・横置きの用紙に、本文を打ってあるとおりに組みます。字下げや空行は書いたままです。ページ番号は本文の1頁目から入ります。</div>
+
+              <div>
+                <div class="lbl">書式 <span class="n">3</span></div>
+                <div class="chips" id="gridChips"></div>
+                <div class="nums" id="customNums" hidden>
+                  <label for="inCols">字数<input id="inCols" type="number" inputmode="numeric" value="40" aria-describedby="numErr"></label>
+                  <label for="inRows">行数<input id="inRows" type="number" inputmode="numeric" value="34" aria-describedby="numErr"></label>
+                </div>
+                <p class="err" id="numErr" hidden>字数は 10〜50、行数は 10〜50 の数で入れてください</p>
+              </div>
+
+              <div class="row2">
+                <div>
+                  <div class="lbl">用紙 <span class="n">4</span></div>
+                  <div class="chips" id="paperChips"><button class="chip" aria-pressed="true" data-p="A4">A4</button><button class="chip" aria-pressed="false" data-p="B5">B5</button></div>
+                </div>
+                <p class="small">文字の大きさ <strong id="fontPt" style="color:var(--on-surface)">10.5pt</strong></p>
+              </div>
+
+              <div>
+                <div class="lbl">出力 <span class="n">5</span></div>
+                <div class="chips" id="outChips"><button class="chip" aria-pressed="true" data-o="docx">Word（.docx）</button><button class="chip" aria-pressed="false" data-o="print">PDF（印刷）</button></div>
+                <p class="hint" id="printHint" hidden>印刷の画面で、送り先を「PDF に保存」に、倍率を 100%（または「実際のサイズ」）に、余白を「なし」か「デフォルト」にしてください。字の形は端末の明朝で変わります。</p>
+              </div>
+
+              <div>
+                <div class="lbl">ルビ <span class="n">6</span></div>
+                <div class="chips" id="rubyChips"><button class="chip" aria-pressed="true">振る</button><button class="chip" aria-pressed="false">親文字だけ</button></div>
+              </div>
+
+              <div class="toggles relative">
+                <span class="n mk">7</span>
+                <div class="tg"><span>表紙（題名・著者名）<small>月見</small></span><button class="sw" role="switch" aria-checked="true" aria-label="表紙（題名・著者名）"></button></div>
+                <div class="tg"><span>あらすじ（梗概）<small>作品情報の梗概 612 字を載せます</small></span><button class="sw" role="switch" aria-checked="true" aria-label="あらすじ（梗概）"></button></div>
+                <div class="tg"><span>話の題名を見出しにする<small>3話それぞれの頭に題名を置きます</small></span><button class="sw" role="switch" aria-checked="true" aria-label="話の題名を見出しにする"></button></div>
+                <div class="tg"><span>話ごとに改ページする<small>オフなら話をまたいで続けます</small></span><button class="sw" role="switch" aria-checked="false" aria-label="話ごとに改ページする" id="swBreak"></button></div>
+              </div>
+
+              <div class="relative">
+                <span class="n mk">8</span>
+                <dl class="info">
+                  <dt>タイトル</dt><dd>月と剣</dd>
+                  <dt>著者</dt><dd>月見</dd>
+                  <dt>枚数</dt><dd id="sheetInfo">本文 59枚（40字×34行）・400字詰め換算 189枚</dd>
+                </dl>
+                <p class="hint">Word で開くと、Word の組み直しで数枚ずれることがあります。</p>
+                <p class="empty-msg" id="emptyMsg" hidden>本文がありません</p>
+              </div>
+            </div>
+          </div>
+          <div class="foot relative">
+            <button class="btn">キャンセル</button>
+            <button class="btn p" id="goBtn">書き出し</button>
+            <span class="n mk">9</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <ol class="changes">
+      <li><span class="n">1</span><span>「EPUB / 電子書籍」の次に「応募原稿」。小説の作品だけに出す（脚本は既存の「脚本（提出用）」）。開いたときに選ばれているのは EPUB のまま。</span></li>
+      <li><span class="n">2</span><span>見出しと説明。本文は書き換えずに組むことを最初に伝える。</span></li>
+      <li><span class="n">3</span><span>書式のチップ。「指定する」で字数・行数を入れる（A4 は字数 10〜50、B5 は字数 10〜43。行数はどちらも 10〜50）。範囲外はボタンを押せず、欄の下に用紙に合わせた範囲を出す。</span></li>
+      <li><span class="n">4</span><span>用紙 A4／B5（横置き・縦書き）。文字の大きさは書式と用紙から自動（8〜14pt）。</span></li>
+      <li><span class="n">5</span><span>出力 Word／PDF（印刷）。PDF を選んでいる間、印刷の画面の設定を案内する。</span></li>
+      <li><span class="n">6</span><span>ルビ 振る／親文字だけ。枚数はどちらでも親文字で数える。</span></li>
+      <li><span class="n">7</span><span>付けるもの。脚本の前付けの枠と同じ見た目。話が1つだけの作品は題名の行を出さない旨を補足に出す。</span></li>
+      <li><span class="n">8</span><span>枚数は「選んだ書式での本文の枚数」と「400字詰め換算」を並べる。表紙・あらすじは数えない。</span></li>
+      <li><span class="n">9</span><span>Word は既存の「書き出し」、PDF は「印刷して PDF に保存」。字数が 0 の作品（話が無い・空の話だけ）は押せず「本文がありません」。</span></li>
+    </ol>
+  </section>
+
+  <!-- 2. PDF の頁 -->
+  <section class="col" style="gap:16px" aria-labelledby="s2">
+    <h2 id="s2">PDF（印刷）の頁の見本</h2>
+    <p class="lead">選んだ書式で組んだ頁を、1マス1文字で並べて印刷します。下は 20字×20行・A4 の本文1頁目を、見本の文で組んだもの（撮影時の本文）。行の切れ目と枚数は、ダイアログの枚数と同じ関数から出ます。</p>
+    <div class="paper-wrap"><div class="paper" id="paper" role="img" aria-label="縦書き20字20行の原稿の見本"></div></div>
+  </section>
+
+  <!-- 3. ライブラリ -->
+  <section class="col" style="gap:16px" aria-labelledby="s3">
+    <h2 id="s3">ライブラリ</h2>
+    <div class="pair">
+      <div class="col"><span class="tag">現状</span><img class="shot" src="screens/library-desktop.png" alt="現状のライブラリ。カードに 1話・96字"></div>
+      <div class="col"><span class="tag">変更後</span>
+        <div class="mocks">
+          <div class="card-mock relative"><span class="n mk">10</span><div class="cover">月と剣</div><strong style="color:var(--on-surface)">月と剣</strong><div style="display:flex;gap:6px;align-items:center"><span class="badge">3話</span><span class="small" title="400字詰め原稿用紙に換算した枚数です">60,812字 <span class="hl">・ 189枚</span></span></div><span class="small">たった今に編集</span></div>
+          <div style="display:grid;gap:4px;font-size:13px;min-width:0" class="relative"><span class="n mk" style="right:auto;left:-8px">11</span><strong style="color:var(--on-surface);padding-left:12px">月と剣</strong><span class="small" style="padding-left:12px">著者: 月見　60,812字 <span class="hl">・ 189枚</span> ・ 3日前に編集</span><span class="small" style="padding-left:12px">（リスト表示の行）</span></div>
+        </div>
+        <p class="small">脚本の作品には「枚」を出さない（原稿用紙プレビューがあるため）。本文が空の小説は「0字 ・ 0枚」。字数÷400（152枚）より多いのは、改行と禁則の空きを数えるため。</p>
+        <span class="tag">スマホ幅（現状と変更後）</span>
+        <div class="mocks"><img class="shot mobile" style="max-width:200px" src="screens/library-mobile.png" alt="現状のライブラリ（スマホ）">
+          <div class="card-mock" style="width:170px"><div class="cover">月と剣</div><strong style="color:var(--on-surface)">月と剣</strong><div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap"><span class="badge">3話</span><span class="small">60,812字 <span class="hl">・ 189枚</span></span></div></div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 4. 執筆画面 -->
+  <section class="col" style="gap:16px" aria-labelledby="s4">
+    <h2 id="s4">執筆画面</h2>
+    <div class="pair">
+      <div class="col"><span class="tag">現状</span><img class="shot" src="screens/editor-novel-desktop.png" alt="現状の執筆画面。サイドバーに 1話・96字、ステータスバーに 5段落・107文字・今日 +0字"></div>
+      <div class="col"><span class="tag">変更後</span>
+        <div class="mocks">
+          <div class="side-mock relative"><span class="n mk">12</span><div class="av">月</div><div style="font-size:12px"><div style="color:var(--on-surface)">月と剣</div><div class="small">3話 ・ 60,812字 <span class="hl">・ 189枚</span></div></div></div>
+        </div>
+        <div class="relative" style="border:1px solid var(--outline-variant);border-radius:8px">
+          <span class="n mk">13</span>
+          <div style="height:70px;background:var(--surface-variant);border-radius:8px 8px 0 0"></div>
+          <div class="status"><span>自動保存 ON</span><span>24段落 ・ 3,456文字 <span class="hl" title="いまの話を400字詰め原稿用紙に換算した枚数です">・ 12枚</span> ・ 今日 +120字</span></div>
+        </div>
+        <span class="tag">スマホ幅（393px）：「段落」を省いて枚数を出す</span>
+        <div style="max-width:393px;border:1px solid var(--outline-variant);border-radius:8px"><div class="status" style="justify-content:flex-start;padding:4px 12px;font-size:11px"><span>3,456文字 <span class="hl">・ 12枚</span> ・ 今日 +120字</span></div></div>
+        <img class="shot mobile" style="max-width:200px" src="screens/editor-novel-mobile.png" alt="現状の執筆画面（スマホ）">
+        <p class="small">小説の作品だけに出す。下書きが変わるたびに数え直す（保存を待たない）。サイドバーは開いている作品が変わったときだけ数える。</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 5. 作品情報 -->
+  <section class="col" style="gap:16px" aria-labelledby="s5">
+    <h2 id="s5">作品情報ダイアログ（小説）</h2>
+    <div class="pair">
+      <div class="col"><span class="tag">現状</span><img class="shot" src="screens/work-meta-novel-desktop.png" alt="現状の作品情報。小説では梗概の欄が無い"><img class="shot mobile" style="max-width:200px" src="screens/work-meta-novel-mobile.png" alt="現状の作品情報（スマホ）"></div>
+      <div class="col"><span class="tag">変更後</span>
+        <div class="field relative" style="max-width:460px"><span class="n mk">14</span>
+          <div class="lab"><span>梗概 ⓘ</span><span class="small">612/1200</span></div>
+          <div class="area">結末まで書いた、応募用のあらすじ（任意）</div>
+          <div class="helpbox">応募原稿に付ける、結末まで書いたあらすじです。募集要項の指定に合わせ、400〜1200 字が目安です。上の「あらすじ」は読者向け（コトノハ-grove- や EPUB に出ます）で、梗概は応募原稿（Word・PDF）にだけ載ります。</div>
+        </div>
+        <p class="small">形式「小説」でも「形式」の下に梗概の欄を出す。脚本の説明文はいまのまま。保存先は同じ <code>Work.synopsis</code>。</p>
+      </div>
+    </div>
+  </section>
+</div>
+
+<script>
+(() => {
+  const GRIDS = [[20,20,'20字×20行（400字詰め）'],[40,30,'40字×30行'],[40,34,'40字×34行'],[42,34,'42字×34行'],['custom',0,'指定する']]
+  // 見本の作品：60,812 字・段落の長さの分布で枚数を概算する（実装では FR-1 の関数が数える）
+  const BODY_LINES_PER = (cols) => Math.round(60812 / cols * 1.18) + 180 // 改行と禁則の空きを含めた概算
+  const state = { grid: [40,34], custom: false, paper: 'A4', out: 'docx', breakEp: false, scene: 'normal' }
+  const $ = (id) => document.getElementById(id)
+  const chips = $('gridChips')
+  GRIDS.forEach(([c,r,label]) => { const b = document.createElement('button'); b.className='chip'; b.textContent=label; b.dataset.c=c; b.dataset.r=r; chips.append(b) })
+  const textH = { A4: 8504, B5: 6917 }, textW = { A4: 13152, B5: 10886 }
+  const fontOf = (cols, rows, paper) => {
+    const lp = Math.floor(textW[paper] / rows), cp = textH[paper] / cols / 20
+    const f = Math.floor(Math.min(cp, lp / 20 * 0.75) * 2) / 2
+    return Math.max(8, Math.min(14, f))
+  }
+  const render = () => {
+    const [c, r] = state.grid
+    const maxC = state.paper === 'B5' ? 43 : 50
+    const valid = !state.custom || (c >= 10 && c <= maxC && r >= 10 && r <= 50)
+    $('numErr').textContent = `字数は 10〜${maxC}、行数は 10〜50 の数で入れてください`
+    chips.querySelectorAll('.chip').forEach((b) => b.setAttribute('aria-pressed', String(state.custom ? b.dataset.c === 'custom' : +b.dataset.c === c && +b.dataset.r === r)))
+    $('customNums').hidden = !state.custom
+    $('numErr').hidden = valid
+    ;['inCols','inRows'].forEach((id) => $(id).setAttribute('aria-invalid', String(!valid)))
+    $('paperChips').querySelectorAll('.chip').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.p === state.paper)))
+    $('outChips').querySelectorAll('.chip').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.o === state.out)))
+    $('printHint').hidden = state.out !== 'print'
+    $('fontPt').textContent = valid ? fontOf(c, r, state.paper) + 'pt' : '—'
+    const empty = state.scene === 'empty'
+    $('emptyMsg').textContent = '本文がありません'
+    const sheets = empty ? 0 : Math.ceil((BODY_LINES_PER(c) + (state.breakEp ? r : 0)) / r)
+    const koubo = empty ? 0 : Math.ceil(BODY_LINES_PER(20) / 20)
+    $('sheetInfo').textContent = valid ? `本文 ${sheets}枚（${c}字×${r}行）・400字詰め換算 ${koubo}枚` : `本文 —枚 ・400字詰め換算 ${koubo}枚`
+    $('emptyMsg').hidden = !empty
+    $('goBtn').disabled = empty || !valid
+    $('goBtn').textContent = state.out === 'print' ? '印刷して PDF に保存' : '書き出し'
+  }
+  chips.addEventListener('click', (e) => { const b = e.target.closest('.chip'); if (!b) return
+    if (b.dataset.c === 'custom') { state.custom = true; state.grid = [+$('inCols').value, +$('inRows').value] } else { state.custom = false; state.grid = [+b.dataset.c, +b.dataset.r] }
+    render() })
+  ;['inCols','inRows'].forEach((id) => $(id).addEventListener('input', () => { state.grid = [+$('inCols').value, +$('inRows').value]; render() }))
+  $('paperChips').addEventListener('click', (e) => { const b = e.target.closest('.chip'); if (b) { state.paper = b.dataset.p; render() } })
+  $('outChips').addEventListener('click', (e) => { const b = e.target.closest('.chip'); if (b) { state.out = b.dataset.o; render() } })
+  $('rubyChips').addEventListener('click', (e) => { const b = e.target.closest('.chip'); if (!b) return; $('rubyChips').querySelectorAll('.chip').forEach((x) => x.setAttribute('aria-pressed', String(x === b))) })
+  document.querySelectorAll('.sw').forEach((s) => s.addEventListener('click', () => { const on = s.getAttribute('aria-checked') !== 'true'; s.setAttribute('aria-checked', String(on)); if (s.id === 'swBreak') { state.breakEp = on; render() } }))
+  $('vp').addEventListener('click', (e) => { const b = e.target.closest('button'); if (!b) return
+    $('vp').querySelectorAll('button').forEach((x) => x.setAttribute('aria-pressed', String(x === b)))
+    const m = b.dataset.v === 'mobile'
+    $('dlg').classList.toggle('narrow', m)
+    const img = $('shotExport'); img.src = m ? 'screens/export-novel-mobile.png' : 'screens/export-novel-desktop.png'; img.classList.toggle('mobile', m) })
+  $('st').addEventListener('click', (e) => { const b = e.target.closest('button'); if (!b) return
+    $('st').querySelectorAll('button').forEach((x) => x.setAttribute('aria-pressed', String(x === b)))
+    state.scene = b.dataset.s
+    if (state.scene === 'custom') { state.custom = true; state.paper = 'B5'; $('inCols').value = 44; $('inRows').value = 34; state.grid = [44, 34] }
+    else if (state.scene === 'print') { state.out = 'print'; state.custom = false; state.grid = [40, 34]; state.paper = 'A4' }
+    else { state.custom = false; state.grid = [40, 34]; state.out = 'docx'; state.paper = 'A4'; $('inCols').value = 40 }
+    render() })
+  render()
+
+  // --- PDF 見本：20字×20行に流し込み（wrapLine と同じ3つの禁則） ---
+  const NO_HEAD = new Set(Array.from('）」』】〕〉》’”ーぁぃぅぇぉっゃゅょゎァィゥェォッャュョヮヵヶ・：；？！々'))
+  const NO_TAIL = new Set(Array.from('（「『【〔〈《‘“'))
+  const HANG = new Set(Array.from('、。，．'))
+  const wrap = (t, cols) => { const cs = Array.from(t), out = []; let i = 0; if (!cs.length) return ['']
+    while (i < cs.length) { let end = Math.min(i + cols, cs.length)
+      if (end < cs.length) { if (HANG.has(cs[end])) end++; else { let e2 = end; while (e2 > i + 1 && (NO_HEAD.has(cs[e2]) || NO_TAIL.has(cs[e2 - 1]))) e2--; if (e2 > i) end = e2 } }
+      out.push(cs.slice(i, end).join('')); i = end }
+    return out }
+  const paras = ['　月は、まだ低いところにあった。','「行こう」','　少年は剣を背負い直し、坂を下りはじめた。風が草を鳴らし、遠くで犬が一度だけ吠えた。','','　村の灯りは、もう見えない。振り返らないと決めたのは、自分だった。']
+  const lines = paras.flatMap((p) => wrap(p, 20))
+  while (lines.length < 20) lines.push('')
+  const paper = $('paper')
+  lines.slice(0, 20).forEach((ln) => { const col = document.createElement('div'); col.className = 'pline'
+    const cs = Array.from(ln); for (let k = 0; k < 21; k++) { const s = document.createElement('span'); s.className = 'pcell'; s.textContent = cs[k] ?? '　'; col.append(s) }
+    paper.append(col) })
+  const fit = () => { const h = paper.clientHeight * 0.88; paper.querySelectorAll('.pcell').forEach((s) => { s.style.fontSize = (h / 21) + 'px'; s.style.height = (h / 21) + 'px' }); paper.querySelectorAll('.pline').forEach((l) => { l.style.width = (paper.clientWidth * 0.86 / 20) + 'px' }) }
+  const num = document.createElement('div'); num.className = 'pnum'; num.textContent = '1'; paper.append(num)
+  fit(); addEventListener('resize', fit)
+})()
+</script>

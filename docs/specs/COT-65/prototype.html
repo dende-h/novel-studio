@@ -1,0 +1,233 @@
+<title>投稿サイト ZIP の取り込みと全話の書き出し</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Shippori+Mincho+B1:wght@500;700&family=Noto+Sans+JP:wght@400;500;700&display=swap">
+<style>
+/* レイアウト：画面ごとに「現状（スクショ）」と「変更後（モック）」を並べる。色と字はアプリの index.css を写す */
+:root {
+  --background: #fdfcfb; --foreground: #4b5160; --card: #fefeff;
+  --primary: #2c5b27; --primary-fg: #ffffff; --accent: #f2f7f1;
+  --secondary-container: #f2e6d4; --on-secondary-container: #92703f;
+  --surface-low: #f9f7f5; --surface: #f3f1ec; --surface-highest: #e7e3da;
+  --on-surface: #1f2430; --on-surface-variant: #6b7381; --outline-variant: rgba(157,163,174,.35);
+  --error: #dc2626; --marker: #b98f63; --warn-bg: #fef9ec;
+  --font-sans: "Noto Sans JP", "Hiragino Sans", "Yu Gothic", system-ui, sans-serif;
+  --font-serif: "Shippori Mincho B1", "Hiragino Mincho ProN", "Yu Mincho", Georgia, serif;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --background: #181611; --foreground: #d7d2c8; --card: #201d16;
+  --primary: #44863a; --primary-fg: #ffffff; --accent: #202c1c;
+  --secondary-container: #38301f; --on-secondary-container: #e0c398;
+  --surface-low: #232019; --surface: #29251e; --surface-highest: #3a352b;
+  --on-surface: #ece8e1; --on-surface-variant: #a49e92; --outline-variant: rgba(100,94,83,.6);
+  --error: #e5544e; --marker: #cba576; --warn-bg: #2c2618; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --background: #181611; --foreground: #d7d2c8; --card: #201d16;
+  --primary: #44863a; --primary-fg: #ffffff; --accent: #202c1c;
+  --secondary-container: #38301f; --on-secondary-container: #e0c398;
+  --surface-low: #232019; --surface: #29251e; --surface-highest: #3a352b;
+  --on-surface: #ece8e1; --on-surface-variant: #a49e92; --outline-variant: rgba(100,94,83,.6);
+  --error: #e5544e; --marker: #cba576; --warn-bg: #2c2618; color-scheme: dark }
+* { box-sizing: border-box }
+body { background: var(--background); color: var(--foreground); font-family: var(--font-sans); line-height: 1.7;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 32px 64px }
+.wrap { max-width: 1200px; margin: 0 auto; display: grid; gap: 40px }
+h1, h2, h3 { font-family: var(--font-serif); color: var(--on-surface); text-wrap: balance; margin: 0 }
+h1 { font-size: 1.8rem; color: var(--primary) }
+h2 { font-size: 1.3rem; padding-bottom: 8px; border-bottom: 1px solid var(--outline-variant) }
+p { margin: 0 }
+.lead { color: var(--on-surface-variant); max-width: 70ch; display: grid; gap: 6px }
+.meta { font-size: 12px; letter-spacing: .04em }
+.warn { background: var(--warn-bg); border: 1px solid var(--marker); border-radius: 8px; padding: 10px 14px; font-size: 13px; color: var(--on-surface); max-width: 80ch }
+.pair { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 20px; align-items: start }
+@media (max-width: 860px) { .pair { grid-template-columns: minmax(0,1fr) } }
+.col { display: grid; gap: 8px; min-width: 0 }
+.tag { font-size: 11px; letter-spacing: .08em; color: var(--on-surface-variant) }
+.shot { width: 100%; border: 1px solid var(--outline-variant); border-radius: 8px; display: block }
+.shot.mobile { max-width: 300px }
+.toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; font-size: 12px; color: var(--on-surface-variant) }
+.seg { display: inline-flex; border: 1px solid var(--outline-variant); border-radius: 999px; overflow: hidden }
+.seg button { border: 0; background: transparent; color: var(--on-surface-variant); padding: 6px 14px; font: inherit; font-size: 13px; cursor: pointer }
+.seg button[aria-pressed="true"] { background: var(--primary); color: var(--primary-fg) }
+button:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px }
+.n { display: inline-grid; place-items: center; width: 1.4em; height: 1.4em; border-radius: 50%; background: var(--marker); color: #fff; font-size: 11px; font-weight: 700; flex: none }
+.mk { position: absolute; top: -8px; right: -8px }
+.rel { position: relative }
+.changes { list-style: none; padding: 0; margin: 0; display: grid; gap: 6px; font-size: 13px; max-width: 76ch }
+.changes li { display: grid; grid-template-columns: 1.6em minmax(0,1fr); gap: 6px }
+
+.dialog { background: var(--card); border: 1px solid var(--outline-variant); border-radius: 10px; overflow: hidden }
+.dh { padding: 16px 22px; border-bottom: 1px solid var(--outline-variant) }
+.dh h3 { color: var(--primary); font-size: 1.15rem }
+.dh p { font-size: 12px; color: var(--on-surface-variant) }
+.db { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr) }
+.dialog.narrow { max-width: 393px }
+.dialog.narrow .db { grid-template-columns: minmax(0,1fr) }
+.pane { padding: 16px 18px; display: grid; gap: 14px; align-content: start; min-width: 0 }
+.pane + .pane { border-left: 1px solid var(--outline-variant); background: var(--card) }
+.dialog.narrow .pane + .pane { border-left: 0; border-top: 1px solid var(--outline-variant) }
+.left { background: var(--surface-low) }
+.drop { border: 2px dashed var(--outline-variant); border-radius: 8px; padding: 14px; text-align: center; font-size: 12px; color: var(--on-surface-variant); display: grid; gap: 6px; justify-items: center }
+.drop strong { color: var(--on-surface); font-size: 13px }
+.btn { border-radius: 6px; padding: 6px 14px; font: inherit; font-size: 13px; font-weight: 500; border: 1px solid var(--outline-variant); background: var(--card); color: var(--primary) }
+.btn.p { background: var(--primary); color: var(--primary-fg); border-color: var(--primary) }
+.btn[disabled] { opacity: .45 }
+.filerow { border: 1px solid var(--outline-variant); border-radius: 6px; background: var(--card); padding: 8px 10px; display: grid; gap: 2px; font-size: 13px }
+.filerow .top { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center }
+.filerow .nm { color: var(--on-surface); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
+.badge { background: var(--secondary-container); color: var(--on-secondary-container); border-radius: 999px; padding: 0 8px; font-size: 11px; font-weight: 500 }
+.badge.g { background: var(--accent); color: var(--primary) }
+.sub { font-size: 11px; color: var(--on-surface-variant) }
+.err { color: var(--error); font-size: 12px }
+.tg { display: flex; justify-content: space-between; gap: 10px; align-items: center; font-size: 13px; color: var(--on-surface) }
+.sw { width: 34px; height: 20px; border-radius: 999px; background: var(--surface-highest); position: relative; flex: none; border: 0; cursor: pointer }
+.sw::after { content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; transition: transform .15s }
+.sw[aria-checked="true"] { background: var(--primary) }
+.sw[aria-checked="true"]::after { transform: translateX(14px) }
+@media (prefers-reduced-motion: reduce) { .sw::after { transition: none } }
+.lbl { font-size: 12px; color: var(--on-surface); font-weight: 500 }
+.radio { display: grid; gap: 4px; font-size: 13px }
+.meta-box { border: 1px solid var(--outline-variant); border-radius: 6px; padding: 10px 12px; font-size: 12px; display: grid; gap: 4px; background: var(--surface-low) }
+.meta-box b { color: var(--on-surface); font-weight: 500 }
+.eps { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px }
+.ep { border: 1px solid var(--outline-variant); border-radius: 6px; padding: 8px 10px; display: grid; gap: 2px; font-size: 13px }
+.ep .t { color: var(--on-surface); font-weight: 500 }
+.ep .x { font-size: 11px; color: var(--on-surface-variant); overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
+.ep .row { display: flex; justify-content: space-between; gap: 8px }
+.foot { display: flex; justify-content: flex-end; gap: 10px; padding: 12px 22px; border-top: 1px solid var(--outline-variant) }
+.chips { display: flex; flex-wrap: wrap; gap: 8px }
+.chip { border: 1px solid var(--outline-variant); border-radius: 999px; padding: 5px 14px; font: inherit; font-size: 13px; background: transparent; color: var(--on-surface-variant); cursor: pointer }
+.chip[aria-pressed="true"] { border-color: var(--primary); color: var(--primary); background: color-mix(in srgb, var(--primary) 10%, transparent) }
+.sel { border: 1px solid var(--outline-variant); border-radius: 6px; padding: 7px 10px; font-size: 13px; color: var(--on-surface); background: var(--card) }
+.note { background: var(--surface-low); border-radius: 6px; padding: 10px 12px; font-size: 12px }
+.zip { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; background: var(--surface-low); border: 1px solid var(--outline-variant); border-radius: 6px; padding: 10px 12px; overflow-x: auto; white-space: pre; color: var(--on-surface) }
+.ico { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 1.8; flex: none; color: var(--on-surface-variant) }
+</style>
+
+<div class="wrap">
+  <header class="lead">
+    <p class="meta">COT-65 ・ UIプロトタイプ ・ 要件 COT-68 ／ 設計 COT-69</p>
+    <h1>投稿サイトの ZIP を取り込み、全話をまとめて書き出す</h1>
+    <p>「テキストから作品を作る」で投稿サイトのバックアップ ZIP を受け、話に分けて作品にします。「Web投稿形式」では、全話を ZIP（話ごとの .txt）か1本の .txt で書き出せます。番号は設計（design.md）の UI 節と対応しています。</p>
+    <p class="warn">カクヨムと小説家になろうは、実物の ZIP で形を確かめました。ノベルアップ+ は実物が無いので、届くまでは「見分けられない ZIP」として扱います。</p>
+  </header>
+
+  <section class="col" style="gap:16px" aria-labelledby="s1">
+    <h2 id="s1">テキストから作品を作る</h2>
+    <div class="toolbar" role="group" aria-label="表示の切り替え">
+      幅 <div class="seg" id="vp"><button aria-pressed="true" data-v="d">PC</button><button aria-pressed="false" data-v="m">スマホ（393px）</button></div>
+      入れた ZIP <div class="seg" id="zs"><button aria-pressed="true" data-z="kakuyomu">カクヨム（章あり）</button><button aria-pressed="false" data-z="narou">小説家になろう</button><button aria-pressed="false" data-z="narouFlat">なろう（章・後書きなし）</button><button aria-pressed="false" data-z="unknown">見分けられない</button><button aria-pressed="false" data-z="error">大きすぎる</button></div>
+    </div>
+    <div class="pair">
+      <div class="col"><span class="tag">現状</span><img id="shotImp" class="shot" src="screens/text-import-desktop.png" alt="現状の「テキストから作品を作る」。.txt と貼り付けだけ"></div>
+      <div class="col"><span class="tag">変更後</span>
+        <div class="dialog" id="dlg">
+          <div class="dh"><h3>テキストから作品を作る</h3><p>.txt や貼り付けた本文、投稿サイトのバックアップ ZIP を、話に分けます。</p></div>
+          <div class="db">
+            <div class="pane left">
+              <div class="drop rel"><span class="n mk">1</span><strong>ここにファイルをドロップ</strong><span>.txt（UTF-8・Shift_JIS・EUC-JP・JIS）・複数可、または投稿サイトのバックアップ ZIP（1つ）・合計 20MB まで</span><button class="btn">ファイルを選択</button></div>
+              <div class="filerow rel" id="zipRow"><span class="n mk">2</span></div>
+              <div class="rel" id="opts"><span class="n mk">3</span></div>
+              <div style="display:grid;gap:4px;font-size:12px"><span class="lbl">作品タイトル</span><div class="sel" id="wtitle">月と剣</div></div>
+            </div>
+            <div class="pane">
+              <div class="meta-box rel" id="metaBox"><span class="n mk">4</span></div>
+              <ul class="eps" id="eps"></ul>
+            </div>
+          </div>
+          <div class="foot"><button class="btn">キャンセル</button><button class="btn p" id="create">作品を作る</button></div>
+        </div>
+      </div>
+    </div>
+    <ol class="changes">
+      <li><span class="n">1</span><span>ドロップ領域で ZIP も受ける。ZIP は1つずつで、.txt と混ぜない（混ぜようとすると「ZIP は1つずつ取り込めます。いま入っているファイルを外してから選んでください」）。</span></li>
+      <li><span class="n">2</span><span>ZIP の行：名前・見分けた結果のバッジ・話の数・字数。下に読み飛ばした件数や読めなかった件数。展開できない ZIP は理由をこの行に出す。</span></li>
+      <li><span class="n">3</span><span>サイトを見分けたときは「章の題名を話の題名に添える」「前書き・後書きを本文に残す」。見分けられないときは COT-31 の分け方（既定「ファイルごとに1話」）。</span></li>
+      <li><span class="n">4</span><span>どこへ何が入るか。あらすじは先頭 250 字、タグは 5 個まで。入りきらないものはネタ帳に1件控える。</span></li>
+    </ol>
+  </section>
+
+  <section class="col" style="gap:16px" aria-labelledby="s2">
+    <h2 id="s2">書き出し「Web投稿形式」</h2>
+    <div class="toolbar" role="group" aria-label="範囲の切り替え">幅 <div class="seg" id="vp2"><button aria-pressed="true" data-v="d">PC</button><button aria-pressed="false" data-v="m">スマホ（393px）</button></div> 範囲 <div class="seg" id="rg"><button aria-pressed="false" data-r="one">この話</button><button aria-pressed="true" data-r="zip">全話（ZIP）</button><button aria-pressed="false" data-r="txt">全話（1本）</button></div></div>
+    <div class="pair">
+      <div class="col"><span class="tag">現状</span><img class="shot" id="shotWeb" src="screens/export-web-desktop.png" alt="現状の Web投稿 設定。投稿先と話の選択だけ"></div>
+      <div class="col"><span class="tag">変更後（設定の欄）</span>
+        <div class="dialog" id="dlg2"><div class="pane" style="gap:16px">
+          <div style="font-family:var(--font-serif);color:var(--primary);font-size:1.1rem;border-bottom:1px solid var(--outline-variant);padding-bottom:6px">Web投稿 設定</div>
+          <div><div class="sub" style="margin-bottom:6px">投稿先</div><div class="chips" id="site"><button class="chip" aria-pressed="true" data-s="narou">小説家になろう</button><button class="chip" aria-pressed="false" data-s="kakuyomu">カクヨム</button></div></div>
+          <div class="rel"><span class="n mk">5</span><div class="sub" style="margin-bottom:6px">書き出す範囲</div><div class="chips" id="range"><button class="chip" data-r="one">この話</button><button class="chip" data-r="zip">全話（ZIP・話ごとの .txt）</button><button class="chip" data-r="txt">全話（1本の .txt）</button></div></div>
+          <div class="rel" id="rangeDetail"><span class="n mk">6</span></div>
+        </div></div>
+      </div>
+    </div>
+    <ol class="changes">
+      <li><span class="n">5</span><span>「書き出す範囲」のチップ。既定は「この話」で、いまと同じ動き。</span></li>
+      <li><span class="n">6</span><span>「この話」のときだけ話を選ぶ。全話のときは話の数と、出てくるファイルの形を見せる。</span></li>
+    </ol>
+  </section>
+</div>
+
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id)
+  const EPS = {
+    kakuyomu: [['第一章　旅立ち　／　第1話', '　月は、まだ低いところにあった。', '44'], ['第2話', '　村の灯りは、もう見えない。', '43'], ['第二章　峠　／　第3話', '　霧は朝になっても晴れなかった。', '77']],
+    narouFlat: [['プロローグ', '　月は、まだ低いところにあった。……', '3,412'], ['東の街にて', '　村の灯りは、もう見えない。……', '4,018'], ['峠', '　霧は朝になっても晴れなかった。……', '3,840']],
+    narou: [['旅立ち　／　プロローグ', '　月は、まだ低いところにあった。……', '3,412'], ['東の街にて', '　村の灯りは、もう見えない。……', '4,018'], ['峠', '　霧は朝になっても晴れなかった。……（後書き）　次回は来週です。', '3,877']],
+  }
+  const UNK = [['坂', '　月は、まだ低いところにあった。', '3,302'], ['村', '　村の灯りは、もう見えない。', '4,018'], ['霧', '　霧は朝になっても晴れなかった。', '3,760']]
+  const sw = (label, on) => `<div class="tg"><span>${label}</span><button class="sw" role="switch" aria-checked="${on}" aria-label="${label}"></button></div>`
+  const renderImp = (z) => {
+    const fileIcon = '<svg class="ico" viewBox="0 0 24 24"><path d="M21 8v13H3V3h12z"/><path d="M10 3v4M10 9v2M10 13v2"/></svg>'
+    if (z === 'error') {
+      $('zipRow').innerHTML = `<span class="n mk">2</span><div class="top">${fileIcon}<span class="nm">月と剣_20261020.zip</span><span>✕</span></div><span class="err">中身が大きすぎます。合計 20MB までの ZIP を取り込めます</span>`
+    } else if (z === 'unknown') {
+      $('zipRow').innerHTML = `<span class="n mk">2</span><div class="top">${fileIcon}<span class="nm">novel_backup.zip</span><span class="badge">ZIP</span><span class="sub">3話 ・ 11,080字</span><span>✕</span></div><span class="sub">ZIP の中の .txt 3 件を読みました ・ .txt 以外の 2 件は読み飛ばしました</span>`
+    } else if (z === 'narou' || z === 'narouFlat') {
+      $('zipRow').innerHTML = `<span class="n mk">2</span><div class="top">${fileIcon}<span class="nm">N0000XX.zip</span><span class="badge g">小説家になろう</span><span class="sub">3話 ・ 11,307字</span><span>✕</span></div><span class="sub">小説家になろうのバックアップとして読みました ・ 評価・リアクションなどは取り込みません</span>`
+    } else {
+      $('zipRow').innerHTML = `<span class="n mk">2</span><div class="top">${fileIcon}<span class="nm">月と剣_20261025.zip</span><span class="badge g">カクヨム</span><span class="sub">3話 ・ 164字</span><span>✕</span></div><span class="sub">カクヨムのバックアップとして読みました</span>`
+    }
+    $('opts').innerHTML = '<span class="n mk">3</span>' + (z === 'unknown'
+      ? `<div class="radio"><span class="lbl">分け方</span><label><input type="radio" name="m"> 見出し行で分ける</label><label><input type="radio" name="m" checked> ファイルごとに1話</label><label><input type="radio" name="m"> 分けない</label><span class="sub">ファイル名の頭の番号（001_ など）は題名から外します</span></div>`
+      : z === 'error' ? '<span class="sub">ZIP を外すと、別のファイルを選べます</span>'
+      : z === 'kakuyomu' ? `<div style="display:grid;gap:8px">${sw('章の題名を話の題名に添える', true)}<span class="sub">カクヨムには前書き・後書きが無いので、そのスイッチは出ません</span></div>`
+      : z === 'narouFlat' ? '<span class="sub">章も前書き・後書きも無い作品なので、スイッチは出ません</span>'
+      : `<div style="display:grid;gap:8px">${sw('章の題名を話の題名に添える', true)}${sw('前書き・後書きを本文に残す', true)}</div>`)
+    $('metaBox').innerHTML = '<span class="n mk">4</span>' + (z === 'narou' || z === 'narouFlat'
+      ? '<b>作品情報に入るもの</b><span>作品タイトル・著者 ← 作品の題名・作者名</span><span>あらすじ ← あらすじの先頭 250 字（全 612 字）</span><span>タグ ← キーワードの先頭 5 語（10 語のうち）</span><span>ネタ帳に1件 ← あらすじの全文・キーワード 10 語・作品に含まれる要素</span>'
+      : z === 'kakuyomu' ? '<b>作品情報に入るもの</b><span>作品タイトル ← 作品の題名</span><span>章 ← 目次の「§」の章（2つ）</span><span>この ZIP には紹介文・タグがありませんでした</span>'
+      : z === 'unknown' ? '<b>作品情報に入るもの</b><span>この ZIP には作品情報が見つかりませんでした。本文だけを取り込みます</span>'
+      : '<b>作品情報に入るもの</b><span>—</span>')
+    const list = z === 'error' ? [] : z === 'unknown' ? UNK : EPS[z]
+    $('eps').innerHTML = list.length ? list.map(([t, x, c], i) => `<li class="ep"><div class="row"><span class="t">${i + 1}. ${t}</span><span class="sub">${c}字</span></div><span class="x">${x}</span></li>`).join('')
+      : '<li class="sub" style="padding:24px;text-align:center;border:1px dashed var(--outline-variant);border-radius:8px">テキストを読み込むと、ここに話の分かれ方が出ます</li>'
+    $('create').disabled = z === 'error'
+    $('wtitle').textContent = z === 'unknown' ? 'novel_backup' : z === 'narou' ? '月と剣' : '月と剣'
+    document.querySelectorAll('.sw').forEach((s) => s.addEventListener('click', () => s.setAttribute('aria-checked', String(s.getAttribute('aria-checked') !== 'true'))))
+  }
+  const seg = (id, cb) => $(id).addEventListener('click', (e) => { const b = e.target.closest('button'); if (!b) return; $(id).querySelectorAll('button').forEach((x) => x.setAttribute('aria-pressed', String(x === b))); cb(b) })
+  seg('zs', (b) => renderImp(b.dataset.z))
+  seg('vp', (b) => { const m = b.dataset.v === 'm'; $('dlg').classList.toggle('narrow', m); const i = $('shotImp'); i.src = m ? 'screens/text-import-mobile.png' : 'screens/text-import-desktop.png'; i.classList.toggle('mobile', m) })
+  renderImp('kakuyomu')
+
+  let range = 'zip', site = 'narou'
+  const renderRange = () => {
+    $('range').querySelectorAll('.chip').forEach((c) => c.setAttribute('aria-pressed', String(c.dataset.r === range)))
+    $('rg').querySelectorAll('button').forEach((c) => c.setAttribute('aria-pressed', String(c.dataset.r === range)))
+    $('site').querySelectorAll('.chip').forEach((c) => c.setAttribute('aria-pressed', String(c.dataset.s === site)))
+    const tag = site
+    $('rangeDetail').innerHTML = '<span class="n mk">6</span>' + (range === 'one'
+      ? '<div class="sub" style="margin-bottom:6px">話を選択</div><div class="sel">第1話　坂 ▾</div>'
+      : range === 'zip'
+        ? `<div class="note">3話を書き出します。001_題名.txt のように、話の順に番号を付けます。1話ずつ読み込むサイトへ順に入れられます。</div><div class="zip">月と剣_${tag}_全話.zip\n├ 001_第1話　坂.txt\n├ 002_第2話　村.txt\n└ 003_第3話　霧.txt</div>`
+        : `<div class="note">3話を書き出します。話の題名を見出しの行にして、1本につなげます。1本の .txt を受けて話に分けるサイト向けです。本文の書き方によっては、取り込むときに分かれ方を直す必要があります。</div><div class="zip">月と剣_${tag}_全話.txt\n第1話　坂\n\n　月は、まだ低いところにあった。…\n\n\n第2話　村\n\n　村の灯りは、もう見えない。…</div>`)
+  }
+  $('range').addEventListener('click', (e) => { const b = e.target.closest('.chip'); if (b) { range = b.dataset.r; renderRange() } })
+  $('site').addEventListener('click', (e) => { const b = e.target.closest('.chip'); if (b) { site = b.dataset.s; renderRange() } })
+  seg('rg', (b) => { range = b.dataset.r; renderRange() })
+  seg('vp2', (b) => { const m = b.dataset.v === 'm'; $('dlg2').classList.toggle('narrow', m); const i = $('shotWeb'); i.src = m ? 'screens/export-web-mobile.png' : 'screens/export-web-desktop.png'; i.classList.toggle('mobile', m) })
+  renderRange()
+})()
+</script>

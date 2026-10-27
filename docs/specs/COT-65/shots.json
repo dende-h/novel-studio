@@ -1,0 +1,261 @@
+{
+  "baseURL": "http://localhost:5173",
+  "outDir": "docs/specs/COT-65/screens",
+  "shots": [
+    {
+      "name": "text-import",
+      "viewports": [
+        "desktop",
+        "mobile"
+      ],
+      "steps": [
+        {
+          "goto": "/"
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "データ管理"
+          }
+        },
+        {
+          "wait": 300
+        },
+        {
+          "click": {
+            "text": "テキストから作品を作る"
+          }
+        },
+        {
+          "wait": 600
+        }
+      ]
+    },
+    {
+      "name": "export-web",
+      "viewports": [
+        "desktop"
+      ],
+      "steps": [
+        {
+          "goto": "/"
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "新しい作品",
+            "exact": true
+          }
+        },
+        {
+          "fill": {
+            "label": "作品タイトル",
+            "value": "月と剣"
+          }
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "作成",
+            "exact": true
+          }
+        },
+        {
+          "waitFor": {
+            "role": "heading",
+            "name": "月と剣"
+          }
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "「月と剣」を執筆"
+          }
+        },
+        {
+          "wait": 500
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "新しいエピソード",
+            "exact": true
+          }
+        },
+        {
+          "fill": {
+            "label": "話タイトル",
+            "value": "第1話　坂"
+          }
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "追加",
+            "exact": true
+          }
+        },
+        {
+          "waitFor": {
+            "role": "textbox",
+            "name": "本文"
+          }
+        },
+        {
+          "fill": {
+            "role": "textbox",
+            "name": "本文",
+            "value": "　月は、まだ低いところにあった。\n「行こう」\n　少年は剣を背負い直し、坂を下りはじめた。"
+          }
+        },
+        {
+          "wait": 1200
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "書き出し"
+          }
+        },
+        {
+          "waitFor": {
+            "role": "heading",
+            "name": "プロジェクトの書き出し"
+          }
+        },
+        {
+          "click": {
+            "text": "Web投稿形式"
+          }
+        },
+        {
+          "wait": 400
+        }
+      ]
+    },
+    {
+      "name": "export-web",
+      "viewports": [
+        "mobile"
+      ],
+      "steps": [
+        {
+          "goto": "/"
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "メニュー",
+            "exact": true
+          }
+        },
+        {
+          "wait": 300
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "新しい作品",
+            "exact": true
+          }
+        },
+        {
+          "fill": {
+            "label": "作品タイトル",
+            "value": "月と剣"
+          }
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "作成",
+            "exact": true
+          }
+        },
+        {
+          "waitFor": {
+            "role": "heading",
+            "name": "月と剣"
+          }
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "「月と剣」を執筆"
+          }
+        },
+        {
+          "wait": 500
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "メニュー",
+            "exact": true
+          }
+        },
+        {
+          "wait": 300
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "新しいエピソード",
+            "exact": true
+          }
+        },
+        {
+          "fill": {
+            "label": "話タイトル",
+            "value": "第1話　坂"
+          }
+        },
+        {
+          "click": {
+            "role": "button",
+            "name": "追加",
+            "exact": true
+          }
+        },
+        {
+          "waitFor": {
+            "role": "textbox",
+            "name": "本文"
+          }
+        },
+        {
+          "fill": {
+            "role": "textbox",
+            "name": "本文",
+            "value": "　月は、まだ低いところにあった。\n「行こう」\n　少年は剣を背負い直し、坂を下りはじめた。"
+          }
+        },
+        {
+          "wait": 1200
+        },
+        {
+          "click": {
+            "selector": "button:has(svg.lucide-download)"
+          }
+        },
+        {
+          "waitFor": {
+            "role": "heading",
+            "name": "プロジェクトの書き出し"
+          }
+        },
+        {
+          "click": {
+            "text": "Web投稿形式"
+          }
+        },
+        {
+          "wait": 400
+        },
+        {
+          "eval": "document.querySelector(\"[role=dialog] .overflow-y-auto:last-of-type\")?.scrollIntoView()"
+        }
+      ]
+    }
+  ]
+}
