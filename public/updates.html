@@ -1,0 +1,401 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- テーマ先読み（描画前に localStorage のテーマを反映してちらつきを防ぐ。キーは src/ui/hooks/use-preferences.ts と一致）。 -->
+<script>
+  (function () {
+    try {
+      var t = localStorage.getItem('ns-theme') || 'system'
+      var dark = t === 'dark' || (t === 'system' && matchMedia('(prefers-color-scheme: dark)').matches)
+      if (dark) document.documentElement.classList.add('dark')
+    } catch (e) {}
+  })()
+</script>
+<title>更新のお知らせ — コトノハ-leaf-</title>
+<meta name="description" content="コトノハ-leaf- の更新のお知らせ。新しく使えるようになった機能、直した不具合、規約の改定を新しい順に載せています。">
+<meta name="robots" content="index,follow">
+<meta name="theme-color" content="#2c5b27">
+<link rel="canonical" href="https://cotonoha-leaf.org/updates">
+<link rel="icon" href="/favicon-clean.png" type="image/png" sizes="any">
+
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="コトノハ-leaf-">
+<meta property="og:title" content="更新のお知らせ — コトノハ-leaf-">
+<meta property="og:description" content="コトノハ-leaf- の更新のお知らせ。新しく使えるようになった機能、直した不具合、規約の改定を新しい順に載せています。">
+<meta property="og:url" content="https://cotonoha-leaf.org/updates">
+<meta property="og:image" content="https://cotonoha-leaf.org/lp/ogp.png">
+<meta property="og:locale" content="ja_JP">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Shippori+Mincho+B1:wght@500;600;700&family=Zen+Kaku+Gothic+New:wght@400;500;700&display=swap" rel="stylesheet">
+
+<style>
+  /* アプリ（src/ui/index.css）のトークンから必要分のみ採録。legal-layout.tsx の体裁を静的HTMLへ移植。 */
+  :root {
+    color-scheme: light;
+    --background: #fdfcfb; --foreground: #4b5160;
+    --on-surface: #1f2430; --on-surface-variant: #6b7381;
+    --surface-lowest: #fefeff; --outline: rgba(157,163,174,0.3);
+    --link: #2c5b27; --link-hover: #1a3014; --wheat: #92703f;
+  }
+  .dark {
+    color-scheme: dark;
+    --background: #181611; --foreground: #d7d2c8;
+    --on-surface: #ece8e1; --on-surface-variant: #a49e92;
+    --surface-lowest: #1f1c16; --outline: rgba(100,94,83,0.5);
+    --link: #8bc47e; --link-hover: #c6e8bb; --wheat: #d8bd8e;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    background: var(--background); color: var(--foreground);
+    font-family: "Zen Kaku Gothic New", "Hiragino Sans", "Yu Gothic", sans-serif;
+    line-height: 1.85; -webkit-font-smoothing: antialiased;
+  }
+  a { color: var(--link); text-underline-offset: 2px; }
+  a:hover { color: var(--link-hover); }
+  .site-header {
+    display: flex; align-items: center; height: 56px;
+    border-bottom: 1px solid var(--outline);
+    background: var(--surface-lowest); padding: 0 20px;
+  }
+  .brand {
+    font-family: "Shippori Mincho B1", "Hiragino Mincho ProN", "Yu Mincho", serif;
+    font-weight: 700; font-size: 19px; color: var(--on-surface);
+    text-decoration: none; letter-spacing: 0.01em;
+  }
+  .brand .leaf { margin-left: 2px; font-weight: 500; font-size: 13px; color: var(--wheat); letter-spacing: 0.06em; }
+  main { max-width: 720px; margin: 0 auto; padding: 48px 24px 80px; }
+  .back {
+    display: inline-flex; align-items: center; gap: 6px; margin-bottom: 32px;
+    font-size: 13px; color: var(--on-surface-variant); text-decoration: none;
+  }
+  .back:hover { color: var(--link); }
+  h1 { margin: 0; font-family: "Shippori Mincho B1", serif; font-weight: 600; font-size: 28px; line-height: 1.4; color: var(--on-surface); }
+  .date { margin-top: 8px; font-size: 12px; color: var(--on-surface-variant); }
+  .doc { margin-top: 32px; }
+  .doc h2 { margin: 36px 0 10px; font-family: "Shippori Mincho B1", serif; font-weight: 600; font-size: 17px; color: var(--on-surface); }
+  .doc p { margin: 10px 0 0; font-size: 14px; color: var(--foreground); }
+  .doc ul { margin: 10px 0 0; padding-left: 24px; list-style: disc; }
+  .doc ol { margin: 10px 0 0; padding-left: 24px; list-style: decimal; }
+  .doc li { margin-top: 6px; font-size: 14px; }
+  .doc strong { font-weight: 700; color: var(--on-surface); }
+  footer { margin-top: 56px; padding-top: 24px; border-top: 1px solid var(--outline); font-size: 12px; color: var(--on-surface-variant); }
+  footer .row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 16px; }
+  footer a { color: var(--on-surface-variant); text-decoration: none; }
+  footer a:hover { color: var(--link); }
+  footer .brand-mini { margin-left: auto; font-family: "Shippori Mincho B1", serif; }
+  footer .brand-mini .leaf { margin-left: 2px; font-size: 0.72em; color: var(--wheat); letter-spacing: 0.06em; }
+  /* 更新のお知らせ（このページだけ） */
+  .release { margin-top: 40px; padding-top: 4px; }
+  .release + .release { border-top: 1px solid var(--outline); padding-top: 28px; }
+  .release h2 { margin: 0; font-family: "Shippori Mincho B1", serif; font-weight: 600; font-size: 17px; color: var(--on-surface); }
+  .release h2 time { display: block; margin-bottom: 2px; font-family: "Zen Kaku Gothic New", sans-serif; font-weight: 500; font-size: 12px; color: var(--wheat); letter-spacing: 0.04em; }
+  .release h3 { margin: 18px 0 0; font-size: 13px; font-weight: 700; color: var(--on-surface-variant); }
+  .release ul { margin: 8px 0 0; padding-left: 22px; list-style: disc; }
+  .release li { margin-top: 6px; font-size: 14px; }
+  .release strong { font-weight: 700; color: var(--on-surface); }
+</style>
+</head>
+<body>
+  <header class="site-header">
+    <a class="brand" href="/">コトノハ<span class="leaf">-leaf-</span></a>
+  </header>
+
+  <main>
+    <a class="back" href="/">← アプリへ戻る</a>
+
+    <h1>更新のお知らせ</h1>
+    <p class="date">新しい順に載せています</p>
+
+    <div class="doc">
+      <p>
+        コトノハ-leaf- で新しく使えるようになったこと、直した不具合、規約やポリシーの改定をお知らせします。ほしい機能やうまく動かないところは、<a href="/#/board">掲示板</a>で聞かせてください。
+      </p>
+    </div>
+
+    <!--
+      リリースのたびに、ここ（いちばん上）へ 1 件足す。書き方は toc-copy スキル（お知らせ・リリースノート）。
+      日付は本番に出た日（JST）。見出しは「新しくできること／変えたこと／直した不具合／規約・ポリシー」から使う分だけ。
+      利用者に見えない変更（CI・内部の作り替え・開発用の道具）は載せない。
+    -->
+
+      <section class="release" id="r-2026-10-23">
+        <h2><time datetime="2026-10-23">2026年10月23日</time>推敲の画面とテキストの取り込み</h2>
+        <h3>新しくできること</h3>
+        <ul>
+          <li><strong>推敲の画面</strong>：原稿の気になる箇所を一覧にし、指摘ごとに「直す」か「このまま」かを選べます。直すと決めた箇所は、執筆画面の「直す箇所」に並びます。表記ゆれ、一文の中で重なる助詞、ら抜き言葉も拾います。解析は端末の中で行い、原稿をサーバーへ送りません。パソコン向けで、無料のアカウント登録から使えます</li>
+          <li><strong>作品の決まり</strong>：「この作品では指摘しない」「◯◯にそろえる」を作品ごとに決められます。選んだ結果から決まりを提案します</li>
+          <li><strong>分析</strong>：よく使う言葉、文末の偏り、セリフと地の文の割合を確かめられます。押すと本文の該当箇所に印が付きます</li>
+          <li><strong>用語集に無い名前</strong>：本文の固有名詞を拾い、名前と読みを入れた状態で用語集への登録を開けます</li>
+          <li><strong>テキストの取り込み</strong>：.txt ファイルや貼り付けた本文を、見出しで話に分けて新しい作品にできます。「新しいプロジェクト」のダイアログから移れ、小説か脚本かを選べます</li>
+        </ul>
+        <h3>変えたこと</h3>
+        <ul>
+          <li>執筆画面のサイドバーで、話の一覧の見出しを「原稿」にし、＋から話を足せるようにしました</li>
+        </ul>
+      </section>
+
+      <section class="release" id="r-2026-10-14">
+        <h2><time datetime="2026-10-14">2026年10月14日</time>AI 連携の案内ページ</h2>
+        <h3>新しくできること</h3>
+        <ul>
+          <li><a href="/lp/ai/">AI 連携（MCP）の案内ページ</a>を公開しました。自分の AI につないで頼めること、つなぎ方、原稿の扱い、料金をまとめています</li>
+        </ul>
+      </section>
+
+      <section class="release" id="r-2026-10-08">
+        <h2><time datetime="2026-10-08">2026年10月8日</time>作品全体の検索・置換</h2>
+        <h3>新しくできること</h3>
+        <ul>
+          <li><strong>作品全体の検索・置換</strong>：全話をまとめて検索し、結果から該当箇所へ移れます。1件ずつでも、まとめてでも置換できます。「この話」の検索でも、結果ごとに置換できるようにしました</li>
+          <li>用語集の参照（[[用語]]）は検索で見つけられますが、置換では書き換わりません。全話を置換する前の状態は履歴に残ります</li>
+        </ul>
+      </section>
+
+      <section class="release" id="r-2026-10-01">
+        <h2><time datetime="2026-10-01">2026年10月1日</time>脚本モード</h2>
+        <h3>新しくできること</h3>
+        <ul>
+          <li><strong>脚本モード</strong>：作品の形式を「脚本」にすると、行頭の書き方で柱・ト書き・セリフを見分けます。新しい作品を作るときと、作品情報で選べます</li>
+          <li><strong>原稿用紙のプレビュー</strong>：縦書き20字×20行（横書き40字×40行も）で表示します。ト書きの字下げや禁則を自動でそろえ、枚数を出します</li>
+          <li><strong>提出用の書き出し</strong>：Word とテキストで書き出せます。Word では表紙・人物一覧表・あらすじを別のページにします</li>
+          <li><strong>書式チェック</strong>：話者のないセリフ、括弧の対応、柱の有無などを本文の下で確かめられます</li>
+          <li>作品情報に「梗概」の欄を足しました（脚本のみ）。コトノハ-grove- へは送りません</li>
+        </ul>
+        <h3>変えたこと</h3>
+        <ul>
+          <li>記法ボタンの「参照」を「用語引用」に改めました</li>
+        </ul>
+      </section>
+
+      <section class="release" id="r-2026-09-27">
+        <h2><time datetime="2026-09-27">2026年9月27日</time>用語集の「対話」</h2>
+        <h3>新しくできること</h3>
+        <ul>
+          <li><strong>用語集の「対話」</strong>：質問に一問ずつ答えると、人物・場所・組織・用語・アイテム・生物の項目が育ちます。名前を答えた時点で用語集に登録されます</li>
+          <li>答えは「対話ノート」に残ります。行ごとに直せ、読者に見せるか作者だけにするかも切り替えられます</li>
+        </ul>
+      </section>
+
+      <section class="release" id="r-2026-09-25">
+        <h2><time datetime="2026-09-25">2026年9月25日</time>プロット・マインドマップの不具合の修正</h2>
+        <h3>直した不具合</h3>
+        <ul>
+          <li>プロットで、要約を書いた直後に状態のボタンを押すと、要約が保存データごと消えることがありました。伏線・秘密の欄でも同じことが起きていました</li>
+          <li>マインドマップで枝を足しても、入力が新しい枝に移らず、親の枝に入っていました。日本語の変換を確定する Enter で枝が増えることもありました</li>
+          <li>執筆の記録の年カレンダーが、幅の狭い画面では1月の位置で開き、今日の位置が見えませんでした。今日の週まで送って開くようにしました</li>
+        </ul>
+      </section>
+
+      <section class="release" id="r-2026-09-20">
+        <h2><time datetime="2026-09-20">2026年9月20日</time>サウンドノベルの書き出し</h2>
+        <h3>新しくできること</h3>
+        <ul>
+          <li><strong>サウンドノベルの書き出し</strong>：1話を、ブラウザで遊べる zip に書き出せます。話者・立ち絵・背景・BGM・場面の切れ目は演出エディタで指定し、本文には手を入れません</li>
+          <li>運営が用意した背景・立ち絵・BGM を使えます。自分で用意した背景も持ち込めます</li>
+          <li>コトノハ-grove- へは、話ごとにサウンドノベルとして公開するかを選べます</li>
+        </ul>
+        <h3>変えたこと</h3>
+        <ul>
+          <li>AI 連携（MCP）の接続で、許可を出す画面をコトノハ-leaf- の中に用意しました。これまでに発行したトークンはそのまま使えます</li>
+        </ul>
+      </section>
+
+      <section class="release" id="r-2026-08-31">
+        <h2><time datetime="2026-08-31">2026年8月31日</time>掲示板</h2>
+        <h3>新しくできること</h3>
+        <ul>
+          <li><strong>掲示板</strong>：要望・不具合・雑談・自己紹介・作品紹介のスレッドを立てて話せます。読むだけならログインは要りません。使い方は<a href="/board-guidelines">掲示板ガイドライン</a>にまとめました</li>
+        </ul>
+        <h3>変えたこと</h3>
+        <ul>
+          <li>ペンネームをアカウントごとに1つにまとめました。掲示板の表示名と同じ名前になります</li>
+          <li>スレッドを立てられる数を、1日3本から10本にしました</li>
+        </ul>
+        <h3>直した不具合</h3>
+        <ul>
+          <li>立てたスレッドが、ページを読み込み直すまで一覧に出ませんでした</li>
+        </ul>
+      </section>
+
+      <section class="release" id="r-2026-08-28">
+        <h2><time datetime="2026-08-28">2026年8月28日</time>プロットのパネルと無料アカウントの扱い</h2>
+        <h3>変えたこと</h3>
+        <ul>
+          <li>執筆画面の「この話のプロット」で、ビートの中身（視点・登場人物・舞台・伏線・秘密・メモなど）をすべて読めるようにしました。プロットの画面へ移らずに確かめられます</li>
+          <li>無料アカウントを、登録から30日で削除していたのをやめました。無料アカウントに期限はありません</li>
+        </ul>
+      </section>
+
+      <section class="release" id="r-2026-08-24">
+        <h2><time datetime="2026-08-24">2026年8月24日</time>用語集・世界観設定と、構想の道具の無料化</h2>
+        <h3>新しくできること</h3>
+        <ul>
+          <li><strong>世界観設定</strong>：プロットに、作者だけが読む決め事の置き場を足しました。公開されません</li>
+          <li><strong>構想の道具を無料で</strong>：プロット・世界観設定・アウトライン・相関図・マインドマップを、無料のアカウント登録で使えるようにしました</li>
+          <li>用語集に、公開されない「作者メモ」の欄を足しました</li>
+          <li>プロット・世界観設定・用語集のプレビューで、見出しや箇条書きを表示できるようにしました</li>
+        </ul>
+        <h3>変えたこと</h3>
+        <ul>
+          <li>「図鑑」を「用語集」に改めました。用語集は、読者にも見せる事典です</li>
+          <li>用語集の「概要」と「詳細」を「公開情報」の1欄にまとめました。これまでの内容は公開情報に入っています。編集は左右2列の画面でその場で行えます</li>
+          <li>AI 連携（MCP）で用語集を書き換えるとき、渡した項目だけを書き換えるようにしました</li>
+          <li>ChatGPT からつなげるよう、AI 連携の接続の窓口を改めました</li>
+        </ul>
+      </section>
+
+      <section class="release" id="r-2026-08-22">
+        <h2><time datetime="2026-08-22">2026年8月22日</time>プロットの書き心地</h2>
+        <h3>変えたこと</h3>
+        <ul>
+          <li>大きな画面では、プロットの詳細パネルを広く表示します</li>
+          <li>プロットの要約とメモで、本文と同じ記法（用語の参照・ルビ・傍点）を使えるようにしました</li>
+        </ul>
+        <h3>直した不具合</h3>
+        <ul>
+          <li>「@」の候補が8件までしか出ず、9件目以降の用語を選べませんでした。本文とプロットの両方で直りました</li>
+        </ul>
+      </section>
+
+      <section class="release" id="r-2026-08-21">
+        <h2><time datetime="2026-08-21">2026年8月21日</time>同期の安全性</h2>
+        <h3>変えたこと</h3>
+        <ul>
+          <li>同期の競合のたびに出ていた通知をやめ、同期の間はヘッダーに「同期中…」を出すようにしました</li>
+          <li>同期で採用しなかった版は、「データ管理」の「同期で退避した版」から見られます（最大20件）</li>
+        </ul>
+        <h3>直した不具合</h3>
+        <ul>
+          <li>AI の変更の取り込み・クラウドからの復元・ファイルの取り込みと自動同期が重なると、作品がすべての端末から消えるおそれがありました</li>
+        </ul>
+      </section>
+
+      <section class="release" id="r-2026-08-20">
+        <h2><time datetime="2026-08-20">2026年8月20日</time>プロット</h2>
+        <h3>新しくできること</h3>
+        <ul>
+          <li><strong>プロット</strong>：物語の出来事を「ビート」のカードにして「幕」で束ね、時系列に沿って設計できます。三幕構成・起承転結・序破急・ヒーローズジャーニーのテンプレートから始められます</li>
+          <li>グリッド表示で、幕ごとにどの筋が動いているかを一覧できます。伏線と秘密も管理できます</li>
+          <li>執筆画面の「この話のプロット」パネルで、いま書いている話のビートを確かめられます</li>
+          <li>AI 連携（MCP）でプロットを読み書きできます</li>
+        </ul>
+        <h3>直した不具合</h3>
+        <ul>
+          <li>AI が書いた変更を取り込む前にアプリで編集すると、AI の変更が消えることがありました</li>
+          <li>広告ブロッカーを使っている環境で、白い画面のまま再読み込みが繰り返されることがありました</li>
+          <li>履歴の差分の画面で、変更が多いと全部を表示できず、スクロールもできませんでした</li>
+        </ul>
+      </section>
+
+      <section class="release" id="r-2026-08-18">
+        <h2><time datetime="2026-08-18">2026年8月18日</time>端末間の自動同期と無料トライアル</h2>
+        <h3>新しくできること</h3>
+        <ul>
+          <li><strong>端末間の自動同期</strong>（クラウド版）：スマートフォンとパソコンで、同じ原稿をバックアップと復元なしで書き継げます</li>
+          <li><strong>30日間の無料トライアル</strong>：クラウド版の初回の契約に付けました</li>
+          <li><strong>アウトライン</strong>：構成メモをその場で編集でき、複数行と3段までの階層に対応しました</li>
+          <li>執筆の記録を画像にして共有できます</li>
+          <li>AI 連携（MCP）で、作品の作成とアウトラインの書き換えができます</li>
+        </ul>
+        <h3>規約・ポリシー</h3>
+        <ul>
+          <li>利用規約とプライバシーポリシーに、自動同期でクラウドへ送るデータと、その削除の扱いを書き足しました</li>
+          <li>プライバシーポリシーのアクセス解析の記述を、実際の計測（Cookie を使わない集計）に合わせて改めました</li>
+        </ul>
+      </section>
+
+      <section class="release" id="r-2026-08-13">
+        <h2><time datetime="2026-08-13">2026年8月13日</time>コトノハ-grove- へのリンク</h2>
+        <h3>変えたこと</h3>
+        <ul>
+          <li>サイドバーに、コトノハ-grove- を開くリンクを足しました</li>
+        </ul>
+      </section>
+
+      <section class="release" id="r-2026-08-12">
+        <h2><time datetime="2026-08-12">2026年8月12日</time>コトノハ-grove- への投稿</h2>
+        <h3>新しくできること</h3>
+        <ul>
+          <li><strong>コトノハ-grove- への投稿</strong>：作品の投稿から公開・非公開の切り替えまで、コトノハ-leaf- の中でできます。公開の管理は1枚のページにまとめました</li>
+          <li>履歴で版ごとの文字数を表示し、復元の前に差分を確かめられるようにしました</li>
+        </ul>
+        <h3>変えたこと</h3>
+        <ul>
+          <li>投稿のジャンルを、コトノハ-grove- の11種にそろえました</li>
+        </ul>
+        <h3>直した不具合</h3>
+        <ul>
+          <li>サインインの直後に、アカウント欄が空白のまま止まることがありました</li>
+        </ul>
+      </section>
+
+      <section class="release" id="r-2026-08-02">
+        <h2><time datetime="2026-08-02">2026年8月2日</time>スマートフォン対応</h2>
+        <h3>新しくできること</h3>
+        <ul>
+          <li><strong>スマートフォン対応</strong>：ライブラリ・執筆画面・プレビューを、スマートフォンの幅で使えるようにしました</li>
+          <li>用語の参照（[[ ]]）に、ルビや傍点を重ねられるようにしました</li>
+        </ul>
+        <h3>直した不具合</h3>
+        <ul>
+          <li>LP からアプリを開いたとき、白い画面のまま止まることがありました</li>
+          <li>縦書きで、参照の下線がルビと重なって読めませんでした。下線をやめ、色で示すようにしました</li>
+        </ul>
+      </section>
+
+      <section class="release" id="r-2026-07-27">
+        <h2><time datetime="2026-07-27">2026年7月27日</time>EPUB の書き出し</h2>
+        <h3>変えたこと</h3>
+        <ul>
+          <li>EPUB の書き出しを、Kindle の縦書き表示に合わせました</li>
+        </ul>
+        <h3>直した不具合</h3>
+        <ul>
+          <li>EPUB で、文頭の字下げが二重になっていました</li>
+        </ul>
+      </section>
+
+      <section class="release" id="r-2026-07-26">
+        <h2><time datetime="2026-07-26">2026年7月26日</time>保存の案内と解約後の復元</h2>
+        <h3>新しくできること</h3>
+        <ul>
+          <li>初めて開いたときに、原稿の保存の仕組み（端末に保存し、サーバーには送らない）を説明します</li>
+          <li>ライブラリに、最終更新・ファイルへの書き出し・クラウドバックアップの日時を表示します</li>
+          <li>解約したあと30日のあいだは、クラウドのバックアップから復元できます</li>
+        </ul>
+        <h3>直した不具合</h3>
+        <ul>
+          <li>マインドマップで文字を打つと、1〜2文字で入力が外れていました</li>
+        </ul>
+      </section>
+
+      <section class="release" id="r-2026-07-25">
+        <h2><time datetime="2026-07-25">2026年7月25日</time>構想の道具・クラウド版・AI 連携</h2>
+        <h3>新しくできること</h3>
+        <ul>
+          <li><strong>アウトライン・相関図・マインドマップ</strong>：本文とつながった構想の道具を足しました</li>
+          <li><strong>クラウド版</strong>（月額 ¥500・年額 ¥4,800）：全データを暗号化して預けるクラウドバックアップと復元</li>
+          <li><strong>AI 連携（MCP）</strong>：自分の AI から原稿を読めるようにしました</li>
+        </ul>
+      </section>
+
+    <footer>
+      <div class="row">
+        <a href="/updates">更新のお知らせ</a>
+        <a href="/terms">利用規約</a>
+        <a href="/board-guidelines">掲示板ガイドライン</a>
+        <a href="/privacy">プライバシーポリシー</a>
+        <a href="/tokushoho">特定商取引法に基づく表記</a>
+        <span class="brand-mini">コトノハ<span class="leaf">-leaf-</span></span>
+      </div>
+    </footer>
+  </main>
+<!-- 訪問者カウント（Cookie なし・自前集計）。?noanalytics=1 で自分の端末を除外できる。 -->
+<script src="/hit.js" defer></script>
+</body>
+</html>

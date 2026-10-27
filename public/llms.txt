@@ -14,6 +14,7 @@
 - [AI 連携（MCP）](https://cotonoha-leaf.org/lp/ai/): Claude・ChatGPT とのつなぎ方、AI に頼めること、ツール一覧、原稿の扱い
 - [機能の全体像](https://cotonoha-leaf.org/llms-full.txt): 機能・料金・MCP ツールを 1 つにまとめた Markdown
 - [アプリ](https://cotonoha-leaf.org/): 開けばその場で書き始められます（アカウント不要）
+- [更新のお知らせ](https://cotonoha-leaf.org/updates): 新しく使えるようになった機能と直した不具合（新しい順）
 
 ## 規約
 
