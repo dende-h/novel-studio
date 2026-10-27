@@ -69,6 +69,7 @@ Cloudflare Pages Functions
 | **UI 部品・ヘルパを新規に作りたい** | まず §3「共通部品カタログ」で在庫を確認する（重複作成の防止） |
 | **掲示板**（記名式スレッド・お知らせ・アンケート・通報）の挙動 | 画面は `src/ui/components/BoardPage/`、判断は `src/core/board/`、SQL は `functions/api/_lib/board-store.ts`、窓口は `functions/api/board/` |
 | 掲示板に貼られた外部リンクの OGP（取得可否・画像の許可表） | `src/core/board/link.ts`（判定）+ `functions/api/_lib/board-link-fetch.ts`（取得とキャッシュ） |
+| **小説投稿サイトの紹介**（`#/sites`）に載せるサイトを足す・外す・紹介文を直す | 一覧は `src/core/sites/index.ts`（`POSTING_SITES`＝掲載の了承をいただいたサイトだけ・載せるのはサイト名・URL・紹介文。相手の OGP や画像は取りに行かない）、画面は `src/ui/components/PostingSitesPage/`、導線はサイドバーのフッター（`SideNav`） |
 | **ペンネーム（表示名）**の扱い — ヘッダ・サイドバー・新しい作品の著者・掲示板の表示名は同じ 1 つ | 判定は `src/core/profile/account.ts`、配線は `src/ui/hooks/use-pen-name.ts`、編集は `src/ui/components/ProfileDialog/`（Root が 1 つだけ持つ）、正本はサーバの `board_profiles.display_name` |
 | **コトノハ-grove- （grove）の作者名** — コトノハ-leaf- のペンネームとは**別物**（D-PENNAME-GROVE）。語も分ける（ペンネーム／作者名） | `src/ui/components/PublishPage/publish-page.tsx` の `AuthorNameCard`（投稿前に名前を見せる）＋ `author-register-card.tsx`（登録）。取得は `src/ui/_api/author.ts`。変更の口は コトノハ-grove- の `/settings` |
 | 未課金・解約アカウントの削除（reaper） | `src/core/billing/reap-policy.ts` + `functions/api/billing/reap.ts` + `functions/api/_lib/purge.ts` |
@@ -100,6 +101,7 @@ Cloudflare Pages Functions
 | `idea/` | ネタ帳のメモ | `IdeaNote` `normalizeIdeaText` |
 | `game/` | サウンドノベル化のドメイン（演出譜＝正本の外・blockId アンカー） | `Staging` `Cue` `SpriteCue`（席ごとの立ち絵・`SPRITE_POSITIONS`・`spriteCuesOf`＝旧式の読み替え） `AssetRef` `MASKED_SPEAKER` `BGM_STOP` / `classifyBlock` `toPages` `applyCues` `findOrphanCues` `suggestSceneBreaks` `suggestSpeaker` / テンプレ背景は `presets.ts`（`PRESET_BACKGROUNDS` `presetBgSvg` `buildGameCredits`・組み込み SVG＝画像が入るまでの控え・`BLACKOUT_BG_KEY`＝予約キー `blackout`「背景なし(ブラックアウト)」`blackoutBgSvg`）／テンプレ立ち絵（シルエット6種）は `spritePresets.ts`（`PRESET_SPRITES` `presetSpriteSvg`）／**運営テンプレの目録**は `templates.ts`（`TemplateManifest` `TemplateEntry` の Zod・`TemplateKind`＝bg/sprite/se/bgm・`mergeBackgroundCatalog` `mergeSpriteCatalog`＝組み込みに目録を重ねる・`mergeBgmCatalog`＝枠 24 曲に目録を重ねる・`isBgmReady`・`catalogBgmKeys`・`parseTemplateFilename` `parseTemplateTsv`・`templateAssetId`＝`tpl-<kind>-<slug>`・`templateUrl`・`applyTemplatePatch`・管理 API の入力 `TemplatePutInputSchema` `TemplatePatchInputSchema`）／持ち込み素材（背景・立ち絵）は `assets.ts`（`UserGameAsset`＝data URL＋tone 3色・キーは `userAssetKey`＝`user:<id>`、テンプレ由来の背景は `gameAssetKey` が `preset` のキーを返す。立ち絵の選定 `pickSprite` `spriteExpressionsOf`、無料枠 `FREE_IMPORT_LIMIT` `importVerdict`、クラウド保管の上限 `HOSTED_ASSET_LIMIT` と判定 `hostedAssetVerdict` もここ）／立ち絵の舞台は `stage.ts`（`resolveStages`＝席 3 つ・話者は明るさだけ・`SPRITE_POSITION_LABELS`）／合成SEレシピは `sePresets.ts`（`PRESET_SES`＝12 種 `presetSe` `seDuration` `sePeriod`・キーは `preset:se/<名>`）／**BGM の枠**は `bgmPresets.ts`（`PRESET_BGMS`＝24 曲・`presetBgm` `presetBgmBySlug` `PRESET_BGM_CATEGORY_LABELS`・実体は持たない）／**機能フラグ**は `features.ts`（`GAME_FEATURES`＝`{ se: false }`。データの形は残したまま画面・MCP・書き出しから外す 1 箇所） |
 | `profile/` | 作者プロフィール（ペンネーム・アバター）と、**アカウントとの突き合わせ**（`account.ts`）。どのアカウントの名前かの印は `profile` とは**別キー**（同期・バックアップに乗せない） | `Profile`（`penName` `avatar` `updatedAt`） `ProfileRepository`（+ `getAccountId` `saveAccountId`） / `penNameForAccount` `PenNameSync` |
+| `sites/` | 小説投稿サイトの紹介に載せるサイトの一覧（静的データ） | `PostingSite` `POSTING_SITES` `POSTING_SITE_INTRO_MAX` `siteHost` |
 | `board/` | **掲示板の共有契約**（Zod）と純ロジック。詳細は下表 | `BOARD_KINDS` `BOARD_LIMITS` `BoardThread` `BoardPost` `PollResult` `LinkCard` `BoardThreadDetail` `ThreadListResponse` `BoardMeResponse` `ModerateInputSchema` ほか（`types.ts`） |
 
 ### 変換
@@ -179,7 +181,7 @@ Cloudflare Pages Functions
 
 ### ルート（`src/ui/hooks/use-hash-route.ts`・`location.hash` が唯一の真実）
 `/` ライブラリ ・ `/write` 執筆 ・ `/publish` 公開 ・ `/activity` 執筆の記録 ・ `/ideas` ネタ帳
-・ `/settings` ・ `/help` ・ `/plan` 同期の案内 ・ `/board` 掲示板 ・ `/board/<threadId>` スレ詳細
+・ `/settings` ・ `/help` ・ `/sites` 小説投稿サイトの紹介 ・ `/plan` 同期の案内 ・ `/board` 掲示板 ・ `/board/<threadId>` スレ詳細
 ・ `/admin/templates` 運営テンプレの管理（**staff だけ描く**・それ以外は通常の入口に倒す・`use-staff.ts`）
 
 ### 画面（`components/` — PascalCase ディレクトリ + kebab ファイル・1ファイル1コンポーネント）
@@ -191,7 +193,7 @@ Cloudflare Pages Functions
 - **入出力**: `ExportDialog/`, `ImportDialog/`（JSON バックアップ）, `TextImportDialog/`（.txt／貼り付け→話に分けて新規作品。左：入力と分け方 `source-pane.tsx`／右：プレビューと手直し `preview-pane.tsx`／状態は `use-text-import.ts`・lg 未満は 2 ステップ）, `BackupDialog/`, `CloudBackupDialog/`, `AiPullDialog/`
 - **同期/課金**: `SyncOnboarding/`, `SyncLostDialog/`, `RestoreGrace/`, `McpConnectDialog/`, `SaveStateIndicator/`, `BackupNudgeDialog/`
 - **掲示板（遅延ロード・未ログインでも読める）**: `BoardPage/`（`board-page.tsx` 一覧 ／ `thread-view.tsx` スレ詳細 ／ `thread-list.tsx` `board-body.tsx` `link-card.tsx` `poll-card.tsx` `name-dialog.tsx` `new-thread-dialog.tsx` `report-dialog.tsx` `staff-controls.tsx`）
-- **その他**: `ActivityPage/`, `IdeaboxPage/`, `PublishPage/`, `SettingsPage/`（staff には管理ページの入口）, `HelpPage/`, `ProfileDialog/`, `FirstRunDialog/`
+- **その他**: `ActivityPage/`, `IdeaboxPage/`, `PublishPage/`, `SettingsPage/`（staff には管理ページの入口）, `HelpPage/`, `PostingSitesPage/`（小説投稿サイトの紹介・`PageLayout` の一枚もの）, `ProfileDialog/`, `FirstRunDialog/`
 - **運営だけ（遅延ロード）**: `AdminTemplatesPage/`（テンプレ素材の管理：背景・立ち絵・BGM のタブ（効果音は `GAME_FEATURES.se` が立つと出る）。ドロップで一括投入＝ファイル名からキー・画像はブラウザで WebP/サムネ/tone・音声はそのまま長さだけ測る・表示名/分類/時間帯/非表示・BGM のループ区間（秒）・TSV の一括取り込み・音は試聴）
 - **共通**: `AppShell/`, `PageLayout/`, `SideNav/`, `TopAppBar/`, `Toast/`, `ConfirmDialog/`, `ErrorBoundary/`
 - `components/ui/` = shadcn/ui コピー品（**biome の lint 対象外**・手を入れない）→ 中身は次節のカタログ参照
