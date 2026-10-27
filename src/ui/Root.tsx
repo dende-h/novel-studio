@@ -224,6 +224,18 @@ function RootRoutes({ store }: RootProps) {
    */
   const canUseCreativeTools = status === 'free' || status === 'member'
   const isMember = status === 'member'
+  // 端末の全データを平文 JSON でダウンロードする（無料のファイルバックアップと同じ中身）。
+  const downloadLocalBackup = useCallback(
+    async (prefix: string) => {
+      const json = await localBackup.exportPlaintext()
+      triggerDownload({
+        filename: `${prefix}-${new Date().toISOString().slice(0, 10)}.json`,
+        mime: 'application/json;charset=utf-8',
+        data: json,
+      })
+    },
+    [localBackup],
+  )
 
   const [backupOpen, setBackupOpen] = useState(false)
   const [aiPullOpen, setAiPullOpen] = useState(false)
@@ -481,12 +493,7 @@ function RootRoutes({ store }: RootProps) {
                 graceUntil={graceUntil}
                 onRestore={() => setBackupOpen(true)}
                 onExport={async () => {
-                  const json = await localBackup.exportPlaintext()
-                  triggerDownload({
-                    filename: `kotonoha-backup-${new Date().toISOString().slice(0, 10)}.json`,
-                    mime: 'application/json;charset=utf-8',
-                    data: json,
-                  })
+                  await downloadLocalBackup('kotonoha-backup')
                   show('ファイルに書き出しました')
                 }}
                 onResume={() => navigate('/plan')}
@@ -504,6 +511,11 @@ function RootRoutes({ store }: RootProps) {
           service={backupService}
           // 猶予中は復元だけ（バックアップの作成はサーバが 402 で弾く）。
           restoreOnly={!isMember}
+          // 猶予中は置換前の状態をクラウドへ退避できない。猶予中も端末で書き進められるので、
+          // 復元で書いた分が消えないよう、置き換える前にファイルへ書き出す。
+          beforeRestore={
+            isMember ? undefined : () => downloadLocalBackup('kotonoha-before-restore')
+          }
           onNotify={show}
           onRestored={() => store.init()}
         />

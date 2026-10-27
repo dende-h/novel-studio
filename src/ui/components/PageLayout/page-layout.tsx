@@ -66,6 +66,9 @@ export function PageLayout({
             <a href="#/settings" className="text-on-surface-variant hover:text-primary">
               設定
             </a>
+            <a href="/updates" className="text-on-surface-variant hover:text-primary">
+              更新のお知らせ
+            </a>
             <a href="/terms" className="text-on-surface-variant hover:text-primary">
               利用規約
             </a>

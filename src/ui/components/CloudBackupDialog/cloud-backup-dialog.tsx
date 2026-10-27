@@ -25,6 +25,11 @@ interface CloudBackupDialogProps {
    * サーバも猶予中は GET(復元)のみ許可し作成/削除は 402 になるため、UI をそれに合わせる。
    */
   restoreOnly?: boolean
+  /**
+   * 置き換える前に、いまの端末のデータを書き出す（解約後の猶予期間＝クラウドへ退避できないとき用）。
+   * 失敗したら復元しない（書き出せないまま端末のデータを置き換えない）。
+   */
+  beforeRestore?: () => Promise<void>
 }
 
 const fmt = (ms: number) =>
@@ -42,6 +47,7 @@ export function CloudBackupDialog({
   onNotify,
   onRestored,
   restoreOnly = false,
+  beforeRestore,
 }: CloudBackupDialogProps) {
   const [backups, setBackups] = useState<BackupSummary[] | null>(null)
   const [busy, setBusy] = useState(false)
@@ -75,6 +81,16 @@ export function CloudBackupDialog({
 
   const restore = async (id: string) => {
     setBusy(true)
+    if (beforeRestore) {
+      try {
+        await beforeRestore()
+      } catch {
+        onNotify('いまのデータを書き出せなかったため、復元を中止しました')
+        setBusy(false)
+        setConfirmId(null)
+        return
+      }
+    }
     try {
       const ok = await service.restore(id, { backupCurrent: keepCurrent })
       if (ok) {
@@ -119,6 +135,9 @@ export function CloudBackupDialog({
                 解約後の復元猶予期間中です。クラウドに残っているバックアップから復元すると原稿が端末に戻り、
                 無料の「ファイルへのバックアップ」で書き出して保存できます。復元は選んだ時点で
                 <strong>ローカル全体を置き換え</strong>ます。
+                {beforeRestore
+                  ? '置き換える前に、いまの端末のデータを自動でファイルに書き出します。'
+                  : null}
               </>
             ) : (
               <>

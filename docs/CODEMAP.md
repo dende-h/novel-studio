@@ -73,7 +73,8 @@ Cloudflare Pages Functions
 | **小説投稿サイトの紹介**（`#/sites`）に載せるサイトを足す・外す・紹介文を直す | 一覧は `src/core/sites/index.ts`（`POSTING_SITES`＝掲載の了承をいただいたサイトだけ・サイト名・URL・紹介文・バナー＝相手の og:image の URL。足すときに相手の OGP を読んで写す）、画面は `src/ui/components/PostingSitesPage/`（バナーは相手のサーバから直接読む・複製しない・切り抜かない）、導線はサイドバーのフッター（`SideNav`）。閲覧者のアクセスが相手に届くことは `public/privacy.html` の 4 章に書いてある＝**読み込み方を変えたらここも直す** |
 | **ペンネーム（表示名）**の扱い — ヘッダ・サイドバー・新しい作品の著者・掲示板の表示名は同じ 1 つ | 判定は `src/core/profile/account.ts`、配線は `src/ui/hooks/use-pen-name.ts`、編集は `src/ui/components/ProfileDialog/`（Root が 1 つだけ持つ）、正本はサーバの `board_profiles.display_name` |
 | **コトノハ-grove- （grove）の作者名** — コトノハ-leaf- のペンネームとは**別物**（D-PENNAME-GROVE）。語も分ける（ペンネーム／作者名） | `src/ui/components/PublishPage/publish-page.tsx` の `AuthorNameCard`（投稿前に名前を見せる）＋ `author-register-card.tsx`（登録）。取得は `src/ui/_api/author.ts`。変更の口は コトノハ-grove- の `/settings` |
-| 解約後の復元猶予中の案内（ライブラリ上部・復元／書き出し／再開。アプリは塞がない） | `src/ui/components/RestoreGrace/` + `src/ui/Root.tsx`（`canRestore`・Library の `notice`）+ `src/ui/auth/clerk-gate.tsx` |
+| **更新のお知らせ（リリースノート）**を足す（リリースのたびに 1 件・本番に出た日 JST・利用者に見える変更だけ） | `public/updates.html`（`/updates`・いちばん上へ足す・書き方は先頭のコメントと toc-copy）。導線は静的ページのフッター・`src/ui/components/PageLayout/`・LP のフッター・ヘルプの FAQ・`public/sitemap.xml`・`public/llms.txt` |
+| 解約後の復元猶予中の案内（ライブラリ上部・復元／書き出し／再開。アプリは塞がない・復元の前に端末のデータを自動で書き出す） | `src/ui/components/RestoreGrace/` + `src/ui/Root.tsx`（`canRestore`・Library の `notice`・`downloadLocalBackup`）+ `src/ui/components/CloudBackupDialog/`（`beforeRestore`）+ `src/ui/auth/clerk-gate.tsx` |
 | 解約して猶予が切れた人のクラウドデータ削除（reaper・ログインと掲示板は残す） | `src/core/billing/reap-policy.ts` + `functions/api/billing/reap.ts` + `functions/api/_lib/purge.ts` |
 | 画面遷移・ルート追加 | `src/ui/Root.tsx` + `src/ui/hooks/use-hash-route.ts` |
 | DB スキーマ | `migrations/*.sql` + `wrangler.toml` |
@@ -406,6 +407,7 @@ uv run .claude/skills/natural-japanese/scripts/lint.py <file>   # 仕事の文�
 | `docs/specs/COT-59/` | 用語集に無い名前の候補と辞書の最新化（SudachiDict）の要件・設計・実装メモ・プロトタイプ |
 | `docs/specs/COT-62/` | 推敲の作品の決まり（例外・表記の好み・提案）の要件・設計・実装メモ・プロトタイプ |
 | `docs/requirement/12-ai-search.md` | 検索・AI 検索からの流入（COT-22〜28 の leaf 側）の決定表・置いたものと見張り・本番後の手作業（MCP Registry・Cloudflare・Bing） |
+| `public/updates.html` | 更新のお知らせ（`/updates` で公開・リリースのたびにいちばん上へ 1 件足す） |
 | `public/board-guidelines.html` | 掲示板ガイドライン（`/board-guidelines` で公開・通報や上限の文言はここと揃える） |
 | `docs/requirement/99-open-questions.md` | 未決事項 |
 | `docs/specs/<ISSUE>/` | linear-spec の成果物（要件・設計・プロトタイプ・仕様書・実装依頼）。`COT-6` 脚本・`COT-29` 検索置換・`COT-30`／`COT-40` 推敲・`COT-31` テキストの取り込み・`COT-59` 用語集に無い名前・`COT-62` 推敲の作品の決まり |
