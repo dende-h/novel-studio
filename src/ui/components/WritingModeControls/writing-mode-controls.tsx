@@ -2,6 +2,12 @@ import { AlignVerticalJustifyCenter, Maximize, Minimize, Scan, X } from 'lucide-
 import { Button } from '@/ui/components/ui/button'
 import type { useWritingMode } from '@/ui/hooks/use-writing-mode'
 
+/** 集中モードの切替キー（use-writing-mode は event.code で判定するので Mac の Option でも効く）。 */
+export function focusShortcutLabel(): string {
+  const mac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform)
+  return mac ? 'Option+Shift+F' : 'Alt+Shift+F'
+}
+
 export function WritingModeControls({
   mode,
   onFocusEditor,
@@ -17,7 +23,7 @@ export function WritingModeControls({
         aria-label={mode.focus ? '集中モードを終了' : '集中モード'}
         aria-pressed={mode.focus}
         aria-keyshortcuts="Alt+Shift+F"
-        title="集中モード（Alt+Shift+F）"
+        title={`${mode.focus ? '集中モードを終了' : '集中モード'}（${focusShortcutLabel()}）`}
         onClick={mode.toggleFocus}
       >
         {mode.focus ? (
@@ -25,7 +31,12 @@ export function WritingModeControls({
         ) : (
           <Scan className="size-4" aria-hidden />
         )}
-        {mode.focus ? '集中モードを終了' : '集中モード'}
+        <span className="flex flex-col items-start">
+          {mode.focus ? '集中モードを終了' : '集中モード'}
+          <kbd aria-hidden className="mt-0.5 text-[10px] leading-tight opacity-60 max-sm:hidden">
+            {focusShortcutLabel()}
+          </kbd>
+        </span>
       </Button>
       <Button
         variant="ghost"
