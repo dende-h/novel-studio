@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import {
   BlockSchema,
+  clampEpisodeTitle,
+  EPISODE_TITLE_MAX,
+  EpisodeSchema,
   GlossaryEntrySchema,
   InlineSchema,
   PLATFORM_GENRES,
@@ -158,5 +161,21 @@ describe('WorkPlatformSchema（コトノハ-grove- への投稿設定）', () =>
       '冒険',
       'その他',
     ])
+  })
+})
+
+describe('話タイトルの上限', () => {
+  it('50文字までは変えず、超えた分を文字単位で切り詰める', () => {
+    expect(EPISODE_TITLE_MAX).toBe(50)
+    expect(clampEpisodeTitle('第1話')).toBe('第1話')
+    expect(clampEpisodeTitle('あ'.repeat(50))).toBe('あ'.repeat(50))
+    expect(clampEpisodeTitle('あ'.repeat(51))).toBe('あ'.repeat(50))
+    // サロゲートペア（𠮷）を割らない
+    expect(clampEpisodeTitle('𠮷'.repeat(60))).toBe('𠮷'.repeat(50))
+  })
+
+  it('上限を入れる前に保存した長いタイトルも、スキーマでは弾かない', () => {
+    const long = 'あ'.repeat(120)
+    expect(EpisodeSchema.parse({ id: 'e1', title: long, blocks: [] }).title).toBe(long)
   })
 })

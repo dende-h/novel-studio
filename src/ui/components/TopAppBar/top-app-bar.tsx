@@ -29,6 +29,8 @@ interface TopAppBarProps {
   onBrandClick?: () => void
   /** 開いている作品のタイトル（パンくず）。指定時のみブランド横に表示。 */
   workTitle?: string
+  /** 執筆中の話タイトル。PC（lg 以上）で作品名の後ろに続けて出す（狭幅はエディタのツールバーが出す）。 */
+  episodeTitle?: string
   /** 編集中のみ保存状態を表示 */
   saveStatus?: SaveState
   /** 書き出しダイアログを開く。未指定なら非表示 */
@@ -168,6 +170,7 @@ export function TopAppBar({
   brand,
   onBrandClick,
   workTitle,
+  episodeTitle,
   saveStatus,
   onExport,
   exportDisabled,
@@ -178,8 +181,8 @@ export function TopAppBar({
   navOpen,
 }: TopAppBarProps) {
   return (
-    <header className="flex h-14 shrink-0 items-center justify-between border-outline-variant/30 border-b bg-surface-container-lowest px-3 max-lg:h-12 sm:px-5">
-      <div className="flex min-w-0 items-center gap-3.5 pl-0 sm:pl-3">
+    <header className="flex h-14 shrink-0 items-center justify-between gap-3 border-outline-variant/30 border-b bg-surface-container-lowest px-3 max-lg:h-12 sm:px-5">
+      <div className="flex min-w-0 flex-1 items-center gap-3.5 pl-0 sm:pl-3">
         {/* 狭幅ではサイドバーがドロワーになるので、その開閉口をここに置く。 */}
         {onToggleNav ? (
           <button
@@ -219,11 +222,30 @@ export function TopAppBar({
         </button>
         {workTitle ? (
           // 狭幅では作品名を出さない（ドロワー内の作品カードで分かるため、横幅を本文に譲る）。
-          <span className="flex min-w-0 items-center gap-2 text-on-surface-variant text-xs max-sm:hidden">
+          // 話タイトルが続くときは 16rem までに抑え、さらに狭ければ作品名も … で省く（重ねない）。
+          <span
+            className={cn(
+              'flex min-w-0 items-center gap-2 text-on-surface-variant text-xs max-sm:hidden',
+              episodeTitle && 'max-w-[16rem]',
+            )}
+          >
             <span aria-hidden="true" className="text-outline-variant">
               ／
             </span>
             <span className="truncate">{workTitle}</span>
+          </span>
+        ) : null}
+        {episodeTitle ? (
+          // 話タイトルは残りの幅だけを使い（basis 0）、作品名より先に … で省く。全文は title で読める。
+          // 書体と色は作品名にそろえる。
+          <span
+            title={episodeTitle}
+            className="flex min-w-0 flex-1 basis-0 items-center gap-2 text-on-surface-variant text-xs max-lg:hidden"
+          >
+            <span aria-hidden="true" className="text-outline-variant">
+              ／
+            </span>
+            <span className="truncate">{episodeTitle}</span>
           </span>
         ) : null}
       </div>

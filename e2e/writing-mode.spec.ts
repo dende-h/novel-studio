@@ -71,6 +71,11 @@ test('集中表示で同じ本文・選択・undoを保ち、IMEとEscapeを奪�
   await expect(page.getByRole('button', { name: '集中モード', exact: true })).toBeVisible()
   await ta.press('Control+z')
   await expect(ta).toHaveValue('残す本文')
+  const typewriter = page.getByRole('button', { name: '入力行を中央に保つ' })
+  await ta.press('Alt+Shift+g')
+  await expect(typewriter).toHaveAttribute('aria-pressed', 'true')
+  await ta.press('Alt+Shift+g')
+  await expect(typewriter).toHaveAttribute('aria-pressed', 'false')
   await page.getByRole('button', { name: '集中モード', exact: true }).click()
   await expect(page.getByRole('status').filter({ hasText: '保存済み' })).toBeVisible()
   await page.reload()
@@ -117,34 +122,33 @@ test('追従は通常表示でも先頭末尾・折返しを中央へ寄せ、�
   await expect(ta).toHaveValue(text)
 })
 
-test.describe('393pxの集中表示', () => {
+test.describe('393pxでは集中・行を中央に・本文の縦書きを出さない（PC だけの機能）', () => {
   test.use({ viewport: { width: 393, height: 851 }, isMobile: true, hasTouch: true })
-  test('元のプレビュー面へ復帰し、候補と保存・終了操作を残す', async ({ page }) => {
+  test('PC で設定した値が残っていても、横書き・通常表示のまま書ける', async ({ page }) => {
+    await page.addInitScript(() => {
+      for (const key of ['ns-writing-focus', 'ns-writing-typewriter', 'ns-writing-vertical']) {
+        localStorage.setItem(key, '1')
+      }
+    })
     const ta = await openWriter(page, true)
+    await expect(page.getByRole('button', { name: /^集中モード/ })).toHaveCount(0)
+    await expect(page.getByRole('button', { name: '入力行を中央に保つ' })).toHaveCount(0)
+    await expect(page.getByRole('group', { name: '本文の組み方向' })).toHaveCount(0)
+    expect(await ta.evaluate((el) => getComputedStyle(el).writingMode)).toBe('horizontal-tb')
     await ta.fill('スマホの本文')
-    await page.getByRole('button', { name: 'プレビュー', exact: true }).click()
-    await expect(ta).toBeHidden()
-    await page.getByRole('button', { name: '集中モード', exact: true }).click()
-    await expect(ta).toBeVisible()
-    await expect(page.getByRole('button', { name: 'ルビ', exact: true })).toHaveCount(0)
-    await page.getByRole('button', { name: '入力行を中央に保つ' }).click()
-    await ta.fill('@葉')
-    await ta.focus()
-    await expect(page.getByRole('listbox', { name: '参照候補' })).toBeVisible()
-    await placeCaret(ta, 2)
-    await expect.poll(() => caretError(ta)).toBeLessThanOrEqual(1)
-    const exit = page.getByRole('button', { name: '集中モードを終了' })
-    const box = await exit.boundingBox()
-    expect(box?.height).toBeGreaterThanOrEqual(44)
-    expect((box?.x ?? 0) + (box?.width ?? 0)).toBeLessThanOrEqual(393)
-    await expect(page.getByRole('status').filter({ hasText: '保存済み' })).toBeVisible()
-    await exit.click()
-    await expect(ta).toBeHidden()
-    await page.getByRole('button', { name: '本文', exact: true }).click()
-    await expect(ta).toHaveValue('@葉')
+    await ta.press('Alt+Shift+f')
+    await ta.press('Alt+Shift+g')
+    await expect(page.getByRole('button', { name: '集中モードの表示設定' })).toHaveCount(0)
+    await expect(ta).toHaveValue('スマホの本文')
+    expect(
+      await page.evaluate(() => [
+        localStorage.getItem('ns-writing-focus'),
+        localStorage.getItem('ns-writing-typewriter'),
+        localStorage.getItem('ns-writing-vertical'),
+      ]),
+    ).toEqual(['1', '1', '1'])
   })
 })
-
 
 test('集中モードの全画面は外部終了に追従し、集中終了時にも解除する', async ({ page }) => {
   await openWriter(page)

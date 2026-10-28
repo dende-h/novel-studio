@@ -6,6 +6,7 @@ import { parseEpisodeBody } from '../../core/parser/parseNotation'
 import { reconcileBlockIds } from '../../core/parser/reconcileBlockIds'
 import type { Profile, ProfileRepository } from '../../core/profile'
 import {
+  clampEpisodeTitle,
   type DialogAnswer,
   type Episode,
   type GlossaryEntry,
@@ -490,7 +491,7 @@ export function createEditorStore({
 
     async createEpisode(title) {
       if (!state.work) return
-      const episode: Episode = { id: genId(), title, blocks: [] }
+      const episode: Episode = { id: genId(), title: clampEpisodeTitle(title), blocks: [] }
       const work: Work = {
         ...state.work,
         episodes: [...state.work.episodes, episode],
@@ -631,7 +632,7 @@ export function createEditorStore({
 
     async renameEpisode(episodeId, title) {
       if (!state.work) return
-      const trimmed = title.trim()
+      const trimmed = clampEpisodeTitle(title.trim())
       const target = state.work.episodes.find((e) => e.id === episodeId)
       // 空文字・無変更・該当なしは no-op（本文/下書き/スナップショットには触れない）。
       if (trimmed === '' || !target || target.title === trimmed) return

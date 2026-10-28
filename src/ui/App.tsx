@@ -15,7 +15,7 @@ import { findAppearances, resolvedNameSet, resolveRef } from '@/core/glossary'
 import { parseEpisodeBody } from '@/core/parser/parseNotation'
 import { reconcileBlockIds } from '@/core/parser/reconcileBlockIds'
 import { locateFix, openFixes, type ProofreadDecision, undecide } from '@/core/proofread/decisions'
-import type { GlossaryEntry } from '@/core/schema'
+import { EPISODE_TITLE_MAX, type GlossaryEntry } from '@/core/schema'
 import { layoutScriptBlocks, paginate } from '@/core/script/layout'
 import { countEpisodeChars, countWorkChars } from '@/core/stats'
 import type { ActivityRepository } from '@/core/storage/activityRepository'
@@ -309,7 +309,7 @@ export function App({
 
   const episode = work?.episodes.find((e) => e.id === state.currentEpisodeId) ?? null
   const onEpisodes = activeScreen === 'episodes'
-  const writingMode = useWritingMode(Boolean(episode && onEpisodes))
+  const writingMode = useWritingMode(Boolean(episode && onEpisodes), !narrow)
   const focusMode = writingMode.focus
   const previousFocusMode = useRef(false)
   useLayoutEffect(() => {
@@ -510,6 +510,7 @@ export function App({
         }
         onBrandClick={onExit}
         workTitle={work?.title}
+        episodeTitle={activeScreen === 'episodes' && episode ? episode.title : undefined}
         saveStatus={{ dirty: state.dirty, status: state.status }}
         onExport={() => void openExport()}
         onPublish={
@@ -746,15 +747,19 @@ export function App({
               <div
                 hidden={focusMode}
                 className={cn(
-                  'flex min-h-[46px] shrink-0 flex-wrap items-center justify-between gap-3 border-outline-variant/30 border-b bg-surface-container-lowest px-4 py-2',
+                  'flex min-h-[46px] shrink-0 flex-wrap items-center justify-between gap-x-3 gap-y-1 border-outline-variant/30 border-b bg-surface-container-lowest px-4 py-2',
                   focusMode && 'hidden!',
                 )}
               >
+                {/* 話タイトル。PC はヘッダーの作品名の後ろに出すので、ここは狭幅だけ。
+                    専用の段に1行で置き、入りきらない分は … で省く（ボタンの列を押し出さない）。 */}
+                <p
+                  title={episode.title}
+                  className="w-full min-w-0 basis-full truncate font-medium font-sans text-[13px] text-on-surface lg:hidden"
+                >
+                  {episode.title}
+                </p>
                 <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2.5">
-                  {/* 狭幅では話タイトルを畳む（ドロワーの話一覧で分かる）。代わりに面の切替を置く。 */}
-                  <span className="truncate font-medium font-sans text-[13px] text-on-surface max-lg:hidden">
-                    {episode.title}
-                  </span>
                   {/* 本文／プレビューの切替（狭幅のみ）。組み方向トグルと同じ視覚言語で揃える。 */}
                   <fieldset
                     aria-label="表示する面"
@@ -836,38 +841,43 @@ export function App({
                       </FieldHelp>
                     ) : null}
                   </div>
-                  <WritingModeControls
-                    mode={writingMode}
-                    onFocusEditor={() => editorRef.current?.focus()}
-                  />
-                  <fieldset
-                    aria-label="本文の組み方向"
-                    className="m-0 flex shrink-0 items-center gap-1 border-0 p-0"
-                  >
-                    {(['horizontal', 'vertical'] as const).map((direction) => {
-                      const vertical = direction === 'vertical'
-                      const selected = writingMode.vertical === vertical
-                      return (
-                        <button
-                          key={direction}
-                          type="button"
-                          aria-pressed={selected}
-                          onClick={() => {
-                            if (!selected) writingMode.toggleVertical()
-                            editorRef.current?.focus()
-                          }}
-                          className={cn(
-                            'flex h-11 items-center rounded-md px-2.5 font-sans text-xs transition-colors md:h-[26px]',
-                            selected
-                              ? 'bg-primary text-white'
-                              : 'text-on-surface-variant hover:bg-surface-container-high',
-                          )}
-                        >
-                          {vertical ? '縦書き' : '横書き'}
-                        </button>
-                      )
-                    })}
-                  </fieldset>
+                  {/* 集中・行を中央に・本文の縦横は PC だけの機能（スマホは横書き・通常表示に固定）。 */}
+                  {narrow ? null : (
+                    <>
+                      <WritingModeControls
+                        mode={writingMode}
+                        onFocusEditor={() => editorRef.current?.focus()}
+                      />
+                      <fieldset
+                        aria-label="本文の組み方向"
+                        className="m-0 flex shrink-0 items-center gap-1 border-0 p-0"
+                      >
+                        {(['horizontal', 'vertical'] as const).map((direction) => {
+                          const vertical = direction === 'vertical'
+                          const selected = writingMode.vertical === vertical
+                          return (
+                            <button
+                              key={direction}
+                              type="button"
+                              aria-pressed={selected}
+                              onClick={() => {
+                                if (!selected) writingMode.toggleVertical()
+                                editorRef.current?.focus()
+                              }}
+                              className={cn(
+                                'flex h-11 items-center rounded-md px-2.5 font-sans text-xs transition-colors md:h-[26px]',
+                                selected
+                                  ? 'bg-primary text-white'
+                                  : 'text-on-surface-variant hover:bg-surface-container-high',
+                              )}
+                            >
+                              {vertical ? '縦書き' : '横書き'}
+                            </button>
+                          )
+                        })}
+                      </fieldset>
+                    </>
+                  )}
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
                   {isNovel ? (
@@ -1130,6 +1140,7 @@ export function App({
           placeholder={`第${(work?.episodes.length ?? 0) + 1}話`}
           defaultValue={`第${(work?.episodes.length ?? 0) + 1}話`}
           submitLabel="追加"
+          maxLength={EPISODE_TITLE_MAX}
           onSubmit={(title) => void store.createEpisode(title)}
         />
         {/* 話タイトルの変更（現在のタイトルをプリフィル・本文には影響しない）。 */}
@@ -1143,6 +1154,7 @@ export function App({
           label="話タイトル"
           defaultValue={renameEpisodeTarget?.title ?? ''}
           submitLabel="変更"
+          maxLength={EPISODE_TITLE_MAX}
           onSubmit={(title) => {
             if (renameEpisodeTarget) void store.renameEpisode(renameEpisodeTarget.id, title)
           }}
