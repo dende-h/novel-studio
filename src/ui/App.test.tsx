@@ -226,8 +226,9 @@ describe('App（エディタ結合：本文/プレビュー・自動保存・履
     render(<App store={store} />)
     await screen.findByRole('textbox', { name: '本文' })
 
-    const vertical = screen.getByRole('button', { name: '縦書き' })
-    const horizontal = screen.getByRole('button', { name: '横書き' })
+    const previewDirection = within(screen.getByRole('group', { name: 'プレビューの組み方向' }))
+    const vertical = previewDirection.getByRole('button', { name: '縦書き' })
+    const horizontal = previewDirection.getByRole('button', { name: '横書き' })
     expect(vertical.getAttribute('aria-pressed')).toBe('true')
     expect(document.querySelector('.preview')?.className).toContain('[writing-mode:vertical-rl]')
 
@@ -553,4 +554,64 @@ describe('App（推敲画面と「直す箇所」・COT-40）', () => {
     expect(store.getSnapshot().currentEpisodeId).toBe(work?.episodes[1]?.id)
     await waitFor(() => expect(ta.value.slice(ta.selectionStart, ta.selectionEnd)).toBe('がが'))
   })
+})
+
+it('集中モード中に保存が失敗しても下書きとエラー通知を残す', async () => {
+  const store = makeStore()
+  await seedWorkEpisode(store)
+  const save = vi.spyOn(store, 'save').mockRejectedValue(new Error('disk full'))
+  const view = render(
+    <ToastProvider>
+      <App store={store} />
+    </ToastProvider>,
+  )
+  try {
+    fireEvent.click(screen.getByRole('button', { name: /^集中モード$/ }))
+    const ta = screen.getByRole('textbox', { name: '本文' })
+    fireEvent.change(ta, { target: { value: 'まだ保存できていない本文' } })
+    expect(
+      await screen.findByText(/保存できませんでした。下書きは残っています/, {}, { timeout: 3000 }),
+    ).toBeVisible()
+    expect(ta).toHaveValue('まだ保存できていない本文')
+    expect(screen.queryByText('保存済み')).toBeNull()
+    expect(screen.getByRole('button', { name: '集中モードを終了' })).toBeVisible()
+  } finally {
+    view.unmount()
+    save.mockRestore()
+    localStorage.removeItem('ns-writing-focus')
+    localStorage.removeItem('ns-writing-typewriter')
+  }
+})
+
+it('本文の縦横切替は2つのボタンで選択状態を示し、同じ向きを押しても反転しない', async () => {
+  const store = makeStore()
+  await seedWorkEpisode(store)
+  const view = render(<App store={store} />)
+  try {
+    const input = screen.getByRole('textbox', { name: '本文' })
+    fireEvent.change(input, { target: { value: '本文を保つ' } })
+    const group = within(screen.getByRole('group', { name: '本文の組み方向' }))
+    const horizontal = group.getByRole('button', { name: '横書き' })
+    const vertical = group.getByRole('button', { name: '縦書き' })
+    expect(horizontal).toHaveAttribute('aria-pressed', 'true')
+    expect(vertical).toHaveAttribute('aria-pressed', 'false')
+    fireEvent.click(horizontal)
+    expect(horizontal).toHaveAttribute('aria-pressed', 'true')
+    fireEvent.click(vertical)
+    expect(vertical).toHaveAttribute('aria-pressed', 'true')
+    expect(horizontal).toHaveAttribute('aria-pressed', 'false')
+    fireEvent.click(vertical)
+    expect(vertical).toHaveAttribute('aria-pressed', 'true')
+    fireEvent.click(horizontal)
+    expect(horizontal).toHaveAttribute('aria-pressed', 'true')
+    expect(input).toHaveValue('本文を保つ')
+    expect(
+      within(screen.getByRole('group', { name: 'プレビューの組み方向' })).getByRole('button', {
+        name: '縦書き',
+      }),
+    ).toHaveAttribute('aria-pressed', 'true')
+  } finally {
+    view.unmount()
+    localStorage.removeItem('ns-writing-vertical')
+  }
 })

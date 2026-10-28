@@ -63,6 +63,14 @@ export const POSTING_SITES: readonly PostingSite[] = [
       'ショートショートや掌編小説を、無料で読める・投稿できる小説サイトです。5,000 文字以内で完結する一話完結の作品だけを扱います。',
     banner: 'https://show-too-short.com/images/logo.png',
   },
+  // 2026-10 掲載の了承をいただいた（紹介文は運営の方からいただいた文を縮めたもの）
+  {
+    name: 'NOVELIGHT（ノベライト）',
+    url: 'https://novelight.jp/',
+    intro:
+      '読書や応援でステータスをゲーム感覚でレベルアップしながら、まだ知らない物語を「発掘」できる小説投稿サイトです。人気や知名度に偏らない出会いを楽しめます。',
+    banner: 'https://novelight.jp/assets/ogp/novelight-card-20261022.png?home_card=20261026',
+  },
 ]
 
 /** カードに添えるドメイン。見た目と飛び先が同じだと分かるよう、名前の下に必ず出す。 */

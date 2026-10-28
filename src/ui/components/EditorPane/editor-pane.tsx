@@ -11,9 +11,11 @@ import { PERSON_CATEGORY, resolveRef, shouldTriggerSuggest, suggestRefs } from '
 import { needsRubyPipe, parseEpisodeBody } from '@/core/parser/parseNotation'
 import type { GlossaryEntry } from '@/core/schema'
 import { proofreadScript } from '@/core/script/proofread'
+import { cn } from '@/lib/utils'
 import { getCaretCoordinates } from '@/ui/_utils/caretCoordinates'
 import { useKeyboardInset } from '@/ui/hooks/use-keyboard-inset'
 import { useIsNarrow } from '@/ui/hooks/use-narrow'
+import { useTypewriterScroll } from '@/ui/hooks/use-typewriter-scroll'
 import { type NotationKind, notationForKey, notationItems } from './notation'
 import { NotationBar } from './notation-bar'
 import { ProofreadPanel } from './proofread-panel'
@@ -24,15 +26,20 @@ export type { NotationKind } from './notation'
 
 /** 外（ツールバー）から記法挿入を呼ぶためのハンドル。 */
 export interface EditorPaneHandle {
+  focus: () => void
   applyNotation: (kind: NotationKind) => void
   selectRange: (start: number, end: number) => void
 }
 
 interface EditorPaneProps {
+  vertical?: boolean
+  focusMode?: boolean
+  typewriter?: boolean
   readOnly?: boolean
   scriptMode?: boolean
   value: string
   onChange: (value: string) => void
+  onCaretChange?: (value: string, offset: number) => void
   /** @ サジェストの候補となる辞書。省略時はサジェスト無効。 */
   glossary?: GlossaryEntry[]
   /** クイック作成（name のみで即作成→挿入）。省略時は作成行を出さない。 */
@@ -56,8 +63,12 @@ const isTrigger = (ch: string) => ch === '@' || ch === '＠'
 /** 本文エディタ（素の textarea＋自前パーサ方式 A1）。WYSIWYG は IME 問題ゆえ不採用。 */
 export function EditorPane({
   ref,
+  vertical = false,
+  focusMode = false,
+  typewriter = false,
   value,
   onChange,
+  onCaretChange,
   glossary = [],
   scriptMode = false,
   readOnly = false,
@@ -301,6 +312,7 @@ export function EditorPane({
   useImperativeHandle(
     ref,
     () => ({
+      focus: () => taRef.current?.focus({ preventScroll: true }),
       applyNotation,
       selectRange: (start, end) => {
         const el = taRef.current
@@ -309,11 +321,25 @@ export function EditorPane({
         el.focus({ preventScroll: true })
         el.setSelectionRange(start, end)
         const coordinates = getCaretCoordinates(el, start)
-        el.scrollTop = Math.max(0, el.scrollTop + coordinates.top - el.clientHeight / 3)
+        if (vertical)
+          el.scrollLeft = Math.min(0, el.scrollLeft + coordinates.left - el.clientWidth / 2)
+        else el.scrollTop = Math.max(0, el.scrollTop + coordinates.top - el.clientHeight / 3)
       },
     }),
-    [applyNotation],
+    [applyNotation, vertical],
   )
+
+  // setSelectionRange（記法挿入・検索からの移動）も拾う。React の onSelect は
+  // ネイティブ select イベントだけでは発火しないため、同じ textarea で購読する。
+  useLayoutEffect(() => {
+    const el = taRef.current
+    if (!el || !onCaretChange) return
+    const notify = () => {
+      if (!composingRef.current) onCaretChange(el.value, el.selectionStart)
+    }
+    el.addEventListener('select', notify)
+    return () => el.removeEventListener('select', notify)
+  }, [onCaretChange])
 
   // 挿入後にキャレットを [[名前]] の直後へ戻す。
   useLayoutEffect(() => {
@@ -326,6 +352,34 @@ export function EditorPane({
       el.setSelectionRange(pos, pos)
     }
   })
+
+  useTypewriterScroll(taRef, {
+    enabled: typewriter,
+    vertical,
+    readOnly,
+    value,
+    layout: `${focusMode}:${narrow}:${open}:${vertical}`,
+    onScroll: refresh,
+  })
+
+  useLayoutEffect(() => {
+    const el = taRef.current
+    if (!el || !vertical) return
+    const wheel = (event: WheelEvent) => {
+      if (event.ctrlKey || Math.abs(event.deltaX) >= Math.abs(event.deltaY)) return
+      const previous = el.scrollLeft
+      const unit =
+        event.deltaMode === 1
+          ? Number.parseFloat(getComputedStyle(el).lineHeight) || 32
+          : event.deltaMode === 2
+            ? el.clientWidth
+            : 1
+      el.scrollLeft -= event.deltaY * unit
+      if (el.scrollLeft !== previous) event.preventDefault()
+    }
+    el.addEventListener('wheel', wheel, { passive: false })
+    return () => el.removeEventListener('wheel', wheel)
+  }, [vertical])
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (readOnly) return
@@ -407,7 +461,13 @@ export function EditorPane({
   }
 
   return (
-    <div className="relative flex h-full min-h-0 w-full flex-col bg-surface-container-lowest">
+    <div
+      className={cn(
+        'relative flex h-full min-h-0 w-full flex-col bg-surface-container-lowest',
+        focusMode && 'writing-focus-editor',
+        vertical && 'writing-vertical-editor',
+      )}
+    >
       {/* 本文（行数・文字数はエディタ画面下部のステータスバーが表示する） */}
       <textarea
         ref={taRef}
@@ -415,15 +475,21 @@ export function EditorPane({
         aria-controls={open ? listId : undefined}
         // 狭幅のバーはハイライトの概念を持たない（確定はタップのみ）ので付けない。
         aria-activedescendant={open && !narrow ? optionId(activeIndex) : undefined}
-        className="editor min-h-0 flex-1 resize-none border-none bg-transparent px-9 py-7 text-on-surface leading-[2.1] outline-none placeholder:text-on-surface-variant/40"
+        className="editor min-h-0 min-w-0 w-full flex-1 resize-none border-none bg-transparent px-9 py-7 text-on-surface leading-[2.1] outline-none placeholder:text-on-surface-variant/40"
         value={value}
         readOnly={readOnly}
         onChange={(e) => {
           onChange(e.target.value)
-          if (!composingRef.current) refresh(e.currentTarget)
+          if (!composingRef.current) {
+            refresh(e.currentTarget)
+            onCaretChange?.(e.currentTarget.value, e.currentTarget.selectionStart)
+          }
         }}
         onSelect={(e) => {
-          if (!composingRef.current) refresh(e.currentTarget)
+          if (!composingRef.current) {
+            refresh(e.currentTarget)
+            onCaretChange?.(e.currentTarget.value, e.currentTarget.selectionStart)
+          }
         }}
         onKeyDown={handleKeyDown}
         onFocus={() => setFocused(true)}
@@ -434,6 +500,7 @@ export function EditorPane({
         onCompositionEnd={(e) => {
           composingRef.current = false
           refresh(e.currentTarget)
+          onCaretChange?.(e.currentTarget.value, e.currentTarget.selectionStart)
         }}
         placeholder={
           scriptMode
@@ -444,12 +511,14 @@ export function EditorPane({
       />
 
       {scriptMode ? (
-        <ProofreadPanel
-          title="脚本の書式チェック"
-          intro="ト書きの字下げ、柱の前の余白、！？の後ろの1マスは表示・書き出し時に自動で揃います。意図した表現なら、そのまま使えます。"
-          notices={notices}
-          onJump={jumpToBlock}
-        />
+        <div hidden={focusMode} className={focusMode ? 'hidden' : 'contents'}>
+          <ProofreadPanel
+            title="脚本の書式チェック"
+            intro="ト書きの字下げ、柱の前の余白、！？の後ろの1マスは表示・書き出し時に自動で揃います。意図した表現なら、そのまま使えます。"
+            notices={notices}
+            onJump={jumpToBlock}
+          />
+        </div>
       ) : null}
 
       {open && suggest ? (
@@ -476,7 +545,7 @@ export function EditorPane({
             onHover={setActiveIndex}
           />
         )
-      ) : narrow && focused ? (
+      ) : narrow && focused && !focusMode ? (
         // サジェストと同じ位置に出るので、候補が出ていない間だけ記法バーを見せる。
         <NotationBar onApply={applyNotation} items={notationItems(scriptMode, 'mobile')} />
       ) : null}

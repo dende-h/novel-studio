@@ -37,6 +37,7 @@ export function RefSuggestBar({
   const createIndex = candidates.length
   return (
     <div
+      data-writing-obstruction
       role="listbox"
       id={listId}
       aria-label="参照候補"

@@ -1,5 +1,14 @@
 import { BookMarked, Milestone, Plus, Replace } from 'lucide-react'
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import {
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 import { localDateKey } from '@/core/activity'
 import { blocksToHtml } from '@/core/exporter/toHtml'
 import { findAppearances, resolvedNameSet, resolveRef } from '@/core/glossary'
@@ -20,7 +29,7 @@ import { isPublishAvailable } from '@/ui/_api/publish'
 import { AppShell } from '@/ui/components/AppShell/app-shell'
 import { ConfirmDialog } from '@/ui/components/ConfirmDialog/confirm-dialog'
 import { EditorPane, type EditorPaneHandle } from '@/ui/components/EditorPane/editor-pane'
-import { notationItems, notationShortcut } from '@/ui/components/EditorPane/notation'
+import { NotationButtons } from '@/ui/components/EditorPane/notation-buttons'
 import { ErrorBoundary } from '@/ui/components/ErrorBoundary/error-boundary'
 import { ExportDialog } from '@/ui/components/ExportDialog/export-dialog'
 import { FieldHelp } from '@/ui/components/FieldHelp/field-help'
@@ -34,7 +43,7 @@ import { GlossaryPeek } from '@/ui/components/GlossaryPeek/glossary-peek'
 import { GlossaryView } from '@/ui/components/GlossaryView/glossary-view'
 import { HistoryPanel } from '@/ui/components/HistoryPanel/history-panel'
 import { PlotPeek } from '@/ui/components/PlotPeek/plot-peek'
-import { PreviewPane } from '@/ui/components/PreviewPane/preview-pane'
+import { PreviewPane, type PreviewPosition } from '@/ui/components/PreviewPane/preview-pane'
 import { SHEET_PRESETS } from '@/ui/components/ScriptSheet/script-sheet'
 import { ScriptSheetView } from '@/ui/components/ScriptSheet/script-sheet-view'
 import { SideNav } from '@/ui/components/SideNav/side-nav'
@@ -43,6 +52,8 @@ import { useToast } from '@/ui/components/Toast/toast'
 import { Button } from '@/ui/components/ui/button'
 import { WorkMetaDialog } from '@/ui/components/WorkMetaDialog/work-meta-dialog'
 import { WorkSearchPanel } from '@/ui/components/WorkSearchPanel/work-search-panel'
+import { FocusToolbar } from '@/ui/components/WritingModeControls/focus-toolbar'
+import { WritingModeControls } from '@/ui/components/WritingModeControls/writing-mode-controls'
 import { useAutosave } from '@/ui/hooks/use-autosave'
 import { useEditorStore } from '@/ui/hooks/use-editor-store'
 import type { NameDismissalRepo } from '@/ui/hooks/use-name-dismissals'
@@ -50,6 +61,7 @@ import { useIsNarrow } from '@/ui/hooks/use-narrow'
 import { useOpenProfile } from '@/ui/hooks/use-pen-name'
 import { type ProofreadRecordRepo, useProofreadRecord } from '@/ui/hooks/use-proofread-record'
 import type { ProofreadRulesRepo } from '@/ui/hooks/use-proofread-rules'
+import { useWritingMode } from '@/ui/hooks/use-writing-mode'
 import type { EditorStore } from '@/ui/store/editorStore'
 
 interface AppProps {
@@ -167,6 +179,10 @@ export function App({
   const [activeScreen, setActiveScreen] = useState<
     'episodes' | 'glossary' | 'outline' | 'mindmap' | 'chart' | 'plot' | 'staging' | 'proofread'
   >('episodes')
+  const [previewPosition, setPreviewPosition] = useState<PreviewPosition | null>(null)
+  const onCaretChange = useCallback((value: string, offset: number) => {
+    setPreviewPosition({ value, offset })
+  }, [])
   // プレビューの組み方向（日本語小説の標準＝縦書きが既定。ツールバーで切替）。
   const [orientation, setOrientation] = useState<'vertical' | 'horizontal'>('vertical')
   // 狭幅（lg 未満）で本文とプレビューのどちらを見せるか。縦書きは画面高＝行長のため
@@ -293,6 +309,15 @@ export function App({
 
   const episode = work?.episodes.find((e) => e.id === state.currentEpisodeId) ?? null
   const onEpisodes = activeScreen === 'episodes'
+  const writingMode = useWritingMode(Boolean(episode && onEpisodes))
+  const focusMode = writingMode.focus
+  const previousFocusMode = useRef(false)
+  useLayoutEffect(() => {
+    if (focusMode || (previousFocusMode.current && (pane === 'editor' || !narrow))) {
+      editorRef.current?.focus()
+    }
+    previousFocusMode.current = focusMode
+  }, [focusMode, pane, narrow])
 
   const openExport = async () => {
     try {
@@ -473,6 +498,16 @@ export function App({
   return (
     <div ref={appInteractionRef} className="h-full" aria-busy={state.workOperation !== 'idle'}>
       <AppShell
+        focusMode={focusMode}
+        focusControls={
+          <FocusToolbar
+            mode={writingMode}
+            save={{ dirty: state.dirty, status: state.status }}
+            scriptMode={work?.format === 'script'}
+            onApply={(kind) => editorRef.current?.applyNotation(kind)}
+            onFocusEditor={() => editorRef.current?.focus()}
+          />
+        }
         onBrandClick={onExit}
         workTitle={work?.title}
         saveStatus={{ dirty: state.dirty, status: state.status }}
@@ -708,7 +743,13 @@ export function App({
           ) : episode ? (
             <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col">
               {/* エディタツールバー */}
-              <div className="flex min-h-[46px] shrink-0 flex-wrap items-center justify-between gap-3 border-outline-variant/30 border-b bg-surface-container-lowest px-4 py-2">
+              <div
+                hidden={focusMode}
+                className={cn(
+                  'flex min-h-[46px] shrink-0 flex-wrap items-center justify-between gap-3 border-outline-variant/30 border-b bg-surface-container-lowest px-4 py-2',
+                  focusMode && 'hidden!',
+                )}
+              >
                 <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2.5">
                   {/* 狭幅では話タイトルを畳む（ドロワーの話一覧で分かる）。代わりに面の切替を置く。 */}
                   <span className="truncate font-medium font-sans text-[13px] text-on-surface max-lg:hidden">
@@ -749,23 +790,10 @@ export function App({
                   {/* 記法の挿入（PC のみ。狭幅はキーボード直上の記法バーが担当する）。
                   選択があれば囲み、無ければ空の型を置く。ショートカットは EditorPane 側。 */}
                   <div className="flex flex-wrap items-center gap-1 max-lg:hidden">
-                    {notationItems(work?.format === 'script').map((item) => (
-                      <button
-                        key={item.kind}
-                        type="button"
-                        title={`${item.hint}（${notationShortcut(item)}）`}
-                        aria-label={item.label}
-                        // クリックで textarea のフォーカス・選択範囲を失うと挿入先が分からなくなる。
-                        onMouseDown={(e) => e.preventDefault()}
-                        onClick={() => editorRef.current?.applyNotation(item.kind)}
-                        className="flex min-h-11 shrink-0 flex-col justify-center items-center whitespace-nowrap rounded-md px-2.5 font-sans text-on-surface-variant text-xs transition-colors hover:bg-surface-container-high hover:text-on-surface"
-                      >
-                        {item.label}
-                        <kbd aria-hidden className="mt-0.5 text-[10px] leading-tight opacity-60">
-                          {notationShortcut(item)}
-                        </kbd>
-                      </button>
-                    ))}
+                    <NotationButtons
+                      scriptMode={work?.format === 'script'}
+                      onApply={(kind) => editorRef.current?.applyNotation(kind)}
+                    />
                     {work?.format === 'script' ? (
                       // 脚本の書き方（判別・字下げ・Tab 操作・自動で揃うもの）は ⓘ に畳む。
                       <FieldHelp
@@ -808,6 +836,38 @@ export function App({
                       </FieldHelp>
                     ) : null}
                   </div>
+                  <WritingModeControls
+                    mode={writingMode}
+                    onFocusEditor={() => editorRef.current?.focus()}
+                  />
+                  <fieldset
+                    aria-label="本文の組み方向"
+                    className="m-0 flex shrink-0 items-center gap-1 border-0 p-0"
+                  >
+                    {(['horizontal', 'vertical'] as const).map((direction) => {
+                      const vertical = direction === 'vertical'
+                      const selected = writingMode.vertical === vertical
+                      return (
+                        <button
+                          key={direction}
+                          type="button"
+                          aria-pressed={selected}
+                          onClick={() => {
+                            if (!selected) writingMode.toggleVertical()
+                            editorRef.current?.focus()
+                          }}
+                          className={cn(
+                            'flex h-11 items-center rounded-md px-2.5 font-sans text-xs transition-colors md:h-[26px]',
+                            selected
+                              ? 'bg-primary text-white'
+                              : 'text-on-surface-variant hover:bg-surface-container-high',
+                          )}
+                        >
+                          {vertical ? '縦書き' : '横書き'}
+                        </button>
+                      )
+                    })}
+                  </fieldset>
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
                   {isNovel ? (
@@ -842,7 +902,7 @@ export function App({
                   </Button>
                   {/* 組み方向の切替（プレビュー）。狭幅では本文タブの時に意味を持たないので畳む。 */}
                   <fieldset
-                    aria-label="本文の組み方向"
+                    aria-label="プレビューの組み方向"
                     className={cn(
                       'm-0 flex items-center gap-1 border-0 p-0',
                       pane === 'editor' && 'max-lg:hidden',
@@ -921,64 +981,79 @@ export function App({
                 <div
                   className={cn(
                     'relative flex min-w-0 flex-[1.3_1_0%] flex-col border-outline-variant/30 lg:border-r',
-                    pane !== 'editor' && 'max-lg:hidden',
+                    pane !== 'editor' && !focusMode && 'max-lg:hidden',
+                    focusMode && 'border-r-0! bg-surface-container-lowest',
                   )}
                 >
                   <EditorPane
                     ref={editorRef}
+                    focusMode={focusMode}
+                    vertical={writingMode.vertical}
+                    typewriter={writingMode.typewriter}
                     readOnly={state.workOperation !== 'idle'}
                     scriptMode={work?.format === 'script'}
                     value={state.draft}
                     onChange={(v) => store.setDraft(v)}
+                    onCaretChange={onCaretChange}
                     glossary={work?.glossary ?? []}
                     onCreateEntry={(name) => store.addGlossaryEntry({ name })}
                   />
                   {replaceOpen ? (
-                    <WorkSearchPanel
-                      sources={searchSources}
-                      busy={state.workOperation !== 'idle'}
-                      value={state.draft}
-                      onApply={(next, count, keepOpen = false) => {
-                        store.setDraft(next)
-                        if (!keepOpen) setReplaceOpen(false)
-                        show(`${count}件を置換しました`)
-                      }}
-                      onClose={closeSearch}
-                      onReplace={async (sources, query, replacement, target) => {
-                        if (!work) return
-                        const result = await store.replaceWorkMatches({
-                          workId: work.id,
-                          sources,
-                          query,
-                          replacement,
-                          target,
-                        })
-                        if (result.committed)
-                          show(result.warning ?? `${result.count}件を置換しました`)
-                      }}
-                      onNavigate={async (sources, query, match) => {
-                        if (!work) return
-                        const range = await store.navigateWorkMatch({
-                          workId: work.id,
-                          sources,
-                          query,
-                          match,
-                        })
-                        setPane('editor')
-                        if (narrow) setReplaceOpen(false)
-                        requestAnimationFrame(() =>
-                          editorRef.current?.selectRange(range.start, range.end),
-                        )
-                      }}
-                    />
+                    <div hidden={focusMode} className={focusMode ? 'hidden' : 'contents'}>
+                      <WorkSearchPanel
+                        sources={searchSources}
+                        busy={state.workOperation !== 'idle'}
+                        value={state.draft}
+                        onApply={(next, count, keepOpen = false) => {
+                          store.setDraft(next)
+                          if (!keepOpen) setReplaceOpen(false)
+                          show(`${count}件を置換しました`)
+                        }}
+                        onClose={closeSearch}
+                        onReplace={async (sources, query, replacement, target) => {
+                          if (!work) return
+                          const result = await store.replaceWorkMatches({
+                            workId: work.id,
+                            sources,
+                            query,
+                            replacement,
+                            target,
+                          })
+                          if (result.committed)
+                            show(result.warning ?? `${result.count}件を置換しました`)
+                        }}
+                        onNavigate={async (sources, query, match) => {
+                          if (!work) return
+                          const range = await store.navigateWorkMatch({
+                            workId: work.id,
+                            sources,
+                            query,
+                            match,
+                          })
+                          setPane('editor')
+                          if (narrow) setReplaceOpen(false)
+                          requestAnimationFrame(() =>
+                            editorRef.current?.selectRange(range.start, range.end),
+                          )
+                        }}
+                      />
+                    </div>
                   ) : null}
                 </div>
-                <div className={cn('min-w-0 flex-[1_1_0%]', pane !== 'preview' && 'max-lg:hidden')}>
+                <div
+                  className={cn(
+                    'min-w-0 flex-[1_1_0%]',
+                    pane !== 'preview' && 'max-lg:hidden',
+                    focusMode && 'hidden!',
+                  )}
+                >
                   {scriptPages ? (
                     <ScriptSheetView pages={scriptPages} preset={sheetPreset} />
                   ) : (
                     <PreviewPane
                       html={previewHtml}
+                      position={previewPosition?.value === state.draft ? previewPosition : null}
+                      followActive={!focusMode && (!narrow || pane === 'preview')}
                       onRefClick={onRefClick}
                       orientation={orientation}
                     />
@@ -987,7 +1062,12 @@ export function App({
               </div>
 
               {/* ステータスバー */}
-              <div className="flex h-[38px] shrink-0 items-center justify-between border-outline-variant/30 border-t bg-surface-container-lowest px-4 max-lg:h-7">
+              <div
+                className={cn(
+                  'flex h-[38px] shrink-0 items-center justify-between border-outline-variant/30 border-t bg-surface-container-lowest px-4 max-lg:h-7',
+                  focusMode && 'hidden!',
+                )}
+              >
                 {/* 狭幅は縦を本文に譲る（TopAppBar+ツールバー+ここで既に 120px 超を消費している）。 */}
                 <span className="font-sans text-[11px] text-on-surface-variant/60 max-lg:hidden">
                   自動保存 ON

@@ -75,12 +75,15 @@ export function PostingSitesPage({
   sites?: readonly PostingSite[]
 }) {
   return (
-    <PageLayout title="小説投稿サイト" description="書いた作品を読んでもらえる場所を紹介します。">
-      <p className="text-[13px] text-on-surface-variant leading-relaxed">
-        運営の方から掲載の了承をいただいたサイトだけを載せています。サイトは新しいタブで開きます。
-      </p>
-
-      <ul className="mt-5 grid gap-4 sm:grid-cols-2">
+    // カードを PC で3列に並べるため、本文を一覧向けの幅（wide）に広げる。
+    <PageLayout
+      title="小説投稿サイト"
+      // 掲載の条件も説明文に続けて書く。本文側に段落を分けると、説明文との間に
+      // PageLayout の余白が入って間延びする。
+      description="書いた作品を読んでもらえる場所を紹介します。運営の方から掲載の了承をいただいたサイトだけを載せています。"
+      wide
+    >
+      <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {sites.map((site) => (
           <li key={site.url}>
             <SiteCard site={site} />

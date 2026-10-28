@@ -516,3 +516,37 @@
   letter-spacing: 0.05em;
   color: #555;
 }
+
+/* 集中表示では、キーボード表示後の可視領域に操作列と本文を収める。 */
+.writing-focus-shell {
+  position: fixed;
+  inset-inline: 0;
+  top: var(--writing-vv-top, 0px);
+  height: var(--writing-vv-height, 100dvh);
+}
+
+.writing-focus-editor {
+  max-width: none;
+  margin-inline: 0;
+}
+
+@media (width < 1024px) {
+  .writing-focus-editor .editor {
+    padding-inline: 24px;
+  }
+}
+
+.writing-vertical-editor .editor {
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+.writing-focus-editor .editor {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--outline-variant) 25%, transparent) transparent;
+}
+.writing-focus-editor .editor:hover,
+.writing-focus-editor .editor:focus-visible {
+  scrollbar-color: color-mix(in srgb, var(--outline-variant) 45%, transparent) transparent;
+}
