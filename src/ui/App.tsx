@@ -309,7 +309,7 @@ export function App({
 
   const episode = work?.episodes.find((e) => e.id === state.currentEpisodeId) ?? null
   const onEpisodes = activeScreen === 'episodes'
-  const writingMode = useWritingMode(Boolean(episode && onEpisodes))
+  const writingMode = useWritingMode(Boolean(episode && onEpisodes), !narrow)
   const focusMode = writingMode.focus
   const previousFocusMode = useRef(false)
   useLayoutEffect(() => {
@@ -836,38 +836,43 @@ export function App({
                       </FieldHelp>
                     ) : null}
                   </div>
-                  <WritingModeControls
-                    mode={writingMode}
-                    onFocusEditor={() => editorRef.current?.focus()}
-                  />
-                  <fieldset
-                    aria-label="本文の組み方向"
-                    className="m-0 flex shrink-0 items-center gap-1 border-0 p-0"
-                  >
-                    {(['horizontal', 'vertical'] as const).map((direction) => {
-                      const vertical = direction === 'vertical'
-                      const selected = writingMode.vertical === vertical
-                      return (
-                        <button
-                          key={direction}
-                          type="button"
-                          aria-pressed={selected}
-                          onClick={() => {
-                            if (!selected) writingMode.toggleVertical()
-                            editorRef.current?.focus()
-                          }}
-                          className={cn(
-                            'flex h-11 items-center rounded-md px-2.5 font-sans text-xs transition-colors md:h-[26px]',
-                            selected
-                              ? 'bg-primary text-white'
-                              : 'text-on-surface-variant hover:bg-surface-container-high',
-                          )}
-                        >
-                          {vertical ? '縦書き' : '横書き'}
-                        </button>
-                      )
-                    })}
-                  </fieldset>
+                  {/* 集中・行を中央に・本文の縦横は PC だけの機能（スマホは横書き・通常表示に固定）。 */}
+                  {narrow ? null : (
+                    <>
+                      <WritingModeControls
+                        mode={writingMode}
+                        onFocusEditor={() => editorRef.current?.focus()}
+                      />
+                      <fieldset
+                        aria-label="本文の組み方向"
+                        className="m-0 flex shrink-0 items-center gap-1 border-0 p-0"
+                      >
+                        {(['horizontal', 'vertical'] as const).map((direction) => {
+                          const vertical = direction === 'vertical'
+                          const selected = writingMode.vertical === vertical
+                          return (
+                            <button
+                              key={direction}
+                              type="button"
+                              aria-pressed={selected}
+                              onClick={() => {
+                                if (!selected) writingMode.toggleVertical()
+                                editorRef.current?.focus()
+                              }}
+                              className={cn(
+                                'flex h-11 items-center rounded-md px-2.5 font-sans text-xs transition-colors md:h-[26px]',
+                                selected
+                                  ? 'bg-primary text-white'
+                                  : 'text-on-surface-variant hover:bg-surface-container-high',
+                              )}
+                            >
+                              {vertical ? '縦書き' : '横書き'}
+                            </button>
+                          )
+                        })}
+                      </fieldset>
+                    </>
+                  )}
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
                   {isNovel ? (

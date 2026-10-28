@@ -39,6 +39,30 @@ describe('執筆モード', () => {
     expect(renderHook(() => useWritingMode(true)).result.current.typewriter).toBe(true)
   })
 
+  it('PC でない画面では集中・行を中央に・縦書きを効かせず、キーも受け付けない（設定値は残す）', () => {
+    localStorage.setItem('ns-writing-focus', '1')
+    localStorage.setItem('ns-writing-typewriter', '1')
+    localStorage.setItem('ns-writing-vertical', '1')
+    const { result, rerender } = renderHook(({ desktop }) => useWritingMode(true, desktop), {
+      initialProps: { desktop: false },
+    })
+    expect([result.current.focus, result.current.typewriter, result.current.vertical]).toEqual([
+      false,
+      false,
+      false,
+    ])
+    fireEvent.keyDown(document, { key: 'F', code: 'KeyF', altKey: true, shiftKey: true })
+    fireEvent.keyDown(document, { key: 'G', code: 'KeyG', altKey: true, shiftKey: true })
+    expect(localStorage.getItem('ns-writing-focus')).toBe('1')
+    expect(localStorage.getItem('ns-writing-typewriter')).toBe('1')
+    rerender({ desktop: true })
+    expect([result.current.focus, result.current.typewriter, result.current.vertical]).toEqual([
+      true,
+      true,
+      true,
+    ])
+  })
+
   it('Alt+Shift+G で「行を中央に」を切り替え、修飾キーが違えば反応しない', () => {
     const { result } = renderHook(() => useWritingMode(true))
     const key = { key: 'G', code: 'KeyG', altKey: true, shiftKey: true }

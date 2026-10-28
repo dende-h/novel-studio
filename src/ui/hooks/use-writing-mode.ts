@@ -22,14 +22,18 @@ function useWritingFlag(key: string) {
   return [value, toggle] as const
 }
 
-/** 原稿の外に置く端末設定。Fullscreenの所有権はセッション内だけで管理する。 */
-export function useWritingMode(eligible: boolean) {
+/**
+ * 原稿の外に置く端末設定。Fullscreenの所有権はセッション内だけで管理する。
+ * 集中・行を中央に・本文の縦書きは PC（desktop＝lg 以上）だけの機能。狭い画面では
+ * 横書き・通常表示に固定し、ショートカットも受け付けない（端末の設定値は消さずに残す）。
+ */
+export function useWritingMode(eligible: boolean, desktop = true) {
   const [preferredFocus, toggleFocus] = useWritingFlag('ns-writing-focus')
   const [typewriter, toggleTypewriter] = useWritingFlag('ns-writing-typewriter')
   const [hideControls, toggleControls] = useWritingFlag('ns-writing-hide-controls')
   const [showShortcuts, toggleShortcuts] = useWritingFlag('ns-writing-shortcuts')
   const [vertical, toggleVertical] = useWritingFlag('ns-writing-vertical')
-  const focus = eligible && preferredFocus
+  const focus = eligible && desktop && preferredFocus
   const [fullscreen, setFullscreen] = useState(false)
   const owned = useRef(false)
   const pending = useRef(false)
@@ -56,6 +60,7 @@ export function useWritingMode(eligible: boolean) {
     const keydown = (event: KeyboardEvent) => {
       if (
         !eligible ||
+        !desktop ||
         event.defaultPrevented ||
         event.repeat ||
         composing ||
@@ -81,7 +86,7 @@ export function useWritingMode(eligible: boolean) {
       document.removeEventListener('compositionend', end, true)
       document.removeEventListener('keydown', keydown)
     }
-  }, [eligible, toggleFocus, toggleTypewriter])
+  }, [eligible, desktop, toggleFocus, toggleTypewriter])
 
   useEffect(() => {
     mounted.current = true
@@ -151,9 +156,9 @@ export function useWritingMode(eligible: boolean) {
     toggleControls,
     showShortcuts,
     toggleShortcuts,
-    vertical,
+    vertical: desktop && vertical,
     toggleVertical,
-    typewriter,
+    typewriter: desktop && typewriter,
     toggleFocus,
     toggleTypewriter,
     fullscreen,
