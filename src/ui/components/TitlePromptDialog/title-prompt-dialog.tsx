@@ -22,6 +22,8 @@ interface TitlePromptDialogProps {
   placeholder?: string
   defaultValue?: string
   submitLabel?: string
+  /** 入力できる文字数の上限。指定すると残りの文字数を出し、超えていれば決定できない。 */
+  maxLength?: number
   onSubmit: (value: string) => void
 }
 
@@ -36,6 +38,7 @@ export function TitlePromptDialog({
   placeholder,
   defaultValue = '',
   submitLabel = '作成',
+  maxLength,
   onSubmit,
 }: TitlePromptDialogProps) {
   const [value, setValue] = useState(defaultValue)
@@ -48,7 +51,12 @@ export function TitlePromptDialog({
     if (open) setValue(defaultValueRef.current)
   }, [open])
 
+  // 既存の長いタイトル（上限を入れる前に保存したもの）も開けるよう、入力は切らずに決定だけ止める。
+  const length = Array.from(value.trim()).length
+  const over = maxLength !== undefined && length > maxLength
+
   const submit = () => {
+    if (over) return
     onSubmit(value.trim() || defaultValue)
     onOpenChange(false)
   }
@@ -75,8 +83,20 @@ export function TitlePromptDialog({
                 value={value}
                 onChange={(e) => setValue(e.target.value)}
                 placeholder={placeholder}
+                aria-invalid={over || undefined}
+                aria-describedby={maxLength !== undefined ? 'title-prompt-count' : undefined}
                 autoFocus
               />
+              {maxLength !== undefined ? (
+                <p
+                  id="title-prompt-count"
+                  className={over ? 'text-destructive text-xs' : 'text-on-surface-variant text-xs'}
+                >
+                  {over
+                    ? `${maxLength}文字までです（いま${length}文字）`
+                    : `${length}／${maxLength}文字`}
+                </p>
+              ) : null}
             </div>
             {children}
           </DialogBody>
@@ -89,7 +109,9 @@ export function TitlePromptDialog({
             >
               キャンセル
             </Button>
-            <Button type="submit">{submitLabel}</Button>
+            <Button type="submit" disabled={over}>
+              {submitLabel}
+            </Button>
           </DialogFooter>
         </form>
       </DialogContent>

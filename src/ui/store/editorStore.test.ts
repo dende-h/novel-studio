@@ -802,6 +802,15 @@ describe('editorStore（自前ストア・useSyncExternalStore 用）', () => {
     expect(store.getSnapshot().work?.episodes[0]?.title).toBe('新タイトル')
   })
 
+  it('createEpisode・renameEpisode は話タイトルを50文字で切り詰める', async () => {
+    await store.createWork('作')
+    await store.createEpisode('あ'.repeat(60))
+    const id = store.getSnapshot().currentEpisodeId as string
+    expect(store.getSnapshot().work?.episodes[0]?.title).toBe('あ'.repeat(50))
+    await store.renameEpisode(id, `  ${'い'.repeat(70)}  `)
+    expect(store.getSnapshot().work?.episodes[0]?.title).toBe('い'.repeat(50))
+  })
+
   it('renameEpisode は前後の空白を除去する', async () => {
     await store.createWork('作')
     await store.createEpisode('話')

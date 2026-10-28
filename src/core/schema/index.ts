@@ -66,6 +66,18 @@ export const EpisodeSchema = z.object({
 export type Episode = z.infer<typeof EpisodeSchema>
 
 /**
+ * 話タイトルの文字数の上限（新規作成・名前の変更の入力に効かせる）。
+ * 過去に保存した長いタイトルを読めなくしないよう、スキーマ（EpisodeSchema.title）には掛けない。
+ */
+export const EPISODE_TITLE_MAX = 50
+
+/** 上限を超える話タイトルを切り詰める（サロゲートペアを割らないよう文字単位で数える）。 */
+export function clampEpisodeTitle(title: string): string {
+  const chars = Array.from(title)
+  return chars.length > EPISODE_TITLE_MAX ? chars.slice(0, EPISODE_TITLE_MAX).join('') : title
+}
+
+/**
  * 用語集の「対話」（一問一答）の答え 1 つ（11-glossary-dialog.md §2）。
  * `text` が空のときは「スキップ／あとで」の印としてだけ使い、公開・下書きには使わない。
  */

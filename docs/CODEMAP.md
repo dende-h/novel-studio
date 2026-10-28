@@ -230,7 +230,7 @@ Cloudflare Pages Functions
 | 設定・ヘルプ等の一枚ものページ | `PageLayout`（`src/ui/components/PageLayout/page-layout.tsx`） | — |
 | 一時通知 | `useToast()`（`src/ui/components/Toast/toast.tsx`） | `alert()` |
 | 破壊操作の確認 | `ConfirmDialog`（`src/ui/components/ConfirmDialog/confirm-dialog.tsx`） | `window.confirm()` |
-| 文字列の入力を求める | `TitlePromptDialog`（`src/ui/components/TitlePromptDialog/title-prompt-dialog.tsx`、children で追加欄。作品作成時は形式選択） | `window.prompt()` |
+| 文字列の入力を求める | `TitlePromptDialog`（`src/ui/components/TitlePromptDialog/title-prompt-dialog.tsx`、children で追加欄。作品作成時は形式選択。`maxLength` で文字数の上限と残りを出す＝話タイトルは `EPISODE_TITLE_MAX`（50・`core/schema`、スキーマには掛けない）） | `window.prompt()` |
 | 描画例外の受け止め | `ErrorBoundary`（`src/ui/components/ErrorBoundary/error-boundary.tsx`） | — |
 | `@`/`[[` の用語集サジェスト付き入力欄（blur 確定。`onSubmit` を渡すと Enter で決定＝対話の答え・`suggestAbove` で候補を上に開く） | `CommitTextarea`（`src/ui/components/NotationField/commit-textarea.tsx`） | 生の `<textarea>` ＋ 自前サジェスト |
 | 記法つき入力（書く／プレビュー切替・マークダウン描画・`[[用語]]` クリック委譲） | `NotationField`（`src/ui/components/NotationField/notation-field.tsx`） | 画面ごとのプレビュー自作 |
