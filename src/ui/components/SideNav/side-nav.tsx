@@ -349,7 +349,9 @@ export function SideNav({
                 ) : null}
               </div>
               {episodes && episodes.length > 0 ? (
-                <ScrollArea className="min-h-0 flex-1">
+                // Radix の viewport 直下は display:table で中身の幅まで広がる。長い話タイトルで
+                // truncate が効かず、右端の編集・削除ボタンが表示範囲の外へ押し出されるので block に戻す。
+                <ScrollArea className="min-h-0 flex-1 [&_[data-slot=scroll-area-viewport]>div]:block!">
                   <ul className="space-y-0.5">
                     {episodes.map((e) => {
                       const isCurrent = e.id === currentEpisodeId

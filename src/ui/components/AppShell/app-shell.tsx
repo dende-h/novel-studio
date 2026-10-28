@@ -8,6 +8,7 @@ interface AppShellProps {
   onBrandClick?: () => void
   /** ヘッダーのパンくずに出す作品タイトル（任意） */
   workTitle?: string
+  episodeTitle?: string
   saveStatus?: SaveState
   onExport?: () => void
   exportDisabled?: boolean
@@ -32,6 +33,7 @@ export function AppShell({
   focusControls,
   onBrandClick,
   workTitle,
+  episodeTitle,
   saveStatus,
   onExport,
   exportDisabled,
@@ -57,6 +59,7 @@ export function AppShell({
         <TopAppBar
           onBrandClick={onBrandClick}
           workTitle={workTitle}
+          episodeTitle={episodeTitle}
           saveStatus={saveStatus}
           onExport={onExport}
           exportDisabled={exportDisabled}

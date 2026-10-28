@@ -29,6 +29,8 @@ interface TopAppBarProps {
   onBrandClick?: () => void
   /** 開いている作品のタイトル（パンくず）。指定時のみブランド横に表示。 */
   workTitle?: string
+  /** 執筆中の話タイトル。PC（lg 以上）で作品名の後ろに続けて出す（狭幅はエディタのツールバーが出す）。 */
+  episodeTitle?: string
   /** 編集中のみ保存状態を表示 */
   saveStatus?: SaveState
   /** 書き出しダイアログを開く。未指定なら非表示 */
@@ -168,6 +170,7 @@ export function TopAppBar({
   brand,
   onBrandClick,
   workTitle,
+  episodeTitle,
   saveStatus,
   onExport,
   exportDisabled,
@@ -223,7 +226,21 @@ export function TopAppBar({
             <span aria-hidden="true" className="text-outline-variant">
               ／
             </span>
-            <span className="truncate">{workTitle}</span>
+            <span className={cn('truncate', episodeTitle && 'max-w-[16rem] shrink-0')}>
+              {workTitle}
+            </span>
+          </span>
+        ) : null}
+        {episodeTitle ? (
+          // 話タイトルは作品名より長くなりやすいので、こちらを先に縮めて … で省く。全文は title で読める。
+          <span
+            title={episodeTitle}
+            className="flex min-w-0 items-center gap-2 font-medium text-on-surface text-xs max-lg:hidden"
+          >
+            <span aria-hidden="true" className="text-outline-variant">
+              ／
+            </span>
+            <span className="truncate">{episodeTitle}</span>
           </span>
         ) : null}
       </div>

@@ -510,6 +510,7 @@ export function App({
         }
         onBrandClick={onExit}
         workTitle={work?.title}
+        episodeTitle={activeScreen === 'episodes' && episode ? episode.title : undefined}
         saveStatus={{ dirty: state.dirty, status: state.status }}
         onExport={() => void openExport()}
         onPublish={
@@ -750,11 +751,11 @@ export function App({
                   focusMode && 'hidden!',
                 )}
               >
-                {/* 話タイトルは専用の段に置く（長いタイトルでボタンの列を押し出さない）。
-                    改行せず、入りきらない分は … で省く。全文は title で読める。 */}
+                {/* 話タイトル。PC はヘッダーの作品名の後ろに出すので、ここは狭幅だけ。
+                    専用の段に1行で置き、入りきらない分は … で省く（ボタンの列を押し出さない）。 */}
                 <p
                   title={episode.title}
-                  className="w-full min-w-0 basis-full truncate font-medium font-sans text-[13px] text-on-surface"
+                  className="w-full min-w-0 basis-full truncate font-medium font-sans text-[13px] text-on-surface lg:hidden"
                 >
                   {episode.title}
                 </p>
