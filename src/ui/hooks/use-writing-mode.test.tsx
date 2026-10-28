@@ -39,6 +39,20 @@ describe('執筆モード', () => {
     expect(renderHook(() => useWritingMode(true)).result.current.typewriter).toBe(true)
   })
 
+  it('Alt+Shift+G で「行を中央に」を切り替え、修飾キーが違えば反応しない', () => {
+    const { result } = renderHook(() => useWritingMode(true))
+    const key = { key: 'G', code: 'KeyG', altKey: true, shiftKey: true }
+    fireEvent.keyDown(document, { ...key, ctrlKey: true })
+    fireEvent.keyDown(document, { ...key, shiftKey: false })
+    expect(result.current.typewriter).toBe(false)
+    fireEvent.keyDown(document, key)
+    expect(result.current.typewriter).toBe(true)
+    expect(result.current.focus).toBe(false)
+    expect(localStorage.getItem('ns-writing-typewriter')).toBe('1')
+    fireEvent.keyDown(document, key)
+    expect(result.current.typewriter).toBe(false)
+  })
+
   it('repeat・IME・dialog・処理済みのキーを奪わない', () => {
     const { result } = renderHook(() => useWritingMode(true))
     const key = { key: 'F', code: 'KeyF', altKey: true, shiftKey: true }

@@ -64,15 +64,13 @@ export function useWritingMode(eligible: boolean) {
       )
         return
       if (document.querySelector('[role="dialog"], [role="alertdialog"], dialog[open]')) return
-      if (
-        event.altKey &&
-        event.shiftKey &&
-        !event.ctrlKey &&
-        !event.metaKey &&
-        event.code === 'KeyF'
-      ) {
+      if (!event.altKey || !event.shiftKey || event.ctrlKey || event.metaKey) return
+      if (event.code === 'KeyF') {
         event.preventDefault()
         toggleFocus()
+      } else if (event.code === 'KeyG') {
+        event.preventDefault()
+        toggleTypewriter()
       }
     }
     document.addEventListener('compositionstart', start, true)
@@ -83,7 +81,7 @@ export function useWritingMode(eligible: boolean) {
       document.removeEventListener('compositionend', end, true)
       document.removeEventListener('keydown', keydown)
     }
-  }, [eligible, toggleFocus])
+  }, [eligible, toggleFocus, toggleTypewriter])
 
   useEffect(() => {
     mounted.current = true

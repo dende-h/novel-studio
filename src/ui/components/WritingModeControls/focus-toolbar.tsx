@@ -9,10 +9,15 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
+  DropdownMenuShortcut,
   DropdownMenuTrigger,
 } from '@/ui/components/ui/dropdown-menu'
 import type { useWritingMode } from '@/ui/hooks/use-writing-mode'
-import { WritingModeControls } from './writing-mode-controls'
+import {
+  focusShortcutLabel,
+  typewriterShortcutLabel,
+  WritingModeControls,
+} from './writing-mode-controls'
 
 export function FocusToolbar({
   mode,
@@ -77,6 +82,7 @@ export function FocusToolbar({
                 onCheckedChange={mode.toggleTypewriter}
               >
                 入力行を中央に保つ
+                <DropdownMenuShortcut aria-hidden>{typewriterShortcutLabel()}</DropdownMenuShortcut>
               </DropdownMenuCheckboxItem>
               {mode.fullscreenAvailable ? (
                 <DropdownMenuItem onSelect={() => void mode.toggleFullscreen()}>
@@ -84,7 +90,10 @@ export function FocusToolbar({
                 </DropdownMenuItem>
               ) : null}
               <DropdownMenuSeparator />
-              <DropdownMenuItem onSelect={mode.toggleFocus}>集中モードを終了</DropdownMenuItem>
+              <DropdownMenuItem onSelect={mode.toggleFocus}>
+                集中モードを終了
+                <DropdownMenuShortcut aria-hidden>{focusShortcutLabel()}</DropdownMenuShortcut>
+              </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
