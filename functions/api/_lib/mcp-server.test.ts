@@ -207,6 +207,21 @@ describe('handleMcpMessage — 書き込み', () => {
     )
   })
 
+  it('get_work は記法のまま返し、そのまま set_episode へ書き戻してもルビ・傍点・参照が残る', async () => {
+    const { deps: d, get } = makeDeps(snapshot([work()]))
+    const body = '｜結賀小夏《ゆいがこなつ》は顎《あご》を《《撫でた》》。[[アカリ]]'
+    await handleMcpMessage(call('set_episode', { work_id: 'w1', episode_id: 'e1', body }), d)
+    const read = contentText(await handleMcpMessage(call('get_work', { work_id: 'w1' }), d))
+    expect(read).toContain('結賀小夏《ゆいがこなつ》は顎《あご》を《《撫でた》》。[[アカリ]]')
+    const before = get()?.works[0]?.episodes[0]?.blocks.map((b) => b.inlines)
+    const echoed = read.split('## 第一話\n\n')[1] ?? ''
+    await handleMcpMessage(
+      call('set_episode', { work_id: 'w1', episode_id: 'e1', body: echoed }),
+      d,
+    )
+    expect(get()?.works[0]?.episodes[0]?.blocks.map((b) => b.inlines)).toEqual(before)
+  })
+
   it('add_episode は episode_id を返し 2 話になる', async () => {
     const { deps: d } = makeDeps(snapshot([work()]))
     const res = await handleMcpMessage(call('add_episode', { work_id: 'w1', title: '第二話' }), d)

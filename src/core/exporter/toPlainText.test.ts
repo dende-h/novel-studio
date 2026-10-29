@@ -73,6 +73,22 @@ describe('workToPlainText', () => {
     }
     expect(workToPlainText(work)).toBe(['# 無題', '', '## 本編', '', '内容'].join('\n'))
   })
+
+  it('notation では本文をルビ・傍点・[[参照]] の記法のまま出し、parse し直すと同じ blocks に戻る', () => {
+    const blocks = parseEpisodeBody(
+      '　｜結賀小夏《ゆいがこなつ》と顎《あご》。《《傍点》》と[[アリス]]（笑）',
+    )
+    const work: Work = { id: 'w3', title: '題', episodes: [{ id: 'e1', title: '一', blocks }] }
+    const text = workToPlainText(work, { notation: true })
+    const body = text.split('## 一\n\n')[1] ?? ''
+    expect(body).toBe('　結賀小夏《ゆいがこなつ》と顎《あご》。《《傍点》》と[[アリス]]（笑）')
+    expect(text).toContain('本文の記法:')
+    expect(parseEpisodeBody(body).map((b) => b.inlines)).toEqual(blocks.map((b) => b.inlines))
+    // 既定（AI へコピー）は従来どおり記法を落とす
+    expect(workToPlainText(work)).toContain(
+      '結賀小夏（ゆいがこなつ）と顎（あご）。傍点とアリス（笑）',
+    )
+  })
 })
 
 describe('glossaryToPlainText', () => {

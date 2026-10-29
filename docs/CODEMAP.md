@@ -119,8 +119,8 @@ Cloudflare Pages Functions
 | `src/core/exporter/toNarou.ts` / `src/core/exporter/toKakuyomu.ts` | 各投稿サイト記法 |
 | `src/core/importer/` | .txt／貼り付けの取り込み（書き出しの逆方向）。`text.ts`＝UTF-8→Shift_JIS 復号と制御文字検査・BOM/CRLF 正規化・容量上限（`MAX_IMPORT_BYTES` 生テキスト／`MAX_WORK_JSON_BYTES` 保存 JSON）、`split.ts`＝見出し行／区切り行／ファイル単位の分割と手直し（`splitEpisodes` `applyEdits` `episodeKey`）、`build.ts`＝`buildImportedWork`（→ `Work`・スキーマ変更なし） |
 | `src/core/exporter/toNovelGame.ts` | 正本＋演出譜 → サウンドノベル zip の中身（`buildNovelGameFiles`）と grove 同梱用の自己完結HTML（`buildNovelGameHtml`＝素材 data URL 内包・契約 v4）。プレイヤー（index.html の CSS/JS 一式）は `novelGamePlayer.ts`（メニュー＝速度・BGM・効果音・「ここまでを保存」・一文カード・クレジット・はじめから・「タイトルに戻る」。セーブは `saveKey` の 1 席に自動＋明示、終了は `backToTitle`＝親へ `quit`） |
-| `src/core/exporter/toPlainText.ts` / `plotToPlainText.ts` / `structureToPlainText.ts` / `stagingToPlainText.ts` | AI 投げ込み用の平文（`glossaryToPlainText`＝作者メモと対話ノートも鍵つきで出す、演出譜の `stagingToPlainText` 含む） |
-| `src/core/exporter/blocksToNotation.ts` | 正本 → 記法（往復変換） |
+| `src/core/exporter/toPlainText.ts` / `plotToPlainText.ts` / `structureToPlainText.ts` / `stagingToPlainText.ts` | AI 投げ込み用の平文（`glossaryToPlainText`＝作者メモと対話ノートも鍵つきで出す、演出譜の `stagingToPlainText` 含む）。`workToPlainText` の既定は記法を落とす（AI へコピー）、`{ notation: true }` は本文を記法のまま出す＝MCP `get_work`（set_episode へ書き戻してもルビ・傍点・参照が消えない） |
+| `src/core/exporter/blocksToNotation.ts` | 正本 → 記法（往復変換。エディタ・フォルダ連携・MCP `get_work` が使う） |
 | `src/core/zip/index.ts` | 依存ゼロの ZIP（store 法）・`crc32` |
 | `bundle/` `folder/` | 全作品バンドル JSON / フォルダ形式の入出力 |
 | `search/workSearch.ts` | 全話の記法テキスト検索・参照を保護する置換計画（`searchWork` `planReplacement` `SearchSource` `SearchMatch.isReference`） |

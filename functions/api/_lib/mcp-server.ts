@@ -69,7 +69,7 @@ export const SERVER_INFO = { name: 'novel-studio', version: '1.10.0' } as const
 const SERVER_INSTRUCTIONS = [
   'コトノハは小説の執筆アプリです。作品ごとに次の器があります。',
   '',
-  '- 本文（get_work / set_episode）… 読者が読む小説そのもの。',
+  '- 本文（get_work / set_episode）… 読者が読む小説そのもの。get_work は set_episode と同じ記法（ルビ・傍点・[[参照]]）で返すので、記法を残したまま書き戻してください。',
   '- 用語集（get_glossary / upsert_glossary_entry）… 人物・場所・組織・用語・アイテム・生物の事典。',
   '  **公開サイトへ投稿され、読者にも見えます**（その用語が出てくる話まで読んだ読者に開きます）。',
   '  各項目の「作者メモ」欄だけは公開されません。',
@@ -121,7 +121,7 @@ export const MCP_TOOLS = [
   {
     name: 'get_work',
     description:
-      '1 作品の本文全体をプレーンテキスト（タイトル・各話見出し付き）で返す。書き換える前に get_world でこの作品の決め事（語り手・言葉づかい・やらないこと等）を確認すること。',
+      '1 作品の本文全体をテキスト（タイトル・各話見出し付き）で返す。本文は set_episode と同じ記法（｜漢字《かんじ》・漢字《かんじ》＝ルビ、《《語》》＝傍点、[[名前]]＝用語集への参照）のまま出すので、直すときは記法を消さずにそのまま set_episode へ渡す。書き換える前に get_world でこの作品の決め事（語り手・言葉づかい・やらないこと等）を確認すること。',
     inputSchema: {
       type: 'object',
       properties: workIdProp,
@@ -1188,7 +1188,9 @@ async function callTool(
     const primaryPlot = () =>
       pickPrimaryPlot((snap?.plots ?? []).filter((p) => p.workId === workId))
     if (name === 'get_work') {
-      return text(`${worldPointerLine(primaryPlot())}\n\n${workToPlainText(work)}`)
+      return text(
+        `${worldPointerLine(primaryPlot())}\n\n${workToPlainText(work, { notation: true })}`,
+      )
     }
     if (name === 'get_world') {
       return text(
