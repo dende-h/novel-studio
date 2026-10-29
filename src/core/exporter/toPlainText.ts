@@ -1,10 +1,11 @@
 import { publicTextOf } from '../glossary'
 import { dialogToPlainText } from '../glossary/dialog'
 import type { Block, GlossaryEntry, Inline, Work } from '../schema'
+import { blocksToNotation } from './blocksToNotation'
 
 /**
  * 正本 → AI が読める / コピーできるプレーンテキスト。
- * read-only リモート MCP の `get_work` ペイロード、および無料の「AI へコピー」導線の共通土台。
+ * 無料の「AI へコピー」導線と、リモート MCP の `get_work`（本文だけ notation で記法のまま）の共通土台。
  * 辞書非依存（ref は名前へ degrade）。記法マークアップ（｜《》・傍点）は持ち込まず、
  * 読者が読む素のプロダクトに近い文字列にする（AI の読解を妨げないため）。
  */
@@ -38,10 +39,18 @@ export function blocksToPlainText(blocks: Block[]): string {
 /**
  * Work 全体 → 1 ドキュメント。タイトル/著者/あらすじの見出し＋各話を Markdown 風の
  * 見出しで連結し、AI が構造（作品名・話境界）を把握できるようにする。
+ *
+ * `notation` のときは各話の本文を正本記法（blocksToNotation）で出す。MCP の get_work 用＝
+ * 読んだ本文を直して set_episode へ書き戻す往復で、ルビ・傍点・[[参照]] を落とさないため。
  */
-export function workToPlainText(work: Work): string {
+export function workToPlainText(work: Work, opts: { notation?: boolean } = {}): string {
+  const bodyOf = opts.notation ? blocksToNotation : blocksToPlainText
   const meta = [`# ${work.title}`]
   if (work.author) meta.push(`著者: ${work.author}`)
+  if (opts.notation)
+    meta.push(
+      '本文の記法: ｜漢字《よみ》（漢字だけなら 漢字《よみ》）はルビ、《《語》》は傍点、[[名前]] は用語集への参照。set_episode へはこの記法のまま渡す。',
+    )
 
   if (work.format === 'script')
     meta.push(
@@ -53,7 +62,7 @@ export function workToPlainText(work: Work): string {
   if (work.description) sections.push(work.description)
   if (work.format === 'script' && work.synopsis) sections.push(`梗概:\n${work.synopsis}`)
   for (const ep of work.episodes) {
-    sections.push(`## ${ep.title}\n\n${blocksToPlainText(ep.blocks)}`)
+    sections.push(`## ${ep.title}\n\n${bodyOf(ep.blocks)}`)
   }
   return sections.join('\n\n')
 }
