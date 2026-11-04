@@ -65,10 +65,8 @@ import {
   useTemplateCatalog,
 } from '@/ui/game/template-catalog'
 import { useIsNarrow } from '@/ui/hooks/use-narrow'
-import { useIsStaff } from '@/ui/hooks/use-staff'
-import { NarrationPanel } from './narration-panel'
 
-type Format = 'script' | 'epub' | 'web' | 'game' | 'folder' | 'ai' | 'narration'
+type Format = 'script' | 'epub' | 'web' | 'game' | 'folder' | 'ai'
 type Platform = 'narou' | 'kakuyomu'
 
 interface ExportDialogProps {
@@ -124,13 +122,6 @@ const FORMATS: FormatDef[] = [
     desc: 'ブラウザでそのまま遊べるゲーム形式（ZIP）',
   },
   {
-    key: 'narration',
-    icon: BookText,
-    title: '朗読音声',
-    desc: '一話を朗読にしてMP3で書き出す',
-    only: 'novel',
-  },
-  {
     key: 'folder',
     icon: Folder,
     title: 'フォルダ(ZIP)',
@@ -173,13 +164,7 @@ export function ExportDialog({
   const selectedEpisode = episodes.find((e) => e.id === episodeId) ?? episodes[0] ?? null
   // 形式で出せるものが変わる。選んでいた形式が無ければ先頭に寄せる（脚本なら脚本テキスト）。
   const isScript = work?.format === 'script'
-  const narrationPreview = import.meta.env.VITE_APP_ENV === 'staging' || import.meta.env.DEV
-  const isStaff = useIsStaff(open && narrationPreview)
-  const formats = FORMATS.filter(
-    (f) =>
-      (f.key !== 'narration' || (narrationPreview && isStaff === true)) &&
-      (!f.only || f.only === (isScript ? 'script' : 'novel')),
-  )
+  const formats = FORMATS.filter((f) => !f.only || f.only === (isScript ? 'script' : 'novel'))
   const fmt: Format = formats.some((f) => f.key === format) ? format : (formats[0]?.key ?? 'ai')
   // 登場人物表は用語集の「人物」から、梗概は作品情報の梗概から。枚数は 20字×20行換算で本文だけ数える。
   const sheetSource = useMemo(
@@ -713,28 +698,6 @@ export function ExportDialog({
                 </Section>
               ))}
 
-            {open && fmt === 'narration' && (
-              <Section title="朗読音声">
-                <div className="space-y-4">
-                  <Label htmlFor="narration-episode">書き出す話</Label>
-                  <select
-                    id="narration-episode"
-                    value={selectedEpisode?.id ?? ''}
-                    onChange={(event) => setEpisodeId(event.target.value)}
-                  >
-                    {episodes.map((episode) => (
-                      <option key={episode.id} value={episode.id}>
-                        {episode.title}
-                      </option>
-                    ))}
-                  </select>
-                  {selectedEpisode && (
-                    <NarrationPanel key={selectedEpisode.id} episode={selectedEpisode} />
-                  )}
-                </div>
-              </Section>
-            )}
-
             {fmt === 'folder' && (
               <Section title="フォルダ(ZIP) 設定">
                 <Note>
@@ -812,12 +775,10 @@ export function ExportDialog({
           >
             キャンセル
           </Button>
-          {fmt !== 'narration' && (
-            <Button onClick={handleExport} disabled={!canExport || busy} className="gap-2">
-              {fmt === 'ai' ? <Copy className="size-4" /> : <Download className="size-4" />}
-              {fmt === 'ai' ? 'コピー' : busy ? '書き出し中…' : '書き出し'}
-            </Button>
-          )}
+          <Button onClick={handleExport} disabled={!canExport || busy} className="gap-2">
+            {fmt === 'ai' ? <Copy className="size-4" /> : <Download className="size-4" />}
+            {fmt === 'ai' ? 'コピー' : busy ? '書き出し中…' : '書き出し'}
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
