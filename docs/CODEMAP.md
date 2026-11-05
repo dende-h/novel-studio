@@ -369,7 +369,7 @@ Clerk へ登録済みのクライアントの互換。消すとトークン更�
 ```bash
 pnpm dev            # Vite 開発サーバ (localhost:5173)。predev で推敲の辞書を取得（取れなくても続行）
 pnpm test           # Vitest（ユニット・約200ファイル）。pretest で推敲の辞書を取得（取れなくても続行）
-pnpm typecheck      # tsc -b --noEmit
+pnpm typecheck      # ブラウザ＋朗読API/Worker（tsconfig.narration-edge.json）の型検査
 pnpm lint           # biome check .
 pnpm format         # biome format --write .
 pnpm build          # tsc -b && vite build。prebuild で推敲の辞書を取得（取れなければ失敗）、postbuild で scripts/check-precache.mjs（.wasm と dict/ がプリキャッシュに無いか）

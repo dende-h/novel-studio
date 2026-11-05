@@ -11,7 +11,7 @@
 const IV_BYTES = 12
 
 /** base64 文字列を生バイト列に。暗号鍵の取り込み（ENCRYPTION_KEY）で使う。 */
-export function base64ToBytes(b64: string): Uint8Array {
+export function base64ToBytes(b64: string): Uint8Array<ArrayBuffer> {
   const bin = atob(b64)
   const bytes = new Uint8Array(bin.length)
   for (let i = 0; i < bin.length; i++) {
@@ -30,7 +30,7 @@ export async function importKey(base64Key: string): Promise<CryptoKey> {
 }
 
 /** 文字列を gzip で圧縮して返す。 */
-export async function gzip(text: string): Promise<Uint8Array> {
+export async function gzip(text: string): Promise<Uint8Array<ArrayBuffer>> {
   const cs = new CompressionStream('gzip')
   const stream = new Blob([new TextEncoder().encode(text)]).stream().pipeThrough(cs)
   return new Uint8Array(await new Response(stream).arrayBuffer())
@@ -61,8 +61,8 @@ export async function encryptPart(
 
 /** encryptPart の逆。IV を切り出して復号 → gunzip。 */
 export async function decryptPart(blob: Uint8Array, key: CryptoKey, aad: string): Promise<string> {
-  const iv = blob.subarray(0, IV_BYTES)
-  const ct = blob.subarray(IV_BYTES)
+  const iv = new Uint8Array(blob.subarray(0, IV_BYTES))
+  const ct = new Uint8Array(blob.subarray(IV_BYTES))
   const additionalData = new TextEncoder().encode(aad)
   const compressed = await crypto.subtle.decrypt({ name: 'AES-GCM', iv, additionalData }, key, ct)
   return gunzip(new Uint8Array(compressed))
