@@ -3,6 +3,7 @@ import {
   CloudUpload,
   CreditCard,
   Download,
+  Headphones,
   History,
   LoaderCircle,
   Menu,
@@ -34,6 +35,7 @@ interface TopAppBarProps {
   /** 編集中のみ保存状態を表示 */
   saveStatus?: SaveState
   /** 書き出しダイアログを開く。未指定なら非表示 */
+  onNarration?: () => void
   onExport?: () => void
   exportDisabled?: boolean
   /** コトノハ-grove- への投稿ダイアログを開く。未指定なら非表示（投稿先が未設定のビルドなど） */
@@ -172,6 +174,7 @@ export function TopAppBar({
   workTitle,
   episodeTitle,
   saveStatus,
+  onNarration,
   onExport,
   exportDisabled,
   onPublish,
@@ -268,6 +271,18 @@ export function TopAppBar({
             <History className="size-4" aria-hidden />
           </button>
         ) : null}
+        {onNarration && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={onNarration}
+            aria-label="朗読制作"
+            className="gap-2"
+          >
+            <Headphones className="size-4" aria-hidden />
+            <span className="max-sm:hidden">朗読制作</span>
+          </Button>
+        )}
         {onExport ? (
           <Button
             variant="outline"

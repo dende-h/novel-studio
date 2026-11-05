@@ -1,0 +1,554 @@
+.narration-studio {
+  min-height: 100dvh;
+  background: var(--background);
+  color: var(--foreground);
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+.narration-studio * {
+  min-width: 0;
+  box-sizing: border-box;
+}
+.narration-header {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  padding: 24px 4vw;
+  border-bottom: 1px solid var(--border);
+}
+.narration-back {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  white-space: nowrap;
+  color: var(--muted-foreground);
+  text-decoration: none;
+}
+.narration-title {
+  flex: 1;
+}
+.narration-title p {
+  color: var(--muted-foreground);
+  font-size: 12px;
+  margin: 0 0 6px;
+}
+.narration-title h1 {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 25px;
+  letter-spacing: 0.08em;
+  font-weight: 600;
+  margin: 0;
+}
+.narration-save {
+  font-size: 12px;
+  color: var(--muted-foreground);
+}
+.narration-quota {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 20px;
+  padding: 16px 4vw;
+  background: var(--muted);
+}
+.narration-quota p,
+.narration-actions p {
+  font-size: 12px;
+  color: var(--muted-foreground);
+  margin: 4px 0 0;
+}
+.narration-quota-numbers {
+  text-align: right;
+}
+.narration-quota-numbers strong {
+  font-size: 20px;
+}
+.narration-quota-numbers small {
+  font-size: 12px;
+  font-weight: 400;
+  margin-left: 8px;
+}
+.narration-tag {
+  display: inline-flex;
+  background: color-mix(in srgb, var(--primary) 10%, transparent);
+  color: var(--primary);
+  border-radius: 4px;
+  padding: 2px 6px;
+  font-size: 11px;
+  margin-left: 8px;
+}
+.narration-workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 370px);
+  max-width: 1500px;
+  margin: auto;
+}
+.narration-manuscript {
+  padding: 36px clamp(20px, 4vw, 64px) 60px;
+}
+.narration-section-head {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 20px;
+  margin-bottom: 24px;
+}
+.narration-section-head > div {
+  flex: 1;
+}
+.narration-section-head > label {
+  width: 170px;
+}
+.narration-eyebrow {
+  font-size: 11px;
+  color: var(--muted-foreground);
+  letter-spacing: 0.14em;
+}
+.narration-studio h2 {
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1.6;
+  margin: 5px 0 16px;
+}
+.narration-studio label {
+  display: block;
+  font-size: 12px;
+  font-weight: 500;
+}
+.narration-studio select,
+.narration-studio textarea,
+.narration-studio input:not([type="checkbox"]) {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--background);
+  padding: 10px;
+  color: inherit;
+  font: inherit;
+  line-height: 1.6;
+  margin: 6px 0 14px;
+}
+.narration-studio textarea {
+  resize: vertical;
+  font-size: 14px;
+  min-height: 110px;
+}
+.narration-studio :focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 3px;
+}
+.narration-selection-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.narration-selection-bar span,
+.narration-help {
+  font-size: 12px;
+  color: var(--muted-foreground);
+  line-height: 1.8;
+}
+.narration-help {
+  margin: 9px 0;
+}
+.narration-paragraphs {
+  margin-top: 26px;
+}
+.narration-paragraph {
+  border: 1px solid transparent;
+  border-radius: 9px;
+  margin: 8px 0;
+  padding: 8px 10px;
+  transition: background 0.15s;
+}
+.narration-paragraph:hover {
+  background: var(--muted);
+}
+.narration-paragraph.is-selected {
+  border-color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 5%, var(--background));
+}
+.narration-paragraph.is-playing {
+  box-shadow: inset 4px 0 var(--primary);
+}
+.narration-paragraph-select {
+  display: flex;
+  align-items: baseline;
+  gap: 16px;
+  text-align: left;
+  width: 100%;
+  padding: 8px 0;
+  background: none;
+  border: 0;
+  color: inherit;
+  cursor: pointer;
+}
+.narration-line-number {
+  font: 11px monospace;
+  color: var(--muted-foreground);
+  flex-shrink: 0;
+}
+.narration-prose {
+  font-family: "Noto Serif JP", serif;
+  font-size: 17px;
+  line-height: 2.2;
+  white-space: pre-wrap;
+}
+.narration-paragraph-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  padding-left: 30px;
+  font-size: 11px;
+  color: var(--muted-foreground);
+}
+.narration-paragraph-meta button,
+.narration-text-button,
+.narration-notice button,
+.narration-progress button,
+.narration-take button {
+  color: var(--primary);
+  font-size: 12px;
+  background: none;
+  border: 0;
+  text-decoration: underline;
+  cursor: pointer;
+  padding: 5px;
+}
+.narration-scene {
+  font-size: 11px;
+  color: var(--muted-foreground);
+  padding: 12px 30px;
+  border-top: 1px dashed var(--border);
+}
+.narration-inspector {
+  border-left: 1px solid var(--border);
+  padding: 30px 24px;
+  background: color-mix(in srgb, var(--muted) 35%, var(--background));
+}
+.narration-inspector > section,
+.narration-inspector > details {
+  margin-bottom: 25px;
+  padding-bottom: 25px;
+  border-bottom: 1px solid var(--border);
+}
+.narration-styles {
+  display: grid;
+  gap: 7px;
+  margin: 16px 0;
+}
+.narration-styles button {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  text-align: left;
+  background: var(--background);
+  padding: 12px;
+  cursor: pointer;
+}
+.narration-styles button[aria-pressed="true"] {
+  border-color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 5%, var(--background));
+}
+.narration-styles strong {
+  display: flex;
+  justify-content: space-between;
+  font-size: 13px;
+  font-weight: 500;
+}
+.narration-styles span {
+  display: block;
+  font-size: 11px;
+  color: var(--muted-foreground);
+  line-height: 1.7;
+  margin-top: 3px;
+}
+.narration-direction blockquote {
+  margin: 0 0 18px;
+  border-left: 2px solid var(--primary);
+  padding: 8px 12px;
+  font-size: 12px;
+  color: var(--muted-foreground);
+  line-height: 1.8;
+  background: var(--muted);
+}
+.narration-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.narration-chips button {
+  font-size: 11px;
+  padding: 6px 9px;
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  background: var(--background);
+  cursor: pointer;
+}
+.narration-inherited {
+  font-size: 12px;
+  line-height: 1.8;
+  background: var(--muted);
+  padding: 10px;
+  border-radius: 6px;
+}
+.narration-studio summary {
+  cursor: pointer;
+  font-size: 12px;
+  padding: 12px 0;
+}
+.narration-studio summary svg {
+  display: inline;
+  vertical-align: middle;
+}
+.narration-trial {
+  margin-top: 20px;
+}
+.narration-wide {
+  width: 100%;
+  white-space: normal;
+  height: auto;
+  min-height: 36px;
+}
+.narration-compare {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin: 10px 0;
+}
+.narration-compare button {
+  font-size: 12px;
+  padding: 6px;
+  white-space: normal;
+}
+.narration-dict-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr 20px;
+  gap: 7px;
+}
+.narration-take {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+.narration-take span {
+  flex: 1;
+}
+.narration-saved-cue {
+  border-top: 1px solid var(--border);
+  padding: 10px 0;
+  font-size: 12px;
+}
+.narration-saved-cue button {
+  text-align: left;
+  cursor: pointer;
+}
+.narration-saved-cue span {
+  display: block;
+  color: var(--muted-foreground);
+  margin: 6px 0;
+}
+.narration-transport {
+  position: sticky;
+  bottom: 0;
+  border-top: 1px solid var(--border);
+  background: var(--background);
+  box-shadow: 0 -3px 20px #00000005;
+  padding: 16px 4vw;
+  z-index: 10;
+}
+.narration-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.narration-actions > div {
+  flex: 1;
+  min-width: 220px;
+}
+.narration-actions strong {
+  font-size: 13px;
+  font-weight: 500;
+}
+.narration-consent {
+  display: flex !important;
+  align-items: flex-start;
+  gap: 8px;
+  line-height: 1.8;
+  margin-bottom: 12px;
+}
+.narration-consent input,
+.narration-export-list input {
+  margin-top: 4px;
+  accent-color: var(--primary);
+}
+.narration-player {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 12px;
+}
+.narration-player audio {
+  flex: 1;
+  height: 36px;
+  max-width: 700px;
+}
+.narration-player span {
+  font-size: 12px;
+}
+.narration-studio audio {
+  max-width: 100%;
+}
+.narration-notice {
+  padding: 14px 4vw;
+  background: var(--muted);
+  font-size: 13px;
+  line-height: 1.8;
+}
+.narration-progress {
+  font-size: 12px;
+  margin-bottom: 12px;
+}
+.narration-progress small {
+  display: block;
+  color: var(--muted-foreground);
+}
+.narration-export-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.narration-export-list label {
+  display: flex;
+  gap: 8px;
+}
+@media (max-width: 850px) {
+  .narration-workspace {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .narration-inspector {
+    border-left: 0;
+    border-top: 1px solid var(--border);
+    padding: 24px;
+  }
+  .narration-header {
+    padding: 16px;
+    gap: 12px;
+  }
+  .narration-title h1 {
+    font-size: 21px;
+  }
+  .narration-save {
+    display: none;
+  }
+  .narration-quota {
+    padding: 14px 18px;
+    align-items: flex-start;
+  }
+  .narration-quota-numbers strong {
+    font-size: 16px;
+  }
+  .narration-quota-numbers small {
+    display: block;
+  }
+  .narration-manuscript {
+    padding: 24px 16px;
+  }
+  .narration-transport {
+    position: static;
+    padding: 20px 16px;
+  }
+  .narration-section-head {
+    display: block;
+  }
+  .narration-section-head > label {
+    width: 100%;
+  }
+  .narration-prose {
+    font-size: 16px;
+  }
+  .narration-player {
+    flex-wrap: wrap;
+  }
+  .narration-player audio {
+    flex-basis: 100%;
+    order: 2;
+  }
+  .narration-actions > button {
+    flex: 1;
+    white-space: normal;
+    height: auto;
+    min-height: 38px;
+  }
+}
+
+/* The production workspace keeps the manuscript and directions visible together. */
+@media (min-width: 851px) {
+  .narration-studio {
+    height: 100dvh;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .narration-header {
+    padding-top: 14px;
+    padding-bottom: 14px;
+    flex-shrink: 0;
+  }
+  .narration-quota {
+    padding-top: 10px;
+    padding-bottom: 10px;
+    flex-shrink: 0;
+  }
+  .narration-workspace {
+    width: 100%;
+    flex: 1;
+    min-height: 0;
+    grid-template-columns: minmax(0, 1fr) minmax(340px, 410px);
+    overflow: hidden;
+  }
+  .narration-manuscript,
+  .narration-inspector {
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+  .narration-inspector {
+    display: flex;
+    flex-direction: column;
+  }
+  .narration-inspector > section,
+  .narration-inspector > details {
+    flex-shrink: 0;
+  }
+  .narration-inspector[data-scope="range"] .narration-direction,
+  .narration-inspector[data-scope="scene"] .narration-direction {
+    order: -1;
+  }
+  .narration-transport {
+    position: relative;
+    flex-shrink: 0;
+    padding-top: 10px;
+    padding-bottom: 10px;
+    max-height: 40dvh;
+    overflow-y: auto;
+  }
+  .narration-return {
+    display: none;
+  }
+}
+.narration-return {
+  font-size: 12px;
+  color: var(--primary);
+  margin-bottom: 14px;
+  text-decoration: underline;
+  cursor: pointer;
+}

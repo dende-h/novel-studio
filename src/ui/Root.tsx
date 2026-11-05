@@ -65,6 +65,10 @@ import { announceSyncApplied, withSyncTouch } from './sync/sync-touch'
  * 構想の道具（App.tsx のマインドマップ等）と同じく遅延ロードして初期バンドルから外す。
  * どちらも名前付き export なので、`default` に畳んでから `lazy` へ渡す。
  */
+const NarrationRoute = lazy(() =>
+  import('./components/NarrationPage/narration-page').then((m) => ({ default: m.NarrationRoute })),
+)
+
 const BoardPage = lazy(() =>
   import('./components/BoardPage/board-page').then((m) => ({ default: m.BoardPage })),
 )
@@ -349,6 +353,21 @@ function RootRoutes({ store }: RootProps) {
         <AdminTemplatesPage getToken={getTokenStable} />
       </Suspense>
     )
+  }
+
+  if (route.startsWith('/narration/')) {
+    const [workId, episodeId] = route.slice('/narration/'.length).split('/').map(decodeURIComponent)
+    if (workId)
+      return (
+        <Suspense fallback={<PageLoading />}>
+          <NarrationRoute
+            store={store}
+            workId={workId}
+            episodeId={episodeId ?? ''}
+            stagingRepo={stagingRepo}
+          />
+        </Suspense>
+      )
   }
 
   if (route === '/settings') return <SettingsPage />
