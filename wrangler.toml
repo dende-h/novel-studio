@@ -69,3 +69,8 @@ bucket_name = "novel-studio-media-stg"
 #   ANALYTICS_SALT = 訪問者符号のソルト。未設定でも動くが、設定すると IP の総当たりで
 #                    符号を突き合わせる経路まで塞げる。値を変えるとその日の集計が
 #                    途中で分かれるので、変更は日付が変わる前後を避ける。
+
+# Narration stays in staff-only development mode until the explicit release switches are set.
+[env.preview.vars]
+NARRATION_DISPATCH_URL = "https://novel-studio-narration-stg.dende0206.workers.dev"
+NARRATION_DAILY_BYTE_LIMIT = "1000000"

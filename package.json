@@ -14,7 +14,7 @@
     "pretest": "node scripts/fetch-dict.mjs --optional",
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "tsc -b --noEmit",
+    "typecheck": "tsc -b --noEmit && tsc -p tsconfig.narration-edge.json",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "lint": "biome check .",

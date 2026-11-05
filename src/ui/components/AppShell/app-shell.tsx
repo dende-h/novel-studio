@@ -10,6 +10,7 @@ interface AppShellProps {
   workTitle?: string
   episodeTitle?: string
   saveStatus?: SaveState
+  onNarration?: () => void
   onExport?: () => void
   exportDisabled?: boolean
   /** コトノハ-grove- への投稿ダイアログを開く（任意） */
@@ -35,6 +36,7 @@ export function AppShell({
   workTitle,
   episodeTitle,
   saveStatus,
+  onNarration,
   onExport,
   exportDisabled,
   onPublish,
@@ -61,6 +63,7 @@ export function AppShell({
           workTitle={workTitle}
           episodeTitle={episodeTitle}
           saveStatus={saveStatus}
+          onNarration={onNarration}
           onExport={onExport}
           exportDisabled={exportDisabled}
           onPublish={onPublish}
