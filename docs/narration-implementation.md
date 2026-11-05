@@ -41,7 +41,7 @@ D1ロックで環境全体1区間ずつ。プロバイダーの429は失敗と�
 - D1: novel-studio-stg / R2: novel-studio-media-stg
 - Pages preview: NARRATION_DISPATCH_URLでWorkerへ接続
 - WorkerはjobごとのランダムcapabilityをD1で照合し、Pagesの実行APIを呼ぶ。FishのキーはPagesから出さない。
-- GitHub Deploy workflowのstg分岐でWorkerを先に、Pagesを次にデプロイ。
+- Pages用のGitHubトークンは新しいWorkerへの権限を持たないため、Worker変更時はログイン済みターミナルで先に `pnpm exec wrangler deploy --config workers/narration/wrangler.toml` を実行する。成功後にstgへマージし、GitHub Deploy workflowでPagesを配備する。
 
 ## 公開切り替え
 

@@ -57,13 +57,8 @@ jobs:
       # D1 マイグレーションはデプロイでは適用しない（デプロイ用 API トークンに D1 権限がないため。
       # 2026-08-17 に自動適用を試みたが 7403 で失敗）。新しい migration を足したときは、デプロイ前に
       # `wrangler d1 migrations apply DB --remote`（stg は `--env preview`）を手動で適用すること。
-      - name: 朗読ジョブの実行担当（stg）
-        if: github.ref_name == 'stg'
-        uses: cloudflare/wrangler-action@v4
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: deploy --config workers/narration/wrangler.toml
+      # 朗読WorkerもPages用トークンの権限外。変更時はPagesより先に手動配備する。
+      # pnpm exec wrangler deploy --config workers/narration/wrangler.toml
 
       - name: Cloudflare Pages へデプロイ
         uses: cloudflare/wrangler-action@v4

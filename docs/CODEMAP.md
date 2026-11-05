@@ -417,3 +417,5 @@ uv run .claude/skills/natural-japanese/scripts/lint.py <file>   # 仕事の文�
 | `docs/requirement/99-open-questions.md` | 未決事項 |
 | `docs/specs/<ISSUE>/` | linear-spec の成果物（要件・設計・プロトタイプ・仕様書・実装依頼）。`COT-6` 脚本・`COT-29` 検索置換・`COT-30`／`COT-40` 推敲・`COT-31` テキストの取り込み・`COT-59` 用語集に無い名前・`COT-62` 推敲の作品の決まり |
 | `design/stitch/*/index.html` | 画面のデザインカンプ（+ スクリーンショット） |
+
+朗読Workerの配備は `pnpm exec wrangler deploy --config workers/narration/wrangler.toml`（stg・Pagesより先に手動実行。GitHubのPages用トークンには権限なし）。手順は `docs/narration-implementation.md`。
