@@ -9,6 +9,7 @@ import type { StagingRepository } from '@/core/storage/stagingRepository'
 import { zipStore } from '@/core/zip'
 import { triggerDownload } from '@/ui/_utils/download'
 import { useAuth } from '@/ui/auth/auth-context'
+import { ConfirmDialog } from '@/ui/components/ConfirmDialog/confirm-dialog'
 import { Button } from '@/ui/components/ui/button'
 import { useEditorStore } from '@/ui/hooks/use-editor-store'
 import { assembleNarration } from '@/ui/narration/audio'
@@ -74,9 +75,16 @@ function NarrationPage({
   const episode = work.episodes.find((e) => e.id === episodeId) ?? work.episodes[0]
   const [stagings, setStagings] = useState<Staging[]>([])
   const [selection, setSelection] = useState<string[]>([])
+  const [rangeSelecting, setRangeSelecting] = useState(false)
   const [scope, setScope] = useState<VoiceCue['scope']>('episode')
   const [notice, setNotice] = useState('')
+  const [panel, setPanel] = useState<'direction' | 'settings'>('direction')
+  const [mobilePanel, setMobilePanel] = useState<'manuscript' | 'inspector'>('manuscript')
   const [busy, setBusy] = useState(false)
+  const [generationRequest, setGenerationRequest] = useState<{
+    segments: VoiceSegment[]
+    regenerate: boolean
+  } | null>(null)
   const [consent, setConsent] = useState(() => localStorage.getItem('ns-narration-consent') === '1')
   const [playing, setPlaying] = useState<{
     url: string
@@ -87,6 +95,27 @@ function NarrationPage({
   const [position, setPosition] = useState(0)
   const audio = useRef<HTMLAudioElement>(null)
   const inspector = useRef<HTMLElement>(null)
+  useEffect(() => {
+    const dismiss = (event: Event) => {
+      for (const menu of document.querySelectorAll<HTMLDetailsElement>(
+        '.narration-popover[open]',
+      )) {
+        if (
+          event instanceof KeyboardEvent
+            ? event.key === 'Escape'
+            : !menu.contains(event.target as Node)
+        )
+          menu.open = false
+      }
+    }
+    document.addEventListener('pointerdown', dismiss)
+    document.addEventListener('keydown', dismiss)
+    return () => {
+      document.removeEventListener('pointerdown', dismiss)
+      document.removeEventListener('keydown', dismiss)
+    }
+  }, [])
+
   useEffect(() => {
     if (inspector.current && (scope === 'episode' || selection.length > 0))
       inspector.current.scrollTop = 0
@@ -103,7 +132,7 @@ function NarrationPage({
   )
   if (!record || !episode)
     return (
-      <main className="narration-studio">
+      <main className="narration-studio" data-mobile-panel={mobilePanel}>
         <a href="#/write">執筆へ戻る</a>
         <p>{episode ? '設定を読み込み中…' : '話を追加すると朗読を作れます。'}</p>
       </main>
@@ -161,7 +190,6 @@ function NarrationPage({
     items.length > 0 &&
     cost(items) <= entitlement.remaining &&
     !sending &&
-    consent &&
     !items.some((s) => s.characters > 800)
   const patchSettings = (patch: Partial<typeof settings>) =>
     service.changeSettings({ ...settings, ...patch })
@@ -177,8 +205,10 @@ function NarrationPage({
         ...new Set(segments.slice(Math.min(a, b), Math.max(a, b) + 1).map((s) => s.blockId)),
       ])
     } else setSelection([id])
+    setPanel('direction')
+    if (!rangeSelecting) setMobilePanel('inspector')
     setScope('range')
-    if (window.innerWidth <= 850)
+    if (window.innerWidth <= 850 && !rangeSelecting)
       requestAnimationFrame(() =>
         document
           .querySelector('.narration-direction')
@@ -213,6 +243,13 @@ function NarrationPage({
     } finally {
       setBusy(false)
     }
+  }
+  const generate = (items: VoiceSegment[], regenerate = false) => {
+    if (!consent) {
+      setGenerationRequest({ segments: items, regenerate })
+      return
+    }
+    void act(() => service.generate(items, regenerate))
   }
   const play = async (items: VoiceSegment[], variant: 'accepted' | 'candidate', from = 0) => {
     const takes = items.map((s) =>
@@ -268,7 +305,7 @@ function NarrationPage({
     )
     setNotice('音声を書き出しました')
   }
-  const saveLabel = saving ? '保存中…' : 'この端末に保存済み'
+  const saveLabel = saving ? '保存中…' : '保存済み'
   const targetLabel =
     scope === 'episode'
       ? 'この話全体'
@@ -278,46 +315,124 @@ function NarrationPage({
   const voices = entitlement?.voices ?? []
   const invalid = settings.cues.filter((c) => c.episodeId === episode.id && !cueIsValid(c, episode))
   return (
-    <main className="narration-studio">
+    <main className="narration-studio" data-mobile-panel={mobilePanel}>
       <header className="narration-header">
         <a href="#/write" className="narration-back">
           <ArrowLeft size={17} />
           執筆へ
         </a>
         <div className="narration-title">
-          <p>{work.title}</p>
+          <p title={work.title}>{work.title}</p>
           <h1>
-            <Headphones size={25} />
+            <Headphones size={18} />
             朗読制作
           </h1>
         </div>
+        <details className="narration-popover">
+          <summary>
+            <span className="narration-model">{entitlement?.model}</span>
+            {entitlement ? `残り ${entitlement.remaining.toLocaleString()}文字` : '利用枠'}{' '}
+            <span aria-hidden="true">⌄</span>
+          </summary>
+          <section className="narration-popover-body narration-quota" aria-label="利用枠">
+            <div>
+              <strong>{entitlement?.model ?? '利用枠を確認中'}</strong>
+              {entitlement?.development && <span className="narration-tag">開発用・無料API</span>}
+              <p>{entitlement?.label ?? 'サインインすると利用枠を確認できます。'}</p>
+            </div>
+            {entitlement && (
+              <div className="narration-quota-numbers">
+                <strong>
+                  残り {entitlement.remaining.toLocaleString()}
+                  <small>文字 / {entitlement.limit.toLocaleString()}文字</small>
+                </strong>
+                <p>
+                  使用済み {entitlement.used.toLocaleString()}文字・予約中{' '}
+                  {entitlement.reserved.toLocaleString()}文字
+                  <br />
+                  {entitlement.periodEnd
+                    ? `${new Date(entitlement.periodEnd).toLocaleDateString('ja-JP')} に更新`
+                    : '初回のみの体験枠'}
+                </p>
+              </div>
+            )}
+          </section>
+        </details>
         <span className="narration-save" role="status">
           {saveLabel}
         </span>
-      </header>
-      <section className="narration-quota" aria-label="利用枠">
-        <div>
-          <strong>{entitlement?.model ?? '利用枠を確認中'}</strong>
-          {entitlement?.development && <span className="narration-tag">開発用・無料API</span>}
-          <p>{entitlement?.label ?? 'サインインすると利用枠を確認できます。'}</p>
-        </div>
-        {entitlement && (
-          <div className="narration-quota-numbers">
-            <strong>
-              残り {entitlement.remaining.toLocaleString()}
-              <small>文字 / {entitlement.limit.toLocaleString()}文字</small>
-            </strong>
-            <p>
-              使用済み {entitlement.used.toLocaleString()}文字・予約中{' '}
-              {entitlement.reserved.toLocaleString()}文字
-              <br />
-              {entitlement.periodEnd
-                ? `${new Date(entitlement.periodEnd).toLocaleDateString('ja-JP')} に更新`
-                : '初回のみの体験枠'}
+        <details className="narration-popover narration-export-menu">
+          <summary>
+            書き出し設定 <span aria-hidden="true">⌄</span>
+          </summary>
+          <div className="narration-popover-body">
+            <h2>複数話をZIPで保存</h2>
+            <div className="narration-export-list">
+              {work.episodes.map((ep) => (
+                <label key={ep.id}>
+                  <input
+                    type="checkbox"
+                    checked={exportIds.includes(ep.id)}
+                    onChange={(e) =>
+                      setExportIds(
+                        e.target.checked
+                          ? [...exportIds, ep.id]
+                          : exportIds.filter((id) => id !== ep.id),
+                      )
+                    }
+                  />
+                  {ep.title}
+                </label>
+              ))}
+            </div>
+            <Button
+              size="sm"
+              disabled={busy || !exportIds.length}
+              onClick={() =>
+                void act(() =>
+                  exportEpisodes(
+                    work.episodes.filter((e) => exportIds.includes(e.id)).map((e) => e.id),
+                  ),
+                )
+              }
+            >
+              選んだ話を書き出す
+            </Button>
+            <p className="narration-help">
+              音声のサーバー保管は生成から7日間です。採用・試聴した音声はこの端末にも保存します。端末のデータ削除に備えてMP3を書き出してください。
             </p>
           </div>
-        )}
-      </section>
+        </details>
+      </header>
+      <nav className="narration-mobile-nav" aria-label="作業画面">
+        <button
+          type="button"
+          aria-pressed={mobilePanel === 'manuscript'}
+          onClick={() => setMobilePanel('manuscript')}
+        >
+          原稿
+        </button>
+        <button
+          type="button"
+          aria-pressed={mobilePanel === 'inspector' && panel === 'direction'}
+          onClick={() => {
+            setMobilePanel('inspector')
+            setPanel('direction')
+          }}
+        >
+          読み方
+        </button>
+        <button
+          type="button"
+          aria-pressed={mobilePanel === 'inspector' && panel === 'settings'}
+          onClick={() => {
+            setMobilePanel('inspector')
+            setPanel('settings')
+          }}
+        >
+          作品設定
+        </button>
+      </nav>
       {(error || notice) && (
         <div className="narration-notice" role="status">
           {notice || error}
@@ -329,12 +444,8 @@ function NarrationPage({
       <div className="narration-workspace">
         <section className="narration-manuscript">
           <div className="narration-section-head">
-            <div>
-              <span className="narration-eyebrow">原稿</span>
-              <h2>{episode.title}</h2>
-            </div>
             <label>
-              話を選ぶ
+              <span className="sr-only">話を選ぶ</span>
               <select
                 value={episode.id}
                 onChange={(e) => {
@@ -362,16 +473,34 @@ function NarrationPage({
               size="sm"
               onClick={() => {
                 setSelection([])
+                setRangeSelecting(false)
                 setScope('episode')
+                setPanel('direction')
               }}
             >
               この話全体
             </Button>
-            <span>段落を選ぶと、その箇所の読み方を変えられます。</span>
+            <Button
+              size="sm"
+              variant={rangeSelecting ? 'default' : 'ghost'}
+              aria-pressed={rangeSelecting}
+              onClick={() => {
+                if (rangeSelecting && selection.length) {
+                  setMobilePanel('inspector')
+                  setPanel('direction')
+                } else if (!rangeSelecting) {
+                  setSelection([])
+                }
+                setRangeSelecting(!rangeSelecting)
+              }}
+            >
+              {rangeSelecting ? '範囲を確定' : '範囲を選ぶ'}
+            </Button>
+            <span>
+              {rangeSelecting ? '始めと終わりの段落を選択' : '段落を選んで読み方を変える'}
+            </span>
           </div>
-          <p className="narration-help">
-            複数の段落は Shift を押しながら選択。スマートフォンでは「ここまで選ぶ」を使えます。
-          </p>
+
           {invalid.length > 0 && (
             <div className="narration-notice">
               原稿が変わったため、{invalid.length}
@@ -419,7 +548,7 @@ function NarrationPage({
                     className="narration-paragraph-select"
                     aria-pressed={active}
                     aria-label={`段落${i + 1}を選ぶ`}
-                    onClick={(e) => select(segment.blockId, e.shiftKey)}
+                    onClick={(e) => select(segment.blockId, e.shiftKey || rangeSelecting)}
                   >
                     <span className="narration-line-number">{String(i + 1).padStart(2, '0')}</span>
                     <span className="narration-prose">{plainText(segment.source.inlines)}</span>
@@ -428,20 +557,26 @@ function NarrationPage({
                     <span>{status}</span>
                     {lastAttempt?.error && <span role="status">{lastAttempt.error}</span>}
                     {instructions.some((c) => c.direction) && (
-                      <span className="narration-tag">演技の指定あり</span>
+                      <span
+                        className="narration-tag narration-cue-preview"
+                        title={instructions
+                          .map((c) => c.direction)
+                          .filter(Boolean)
+                          .join(' / ')}
+                      >
+                        {instructions
+                          .map((c) => c.direction)
+                          .filter(Boolean)
+                          .join(' / ')}
+                      </span>
                     )}
                     {instructions.some((c) => c.reading) && (
                       <span className="narration-tag">読みの指定あり</span>
                     )}
-                    {active && (
-                      <>
-                        <button type="button" onClick={() => selectScene(segment.blockId)}>
-                          場面を選ぶ
-                        </button>
-                        <button type="button" onClick={() => select(segment.blockId, true)}>
-                          ここまで選ぶ
-                        </button>
-                      </>
+                    {active && staging?.cues.some((c) => c.sceneBreak) && (
+                      <button type="button" onClick={() => selectScene(segment.blockId)}>
+                        場面を選ぶ
+                      </button>
                     )}
                   </div>
                 </article>
@@ -455,12 +590,26 @@ function NarrationPage({
           className="narration-inspector"
           aria-label="読み方の設定"
         >
-          <section>
-            <span className="narration-eyebrow">作品の基調 · 全話共通</span>
+          <fieldset className="narration-panel-switch" aria-label="設定の種類">
+            <button
+              type="button"
+              aria-pressed={panel === 'direction'}
+              onClick={() => setPanel('direction')}
+            >
+              読み方
+            </button>
+            <button
+              type="button"
+              aria-pressed={panel === 'settings'}
+              onClick={() => setPanel('settings')}
+            >
+              作品設定
+            </button>
+          </fieldset>
+          <section hidden={panel !== 'settings'}>
+            <span className="narration-eyebrow">全話共通</span>
             <h2>声と朗読スタイル</h2>
-            <p className="narration-help">
-              この作品の全話に使う設定です。話や段落に保存した指定を優先します。
-            </p>
+
             <label>
               語り手の声
               <select
@@ -498,7 +647,7 @@ function NarrationPage({
                     {style.label}
                     {settings.style === style.id && <Check size={14} />}
                   </strong>
-                  <span>{style.description}</span>
+                  {settings.style === style.id && <span>{style.description}</span>}
                 </button>
               ))}
             </div>
@@ -544,31 +693,45 @@ function NarrationPage({
               </div>
             )}
           </section>
-          <section className="narration-direction">
-            <span className="narration-eyebrow">読み方を指定</span>
+          <section className="narration-direction" hidden={panel !== 'direction'}>
+            <button
+              type="button"
+              className="narration-base-summary"
+              onClick={() => setPanel('settings')}
+            >
+              <Headphones size={14} />
+              {voices.find((v) => v.id === settings.narrator)?.label ?? '語り手'} ·{' '}
+              {STYLES.find((v) => v.id === settings.style)?.label}
+              <span aria-hidden="true">変更</span>
+            </button>
             <h2>{targetLabel}</h2>
             <button
               type="button"
               className="narration-return"
-              onClick={() =>
-                document
-                  .querySelector('.narration-paragraph.is-selected')
-                  ?.scrollIntoView({ behavior: 'smooth', block: 'center' })
-              }
+              onClick={() => {
+                setMobilePanel('manuscript')
+                requestAnimationFrame(() =>
+                  document
+                    .querySelector('.narration-paragraph.is-selected')
+                    ?.scrollIntoView({ behavior: 'smooth', block: 'center' }),
+                )
+              }}
             >
-              原稿の選択箇所へ戻る
+              ← 原稿に戻る
             </button>
-            <blockquote>
-              {targets
-                .map((s) => plainText(s.source.inlines))
-                .join(' ')
-                .slice(0, 160)}
-              {cost(targets) > 160 ? '…' : ''}
-            </blockquote>
+            {scope !== 'episode' && (
+              <blockquote>
+                {targets
+                  .map((s) => plainText(s.source.inlines))
+                  .join(' ')
+                  .slice(0, 160)}
+                {cost(targets) > 160 ? '…' : ''}
+              </blockquote>
+            )}
             <label>
               どんなふうに読んでほしいですか？
               <textarea
-                rows={4}
+                rows={3}
                 maxLength={240}
                 value={matchingCue?.direction ?? ''}
                 placeholder="少し寂しそうに。最後の「ありがと」だけ温かく"
@@ -596,19 +759,16 @@ function NarrationPage({
                 ),
               )}
             </div>
-            <p className="narration-help">
-              {matchingCue
-                ? 'この範囲の指示を自動保存します。'
-                : '指定しない箇所は、上位の指示と朗読スタイルを引き継ぎます。'}{' '}
-              演技は生成結果を聴いて確かめられます。
-            </p>
-            {targets[0] && (
-              <p className="narration-inherited">
-                現在の指示：{targets[0].direction || '指示なし'}
-                {targets.some((s) => s.direction !== targets[0]?.direction)
-                  ? '（範囲内に別の指定があります）'
-                  : ''}
-              </p>
+            {targets[0]?.direction && targets[0].direction !== matchingCue?.direction && (
+              <details className="narration-inherited">
+                <summary>引き継ぐ指示</summary>
+                <p>
+                  {targets[0].direction}
+                  {targets.some((v) => v.direction !== targets[0]?.direction)
+                    ? '（範囲内に別の指定あり）'
+                    : ''}
+                </p>
+              </details>
             )}
             {matchingCue && (
               <button
@@ -618,9 +778,53 @@ function NarrationPage({
                   patchSettings({ cues: settings.cues.filter((c) => c.id !== matchingCue.id) })
                 }
               >
-                この範囲の指定を外して、上位の設定に戻す
+                指定を外す
               </button>
             )}
+            <div className="narration-trial">
+              {(scope !== 'episode' || record.takes.length > 0) && (
+                <Button
+                  className="narration-wide"
+                  disabled={!readyToGenerate(targets) || busy}
+                  onClick={() => generate(targets, true)}
+                >
+                  この範囲を試す · {cost(targets).toLocaleString()}文字
+                </Button>
+              )}
+              {targets.some((v) => accepted(v) || latest(v)) && (
+                <div className="narration-compare">
+                  <Button
+                    variant="outline"
+                    disabled={busy || targets.some((s) => !accepted(s))}
+                    onClick={() => void act(() => audition('accepted'))}
+                  >
+                    元の読みを聴く
+                  </Button>
+                  <Button
+                    variant="outline"
+                    disabled={busy || targets.some((s) => !latest(s))}
+                    onClick={() => void act(() => audition('candidate'))}
+                  >
+                    新しい読みを聴く
+                  </Button>
+                </div>
+              )}
+              {targets.some((v) => latest(v) && latest(v)?.id !== accepted(v)?.id) && (
+                <Button
+                  variant="secondary"
+                  className="narration-wide"
+                  disabled={busy || !targets.length || targets.some((s) => !latest(s))}
+                  onClick={() =>
+                    void act(async () => {
+                      for (const s of targets) await service.accept(latest(s)!)
+                      setNotice('選んだ範囲の読みを採用しました')
+                    })
+                  }
+                >
+                  この読みを採用
+                </Button>
+              )}
+            </div>
             <details>
               <summary>
                 <SlidersHorizontal size={14} /> 読み・声・間を細かく調整
@@ -682,44 +886,6 @@ function NarrationPage({
               </label>
               <p className="narration-help">間だけの変更では生成枠を使いません。</p>
             </details>
-            <div className="narration-trial">
-              <Button
-                className="narration-wide"
-                disabled={!readyToGenerate(targets) || busy}
-                onClick={() => void act(() => service.generate(targets, true))}
-              >
-                この範囲を試す · {cost(targets).toLocaleString()}文字
-              </Button>
-              <div className="narration-compare">
-                <Button
-                  variant="outline"
-                  disabled={busy || targets.some((s) => !accepted(s))}
-                  onClick={() => void act(() => audition('accepted'))}
-                >
-                  元の読みを聴く
-                </Button>
-                <Button
-                  variant="outline"
-                  disabled={busy || targets.some((s) => !latest(s))}
-                  onClick={() => void act(() => audition('candidate'))}
-                >
-                  新しい読みを聴く
-                </Button>
-              </div>
-              <Button
-                variant="secondary"
-                className="narration-wide"
-                disabled={busy || !targets.length || targets.some((s) => !latest(s))}
-                onClick={() =>
-                  void act(async () => {
-                    for (const s of targets) await service.accept(latest(s)!)
-                    setNotice('選んだ範囲の読みを採用しました')
-                  })
-                }
-              >
-                この読みを採用
-              </Button>
-            </div>
             {targets.length === 1 && (
               <details>
                 <summary>前の読みを聴く・戻す</summary>
@@ -755,7 +921,7 @@ function NarrationPage({
               </details>
             )}
           </section>
-          <details className="narration-dictionary">
+          <details className="narration-dictionary" hidden={panel !== 'settings'}>
             <summary>作品の読み方辞書</summary>
             <p className="narration-help">原稿のルビを優先します。本文や用語集は変更しません。</p>
             {settings.dictionary.map((entry) => (
@@ -836,7 +1002,7 @@ function NarrationPage({
               用語集の読みを取り込む
             </Button>
           </details>
-          <details>
+          <details hidden={panel !== 'direction'}>
             <summary>
               保存した指示（{settings.cues.filter((c) => c.episodeId === episode.id).length}件）
             </summary>
@@ -847,6 +1013,7 @@ function NarrationPage({
                   <button
                     type="button"
                     onClick={() => {
+                      setPanel('direction')
                       setScope(c.scope)
                       setSelection(c.refs.map((r) => r.blockId))
                     }}
@@ -869,28 +1036,14 @@ function NarrationPage({
         </aside>
       </div>
       <footer className="narration-transport">
-        {!consent && (
-          <label className="narration-consent">
-            <input
-              type="checkbox"
-              checked={consent}
-              onChange={(e) => {
-                setConsent(e.target.checked)
-                localStorage.setItem('ns-narration-consent', e.target.checked ? '1' : '0')
-              }}
-            />
-            生成する原稿・読み・演技指示をFish Audioに送信します。生成済み音声は端末にも保存します。
-          </label>
-        )}
         {running.length > 0 && (
           <div className="narration-progress" role="status">
-            生成中：残り {running.length}区間。画面を離れても処理は続きます。
+            生成中：残り {running.length}区間
             {[...new Set(running.map((t) => t.jobId))].map((id) => (
               <button type="button" key={id} onClick={() => void act(() => service.cancel(id))}>
                 未着手の区間を止める
               </button>
             ))}
-            <small>生成を開始した区間は完了まで処理し、成功分の文字数を消費します。</small>
           </div>
         )}
         {playing && (
@@ -923,20 +1076,20 @@ function NarrationPage({
         <div className="narration-actions">
           <div>
             <strong>
-              {missing.length
-                ? '未採用 ' + missing.length + '区間'
-                : changed.length
-                  ? '変更あり ' + changed.length + '区間'
-                  : '一話の音声が揃いました'}
+              {pending.length
+                ? `未生成・変更あり ${pending.length}区間`
+                : running.length
+                  ? '音声を生成中'
+                  : missing.length || changed.length
+                    ? '試聴して読みを採用'
+                    : '書き出せます'}
             </strong>
-            <p>今回の生成：{cost(pending).toLocaleString()}文字 · 再生・書き出しは消費なし</p>
           </div>
-          <Button
-            disabled={!readyToGenerate(pending) || busy}
-            onClick={() => void act(() => service.generate(pending))}
-          >
-            {sending ? '生成を開始中…' : '未生成・変更ありを生成'}
-          </Button>
+          {pending.length > 0 && (
+            <Button disabled={!readyToGenerate(pending) || busy} onClick={() => generate(pending)}>
+              {sending ? '生成を開始中…' : `一話を生成 · ${cost(pending).toLocaleString()}文字`}
+            </Button>
+          )}
           <Button
             variant="outline"
             disabled={busy || segments.some((s) => !latest(s) && !accepted(s))}
@@ -945,7 +1098,8 @@ function NarrationPage({
             <Play size={15} />
             通して聴く
           </Button>
-          {(missing.length > 0 || changed.length > 0) &&
+          {!pending.length &&
+            (missing.length > 0 || changed.length > 0) &&
             segments.every((s) => latest(s) || accepted(s)?.fingerprint === s.fingerprint) && (
               <Button
                 variant="secondary"
@@ -963,58 +1117,39 @@ function NarrationPage({
                 この話の読みを採用
               </Button>
             )}
-          <Button
-            variant="outline"
-            disabled={busy || !!missing.length || !!changed.length}
-            onClick={() => void act(() => exportEpisodes([episode.id]))}
-          >
-            <Download size={15} />
-            MP3を書き出す
-          </Button>
+          {!missing.length && !changed.length && (
+            <Button
+              variant="outline"
+              disabled={busy}
+              onClick={() => void act(() => exportEpisodes([episode.id]))}
+            >
+              <Download size={15} />
+              MP3を書き出す
+            </Button>
+          )}
         </div>
         {entitlement && cost(pending) > entitlement.remaining && (
           <p className="narration-help">
             一話分の文字枠が足りません。原稿から短い範囲を選ぶと試せます。
           </p>
         )}
-        <details>
-          <summary>複数話をZIPで書き出す</summary>
-          <div className="narration-export-list">
-            {work.episodes.map((ep) => (
-              <label key={ep.id}>
-                <input
-                  type="checkbox"
-                  checked={exportIds.includes(ep.id)}
-                  onChange={(e) =>
-                    setExportIds(
-                      e.target.checked
-                        ? [...exportIds, ep.id]
-                        : exportIds.filter((id) => id !== ep.id),
-                    )
-                  }
-                />
-                {ep.title}
-              </label>
-            ))}
-          </div>
-          <Button
-            size="sm"
-            disabled={busy || !exportIds.length}
-            onClick={() =>
-              void act(() =>
-                exportEpisodes(
-                  work.episodes.filter((e) => exportIds.includes(e.id)).map((e) => e.id),
-                ),
-              )
-            }
-          >
-            選んだ話を書き出す
-          </Button>
-        </details>
-        <p className="narration-help">
-          音声のサーバー保管は生成から7日間です。採用・試聴した音声はこの端末にも保存します。端末のデータ削除に備えてMP3を書き出してください。
-        </p>
       </footer>
+      <ConfirmDialog
+        open={generationRequest !== null}
+        onOpenChange={(open) => {
+          if (!open) setGenerationRequest(null)
+        }}
+        title="原稿を送信して音声を作りますか？"
+        description={`原稿・読み・演技指示をFish Audioへ送信します。モデル：${entitlement?.model ?? ''}。今回：${cost(generationRequest?.segments ?? []).toLocaleString()}文字。残り：${entitlement?.remaining.toLocaleString() ?? '—'}文字。`}
+        confirmLabel="同意して生成"
+        destructive={false}
+        onConfirm={() => {
+          if (!generationRequest) return
+          setConsent(true)
+          localStorage.setItem('ns-narration-consent', '1')
+          void act(() => service.generate(generationRequest.segments, generationRequest.regenerate))
+        }}
+      />
     </main>
   )
 }
