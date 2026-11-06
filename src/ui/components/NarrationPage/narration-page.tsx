@@ -1,8 +1,15 @@
-import { ArrowLeft, Check, Download, Headphones, Play, SlidersHorizontal } from 'lucide-react'
+import { ArrowLeft, Download, Headphones, Play, SlidersHorizontal } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import type { Staging } from '@/core/game'
 import { narrationFilename } from '@/core/narration/mp3'
-import { cueIsValid, cuesForBlock, plainText, resolveSegments } from '@/core/narration/resolve'
+import {
+  cueIsValid,
+  cuesForBlock,
+  locateRef,
+  openingSegments,
+  plainText,
+  resolveSegments,
+} from '@/core/narration/resolve'
 import { STYLES, type VoiceCue, type VoiceSegment, type VoiceTake } from '@/core/narration/types'
 import type { Work } from '@/core/schema'
 import type { StagingRepository } from '@/core/storage/stagingRepository'
@@ -75,15 +82,27 @@ function NarrationPage({
   const episode = work.episodes.find((e) => e.id === episodeId) ?? work.episodes[0]
   const [stagings, setStagings] = useState<Staging[]>([])
   const [selection, setSelection] = useState<string[]>([])
-  const [rangeSelecting, setRangeSelecting] = useState(false)
+  const [offsets, setOffsets] = useState<Record<string, { start: number; end: number }>>({})
+  const [compareSource, setCompareSource] = useState<'accepted' | 'candidate'>('candidate')
+  const [commonReading, setCommonReading] = useState(true)
+  const [confirmation, setConfirmation] = useState<{
+    title: string
+    description: string
+    label: string
+    action: () => void
+  } | null>(null)
+  const dragged = useRef(false)
+  const manuscript = useRef<HTMLDivElement>(null)
   const [scope, setScope] = useState<VoiceCue['scope']>('episode')
   const [notice, setNotice] = useState('')
-  const [panel, setPanel] = useState<'direction' | 'settings'>('direction')
   const [mobilePanel, setMobilePanel] = useState<'manuscript' | 'inspector'>('manuscript')
   const [busy, setBusy] = useState(false)
   const [generationRequest, setGenerationRequest] = useState<{
     segments: VoiceSegment[]
     regenerate: boolean
+    whole?: boolean
+    preview?: boolean
+    retry?: boolean
   } | null>(null)
   const [consent, setConsent] = useState(() => localStorage.getItem('ns-narration-consent') === '1')
   const [playing, setPlaying] = useState<{
@@ -130,6 +149,153 @@ function NarrationPage({
     },
     [playing],
   )
+  // biome-ignore lint/correctness/useExhaustiveDependencies: Rebuild only when the chosen comparison changes; polling must not reset playback.
+  useEffect(() => {
+    if (!record || !episode || !entitlement || !selection.length) return
+    const all = resolveSegments(
+      episode,
+      record.settings,
+      stagings.find((s) => s.episodeId === episode.id),
+      { model: entitlement.model, voices: entitlement.voices },
+    )
+    const first = all.findIndex((s) => selection.includes(s.id)),
+      last = all.findLastIndex((s) => selection.includes(s.id))
+    if (first < 0 || !all.some((s) => selection.includes(s.id) && record.candidates?.[s.id])) return
+    const items = all
+      .slice(Math.max(0, first - 1), last + 2)
+      .filter((s) => selection.includes(s.id) || record.accepted[s.id])
+    const takes = items.map((s) =>
+      record.takes.find(
+        (t) =>
+          t.id ===
+            (compareSource === 'candidate' && selection.includes(s.id)
+              ? (record.candidates?.[s.id] ?? record.accepted[s.id])
+              : record.accepted[s.id]) && t.state === 'ready',
+      ),
+    )
+    if (takes.some((t) => !t)) return
+    let canceled = false
+    void assembleNarration(items, takes as VoiceTake[], service)
+      .then((built) => {
+        if (canceled) return
+        audio.current?.pause()
+        setPosition(0)
+        setPlaying({
+          url: URL.createObjectURL(new Blob([built.data], { type: 'audio/mpeg' })),
+          segments: items,
+          timeline: built.timeline,
+          label: compareSource === 'candidate' ? '新しい読み' : '採用中の読み',
+        })
+      })
+      .catch((e) => {
+        if (!canceled) setNotice(e.message)
+      })
+    return () => {
+      canceled = true
+    }
+  }, [record?.candidates, selection, compareSource, episode?.id, service])
+  const routeRef = useRef(window.location.hash)
+  const leaving = useRef(false)
+  useEffect(() => {
+    if (!record) return
+    const gen = entitlement ? { model: entitlement.model, voices: entitlement.voices } : undefined
+    const unfinished =
+      record.takes.some((t) => ['queued', 'generating'].includes(t.state)) ||
+      Object.keys(record.candidates ?? {}).length > 0 ||
+      work.episodes.some((ep) =>
+        resolveSegments(
+          ep,
+          record.settings,
+          stagings.find((s) => s.episodeId === ep.id),
+          gen,
+        ).some((s) => {
+          const take = record.takes.find((t) => t.id === record.accepted[s.id])
+          return take
+            ? take.fingerprint !== s.fingerprint
+            : record.settings.cues.some((c) => c.episodeId === ep.id)
+        }),
+      )
+    const move = (next: string) => {
+      const action = () => {
+        void service
+          .flush()
+          .then(() => {
+            leaving.current = true
+            window.location.hash = next
+          })
+          .catch((e) => setNotice(e.message))
+      }
+      if (!unfinished && !saving) action()
+      else
+        setConfirmation({
+          title: '朗読の作業を中断しますか？',
+          description:
+            '作業内容と修正候補を保存して移動します。戻って続きを進められます。' +
+            (record.takes.some((t) => ['queued', 'generating'].includes(t.state))
+              ? '生成中の音声は画面を離れても生成を続けます。'
+              : ''),
+          label: '保存して移動',
+          action,
+        })
+    }
+    const click = (e: MouseEvent) => {
+      const link = (e.target as Element).closest?.('a')
+      if (!link?.hash || link.hash.startsWith('#/narration/')) return
+      e.preventDefault()
+      e.stopImmediatePropagation()
+      move(link.hash)
+    }
+    const hash = (e: HashChangeEvent) => {
+      if (leaving.current || window.location.hash.startsWith('#/narration/')) {
+        routeRef.current = window.location.hash
+        return
+      }
+      if (!unfinished && !saving) return
+      e.stopImmediatePropagation()
+      const next = window.location.hash
+      history.replaceState(null, '', routeRef.current)
+      move(next)
+    }
+    const unload = (e: BeforeUnloadEvent) => {
+      if (saving) e.preventDefault()
+    }
+    const key = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setSelection([])
+        setOffsets({})
+        setScope('episode')
+      }
+    }
+    document.addEventListener('click', click, true)
+    window.addEventListener('hashchange', hash, true)
+    window.addEventListener('beforeunload', unload)
+    document.addEventListener('keydown', key)
+    return () => {
+      document.removeEventListener('click', click, true)
+      window.removeEventListener('hashchange', hash, true)
+      window.removeEventListener('beforeunload', unload)
+      document.removeEventListener('keydown', key)
+    }
+  }, [record, entitlement, work, stagings, saving, service])
+  useEffect(() => {
+    if (!record || !entitlement) return
+    const snapshots = { ...record.snapshots }
+    let changed = false
+    for (const ep of work.episodes) {
+      if (snapshots[ep.id]) continue
+      const legacy = resolveSegments(
+        ep,
+        record.settings,
+        stagings.find((s) => s.episodeId === ep.id),
+        { model: entitlement.model, voices: entitlement.voices, legacy: true },
+      )
+      if (legacy.length && legacy.every((s) => record.accepted[s.id])) {
+        snapshots[ep.id] = legacy
+        changed = true
+      }
+    }
+    if (changed) void service.setRecord({ snapshots })
+  }, [record, entitlement, work, stagings, service])
   if (!record || !episode)
     return (
       <main className="narration-studio" data-mobile-panel={mobilePanel}>
@@ -137,52 +303,99 @@ function NarrationPage({
         <p>{episode ? '設定を読み込み中…' : '話を追加すると朗読を作れます。'}</p>
       </main>
     )
-  const settings = record.settings
+  const settings = { ...record.settings, ...record.settings.episodes?.[episode.id] }
+  settings.cues = settings.cues.map((c) =>
+    c.episodeId === episode.id
+      ? {
+          ...c,
+          refs: c.refs.map(
+            (r) =>
+              locateRef(
+                r,
+                plainText(episode.blocks.find((b) => b.id === r.blockId)?.inlines ?? []),
+              ) ?? r,
+          ),
+        }
+      : c,
+  )
   const staging = stagings.find((s) => s.episodeId === episode.id)
   const generation = entitlement
     ? { model: entitlement.model, voices: entitlement.voices }
     : undefined
   const segments = resolveSegments(episode, settings, staging, generation)
-  const targets =
-    scope === 'episode' ? segments : segments.filter((s) => selection.includes(s.blockId))
+  const targets = scope === 'episode' ? segments : segments.filter((s) => selection.includes(s.id))
+  const selectedRefs = targets.map((s) => {
+    const siblings = segments.filter((v) => v.blockId === s.blockId)
+    const base = siblings
+      .slice(
+        0,
+        siblings.findIndex((v) => v.id === s.id),
+      )
+      .reduce((n, v) => n + plainText(v.source.inlines).length, 0)
+    return {
+      blockId: s.blockId,
+      snapshot: plainText(episode.blocks.find((b) => b.id === s.blockId)!.inlines),
+      start: base + (offsets[s.id]?.start ?? 0),
+      end: base + (offsets[s.id]?.end ?? plainText(s.source.inlines).length),
+    }
+  })
   const matchingCue = settings.cues.find(
     (c) =>
       c.episodeId === episode.id &&
       c.scope === scope &&
-      (scope === 'episode' ||
-        (c.refs.length === selection.length && c.refs.every((r) => selection.includes(r.blockId)))),
+      (scope === 'episode' || JSON.stringify(c.refs) === JSON.stringify(selectedRefs)),
   )
   const cue: VoiceCue = matchingCue ?? {
     id: crypto.randomUUID(),
     episodeId: episode.id,
     scope,
-    refs: [...new Set(targets.map((s) => s.blockId))].map((blockId) => ({
-      blockId,
-      snapshot: plainText(episode.blocks.find((b) => b.id === blockId)?.inlines ?? []),
-    })),
+    refs: scope === 'episode' ? [] : selectedRefs,
     direction: '',
   }
+  const selectedText = targets
+    .map((s) => plainText(s.source.inlines).slice(offsets[s.id]?.start ?? 0, offsets[s.id]?.end))
+    .join('')
   const currentIndex =
     playing?.timeline.findIndex((t) => position >= t.start && position < t.end) ?? -1
   const running = record.takes.filter((t) => t.state === 'queued' || t.state === 'generating')
   const accepted = (segment: VoiceSegment) =>
     record.takes.find((t) => t.id === record.accepted[segment.id] && t.state === 'ready')
   const latest = (segment: VoiceSegment) =>
+    record.takes.find((t) => t.id === record.candidates?.[segment.id] && t.state === 'ready')
+  const cached = (s: VoiceSegment) =>
     record.takes
-      .filter(
-        (t) =>
-          t.segmentId === segment.id &&
-          t.fingerprint === segment.fingerprint &&
-          t.state === 'ready',
-      )
+      .filter((t) => t.segmentId === s.id && t.fingerprint === s.fingerprint && t.state === 'ready')
       .at(-1)
+  const opening = openingSegments(segments)
+  const previewReady = opening.length > 0 && opening.every(cached)
   const pending = segments.filter(
     (s) =>
       accepted(s)?.fingerprint !== s.fingerprint &&
-      !latest(s) &&
+      !record.takes.some(
+        (t) => t.segmentId === s.id && t.fingerprint === s.fingerprint && t.state === 'ready',
+      ) &&
       !running.some((t) => t.segmentId === s.id),
   )
   const missing = segments.filter((s) => !accepted(s))
+  const hasUnapplied = (id: string) => {
+    const saved = record.snapshots?.[id]
+    if (!saved) return false
+    const ep = work.episodes.find((e) => e.id === id)
+    if (!ep) return true
+    const current = resolveSegments(
+      ep,
+      record.settings,
+      stagings.find((s) => s.episodeId === id),
+      generation,
+    )
+    return (
+      saved.length !== current.length ||
+      saved.some(
+        (s, i) =>
+          current[i]?.id !== s.id || accepted(current[i]!)?.fingerprint !== current[i]?.fingerprint,
+      )
+    )
+  }
   const changed = segments.filter((s) => accepted(s) && accepted(s)?.fingerprint !== s.fingerprint)
   const cost = (items: VoiceSegment[]) => items.reduce((n, s) => n + s.characters, 0)
   const readyToGenerate = (items: VoiceSegment[]) =>
@@ -190,30 +403,87 @@ function NarrationPage({
     items.length > 0 &&
     cost(items) <= entitlement.remaining &&
     !sending &&
+    !running.length &&
+    !record.takes.some((t) => t.state === 'unknown') &&
     !items.some((s) => s.characters > 800)
-  const patchSettings = (patch: Partial<typeof settings>) =>
-    service.changeSettings({ ...settings, ...patch })
+  const patchSettings = (patch: Partial<typeof settings>) => {
+    const { style, narrator, ...rest } = patch
+    service.changeSettings({
+      ...record.settings,
+      ...rest,
+      episodes:
+        style !== undefined || narrator !== undefined
+          ? {
+              ...record.settings.episodes,
+              [episode.id]: {
+                style: style ?? settings.style,
+                narrator: narrator ?? settings.narrator,
+              },
+            }
+          : record.settings.episodes,
+    })
+  }
   const patchCue = (patch: Partial<VoiceCue>) => {
     const next = { ...cue, ...patch }
     patchSettings({ cues: [...settings.cues.filter((c) => c.id !== cue.id), next] })
   }
+  const clearSelection = () => {
+    setSelection([])
+    setOffsets({})
+    setScope('episode')
+  }
   const select = (id: string, extend = false) => {
+    audio.current?.pause()
+    if (selection.length === 1 && selection[0] === id && !extend) {
+      clearSelection()
+      return
+    }
     if (extend && selection.length) {
-      const a = segments.findIndex((s) => s.blockId === selection[0]),
-        b = segments.findIndex((s) => s.blockId === id)
-      setSelection([
-        ...new Set(segments.slice(Math.min(a, b), Math.max(a, b) + 1).map((s) => s.blockId)),
-      ])
+      const a = segments.findIndex((s) => s.id === selection[0]),
+        b = segments.findIndex((s) => s.id === id)
+      setSelection(segments.slice(Math.min(a, b), Math.max(a, b) + 1).map((s) => s.id))
     } else setSelection([id])
-    setPanel('direction')
-    if (!rangeSelecting) setMobilePanel('inspector')
+    setOffsets({})
     setScope('range')
-    if (window.innerWidth <= 850 && !rangeSelecting)
-      requestAnimationFrame(() =>
-        document
-          .querySelector('.narration-direction')
-          ?.scrollIntoView({ behavior: 'smooth', block: 'start' }),
-      )
+  }
+  const captureSelection = () => {
+    const native = window.getSelection()
+    if (!native || native.isCollapsed || !native.rangeCount || !manuscript.current) return
+    const range = native.getRangeAt(0)
+    if (
+      !manuscript.current.contains(range.startContainer) ||
+      !manuscript.current.contains(range.endContainer)
+    )
+      return
+    const ids: string[] = [],
+      next: Record<string, { start: number; end: number }> = {}
+    for (const el of manuscript.current.querySelectorAll<HTMLElement>('[data-segment]')) {
+      if (!range.intersectsNode(el)) continue
+      let start = 0,
+        end = el.textContent?.length ?? 0
+      const r = document.createRange()
+      r.selectNodeContents(el)
+      if (el.contains(range.startContainer)) {
+        r.setEnd(range.startContainer, range.startOffset)
+        start = r.toString().length
+      }
+      r.selectNodeContents(el)
+      if (el.contains(range.endContainer)) {
+        r.setEnd(range.endContainer, range.endOffset)
+        end = r.toString().length
+      }
+      if (end > start) {
+        ids.push(el.dataset.segment!)
+        next[el.dataset.segment!] = { start, end }
+      }
+    }
+    if (ids.length) {
+      dragged.current = true
+      audio.current?.pause()
+      setSelection(ids)
+      setOffsets(next)
+      setScope('range')
+    }
   }
   const selectScene = (id: string) => {
     const index = episode.blocks.findIndex((b) => b.id === id)
@@ -226,10 +496,9 @@ function NarrationPage({
         else end = Math.min(end, at)
       }
     setSelection(
-      episode.blocks
-        .slice(start, end)
-        .map((b) => b.id)
-        .filter((id) => segments.some((s) => s.blockId === id)),
+      segments
+        .filter((s) => episode.blocks.slice(start, end).some((b) => b.id === s.blockId))
+        .map((s) => s.id),
     )
     setScope('scene')
   }
@@ -244,14 +513,24 @@ function NarrationPage({
       setBusy(false)
     }
   }
-  const generate = (items: VoiceSegment[], regenerate = false) => {
-    if (!consent) {
-      setGenerationRequest({ segments: items, regenerate })
+  const generate = (
+    items: VoiceSegment[],
+    regenerate = false,
+    whole = false,
+    preview = false,
+    retry = false,
+  ) => {
+    if (
+      !consent ||
+      (whole && (!!record.snapshots?.[episode.id] || segments.some(accepted)) && !retry)
+    ) {
+      setGenerationRequest({ segments: items, regenerate, whole, preview, retry })
       return
     }
-    void act(() => service.generate(items, regenerate))
+    void act(() => service.generate(items, regenerate, { whole, preview, retry }))
   }
   const play = async (items: VoiceSegment[], variant: 'accepted' | 'candidate', from = 0) => {
+    audio.current?.pause()
     const takes = items.map((s) =>
       variant === 'candidate' ? (latest(s) ?? accepted(s)) : accepted(s),
     )
@@ -262,7 +541,12 @@ function NarrationPage({
       url: URL.createObjectURL(new Blob([built.data], { type: 'audio/mpeg' })),
       timeline: built.timeline,
       segments: items,
-      label: variant === 'candidate' ? '新しい読み' : '採用中の読み',
+      label:
+        scope === 'episode'
+          ? '一話の朗読'
+          : variant === 'candidate'
+            ? '新しい読み'
+            : '採用中の読み',
     })
     setPosition(from)
   }
@@ -282,14 +566,16 @@ function NarrationPage({
     for (const id of ids) {
       const ep = work.episodes.find((e) => e.id === id)
       if (!ep) continue
-      const pieces = resolveSegments(
-        ep,
-        settings,
-        stagings.find((s) => s.episodeId === id),
-        generation,
-      )
+      const pieces =
+        record.snapshots?.[id] ??
+        resolveSegments(
+          ep,
+          settings,
+          stagings.find((s) => s.episodeId === id),
+          generation,
+        )
       const takes = pieces.map(accepted)
-      if (takes.some((t, i) => !t || t.fingerprint !== pieces[i]?.fingerprint))
+      if (takes.some((t) => !t))
         throw new Error(`「${ep.title}」に未採用または変更ありの区間があります。`)
       const built = await assembleNarration(pieces, takes as VoiceTake[], service)
       files.push({
@@ -305,15 +591,57 @@ function NarrationPage({
     )
     setNotice('音声を書き出しました')
   }
+  const requestExport = (ids: string[]) => {
+    const action = () => void act(() => exportEpisodes(ids))
+    if (changed.length || ids.some(hasUnapplied) || Object.keys(record.candidates ?? {}).length)
+      setConfirmation({
+        title: '現在の音声を書き出しますか？',
+        description:
+          '本文の変更や修正候補が音声に反映されていない箇所があります。現在採用中の音声を書き出します。',
+        label: '書き出す',
+        action,
+      })
+    else action()
+  }
   const saveLabel = saving ? '保存中…' : '保存済み'
   const targetLabel =
     scope === 'episode'
       ? 'この話全体'
       : scope === 'scene'
         ? `この場面（${targets.length}段落）`
-        : `選んだ${targets.length}段落`
+        : '選択部分の修正'
   const voices = entitlement?.voices ?? []
   const invalid = settings.cues.filter((c) => c.episodeId === episode.id && !cueIsValid(c, episode))
+  const comparisonPlayback = playing?.label === '新しい読み' || playing?.label === '採用中の読み'
+  const player = playing && (
+    <div className="narration-player">
+      <span>{playing.label}</span>
+      {/* biome-ignore lint/a11y/useMediaCaption: 朗読対象の原稿は画面中央に全文を表示する。 */}
+      <audio
+        ref={audio}
+        key={playing.url}
+        controls
+        src={playing.url}
+        onLoadedMetadata={() => {
+          if (audio.current) audio.current.currentTime = position
+        }}
+        onTimeUpdate={() => setPosition(audio.current?.currentTime ?? 0)}
+      />
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={() => {
+          const segment = playing.segments[currentIndex]
+          if (segment) {
+            audio.current?.pause()
+            select(segment.id)
+          }
+        }}
+      >
+        ここを直す
+      </Button>
+    </div>
+  )
   return (
     <main className="narration-studio" data-mobile-panel={mobilePanel}>
       <header className="narration-header">
@@ -389,10 +717,8 @@ function NarrationPage({
               size="sm"
               disabled={busy || !exportIds.length}
               onClick={() =>
-                void act(() =>
-                  exportEpisodes(
-                    work.episodes.filter((e) => exportIds.includes(e.id)).map((e) => e.id),
-                  ),
+                requestExport(
+                  work.episodes.filter((e) => exportIds.includes(e.id)).map((e) => e.id),
                 )
               }
             >
@@ -414,23 +740,12 @@ function NarrationPage({
         </button>
         <button
           type="button"
-          aria-pressed={mobilePanel === 'inspector' && panel === 'direction'}
+          aria-pressed={mobilePanel === 'inspector'}
           onClick={() => {
             setMobilePanel('inspector')
-            setPanel('direction')
           }}
         >
           読み方
-        </button>
-        <button
-          type="button"
-          aria-pressed={mobilePanel === 'inspector' && panel === 'settings'}
-          onClick={() => {
-            setMobilePanel('inspector')
-            setPanel('settings')
-          }}
-        >
-          作品設定
         </button>
       </nav>
       {(error || notice) && (
@@ -448,9 +763,12 @@ function NarrationPage({
               <span className="sr-only">話を選ぶ</span>
               <select
                 value={episode.id}
+                title={episode.title}
                 onChange={(e) => {
                   setEpisodeId(e.target.value)
                   setSelection([])
+                  setOffsets({})
+                  setPlaying(null)
                   setScope('episode')
                   window.history.replaceState(
                     null,
@@ -462,43 +780,25 @@ function NarrationPage({
                 {work.episodes.map((e, i) => (
                   <option key={e.id} value={e.id}>
                     {i + 1}. {e.title}
+                    {(() => {
+                      const count = resolveSegments(
+                        e,
+                        record.settings,
+                        stagings.find((v) => v.episodeId === e.id),
+                        generation,
+                      ).filter(
+                        (s) =>
+                          latest(s) || (accepted(s) && accepted(s)?.fingerprint !== s.fingerprint),
+                      ).length
+                      return count ? ' · 作業途中 ' + count : ''
+                    })()}
                   </option>
                 ))}
               </select>
             </label>
           </div>
           <div className="narration-selection-bar">
-            <Button
-              variant={scope === 'episode' ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => {
-                setSelection([])
-                setRangeSelecting(false)
-                setScope('episode')
-                setPanel('direction')
-              }}
-            >
-              この話全体
-            </Button>
-            <Button
-              size="sm"
-              variant={rangeSelecting ? 'default' : 'ghost'}
-              aria-pressed={rangeSelecting}
-              onClick={() => {
-                if (rangeSelecting && selection.length) {
-                  setMobilePanel('inspector')
-                  setPanel('direction')
-                } else if (!rangeSelecting) {
-                  setSelection([])
-                }
-                setRangeSelecting(!rangeSelecting)
-              }}
-            >
-              {rangeSelecting ? '範囲を確定' : '範囲を選ぶ'}
-            </Button>
-            <span>
-              {rangeSelecting ? '始めと終わりの段落を選択' : '段落を選んで読み方を変える'}
-            </span>
+            <span>{scope === 'episode' ? '一話全体' : selectedText.length + '文字を選択中'}</span>
           </div>
 
           {invalid.length > 0 && (
@@ -512,33 +812,46 @@ function NarrationPage({
               句読点のない800文字を超える区間があります。本文に句読点を入れるか、短い読みを指定してください。
             </p>
           )}
-          <div className="narration-paragraphs">
+          {/* biome-ignore lint/a11y/noStaticElementInteractions: Blank space deselects; Escape and the explicit button provide keyboard equivalents. */}
+          <div
+            ref={manuscript}
+            className="narration-paragraphs"
+            onPointerUp={captureSelection}
+            onClick={(e) => {
+              if (e.target === e.currentTarget) clearSelection()
+            }}
+            role="presentation"
+          >
             {segments.map((segment, i) => {
               const take = accepted(segment),
                 candidate = latest(segment),
                 instructions = cuesForBlock(settings, episode, segment.blockId)
               const isCurrent = playing?.segments[currentIndex]?.id === segment.id
-              const active = scope !== 'episode' && selection.includes(segment.blockId)
+              const active = scope !== 'episode' && selection.includes(segment.id)
               const lastAttempt = record.takes.filter((t) => t.segmentId === segment.id).at(-1)
               const status = running.some((t) => t.segmentId === segment.id)
                 ? '生成中'
-                : take
-                  ? take.fingerprint === segment.fingerprint
-                    ? '採用済み'
-                    : '変更あり'
-                  : candidate
-                    ? '試聴できます'
-                    : lastAttempt?.state === 'failed'
-                      ? '生成に失敗'
-                      : lastAttempt?.state === 'unknown'
-                        ? '結果を確認中'
-                        : lastAttempt?.state === 'missing'
-                          ? '保管期限切れ'
-                          : '未生成'
+                : candidate && candidate.id !== take?.id
+                  ? '比較待ち'
+                  : take
+                    ? take.fingerprint === segment.fingerprint
+                      ? '採用済み'
+                      : '変更あり'
+                    : candidate
+                      ? '比較待ち'
+                      : lastAttempt?.state === 'failed'
+                        ? '生成に失敗'
+                        : lastAttempt?.state === 'unknown'
+                          ? '結果を確認中'
+                          : lastAttempt?.state === 'missing'
+                            ? '保管期限切れ'
+                            : record.snapshots?.[episode.id]
+                              ? '音声に未反映'
+                              : '未生成'
               return (
                 <article
                   key={segment.id}
-                  className={`narration-paragraph ${active ? 'is-selected' : ''} ${isCurrent ? 'is-playing' : ''}`}
+                  className={`narration-paragraph ${segments[i - 1]?.blockId !== segment.blockId ? 'is-block-start' : ''} ${active ? 'is-selected' : ''} ${isCurrent ? 'is-playing' : ''}`}
                 >
                   {staging?.cues.some((c) => c.blockId === segment.blockId && c.sceneBreak) && (
                     <div className="narration-scene">場面の切れ目</div>
@@ -547,14 +860,48 @@ function NarrationPage({
                     type="button"
                     className="narration-paragraph-select"
                     aria-pressed={active}
-                    aria-label={`段落${i + 1}を選ぶ`}
-                    onClick={(e) => select(segment.blockId, e.shiftKey || rangeSelecting)}
+                    aria-label={`文章${i + 1}を選ぶ`}
+                    onClick={(e) => {
+                      if (dragged.current) {
+                        dragged.current = false
+                        return
+                      }
+                      select(segment.id, e.shiftKey)
+                    }}
                   >
                     <span className="narration-line-number">{String(i + 1).padStart(2, '0')}</span>
-                    <span className="narration-prose">{plainText(segment.source.inlines)}</span>
+                    <span className="narration-prose" data-segment={segment.id}>
+                      {active ? (
+                        <>
+                          {plainText(segment.source.inlines).slice(
+                            0,
+                            offsets[segment.id]?.start ?? 0,
+                          )}
+                          <mark>
+                            {plainText(segment.source.inlines).slice(
+                              offsets[segment.id]?.start ?? 0,
+                              offsets[segment.id]?.end,
+                            )}
+                          </mark>
+                          {offsets[segment.id]?.end !== undefined
+                            ? plainText(segment.source.inlines).slice(offsets[segment.id]!.end)
+                            : ''}
+                        </>
+                      ) : (
+                        plainText(segment.source.inlines)
+                      )}
+                    </span>
                   </button>
                   <div className="narration-paragraph-meta">
-                    <span>{status}</span>
+                    <span
+                      className={
+                        status === '未生成' && !instructions.length
+                          ? 'narration-initial-status'
+                          : ''
+                      }
+                    >
+                      {status === '採用済み' ? '' : status}
+                    </span>
                     {lastAttempt?.error && <span role="status">{lastAttempt.error}</span>}
                     {instructions.some((c) => c.direction) && (
                       <span
@@ -590,24 +937,8 @@ function NarrationPage({
           className="narration-inspector"
           aria-label="読み方の設定"
         >
-          <fieldset className="narration-panel-switch" aria-label="設定の種類">
-            <button
-              type="button"
-              aria-pressed={panel === 'direction'}
-              onClick={() => setPanel('direction')}
-            >
-              読み方
-            </button>
-            <button
-              type="button"
-              aria-pressed={panel === 'settings'}
-              onClick={() => setPanel('settings')}
-            >
-              作品設定
-            </button>
-          </fieldset>
-          <section hidden={panel !== 'settings'}>
-            <span className="narration-eyebrow">全話共通</span>
+          <section hidden={scope !== 'episode'}>
+            <span className="narration-eyebrow">この話の設定</span>
             <h2>声と朗読スタイル</h2>
 
             <label>
@@ -635,76 +966,82 @@ function NarrationPage({
                 aria-label="声のサンプル"
               />
             )}
-            <div className="narration-styles">
-              {STYLES.map((style) => (
-                <button
-                  key={style.id}
-                  type="button"
-                  aria-pressed={settings.style === style.id}
-                  onClick={() => patchSettings({ style: style.id })}
-                >
-                  <strong>
-                    {style.label}
-                    {settings.style === style.id && <Check size={14} />}
-                  </strong>
-                  {settings.style === style.id && <span>{style.description}</span>}
-                </button>
-              ))}
-            </div>
             <label>
-              声の出し分け
+              朗読スタイル
               <select
-                value={settings.mode}
-                onChange={(e) => patchSettings({ mode: e.target.value as 'solo' | 'cast' })}
+                value={settings.style}
+                onChange={(e) => patchSettings({ style: e.target.value })}
               >
-                <option value="solo">ひとり朗読</option>
-                <option value="cast">配役朗読</option>
+                {STYLES.map((style) => (
+                  <option key={style.id} value={style.id}>
+                    {style.label}
+                  </option>
+                ))}
               </select>
             </label>
-            {settings.mode === 'cast' && (
-              <div>
-                <p className="narration-help">
-                  演出譜の話者に声を割り当てます。未設定の台詞は語り手が読みます。
-                </p>
-                {[
-                  ...new Set([
-                    ...(staging?.cues.map((c) => c.speaker).filter((s): s is string => !!s) ?? []),
-                    ...(work.glossary?.filter((g) => g.category === '人物').map((g) => g.name) ??
-                      []),
-                  ]),
-                ].map((speaker) => (
-                  <label key={speaker}>
-                    {speaker}
-                    <select
-                      value={settings.cast[speaker] ?? ''}
-                      onChange={(e) =>
-                        patchSettings({ cast: { ...settings.cast, [speaker]: e.target.value } })
-                      }
-                    >
-                      <option value="">語り手と同じ</option>
-                      {voices.map((v) => (
-                        <option key={v.id} value={v.id}>
-                          {v.label}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                ))}
-              </div>
-            )}
+            <details>
+              <summary>配役を設定</summary>
+              <label>
+                声の出し分け
+                <select
+                  value={settings.mode}
+                  onChange={(e) => patchSettings({ mode: e.target.value as 'solo' | 'cast' })}
+                >
+                  <option value="solo">ひとり朗読</option>
+                  <option value="cast">配役朗読</option>
+                </select>
+              </label>
+              {settings.mode === 'cast' && (
+                <div>
+                  <p className="narration-help">
+                    演出譜の話者に声を割り当てます。未設定の台詞は語り手が読みます。
+                  </p>
+                  {[
+                    ...new Set([
+                      ...(staging?.cues.map((c) => c.speaker).filter((s): s is string => !!s) ??
+                        []),
+                      ...(work.glossary?.filter((g) => g.category === '人物').map((g) => g.name) ??
+                        []),
+                    ]),
+                  ].map((speaker) => (
+                    <label key={speaker}>
+                      {speaker}
+                      <select
+                        value={settings.cast[speaker] ?? ''}
+                        onChange={(e) =>
+                          patchSettings({ cast: { ...settings.cast, [speaker]: e.target.value } })
+                        }
+                      >
+                        <option value="">語り手と同じ</option>
+                        {voices.map((v) => (
+                          <option key={v.id} value={v.id}>
+                            {v.label}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  ))}
+                </div>
+              )}
+            </details>
           </section>
-          <section className="narration-direction" hidden={panel !== 'direction'}>
-            <button
-              type="button"
-              className="narration-base-summary"
-              onClick={() => setPanel('settings')}
-            >
-              <Headphones size={14} />
-              {voices.find((v) => v.id === settings.narrator)?.label ?? '語り手'} ·{' '}
-              {STYLES.find((v) => v.id === settings.style)?.label}
-              <span aria-hidden="true">変更</span>
-            </button>
-            <h2>{targetLabel}</h2>
+          <section className="narration-direction">
+            {scope !== 'episode' && (
+              <button type="button" className="narration-base-summary" onClick={clearSelection}>
+                <Headphones size={14} />
+                {voices.find((v) => v.id === settings.narrator)?.label ?? '語り手'} ·{' '}
+                {STYLES.find((v) => v.id === settings.style)?.label}
+                <span aria-hidden="true">全体の設定</span>
+              </button>
+            )}
+            <div className="narration-section-head">
+              <h2>{targetLabel}</h2>
+              {scope !== 'episode' && (
+                <button type="button" onClick={clearSelection}>
+                  × 選択解除
+                </button>
+              )}
+            </div>
             <button
               type="button"
               className="narration-return"
@@ -719,20 +1056,12 @@ function NarrationPage({
             >
               ← 原稿に戻る
             </button>
-            {scope !== 'episode' && (
-              <blockquote>
-                {targets
-                  .map((s) => plainText(s.source.inlines))
-                  .join(' ')
-                  .slice(0, 160)}
-                {cost(targets) > 160 ? '…' : ''}
-              </blockquote>
-            )}
+            {scope !== 'episode' && <blockquote>{selectedText}</blockquote>}
             <label>
               どんなふうに読んでほしいですか？
               <textarea
                 rows={3}
-                maxLength={240}
+                maxLength={180}
                 value={matchingCue?.direction ?? ''}
                 placeholder="少し寂しそうに。最後の「ありがと」だけ温かく"
                 onChange={(e) => patchCue({ direction: e.target.value })}
@@ -749,7 +1078,7 @@ function NarrationPage({
                         direction:
                           `${matchingCue?.direction ? matchingCue.direction + '。' : ''}${text}`.slice(
                             0,
-                            240,
+                            180,
                           ),
                       })
                     }
@@ -782,47 +1111,100 @@ function NarrationPage({
               </button>
             )}
             <div className="narration-trial">
-              {(scope !== 'episode' || record.takes.length > 0) && (
+              {scope !== 'episode' && (
                 <Button
                   className="narration-wide"
-                  disabled={!readyToGenerate(targets) || busy}
+                  disabled={!readyToGenerate(targets) || busy || !!record.operation}
                   onClick={() => generate(targets, true)}
                 >
-                  この範囲を試す · {cost(targets).toLocaleString()}文字
+                  選択部分を修正して生成 · {cost(targets).toLocaleString()}文字
                 </Button>
               )}
-              {targets.some((v) => accepted(v) || latest(v)) && (
-                <div className="narration-compare">
+              {scope !== 'episode' && targets.some(latest) && (
+                <>
+                  <p className="narration-help">
+                    新しい生成が成功すると、この範囲の候補が置き換わります。
+                  </p>
+                  <div className="narration-compare">
+                    <button
+                      type="button"
+                      aria-pressed={compareSource === 'accepted'}
+                      disabled={targets.some((s) => !accepted(s))}
+                      onClick={() => {
+                        setCompareSource('accepted')
+                        void act(() => audition('accepted'))
+                      }}
+                    >
+                      元の読み
+                    </button>
+                    <button
+                      type="button"
+                      aria-pressed={compareSource === 'candidate'}
+                      onClick={() => {
+                        setCompareSource('candidate')
+                        void act(() => audition('candidate'))
+                      }}
+                    >
+                      新しい読み
+                    </button>
+                  </div>
+                  {comparisonPlayback && player}
                   <Button
-                    variant="outline"
-                    disabled={busy || targets.some((s) => !accepted(s))}
-                    onClick={() => void act(() => audition('accepted'))}
+                    className="narration-wide"
+                    disabled={
+                      busy || (compareSource === 'accepted' && targets.some((s) => !accepted(s)))
+                    }
+                    onClick={() =>
+                      void act(() => service.adopt(targets, compareSource === 'candidate'))
+                    }
                   >
-                    元の読みを聴く
+                    こちらを採用
                   </Button>
-                  <Button
-                    variant="outline"
-                    disabled={busy || targets.some((s) => !latest(s))}
-                    onClick={() => void act(() => audition('candidate'))}
-                  >
-                    新しい読みを聴く
-                  </Button>
-                </div>
+                </>
               )}
-              {targets.some((v) => latest(v) && latest(v)?.id !== accepted(v)?.id) && (
-                <Button
-                  variant="secondary"
-                  className="narration-wide"
-                  disabled={busy || !targets.length || targets.some((s) => !latest(s))}
-                  onClick={() =>
-                    void act(async () => {
-                      for (const s of targets) await service.accept(latest(s)!)
-                      setNotice('選んだ範囲の読みを採用しました')
-                    })
-                  }
-                >
-                  この読みを採用
-                </Button>
+              {record.undo && (
+                <button type="button" onClick={() => void act(() => service.undoAdoption())}>
+                  元に戻す
+                </button>
+              )}
+              {scope === 'episode' && (
+                <>
+                  <Button
+                    disabled={
+                      busy ||
+                      (!previewReady &&
+                        (!entitlement?.preview?.remaining || !opening.length || running.length > 0))
+                    }
+                    onClick={() => {
+                      if (previewReady)
+                        void act(async () => {
+                          const built = await assembleNarration(
+                            opening,
+                            opening.map(cached) as VoiceTake[],
+                            service,
+                          )
+                          setPlaying({
+                            url: URL.createObjectURL(
+                              new Blob([built.data], { type: 'audio/mpeg' }),
+                            ),
+                            timeline: built.timeline,
+                            segments: opening,
+                            label: 'スタイル試聴',
+                          })
+                          setPosition(0)
+                        })
+                      else generate(opening, false, false, true)
+                    }}
+                  >
+                    スタイルを試聴
+                  </Button>
+                  <p className="narration-help">
+                    冒頭 {cost(opening)}文字 · 文字数消費なし
+                    <br />
+                    本日の残り {entitlement?.preview?.remaining ?? '—'}
+                    回。同条件の再生は回数を使いません。
+                  </p>
+                </>
               )}
             </div>
             <details>
@@ -845,14 +1227,53 @@ function NarrationPage({
               </label>
               {targets.length === 1 && (
                 <label>
-                  この段落の読み仮名
+                  選択した言葉の読み方
                   <textarea
                     rows={3}
                     value={matchingCue?.reading ?? ''}
                     maxLength={3000}
-                    placeholder={targets[0]?.text}
-                    onChange={(e) => patchCue({ reading: e.target.value || undefined })}
+                    placeholder={selectedText}
+                    onChange={(e) => {
+                      const reading = e.target.value
+                      const next = { ...cue, reading: reading || undefined }
+                      patchSettings({
+                        cues: [...settings.cues.filter((c) => c.id !== cue.id), next],
+                        dictionary: commonReading
+                          ? [
+                              ...settings.dictionary.filter((d) => d.surface !== selectedText),
+                              ...(reading
+                                ? [{ id: crypto.randomUUID(), surface: selectedText, reading }]
+                                : []),
+                            ]
+                          : settings.dictionary,
+                      })
+                    }}
                   />
+                </label>
+              )}
+              {targets.length === 1 && scope !== 'episode' && (
+                <label className="narration-inline-check">
+                  <input
+                    type="checkbox"
+                    checked={commonReading}
+                    onChange={(e) => {
+                      setCommonReading(e.target.checked)
+                      if (matchingCue?.reading)
+                        patchSettings({
+                          dictionary: e.target.checked
+                            ? [
+                                ...settings.dictionary.filter((d) => d.surface !== selectedText),
+                                {
+                                  id: crypto.randomUUID(),
+                                  surface: selectedText,
+                                  reading: matchingCue.reading,
+                                },
+                              ]
+                            : settings.dictionary.filter((d) => d.surface !== selectedText),
+                        })
+                    }}
+                  />
+                  この作品の同じ表記にも使う
                 </label>
               )}
               <label>
@@ -886,43 +1307,62 @@ function NarrationPage({
               </label>
               <p className="narration-help">間だけの変更では生成枠を使いません。</p>
             </details>
-            {targets.length === 1 && (
-              <details>
-                <summary>前の読みを聴く・戻す</summary>
-                {record.takes
-                  .filter((t) => t.segmentId === targets[0]?.id && t.state === 'ready')
-                  .map((t, i) => (
-                    <div className="narration-take" key={t.id}>
-                      <span>
-                        読み {i + 1}
-                        {record.accepted[t.segmentId] === t.id ? ' · 採用中' : ''}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          void act(async () => {
-                            const blob = await service.audio(t.id)
-                            setPlaying({
-                              url: URL.createObjectURL(blob),
-                              timeline: [{ start: 0, end: 99999 }],
-                              segments: targets,
-                              label: `読み ${i + 1}`,
-                            })
-                          })
-                        }
-                      >
-                        聴く
-                      </button>
-                      <button type="button" onClick={() => void act(() => service.accept(t))}>
-                        採用
-                      </button>
-                    </div>
-                  ))}
-              </details>
-            )}
           </section>
-          <details className="narration-dictionary" hidden={panel !== 'settings'}>
-            <summary>作品の読み方辞書</summary>
+          {record.takes.some(
+            (t) =>
+              t.state === 'ready' &&
+              t.segmentId.startsWith(episode.id + ':') &&
+              !segments.some((s) => s.id === t.segmentId),
+          ) && (
+            <details>
+              <summary>以前の生成音声</summary>
+              {record.takes
+                .filter(
+                  (t) =>
+                    t.state === 'ready' &&
+                    t.segmentId.startsWith(episode.id + ':') &&
+                    !segments.some((s) => s.id === t.segmentId),
+                )
+                .map((t, i) => (
+                  <div className="narration-take" key={t.id}>
+                    <span>音声 {i + 1}</span>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        void act(async () => {
+                          const blob = await service.audio(t.id)
+                          setPlaying({
+                            url: URL.createObjectURL(blob),
+                            segments: [],
+                            timeline: [],
+                            label: '以前の音声',
+                          })
+                        })
+                      }
+                    >
+                      聴く
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        void act(async () => {
+                          const blob = await service.audio(t.id)
+                          triggerDownload({
+                            filename: '朗読-' + (i + 1) + '.mp3',
+                            mime: 'audio/mpeg',
+                            data: new Uint8Array(await blob.arrayBuffer()),
+                          })
+                        })
+                      }
+                    >
+                      MP3で保存
+                    </button>
+                  </div>
+                ))}
+            </details>
+          )}
+          <details className="narration-dictionary" hidden={!settings.dictionary.length}>
+            <summary>読み方の修正</summary>
             <p className="narration-help">原稿のルビを優先します。本文や用語集は変更しません。</p>
             {settings.dictionary.map((entry) => (
               <div className="narration-dict-row" key={entry.id}>
@@ -979,30 +1419,8 @@ function NarrationPage({
             >
               読みを追加
             </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() =>
-                patchSettings({
-                  dictionary: [
-                    ...settings.dictionary,
-                    ...(work.glossary ?? [])
-                      .filter(
-                        (g) => g.reading && !settings.dictionary.some((d) => d.surface === g.name),
-                      )
-                      .map((g) => ({
-                        id: crypto.randomUUID(),
-                        surface: g.name,
-                        reading: g.reading!,
-                      })),
-                  ],
-                })
-              }
-            >
-              用語集の読みを取り込む
-            </Button>
           </details>
-          <details hidden={panel !== 'direction'}>
+          <details hidden={!settings.cues.some((c) => c.episodeId === episode.id)}>
             <summary>
               保存した指示（{settings.cues.filter((c) => c.episodeId === episode.id).length}件）
             </summary>
@@ -1013,9 +1431,37 @@ function NarrationPage({
                   <button
                     type="button"
                     onClick={() => {
-                      setPanel('direction')
                       setScope(c.scope)
-                      setSelection(c.refs.map((r) => r.blockId))
+                      setSelection(
+                        segments
+                          .filter((s) => c.refs.some((r) => r.blockId === s.blockId))
+                          .map((s) => s.id),
+                      )
+                      const next: Record<string, { start: number; end: number }> = {}
+                      for (const s of segments) {
+                        const r = c.refs.find((r) => r.blockId === s.blockId)
+                        if (!r) continue
+                        const siblings = segments.filter((v) => v.blockId === s.blockId)
+                        const at = siblings
+                          .slice(
+                            0,
+                            siblings.findIndex((v) => v.id === s.id),
+                          )
+                          .reduce((n, v) => n + plainText(v.source.inlines).length, 0)
+                        if (
+                          (r.start ?? 0) < at + plainText(s.source.inlines).length &&
+                          (r.end ?? Infinity) > at
+                        )
+                          next[s.id] = {
+                            start: Math.max(0, (r.start ?? 0) - at),
+                            end: Math.min(
+                              plainText(s.source.inlines).length,
+                              (r.end ?? Infinity) - at,
+                            ),
+                          }
+                      }
+                      setSelection(Object.keys(next))
+                      setOffsets(next)
                     }}
                   >
                     {c.scope === 'episode' ? 'この話全体' : c.refs[0]?.snapshot.slice(0, 50)}
@@ -1036,6 +1482,34 @@ function NarrationPage({
         </aside>
       </div>
       <footer className="narration-transport">
+        {record.operation &&
+          running.length === 0 &&
+          (() => {
+            const op = record.operation
+            const retry = op.segments.filter(
+              (s) =>
+                !record.takes.some(
+                  (t) =>
+                    op.jobs.includes(t.jobId) &&
+                    t.segmentId === s.id &&
+                    t.fingerprint === s.fingerprint &&
+                    t.state === 'ready',
+                ),
+            )
+            return (
+              retry.length > 0 && (
+                <div className="narration-progress">
+                  現在の音声は保持されています。
+                  <Button
+                    disabled={busy || !readyToGenerate(retry)}
+                    onClick={() => generate(retry, true, op.whole, op.preview, true)}
+                  >
+                    未完了の区間を再生成 · {cost(retry)}文字
+                  </Button>
+                </div>
+              )
+            )
+          })()}
         {running.length > 0 && (
           <div className="narration-progress" role="status">
             生成中：残り {running.length}区間
@@ -1046,33 +1520,7 @@ function NarrationPage({
             ))}
           </div>
         )}
-        {playing && (
-          <div className="narration-player">
-            <span>{playing.label}</span>
-            {/* biome-ignore lint/a11y/useMediaCaption: 朗読対象の原稿は画面中央に全文を表示する。 */}
-            <audio
-              ref={audio}
-              key={playing.url}
-              controls
-              autoPlay
-              src={playing.url}
-              onLoadedMetadata={() => {
-                if (audio.current) audio.current.currentTime = position
-              }}
-              onTimeUpdate={() => setPosition(audio.current?.currentTime ?? 0)}
-            />
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                const segment = playing.segments[currentIndex]
-                if (segment) select(segment.blockId)
-              }}
-            >
-              ここを直す
-            </Button>
-          </div>
-        )}
+        {!comparisonPlayback && player}
         <div className="narration-actions">
           <div>
             <strong>
@@ -1085,70 +1533,113 @@ function NarrationPage({
                     : '書き出せます'}
             </strong>
           </div>
-          {pending.length > 0 && (
-            <Button disabled={!readyToGenerate(pending) || busy} onClick={() => generate(pending)}>
-              {sending ? '生成を開始中…' : `一話を生成 · ${cost(pending).toLocaleString()}文字`}
+          {segments.length > 0 && (
+            <Button
+              disabled={
+                !!record.operation ||
+                !(
+                  readyToGenerate(
+                    !record.snapshots?.[episode.id] && missing.length ? pending : segments,
+                  ) ||
+                  (missing.length > 0 && !pending.length && !running.length)
+                ) ||
+                busy
+              }
+              onClick={() =>
+                generate(segments, !!record.snapshots?.[episode.id] || !missing.length, true)
+              }
+            >
+              {sending
+                ? '生成を開始中…'
+                : `${!record.snapshots?.[episode.id] && missing.length ? '一話を生成' : '一話を再生成'} · ${cost(!record.snapshots?.[episode.id] && missing.length ? pending : segments).toLocaleString()}文字`}
             </Button>
           )}
           <Button
             variant="outline"
-            disabled={busy || segments.some((s) => !latest(s) && !accepted(s))}
-            onClick={() => void act(() => play(segments, 'candidate'))}
+            disabled={busy || !(record.snapshots?.[episode.id] ?? segments).every(accepted)}
+            onClick={() =>
+              void act(() => play(record.snapshots?.[episode.id] ?? segments, 'accepted'))
+            }
           >
             <Play size={15} />
             通して聴く
           </Button>
-          {!pending.length &&
-            (missing.length > 0 || changed.length > 0) &&
-            segments.every((s) => latest(s) || accepted(s)?.fingerprint === s.fingerprint) && (
-              <Button
-                variant="secondary"
-                disabled={busy}
-                onClick={() =>
-                  void act(async () => {
-                    for (const segment of segments) {
-                      const take = latest(segment)
-                      if (take) await service.accept(take)
-                    }
-                    setNotice('この話の読みを採用しました')
-                  })
-                }
-              >
-                この話の読みを採用
-              </Button>
-            )}
-          {!missing.length && !changed.length && (
-            <Button
-              variant="outline"
-              disabled={busy}
-              onClick={() => void act(() => exportEpisodes([episode.id]))}
-            >
+          {(record.snapshots?.[episode.id] || !missing.length) && (
+            <Button variant="outline" disabled={busy} onClick={() => requestExport([episode.id])}>
               <Download size={15} />
               MP3を書き出す
             </Button>
           )}
         </div>
-        {entitlement && cost(pending) > entitlement.remaining && (
-          <p className="narration-help">
-            一話分の文字枠が足りません。原稿から短い範囲を選ぶと試せます。
-          </p>
-        )}
+        {entitlement &&
+          cost(record.snapshots?.[episode.id] ? segments : pending) > entitlement.remaining && (
+            <p className="narration-help">
+              必要 {cost(record.snapshots?.[episode.id] ? segments : pending).toLocaleString()}文字
+              / 残り {entitlement.remaining.toLocaleString()}文字
+            </p>
+          )}
       </footer>
       <ConfirmDialog
         open={generationRequest !== null}
         onOpenChange={(open) => {
           if (!open) setGenerationRequest(null)
         }}
-        title="原稿を送信して音声を作りますか？"
-        description={`原稿・読み・演技指示をFish Audioへ送信します。モデル：${entitlement?.model ?? ''}。今回：${cost(generationRequest?.segments ?? []).toLocaleString()}文字。残り：${entitlement?.remaining.toLocaleString() ?? '—'}文字。`}
+        title={
+          generationRequest?.whole && (!!record.snapshots?.[episode.id] || segments.some(accepted))
+            ? '一話を再生成して上書きしますか？'
+            : '原稿を送信して音声を作りますか？'
+        }
+        description={
+          '原稿・読み・演技指示をFish Audioへ送信します。' +
+          (generationRequest?.preview
+            ? 'スタイル試聴は文字数消費なし。'
+            : '今回 ' +
+              cost(
+                (generationRequest?.segments ?? []).filter(
+                  (s) => generationRequest?.regenerate || !cached(s),
+                ),
+              ).toLocaleString() +
+              '文字。生成後の残り ' +
+              Math.max(
+                0,
+                (entitlement?.remaining ?? 0) -
+                  cost(
+                    (generationRequest?.segments ?? []).filter(
+                      (s) => generationRequest?.regenerate || !cached(s),
+                    ),
+                  ),
+              ).toLocaleString() +
+              '文字。') +
+          (generationRequest?.whole && (!!record.snapshots?.[episode.id] || segments.some(accepted))
+            ? '全区間の成功後に上書きします。個別指示は引き継ぎます。今の音声を残す場合は先にMP3を保存してください。'
+            : '')
+        }
         confirmLabel="同意して生成"
         destructive={false}
         onConfirm={() => {
           if (!generationRequest) return
           setConsent(true)
           localStorage.setItem('ns-narration-consent', '1')
-          void act(() => service.generate(generationRequest.segments, generationRequest.regenerate))
+          void act(() =>
+            service.generate(generationRequest.segments, generationRequest.regenerate, {
+              whole: generationRequest.whole,
+              preview: generationRequest.preview,
+              retry: generationRequest.retry,
+            }),
+          )
         }}
+      />
+      <ConfirmDialog
+        open={!!confirmation}
+        onOpenChange={(open) => {
+          if (!open) setConfirmation(null)
+        }}
+        title={confirmation?.title ?? ''}
+        description={confirmation?.description}
+        confirmLabel={confirmation?.label}
+        cancelLabel="作業を続ける"
+        destructive={false}
+        onConfirm={() => confirmation?.action()}
       />
     </main>
   )

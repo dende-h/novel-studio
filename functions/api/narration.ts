@@ -148,7 +148,14 @@ export const onRequest: PagesFunction<NarrationEnv> = async (context) => {
     if (new Set(segments.map((s) => s.id)).size !== segments.length)
       return reply({ error: '同じ区間が重複しています。' }, 400)
     const total = segments.reduce((n, s) => n + s.characters, 0)
-    if (total > access.remaining)
+    if (input.preview && (total > 300 || segments.length > 30))
+      return reply({ error: 'スタイル試聴は冒頭の短い範囲で行ってください。' }, 400)
+    if (input.preview && !access.preview?.remaining)
+      return reply(
+        { error: '本日のスタイル試聴回数を使い切りました。生成済みの音声は再生できます。' },
+        409,
+      )
+    if (!input.preview && total > access.remaining)
       return reply(
         {
           error: `残りは${access.remaining.toLocaleString()}文字です。生成範囲を短くしてください。`,
@@ -176,11 +183,23 @@ export const onRequest: PagesFunction<NarrationEnv> = async (context) => {
         ),
         env.DB.prepare(
           'INSERT INTO narration_budgets(user_id,period,quota) VALUES(?,?,?) ON CONFLICT(user_id,period) DO UPDATE SET quota=excluded.quota',
-        ).bind(userId, access.period, access.limit),
+        ).bind(
+          userId,
+          input.preview ? access.preview!.period : access.period,
+          input.preview ? access.preview!.limit : access.limit,
+        ),
         env.DB.prepare(
           'INSERT INTO narration_jobs(id,user_id,work_id,period,request_hash,dispatch_token,created_at) VALUES(?,?,?,?,?,?,?)',
-        ).bind(input.id, userId, input.workId, access.period, requestHash, token, now),
-        ...segments.map((s) =>
+        ).bind(
+          input.id,
+          userId,
+          input.workId,
+          input.preview ? access.preview!.period : access.period,
+          requestHash,
+          token,
+          now,
+        ),
+        ...segments.map((s, index) =>
           env.DB.prepare(
             'INSERT INTO narration_takes(id,job_id,segment_id,fingerprint,characters,input_bytes,model,created_at) VALUES(?,?,?,?,?,?,?,?)',
           ).bind(
@@ -188,7 +207,7 @@ export const onRequest: PagesFunction<NarrationEnv> = async (context) => {
             input.id,
             s.id,
             s.fingerprint,
-            s.characters,
+            input.preview ? (index === 0 ? 1 : 0) : s.characters,
             new TextEncoder().encode(providerText(s)).length,
             access.model,
             now,

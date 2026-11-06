@@ -34,6 +34,8 @@ export class NarrationService {
   }
   private listeners = new Set<() => void>()
   private serial = Promise.resolve()
+  private pendingSaves = 0
+  private saveFailed = false
   private timer: ReturnType<typeof setTimeout> | undefined
   private refreshing = false
   constructor(
@@ -53,7 +55,15 @@ export class NarrationService {
     for (const listener of this.listeners) listener()
   }
   async init() {
-    this.update({ record: await this.repository.get(this.workId) })
+    const record = await this.repository.get(this.workId)
+    // Older versions saved takes but had no explicit candidate map.
+    if (record.candidates === undefined) {
+      record.candidates = {}
+      for (const take of record.takes)
+        if (take.state === 'ready' && record.accepted[take.segmentId] !== take.id)
+          record.candidates[take.segmentId] = take.id
+    }
+    this.update({ record })
     await this.refresh()
   }
   private async api(query: string, init?: RequestInit): Promise<Response> {
@@ -87,16 +97,20 @@ export class NarrationService {
     return response
   }
   private persist(record: NarrationRecord) {
+    this.pendingSaves++
     this.update({ record, saving: true })
-    this.serial = this.serial
-      .then(() => this.repository.save(record))
-      .then(() => this.update({ saving: false }))
-      .catch(() =>
-        this.update({
-          saving: false,
-          error: '端末に保存できませんでした。空き容量を確認してください。',
-        }),
-      )
+    this.serial = this.serial.then(async () => {
+      try {
+        await this.repository.save(record)
+        this.saveFailed = false
+      } catch {
+        this.saveFailed = true
+        this.update({ error: '端末に保存できませんでした。空き容量を確認してください。' })
+      } finally {
+        this.pendingSaves--
+        this.update({ saving: this.pendingSaves > 0 })
+      }
+    })
     return this.serial
   }
   changeSettings(settings: NarrationSettings) {
@@ -115,8 +129,18 @@ export class NarrationService {
         if (take.state === 'missing' && (await this.repository.audio(take.id))) take.state = 'ready'
       }
       const record = this.state.record
-      if (record) await this.persist({ ...record, takes: body.takes, jobs: body.jobs })
-      this.update({ entitlement: body.entitlement, error: '' })
+      if (record) {
+        const merged = [
+          ...record.takes.filter((t) => !body.takes.some((v) => v.id === t.id)),
+          ...body.takes,
+        ]
+        await this.persist({ ...record, takes: merged, jobs: body.jobs })
+        await this.completeOperation()
+      }
+      this.update({
+        entitlement: body.entitlement,
+        error: this.saveFailed ? '端末に保存できませんでした。空き容量を確認してください。' : '',
+      })
       if (body.takes.some((t) => t.state === 'queued' || t.state === 'generating')) this.schedule()
     } catch (error) {
       this.update({ error: error instanceof Error ? error.message : '読み込めませんでした。' })
@@ -129,7 +153,11 @@ export class NarrationService {
     clearTimeout(this.timer)
     this.timer = setTimeout(() => void this.refresh(), delay)
   }
-  async generate(segments: VoiceSegment[], regenerate = false) {
+  async generate(
+    segments: VoiceSegment[],
+    regenerate = false,
+    options: { whole?: boolean; preview?: boolean; retry?: boolean } = {},
+  ) {
     if (this.state.sending || !segments.length) return
     this.update({ sending: true, error: '' })
     const submit = async () => {
@@ -152,20 +180,73 @@ export class NarrationService {
                   ['queued', 'generating', 'ready'].includes(t.state),
               ),
           )
-      if (!pending.length) return
+      if (!pending.length) {
+        if (options.whole && this.state.record) {
+          const ready = segments.map((s) =>
+            this.state
+              .record!.takes.filter(
+                (t) =>
+                  t.segmentId === s.id && t.fingerprint === s.fingerprint && t.state === 'ready',
+              )
+              .at(-1),
+          )
+          if (ready.every(Boolean)) {
+            for (const t of ready) await this.audio(t!.id)
+            await this.persist({
+              ...this.state.record,
+              accepted: {
+                ...this.state.record.accepted,
+                ...Object.fromEntries(ready.map((t) => [t!.segmentId, t!.id])),
+              },
+              snapshots: { ...this.state.record.snapshots, [segments[0]!.episodeId]: segments },
+            })
+          }
+        }
+        return
+      }
+      const id = crypto.randomUUID()
+      const previous = this.state.record?.operation
+      if (this.state.record)
+        await this.persist({
+          ...this.state.record,
+          operation: {
+            segments: options.retry && previous ? previous.segments : segments,
+            jobs: [
+              ...(options.retry && previous ? previous.jobs : []),
+              ...(!regenerate
+                ? (this.state.record?.takes
+                    .filter(
+                      (t) =>
+                        segments.some(
+                          (s) => s.id === t.segmentId && s.fingerprint === t.fingerprint,
+                        ) && t.state === 'ready',
+                    )
+                    .map((t) => t.jobId) ?? [])
+                : []),
+              id,
+            ],
+            whole: !!options.whole,
+            preview: !!options.preview,
+          },
+        })
       const payload = JSON.stringify({
-        id: crypto.randomUUID(),
+        id,
+        preview: !!options.preview,
         workId: this.workId,
         segments: pending,
       })
+      await this.flush()
       await db.set(key, payload)
       try {
         await this.api('', { method: 'POST', body: payload })
         await db.delete(key)
         await this.refresh()
       } catch (error) {
-        if (error instanceof ApiError && error.status >= 400 && error.status < 500)
+        if (error instanceof ApiError && error.status >= 400 && error.status < 500) {
           await db.delete(key)
+          // A rejected request never started a job; let the author correct it.
+          if (this.state.record) await this.persist({ ...this.state.record, operation: previous })
+        }
         throw error
       }
     }
@@ -181,6 +262,106 @@ export class NarrationService {
       this.update({ sending: false })
     }
   }
+
+  async flush() {
+    await this.serial
+    if (this.saveFailed) throw new Error(this.state.error)
+  }
+  async setRecord(patch: Partial<NarrationRecord>) {
+    if (this.state.record) await this.persist({ ...this.state.record, ...patch })
+  }
+  private async completeOperation() {
+    const record = this.state.record,
+      operation = record?.operation
+    if (!record || !operation) return
+    const takes = operation.segments.map((s) =>
+      record.takes
+        .filter(
+          (t) =>
+            operation.jobs.includes(t.jobId) &&
+            t.segmentId === s.id &&
+            t.fingerprint === s.fingerprint &&
+            t.state === 'ready',
+        )
+        .at(-1),
+    )
+    if (takes.some((t) => !t)) return
+    // Fetch every asset before atomically replacing any accepted audio.
+    for (const t of takes) await this.audio(t!.id)
+    const current = this.state.record!
+    if (current.operation !== operation) return
+    const mapping = Object.fromEntries(takes.map((t) => [t!.segmentId, t!.id]))
+    if (operation.preview) {
+      await this.persist({ ...current, operation: undefined })
+    } else if (operation.whole) {
+      const ep = operation.segments[0]!.episodeId
+      await this.persist({
+        ...current,
+        accepted: { ...current.accepted, ...mapping },
+        snapshots: { ...current.snapshots, [ep]: operation.segments },
+        candidates: Object.fromEntries(
+          Object.entries(current.candidates ?? {}).filter(([id]) => !mapping[id]),
+        ),
+        operation: undefined,
+      })
+    } else {
+      await this.persist({
+        ...current,
+        candidates: { ...current.candidates, ...mapping },
+        candidateSegments: {
+          ...current.candidateSegments,
+          ...Object.fromEntries(operation.segments.map((s) => [s.id, s])),
+        },
+        operation: undefined,
+      })
+    }
+  }
+  async adopt(segments: VoiceSegment[], useNew: boolean) {
+    const record = this.state.record
+    if (!record) return
+    const accepted = { ...record.accepted },
+      candidates = { ...record.candidates }
+    const undo = { ...record.accepted }
+    for (const s of segments) {
+      const id = candidates[s.id]
+      if (useNew && id) {
+        await this.audio(id)
+        accepted[s.id] = id
+      }
+      delete candidates[s.id]
+    }
+    const ep = segments[0]?.episodeId
+    const old = ep ? (record.snapshots?.[ep] ?? []) : []
+    const snapshots = { ...record.snapshots }
+    if (ep && useNew && old.length)
+      snapshots[ep] = old.length
+        ? old.map((s) =>
+            segments.some((v) => v.id === s.id) && record.candidateSegments?.[s.id]
+              ? record.candidateSegments[s.id]!
+              : s,
+          )
+        : segments
+    await this.persist({
+      ...this.state.record!,
+      accepted,
+      candidates,
+      undo,
+      snapshots,
+      undoSnapshots: record.snapshots,
+    })
+  }
+  async undoAdoption() {
+    const record = this.state.record
+    if (record?.undo)
+      await this.persist({
+        ...record,
+        accepted: record.undo,
+        snapshots: record.undoSnapshots ?? record.snapshots,
+        undo: undefined,
+        undoSnapshots: undefined,
+      })
+  }
+
   async retryPending() {
     const payload = await new IdbStore('novel-studio').get<string>(
       `narration-pending:${this.owner}:${this.workId}`,
