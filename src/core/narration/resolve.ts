@@ -272,7 +272,13 @@ export function resolveSegments(
             speed: resolved.speed ?? style.speed,
           },
           generation?.model,
-          generation?.voices.find((v) => v.id === part.voiceId)?.version,
+          generation?.voices.find(
+            (v) =>
+              v.id ===
+              (resolved.voiceId ||
+                (settings.mode === 'cast' && speaker ? settings.cast[speaker] : undefined) ||
+                settings.narrator),
+          )?.version,
         ),
       }
     })

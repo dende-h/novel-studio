@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { parseEpisodeBody } from '../parser/parseNotation'
-import { cueIsValid, openingSegments, resolveSegments } from './resolve'
+import { cueIsValid, openingSegments, resolveSegments, segmentFingerprint } from './resolve'
 import { emptyNarration } from './types'
 
 describe('文章選択と読み方', () => {
@@ -56,4 +56,35 @@ describe('文章選択と読み方', () => {
     expect(opening.length).toBeGreaterThan(0)
     expect(opening.at(-1)?.text.endsWith('。')).toBe(true)
   })
+})
+
+it('別の文の声指定が既定声のfingerprintに混ざらない', () => {
+  const episode = { id: 'e', title: '話', blocks: parseEpisodeBody('朝。夜。') }
+  const settings = emptyNarration('w').settings
+  settings.cues = [
+    {
+      id: 'voice',
+      episodeId: 'e',
+      scope: 'range',
+      refs: [{ blockId: 'b1', snapshot: '朝。夜。', start: 2, end: 4 }],
+      voiceId: 'other',
+    },
+  ]
+  const generation = {
+    model: 'drama-3',
+    voices: [
+      { id: 'default', version: '1' },
+      { id: 'other', version: '2' },
+    ],
+  }
+  const segments = resolveSegments(episode, settings, undefined, generation)
+  expect(segments.map((s) => s.voiceId)).toEqual(['default', 'other'])
+  for (const s of segments)
+    expect(s.fingerprint).toBe(
+      segmentFingerprint(
+        s,
+        generation.model,
+        generation.voices.find((v) => v.id === s.voiceId)?.version,
+      ),
+    )
 })

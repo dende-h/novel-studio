@@ -124,3 +124,26 @@ describe('朗読の保存と生成', () => {
     expect(service.getSnapshot().record?.candidates).toEqual({})
   })
 })
+
+it('APIで拒否された要求は未完了ジョブとして残さず、指示を直して再生成できる', async () => {
+  const record = emptyNarration('w')
+  const segments = resolveSegments(
+    { id: 'e', title: '話', blocks: parseEpisodeBody('こんにちは。') },
+    record.settings,
+  )
+  memory.set('narration:local:w', record)
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (_url: string, init?: RequestInit) =>
+      init?.method === 'POST'
+        ? Response.json({ error: '入力を確認してください。' }, { status: 400 })
+        : Response.json({ entitlement: {}, jobs: [], takes: [] }),
+    ),
+  )
+  const service = new NarrationService('w', async () => null)
+  await service.init()
+  await service.generate(segments, true)
+  expect(service.getSnapshot().record?.operation).toBeUndefined()
+  expect(service.getSnapshot().error).toContain('入力を確認')
+  expect(memory.has('narration-pending:local:w')).toBe(false)
+})

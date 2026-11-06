@@ -98,4 +98,21 @@ test('専用画面で複数の指示を保存し、再読込後も同じジョ�
  await page.getByRole('button',{name:'キャンセル',exact:true}).click()
  expect(posts).toBe(2)
 
+ await expect(page.getByRole('dialog')).toBeHidden()
+ const coords=await page.locator('[data-segment]').nth(2).evaluate(el=>{
+  const node=el.firstChild!
+  const a=document.createRange(); a.setStart(node,1);a.setEnd(node,2)
+  const b=document.createRange(); b.setStart(node,4);b.setEnd(node,5)
+  const ar=a.getBoundingClientRect(), br=b.getBoundingClientRect()
+  return {x1:ar.left,y1:ar.top+ar.height/2,x2:br.right,y2:br.top+br.height/2}
+ })
+ await page.mouse.move(coords.x1,coords.y1)
+ await page.mouse.down()
+ await page.mouse.move(coords.x2,coords.y2,{steps:10})
+ await page.mouse.up()
+ await expect(page.locator('.narration-direction blockquote')).toContainText('ただいま')
+ await expect(page.locator('.narration-selection-bar')).toContainText('4文字を選択中')
+ await page.keyboard.press('Escape')
+ await expect(page.getByLabel('朗読スタイル')).toBeVisible()
+
 })

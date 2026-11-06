@@ -242,8 +242,11 @@ export class NarrationService {
         await db.delete(key)
         await this.refresh()
       } catch (error) {
-        if (error instanceof ApiError && error.status >= 400 && error.status < 500)
+        if (error instanceof ApiError && error.status >= 400 && error.status < 500) {
           await db.delete(key)
+          // A rejected request never started a job; let the author correct it.
+          if (this.state.record) await this.persist({ ...this.state.record, operation: previous })
+        }
         throw error
       }
     }
