@@ -18,6 +18,7 @@ export interface NarrationEnv extends ClerkEnv {
   FISH_NARRATION_VOICE_ID?: string
   NARRATION_VOICES?: string
   NARRATION_DAILY_BYTE_LIMIT?: string
+  NARRATION_PREVIEW_LIMIT?: string
   NARRATION_RELEASE?: string
   NARRATION_PAID_ENABLED?: string
   NARRATION_DISPATCH_URL?: string
@@ -83,8 +84,29 @@ export async function entitlement(
   )
     .bind(userId, period)
     .first<{ used: number; reserved: number }>()
+  const previewPeriod = 'preview:' + date.toISOString().slice(0, 10)
+  const previewLimit = Math.max(
+    0,
+    Math.min(
+      100,
+      Number(env.NARRATION_PREVIEW_LIMIT ?? (env.NARRATION_RELEASE === '1' ? 0 : 5)) || 0,
+    ),
+  )
+  const previewBudget = await env.DB.prepare(
+    'SELECT used,reserved FROM narration_budgets WHERE user_id=? AND period=?',
+  )
+    .bind(userId, previewPeriod)
+    .first<{ used: number; reserved: number }>()
   const development = env.NARRATION_RELEASE !== '1'
   return {
+    preview: {
+      limit: previewLimit,
+      remaining: Math.max(
+        0,
+        previewLimit - (previewBudget?.used ?? 0) - (previewBudget?.reserved ?? 0),
+      ),
+      period: previewPeriod,
+    },
     plan,
     label: definition.label,
     model: development ? 's2.1-pro-free' : definition.model,
@@ -118,6 +140,7 @@ export const segmentSchema = z.object({
 export const jobSchema = z.object({
   id: z.string().uuid(),
   workId: z.string().min(1).max(100),
+  preview: z.boolean().optional(),
   segments: z.array(segmentSchema).min(1).max(500),
 })
 export function validateSegments(

@@ -718,3 +718,104 @@
   white-space: nowrap;
   max-width: min(100%, 440px);
 }
+
+/* The manuscript remains prose; only the selected regeneration units are outlined. */
+.narration-paragraphs {
+  padding: 12px 8px 100px;
+  line-height: 2.4;
+}
+.narration-paragraph {
+  display: inline;
+  padding: 0;
+  margin: 0;
+  border: 0;
+  border-radius: 2px;
+}
+.narration-paragraph.is-block-start::before {
+  content: "";
+  display: block;
+  height: 16px;
+}
+.narration-paragraph.is-selected {
+  outline: 1px dashed var(--primary);
+  outline-offset: 3px;
+  background: transparent;
+}
+.narration-paragraph-select {
+  display: inline;
+  width: auto;
+  padding: 0;
+  cursor: text;
+  user-select: text;
+}
+.narration-line-number {
+  display: none;
+}
+.narration-prose {
+  user-select: text;
+}
+.narration-prose mark {
+  color: inherit;
+  background: color-mix(in srgb, var(--primary) 22%, var(--background));
+}
+.narration-paragraph-meta {
+  display: inline;
+  padding: 0;
+  margin-right: 8px;
+}
+.narration-paragraph-meta > span {
+  font-size: 11px;
+}
+.narration-paragraph-meta .narration-cue-preview {
+  display: none;
+}
+.narration-initial-status {
+  display: none;
+}
+.narration-paragraph.is-selected .narration-initial-status {
+  display: inline;
+}
+.narration-compare button[aria-pressed="true"] {
+  background: var(--primary);
+  color: var(--primary-foreground);
+  border-radius: 6px;
+}
+.narration-inspector .narration-player {
+  flex-wrap: wrap;
+  background: var(--muted);
+  border-radius: 8px;
+  padding: 8px;
+}
+.narration-inspector .narration-player audio {
+  width: 100%;
+  flex: 1 1 100%;
+}
+.narration-inspector .narration-player > button {
+  display: none;
+}
+.narration-inline-check {
+  display: flex !important;
+  align-items: center;
+  gap: 8px;
+  margin: 10px 0;
+}
+.narration-section-head button {
+  font-size: 12px;
+  white-space: nowrap;
+  padding: 5px;
+}
+
+.narration-paragraph.is-selected {
+  outline: none;
+  background: transparent;
+}
+.narration-paragraph.is-selected .narration-paragraph-select {
+  outline: 1px dashed var(--primary);
+  outline-offset: 3px;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+.narration-paragraph.is-selected::before {
+  outline: none;
+  background: transparent;
+}

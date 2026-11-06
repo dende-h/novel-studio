@@ -10,7 +10,7 @@ export type NarrationPlan = keyof typeof NARRATION_PLANS
 export const STYLES = [
   {
     id: 'none',
-    label: '指示なし',
+    label: '声におまかせ',
     description: '声そのものの自然な読み方で。',
     direction: '',
     speed: 1,
@@ -58,7 +58,7 @@ export interface VoiceCue {
   id: string
   episodeId: string
   scope: 'episode' | 'scene' | 'range'
-  refs: { blockId: string; snapshot: string }[]
+  refs: { blockId: string; snapshot: string; start?: number; end?: number }[]
   direction?: string
   voiceId?: string
   reading?: string
@@ -68,6 +68,7 @@ export interface VoiceCue {
 export interface NarrationSettings {
   version: 1
   workId: string
+  episodes?: Record<string, { style: string; narrator: string }>
   style: string
   narrator: string
   mode: 'solo' | 'cast'
@@ -105,6 +106,13 @@ export interface NarrationRecord {
   takes: VoiceTake[]
   accepted: Record<string, string>
   jobs: string[]
+  candidates?: Record<string, string>
+  candidateSegments?: Record<string, VoiceSegment>
+  undoSnapshots?: Record<string, VoiceSegment[]>
+  dismissed?: string[]
+  snapshots?: Record<string, VoiceSegment[]>
+  undo?: Record<string, string>
+  operation?: { segments: VoiceSegment[]; jobs: string[]; whole: boolean; preview: boolean }
 }
 export interface Entitlement {
   plan: NarrationPlan
@@ -119,6 +127,7 @@ export interface Entitlement {
   voices: VoiceProfile[]
   enabled: boolean
   development: boolean
+  preview?: { remaining: number; limit: number; period: string }
 }
 export function emptyNarration(workId: string): NarrationRecord {
   return {

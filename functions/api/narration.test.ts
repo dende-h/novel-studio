@@ -219,3 +219,41 @@ it('年額会員にもJST月次枠を付け、予約は元の月に残す', asyn
   })
   real.close()
 })
+
+it('スタイル試聴は文字枠を消費せず、日次回数を原子的に予約する', async () => {
+  const { real, env } = setup()
+  env.NARRATION_PREVIEW_LIMIT = '1'
+  const responses = await Promise.all([
+    call(env, { ...payload(), preview: true }),
+    call(env, { ...payload(), preview: true }),
+  ])
+  expect(responses.map((r) => r.status).sort()).toEqual([202, 409])
+  expect(await entitlement(env, 'user')).toMatchObject({
+    used: 0,
+    reserved: 0,
+    remaining: 500,
+    preview: { remaining: 0, limit: 1 },
+  })
+  real.exec("UPDATE narration_takes SET state='ready'")
+  expect(await entitlement(env, 'user')).toMatchObject({
+    used: 0,
+    reserved: 0,
+    remaining: 500,
+    preview: { remaining: 0 },
+  })
+  real.close()
+})
+it('試聴に長文を送って通常枠を迂回できない', async () => {
+  const { real, env } = setup()
+  const body = {
+    ...payload(),
+    preview: true,
+    segments: resolveSegments(
+      { id: 'e', title: '話', blocks: parseEpisodeBody('あ'.repeat(301)) },
+      emptyNarration('w').settings,
+    ),
+  }
+  expect((await call(env, body)).status).toBe(400)
+  expect(real.rows('SELECT * FROM narration_jobs')).toHaveLength(0)
+  real.close()
+})
