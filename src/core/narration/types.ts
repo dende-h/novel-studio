@@ -61,6 +61,7 @@ export interface VoiceCue {
   refs: { blockId: string; snapshot: string; start?: number; end?: number }[]
   direction?: string
   voiceId?: string
+  style?: string
   reading?: string
   speed?: number
   pauseMs?: number
@@ -68,7 +69,7 @@ export interface VoiceCue {
 export interface NarrationSettings {
   version: 1
   workId: string
-  episodes?: Record<string, { style: string; narrator: string }>
+  episodes?: Record<string, { style: string; narrator: string; mode?: 'solo' | 'cast' }>
   style: string
   narrator: string
   mode: 'solo' | 'cast'

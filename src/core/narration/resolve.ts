@@ -135,6 +135,7 @@ export function resolveSegments(
   staging?: Staging,
   generation?: { model: string; voices: { id: string; version: string }[]; legacy?: boolean },
 ): VoiceSegment[] {
+  const explicitMode = settings.episodes?.[episode.id]?.mode
   settings = { ...settings, ...settings.episodes?.[episode.id] }
   const style = STYLES.find((s) => s.id === settings.style) ?? STYLES[0]
   return episode.blocks.flatMap((block) => {
@@ -190,6 +191,15 @@ export function resolveSegments(
           Object.fromEntries(Object.entries(c).filter(([, v]) => v !== undefined && v !== '')),
         ),
       ) as Partial<VoiceCue>
+      const localStyle = STYLES.find((s) => s.id === resolved.style) ?? style
+      const voiceId =
+        explicitMode === 'solo'
+          ? settings.narrator
+          : resolved.voiceId ||
+            (explicitMode === undefined && settings.mode === 'cast' && speaker
+              ? settings.cast[speaker]
+              : undefined) ||
+            settings.narrator
       let text = spokenText(inlines, settings.dictionary)
       const readings = local
         .filter((c) => c.reading)
@@ -234,7 +244,7 @@ export function resolveSegments(
             original.slice(Math.max(start, ref.start), Math.min(offset, ref.end)).slice(0, 40) +
             '」の部分を' +
             directionCue!.direction
-          : (resolved.direction ?? style.direction)
+          : (resolved.direction ?? localStyle.direction)
 
       const part =
         pieces.length === 1
@@ -250,35 +260,22 @@ export function resolveSegments(
               characters: countCharacters(plainText(inlines)),
               pauseMs: index === pieces.length - 1 ? style.pause : 0,
             }
-      return {
+      const result = {
         ...part,
         text,
         direction,
-        voiceId:
-          resolved.voiceId ||
-          (settings.mode === 'cast' && speaker ? settings.cast[speaker] : undefined) ||
-          settings.narrator,
-        speed: resolved.speed ?? style.speed,
-        pauseMs: resolved.pauseMs ?? part.pauseMs,
+        voiceId,
+        speed: resolved.speed ?? localStyle.speed,
+        pauseMs:
+          resolved.pauseMs ??
+          (resolved.style ? (index === pieces.length - 1 ? localStyle.pause : 0) : part.pauseMs),
+      }
+      return {
+        ...result,
         fingerprint: segmentFingerprint(
-          {
-            ...part,
-            text,
-            direction,
-            voiceId:
-              resolved.voiceId ||
-              (settings.mode === 'cast' && speaker ? settings.cast[speaker] : undefined) ||
-              settings.narrator,
-            speed: resolved.speed ?? style.speed,
-          },
+          result,
           generation?.model,
-          generation?.voices.find(
-            (v) =>
-              v.id ===
-              (resolved.voiceId ||
-                (settings.mode === 'cast' && speaker ? settings.cast[speaker] : undefined) ||
-                settings.narrator),
-          )?.version,
+          generation?.voices.find((v) => v.id === voiceId)?.version,
         ),
       }
     })

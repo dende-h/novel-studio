@@ -88,3 +88,43 @@ it('別の文の声指定が既定声のfingerprintに混ざらない', () => {
       ),
     )
 })
+
+it('明示したモードは話別。複数の声は範囲指定だけを使い、ひとり朗読でも指定を保持する', () => {
+  const episode = { id: 'e', title: '話', blocks: parseEpisodeBody('朝。夜。') }
+  const settings = emptyNarration('w').settings
+  settings.mode = 'cast'
+  settings.cast = { speaker: 'legacy-voice' }
+  settings.episodes = { e: { style: 'personal', narrator: 'default', mode: 'cast' } }
+  settings.cues = [
+    {
+      id: 'voice',
+      episodeId: 'e',
+      scope: 'range',
+      refs: [{ blockId: 'b1', snapshot: '朝。夜。', start: 2, end: 4 }],
+      voiceId: 'other',
+      style: 'quiet',
+    },
+  ]
+  const staging = {
+    workId: 'w',
+    updatedAt: 1,
+    episodeId: 'e',
+    cues: [{ blockId: 'b1', speaker: 'speaker' }],
+  } satisfies NonNullable<Parameters<typeof resolveSegments>[2]>
+  const multi = resolveSegments(episode, settings, staging)
+  expect(multi.map((s) => s.voiceId)).toEqual(['default', 'other'])
+  expect(multi[1]?.direction).toBe('静かに落ち着いて、言葉の余韻を大切に')
+  expect(multi[1]?.speed).toBe(0.95)
+  expect(multi[1]?.pauseMs).toBe(700)
+  settings.episodes.e!.mode = 'solo'
+  expect(resolveSegments(episode, settings, staging).map((s) => s.voiceId)).toEqual([
+    'default',
+    'default',
+  ])
+  expect(settings.cues[0]?.voiceId).toBe('other')
+  settings.episodes.e!.mode = 'cast'
+  expect(resolveSegments(episode, settings, staging)).toEqual(multi)
+  // Old saved casting remains effective until the user selects the new mode.
+  delete settings.episodes.e!.mode
+  expect(resolveSegments(episode, settings, staging)[0]?.voiceId).toBe('legacy-voice')
+})
