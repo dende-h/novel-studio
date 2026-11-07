@@ -1710,7 +1710,8 @@ function NarrationPage({
                 fullPlayback?.timeline.findIndex(
                   (t) => fullPosition >= t.start && fullPosition < t.end,
                 ) ?? -1
-              const part = fullPlayback?.segments[index]
+              const part =
+                fullPlayback?.segments[index < 0 ? fullPlayback.segments.length - 1 : index]
               if (part) {
                 select(part.id, false, true)
                 setMobilePanel('inspector')
