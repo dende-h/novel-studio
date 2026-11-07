@@ -1,10 +1,11 @@
 // @vitest-environment node
 import { readFileSync } from 'node:fs'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { providerText } from '../../src/core/narration/provider'
 import { resolveSegments } from '../../src/core/narration/resolve'
 import { emptyNarration } from '../../src/core/narration/types'
 import { parseEpisodeBody } from '../../src/core/parser/parseNotation'
-import { entitlement, type NarrationEnv } from './_lib/narration'
+import { entitlement, jobSchema, type NarrationEnv, validateSegments } from './_lib/narration'
 import { makeRealD1 } from './board/real-d1'
 import { onRequest } from './narration'
 
@@ -255,5 +256,23 @@ it('試聴に長文を送って通常枠を迂回できない', async () => {
   }
   expect((await call(env, body)).status).toBe(400)
   expect(real.rows('SELECT * FROM narration_jobs')).toHaveLength(0)
+  real.close()
+})
+
+it('既定の読点補正はAPIでも保持し、制御タグを利用者の文字枠に数えない', async () => {
+  const { real, env } = setup()
+  const body = {
+    ...payload(),
+    segments: resolveSegments(
+      { id: 'e', title: '話', blocks: parseEpisodeBody('朝、風が吹いた。') },
+      emptyNarration('w').settings,
+    ),
+  }
+  const parsed = jobSchema.parse(body)
+  const validated = validateSegments(parsed.segments, env, 's2.1-pro-free')
+  expect(validated[0]?.commaPause).toBe('short')
+  expect(providerText(validated[0]!)).toBe('朝、[short pause]風が吹いた。')
+  expect((await call(env, body)).status).toBe(202)
+  expect(await entitlement(env, 'user')).toMatchObject({ reserved: 8, remaining: 492 })
   real.close()
 })

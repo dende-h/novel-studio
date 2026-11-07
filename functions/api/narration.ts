@@ -1,6 +1,7 @@
 /// <reference types="@cloudflare/workers-types" />
 
 import { mp3Frames } from '../../src/core/narration/mp3'
+import { providerText } from '../../src/core/narration/provider'
 import type { VoiceSegment } from '../../src/core/narration/types'
 import { verifyUserId } from './_lib/auth'
 import { decryptPart, encryptPart, importKey, sha256Hex } from './_lib/crypto'
@@ -234,9 +235,6 @@ export const onRequest: PagesFunction<NarrationEnv> = async (context) => {
       400,
     )
   }
-}
-function providerText(segment: VoiceSegment) {
-  return segment.direction ? `[${segment.direction}]${segment.text}` : segment.text
 }
 async function runNext(env: NarrationEnv, job: Job): Promise<Response> {
   await env.DB.prepare(

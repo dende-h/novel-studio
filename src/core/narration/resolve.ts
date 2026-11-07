@@ -103,6 +103,7 @@ export function segmentFingerprint(
       'mp3-44100-128',
       model,
       voiceVersion,
+      ...(segment.commaPause ? [segment.commaPause] : []),
     ]),
   )
 }
@@ -262,6 +263,9 @@ export function resolveSegments(
             }
       const result = {
         ...part,
+        ...(text.includes('、') && !direction.trim() && !generation?.legacy
+          ? { commaPause: 'short' as const }
+          : {}),
         text,
         direction,
         voiceId,

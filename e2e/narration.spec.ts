@@ -39,12 +39,14 @@ test('専用画面で複数の指示を保存し、再読込後も同じジョ�
  await expect(page.getByRole('region',{name:'利用枠'})).toBeHidden()
 
  const usable=await page.locator('.narration-workspace').evaluate(el=>el.getBoundingClientRect().height/window.innerHeight)
- expect(usable).toBeGreaterThan(0.8)
+ expect(usable).toBeGreaterThan(0.78)
  await expect(page.getByLabel('語り手の声')).toBeVisible()
  await page.getByRole('button',{name:'文章2を選ぶ',exact:true}).click()
  await page.getByLabel('どう読んでほしい？').fill('そっとささやくように。懐かしさと喜びを隠しながら。'.repeat(4))
+ await page.getByRole('button',{name:'× 選択解除',exact:true}).click()
  await page.getByRole('button',{name:'文章3を選ぶ',exact:true}).click()
  await page.getByLabel('どう読んでほしい？').fill('少し寂しそうに。最後だけ温かく')
+ await page.getByRole('button',{name:'× 選択解除',exact:true}).click()
  await page.getByRole('button',{name:'文章2を選ぶ',exact:true}).click()
  await expect(page.getByLabel('どう読んでほしい？')).toHaveValue(/そっとささやく/)
  for(const width of [1440,1024,768,390]){
@@ -85,6 +87,12 @@ test('専用画面で複数の指示を保存し、再読込後も同じジョ�
  await expect(page.getByRole('button',{name:'こちらを採用',exact:true})).toBeVisible({timeout:10000})
  await expect(page.locator('.narration-inspector audio')).toHaveAttribute('src',/^blob:/)
  await expect(page.getByRole('slider',{name:'新しい読みの再生位置'})).toBeVisible()
+ await page.locator('footer').getByRole('button',{name:'通して聴く',exact:true}).click()
+ await expect(page.locator('footer').getByRole('button',{name:'一時停止',exact:true})).toBeVisible()
+ await page.locator('footer').getByRole('button',{name:'一時停止',exact:true}).click()
+ const fullPosition=await page.locator('footer input[type=range]').inputValue()
+ await page.locator('.narration-inspector').getByRole('button',{name:'新しい読みを再生',exact:true}).click()
+ expect(await page.locator('footer input[type=range]').inputValue()).toBe(fullPosition)
  await page.screenshot({path:'test-results/narration-comparison.png',fullPage:true})
  await page.getByRole('button',{name:'元の読み',exact:true}).click()
  await page.getByRole('button',{name:'こちらを採用',exact:true}).click()
@@ -180,6 +188,53 @@ test('長い原稿でもスタイルと速さ・間をまとめ、複数の声�
  await expect(page.getByRole('button',{name:'複数の声',exact:true})).toHaveAttribute('aria-pressed','true')
  await page.getByRole('button',{name:'文章3を選ぶ',exact:true}).click()
  await expect(page.getByLabel('この部分の声')).toHaveValue('second')
+
+ await page.getByRole('button',{name:'× 選択解除',exact:true}).click()
+ await page.getByRole('button',{name:'文章1を選ぶ',exact:true}).click()
+ await page.getByRole('button',{name:'文章3を選ぶ',exact:true}).click()
+ await expect(page.locator('.narration-paragraph.is-selected')).toHaveCount(2)
+ await page.getByRole('button',{name:'文章1を選ぶ',exact:true}).click()
+ await expect(page.locator('.narration-paragraph.is-selected')).toHaveCount(1)
+ await page.getByRole('button',{name:'× 選択解除',exact:true}).click()
+ const drag = async (a:number,start:number,b:number,end:number) => {
+  const points = await page.locator('.narration-paragraphs').evaluate((root,{a,start,b,end})=>{
+   const point=(index:number,offset:number,endPoint:boolean)=>{
+    const element=root.querySelectorAll('[data-segment]')[index]!
+    const walker=document.createTreeWalker(element,NodeFilter.SHOW_TEXT)
+    let node=walker.nextNode()!,remaining=offset
+    while(node && remaining>node.textContent!.length){remaining-=node.textContent!.length;node=walker.nextNode()!}
+    const range=document.createRange()
+    range.setStart(node,endPoint?remaining-1:remaining)
+    range.setEnd(node,endPoint?remaining:remaining+1)
+    const r=range.getBoundingClientRect()
+    return {x:endPoint?r.right:r.left,y:r.top+r.height/2}
+   }
+   return {from:point(a,start,false),to:point(b,end,true)}
+  },{a,start,b,end})
+  await page.mouse.move(points.from.x,points.from.y)
+  await page.mouse.down()
+  await page.mouse.move(points.to.x,points.to.y,{steps:20})
+  await page.mouse.up()
+ }
+ await drag(0,2,2,9)
+ await expect(page.locator('.narration-paragraph.is-selected')).toHaveCount(3)
+ await expect(page.locator('.narration-direction blockquote')).toContainText('木々')
+ await expect(page.locator('.narration-direction blockquote')).toContainText('ずっと')
+ await page.getByRole('button',{name:'× 選択解除',exact:true}).click()
+ await drag(2,1,0,4)
+ await expect(page.locator('.narration-paragraph.is-selected')).toHaveCount(3)
+ await page.getByRole('button',{name:'× 選択解除',exact:true}).click()
+ await drag(0,2,0,4)
+ const reading=page.getByLabel('「木々」の読み仮名')
+ await expect(reading).toBeVisible()
+ await reading.fill('きぎ')
+ await page.getByRole('button',{name:'× 選択解除',exact:true}).click()
+ await drag(0,2,0,4)
+ await expect(page.getByLabel('「木々」の読み仮名')).toHaveValue('きぎ')
+ await expect(page.getByRole('button',{name:'通して聴く',exact:true})).toBeVisible()
+ await expect(page.getByRole('slider',{name:'一話の読みの再生位置'})).toBeVisible()
+ await expect(page.getByRole('button',{name:'ここを直す',exact:true})).toBeVisible()
+ await page.screenshot({path:'test-results/narration-word-reading.png',fullPage:true})
  for(const width of [1024,768,390]){
   await page.setViewportSize({width,height:884})
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true)

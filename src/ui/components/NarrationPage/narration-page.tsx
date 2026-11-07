@@ -1,4 +1,4 @@
-import { ArrowLeft, Download, Headphones, Play } from 'lucide-react'
+import { ArrowLeft, Download, Headphones } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import type { Staging } from '@/core/game'
 import { narrationFilename } from '@/core/narration/mp3'
@@ -114,6 +114,23 @@ function NarrationPage({
   } | null>(null)
   const [position, setPosition] = useState(0)
   const audio = useRef<HTMLAudioElement>(null)
+  const fullAudio = useRef<HTMLAudioElement>(null)
+  const [fullPlayback, setFullPlayback] = useState<typeof playing>(null)
+  const [fullPosition, setFullPosition] = useState(0)
+  const [activePlayer, setActivePlayer] = useState<'full' | 'detail'>('full')
+  const acceptedKey = JSON.stringify(record?.accepted ?? {})
+  // biome-ignore lint/correctness/useExhaustiveDependencies: Only adopted audio changes invalidate the full reading, not polling or draft edits.
+  useEffect(() => {
+    setFullPlayback(null)
+  }, [acceptedKey])
+
+  useEffect(
+    () => () => {
+      if (fullPlayback) URL.revokeObjectURL(fullPlayback.url)
+    },
+    [fullPlayback],
+  )
+
   const inspector = useRef<HTMLElement>(null)
   useEffect(() => {
     const dismiss = (event: Event) => {
@@ -180,6 +197,7 @@ function NarrationPage({
       .then((built) => {
         if (canceled) return
         audio.current?.pause()
+        fullAudio.current?.pause()
         setPosition(0)
         setPlaying({
           url: URL.createObjectURL(new Blob([built.data], { type: 'audio/mpeg' })),
@@ -431,23 +449,28 @@ function NarrationPage({
     patchSettings({ cues: [...settings.cues.filter((c) => c.id !== cue.id), next] })
   }
   const clearSelection = () => {
+    window.getSelection()?.removeAllRanges()
     setSelection([])
     setOffsets({})
     setScope('episode')
   }
-  const select = (id: string, extend = false) => {
+  const select = (id: string, extend = false, only = false) => {
     audio.current?.pause()
-    if (selection.length === 1 && selection[0] === id && !extend) {
-      clearSelection()
-      return
-    }
-    if (extend && selection.length) {
-      const a = segments.findIndex((s) => s.id === selection[0]),
-        b = segments.findIndex((s) => s.id === id)
-      setSelection(segments.slice(Math.min(a, b), Math.max(a, b) + 1).map((s) => s.id))
-    } else setSelection([id])
+    fullAudio.current?.pause()
+    window.getSelection()?.removeAllRanges()
+    let next: string[]
+    if (only) next = [id]
+    else if (extend && selection.length) {
+      const a = segments.findIndex((s) => s.id === selection[0])
+      const b = segments.findIndex((s) => s.id === id)
+      next = segments.slice(Math.min(a, b), Math.max(a, b) + 1).map((s) => s.id)
+    } else next = selection.includes(id) ? selection.filter((v) => v !== id) : [...selection, id]
+    next.sort(
+      (a, b) => segments.findIndex((s) => s.id === a) - segments.findIndex((s) => s.id === b),
+    )
+    setSelection(next)
     setOffsets({})
-    setScope('range')
+    setScope(next.length ? 'range' : 'episode')
   }
   const captureSelection = () => {
     const native = window.getSelection()
@@ -482,6 +505,8 @@ function NarrationPage({
     }
     if (ids.length) {
       dragged.current = true
+      native.removeAllRanges()
+      fullAudio.current?.pause()
       audio.current?.pause()
       setSelection(ids)
       setOffsets(next)
@@ -535,6 +560,20 @@ function NarrationPage({
             : '採用中の読み',
     })
     setPosition(from)
+  }
+  const loadFullPlayback = async () => {
+    audio.current?.pause()
+    const items = record.snapshots?.[episode.id] ?? segments
+    const takes = items.map(accepted)
+    if (!items.length || takes.some((t) => !t)) return
+    const built = await assembleNarration(items, takes as VoiceTake[], service)
+    setFullPlayback({
+      url: URL.createObjectURL(new Blob([built.data], { type: 'audio/mpeg' })),
+      timeline: built.timeline,
+      segments: items,
+      label: '一話の読み',
+    })
+    setActivePlayer('full')
   }
   const audition = async (variant: 'accepted' | 'candidate') => {
     const first = segments.findIndex((s) => s.id === targets[0]?.id),
@@ -601,22 +640,11 @@ function NarrationPage({
         label={playing.label}
         position={position}
         onPosition={setPosition}
+        onStart={() => {
+          fullAudio.current?.pause()
+          setActivePlayer('detail')
+        }}
       />
-      {playing.label === '一話の朗読' && (
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => {
-            const segment = playing.segments[currentIndex]
-            if (segment) {
-              audio.current?.pause()
-              select(segment.id)
-            }
-          }}
-        >
-          ここを直す
-        </Button>
-      )}
     </div>
   )
   return (
@@ -752,6 +780,8 @@ function NarrationPage({
                   setSelection([])
                   setOffsets({})
                   setPlaying(null)
+                  setFullPlayback(null)
+                  setFullPosition(0)
                   setScope('episode')
                   window.history.replaceState(
                     null,
@@ -799,17 +829,46 @@ function NarrationPage({
           <div
             ref={manuscript}
             className="narration-paragraphs"
+            onPointerDown={() => {
+              dragged.current = false
+            }}
             onPointerUp={captureSelection}
             onClick={(e) => {
-              if (e.target === e.currentTarget) clearSelection()
+              if (dragged.current) {
+                dragged.current = false
+                return
+              }
+              if (!(e.target as HTMLElement).closest('[data-selectable]')) clearSelection()
             }}
             role="presentation"
           >
             {segments.map((segment, i) => {
               const take = accepted(segment),
                 candidate = latest(segment),
-                instructions = cuesForBlock(settings, episode, segment.blockId)
-              const isCurrent = playing?.segments[currentIndex]?.id === segment.id
+                instructions = cuesForBlock(settings, episode, segment.blockId).filter((c) => {
+                  const start = segments
+                    .slice(0, i)
+                    .filter((v) => v.blockId === segment.blockId)
+                    .reduce((n, v) => n + plainText(v.source.inlines).length, 0)
+                  return (
+                    c.scope === 'episode' ||
+                    c.refs.some(
+                      (r) =>
+                        r.blockId === segment.blockId &&
+                        (r.start === undefined ||
+                          (r.start < start + plainText(segment.source.inlines).length &&
+                            (r.end ?? Infinity) > start)),
+                    )
+                  )
+                })
+              const isCurrent =
+                (activePlayer === 'full'
+                  ? fullPlayback?.segments[
+                      fullPlayback.timeline.findIndex(
+                        (t) => fullPosition >= t.start && fullPosition < t.end,
+                      )
+                    ]?.id
+                  : playing?.segments[currentIndex]?.id) === segment.id
               const active = scope !== 'episode' && selection.includes(segment.id)
               const lastAttempt = record.takes.filter((t) => t.segmentId === segment.id).at(-1)
               const status = running.some((t) => t.segmentId === segment.id)
@@ -839,17 +898,23 @@ function NarrationPage({
                   {staging?.cues.some((c) => c.blockId === segment.blockId && c.sceneBreak) && (
                     <div className="narration-scene">場面の切れ目</div>
                   )}
-                  <button
-                    type="button"
+                  {/* biome-ignore lint/a11y/useSemanticElements: Native buttons trap cross-paragraph text selection; this selectable span retains keyboard activation and button semantics. */}
+                  <span
+                    role="button"
+                    tabIndex={0}
+                    data-selectable
                     className="narration-paragraph-select"
                     aria-pressed={active}
                     aria-label={`文章${i + 1}を選ぶ`}
                     onClick={(e) => {
-                      if (dragged.current) {
-                        dragged.current = false
-                        return
-                      }
+                      if (dragged.current) return
                       select(segment.id, e.shiftKey)
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault()
+                        select(segment.id, e.shiftKey)
+                      }
                     }}
                   >
                     <span className="narration-line-number">{String(i + 1).padStart(2, '0')}</span>
@@ -874,7 +939,7 @@ function NarrationPage({
                         plainText(segment.source.inlines)
                       )}
                     </span>
-                  </button>
+                  </span>
                   <div className="narration-paragraph-meta">
                     <span
                       className={
@@ -1180,6 +1245,89 @@ function NarrationPage({
                 ))}
               </div>
             </details>
+            {scope !== 'episode' && (
+              <details
+                className="narration-reading"
+                key={JSON.stringify(selectedRefs)}
+                open={Object.keys(offsets).length > 0 || undefined}
+              >
+                <summary>読み方の修正</summary>
+                {selectedRefs.map((ref, index) => {
+                  const surface = ref.snapshot.slice(ref.start, ref.end)
+                  const existing = settings.cues.findLast(
+                    (c) =>
+                      c.episodeId === episode.id &&
+                      c.scope === 'range' &&
+                      c.refs.length === 1 &&
+                      JSON.stringify(c.refs[0]) === JSON.stringify(ref),
+                  )
+                  return (
+                    <label key={targets[index]?.id}>
+                      <span className="narration-reading-source">「{surface}」の読み仮名</span>
+                      <input
+                        value={existing?.reading ?? ''}
+                        maxLength={3000}
+                        placeholder="ひらがな・カタカナで入力"
+                        onChange={(e) => {
+                          const reading = e.target.value
+                          const next: VoiceCue = {
+                            ...existing,
+                            id: existing?.id ?? crypto.randomUUID(),
+                            episodeId: episode.id,
+                            scope: 'range',
+                            refs: [ref],
+                            reading: reading || undefined,
+                          }
+                          patchSettings({
+                            cues: [...settings.cues.filter((c) => c.id !== next.id), next],
+                            dictionary: commonReading
+                              ? [
+                                  ...settings.dictionary.filter((d) => d.surface !== surface),
+                                  ...(reading
+                                    ? [{ id: crypto.randomUUID(), surface, reading }]
+                                    : []),
+                                ]
+                              : settings.dictionary,
+                          })
+                        }}
+                      />
+                    </label>
+                  )
+                })}
+                <label className="narration-inline-check">
+                  <input
+                    type="checkbox"
+                    checked={commonReading}
+                    onChange={(e) => {
+                      setCommonReading(e.target.checked)
+                      const entries = selectedRefs.map((ref) => {
+                        const c = settings.cues.findLast(
+                          (c) =>
+                            c.episodeId === episode.id &&
+                            c.scope === 'range' &&
+                            c.refs.length === 1 &&
+                            JSON.stringify(c.refs[0]) === JSON.stringify(ref),
+                        )
+                        return {
+                          id: crypto.randomUUID(),
+                          surface: ref.snapshot.slice(ref.start, ref.end),
+                          reading: c?.reading ?? '',
+                        }
+                      })
+                      patchSettings({
+                        dictionary: [
+                          ...settings.dictionary.filter(
+                            (d) => !entries.some((v) => v.reading && v.surface === d.surface),
+                          ),
+                          ...(e.target.checked ? entries.filter((v) => v.reading) : []),
+                        ],
+                      })
+                    }}
+                  />
+                  この作品の同じ表記にも使う
+                </label>
+              </details>
+            )}
             <div className="narration-trial">
               {scope !== 'episode' && (
                 <Button
@@ -1320,62 +1468,6 @@ function NarrationPage({
                 </p>
               )}
             </div>
-            {scope !== 'episode' && (
-              <details>
-                <summary>読み方を直す</summary>
-                {targets.length === 1 && (
-                  <label>
-                    選択した言葉の読み方
-                    <textarea
-                      rows={3}
-                      value={matchingCue?.reading ?? ''}
-                      maxLength={3000}
-                      placeholder={selectedText}
-                      onChange={(e) => {
-                        const reading = e.target.value
-                        const next = { ...cue, reading: reading || undefined }
-                        patchSettings({
-                          cues: [...settings.cues.filter((c) => c.id !== cue.id), next],
-                          dictionary: commonReading
-                            ? [
-                                ...settings.dictionary.filter((d) => d.surface !== selectedText),
-                                ...(reading
-                                  ? [{ id: crypto.randomUUID(), surface: selectedText, reading }]
-                                  : []),
-                              ]
-                            : settings.dictionary,
-                        })
-                      }}
-                    />
-                  </label>
-                )}
-                {targets.length === 1 && (
-                  <label className="narration-inline-check">
-                    <input
-                      type="checkbox"
-                      checked={commonReading}
-                      onChange={(e) => {
-                        setCommonReading(e.target.checked)
-                        if (matchingCue?.reading)
-                          patchSettings({
-                            dictionary: e.target.checked
-                              ? [
-                                  ...settings.dictionary.filter((d) => d.surface !== selectedText),
-                                  {
-                                    id: crypto.randomUUID(),
-                                    surface: selectedText,
-                                    reading: matchingCue.reading,
-                                  },
-                                ]
-                              : settings.dictionary.filter((d) => d.surface !== selectedText),
-                          })
-                      }}
-                    />
-                    この作品の同じ表記にも使う
-                  </label>
-                )}
-              </details>
-            )}
           </section>
           {record.takes.some(
             (t) =>
@@ -1385,6 +1477,7 @@ function NarrationPage({
           ) && (
             <details>
               <summary>以前の生成音声</summary>
+              {playing?.label === '以前の音声' && player}
               {record.takes
                 .filter(
                   (t) =>
@@ -1589,31 +1682,63 @@ function NarrationPage({
             ))}
           </div>
         )}
-        {playing?.label === '一話の朗読' && player}
-        <div className="narration-actions">
-          <div>
-            <strong>
-              {pending.length
-                ? `未生成・変更あり ${pending.length}区間`
-                : running.length
-                  ? '音声を生成中'
+        <div className="narration-player narration-full-player">
+          <NarrationPlayer
+            audioRef={fullAudio}
+            url={fullPlayback?.url}
+            label="一話の読み"
+            position={fullPosition}
+            onPosition={setFullPosition}
+            transport
+            disabled={
+              busy ||
+              !(record.snapshots?.[episode.id] ?? segments).length ||
+              !(record.snapshots?.[episode.id] ?? segments).every(accepted)
+            }
+            onRequestPlay={() => void act(loadFullPlayback)}
+            onStart={() => {
+              audio.current?.pause()
+              setActivePlayer('full')
+            }}
+          />
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={!fullPlayback}
+            onClick={() => {
+              const index =
+                fullPlayback?.timeline.findIndex(
+                  (t) => fullPosition >= t.start && fullPosition < t.end,
+                ) ?? -1
+              const part = fullPlayback?.segments[index]
+              if (part) {
+                select(part.id, false, true)
+                setMobilePanel('inspector')
+              }
+            }}
+          >
+            ここを直す
+          </Button>
+        </div>
+        <div className="narration-footer-status">
+          <span role="status">
+            {running.length
+              ? '音声を生成中'
+              : targets.some(latest)
+                ? '修正候補を比較できます'
+                : pending.length
+                  ? '未生成・変更あり ' + pending.length + '区間'
                   : missing.length || changed.length
                     ? '試聴して読みを採用'
                     : '書き出せます'}
-            </strong>
-          </div>
-          {playing?.label !== '一話の朗読' && (
-            <Button
-              variant="outline"
-              disabled={busy || !(record.snapshots?.[episode.id] ?? segments).every(accepted)}
-              onClick={() =>
-                void act(() => play(record.snapshots?.[episode.id] ?? segments, 'accepted'))
-              }
-            >
-              <Play size={15} />
-              通して聴く
-            </Button>
-          )}
+          </span>
+          <span>
+            {entitlement && (
+              <>
+                使用 {entitlement.used.toLocaleString()} / {entitlement.limit.toLocaleString()}文字
+              </>
+            )}
+          </span>
         </div>
       </footer>
       <ConfirmDialog
