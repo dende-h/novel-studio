@@ -88,6 +88,7 @@ export interface VoiceSegment {
   voiceId: string
   speed: number
   pauseMs: number
+  commaPause?: 'short'
   characters: number
   fingerprint: string
 }

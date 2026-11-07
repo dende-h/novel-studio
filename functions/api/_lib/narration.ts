@@ -136,6 +136,7 @@ export const segmentSchema = z.object({
   voiceId: z.string().max(100),
   speed: z.number().min(0.8).max(1.2),
   pauseMs: z.number().int().min(0).max(3000),
+  commaPause: z.literal('short').optional(),
 })
 export const jobSchema = z.object({
   id: z.string().uuid(),
