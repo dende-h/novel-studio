@@ -1,4 +1,4 @@
-import { ArrowLeft, Download, Headphones, Play, SlidersHorizontal } from 'lucide-react'
+import { ArrowLeft, Download, Headphones, Play } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import type { Staging } from '@/core/game'
 import { narrationFilename } from '@/core/narration/mp3'
@@ -22,6 +22,7 @@ import { useEditorStore } from '@/ui/hooks/use-editor-store'
 import { assembleNarration } from '@/ui/narration/audio'
 import { narrationService } from '@/ui/narration/service'
 import type { EditorStore } from '@/ui/store/editorStore'
+import { NarrationPlayer } from './narration-player'
 import './narration.css'
 
 export function NarrationRoute({
@@ -339,7 +340,7 @@ function NarrationPage({
       end: base + (offsets[s.id]?.end ?? plainText(s.source.inlines).length),
     }
   })
-  const matchingCue = settings.cues.find(
+  const matchingCue = settings.cues.findLast(
     (c) =>
       c.episodeId === episode.id &&
       c.scope === scope &&
@@ -407,15 +408,17 @@ function NarrationPage({
     !record.takes.some((t) => t.state === 'unknown') &&
     !items.some((s) => s.characters > 800)
   const patchSettings = (patch: Partial<typeof settings>) => {
-    const { style, narrator, ...rest } = patch
+    const { style, narrator, mode, ...rest } = patch
     service.changeSettings({
       ...record.settings,
       ...rest,
       episodes:
-        style !== undefined || narrator !== undefined
+        style !== undefined || narrator !== undefined || mode !== undefined
           ? {
               ...record.settings.episodes,
               [episode.id]: {
+                ...record.settings.episodes?.[episode.id],
+                ...(mode !== undefined ? { mode } : {}),
                 style: style ?? settings.style,
                 narrator: narrator ?? settings.narrator,
               },
@@ -485,23 +488,6 @@ function NarrationPage({
       setScope('range')
     }
   }
-  const selectScene = (id: string) => {
-    const index = episode.blocks.findIndex((b) => b.id === id)
-    let start = 0,
-      end = episode.blocks.length
-    for (const c of staging?.cues ?? [])
-      if (c.sceneBreak) {
-        const at = episode.blocks.findIndex((b) => b.id === c.blockId)
-        if (at <= index) start = Math.max(start, at)
-        else end = Math.min(end, at)
-      }
-    setSelection(
-      segments
-        .filter((s) => episode.blocks.slice(start, end).some((b) => b.id === s.blockId))
-        .map((s) => s.id),
-    )
-    setScope('scene')
-  }
   const act = async (task: () => Promise<void>) => {
     setBusy(true)
     setNotice('')
@@ -542,7 +528,7 @@ function NarrationPage({
       timeline: built.timeline,
       segments: items,
       label:
-        scope === 'episode'
+        items === record.snapshots?.[episode.id] || items === segments
           ? '一話の朗読'
           : variant === 'candidate'
             ? '新しい読み'
@@ -604,42 +590,33 @@ function NarrationPage({
     else action()
   }
   const saveLabel = saving ? '保存中…' : '保存済み'
-  const targetLabel =
-    scope === 'episode'
-      ? 'この話全体'
-      : scope === 'scene'
-        ? `この場面（${targets.length}段落）`
-        : '選択部分の修正'
   const voices = entitlement?.voices ?? []
   const invalid = settings.cues.filter((c) => c.episodeId === episode.id && !cueIsValid(c, episode))
   const comparisonPlayback = playing?.label === '新しい読み' || playing?.label === '採用中の読み'
   const player = playing && (
     <div className="narration-player">
-      <span>{playing.label}</span>
-      {/* biome-ignore lint/a11y/useMediaCaption: 朗読対象の原稿は画面中央に全文を表示する。 */}
-      <audio
-        ref={audio}
-        key={playing.url}
-        controls
-        src={playing.url}
-        onLoadedMetadata={() => {
-          if (audio.current) audio.current.currentTime = position
-        }}
-        onTimeUpdate={() => setPosition(audio.current?.currentTime ?? 0)}
+      <NarrationPlayer
+        audioRef={audio}
+        url={playing.url}
+        label={playing.label}
+        position={position}
+        onPosition={setPosition}
       />
-      <Button
-        variant="outline"
-        size="sm"
-        onClick={() => {
-          const segment = playing.segments[currentIndex]
-          if (segment) {
-            audio.current?.pause()
-            select(segment.id)
-          }
-        }}
-      >
-        ここを直す
-      </Button>
+      {playing.label === '一話の朗読' && (
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => {
+            const segment = playing.segments[currentIndex]
+            if (segment) {
+              audio.current?.pause()
+              select(segment.id)
+            }
+          }}
+        >
+          ここを直す
+        </Button>
+      )}
     </div>
   )
   return (
@@ -689,6 +666,12 @@ function NarrationPage({
         <span className="narration-save" role="status">
           {saveLabel}
         </span>
+        {(record.snapshots?.[episode.id] || !missing.length) && (
+          <Button variant="outline" disabled={busy} onClick={() => requestExport([episode.id])}>
+            <Download size={15} />
+            MP3で保存
+          </Button>
+        )}
         <details className="narration-popover narration-export-menu">
           <summary>
             書き出し設定 <span aria-hidden="true">⌄</span>
@@ -920,11 +903,6 @@ function NarrationPage({
                     {instructions.some((c) => c.reading) && (
                       <span className="narration-tag">読みの指定あり</span>
                     )}
-                    {active && staging?.cues.some((c) => c.sceneBreak) && (
-                      <button type="button" onClick={() => selectScene(segment.blockId)}>
-                        場面を選ぶ
-                      </button>
-                    )}
                   </div>
                 </article>
               )
@@ -937,105 +915,149 @@ function NarrationPage({
           className="narration-inspector"
           aria-label="読み方の設定"
         >
-          <section hidden={scope !== 'episode'}>
-            <span className="narration-eyebrow">この話の設定</span>
-            <h2>声と朗読スタイル</h2>
+          <fieldset className="narration-mode" aria-label="朗読の作り方">
+            {(['solo', 'cast'] as const).map((mode) => (
+              <button
+                type="button"
+                key={mode}
+                aria-pressed={settings.mode === mode}
+                onClick={() => {
+                  // Preserve legacy casting as explicit manuscript ranges on first mode choice.
+                  const migrated =
+                    record.settings.episodes?.[episode.id]?.mode === undefined
+                      ? segments
+                          .filter((part) => part.voiceId !== settings.narrator)
+                          .map((part) => {
+                            const block = episode.blocks.find((b) => b.id === part.blockId)!
+                            const start = segments
+                              .filter((v) => v.blockId === part.blockId)
+                              .slice(
+                                0,
+                                segments
+                                  .filter((v) => v.blockId === part.blockId)
+                                  .findIndex((v) => v.id === part.id),
+                              )
+                              .reduce((n, v) => n + plainText(v.source.inlines).length, 0)
+                            const refs = [
+                              {
+                                blockId: block.id,
+                                snapshot: plainText(block.inlines),
+                                start,
+                                end: start + plainText(part.source.inlines).length,
+                              },
+                            ]
+                            const previous = settings.cues.findLast(
+                              (c) =>
+                                c.episodeId === episode.id &&
+                                c.scope === 'range' &&
+                                JSON.stringify(c.refs) === JSON.stringify(refs),
+                            )
+                            return {
+                              ...previous,
+                              id: previous?.id ?? crypto.randomUUID(),
+                              episodeId: episode.id,
+                              scope: 'range' as const,
+                              refs,
+                              voiceId: part.voiceId,
+                            }
+                          })
+                      : []
+                  patchSettings({
+                    mode,
+                    cues: [
+                      ...settings.cues.filter((c) => !migrated.some((v) => v.id === c.id)),
+                      ...migrated,
+                    ],
+                  })
+                }}
+              >
+                {mode === 'solo' ? 'ひとり朗読' : '複数の声'}
+              </button>
+            ))}
+          </fieldset>
+          {scope === 'episode' && (
+            <section>
+              <h2>一話の声とスタイル</h2>
+              {settings.mode === 'cast' && (
+                <p className="narration-help">本文を選んで、声とスタイルを付けられます。</p>
+              )}
 
-            <label>
-              語り手の声
-              <select
-                value={settings.narrator}
-                onChange={(e) => patchSettings({ narrator: e.target.value })}
-              >
-                {voices.length ? (
-                  voices.map((v) => (
-                    <option key={v.id} value={v.id}>
-                      {v.label}
-                    </option>
-                  ))
-                ) : (
-                  <option value="default">設定済みの声</option>
-                )}
-              </select>
-            </label>
-            {voices.find((v) => v.id === settings.narrator)?.sampleUrl && (
-              // biome-ignore lint/a11y/useMediaCaption: 声の比較用サンプル。
-              <audio
-                controls
-                src={voices.find((v) => v.id === settings.narrator)?.sampleUrl}
-                aria-label="声のサンプル"
-              />
-            )}
-            <label>
-              朗読スタイル
-              <select
-                value={settings.style}
-                onChange={(e) => patchSettings({ style: e.target.value })}
-              >
-                {STYLES.map((style) => (
-                  <option key={style.id} value={style.id}>
-                    {style.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <details>
-              <summary>配役を設定</summary>
               <label>
-                声の出し分け
+                語り手の声
                 <select
-                  value={settings.mode}
-                  onChange={(e) => patchSettings({ mode: e.target.value as 'solo' | 'cast' })}
+                  value={settings.narrator}
+                  onChange={(e) => patchSettings({ narrator: e.target.value })}
                 >
-                  <option value="solo">ひとり朗読</option>
-                  <option value="cast">配役朗読</option>
+                  {voices.length ? (
+                    voices.map((v) => (
+                      <option key={v.id} value={v.id}>
+                        {v.label}
+                      </option>
+                    ))
+                  ) : (
+                    <option value="default">設定済みの声</option>
+                  )}
                 </select>
               </label>
-              {settings.mode === 'cast' && (
-                <div>
-                  <p className="narration-help">
-                    演出譜の話者に声を割り当てます。未設定の台詞は語り手が読みます。
-                  </p>
-                  {[
-                    ...new Set([
-                      ...(staging?.cues.map((c) => c.speaker).filter((s): s is string => !!s) ??
-                        []),
-                      ...(work.glossary?.filter((g) => g.category === '人物').map((g) => g.name) ??
-                        []),
-                    ]),
-                  ].map((speaker) => (
-                    <label key={speaker}>
-                      {speaker}
-                      <select
-                        value={settings.cast[speaker] ?? ''}
-                        onChange={(e) =>
-                          patchSettings({ cast: { ...settings.cast, [speaker]: e.target.value } })
-                        }
-                      >
-                        <option value="">語り手と同じ</option>
-                        {voices.map((v) => (
-                          <option key={v.id} value={v.id}>
-                            {v.label}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                  ))}
-                </div>
+              {voices.find((v) => v.id === settings.narrator)?.sampleUrl && (
+                // biome-ignore lint/a11y/useMediaCaption: 声の比較用サンプル。
+                <audio
+                  controls
+                  src={voices.find((v) => v.id === settings.narrator)?.sampleUrl}
+                  aria-label="声のサンプル"
+                />
               )}
-            </details>
-          </section>
+              <label>
+                朗読スタイル
+                <select
+                  value={settings.style}
+                  onChange={(e) => patchSettings({ style: e.target.value })}
+                >
+                  {STYLES.map((style) => (
+                    <option key={style.id} value={style.id}>
+                      {style.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <div className="narration-timing">
+                {' '}
+                <label>
+                  速さ
+                  <select
+                    value={matchingCue?.speed ?? ''}
+                    onChange={(e) =>
+                      patchCue({ speed: e.target.value ? Number(e.target.value) : undefined })
+                    }
+                  >
+                    <option value="">スタイルに合わせる</option>
+                    <option value="0.9">ゆっくり</option>
+                    <option value="1">普段の速さ</option>
+                    <option value="1.1">少し速く</option>
+                  </select>
+                </label>
+                <label>
+                  段落のあとの間
+                  <select
+                    value={matchingCue?.pauseMs ?? ''}
+                    onChange={(e) =>
+                      patchCue({ pauseMs: e.target.value ? Number(e.target.value) : undefined })
+                    }
+                  >
+                    <option value="">スタイルに合わせる</option>
+                    <option value="0">間を足さない</option>
+                    <option value="350">短め（0.35秒）</option>
+                    <option value="700">長め（0.7秒）</option>
+                    <option value="1500">余韻（1.5秒）</option>
+                  </select>
+                </label>
+                <p className="narration-help">間だけの変更では生成枠を使いません。</p>
+              </div>
+            </section>
+          )}
           <section className="narration-direction">
-            {scope !== 'episode' && (
-              <button type="button" className="narration-base-summary" onClick={clearSelection}>
-                <Headphones size={14} />
-                {voices.find((v) => v.id === settings.narrator)?.label ?? '語り手'} ·{' '}
-                {STYLES.find((v) => v.id === settings.style)?.label}
-                <span aria-hidden="true">全体の設定</span>
-              </button>
-            )}
             <div className="narration-section-head">
-              <h2>{targetLabel}</h2>
+              {scope !== 'episode' && <h2>この部分の読み方</h2>}
               {scope !== 'episode' && (
                 <button type="button" onClick={clearSelection}>
                   × 選択解除
@@ -1057,19 +1079,89 @@ function NarrationPage({
               ← 原稿に戻る
             </button>
             {scope !== 'episode' && <blockquote>{selectedText}</blockquote>}
-            <label>
-              どんなふうに読んでほしいですか？
-              <textarea
-                rows={3}
-                maxLength={180}
-                value={matchingCue?.direction ?? ''}
-                placeholder="少し寂しそうに。最後の「ありがと」だけ温かく"
-                onChange={(e) => patchCue({ direction: e.target.value })}
-              />
-            </label>
-            <div className="narration-chips">
-              {['そっとささやくように', 'ちょっと寂しそうに', '温かく語る', '軽く冗談めかす'].map(
-                (text) => (
+            {scope !== 'episode' && settings.mode === 'cast' && (
+              <div className="narration-range-style">
+                <label>
+                  この部分の声
+                  <select
+                    value={matchingCue?.voiceId ?? ''}
+                    onChange={(e) => patchCue({ voiceId: e.target.value || undefined })}
+                  >
+                    <option value="">語り手と同じ</option>
+                    {voices.map((v) => (
+                      <option key={v.id} value={v.id}>
+                        {v.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  この部分のスタイル
+                  <select
+                    value={matchingCue?.style ?? ''}
+                    onChange={(e) => patchCue({ style: e.target.value || undefined })}
+                  >
+                    <option value="">一話の設定と同じ</option>
+                    {STYLES.map((v) => (
+                      <option key={v.id} value={v.id}>
+                        {v.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <div className="narration-timing">
+                  {' '}
+                  <label>
+                    速さ
+                    <select
+                      value={matchingCue?.speed ?? ''}
+                      onChange={(e) =>
+                        patchCue({ speed: e.target.value ? Number(e.target.value) : undefined })
+                      }
+                    >
+                      <option value="">スタイルに合わせる</option>
+                      <option value="0.9">ゆっくり</option>
+                      <option value="1">普段の速さ</option>
+                      <option value="1.1">少し速く</option>
+                    </select>
+                  </label>
+                  <label>
+                    段落のあとの間
+                    <select
+                      value={matchingCue?.pauseMs ?? ''}
+                      onChange={(e) =>
+                        patchCue({ pauseMs: e.target.value ? Number(e.target.value) : undefined })
+                      }
+                    >
+                      <option value="">スタイルに合わせる</option>
+                      <option value="0">間を足さない</option>
+                      <option value="350">短め（0.35秒）</option>
+                      <option value="700">長め（0.7秒）</option>
+                      <option value="1500">余韻（1.5秒）</option>
+                    </select>
+                  </label>
+                  <p className="narration-help">間だけの変更では生成枠を使いません。</p>
+                </div>
+              </div>
+            )}
+            <details
+              className="narration-performance"
+              open={scope !== 'episode' || undefined}
+              key={scope}
+            >
+              <summary>演技を添える</summary>
+              <label>
+                どう読んでほしい？
+                <textarea
+                  rows={3}
+                  maxLength={180}
+                  value={matchingCue?.direction ?? ''}
+                  placeholder="少し寂しそうに。最後の「ありがと」だけ温かく"
+                  onChange={(e) => patchCue({ direction: e.target.value })}
+                />
+              </label>
+              <div className="narration-chips">
+                {['ささやく', '寂しそうに', '温かく'].map((text) => (
                   <button
                     type="button"
                     key={text}
@@ -1085,31 +1177,9 @@ function NarrationPage({
                   >
                     {text}
                   </button>
-                ),
-              )}
-            </div>
-            {targets[0]?.direction && targets[0].direction !== matchingCue?.direction && (
-              <details className="narration-inherited">
-                <summary>引き継ぐ指示</summary>
-                <p>
-                  {targets[0].direction}
-                  {targets.some((v) => v.direction !== targets[0]?.direction)
-                    ? '（範囲内に別の指定あり）'
-                    : ''}
-                </p>
-              </details>
-            )}
-            {matchingCue && (
-              <button
-                type="button"
-                className="narration-text-button"
-                onClick={() =>
-                  patchSettings({ cues: settings.cues.filter((c) => c.id !== matchingCue.id) })
-                }
-              >
-                指定を外す
-              </button>
-            )}
+                ))}
+              </div>
+            </details>
             <div className="narration-trial">
               {scope !== 'episode' && (
                 <Button
@@ -1117,14 +1187,17 @@ function NarrationPage({
                   disabled={!readyToGenerate(targets) || busy || !!record.operation}
                   onClick={() => generate(targets, true)}
                 >
-                  選択部分を修正して生成 · {cost(targets).toLocaleString()}文字
+                  {targets.some(latest) ? 'もう一度修正して生成' : '選択部分を修正して生成'}
                 </Button>
+              )}
+              {scope !== 'episode' && (
+                <p className="narration-cost">
+                  今回の消費 <strong>{cost(targets).toLocaleString()}文字</strong>
+                </p>
               )}
               {scope !== 'episode' && targets.some(latest) && (
                 <>
-                  <p className="narration-help">
-                    新しい生成が成功すると、この範囲の候補が置き換わります。
-                  </p>
+                  <p className="narration-help">生成に成功すると、修正候補を置き換えます。</p>
                   <div className="narration-compare">
                     <button
                       type="button"
@@ -1207,106 +1280,102 @@ function NarrationPage({
                 </>
               )}
             </div>
-            <details>
-              <summary>
-                <SlidersHorizontal size={14} /> 読み・声・間を細かく調整
-              </summary>
-              <label>
-                この範囲の声
-                <select
-                  value={matchingCue?.voiceId ?? ''}
-                  onChange={(e) => patchCue({ voiceId: e.target.value || undefined })}
+            {scope === 'episode' && playing?.label === 'スタイル試聴' && player}
+            <div className="narration-generate">
+              {scope === 'episode' && segments.length > 0 && (
+                <Button
+                  className="narration-wide"
+                  disabled={
+                    !!record.operation ||
+                    !(
+                      readyToGenerate(
+                        !record.snapshots?.[episode.id] && missing.length ? pending : segments,
+                      ) ||
+                      (missing.length > 0 && !pending.length && !running.length)
+                    ) ||
+                    busy
+                  }
+                  onClick={() =>
+                    generate(segments, !!record.snapshots?.[episode.id] || !missing.length, true)
+                  }
                 >
-                  <option value="">上位の声を引き継ぐ</option>
-                  {voices.map((v) => (
-                    <option key={v.id} value={v.id}>
-                      {v.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              {targets.length === 1 && (
-                <label>
-                  選択した言葉の読み方
-                  <textarea
-                    rows={3}
-                    value={matchingCue?.reading ?? ''}
-                    maxLength={3000}
-                    placeholder={selectedText}
-                    onChange={(e) => {
-                      const reading = e.target.value
-                      const next = { ...cue, reading: reading || undefined }
-                      patchSettings({
-                        cues: [...settings.cues.filter((c) => c.id !== cue.id), next],
-                        dictionary: commonReading
-                          ? [
-                              ...settings.dictionary.filter((d) => d.surface !== selectedText),
-                              ...(reading
-                                ? [{ id: crypto.randomUUID(), surface: selectedText, reading }]
-                                : []),
-                            ]
-                          : settings.dictionary,
-                      })
-                    }}
-                  />
-                </label>
+                  {sending
+                    ? '生成を開始中…'
+                    : !record.snapshots?.[episode.id] && missing.length
+                      ? '一話を生成'
+                      : '一話を再生成'}
+                </Button>
               )}
-              {targets.length === 1 && scope !== 'episode' && (
-                <label className="narration-inline-check">
-                  <input
-                    type="checkbox"
-                    checked={commonReading}
-                    onChange={(e) => {
-                      setCommonReading(e.target.checked)
-                      if (matchingCue?.reading)
+
+              {scope === 'episode' && (
+                <p className="narration-cost">
+                  今回の消費{' '}
+                  <strong>
+                    {cost(
+                      !record.snapshots?.[episode.id] && missing.length ? pending : segments,
+                    ).toLocaleString()}
+                    文字
+                  </strong>
+                  {entitlement && <> / 残り {entitlement.remaining.toLocaleString()}文字</>}
+                </p>
+              )}
+            </div>
+            {scope !== 'episode' && (
+              <details>
+                <summary>読み方を直す</summary>
+                {targets.length === 1 && (
+                  <label>
+                    選択した言葉の読み方
+                    <textarea
+                      rows={3}
+                      value={matchingCue?.reading ?? ''}
+                      maxLength={3000}
+                      placeholder={selectedText}
+                      onChange={(e) => {
+                        const reading = e.target.value
+                        const next = { ...cue, reading: reading || undefined }
                         patchSettings({
-                          dictionary: e.target.checked
+                          cues: [...settings.cues.filter((c) => c.id !== cue.id), next],
+                          dictionary: commonReading
                             ? [
                                 ...settings.dictionary.filter((d) => d.surface !== selectedText),
-                                {
-                                  id: crypto.randomUUID(),
-                                  surface: selectedText,
-                                  reading: matchingCue.reading,
-                                },
+                                ...(reading
+                                  ? [{ id: crypto.randomUUID(), surface: selectedText, reading }]
+                                  : []),
                               ]
-                            : settings.dictionary.filter((d) => d.surface !== selectedText),
+                            : settings.dictionary,
                         })
-                    }}
-                  />
-                  この作品の同じ表記にも使う
-                </label>
-              )}
-              <label>
-                速さ
-                <select
-                  value={matchingCue?.speed ?? ''}
-                  onChange={(e) =>
-                    patchCue({ speed: e.target.value ? Number(e.target.value) : undefined })
-                  }
-                >
-                  <option value="">スタイルに合わせる</option>
-                  <option value="0.9">ゆっくり</option>
-                  <option value="1">普段の速さ</option>
-                  <option value="1.1">少し速く</option>
-                </select>
-              </label>
-              <label>
-                段落のあとの間
-                <select
-                  value={matchingCue?.pauseMs ?? ''}
-                  onChange={(e) =>
-                    patchCue({ pauseMs: e.target.value ? Number(e.target.value) : undefined })
-                  }
-                >
-                  <option value="">スタイルに合わせる</option>
-                  <option value="0">間を足さない</option>
-                  <option value="350">短め（0.35秒）</option>
-                  <option value="700">長め（0.7秒）</option>
-                  <option value="1500">余韻（1.5秒）</option>
-                </select>
-              </label>
-              <p className="narration-help">間だけの変更では生成枠を使いません。</p>
-            </details>
+                      }}
+                    />
+                  </label>
+                )}
+                {targets.length === 1 && (
+                  <label className="narration-inline-check">
+                    <input
+                      type="checkbox"
+                      checked={commonReading}
+                      onChange={(e) => {
+                        setCommonReading(e.target.checked)
+                        if (matchingCue?.reading)
+                          patchSettings({
+                            dictionary: e.target.checked
+                              ? [
+                                  ...settings.dictionary.filter((d) => d.surface !== selectedText),
+                                  {
+                                    id: crypto.randomUUID(),
+                                    surface: selectedText,
+                                    reading: matchingCue.reading,
+                                  },
+                                ]
+                              : settings.dictionary.filter((d) => d.surface !== selectedText),
+                          })
+                      }}
+                    />
+                    この作品の同じ表記にも使う
+                  </label>
+                )}
+              </details>
+            )}
           </section>
           {record.takes.some(
             (t) =>
@@ -1520,7 +1589,7 @@ function NarrationPage({
             ))}
           </div>
         )}
-        {!comparisonPlayback && player}
+        {playing?.label === '一話の朗読' && player}
         <div className="narration-actions">
           <div>
             <strong>
@@ -1533,51 +1602,19 @@ function NarrationPage({
                     : '書き出せます'}
             </strong>
           </div>
-          {segments.length > 0 && (
+          {playing?.label !== '一話の朗読' && (
             <Button
-              disabled={
-                !!record.operation ||
-                !(
-                  readyToGenerate(
-                    !record.snapshots?.[episode.id] && missing.length ? pending : segments,
-                  ) ||
-                  (missing.length > 0 && !pending.length && !running.length)
-                ) ||
-                busy
-              }
+              variant="outline"
+              disabled={busy || !(record.snapshots?.[episode.id] ?? segments).every(accepted)}
               onClick={() =>
-                generate(segments, !!record.snapshots?.[episode.id] || !missing.length, true)
+                void act(() => play(record.snapshots?.[episode.id] ?? segments, 'accepted'))
               }
             >
-              {sending
-                ? '生成を開始中…'
-                : `${!record.snapshots?.[episode.id] && missing.length ? '一話を生成' : '一話を再生成'} · ${cost(!record.snapshots?.[episode.id] && missing.length ? pending : segments).toLocaleString()}文字`}
-            </Button>
-          )}
-          <Button
-            variant="outline"
-            disabled={busy || !(record.snapshots?.[episode.id] ?? segments).every(accepted)}
-            onClick={() =>
-              void act(() => play(record.snapshots?.[episode.id] ?? segments, 'accepted'))
-            }
-          >
-            <Play size={15} />
-            通して聴く
-          </Button>
-          {(record.snapshots?.[episode.id] || !missing.length) && (
-            <Button variant="outline" disabled={busy} onClick={() => requestExport([episode.id])}>
-              <Download size={15} />
-              MP3を書き出す
+              <Play size={15} />
+              通して聴く
             </Button>
           )}
         </div>
-        {entitlement &&
-          cost(record.snapshots?.[episode.id] ? segments : pending) > entitlement.remaining && (
-            <p className="narration-help">
-              必要 {cost(record.snapshots?.[episode.id] ? segments : pending).toLocaleString()}文字
-              / 残り {entitlement.remaining.toLocaleString()}文字
-            </p>
-          )}
       </footer>
       <ConfirmDialog
         open={generationRequest !== null}
