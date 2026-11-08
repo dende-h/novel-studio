@@ -8,6 +8,7 @@ import {
   locateRef,
   openingSegments,
   plainText,
+  readingCuesNeedingReview,
   resolveSegments,
 } from '@/core/narration/resolve'
 import { STYLES, type VoiceCue, type VoiceSegment, type VoiceTake } from '@/core/narration/types'
@@ -92,7 +93,6 @@ function NarrationPage({
     label: string
     action: () => void
   } | null>(null)
-  const dragged = useRef(false)
   const selectionAnchor = useRef<string | null>(null)
   const manuscript = useRef<HTMLDivElement>(null)
   const [scope, setScope] = useState<VoiceCue['scope']>('episode')
@@ -349,6 +349,9 @@ function NarrationPage({
     if (last?.[0]?.blockId === segment.blockId) last.push(segment)
     else paragraphs.push([segment])
   }
+  const needsSentenceRebuild = (record.snapshots?.[episode.id] ?? []).some(
+    (saved) => !segments.some((current) => current.id === saved.id),
+  )
   const targets = scope === 'episode' ? segments : segments.filter((s) => selection.includes(s.id))
   const selectedRefs = targets.map((s) => {
     const siblings = segments.filter((v) => v.blockId === s.blockId)
@@ -361,9 +364,13 @@ function NarrationPage({
     return {
       blockId: s.blockId,
       snapshot: plainText(episode.blocks.find((b) => b.id === s.blockId)!.inlines),
-      start: base + (offsets[s.id]?.start ?? 0),
-      end: base + (offsets[s.id]?.end ?? plainText(s.source.inlines).length),
+      start: base,
+      end: base + plainText(s.source.inlines).length,
     }
+  })
+  const readingRefs = selectedRefs.flatMap((ref, i) => {
+    const offset = offsets[targets[i]!.id]
+    return offset ? [{ ...ref, start: ref.start + offset.start, end: ref.start + offset.end }] : []
   })
   const matchingCue = settings.cues.findLast(
     (c) =>
@@ -378,9 +385,7 @@ function NarrationPage({
     refs: scope === 'episode' ? [] : selectedRefs,
     direction: '',
   }
-  const selectedText = targets
-    .map((s) => plainText(s.source.inlines).slice(offsets[s.id]?.start ?? 0, offsets[s.id]?.end))
-    .join('')
+  const selectedText = targets.map((s) => plainText(s.source.inlines)).join('')
   const currentIndex =
     playing?.timeline.findIndex((t) => position >= t.start && position < t.end) ?? -1
   const running = record.takes.filter((t) => t.state === 'queued' || t.state === 'generating')
@@ -423,10 +428,14 @@ function NarrationPage({
     )
   }
   const changed = segments.filter((s) => accepted(s) && accepted(s)?.fingerprint !== s.fingerprint)
+  const readingReview = readingCuesNeedingReview(episode, settings)
   const cost = (items: VoiceSegment[]) => items.reduce((n, s) => n + s.characters, 0)
   const readyToGenerate = (items: VoiceSegment[]) =>
     !!entitlement?.enabled &&
     items.length > 0 &&
+    !readingReview.some(
+      (c) => !c.refs.length || c.refs.some((r) => items.some((s) => s.blockId === r.blockId)),
+    ) &&
     cost(items) <= entitlement.remaining &&
     !sending &&
     !running.length &&
@@ -466,13 +475,7 @@ function NarrationPage({
     audio.current?.pause()
     fullAudio.current?.pause()
     window.getSelection()?.removeAllRanges()
-    const clicked = segments.find((s) => s.id === id)
-    const block = segments.filter((s) => s.blockId === clicked?.blockId)
-    if (
-      !only &&
-      block.length === selection.length &&
-      block.every((s) => selection.includes(s.id))
-    ) {
+    if (!only && selection.length === 1 && selection[0] === id) {
       clearSelection()
       return
     }
@@ -481,62 +484,27 @@ function NarrationPage({
     selectionAnchor.current = anchor
     const a = segments.findIndex((s) => s.id === anchor)
     const b = segments.findIndex((s) => s.id === id)
-    const firstBlock = segments[Math.min(a, b)]?.blockId
-    const lastBlock = segments[Math.max(a, b)]?.blockId
-    setSelection(
-      only
-        ? [id]
-        : segments
-            .slice(
-              segments.findIndex((s) => s.blockId === firstBlock),
-              segments.findLastIndex((s) => s.blockId === lastBlock) + 1,
-            )
-            .map((s) => s.id),
-    )
+    setSelection(segments.slice(Math.min(a, b), Math.max(a, b) + 1).map((s) => s.id))
     setOffsets({})
     setScope('range')
   }
-  const captureSelection = () => {
-    const native = window.getSelection()
-    if (!native || native.isCollapsed || !native.rangeCount || !manuscript.current) return
-    const range = native.getRangeAt(0)
-    if (
-      !manuscript.current.contains(range.startContainer) ||
-      !manuscript.current.contains(range.endContainer)
-    )
+  const selectReading = (start: number, end: number) => {
+    if (start === end) return
+    let at = 0
+    const next: Record<string, { start: number; end: number }> = {}
+    for (const part of targets) {
+      const length = plainText(part.source.inlines).length
+      if (start < at + length && end > at)
+        next[part.id] = { start: Math.max(0, start - at), end: Math.min(length, end - at) }
+      at += length
+    }
+    if (Object.keys(next).length > 1) {
+      setNotice('読み仮名は一文の中の語句を選んで指定してください。')
+      setOffsets({})
       return
-    const ids: string[] = [],
-      next: Record<string, { start: number; end: number }> = {}
-    for (const el of manuscript.current.querySelectorAll<HTMLElement>('[data-segment]')) {
-      if (!range.intersectsNode(el)) continue
-      let start = 0,
-        end = el.textContent?.length ?? 0
-      const r = document.createRange()
-      r.selectNodeContents(el)
-      if (el.contains(range.startContainer)) {
-        r.setEnd(range.startContainer, range.startOffset)
-        start = r.toString().length
-      }
-      r.selectNodeContents(el)
-      if (el.contains(range.endContainer)) {
-        r.setEnd(range.endContainer, range.endOffset)
-        end = r.toString().length
-      }
-      if (end > start) {
-        ids.push(el.dataset.segment!)
-        next[el.dataset.segment!] = { start, end }
-      }
     }
-    if (ids.length) {
-      dragged.current = true
-      native.removeAllRanges()
-      fullAudio.current?.pause()
-      audio.current?.pause()
-      selectionAnchor.current = ids[0] ?? null
-      setSelection(ids)
-      setOffsets(next)
-      setScope('range')
-    }
+    setNotice('')
+    setOffsets(next)
   }
   const openCue = (c: VoiceCue) => {
     audio.current?.pause()
@@ -564,7 +532,7 @@ function NarrationPage({
     const last = segments.findLastIndex((v) => next[v.id])
     const ids = first < 0 ? [] : segments.slice(first, last + 1).map((v) => v.id)
     setSelection(ids)
-    setOffsets(next)
+    setOffsets(c.reading ? next : {})
     setMobilePanel('inspector')
   }
   const act = async (task: () => Promise<void>) => {
@@ -585,6 +553,18 @@ function NarrationPage({
     preview = false,
     retry = false,
   ) => {
+    if (!whole && !preview && needsSentenceRebuild) {
+      setNotice('前回の音声と文の区切りが異なります。先に一話を再生成してください。')
+      return
+    }
+    if (
+      readingReview.some(
+        (c) => !c.refs.length || c.refs.some((r) => items.some((s) => s.blockId === r.blockId)),
+      )
+    ) {
+      setNotice('複数の文にまたがる以前の読み指定を確認してください。')
+      return
+    }
     if (
       !consent ||
       (whole && (!!record.snapshots?.[episode.id] || segments.some(accepted)) && !retry)
@@ -754,7 +734,7 @@ function NarrationPage({
             }
           >
             <option value="">スタイル通り</option>
-            <option value="0">間を足さない</option>
+            <option value="0">文末の間のみ</option>
             <option value="350">短め 0.35秒</option>
             <option value="700">長め 0.7秒</option>
             <option value="1500">余韻 1.5秒</option>
@@ -984,27 +964,19 @@ function NarrationPage({
           )}
           {segments.some((s) => s.characters > 800) && (
             <p role="alert" className="narration-notice">
-              句読点のない800文字を超える区間があります。本文に句読点を入れるか、短い読みを指定してください。
+              800文字を超える文があります。本文を句点などで区切ってください。
             </p>
           )}
           {/* biome-ignore lint/a11y/noStaticElementInteractions: Blank space deselects; Escape and the explicit button provide keyboard equivalents. */}
           <div
             ref={manuscript}
             className="narration-paragraphs"
-            onPointerDown={() => {
-              dragged.current = false
-            }}
-            onPointerUp={captureSelection}
             onClick={(e) => {
-              if (dragged.current) {
-                dragged.current = false
-                return
-              }
               if (!(e.target as HTMLElement).closest('[data-selectable]')) clearSelection()
             }}
             role="presentation"
           >
-            {paragraphs.map((parts, paragraphIndex) => {
+            {paragraphs.map((parts) => {
               const details = parts.map((segment) => {
                 const i = segments.indexOf(segment)
                 const take = accepted(segment),
@@ -1081,55 +1053,29 @@ function NarrationPage({
               )
               return (
                 <div className="narration-block" key={parts[0]!.blockId}>
-                  {/* biome-ignore lint/a11y/useSemanticElements: Native buttons trap cross-paragraph text selection. */}
-                  <div
-                    role="button"
-                    tabIndex={0}
-                    data-selectable
-                    className="narration-block-select"
-                    aria-pressed={details.every((d) => d.active)}
-                    aria-label={`段落${paragraphIndex + 1}を選ぶ`}
-                    onClick={() => {
-                      if (!dragged.current) select(parts[0]!.id)
-                    }}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' || e.key === ' ') {
-                        e.preventDefault()
-                        select(parts[0]!.id)
-                      }
-                    }}
-                  >
+                  <div className="narration-block-select">
                     {details.map(({ segment, active, isCurrent, tone }) => (
                       <span
                         key={segment.id}
                         data-narration-state={tone}
                         className={`narration-paragraph ${active ? 'is-selected' : ''} ${isCurrent ? 'is-playing' : ''}`}
                       >
-                        <span className="narration-paragraph-select">
+                        <button
+                          type="button"
+                          data-selectable
+                          className="narration-paragraph-select"
+                          aria-pressed={active}
+                          aria-label={`文${segments.indexOf(segment) + 1}を選ぶ`}
+                          onClick={() => select(segment.id)}
+                        >
                           <span className="narration-prose" data-segment={segment.id}>
                             {active ? (
-                              <>
-                                {plainText(segment.source.inlines).slice(
-                                  0,
-                                  offsets[segment.id]?.start ?? 0,
-                                )}
-                                <mark>
-                                  {plainText(segment.source.inlines).slice(
-                                    offsets[segment.id]?.start ?? 0,
-                                    offsets[segment.id]?.end,
-                                  )}
-                                </mark>
-                                {offsets[segment.id]?.end !== undefined
-                                  ? plainText(segment.source.inlines).slice(
-                                      offsets[segment.id]!.end,
-                                    )
-                                  : ''}
-                              </>
+                              <mark>{plainText(segment.source.inlines)}</mark>
                             ) : (
                               plainText(segment.source.inlines)
                             )}
                           </span>
-                        </span>
+                        </button>
                       </span>
                     ))}
                   </div>
@@ -1364,7 +1310,7 @@ function NarrationPage({
                       }
                     >
                       <option value="">スタイル通り</option>
-                      <option value="0">間を足さない</option>
+                      <option value="0">文末の間のみ</option>
                       <option value="350">短め 0.35秒</option>
                       <option value="700">長め 0.7秒</option>
                       <option value="1500">余韻 1.5秒</option>
@@ -1409,11 +1355,59 @@ function NarrationPage({
             {scope !== 'episode' && (
               <details
                 className="narration-reading"
-                key={JSON.stringify(selectedRefs)}
+                key={selection.join()}
                 open={Object.keys(offsets).length > 0 || undefined}
               >
                 <summary>読み方の修正</summary>
-                {selectedRefs.map((ref, index) => {
+                <p className="narration-help">
+                  読みを直す語句を下の文から選んでください。再生成は一文全体に適用します。
+                </p>
+                <textarea
+                  className="narration-reading-picker"
+                  aria-label="読みを直す語句を選択"
+                  readOnly
+                  value={selectedText}
+                  rows={3}
+                  onKeyDown={(e) => {
+                    if (
+                      e.ctrlKey ||
+                      e.metaKey ||
+                      !['Home', 'End', 'ArrowLeft', 'ArrowRight'].includes(e.key)
+                    )
+                      return
+                    e.preventDefault()
+                    const el = e.currentTarget
+                    const backward = el.selectionDirection === 'backward'
+                    const anchor = backward ? el.selectionEnd : el.selectionStart
+                    const focus = backward ? el.selectionStart : el.selectionEnd
+                    const next =
+                      e.key === 'Home'
+                        ? 0
+                        : e.key === 'End'
+                          ? el.value.length
+                          : e.key === 'ArrowLeft'
+                            ? Math.max(
+                                0,
+                                focus - (Array.from(el.value.slice(0, focus)).at(-1)?.length ?? 1),
+                              )
+                            : Math.min(
+                                el.value.length,
+                                focus + (Array.from(el.value.slice(focus))[0]?.length ?? 1),
+                              )
+                    el.setSelectionRange(
+                      e.shiftKey ? Math.min(anchor, next) : next,
+                      e.shiftKey ? Math.max(anchor, next) : next,
+                      next < anchor ? 'backward' : 'forward',
+                    )
+                  }}
+                  onPointerUp={(e) =>
+                    selectReading(e.currentTarget.selectionStart, e.currentTarget.selectionEnd)
+                  }
+                  onKeyUp={(e) =>
+                    selectReading(e.currentTarget.selectionStart, e.currentTarget.selectionEnd)
+                  }
+                />
+                {readingRefs.map((ref) => {
                   const surface = ref.snapshot.slice(ref.start, ref.end)
                   const existing = settings.cues.findLast(
                     (c) =>
@@ -1423,7 +1417,7 @@ function NarrationPage({
                       JSON.stringify(c.refs[0]) === JSON.stringify(ref),
                   )
                   return (
-                    <label key={targets[index]?.id}>
+                    <label key={ref.blockId + ':' + ref.start + ':' + ref.end}>
                       <span className="narration-reading-source">「{surface}」の読み仮名</span>
                       <input
                         value={existing?.reading ?? ''}
@@ -1459,9 +1453,10 @@ function NarrationPage({
                   <input
                     type="checkbox"
                     checked={commonReading}
+                    disabled={!readingRefs.length}
                     onChange={(e) => {
                       setCommonReading(e.target.checked)
-                      const entries = selectedRefs.map((ref) => {
+                      const entries = readingRefs.map((ref) => {
                         const c = settings.cues.findLast(
                           (c) =>
                             c.episodeId === episode.id &&
@@ -1489,11 +1484,18 @@ function NarrationPage({
                 </label>
               </details>
             )}
+            {scope !== 'episode' && needsSentenceRebuild && (
+              <p role="status" className="narration-help">
+                前回の音声と文の区切りが異なります。選択を解除して一話を再生成すると、文ごとの修正が使えます。以前の音声は再生成の完了まで残ります。
+              </p>
+            )}
             <div className="narration-trial">
               {scope !== 'episode' && (
                 <Button
                   className="narration-wide"
-                  disabled={!readyToGenerate(targets) || busy || !!record.operation}
+                  disabled={
+                    needsSentenceRebuild || !readyToGenerate(targets) || busy || !!record.operation
+                  }
                   onClick={() => generate(targets, true)}
                 >
                   {targets.some(latest)
@@ -1574,7 +1576,14 @@ function NarrationPage({
                     disabled={
                       busy ||
                       (!previewReady &&
-                        (!entitlement?.preview?.remaining || !opening.length || running.length > 0))
+                        (!entitlement?.preview?.remaining ||
+                          !opening.length ||
+                          running.length > 0 ||
+                          readingReview.some(
+                            (c) =>
+                              !c.refs.length ||
+                              c.refs.some((r) => opening.some((s) => s.blockId === r.blockId)),
+                          )))
                     }
                     onClick={() => {
                       if (previewReady)
@@ -1750,6 +1759,28 @@ function NarrationPage({
               ))}
             </details>
           )}
+          {readingReview.length > 0 && (
+            <details className="narration-reading-review" open>
+              <summary>範囲を確認する読み（{readingReview.length}件）</summary>
+              <p className="narration-help">
+                以前の読み指定が複数の文にまたがっています。対象の文を選んで読みを指定し直し、以前の指定を外してください。確認が終わるまで、その文は生成できません。
+              </p>
+              {readingReview.map((c) => (
+                <div key={c.id} className="narration-saved-cue">
+                  <span>{c.refs.map((r) => r.snapshot.slice(r.start, r.end)).join(' / ')}</span>
+                  <span>読み：{c.reading}</span>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      patchSettings({ cues: settings.cues.filter((v) => v.id !== c.id) })
+                    }
+                  >
+                    以前の読み指定を外す
+                  </button>
+                </div>
+              ))}
+            </details>
+          )}
           <details hidden={!detachedCues.length}>
             <summary>本文から開けない指示（{detachedCues.length}件）</summary>
             {detachedCues.map((c) => (
@@ -1865,7 +1896,7 @@ function NarrationPage({
               : targets.some(latest)
                 ? '修正候補を比較できます'
                 : pending.length
-                  ? '未生成・変更あり ' + new Set(pending.map((s) => s.blockId)).size + '段落'
+                  ? '未生成・変更あり ' + pending.length + '文'
                   : missing.length || changed.length
                     ? '試聴して読みを採用'
                     : '書き出せます'}
