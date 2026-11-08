@@ -711,7 +711,7 @@
   max-width: min(100%, 440px);
 }
 
-/* The manuscript remains prose; only the selected regeneration units are outlined. */
+/* Keep manuscript prose continuous; selection is shown by its highlight. */
 .narration-paragraphs {
   padding: 12px 8px 100px;
   line-height: 2.4;
@@ -736,8 +736,6 @@
   border-radius: 4px;
 }
 .narration-paragraph.is-selected {
-  outline: 1px dashed var(--primary);
-  outline-offset: 3px;
   background: transparent;
 }
 .narration-paragraph-select {
@@ -803,12 +801,6 @@
 .narration-paragraph.is-selected {
   outline: none;
   background: transparent;
-}
-.narration-paragraph.is-selected .narration-paragraph-select {
-  outline: 1px dashed var(--primary);
-  outline-offset: 3px;
-  box-decoration-break: clone;
-  -webkit-box-decoration-break: clone;
 }
 .narration-paragraph.is-selected::before {
   outline: none;
@@ -1099,7 +1091,7 @@
   padding: 9px 24px 9px 10px;
 }
 
-/* Status is visible independently of the blue selection outline. */
+/* Status is visible independently of the blue selection highlight. */
 .narration-studio {
   --narration-selection: light-dark(#1d4ed8, #93c5fd);
 }
@@ -1142,9 +1134,6 @@
   box-decoration-break: clone;
   -webkit-box-decoration-break: clone;
   border-bottom: 2px solid color-mix(in srgb, var(--narration-state-ink) 40%, transparent);
-}
-.narration-paragraph.is-selected .narration-paragraph-select {
-  outline-color: var(--narration-selection);
 }
 .narration-paragraph .narration-prose mark {
   background: color-mix(in srgb, var(--narration-selection) 24%, var(--background));

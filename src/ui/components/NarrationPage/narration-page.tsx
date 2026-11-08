@@ -475,8 +475,14 @@ function NarrationPage({
     audio.current?.pause()
     fullAudio.current?.pause()
     window.getSelection()?.removeAllRanges()
-    if (!only && selection.length === 1 && selection[0] === id) {
-      clearSelection()
+    if (!only && selection.includes(id)) {
+      const next = selection.filter((selected) => selected !== id)
+      if (!next.length) clearSelection()
+      else {
+        if (selectionAnchor.current === id) selectionAnchor.current = next[0]!
+        setSelection(next)
+        setOffsets({})
+      }
       return
     }
     if (only || !selection.length) selectionAnchor.current = id
@@ -484,7 +490,13 @@ function NarrationPage({
     selectionAnchor.current = anchor
     const a = segments.findIndex((s) => s.id === anchor)
     const b = segments.findIndex((s) => s.id === id)
-    setSelection(segments.slice(Math.min(a, b), Math.max(a, b) + 1).map((s) => s.id))
+    const first = segments.findIndex((s) => selection.includes(s.id))
+    const last = segments.findLastIndex((s) => selection.includes(s.id))
+    setSelection(
+      !only && first < b && b < last
+        ? segments.filter((s) => selection.includes(s.id) || s.id === id).map((s) => s.id)
+        : segments.slice(Math.min(a, b), Math.max(a, b) + 1).map((s) => s.id),
+    )
     setOffsets({})
     setScope('range')
   }
@@ -528,9 +540,7 @@ function NarrationPage({
           end: Math.min(length, Math.max(...refs.map((r) => r.end ?? Infinity)) - at),
         }
     }
-    const first = segments.findIndex((v) => next[v.id])
-    const last = segments.findLastIndex((v) => next[v.id])
-    const ids = first < 0 ? [] : segments.slice(first, last + 1).map((v) => v.id)
+    const ids = segments.filter((v) => next[v.id]).map((v) => v.id)
     setSelection(ids)
     setOffsets(c.reading ? next : {})
     setMobilePanel('inspector')
