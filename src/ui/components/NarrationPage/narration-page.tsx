@@ -343,6 +343,12 @@ function NarrationPage({
     ? { model: entitlement.model, voices: entitlement.voices }
     : undefined
   const segments = resolveSegments(episode, settings, staging, generation)
+  const paragraphs: VoiceSegment[][] = []
+  for (const segment of segments) {
+    const last = paragraphs.at(-1)
+    if (last?.[0]?.blockId === segment.blockId) last.push(segment)
+    else paragraphs.push([segment])
+  }
   const targets = scope === 'episode' ? segments : segments.filter((s) => selection.includes(s.id))
   const selectedRefs = targets.map((s) => {
     const siblings = segments.filter((v) => v.blockId === s.blockId)
@@ -460,7 +466,13 @@ function NarrationPage({
     audio.current?.pause()
     fullAudio.current?.pause()
     window.getSelection()?.removeAllRanges()
-    if (!only && selection.length === 1 && selection[0] === id) {
+    const clicked = segments.find((s) => s.id === id)
+    const block = segments.filter((s) => s.blockId === clicked?.blockId)
+    if (
+      !only &&
+      block.length === selection.length &&
+      block.every((s) => selection.includes(s.id))
+    ) {
       clearSelection()
       return
     }
@@ -469,7 +481,18 @@ function NarrationPage({
     selectionAnchor.current = anchor
     const a = segments.findIndex((s) => s.id === anchor)
     const b = segments.findIndex((s) => s.id === id)
-    setSelection(segments.slice(Math.min(a, b), Math.max(a, b) + 1).map((s) => s.id))
+    const firstBlock = segments[Math.min(a, b)]?.blockId
+    const lastBlock = segments[Math.max(a, b)]?.blockId
+    setSelection(
+      only
+        ? [id]
+        : segments
+            .slice(
+              segments.findIndex((s) => s.blockId === firstBlock),
+              segments.findLastIndex((s) => s.blockId === lastBlock) + 1,
+            )
+            .map((s) => s.id),
+    )
     setOffsets({})
     setScope('range')
   }
@@ -981,141 +1004,174 @@ function NarrationPage({
             }}
             role="presentation"
           >
-            {segments.map((segment, i) => {
-              const take = accepted(segment),
-                candidate = latest(segment),
-                instructions = cuesForBlock(settings, episode, segment.blockId).filter((c) => {
-                  const start = segments
-                    .slice(0, i)
-                    .filter((v) => v.blockId === segment.blockId)
-                    .reduce((n, v) => n + plainText(v.source.inlines).length, 0)
-                  return (
-                    c.scope === 'episode' ||
-                    c.refs.some(
-                      (r) =>
-                        r.blockId === segment.blockId &&
-                        (r.start === undefined ||
-                          (r.start < start + plainText(segment.source.inlines).length &&
-                            (r.end ?? Infinity) > start)),
-                    )
-                  )
-                })
-              const isCurrent =
-                (activePlayer === 'full'
-                  ? fullPlayback?.segments[
-                      fullPlayback.timeline.findIndex(
-                        (t) => fullPosition >= t.start && fullPosition < t.end,
+            {paragraphs.map((parts, paragraphIndex) => {
+              const details = parts.map((segment) => {
+                const i = segments.indexOf(segment)
+                const take = accepted(segment),
+                  candidate = latest(segment),
+                  instructions = cuesForBlock(settings, episode, segment.blockId).filter((c) => {
+                    const start = segments
+                      .slice(0, i)
+                      .filter((v) => v.blockId === segment.blockId)
+                      .reduce((n, v) => n + plainText(v.source.inlines).length, 0)
+                    return (
+                      c.scope === 'episode' ||
+                      c.refs.some(
+                        (r) =>
+                          r.blockId === segment.blockId &&
+                          (r.start === undefined ||
+                            (r.start < start + plainText(segment.source.inlines).length &&
+                              (r.end ?? Infinity) > start)),
                       )
-                    ]?.id
-                  : playing?.segments[currentIndex]?.id) === segment.id
-              const active = scope !== 'episode' && selection.includes(segment.id)
-              const lastAttempt = record.takes.filter((t) => t.segmentId === segment.id).at(-1)
-              const status = running.some((t) => t.segmentId === segment.id)
-                ? '生成中'
-                : candidate && candidate.id !== take?.id
-                  ? '比較待ち'
-                  : take
-                    ? take.fingerprint === segment.fingerprint
-                      ? '生成済み'
-                      : '変更あり'
-                    : candidate
-                      ? '比較待ち'
-                      : lastAttempt?.state === 'failed'
-                        ? '生成に失敗'
-                        : lastAttempt?.state === 'unknown'
-                          ? '結果を確認中'
-                          : lastAttempt?.state === 'missing'
-                            ? '保管期限切れ'
-                            : record.snapshots?.[episode.id]
-                              ? '音声に未反映'
-                              : '未生成'
-              const tone =
-                status === '生成済み'
-                  ? 'ready'
-                  : status === '比較待ち'
-                    ? 'compare'
-                    : status === '未生成'
-                      ? 'empty'
-                      : status === '生成中'
-                        ? 'working'
-                        : status === '変更あり' || status === '音声に未反映'
-                          ? 'changed'
-                          : 'error'
+                    )
+                  })
+                const isCurrent =
+                  (activePlayer === 'full'
+                    ? fullPlayback?.segments[
+                        fullPlayback.timeline.findIndex(
+                          (t) => fullPosition >= t.start && fullPosition < t.end,
+                        )
+                      ]?.id
+                    : playing?.segments[currentIndex]?.id) === segment.id
+                const active = scope !== 'episode' && selection.includes(segment.id)
+                const lastAttempt = record.takes.filter((t) => t.segmentId === segment.id).at(-1)
+                const status = running.some((t) => t.segmentId === segment.id)
+                  ? '生成中'
+                  : candidate && candidate.id !== take?.id
+                    ? '比較待ち'
+                    : take
+                      ? take.fingerprint === segment.fingerprint
+                        ? '生成済み'
+                        : '変更あり'
+                      : candidate
+                        ? '比較待ち'
+                        : lastAttempt?.state === 'failed'
+                          ? '生成に失敗'
+                          : lastAttempt?.state === 'unknown'
+                            ? '結果を確認中'
+                            : lastAttempt?.state === 'missing'
+                              ? '保管期限切れ'
+                              : record.snapshots?.[episode.id]
+                                ? '音声に未反映'
+                                : '未生成'
+                const tone =
+                  status === '生成済み'
+                    ? 'ready'
+                    : status === '比較待ち'
+                      ? 'compare'
+                      : status === '未生成'
+                        ? 'empty'
+                        : status === '生成中'
+                          ? 'working'
+                          : status === '変更あり' || status === '音声に未反映'
+                            ? 'changed'
+                            : 'error'
+                return { segment, active, isCurrent, status, tone, instructions, lastAttempt }
+              })
+              const statuses = details.filter(
+                (d, i) => details.findIndex((v) => v.status === d.status) === i,
+              )
+              const instructions = Array.from(
+                new Map(
+                  details
+                    .flatMap((d) => d.instructions)
+                    .filter((c) => c.scope === 'range')
+                    .map((c) => [c.id, c]),
+                ).values(),
+              )
               return (
-                <article
-                  data-narration-state={tone}
-                  key={segment.id}
-                  className={`narration-paragraph ${segments[i - 1]?.blockId !== segment.blockId ? 'is-block-start' : ''} ${active ? 'is-selected' : ''} ${isCurrent ? 'is-playing' : ''}`}
-                >
-                  {/* biome-ignore lint/a11y/useSemanticElements: Native buttons trap cross-paragraph text selection; this selectable span retains keyboard activation and button semantics. */}
-                  <span
+                <div className="narration-block" key={parts[0]!.blockId}>
+                  {/* biome-ignore lint/a11y/useSemanticElements: Native buttons trap cross-paragraph text selection. */}
+                  <div
                     role="button"
                     tabIndex={0}
                     data-selectable
-                    className="narration-paragraph-select"
-                    aria-pressed={active}
-                    aria-label={`文章${i + 1}を選ぶ`}
+                    className="narration-block-select"
+                    aria-pressed={details.every((d) => d.active)}
+                    aria-label={`段落${paragraphIndex + 1}を選ぶ`}
                     onClick={() => {
-                      if (dragged.current) return
-                      select(segment.id)
+                      if (!dragged.current) select(parts[0]!.id)
                     }}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter' || e.key === ' ') {
                         e.preventDefault()
-                        select(segment.id)
+                        select(parts[0]!.id)
                       }
                     }}
                   >
-                    <span className="narration-line-number">{String(i + 1).padStart(2, '0')}</span>
-                    <span className="narration-prose" data-segment={segment.id}>
-                      {active ? (
-                        <>
-                          {plainText(segment.source.inlines).slice(
-                            0,
-                            offsets[segment.id]?.start ?? 0,
-                          )}
-                          <mark>
-                            {plainText(segment.source.inlines).slice(
-                              offsets[segment.id]?.start ?? 0,
-                              offsets[segment.id]?.end,
+                    {details.map(({ segment, active, isCurrent, tone }) => (
+                      <span
+                        key={segment.id}
+                        data-narration-state={tone}
+                        className={`narration-paragraph ${active ? 'is-selected' : ''} ${isCurrent ? 'is-playing' : ''}`}
+                      >
+                        <span className="narration-paragraph-select">
+                          <span className="narration-prose" data-segment={segment.id}>
+                            {active ? (
+                              <>
+                                {plainText(segment.source.inlines).slice(
+                                  0,
+                                  offsets[segment.id]?.start ?? 0,
+                                )}
+                                <mark>
+                                  {plainText(segment.source.inlines).slice(
+                                    offsets[segment.id]?.start ?? 0,
+                                    offsets[segment.id]?.end,
+                                  )}
+                                </mark>
+                                {offsets[segment.id]?.end !== undefined
+                                  ? plainText(segment.source.inlines).slice(
+                                      offsets[segment.id]!.end,
+                                    )
+                                  : ''}
+                              </>
+                            ) : (
+                              plainText(segment.source.inlines)
                             )}
-                          </mark>
-                          {offsets[segment.id]?.end !== undefined
-                            ? plainText(segment.source.inlines).slice(offsets[segment.id]!.end)
-                            : ''}
-                        </>
-                      ) : (
-                        plainText(segment.source.inlines)
-                      )}
-                    </span>
-                  </span>
-                  <div className="narration-paragraph-meta">
-                    <span className="narration-state-tag">{status}</span>
-                    {lastAttempt?.error && <span role="status">{lastAttempt.error}</span>}
-                    {instructions
-                      .filter((c) => c.scope === 'range')
-                      .map((c) => (
-                        <button
-                          type="button"
-                          className="narration-instruction-link"
-                          key={c.id}
-                          title={[
-                            c.refs.map((r) => r.snapshot.slice(r.start, r.end)).join(' … '),
-                            c.direction,
-                            c.reading,
-                          ]
-                            .filter(Boolean)
-                            .join(' / ')}
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            openCue(c)
-                          }}
-                        >
-                          {c.reading ? '読み：' + c.reading : c.voiceId ? '声の指定' : '演技の指定'}
-                        </button>
-                      ))}
+                          </span>
+                        </span>
+                      </span>
+                    ))}
                   </div>
-                </article>
+                  <div className="narration-paragraph-meta">
+                    {statuses.map(({ status, tone }) => (
+                      <span
+                        key={status}
+                        data-narration-state={tone}
+                        className="narration-state-tag"
+                      >
+                        {status}
+                      </span>
+                    ))}
+                    {Array.from(
+                      new Set(details.map((d) => d.lastAttempt?.error).filter(Boolean)),
+                    ).map((error) => (
+                      <span key={error} role="status">
+                        {error}
+                      </span>
+                    ))}
+                    {instructions.map((c) => (
+                      <button
+                        type="button"
+                        className="narration-instruction-link"
+                        key={c.id}
+                        title={[
+                          c.refs.map((r) => r.snapshot.slice(r.start, r.end)).join(' … '),
+                          c.direction,
+                          c.reading,
+                        ]
+                          .filter(Boolean)
+                          .join(' / ')}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          openCue(c)
+                        }}
+                      >
+                        {c.reading ? '読み：' + c.reading : c.voiceId ? '声の指定' : '演技の指定'}
+                      </button>
+                    ))}
+                  </div>
+                </div>
               )
             })}
           </div>
@@ -1440,7 +1496,11 @@ function NarrationPage({
                   disabled={!readyToGenerate(targets) || busy || !!record.operation}
                   onClick={() => generate(targets, true)}
                 >
-                  {targets.some(latest) ? 'もう一度修正して生成' : '選択部分を修正して生成'}
+                  {targets.some(latest)
+                    ? 'もう一度修正して生成'
+                    : targets.some(accepted)
+                      ? '選択部分を修正して生成'
+                      : '選択部分を生成'}
                 </Button>
               )}
               {scope !== 'episode' && (
@@ -1488,6 +1548,21 @@ function NarrationPage({
                   </Button>
                 </>
               )}
+              {scope !== 'episode' &&
+                targets.length > 0 &&
+                targets.every(accepted) &&
+                !targets.some(latest) && (
+                  <>
+                    <Button
+                      variant="outline"
+                      className="narration-wide"
+                      onClick={() => void act(() => play(targets, 'accepted'))}
+                    >
+                      選択部分を聴く
+                    </Button>
+                    {playing?.label === '採用中の読み' && player}
+                  </>
+                )}
               {record.undo && (
                 <button type="button" onClick={() => void act(() => service.undoAdoption())}>
                   元に戻す
@@ -1802,7 +1877,7 @@ function NarrationPage({
               : targets.some(latest)
                 ? '修正候補を比較できます'
                 : pending.length
-                  ? '未生成・変更あり ' + pending.length + '区間'
+                  ? '未生成・変更あり ' + new Set(pending.map((s) => s.blockId)).size + '段落'
                   : missing.length || changed.length
                     ? '試聴して読みを採用'
                     : '書き出せます'}

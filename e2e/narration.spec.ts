@@ -41,13 +41,13 @@ test('専用画面で複数の指示を保存し、再読込後も同じジョ�
  const usable=await page.locator('.narration-workspace').evaluate(el=>el.getBoundingClientRect().height/window.innerHeight)
  expect(usable).toBeGreaterThan(0.78)
  await expect(page.getByLabel('語り手の声')).toBeVisible()
- await page.getByRole('button',{name:'文章2を選ぶ',exact:true}).click()
+ await page.getByRole('button',{name:'段落2を選ぶ',exact:true}).click()
  await page.getByLabel('どう読んでほしい？').fill('そっとささやくように。懐かしさと喜びを隠しながら。'.repeat(4))
  await page.getByRole('button',{name:'× 選択解除',exact:true}).click()
- await page.getByRole('button',{name:'文章3を選ぶ',exact:true}).click()
+ await page.getByRole('button',{name:'段落3を選ぶ',exact:true}).click()
  await page.getByLabel('どう読んでほしい？').fill('少し寂しそうに。最後だけ温かく')
  await page.getByRole('button',{name:'× 選択解除',exact:true}).click()
- await page.getByRole('button',{name:'文章2を選ぶ',exact:true}).click()
+ await page.getByRole('button',{name:'段落2を選ぶ',exact:true}).click()
  await expect(page.getByLabel('どう読んでほしい？')).toHaveValue(/そっとささやく/)
  for(const width of [1440,1024,768,390]){
   await page.setViewportSize({width,height:1000})
@@ -76,7 +76,7 @@ test('専用画面で複数の指示を保存し、再読込後も同じジョ�
  await page.locator('footer input[type=range]').focus()
  await page.keyboard.press('End')
  await page.locator('footer').getByRole('button',{name:'ここを直す',exact:true}).click()
- await expect(page.getByRole('button',{name:'文章3を選ぶ',exact:true})).toHaveAttribute('aria-pressed','true')
+ await expect(page.getByRole('button',{name:'段落3を選ぶ',exact:true})).toHaveAttribute('aria-pressed','true')
  await page.getByRole('button',{name:'× 選択解除',exact:true}).click()
  await page.reload()
  await expect(page.getByRole('button',{name:'MP3で保存',exact:true})).toBeEnabled()
@@ -84,7 +84,7 @@ test('専用画面で複数の指示を保存し、再読込後も同じジョ�
  await page.getByRole('button',{name:'MP3で保存',exact:true}).click()
  expect((await download).suggestedFilename()).toMatch(/\.mp3$/)
  expect(posts).toBe(1)
- await page.getByRole('button',{name:'文章3を選ぶ',exact:true}).click()
+ await page.getByRole('button',{name:'段落3を選ぶ',exact:true}).click()
  await expect(page.getByLabel('どう読んでほしい？')).toHaveValue('少し寂しそうに。最後だけ温かく')
  await page.getByRole('button',{name:/選択部分を修正して生成/}).click()
  await expect.poll(()=>posts).toBe(2)
@@ -95,7 +95,7 @@ test('専用画面で複数の指示を保存し、再読込後も同じジョ�
  await expect(page.locator('.narration-paragraph[data-narration-state=ready]')).toHaveCount(2)
  await expect(page.getByText(/保存した指示/)).toHaveCount(0)
  const colors=await page.locator('.narration-paragraph[data-narration-state=compare]').evaluate(el=>({
-  status:getComputedStyle(el.querySelector('.narration-state-tag')!).backgroundColor,
+  status:getComputedStyle(el.closest('.narration-block')!.querySelector('.narration-state-tag')!).backgroundColor,
   selected:getComputedStyle(el.querySelector('mark')!).backgroundColor,
  }))
  expect(colors.status).not.toBe(colors.selected)
@@ -176,6 +176,8 @@ test('長い原稿でもスタイルと速さ・間をまとめ、複数の声�
  await expect(page.getByText('演技を添える',{exact:true})).toHaveCount(0)
  await expect(page.getByRole('region',{name:'本文の色分け'})).toBeVisible()
  await expect(page.locator('.narration-paragraph[data-narration-state=empty]')).toHaveCount(60)
+ await expect(page.locator('.narration-block')).toHaveCount(40)
+ await expect(page.locator('.narration-block .narration-state-tag')).toHaveCount(40)
  const style=await page.getByLabel('朗読スタイル').boundingBox()
  const speed=await page.getByLabel('速さ').boundingBox()
  const gap=await page.getByLabel('段落のあとの間').boundingBox()
@@ -190,7 +192,7 @@ test('長い原稿でもスタイルと速さ・間をまとめ、複数の声�
  await expect(page.getByRole('heading',{name:'本文に声を付ける',exact:true})).toBeVisible()
  await expect(page.getByLabel('語り手の声')).toBeHidden()
  await page.screenshot({path:'test-results/narration-cast-overview.png',fullPage:true})
- await page.getByRole('button',{name:'文章3を選ぶ',exact:true}).click()
+ await page.getByRole('button',{name:'段落2を選ぶ',exact:true}).click()
  await expect(page.getByRole('heading',{name:'この部分の読み方'})).toBeVisible()
  await expect(page.getByLabel('語り手の声')).toBeHidden()
  await expect(page.getByText('用語集だけの人物')).toHaveCount(0)
@@ -210,15 +212,15 @@ test('長い原稿でもスタイルと速さ・間をまとめ、複数の声�
  await page.getByRole('button',{name:'× 選択解除',exact:true}).click()
  await page.reload()
  await expect(page.getByRole('button',{name:'複数の声',exact:true})).toHaveAttribute('aria-pressed','true')
- await page.getByRole('button',{name:'文章3を選ぶ',exact:true}).click()
+ await page.getByRole('button',{name:'段落2を選ぶ',exact:true}).click()
  await expect(page.getByLabel('この部分の声')).toHaveValue('second')
 
  await page.getByRole('button',{name:'× 選択解除',exact:true}).click()
- await page.getByRole('button',{name:'文章1を選ぶ',exact:true}).click()
- await page.getByRole('button',{name:'文章3を選ぶ',exact:true}).click()
+ await page.getByRole('button',{name:'段落1を選ぶ',exact:true}).click()
+ await page.getByRole('button',{name:'段落2を選ぶ',exact:true}).click()
  await expect(page.locator('.narration-paragraph.is-selected')).toHaveCount(3)
- await page.getByRole('button',{name:'文章1を選ぶ',exact:true}).click()
- await expect(page.locator('.narration-paragraph.is-selected')).toHaveCount(1)
+ await page.getByRole('button',{name:'段落1を選ぶ',exact:true}).click()
+ await expect(page.locator('.narration-paragraph.is-selected')).toHaveCount(2)
  await page.getByRole('button',{name:'× 選択解除',exact:true}).click()
  const drag = async (a:number,start:number,b:number,end:number) => {
   const points = await page.locator('.narration-paragraphs').evaluate((root,{a,start,b,end})=>{
@@ -281,4 +283,63 @@ test('長い原稿でもスタイルと速さ・間をまとめ、複数の声�
  await expect(page.getByLabel('この部分の声')).toBeVisible()
  expect(await inspector.evaluate(el=>el.scrollWidth<=el.clientWidth)).toBe(true)
  await page.screenshot({path:'test-results/narration-long-mobile.png',fullPage:true})
+})
+
+test('一話生成前の部分音声は自動反映し、再生成した箇所だけ比較する',async({page})=>{
+ test.setTimeout(60000)
+ const takes:VoiceTake[]=[]
+ let posts=0
+ await page.route('**/api/narration*',async(route)=>{
+  const request=route.request(),url=new URL(request.url())
+  if(url.searchParams.get('action')==='audio'){await route.fulfill({contentType:'audio/mpeg',body:readFileSync('public/narration-samples/silence.mp3')});return}
+  if(request.method()==='POST'){
+   posts++
+   const body=request.postDataJSON()
+   for(const s of body.segments)takes.push({id:crypto.randomUUID(),jobId:body.id,segmentId:s.id,fingerprint:s.fingerprint,state:'generating',createdAt:Date.now()})
+   await route.fulfill({status:202,json:{id:body.id}})
+   return
+  }
+  await route.fulfill({json:{entitlement:{plan:'standard',label:'980円プラン',limit:10000,used:0,reserved:takes.length*6,remaining:10000-takes.length*6,preview:{remaining:5,limit:5,period:'preview:2026-11-07'},period:'2026-11',periodEnd:Date.now()+86400000,model:'s2.1-pro-free',development:true,enabled:true,voices:[{id:'default',label:'Shiori',description:'日本語',version:'1'}]},jobs:[...new Set(takes.map(t=>t.jobId))],takes}})
+ })
+ await page.goto('/')
+ await page.evaluate(async(title)=>{
+  localStorage.setItem('ns-onboarded','1')
+  const request=indexedDB.open('novel-studio',1)
+  const db=await new Promise<IDBDatabase>((resolve,reject)=>{request.onsuccess=()=>resolve(request.result);request.onerror=()=>reject(request.error)})
+  await new Promise<void>((resolve,reject)=>{
+   const tx=db.transaction('kv','readwrite')
+   tx.objectStore('kv').put({id:'narration-e2e',title,episodes:[{id:'episode',title,blocks:['私は鳥居を見上げた。風が吹いた。','「おかえり」','「ただいま。会いたかった」'].map((text,i)=>({id:'b'+i,type:'paragraph',inlines:[{type:'text',text}]}))}]},'work:narration-e2e')
+   tx.oncomplete=()=>resolve();tx.onerror=()=>reject(tx.error)
+  });db.close()
+ },title)
+ await page.goto('/#/narration/narration-e2e/episode')
+
+ await page.getByRole('button',{name:'段落1を選ぶ',exact:true}).click()
+ await expect(page.locator('.narration-paragraph.is-selected')).toHaveCount(2)
+ await page.getByRole('button',{name:'選択部分を生成',exact:true}).click()
+ await page.getByRole('button',{name:'同意して生成',exact:true}).click()
+ await expect.poll(()=>posts).toBe(1)
+ for(const take of takes) take.state='ready'
+ await expect(page.getByRole('button',{name:'選択部分を聴く',exact:true})).toBeVisible({timeout:10000})
+ await expect(page.getByRole('button',{name:'こちらを採用',exact:true})).toHaveCount(0)
+ await expect(page.getByRole('button',{name:'新しい読み',exact:true})).toHaveCount(0)
+ await expect(page.locator('.narration-paragraph[data-narration-state=ready]')).toHaveCount(2)
+ await expect(page.locator('.narration-block').first().locator('.narration-state-tag')).toHaveCount(1)
+ await page.getByRole('button',{name:'選択部分を聴く',exact:true}).click()
+ await expect(page.locator('.narration-inspector audio')).toHaveAttribute('src',/^blob:/)
+ await page.screenshot({path:'test-results/narration-first-recording.png',fullPage:true})
+ await page.reload()
+ await expect(page.locator('.narration-paragraph[data-narration-state=ready]')).toHaveCount(2)
+ await page.getByRole('button',{name:'段落1を選ぶ',exact:true}).click()
+ await page.getByRole('button',{name:'段落2を選ぶ',exact:true}).click()
+ await page.getByRole('button',{name:'選択部分を修正して生成',exact:true}).click()
+ await expect.poll(()=>posts).toBe(2)
+ for(const take of takes) take.state='ready'
+ await expect(page.getByRole('button',{name:'こちらを採用',exact:true})).toBeVisible({timeout:10000})
+ await expect(page.locator('.narration-paragraph[data-narration-state=compare]')).toHaveCount(2)
+ await expect(page.locator('.narration-paragraph[data-narration-state=ready]')).toHaveCount(1)
+ await page.getByRole('button',{name:'元の読み',exact:true}).click()
+ await page.getByRole('button',{name:'こちらを採用',exact:true}).click()
+ await expect(page.locator('.narration-paragraph[data-narration-state=ready]')).toHaveCount(3)
+ expect(posts).toBe(2)
 })

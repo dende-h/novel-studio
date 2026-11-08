@@ -136,6 +136,7 @@ export class NarrationService {
         ]
         await this.persist({ ...record, takes: merged, jobs: body.jobs })
         await this.completeOperation()
+        await this.applyInitialRecordings()
       }
       this.update({
         entitlement: body.entitlement,
@@ -305,16 +306,60 @@ export class NarrationService {
         operation: undefined,
       })
     } else {
+      const accepted = { ...current.accepted }
+      const candidates = { ...current.candidates }
+      const candidateSegments = { ...current.candidateSegments }
+      const snapshots = { ...current.snapshots }
+      for (const segment of operation.segments) {
+        // A first recording has nothing to compare. Preserve any existing adoption,
+        // even when its asset has expired; replacing it still requires a choice.
+        if (!accepted[segment.id]) {
+          accepted[segment.id] = mapping[segment.id]!
+          delete candidates[segment.id]
+          const snapshot = snapshots[segment.episodeId]
+          if (snapshot?.some((s) => s.id === segment.id))
+            snapshots[segment.episodeId] = snapshot.map((s) => (s.id === segment.id ? segment : s))
+        } else {
+          candidates[segment.id] = mapping[segment.id]!
+          candidateSegments[segment.id] = segment
+        }
+      }
       await this.persist({
         ...current,
-        candidates: { ...current.candidates, ...mapping },
-        candidateSegments: {
-          ...current.candidateSegments,
-          ...Object.fromEntries(operation.segments.map((s) => [s.id, s])),
-        },
+        accepted,
+        candidates,
+        candidateSegments,
+        snapshots,
         operation: undefined,
       })
     }
+  }
+  private async applyInitialRecordings() {
+    const record = this.state.record
+    if (!record || record.operation) return
+    // Only explicit partial-generation candidates qualify. Preview/cache takes
+    // and historical inferred candidates have no candidateSegments snapshot.
+    const initial = Object.entries(record.candidates ?? {}).filter(
+      ([id, takeId]) =>
+        !record.accepted[id] &&
+        record.candidateSegments?.[id] &&
+        record.takes.some((t) => t.id === takeId && t.state === 'ready'),
+    )
+    if (!initial.length) return
+    for (const [, takeId] of initial) await this.audio(takeId)
+    if (this.state.record !== record) return
+    const accepted = { ...record.accepted }
+    const candidates = { ...record.candidates }
+    const snapshots = { ...record.snapshots }
+    for (const [id, takeId] of initial) {
+      accepted[id] = takeId
+      delete candidates[id]
+      const segment = record.candidateSegments![id]!
+      const snapshot = snapshots[segment.episodeId]
+      if (snapshot?.some((s) => s.id === id))
+        snapshots[segment.episodeId] = snapshot.map((s) => (s.id === id ? segment : s))
+    }
+    await this.persist({ ...record, accepted, candidates, snapshots })
   }
   async adopt(segments: VoiceSegment[], useNew: boolean) {
     const record = this.state.record

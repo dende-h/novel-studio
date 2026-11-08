@@ -723,10 +723,17 @@
   border: 0;
   border-radius: 2px;
 }
-.narration-paragraph.is-block-start::before {
-  content: "";
-  display: block;
-  height: 16px;
+.narration-block {
+  margin: 16px 0 24px;
+}
+.narration-block-select {
+  cursor: text;
+  user-select: text;
+}
+.narration-block-select:focus-visible {
+  outline: 2px solid var(--narration-selection);
+  outline-offset: 4px;
+  border-radius: 4px;
 }
 .narration-paragraph.is-selected {
   outline: 1px dashed var(--primary);
@@ -751,9 +758,12 @@
   background: color-mix(in srgb, var(--primary) 22%, var(--background));
 }
 .narration-paragraph-meta {
-  display: inline;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
   padding: 0;
-  margin-right: 8px;
+  margin-top: 6px;
+  line-height: 1.5;
 }
 .narration-paragraph-meta > span {
   font-size: 11px;
