@@ -147,3 +147,131 @@ it('APIで拒否された要求は未完了ジョブとして残さず、指示�
   expect(service.getSnapshot().error).toContain('入力を確認')
   expect(memory.has('narration-pending:local:w')).toBe(false)
 })
+
+it.each([
+  false,
+  true,
+])('初回部分生成は自動反映し、既存音声との混在でも比較は再生成部分だけにする（混在=%s）', async (mixed) => {
+  const record = emptyNarration('w')
+  const segments = resolveSegments(
+    { id: 'e', title: '話', blocks: parseEpisodeBody('朝。夜。') },
+    record.settings,
+  )
+  const first = segments[0]!
+  const old: VoiceTake = {
+    id: 'old',
+    segmentId: first.id,
+    fingerprint: 'before',
+    jobId: 'old-job',
+    state: 'ready',
+    createdAt: 1,
+  }
+  if (mixed) {
+    record.accepted[first.id] = old.id
+    record.takes = [old]
+  }
+  memory.set('narration:local:w', record)
+  const takes = [...record.takes]
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (url: string, init?: RequestInit) => {
+      if (url.includes('action=audio')) return new Response(new Blob(['mp3']))
+      if (init?.method === 'POST') {
+        const body = JSON.parse(init.body as string)
+        body.segments.forEach((s: VoiceSegment, i: number) => {
+          takes.push({
+            id: 'new' + i,
+            segmentId: s.id,
+            fingerprint: s.fingerprint,
+            jobId: body.id,
+            state: 'ready',
+            createdAt: 2,
+          })
+        })
+        return Response.json({ id: body.id })
+      }
+      return Response.json({ entitlement: {}, jobs: [], takes })
+    }),
+  )
+  const service = new NarrationService('w', async () => null)
+  await service.init()
+  await service.generate(segments, true)
+  expect(service.getSnapshot().record?.accepted).toEqual({
+    [first.id]: mixed ? 'old' : 'new0',
+    [segments[1]!.id]: 'new1',
+  })
+  expect(service.getSnapshot().record?.candidates).toEqual(mixed ? { [first.id]: 'new0' } : {})
+  const restored = new NarrationService('w', async () => null)
+  await restored.init()
+  expect(restored.getSnapshot().record?.accepted).toEqual(service.getSnapshot().record?.accepted)
+  if (mixed) {
+    await restored.adopt(segments, false)
+    expect(restored.getSnapshot().record?.accepted[segments[1]!.id]).toBe('new1')
+  }
+})
+
+it('無料の冒頭試聴は初回でも本文に反映しない', async () => {
+  const record = emptyNarration('w')
+  const segments = resolveSegments(
+    { id: 'e', title: '話', blocks: parseEpisodeBody('朝。') },
+    record.settings,
+  )
+  memory.set('narration:local:w', record)
+  const takes: VoiceTake[] = []
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (url: string, init?: RequestInit) => {
+      if (url.includes('action=audio')) return new Response(new Blob(['mp3']))
+      if (init?.method === 'POST') {
+        const body = JSON.parse(init.body as string)
+        takes.push({
+          id: 'preview',
+          segmentId: segments[0]!.id,
+          fingerprint: segments[0]!.fingerprint,
+          jobId: body.id,
+          state: 'ready',
+          createdAt: 1,
+        })
+        return Response.json({ id: body.id })
+      }
+      return Response.json({ entitlement: {}, jobs: [], takes })
+    }),
+  )
+  const service = new NarrationService('w', async () => null)
+  await service.init()
+  await service.generate(segments, true, { preview: true })
+  expect(service.getSnapshot().record?.accepted).toEqual({})
+  expect(service.getSnapshot().record?.candidates ?? {}).toEqual({})
+})
+
+it('旧UIの初回候補を復元すると自動反映し、試聴キャッシュは残す', async () => {
+  const record = emptyNarration('w')
+  const segments = resolveSegments(
+    { id: 'e', title: '話', blocks: parseEpisodeBody('朝。夜。') },
+    record.settings,
+  )
+  record.takes = segments.map((s, i) => ({
+    id: 'take' + i,
+    segmentId: s.id,
+    fingerprint: s.fingerprint,
+    jobId: 'job' + i,
+    state: 'ready',
+    createdAt: 1,
+  }))
+  record.candidates = { [segments[0]!.id]: 'take0' }
+  record.candidateSegments = { [segments[0]!.id]: segments[0]! }
+  memory.set('narration:local:w', record)
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (url: string) =>
+      url.includes('action=audio')
+        ? new Response(new Blob(['mp3']))
+        : Response.json({ entitlement: {}, jobs: [], takes: record.takes }),
+    ),
+  )
+  const service = new NarrationService('w', async () => null)
+  await service.init()
+  expect(service.getSnapshot().record?.accepted).toEqual({ [segments[0]!.id]: 'take0' })
+  expect(service.getSnapshot().record?.candidates).toEqual({})
+  expect(service.getSnapshot().record?.takes).toHaveLength(2)
+})
