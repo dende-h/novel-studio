@@ -1170,3 +1170,6 @@
   color: var(--muted-foreground);
   margin-right: 4px;
 }
+
+.narration-studio .narration-paragraph-meta button.narration-instruction-link { color: var(--muted-foreground); }
+.narration-voice-ranges strong { color: var(--foreground); }
