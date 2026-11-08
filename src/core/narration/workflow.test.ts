@@ -128,3 +128,19 @@ it('明示したモードは話別。複数の声は範囲指定だけを使い�
   delete settings.episodes.e!.mode
   expect(resolveSegments(episode, settings, staging)[0]?.voiceId).toBe('legacy-voice')
 })
+
+it('サウンドノベルの場面区切りを新しい朗読の間に取り込まない', () => {
+  const episode = { id: 'e', title: '話', blocks: parseEpisodeBody('朝になった。') }
+  const settings = emptyNarration('w').settings
+  const staging = {
+    workId: 'w',
+    episodeId: 'e',
+    updatedAt: 1,
+    cues: [{ blockId: 'b1', sceneBreak: true }],
+  }
+  expect(resolveSegments(episode, settings, staging)[0]?.pauseMs).toBe(350)
+  expect(
+    resolveSegments(episode, settings, staging, { model: '', voices: [], legacy: true })[0]
+      ?.pauseMs,
+  ).toBe(700)
+})
