@@ -2,6 +2,7 @@ import type { Staging } from '../game'
 import type { Episode, Inline } from '../schema'
 import { fingerprint } from './fingerprint'
 import {
+  MIN_SENTENCE_PAUSE_MS,
   type NarrationSettings,
   type PronunciationEntry,
   STYLES,
@@ -130,12 +131,38 @@ export function splitNarrationInlines(inlines: Inline[], limit = 600): Inline[][
   if (current.length) parts.push(current)
   return parts
 }
+/** Legacy readings crossing new sentence boundaries need explicit reassignment.
+ * Repeating their entire reading for each sentence would duplicate narration. */
+export function readingCuesNeedingReview(
+  episode: Episode,
+  settings: NarrationSettings,
+): VoiceCue[] {
+  return settings.cues.filter((cue) => {
+    if (cue.episodeId !== episode.id || !cue.reading || !cueIsValid(cue, episode)) return false
+    if (cue.refs.length !== 1) return true
+    const ref = cue.refs[0]!
+    const block = episode.blocks.find((b) => b.id === ref.blockId)
+    if (!block) return false
+    const text = plainText(block.inlines)
+    const current = locateRef(ref, text)
+    if (!current) return false
+    let at = 0
+    return !splitSentences(block.inlines).some((part) => {
+      const start = at
+      at += plainText(part).length
+      return (current.start ?? 0) >= start && (current.end ?? text.length) <= at
+    })
+  })
+}
 export function resolveSegments(
   episode: Episode,
   settings: NarrationSettings,
   staging?: Staging,
   generation?: { model: string; voices: { id: string; version: string }[]; legacy?: boolean },
 ): VoiceSegment[] {
+  const readingReview = new Set(
+    generation?.legacy ? [] : readingCuesNeedingReview(episode, settings).map((cue) => cue.id),
+  )
   const explicitMode = settings.episodes?.[episode.id]?.mode
   settings = { ...settings, ...settings.episodes?.[episode.id] }
   const style = STYLES.find((s) => s.id === settings.style) ?? STYLES[0]
@@ -203,7 +230,7 @@ export function resolveSegments(
             settings.narrator
       let text = spokenText(inlines, settings.dictionary)
       const readings = local
-        .filter((c) => c.reading)
+        .filter((c) => c.reading && !readingReview.has(c.id))
         .map((c) => ({
           c,
           r: c.refs.find(
@@ -240,7 +267,10 @@ export function resolveSegments(
           (r.start === undefined || (r.start < offset && (r.end ?? original.length) > start)),
       )
       const direction =
-        ref?.start !== undefined && ref.end !== undefined && (ref.start > start || ref.end < offset)
+        generation?.legacy &&
+        ref?.start !== undefined &&
+        ref.end !== undefined &&
+        (ref.start > start || ref.end < offset)
           ? '「' +
             original.slice(Math.max(start, ref.start), Math.min(offset, ref.end)).slice(0, 40) +
             '」の部分を' +
@@ -263,16 +293,16 @@ export function resolveSegments(
             }
       const result = {
         ...part,
-        ...(text.includes('、') && !direction.trim() && !generation?.legacy
-          ? { commaPause: 'short' as const }
-          : {}),
         text,
         direction,
         voiceId,
         speed: resolved.speed ?? localStyle.speed,
-        pauseMs:
-          resolved.pauseMs ??
-          (resolved.style ? (index === pieces.length - 1 ? localStyle.pause : 0) : part.pauseMs),
+        pauseMs: generation?.legacy
+          ? (resolved.pauseMs ?? part.pauseMs)
+          : Math.max(
+              MIN_SENTENCE_PAUSE_MS,
+              index === pieces.length - 1 ? (resolved.pauseMs ?? localStyle.pause) : 0,
+            ),
       }
       return {
         ...result,
@@ -309,13 +339,12 @@ export function sliceInlines(inlines: Inline[], start: number, end: number): Inl
 export function splitSentences(inlines: Inline[]): Inline[][] {
   const text = plainText(inlines)
   const boundaries: number[] = []
-  let quoted = 0
+  // Punctuation inside dialogue is a boundary too. Keep consecutive terminal
+  // marks and closing quotes with the sentence they finish.
   for (let i = 0; i < text.length; i++) {
-    if ('「『'.includes(text[i]!)) quoted++
-    if ('」』'.includes(text[i]!)) {
-      quoted = Math.max(0, quoted - 1)
-      if (!quoted) boundaries.push(i + 1)
-    } else if (!quoted && '。！？!?'.includes(text[i]!)) boundaries.push(i + 1)
+    if (!'。！？!?」』'.includes(text[i]!)) continue
+    while (i + 1 < text.length && '。！？!?」』'.includes(text[i + 1]!)) i++
+    boundaries.push(i + 1)
   }
   let tokenOffset = 0
   for (const token of inlines) {
@@ -333,7 +362,7 @@ export function splitSentences(inlines: Inline[]): Inline[][] {
   for (const end of [...new Set(boundaries)]) {
     if (end > start) {
       const piece = sliceInlines(inlines, start, end)
-      if (countCharacters(plainText(piece))) result.push(...splitNarrationInlines(piece))
+      if (countCharacters(plainText(piece))) result.push(piece)
     }
     start = end
   }

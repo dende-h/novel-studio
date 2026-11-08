@@ -36,7 +36,25 @@ export function mp3Frames(bytes: Uint8Array): { frames: Uint8Array[]; duration: 
     throw new Error('音声を確認できませんでした。')
   return { frames, duration: (frames.length * 1152) / 44100 }
 }
-export function joinMp3(parts: { data: Uint8Array; pauseMs: number }[], silence: Uint8Array) {
+/** Edge silence is measured conservatively; speech samples are never removed. */
+export function edgeSilence(channels: Float32Array[], sampleRate: number) {
+  const length = channels[0]?.length ?? 0
+  if (!length || sampleRate <= 0) return { leadingMs: 0, trailingMs: 0 }
+  const quiet = (i: number) => channels.every((channel) => Math.abs(channel[i] ?? 0) < 0.001)
+  let first = 0
+  while (first < length && quiet(first)) first++
+  let last = length - 1
+  while (last >= first && quiet(last)) last--
+  // A silent asset belongs entirely to one edge, avoiding double-counting.
+  return {
+    leadingMs: (first * 1000) / sampleRate,
+    trailingMs: ((length - 1 - last) * 1000) / sampleRate,
+  }
+}
+export function joinMp3(
+  parts: { data: Uint8Array; pauseMs: number; leadingMs?: number; trailingMs?: number }[],
+  silence: Uint8Array,
+) {
   const silent = mp3Frames(silence).frames
   const chunks: Uint8Array[] = []
   const timeline: { start: number; end: number }[] = []
@@ -48,7 +66,11 @@ export function joinMp3(parts: { data: Uint8Array; pauseMs: number }[], silence:
     duration += parsed.duration
     timeline.push({ start, end: duration })
     if (index < parts.length - 1) {
-      const count = Math.round(((part.pauseMs / 1000) * 44100) / 1152)
+      const missing = Math.max(
+        0,
+        part.pauseMs - (part.trailingMs ?? 0) - (parts[index + 1]?.leadingMs ?? 0),
+      )
+      const count = Math.ceil(((missing / 1000) * 44100) / 1152)
       for (let i = 0; i < count; i++) chunks.push(silent[i % silent.length]!)
       duration += (count * 1152) / 44100
     }

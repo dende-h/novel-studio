@@ -1,10 +1,16 @@
 import { describe, expect, it } from 'vitest'
 import { parseEpisodeBody } from '../parser/parseNotation'
-import { cueIsValid, openingSegments, resolveSegments, segmentFingerprint } from './resolve'
+import {
+  cueIsValid,
+  openingSegments,
+  readingCuesNeedingReview,
+  resolveSegments,
+  segmentFingerprint,
+} from './resolve'
 import { emptyNarration } from './types'
 
 describe('文章選択と読み方', () => {
-  it('台詞を一単位に保ち、話別スタイルと語句だけの読みを反映する', () => {
+  it('台詞の句点でも分割し、話別スタイルと語句だけの読みを反映する', () => {
     const episode = {
       id: 'e',
       title: '話',
@@ -25,10 +31,10 @@ describe('文章選択と読み方', () => {
       },
     ]
     const segments = resolveSegments(episode, settings)
-    expect(segments).toHaveLength(3)
-    expect(segments[1]?.text).toBe('「やしろへ。帰ろう」')
+    expect(segments).toHaveLength(4)
+    expect(segments[1]?.text).toBe('「やしろへ。')
     expect(segments[0]?.direction).toBe('静かに落ち着いて、言葉の余韻を大切に')
-    expect(segments[1]?.direction).toContain('「社」の部分を')
+    expect(segments[1]?.direction).toBe('寂しそうに')
     expect(resolveSegments({ ...episode, id: 'other' }, settings)[0]?.direction).toBe('')
   })
   it('前の文章の編集後も一意に対応できる語句を保持し、曖昧なら確認待ち', () => {
@@ -143,4 +149,90 @@ it('サウンドノベルの場面区切りを新しい朗読の間に取り込�
     resolveSegments(episode, settings, staging, { model: '', voices: [], legacy: true })[0]
       ?.pauseMs,
   ).toBe(700)
+})
+
+it('句点・疑問符・感嘆符・閉じかっこを区切りとし、読点は分割しない', () => {
+  const text = '母は、笑った。「本当？うれしい！！ありがとう。」帰ろう。'
+  const pieces = resolveSegments(
+    { id: 'e', title: '話', blocks: parseEpisodeBody(text) },
+    emptyNarration('w').settings,
+  )
+  expect(pieces.map((s) => s.text)).toEqual([
+    '母は、笑った。',
+    '「本当？',
+    'うれしい！！',
+    'ありがとう。」',
+    '帰ろう。',
+  ])
+  expect(pieces.map((s) => s.text).join('')).toBe(text)
+  expect(pieces.every((s) => s.pauseMs === 350)).toBe(true)
+})
+
+it('段落末の指定は句点の間と重ねず、長い文を読点で勝手に分割しない', () => {
+  const settings = emptyNarration('w').settings
+  settings.cues = [{ id: 'gap', episodeId: 'e', scope: 'episode', refs: [], pauseMs: 700 }]
+  const pieces = resolveSegments(
+    { id: 'e', title: '話', blocks: parseEpisodeBody('朝。夜。') },
+    settings,
+  )
+  expect(pieces.map((s) => s.pauseMs)).toEqual([350, 700])
+  const long = resolveSegments(
+    { id: 'e', title: '話', blocks: parseEpisodeBody('長い、'.repeat(300) + '終わり。') },
+    settings,
+  )
+  expect(long).toHaveLength(1)
+  expect(long[0]!.characters).toBeGreaterThan(800)
+})
+
+it('同じ一文の読みを前半・後半で直しても、原文の順序と生成単位を保つ', () => {
+  const text = 'お母さんは首にかけていたネックレスをわたしの首にかけてくれた。'
+  const episode = { id: 'e', title: '話', blocks: parseEpisodeBody(text) }
+  const settings = emptyNarration('w').settings
+  const boundary = text.indexOf('わたし')
+  const original = resolveSegments(episode, settings)[0]!
+  settings.cues = [
+    {
+      id: 'first',
+      episodeId: 'e',
+      scope: 'range',
+      refs: [{ blockId: 'b1', snapshot: text, start: 0, end: boundary }],
+      reading: 'おかあさんはくびにかけていたねっくれすを',
+    },
+    {
+      id: 'last',
+      episodeId: 'e',
+      scope: 'range',
+      refs: [{ blockId: 'b1', snapshot: text, start: boundary, end: text.length - 1 }],
+      reading: 'わたしのくびにかけてくれた',
+    },
+  ]
+  const pieces = resolveSegments(episode, settings)
+  expect(pieces).toHaveLength(1)
+  expect(pieces[0]!.id).toBe(original.id)
+  expect(pieces[0]!.text).toBe(
+    'おかあさんはくびにかけていたねっくれすをわたしのくびにかけてくれた。',
+  )
+  expect(pieces[0]!.direction).toBe('')
+})
+
+it('旧形式の複数文にまたがる読みを文ごとに繰り返さず、元の指定は確認用に残す', () => {
+  const text = '「こんにちは。さようなら」'
+  const episode = { id: 'e', title: '話', blocks: parseEpisodeBody(text) }
+  const settings = emptyNarration('w').settings
+  settings.cues = [
+    {
+      id: 'old',
+      episodeId: 'e',
+      scope: 'range',
+      refs: [{ blockId: 'b1', snapshot: text }],
+      reading: 'こんにちは。さようなら',
+    },
+  ]
+  const before = JSON.stringify(settings)
+  expect(readingCuesNeedingReview(episode, settings).map((c) => c.id)).toEqual(['old'])
+  expect(resolveSegments(episode, settings).map((s) => s.text)).toEqual([
+    '「こんにちは。',
+    'さようなら」',
+  ])
+  expect(JSON.stringify(settings)).toBe(before)
 })

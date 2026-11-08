@@ -1,4 +1,5 @@
 import type { Block } from '../schema'
+export const MIN_SENTENCE_PAUSE_MS = 350
 export const NARRATION_PLANS = {
   trial: { label: '無料体験', limit: 500, model: 'drama-3' },
   basic: { label: '500円プラン', limit: 5000, model: 's2.1-pro' },
@@ -88,6 +89,7 @@ export interface VoiceSegment {
   voiceId: string
   speed: number
   pauseMs: number
+  /** @deprecated Retained only for requests created before the sentence-pause correction. */
   commaPause?: 'short'
   characters: number
   fingerprint: string

@@ -1190,3 +1190,26 @@
 .narration-voice-ranges strong {
   color: var(--foreground);
 }
+
+/* Generation selection always matches complete sentences. Only the reading
+   editor allows native character selection. */
+.narration-studio .narration-paragraph-select,
+.narration-studio .narration-prose {
+  user-select: none;
+  -webkit-user-select: none;
+  cursor: pointer;
+}
+.narration-studio .narration-paragraph-select {
+  font: inherit;
+  line-height: inherit;
+  vertical-align: baseline;
+}
+.narration-paragraph-select:focus-visible {
+  outline: 2px solid var(--narration-selection);
+  outline-offset: 3px;
+}
+.narration-reading-picker {
+  width: 100%;
+  user-select: text;
+  -webkit-user-select: text;
+}

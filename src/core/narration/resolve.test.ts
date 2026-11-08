@@ -90,5 +90,5 @@ it('長い段落を句読点で分けても原文・ルビを保つ', () => {
   expect(pieces.length).toBeGreaterThan(1)
   expect(pieces.every((s) => s.characters <= 800)).toBe(true)
   expect(pieces.map((s) => s.text).join('')).toBe('とうきょうへ、私は歩いた。'.repeat(100))
-  expect(pieces.slice(0, -1).every((s) => s.pauseMs === 0)).toBe(true)
+  expect(pieces.slice(0, -1).every((s) => s.pauseMs === 350)).toBe(true)
 })

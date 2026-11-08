@@ -259,7 +259,10 @@ it('試聴に長文を送って通常枠を迂回できない', async () => {
   real.close()
 })
 
-it('既定の読点補正はAPIでも保持し、制御タグを利用者の文字枠に数えない', async () => {
+it.each([
+  false,
+  true,
+])('新規の読点補正は無効、旧要求は互換性を保ち、文字枠は原文で数える（旧要求=%s）', async (legacy) => {
   const { real, env } = setup()
   const body = {
     ...payload(),
@@ -268,10 +271,13 @@ it('既定の読点補正はAPIでも保持し、制御タグを利用者の文�
       emptyNarration('w').settings,
     ),
   }
+  if (legacy) body.segments[0]!.commaPause = 'short'
   const parsed = jobSchema.parse(body)
   const validated = validateSegments(parsed.segments, env, 's2.1-pro-free')
-  expect(validated[0]?.commaPause).toBe('short')
-  expect(providerText(validated[0]!)).toBe('朝、[short pause]風が吹いた。')
+  expect(validated[0]?.commaPause).toBe(legacy ? 'short' : undefined)
+  expect(providerText(validated[0]!)).toBe(
+    legacy ? '朝、[short pause]風が吹いた。' : '朝、風が吹いた。',
+  )
   expect((await call(env, body)).status).toBe(202)
   expect(await entitlement(env, 'user')).toMatchObject({ reserved: 8, remaining: 492 })
   real.close()
