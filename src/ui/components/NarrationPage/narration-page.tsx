@@ -1703,65 +1703,53 @@ function NarrationPage({
                 ))}
             </details>
           )}
-          <details className="narration-dictionary" hidden={!settings.dictionary.length}>
-            <summary>読み方の修正</summary>
-            <p className="narration-help">原稿のルビを優先します。本文や用語集は変更しません。</p>
-            {settings.dictionary.map((entry) => (
-              <div className="narration-dict-row" key={entry.id}>
-                <label>
-                  表記
-                  <input
-                    value={entry.surface}
-                    onChange={(e) =>
+          {scope === 'episode' && settings.dictionary.length > 0 && (
+            <details className="narration-dictionary">
+              <summary>この作品で使う読み</summary>
+              <p className="narration-help">原稿のルビを優先します。本文や用語集は変更しません。</p>
+              {settings.dictionary.map((entry) => (
+                <div className="narration-dict-row" key={entry.id}>
+                  <label>
+                    表記
+                    <input
+                      value={entry.surface}
+                      onChange={(e) =>
+                        patchSettings({
+                          dictionary: settings.dictionary.map((d) =>
+                            d.id === entry.id ? { ...d, surface: e.target.value } : d,
+                          ),
+                        })
+                      }
+                    />
+                  </label>
+                  <label>
+                    読み
+                    <input
+                      value={entry.reading}
+                      onChange={(e) =>
+                        patchSettings({
+                          dictionary: settings.dictionary.map((d) =>
+                            d.id === entry.id ? { ...d, reading: e.target.value } : d,
+                          ),
+                        })
+                      }
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    aria-label={`${entry.surface}を辞書から外す`}
+                    onClick={() =>
                       patchSettings({
-                        dictionary: settings.dictionary.map((d) =>
-                          d.id === entry.id ? { ...d, surface: e.target.value } : d,
-                        ),
+                        dictionary: settings.dictionary.filter((d) => d.id !== entry.id),
                       })
                     }
-                  />
-                </label>
-                <label>
-                  読み
-                  <input
-                    value={entry.reading}
-                    onChange={(e) =>
-                      patchSettings({
-                        dictionary: settings.dictionary.map((d) =>
-                          d.id === entry.id ? { ...d, reading: e.target.value } : d,
-                        ),
-                      })
-                    }
-                  />
-                </label>
-                <button
-                  type="button"
-                  aria-label={`${entry.surface}を辞書から外す`}
-                  onClick={() =>
-                    patchSettings({
-                      dictionary: settings.dictionary.filter((d) => d.id !== entry.id),
-                    })
-                  }
-                >
-                  ×
-                </button>
-              </div>
-            ))}
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() =>
-                patchSettings({
-                  dictionary: [
-                    ...settings.dictionary,
-                    { id: crypto.randomUUID(), surface: '', reading: '' },
-                  ],
-                })
-              }
-            >
-              読みを追加
-            </Button>
-          </details>
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
+            </details>
+          )}
           <details hidden={!detachedCues.length}>
             <summary>本文から開けない指示（{detachedCues.length}件）</summary>
             {detachedCues.map((c) => (
