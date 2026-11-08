@@ -93,6 +93,7 @@ function NarrationPage({
     action: () => void
   } | null>(null)
   const dragged = useRef(false)
+  const selectionAnchor = useRef<string | null>(null)
   const manuscript = useRef<HTMLDivElement>(null)
   const [scope, setScope] = useState<VoiceCue['scope']>('episode')
   const [notice, setNotice] = useState('')
@@ -449,28 +450,28 @@ function NarrationPage({
     patchSettings({ cues: [...settings.cues.filter((c) => c.id !== cue.id), next] })
   }
   const clearSelection = () => {
+    selectionAnchor.current = null
     window.getSelection()?.removeAllRanges()
     setSelection([])
     setOffsets({})
     setScope('episode')
   }
-  const select = (id: string, extend = false, only = false) => {
+  const select = (id: string, only = false) => {
     audio.current?.pause()
     fullAudio.current?.pause()
     window.getSelection()?.removeAllRanges()
-    let next: string[]
-    if (only) next = [id]
-    else if (extend && selection.length) {
-      const a = segments.findIndex((s) => s.id === selection[0])
-      const b = segments.findIndex((s) => s.id === id)
-      next = segments.slice(Math.min(a, b), Math.max(a, b) + 1).map((s) => s.id)
-    } else next = selection.includes(id) ? selection.filter((v) => v !== id) : [...selection, id]
-    next.sort(
-      (a, b) => segments.findIndex((s) => s.id === a) - segments.findIndex((s) => s.id === b),
-    )
-    setSelection(next)
+    if (!only && selection.length === 1 && selection[0] === id) {
+      clearSelection()
+      return
+    }
+    if (only || !selection.length) selectionAnchor.current = id
+    const anchor = selectionAnchor.current ?? selection[0] ?? id
+    selectionAnchor.current = anchor
+    const a = segments.findIndex((s) => s.id === anchor)
+    const b = segments.findIndex((s) => s.id === id)
+    setSelection(segments.slice(Math.min(a, b), Math.max(a, b) + 1).map((s) => s.id))
     setOffsets({})
-    setScope(next.length ? 'range' : 'episode')
+    setScope('range')
   }
   const captureSelection = () => {
     const native = window.getSelection()
@@ -508,10 +509,40 @@ function NarrationPage({
       native.removeAllRanges()
       fullAudio.current?.pause()
       audio.current?.pause()
+      selectionAnchor.current = ids[0] ?? null
       setSelection(ids)
       setOffsets(next)
       setScope('range')
     }
+  }
+  const openCue = (c: VoiceCue) => {
+    audio.current?.pause()
+    fullAudio.current?.pause()
+    selectionAnchor.current = null
+    setScope(c.scope)
+    const next: Record<string, { start: number; end: number }> = {}
+    for (const [i, segment] of segments.entries()) {
+      const at = segments
+        .slice(0, i)
+        .filter((s) => s.blockId === segment.blockId)
+        .reduce((n, s) => n + plainText(s.source.inlines).length, 0)
+      const length = plainText(segment.source.inlines).length
+      const refs = c.refs.filter(
+        (r) =>
+          r.blockId === segment.blockId && (r.start ?? 0) < at + length && (r.end ?? Infinity) > at,
+      )
+      if (refs.length)
+        next[segment.id] = {
+          start: Math.max(0, Math.min(...refs.map((r) => r.start ?? 0)) - at),
+          end: Math.min(length, Math.max(...refs.map((r) => r.end ?? Infinity)) - at),
+        }
+    }
+    const first = segments.findIndex((v) => next[v.id])
+    const last = segments.findLastIndex((v) => next[v.id])
+    const ids = first < 0 ? [] : segments.slice(first, last + 1).map((v) => v.id)
+    setSelection(ids)
+    setOffsets(next)
+    setMobilePanel('inspector')
   }
   const act = async (task: () => Promise<void>) => {
     setBusy(true)
@@ -630,7 +661,91 @@ function NarrationPage({
   }
   const saveLabel = saving ? '保存中…' : '保存済み'
   const voices = entitlement?.voices ?? []
+  const voiceRanges = settings.cues.filter(
+    (c) =>
+      c.episodeId === episode.id &&
+      c.scope !== 'episode' &&
+      cueIsValid(c, episode) &&
+      (c.voiceId || c.style),
+  )
+  const baseControls = (
+    <>
+      {' '}
+      <label>
+        語り手の声
+        <select
+          value={settings.narrator}
+          onChange={(e) => patchSettings({ narrator: e.target.value })}
+        >
+          {voices.length ? (
+            voices.map((v) => (
+              <option key={v.id} value={v.id}>
+                {v.label}
+              </option>
+            ))
+          ) : (
+            <option value="default">設定済みの声</option>
+          )}
+        </select>
+      </label>
+      {voices.find((v) => v.id === settings.narrator)?.sampleUrl && (
+        // biome-ignore lint/a11y/useMediaCaption: 声の比較用サンプル。
+        <audio
+          controls
+          src={voices.find((v) => v.id === settings.narrator)?.sampleUrl}
+          aria-label="声のサンプル"
+        />
+      )}
+      <label>
+        朗読スタイル
+        <select value={settings.style} onChange={(e) => patchSettings({ style: e.target.value })}>
+          {STYLES.map((style) => (
+            <option key={style.id} value={style.id}>
+              {style.label}
+            </option>
+          ))}
+        </select>
+      </label>
+      <div className="narration-timing">
+        {' '}
+        <label>
+          速さ
+          <select
+            value={matchingCue?.speed ?? ''}
+            onChange={(e) =>
+              patchCue({ speed: e.target.value ? Number(e.target.value) : undefined })
+            }
+          >
+            <option value="">スタイル通り</option>
+            <option value="0.9">ゆっくり</option>
+            <option value="1">普段の速さ</option>
+            <option value="1.1">少し速く</option>
+          </select>
+        </label>
+        <label>
+          段落のあとの間
+          <select
+            value={matchingCue?.pauseMs ?? ''}
+            onChange={(e) =>
+              patchCue({ pauseMs: e.target.value ? Number(e.target.value) : undefined })
+            }
+          >
+            <option value="">スタイル通り</option>
+            <option value="0">間を足さない</option>
+            <option value="350">短め 0.35秒</option>
+            <option value="700">長め 0.7秒</option>
+            <option value="1500">余韻 1.5秒</option>
+          </select>
+        </label>
+      </div>
+    </>
+  )
   const invalid = settings.cues.filter((c) => c.episodeId === episode.id && !cueIsValid(c, episode))
+  const detachedCues = settings.cues.filter(
+    (c) =>
+      c.episodeId === episode.id &&
+      (!cueIsValid(c, episode) || c.scope === 'scene' || (c.scope === 'episode' && !!c.direction)),
+  )
   const comparisonPlayback = playing?.label === '新しい読み' || playing?.label === '採用中の読み'
   const player = playing && (
     <div className="narration-player">
@@ -769,55 +884,79 @@ function NarrationPage({
       )}
       <div className="narration-workspace">
         <section className="narration-manuscript">
-          <div className="narration-section-head">
-            <label>
-              <span className="sr-only">話を選ぶ</span>
-              <select
-                value={episode.id}
-                title={episode.title}
-                onChange={(e) => {
-                  setEpisodeId(e.target.value)
-                  setSelection([])
-                  setOffsets({})
-                  setPlaying(null)
-                  setFullPlayback(null)
-                  setFullPosition(0)
-                  setScope('episode')
-                  window.history.replaceState(
-                    null,
-                    '',
-                    `#/narration/${encodeURIComponent(work.id)}/${encodeURIComponent(e.target.value)}`,
-                  )
-                }}
-              >
-                {work.episodes.map((e, i) => (
-                  <option key={e.id} value={e.id}>
-                    {i + 1}. {e.title}
-                    {(() => {
-                      const count = resolveSegments(
-                        e,
-                        record.settings,
-                        stagings.find((v) => v.episodeId === e.id),
-                        generation,
-                      ).filter(
-                        (s) =>
-                          latest(s) || (accepted(s) && accepted(s)?.fingerprint !== s.fingerprint),
-                      ).length
-                      return count ? ' · 作業途中 ' + count : ''
-                    })()}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </div>
-          <div className="narration-selection-bar">
-            <span>{scope === 'episode' ? '一話全体' : selectedText.length + '文字を選択中'}</span>
+          <div className="narration-manuscript-toolbar">
+            <div className="narration-section-head">
+              <label>
+                <span className="sr-only">話を選ぶ</span>
+                <select
+                  value={episode.id}
+                  title={episode.title}
+                  onChange={(e) => {
+                    setEpisodeId(e.target.value)
+                    setSelection([])
+                    setOffsets({})
+                    setPlaying(null)
+                    setFullPlayback(null)
+                    setFullPosition(0)
+                    setScope('episode')
+                    window.history.replaceState(
+                      null,
+                      '',
+                      `#/narration/${encodeURIComponent(work.id)}/${encodeURIComponent(e.target.value)}`,
+                    )
+                  }}
+                >
+                  {work.episodes.map((e, i) => (
+                    <option key={e.id} value={e.id}>
+                      {i + 1}. {e.title}
+                      {(() => {
+                        const count = resolveSegments(
+                          e,
+                          record.settings,
+                          stagings.find((v) => v.episodeId === e.id),
+                          generation,
+                        ).filter(
+                          (s) =>
+                            latest(s) ||
+                            (accepted(s) && accepted(s)?.fingerprint !== s.fingerprint),
+                        ).length
+                        return count ? ' · 作業途中 ' + count : ''
+                      })()}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+            <div className="narration-selection-bar">
+              <span>{scope === 'episode' ? '一話全体' : selectedText.length + '文字を選択中'}</span>
+            </div>
+
+            <section className="narration-state-legend" aria-label="本文の色分け">
+              <span className="narration-legend-title">色の見方</span>
+              {(
+                [
+                  ['empty', '未生成'],
+                  ['ready', '生成済み'],
+                  ['compare', '比較待ち'],
+                  ['changed', '変更・未反映'],
+                  ['selected', '選択中'],
+                  ...(running.length ? [['working', '生成中']] : []),
+                  ...(record.takes.some((t) => ['failed', 'unknown', 'missing'].includes(t.state))
+                    ? [['error', '要確認']]
+                    : []),
+                ] as const
+              ).map(([tone, label]) => (
+                <span key={tone} data-narration-state={tone} className="narration-state-tag">
+                  {label}
+                </span>
+              ))}
+            </section>
           </div>
 
           {invalid.length > 0 && (
             <div className="narration-notice">
               原稿が変わったため、{invalid.length}
-              件の指示を確認してください。元の指示は「保存した指示」に残っています。
+              件の指示を確認してください。元の指示は「本文から開けない指示」に残っています。
             </div>
           )}
           {segments.some((s) => s.characters > 800) && (
@@ -877,7 +1016,7 @@ function NarrationPage({
                   ? '比較待ち'
                   : take
                     ? take.fingerprint === segment.fingerprint
-                      ? '採用済み'
+                      ? '生成済み'
                       : '変更あり'
                     : candidate
                       ? '比較待ち'
@@ -890,14 +1029,24 @@ function NarrationPage({
                             : record.snapshots?.[episode.id]
                               ? '音声に未反映'
                               : '未生成'
+              const tone =
+                status === '生成済み'
+                  ? 'ready'
+                  : status === '比較待ち'
+                    ? 'compare'
+                    : status === '未生成'
+                      ? 'empty'
+                      : status === '生成中'
+                        ? 'working'
+                        : status === '変更あり' || status === '音声に未反映'
+                          ? 'changed'
+                          : 'error'
               return (
                 <article
+                  data-narration-state={tone}
                   key={segment.id}
                   className={`narration-paragraph ${segments[i - 1]?.blockId !== segment.blockId ? 'is-block-start' : ''} ${active ? 'is-selected' : ''} ${isCurrent ? 'is-playing' : ''}`}
                 >
-                  {staging?.cues.some((c) => c.blockId === segment.blockId && c.sceneBreak) && (
-                    <div className="narration-scene">場面の切れ目</div>
-                  )}
                   {/* biome-ignore lint/a11y/useSemanticElements: Native buttons trap cross-paragraph text selection; this selectable span retains keyboard activation and button semantics. */}
                   <span
                     role="button"
@@ -906,14 +1055,14 @@ function NarrationPage({
                     className="narration-paragraph-select"
                     aria-pressed={active}
                     aria-label={`文章${i + 1}を選ぶ`}
-                    onClick={(e) => {
+                    onClick={() => {
                       if (dragged.current) return
-                      select(segment.id, e.shiftKey)
+                      select(segment.id)
                     }}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter' || e.key === ' ') {
                         e.preventDefault()
-                        select(segment.id, e.shiftKey)
+                        select(segment.id)
                       }
                     }}
                   >
@@ -941,33 +1090,30 @@ function NarrationPage({
                     </span>
                   </span>
                   <div className="narration-paragraph-meta">
-                    <span
-                      className={
-                        status === '未生成' && !instructions.length
-                          ? 'narration-initial-status'
-                          : ''
-                      }
-                    >
-                      {status === '採用済み' ? '' : status}
-                    </span>
+                    <span className="narration-state-tag">{status}</span>
                     {lastAttempt?.error && <span role="status">{lastAttempt.error}</span>}
-                    {instructions.some((c) => c.direction) && (
-                      <span
-                        className="narration-tag narration-cue-preview"
-                        title={instructions
-                          .map((c) => c.direction)
-                          .filter(Boolean)
-                          .join(' / ')}
-                      >
-                        {instructions
-                          .map((c) => c.direction)
-                          .filter(Boolean)
-                          .join(' / ')}
-                      </span>
-                    )}
-                    {instructions.some((c) => c.reading) && (
-                      <span className="narration-tag">読みの指定あり</span>
-                    )}
+                    {instructions
+                      .filter((c) => c.scope === 'range')
+                      .map((c) => (
+                        <button
+                          type="button"
+                          className="narration-instruction-link"
+                          key={c.id}
+                          title={[
+                            c.refs.map((r) => r.snapshot.slice(r.start, r.end)).join(' … '),
+                            c.direction,
+                            c.reading,
+                          ]
+                            .filter(Boolean)
+                            .join(' / ')}
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            openCue(c)
+                          }}
+                        >
+                          {c.reading ? '読み：' + c.reading : c.voiceId ? '声の指定' : '演技の指定'}
+                        </button>
+                      ))}
                   </div>
                 </article>
               )
@@ -1040,84 +1186,47 @@ function NarrationPage({
               </button>
             ))}
           </fieldset>
+          {scope === 'episode' && settings.mode === 'cast' && (
+            <section className="narration-cast-overview">
+              <h2>本文に声を付ける</h2>
+              <p className="narration-help">声を変えたい部分を、本文から選んでください。</p>
+              {voices.length < 2 && <p className="narration-help">現在使える声は1種類です。</p>}
+              <div className="narration-voice-ranges">
+                {voiceRanges.length ? (
+                  voiceRanges.map((c) => (
+                    <button type="button" key={c.id} onClick={() => openCue(c)}>
+                      <strong>
+                        {voices.find((v) => v.id === c.voiceId)?.label ?? '基本の声'}
+                        {c.style && <> · {STYLES.find((v) => v.id === c.style)?.label}</>}
+                      </strong>
+                      <span>{c.refs.map((r) => r.snapshot.slice(r.start, r.end)).join(' … ')}</span>
+                    </button>
+                  ))
+                ) : (
+                  <div className="narration-cast-empty">本文を選択 → 声とスタイルを指定</div>
+                )}
+              </div>
+            </section>
+          )}
           {scope === 'episode' && (
             <section>
-              <h2>一話の声とスタイル</h2>
-              {settings.mode === 'cast' && (
-                <p className="narration-help">本文を選んで、声とスタイルを付けられます。</p>
+              {settings.mode === 'solo' ? (
+                <>
+                  <h2>一話の声とスタイル</h2>
+                  {baseControls}
+                </>
+              ) : (
+                <details className="narration-base-voice">
+                  <summary>
+                    指定のない部分の読み方
+                    <span>
+                      {voices.find((v) => v.id === settings.narrator)?.label ?? '基本の声'} ·{' '}
+                      {STYLES.find((v) => v.id === settings.style)?.label}
+                    </span>
+                  </summary>
+                  {baseControls}
+                </details>
               )}
-
-              <label>
-                語り手の声
-                <select
-                  value={settings.narrator}
-                  onChange={(e) => patchSettings({ narrator: e.target.value })}
-                >
-                  {voices.length ? (
-                    voices.map((v) => (
-                      <option key={v.id} value={v.id}>
-                        {v.label}
-                      </option>
-                    ))
-                  ) : (
-                    <option value="default">設定済みの声</option>
-                  )}
-                </select>
-              </label>
-              {voices.find((v) => v.id === settings.narrator)?.sampleUrl && (
-                // biome-ignore lint/a11y/useMediaCaption: 声の比較用サンプル。
-                <audio
-                  controls
-                  src={voices.find((v) => v.id === settings.narrator)?.sampleUrl}
-                  aria-label="声のサンプル"
-                />
-              )}
-              <label>
-                朗読スタイル
-                <select
-                  value={settings.style}
-                  onChange={(e) => patchSettings({ style: e.target.value })}
-                >
-                  {STYLES.map((style) => (
-                    <option key={style.id} value={style.id}>
-                      {style.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <div className="narration-timing">
-                {' '}
-                <label>
-                  速さ
-                  <select
-                    value={matchingCue?.speed ?? ''}
-                    onChange={(e) =>
-                      patchCue({ speed: e.target.value ? Number(e.target.value) : undefined })
-                    }
-                  >
-                    <option value="">スタイルに合わせる</option>
-                    <option value="0.9">ゆっくり</option>
-                    <option value="1">普段の速さ</option>
-                    <option value="1.1">少し速く</option>
-                  </select>
-                </label>
-                <label>
-                  段落のあとの間
-                  <select
-                    value={matchingCue?.pauseMs ?? ''}
-                    onChange={(e) =>
-                      patchCue({ pauseMs: e.target.value ? Number(e.target.value) : undefined })
-                    }
-                  >
-                    <option value="">スタイルに合わせる</option>
-                    <option value="0">間を足さない</option>
-                    <option value="350">短め（0.35秒）</option>
-                    <option value="700">長め（0.7秒）</option>
-                    <option value="1500">余韻（1.5秒）</option>
-                  </select>
-                </label>
-                <p className="narration-help">間だけの変更では生成枠を使いません。</p>
-              </div>
             </section>
           )}
           <section className="narration-direction">
@@ -1184,7 +1293,7 @@ function NarrationPage({
                         patchCue({ speed: e.target.value ? Number(e.target.value) : undefined })
                       }
                     >
-                      <option value="">スタイルに合わせる</option>
+                      <option value="">スタイル通り</option>
                       <option value="0.9">ゆっくり</option>
                       <option value="1">普段の速さ</option>
                       <option value="1.1">少し速く</option>
@@ -1198,53 +1307,49 @@ function NarrationPage({
                         patchCue({ pauseMs: e.target.value ? Number(e.target.value) : undefined })
                       }
                     >
-                      <option value="">スタイルに合わせる</option>
+                      <option value="">スタイル通り</option>
                       <option value="0">間を足さない</option>
-                      <option value="350">短め（0.35秒）</option>
-                      <option value="700">長め（0.7秒）</option>
-                      <option value="1500">余韻（1.5秒）</option>
+                      <option value="350">短め 0.35秒</option>
+                      <option value="700">長め 0.7秒</option>
+                      <option value="1500">余韻 1.5秒</option>
                     </select>
                   </label>
-                  <p className="narration-help">間だけの変更では生成枠を使いません。</p>
                 </div>
               </div>
             )}
-            <details
-              className="narration-performance"
-              open={scope !== 'episode' || undefined}
-              key={scope}
-            >
-              <summary>演技を添える</summary>
-              <label>
-                どう読んでほしい？
-                <textarea
-                  rows={3}
-                  maxLength={180}
-                  value={matchingCue?.direction ?? ''}
-                  placeholder="少し寂しそうに。最後の「ありがと」だけ温かく"
-                  onChange={(e) => patchCue({ direction: e.target.value })}
-                />
-              </label>
-              <div className="narration-chips">
-                {['ささやく', '寂しそうに', '温かく'].map((text) => (
-                  <button
-                    type="button"
-                    key={text}
-                    onClick={() =>
-                      patchCue({
-                        direction:
-                          `${matchingCue?.direction ? matchingCue.direction + '。' : ''}${text}`.slice(
-                            0,
-                            180,
-                          ),
-                      })
-                    }
-                  >
-                    {text}
-                  </button>
-                ))}
+            {scope !== 'episode' && (
+              <div className="narration-performance">
+                <label>
+                  どう読んでほしい？
+                  <textarea
+                    rows={3}
+                    maxLength={180}
+                    value={matchingCue?.direction ?? ''}
+                    placeholder="少し寂しそうに。最後の「ありがと」だけ温かく"
+                    onChange={(e) => patchCue({ direction: e.target.value })}
+                  />
+                </label>
+                <div className="narration-chips">
+                  {['ささやく', '寂しそうに', '温かく'].map((text) => (
+                    <button
+                      type="button"
+                      key={text}
+                      onClick={() =>
+                        patchCue({
+                          direction:
+                            `${matchingCue?.direction ? matchingCue.direction + '。' : ''}${text}`.slice(
+                              0,
+                              180,
+                            ),
+                        })
+                      }
+                    >
+                      {text}
+                    </button>
+                  ))}
+                </div>
               </div>
-            </details>
+            )}
             {scope !== 'episode' && (
               <details
                 className="narration-reading"
@@ -1582,64 +1687,33 @@ function NarrationPage({
               読みを追加
             </Button>
           </details>
-          <details hidden={!settings.cues.some((c) => c.episodeId === episode.id)}>
-            <summary>
-              保存した指示（{settings.cues.filter((c) => c.episodeId === episode.id).length}件）
-            </summary>
-            {settings.cues
-              .filter((c) => c.episodeId === episode.id)
-              .map((c) => (
-                <div className="narration-saved-cue" key={c.id}>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setScope(c.scope)
-                      setSelection(
-                        segments
-                          .filter((s) => c.refs.some((r) => r.blockId === s.blockId))
-                          .map((s) => s.id),
-                      )
-                      const next: Record<string, { start: number; end: number }> = {}
-                      for (const s of segments) {
-                        const r = c.refs.find((r) => r.blockId === s.blockId)
-                        if (!r) continue
-                        const siblings = segments.filter((v) => v.blockId === s.blockId)
-                        const at = siblings
-                          .slice(
-                            0,
-                            siblings.findIndex((v) => v.id === s.id),
-                          )
-                          .reduce((n, v) => n + plainText(v.source.inlines).length, 0)
-                        if (
-                          (r.start ?? 0) < at + plainText(s.source.inlines).length &&
-                          (r.end ?? Infinity) > at
-                        )
-                          next[s.id] = {
-                            start: Math.max(0, (r.start ?? 0) - at),
-                            end: Math.min(
-                              plainText(s.source.inlines).length,
-                              (r.end ?? Infinity) - at,
-                            ),
-                          }
-                      }
-                      setSelection(Object.keys(next))
-                      setOffsets(next)
-                    }}
-                  >
-                    {c.scope === 'episode' ? 'この話全体' : c.refs[0]?.snapshot.slice(0, 50)}
-                    <span>{c.direction || '読み・声・間の指定'}</span>
-                  </button>
-                  {!cueIsValid(c, episode) && <p>原稿との対応を確認してください。</p>}
-                  <button
-                    type="button"
-                    onClick={() =>
-                      patchSettings({ cues: settings.cues.filter((v) => v.id !== c.id) })
-                    }
-                  >
-                    指定を削除
-                  </button>
-                </div>
-              ))}
+          <details hidden={!detachedCues.length}>
+            <summary>本文から開けない指示（{detachedCues.length}件）</summary>
+            {detachedCues.map((c) => (
+              <div className="narration-saved-cue" key={c.id}>
+                <button type="button" onClick={() => openCue(c)}>
+                  {c.scope === 'episode' ? 'この話全体' : c.refs[0]?.snapshot.slice(0, 50)}
+                  <span>
+                    {[
+                      c.direction,
+                      c.reading && '読み：' + c.reading,
+                      c.voiceId && '声：' + c.voiceId,
+                    ]
+                      .filter(Boolean)
+                      .join(' / ') || '読み・声・間の指定'}
+                  </span>
+                </button>
+                {!cueIsValid(c, episode) && <p>原稿との対応を確認してください。</p>}
+                <button
+                  type="button"
+                  onClick={() =>
+                    patchSettings({ cues: settings.cues.filter((v) => v.id !== c.id) })
+                  }
+                >
+                  指定を削除
+                </button>
+              </div>
+            ))}
           </details>
         </aside>
       </div>
@@ -1713,7 +1787,7 @@ function NarrationPage({
               const part =
                 fullPlayback?.segments[index < 0 ? fullPlayback.segments.length - 1 : index]
               if (part) {
-                select(part.id, false, true)
+                select(part.id, true)
                 setMobilePanel('inspector')
               }
             }}

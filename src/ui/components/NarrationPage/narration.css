@@ -1035,3 +1035,138 @@
     display: none;
   }
 }
+
+.narration-base-voice > summary {
+  cursor: pointer;
+  font-size: 13px;
+}
+.narration-base-voice > summary span {
+  display: block;
+  margin: 5px 0 0 15px;
+  font-size: 12px;
+  color: var(--muted-foreground);
+}
+.narration-voice-ranges {
+  display: grid;
+  gap: 8px;
+  margin-top: 16px;
+}
+.narration-voice-ranges button {
+  display: grid;
+  gap: 5px;
+  text-align: left;
+  padding: 10px 12px;
+  background: var(--background);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  cursor: pointer;
+}
+.narration-voice-ranges strong {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--primary);
+}
+.narration-voice-ranges span {
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  font-size: 12px;
+}
+.narration-cast-empty {
+  padding: 20px 12px;
+  border: 1px dashed var(--border);
+  border-radius: 7px;
+  color: var(--muted-foreground);
+  text-align: center;
+  font-size: 12px;
+}
+.narration-timing select {
+  font-size: 12px;
+  padding: 9px 24px 9px 10px;
+}
+
+/* Status is visible independently of the blue selection outline. */
+.narration-studio {
+  --narration-selection: light-dark(#1d4ed8, #93c5fd);
+}
+.narration-studio [data-narration-state="empty"] {
+  --narration-state-ink: light-dark(#526071, #c0c9d6);
+}
+.narration-studio [data-narration-state="ready"] {
+  --narration-state-ink: light-dark(#14745c, #83d7b8);
+}
+.narration-studio [data-narration-state="compare"] {
+  --narration-state-ink: light-dark(#9a5006, #f3bf75);
+}
+.narration-studio [data-narration-state="changed"] {
+  --narration-state-ink: light-dark(#7841a6, #d3a7f5);
+}
+.narration-studio [data-narration-state="working"] {
+  --narration-state-ink: light-dark(#0b7285, #76d7e8);
+}
+.narration-studio [data-narration-state="error"] {
+  --narration-state-ink: light-dark(#b42338, #ffa7b4);
+}
+.narration-studio [data-narration-state="selected"] {
+  --narration-state-ink: var(--narration-selection);
+}
+.narration-state-tag {
+  display: inline-block;
+  padding: 2px 7px;
+  border-radius: 5px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--narration-state-ink);
+  background: color-mix(in srgb, var(--narration-state-ink) 12%, var(--background));
+  border: 1px solid color-mix(in srgb, var(--narration-state-ink) 35%, var(--background));
+  white-space: nowrap;
+  vertical-align: middle;
+  line-height: 1.5;
+}
+.narration-paragraph[data-narration-state] .narration-prose {
+  background: color-mix(in srgb, var(--narration-state-ink) 9%, var(--background));
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+  border-bottom: 2px solid color-mix(in srgb, var(--narration-state-ink) 40%, transparent);
+}
+.narration-paragraph.is-selected .narration-paragraph-select {
+  outline-color: var(--narration-selection);
+}
+.narration-paragraph .narration-prose mark {
+  background: color-mix(in srgb, var(--narration-selection) 24%, var(--background));
+}
+.narration-manuscript-toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--background);
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+}
+.narration-state-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+.narration-instruction-link {
+  display: inline-block;
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  text-decoration: underline;
+  color: var(--muted-foreground);
+  vertical-align: middle;
+  padding: 2px 5px;
+  cursor: pointer;
+}
+
+.narration-legend-title {
+  align-self: center;
+  font-size: 12px;
+  color: var(--muted-foreground);
+  margin-right: 4px;
+}

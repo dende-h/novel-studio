@@ -165,7 +165,7 @@ export function resolveSegments(
       speed: override.speed ?? style.speed,
       pauseMs:
         override.pauseMs ??
-        (staging?.cues.find((c) => c.blockId === block.id)?.sceneBreak
+        (generation?.legacy && staging?.cues.find((c) => c.blockId === block.id)?.sceneBreak
           ? style.pause * 2
           : style.pause),
       characters: countCharacters(original),
