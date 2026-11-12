@@ -19,7 +19,14 @@ const keyOf = (syncId: string) => `${PREFIX}${syncId}`
 /** 保持する退避の最大件数（超過分は古い順に押し出す）。 */
 export const MAX_ENTRIES = 20
 
-export type SyncLostKind = 'work' | 'structure' | 'idea' | 'plot' | 'staging' | 'profile'
+export type SyncLostKind =
+  | 'work'
+  | 'structure'
+  | 'idea'
+  | 'plot'
+  | 'staging'
+  | 'profile'
+  | 'narration'
 
 /** 退避された理由。競合の敗者か、他端末の削除の伝播か。 */
 export type SyncLostReason = 'conflict' | 'remoteDelete'

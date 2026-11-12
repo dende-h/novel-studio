@@ -29,6 +29,7 @@ const fmt = (ms: number) =>
 
 const KIND_LABEL: Record<SyncLostEntry['kind'], string> = {
   work: '作品',
+  narration: '朗読制作',
   structure: '構造（アウトライン・相関図・マインドマップ）',
   plot: 'プロット',
   staging: 'サウンドノベルの演出',

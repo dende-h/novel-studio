@@ -1,6 +1,7 @@
 import { AlertTriangle, CheckCircle2, RotateCcw, Upload } from 'lucide-react'
 import { useRef, useState } from 'react'
 import { type CloudBackup, deserializeBackup, isBackupJson } from '@/core/backup'
+import { readBackupArchive } from '@/core/backup/archive'
 import { importBundle } from '@/core/bundle'
 import type { Work } from '@/core/schema'
 import { readFileText } from '@/ui/_utils/download'
@@ -22,13 +23,14 @@ interface ImportDialogProps {
   onImport: (works: Work[]) => Promise<void>
   /** 全体バックアップからの復元（全置換・破壊的）。未指定なら全体バックアップ形式は受理しない。 */
   onRestoreAll?: (json: string) => Promise<void>
+  onRestoreFile?: (bytes: Uint8Array) => Promise<void>
 }
 
 /** 取り込みフローの段階。ファイル選択→（マージ確認 or 全置換確認）→完了。 */
 type Phase =
   | { kind: 'pick'; error: string | null }
   | { kind: 'confirm'; works: Work[]; fileName: string }
-  | { kind: 'restore'; json: string; backup: CloudBackup; fileName: string }
+  | { kind: 'restore'; json: string; backup: CloudBackup; fileName: string; bytes?: Uint8Array }
   | { kind: 'done'; count: number }
   | { kind: 'restored' }
 
@@ -40,7 +42,13 @@ const fmtDate = (ms: number) =>
  * - 全体バックアップ（createdAt を持つ）→ 全置換で復元（破壊的・警告つき）
  * - 作品バンドル（version＋works）→ id アップサートでマージ（非破壊・従来どおり）
  */
-export function ImportDialog({ open, onOpenChange, onImport, onRestoreAll }: ImportDialogProps) {
+export function ImportDialog({
+  open,
+  onOpenChange,
+  onImport,
+  onRestoreAll,
+  onRestoreFile,
+}: ImportDialogProps) {
   const [phase, setPhase] = useState<Phase>({ kind: 'pick', error: null })
   const [busy, setBusy] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -57,6 +65,18 @@ export function ImportDialog({ open, onOpenChange, onImport, onRestoreAll }: Imp
 
   const onPickFile = async (file: File) => {
     try {
+      if (file.name.toLowerCase().endsWith('.zip') && onRestoreFile) {
+        const bytes = new Uint8Array(await file.arrayBuffer())
+        const { json } = readBackupArchive(bytes)
+        setPhase({
+          kind: 'restore',
+          json,
+          backup: deserializeBackup(json),
+          fileName: file.name,
+          bytes,
+        })
+        return
+      }
       const text = await readFileText(file)
       // 全体バックアップ（createdAt あり）は全置換フローへ。それ以外は作品バンドルとしてマージ。
       if (onRestoreAll && isBackupJson(text)) {
@@ -70,7 +90,7 @@ export function ImportDialog({ open, onOpenChange, onImport, onRestoreAll }: Imp
       setPhase({
         kind: 'pick',
         error:
-          'このファイルは取り込めませんでした。コトノハ-leaf- で書き出した構造化データ（JSON）を選んでください。',
+          'このファイルは取り込めませんでした。コトノハ-leaf- で書き出したバックアップ（JSON・ZIP）を選んでください。',
       })
     }
   }
@@ -90,8 +110,15 @@ export function ImportDialog({ open, onOpenChange, onImport, onRestoreAll }: Imp
     if (phase.kind !== 'restore') return
     setBusy(true)
     try {
-      await onRestoreAll?.(phase.json)
+      if (phase.bytes) await onRestoreFile?.(phase.bytes)
+      else await onRestoreAll?.(phase.json)
       setPhase({ kind: 'restored' })
+    } catch (error) {
+      setPhase({
+        kind: 'pick',
+        error:
+          error instanceof Error ? error.message : '復元できませんでした。もう一度お試しください。',
+      })
     } finally {
       setBusy(false)
     }
@@ -105,7 +132,7 @@ export function ImportDialog({ open, onOpenChange, onImport, onRestoreAll }: Imp
             バックアップの取り込み
           </DialogTitle>
           <DialogDescription>
-            書き出したデータ（JSON）を取り込みます。全体バックアップは全置換で復元、作品ファイルは追加で取り込みます。
+            書き出したデータ（JSON・ZIP）を取り込みます。全体バックアップは全置換で復元、作品ファイルは追加で取り込みます。
           </DialogDescription>
         </DialogHeader>
 
@@ -114,9 +141,9 @@ export function ImportDialog({ open, onOpenChange, onImport, onRestoreAll }: Imp
           <input
             ref={inputRef}
             type="file"
-            accept="application/json,.json"
+            accept="application/json,.json,application/zip,.zip"
             className="sr-only"
-            aria-label="バックアップ JSON ファイル"
+            aria-label="バックアップファイル"
             onChange={(e) => {
               const file = e.target.files?.[0]
               e.target.value = ''
@@ -133,7 +160,7 @@ export function ImportDialog({ open, onOpenChange, onImport, onRestoreAll }: Imp
                 className="w-full gap-2 text-primary"
               >
                 <Upload className="size-4" />
-                JSON ファイルを選択
+                バックアップを選択
               </Button>
               {phase.error ? (
                 <p className="flex items-start gap-2 rounded-md bg-destructive/10 p-3 text-destructive text-sm">
@@ -187,6 +214,7 @@ export function ImportDialog({ open, onOpenChange, onImport, onRestoreAll }: Imp
                 <li>推敲の判断：{phase.backup.proofreads.length}話</li>
                 <li>推敲で外した語：{phase.backup.nameDismissals.length}作品</li>
                 <li>推敲の決まり：{phase.backup.proofreadRules.length}作品</li>
+                <li>朗読：{phase.backup.narrations?.length ?? 0}作品</li>
                 <li>持ち込み背景：{phase.backup.gameAssets.length}</li>
                 <li>執筆記録：{phase.backup.activity.length}日</li>
               </ul>

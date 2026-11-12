@@ -1,4 +1,5 @@
 import { type BackupState, deserializeBackup, serializeBackup } from '@/core/backup'
+import { createBackupArchive, readBackupArchive } from '@/core/backup/archive'
 import { ProfileRepository } from '@/core/profile'
 import { ActivityRepository } from '@/core/storage/activityRepository'
 import { GameAssetRepository } from '@/core/storage/gameAssetRepository'
@@ -23,6 +24,8 @@ import {
   type BackupSummary,
   type LiveMeta,
 } from '@/ui/_api/backup'
+import { NarrationBackupIO } from '@/ui/narration/backup'
+import { pauseNarrations, resumeNarrations } from '@/ui/narration/service'
 import { withSyncSuspended } from '@/ui/sync/sync-gate'
 
 export type { BackupSummary, LiveMeta }
@@ -87,7 +90,8 @@ export function createBackupService(deps: BackupDeps): BackupService {
       // 任意の安全網：希望時だけ、全置換の前に現在のローカル状態をクラウドへ退避する
       // （常に退避するとバックアップが増え続けるため、ユーザーが選べるようにした）。
       if (opts.backupCurrent) {
-        await deps.createRemote(serializeBackup(await deps.gather(), deps.now()))
+        if (!(await deps.createRemote(serializeBackup(await deps.gather(), deps.now()))))
+          return false
       }
       const json = await deps.getRemote(id)
       if (!json) return false
@@ -105,6 +109,7 @@ export function createBackupService(deps: BackupDeps): BackupService {
         nameDismissals: backup.nameDismissals,
         proofreadRules: backup.proofreadRules,
         gameAssets: backup.gameAssets,
+        narrations: backup.narrations,
       })
       return true
     },
@@ -112,13 +117,18 @@ export function createBackupService(deps: BackupDeps): BackupService {
     async pushLive() {
       // 未取り込みの AI 編集があるときはサーバが拒否する（'ai_edit_pending'）。
       // 呼び出し側はそれを見て「AI の変更が待っています」と知らせる。
-      return deps.putLiveRemote(serializeBackup(await deps.gather(), deps.now()))
+      try {
+        return await deps.putLiveRemote(serializeBackup(await deps.gather(), deps.now()))
+      } catch {
+        return 'failed'
+      }
     },
     liveInfo: () => deps.getLiveMeta(),
     async pullLive(opts = {}) {
       // 復元と同じ安全網：希望時だけ、全置換の前に現在のローカル状態をクラウドへ退避する。
       if (opts.backupCurrent) {
-        await deps.createRemote(serializeBackup(await deps.gather(), deps.now()))
+        if (!(await deps.createRemote(serializeBackup(await deps.gather(), deps.now()))))
+          return false
       }
       const json = await deps.getLiveRemote()
       if (!json) return false
@@ -136,6 +146,7 @@ export function createBackupService(deps: BackupDeps): BackupService {
         nameDismissals: backup.nameDismissals,
         proofreadRules: backup.proofreadRules,
         gameAssets: backup.gameAssets,
+        narrations: backup.narrations,
       })
       // 取り込み済みなので AI 編集の目印を消し、以後の自動 push を通常運転に戻す
       // （force しないと自分の 409 でブロックされ続ける）。失敗しても取り込み自体は成立。
@@ -149,7 +160,9 @@ export function createBackupService(deps: BackupDeps): BackupService {
  * 課金に依存しないローカル I/O（gather＝全状態収集 / replaceAll＝全置換）。
  * IndexedDB('novel-studio') 上の Repository を束ねる。ローカル・クラウド双方の土台。
  */
-export function createLocalBackupIO(): Pick<BackupDeps, 'gather' | 'replaceAll'> {
+export function createLocalBackupIO(
+  narration = new NarrationBackupIO(),
+): Pick<BackupDeps, 'gather' | 'replaceAll'> {
   const store = new IdbStore('novel-studio')
   const repo = new WorkRepository(store)
   const profileRepo = new ProfileRepository(store)
@@ -177,6 +190,7 @@ export function createLocalBackupIO(): Pick<BackupDeps, 'gather' | 'replaceAll'>
       nameDismissals: await nameDismissalRepo.list(),
       proofreadRules: await proofreadRulesRepo.list(),
       gameAssets: await gameAssetRepo.list(),
+      narrations: await narration.gatherAll(),
     }),
     // 全置換は自動同期と**排他**で行う（sync-gate）。同期は 5〜10 秒おきに走るので、
     // 置換の最中に走っている reconcile が base を書き戻すと、base 全消しの意味が消えて
@@ -184,30 +198,52 @@ export function createLocalBackupIO(): Pick<BackupDeps, 'gather' | 'replaceAll'>
     // してしまう（AI の変更の取り込み・クラウド復元・ファイル取り込みに共通の事故）。
     replaceAll: (state) =>
       withSyncSuspended(async () => {
-        await repo.replaceAll(state.works, state.trash)
-        await profileRepo.save(state.profile)
-        await activityRepo.replaceAll(state.activity)
-        await ideaRepo.replaceAll(state.ideas)
-        await structureRepo.replaceAll(state.structures)
-        await plotRepo.replaceAll(state.plots)
-        await stagingRepo.replaceAll(state.stagings)
-        await proofreadRepo.replaceAll(state.proofreads)
-        await nameDismissalRepo.replaceAll(state.nameDismissals)
-        await proofreadRulesRepo.replaceAll(state.proofreadRules)
-        await gameAssetRepo.replaceAll(state.gameAssets)
-        // 同期 base（最後に同期した点の記録）は復元後の実態と食い違うため全消しする。
-        // 消すとこの端末は「新品」として三方向差分に入り、復元で消えた作品を誤って
-        // リモート purge する事故（base 残留→ケース6誤爆）を防げる。
-        await syncBases.clearAll()
+        if (state.narrations) await narration.prepare(state.narrations)
+        try {
+          await pauseNarrations(narration.owner)
+          await repo.replaceAll(state.works, state.trash)
+          await profileRepo.save(state.profile)
+          await activityRepo.replaceAll(state.activity)
+          await ideaRepo.replaceAll(state.ideas)
+          await structureRepo.replaceAll(state.structures)
+          await plotRepo.replaceAll(state.plots)
+          await stagingRepo.replaceAll(state.stagings)
+          await proofreadRepo.replaceAll(state.proofreads)
+          await nameDismissalRepo.replaceAll(state.nameDismissals)
+          await proofreadRulesRepo.replaceAll(state.proofreadRules)
+          await gameAssetRepo.replaceAll(state.gameAssets)
+          if (state.narrations) {
+            const entries = state.narrations.map((entry) => ({
+              ...entry,
+              record: { ...entry.record, updatedAt: Date.now() },
+            }))
+            await narration.repository.replaceAll(entries.map((entry) => entry.record))
+            await narration.apply(entries)
+          }
+          // 同期 base（最後に同期した点の記録）は復元後の実態と食い違うため全消しする。
+          // 消すとこの端末は「新品」として三方向差分に入り、復元で消えた作品を誤って
+          // リモート purge する事故（base 残留→ケース6誤爆）を防げる。
+          await syncBases.clearAll()
+        } finally {
+          await resumeNarrations(narration.owner)
+        }
       }),
   }
 }
 
 /** 本番用：ローカル I/O と `/api/backup` を結線する（クラウドバックアップ・要ログイン）。 */
-export function createDefaultBackupService(getToken: () => Promise<string | null>): BackupService {
-  const io = createLocalBackupIO()
+export function createDefaultBackupService(
+  getToken: () => Promise<string | null>,
+  owner = 'local',
+): BackupService {
+  const narration = new NarrationBackupIO(owner, getToken)
+  const io = createLocalBackupIO(narration)
   return createBackupService({
-    gather: io.gather,
+    gather: async () => {
+      const state = await io.gather()
+      await narration.upload(state.narrations ?? [])
+      return state
+    },
     replaceAll: io.replaceAll,
     createRemote: (plaintext) => apiCreate(getToken, plaintext),
     putLiveRemote: (plaintext, opts) => apiPutLive(getToken, plaintext, opts),
@@ -224,6 +260,8 @@ export function createDefaultBackupService(getToken: () => Promise<string | null
 export interface LocalBackupService {
   /** 現在の全状態を平文 JSON（CloudBackup 形式）で書き出す。 */
   exportPlaintext(): Promise<string>
+  exportFile?(): Promise<{ data: Uint8Array; mime: string; extension: string }>
+  restoreFile?(bytes: Uint8Array): Promise<void>
   /** バックアップ JSON でローカル全体を置換（復元）。不可逆。壊れた JSON は throw。 */
   restorePlaintext(json: string): Promise<void>
 }
@@ -235,9 +273,29 @@ export interface LocalBackupService {
 export function createLocalBackupService(
   io: Pick<BackupDeps, 'gather' | 'replaceAll'> = createLocalBackupIO(),
   now: () => number = () => Date.now(),
+  narration = new NarrationBackupIO(),
 ): LocalBackupService {
   return {
     exportPlaintext: async () => serializeBackup(await io.gather(), now()),
+    exportFile: async () => {
+      const state = await io.gather()
+      const audio = new Map<string, Uint8Array>()
+      for (const entry of state.narrations ?? [])
+        for (const [id, hash] of Object.entries(entry.audio))
+          if (!audio.has(hash))
+            audio.set(hash, new Uint8Array(await (await narration.audio(id)).arrayBuffer()))
+      return {
+        data: createBackupArchive(serializeBackup(state, now()), audio),
+        mime: 'application/zip',
+        extension: 'zip',
+      }
+    },
+    restoreFile: async (bytes) => {
+      const { json, audio } = readBackupArchive(bytes)
+      const state = deserializeBackup(json)
+      await narration.prepare(state.narrations ?? [], audio)
+      await io.replaceAll(state)
+    },
     restorePlaintext: async (json) => {
       await io.replaceAll(deserializeBackup(json))
     },

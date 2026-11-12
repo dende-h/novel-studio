@@ -63,6 +63,7 @@ export interface RealD1Result<T = unknown> {
 const BOARD_MIGRATIONS = [
   new URL('../../../migrations/0008_board.sql', import.meta.url),
   new URL('../../../migrations/0009_board_post_likes.sql', import.meta.url),
+  new URL('../../../migrations/0012_narration_assets.sql', import.meta.url),
 ]
 
 // ---------------------------------------------------------------------------

@@ -74,6 +74,8 @@ export function CloudBackupDialog({
       if (res) markCloudBackup(Date.now()) // 保存状態インジケータ用に最終クラウドバックアップ日時を記録
       onNotify(res ? 'クラウドにバックアップしました' : 'バックアップに失敗しました')
       await reload()
+    } catch (error) {
+      onNotify(error instanceof Error ? error.message : 'バックアップに失敗しました')
     } finally {
       setBusy(false)
     }
@@ -104,8 +106,10 @@ export function CloudBackupDialog({
       } else {
         onNotify('復元に失敗しました')
       }
-    } catch {
-      onNotify('バックアップが壊れているため復元しませんでした')
+    } catch (error) {
+      onNotify(
+        error instanceof Error ? error.message : '復元できませんでした。もう一度お試しください。',
+      )
     } finally {
       setBusy(false)
       setConfirmId(null)
