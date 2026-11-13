@@ -106,6 +106,7 @@ export interface VoiceTake {
   duration?: number
 }
 export interface NarrationRecord {
+  updatedAt?: number
   settings: NarrationSettings
   takes: VoiceTake[]
   accepted: Record<string, string>

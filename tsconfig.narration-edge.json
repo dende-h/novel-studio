@@ -9,5 +9,9 @@
     "noEmit": true,
     "types": ["@cloudflare/workers-types"]
   },
-  "include": ["functions/api/narration.ts", "workers/narration/worker.ts"]
+  "include": [
+    "functions/api/narration.ts",
+    "functions/api/narration-assets.ts",
+    "workers/narration/worker.ts"
+  ]
 }

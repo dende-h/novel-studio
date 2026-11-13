@@ -3,6 +3,7 @@ import { type DailyActivity, DailyActivitySchema } from '../activity'
 import { type Staging, StagingSchema } from '../game'
 import { type UserGameAsset, UserGameAssetSchema } from '../game/assets'
 import { type IdeaNote, IdeaNoteSchema } from '../idea'
+import { type NarrationBackup, NarrationBackupSchema } from '../narration/backup'
 import { type Plot, PlotSchema } from '../plot'
 import { type Profile, ProfileSchema } from '../profile'
 import { type ProofreadRecord, ProofreadRecordSchema } from '../proofread/decisions'
@@ -56,6 +57,7 @@ const CloudBackupSchema = z.object({
   proofreadRules: z.array(ProofreadRulesSchema.nullable().catch(null)).optional().default([]),
   /** 持ち込みのゲーム素材（背景画像）。旧バックアップには無いので既定 []。 */
   gameAssets: z.array(UserGameAssetSchema).optional().default([]),
+  narrations: z.array(NarrationBackupSchema).optional(),
 })
 /** 検証後の全体バックアップ。外した語・作品の決まりは壊れた要素（null）を取り除いた後の形。 */
 export type CloudBackup = Omit<
@@ -80,6 +82,7 @@ export interface BackupState {
   nameDismissals: NameDismissals[]
   proofreadRules: ProofreadRules[]
   gameAssets: UserGameAsset[]
+  narrations?: NarrationBackup[]
 }
 
 /** 全状態を 1 つのバックアップ JSON に直列化する（暗号化前の平文）。 */

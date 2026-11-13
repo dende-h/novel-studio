@@ -7,6 +7,10 @@ import type {
 } from '@/core/narration/types'
 import { IdbStore } from '@/core/storage/idbStore'
 import { NarrationRepository } from '@/core/storage/narrationRepository'
+import { withWorkMutationLock } from '@/core/storage/workMutationLock'
+import { SyncLostRepository } from '@/core/sync/syncLostRepository'
+import { touchSync } from '@/ui/sync/sync-touch'
+import { NarrationBackupIO } from './backup'
 
 class ApiError extends Error {
   constructor(
@@ -38,6 +42,8 @@ export class NarrationService {
   private saveFailed = false
   private timer: ReturnType<typeof setTimeout> | undefined
   private refreshing = false
+  private paused = false
+  private revision = 0
   constructor(
     private workId: string,
     private getToken: () => Promise<string | null>,
@@ -96,16 +102,49 @@ export class NarrationService {
     }
     return response
   }
+  busy() {
+    return this.pendingSaves > 0 || this.state.sending || this.refreshing
+  }
+  replaceFromSync(record: NarrationRecord) {
+    this.revision++
+    this.update({ record })
+  }
   private persist(record: NarrationRecord) {
+    if (this.paused) return this.serial
+    if (JSON.stringify(record) === JSON.stringify(this.state.record) && !this.saveFailed)
+      return this.serial
+    record = { ...record, updatedAt: Date.now() }
+    const revision = this.revision
     this.pendingSaves++
     this.update({ record, saving: true })
     this.serial = this.serial.then(async () => {
       try {
-        await this.repository.save(record)
+        await withWorkMutationLock('narration:' + this.owner + ':' + this.workId, async () => {
+          if (revision !== this.revision) {
+            await new SyncLostRepository(new IdbStore('novel-studio')).save({
+              syncId: 'narration:' + this.workId,
+              at: Date.now(),
+              kind: 'narration',
+              reason: 'conflict',
+              title: '朗読制作',
+              json: JSON.stringify(record),
+            })
+            throw new Error(
+              '別端末の変更を受け取りました。直前の編集は「同期で退避した版」に保存しました。',
+            )
+          }
+          await this.repository.save(record)
+        })
+        touchSync()
         this.saveFailed = false
-      } catch {
+      } catch (error) {
         this.saveFailed = true
-        this.update({ error: '端末に保存できませんでした。空き容量を確認してください。' })
+        this.update({
+          error:
+            error instanceof Error
+              ? error.message
+              : '端末に保存できませんでした。空き容量を確認してください。',
+        })
       } finally {
         this.pendingSaves--
         this.update({ saving: this.pendingSaves > 0 })
@@ -117,7 +156,8 @@ export class NarrationService {
     if (this.state.record) void this.persist({ ...this.state.record, settings })
   }
   async refresh() {
-    if (this.refreshing) return
+    if (this.refreshing || this.paused) return
+    const revision = this.revision
     this.refreshing = true
     try {
       const body = (await (await this.api(`?work=${encodeURIComponent(this.workId)}`)).json()) as {
@@ -125,9 +165,11 @@ export class NarrationService {
         jobs: string[]
         takes: VoiceTake[]
       }
+      if (this.paused || revision !== this.revision) return
       for (const take of body.takes) {
         if (take.state === 'missing' && (await this.repository.audio(take.id))) take.state = 'ready'
       }
+      if (this.paused || revision !== this.revision) return
       const record = this.state.record
       if (record) {
         const merged = [
@@ -151,6 +193,7 @@ export class NarrationService {
     }
   }
   private schedule(delay = 2500) {
+    if (this.paused) return
     clearTimeout(this.timer)
     this.timer = setTimeout(() => void this.refresh(), delay)
   }
@@ -264,6 +307,16 @@ export class NarrationService {
     }
   }
 
+  async pauseForRestore() {
+    this.paused = true
+    clearTimeout(this.timer)
+    await this.flush()
+    this.revision++
+  }
+  async resumeAfterRestore() {
+    this.replaceFromSync(await this.repository.get(this.workId))
+    this.paused = false
+  }
   async flush() {
     await this.serial
     if (this.saveFailed) throw new Error(this.state.error)
@@ -429,11 +482,7 @@ export class NarrationService {
     })
   }
   async audio(id: string): Promise<Blob> {
-    const local = await this.repository.audio(id)
-    if (local) return local
-    const blob = await (await this.api(`?action=audio&take=${encodeURIComponent(id)}`)).blob()
-    await this.repository.saveAudio(id, blob)
-    return blob
+    return new NarrationBackupIO(this.owner, this.getToken).audio(id)
   }
 }
 const services = new Map<string, NarrationService>()
@@ -450,4 +499,20 @@ export function narrationService(
     void service.init()
   }
   return service
+}
+
+export function narrationBusy(owner: string, workId: string): boolean {
+  return services.get(owner + ':' + workId)?.busy() ?? false
+}
+export function reloadNarration(owner: string, workId: string, record: NarrationRecord): void {
+  services.get(owner + ':' + workId)?.replaceFromSync(record)
+}
+
+export async function pauseNarrations(owner: string): Promise<void> {
+  for (const [key, service] of services)
+    if (key.startsWith(owner + ':')) await service.pauseForRestore()
+}
+export async function resumeNarrations(owner: string): Promise<void> {
+  for (const [key, service] of services)
+    if (key.startsWith(owner + ':')) await service.resumeAfterRestore()
 }

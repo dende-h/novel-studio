@@ -14,7 +14,11 @@ import { getMcpTokenStatus } from './_api/mcp'
 import { triggerDownload } from './_utils/download'
 import { App } from './App'
 import { useAuth } from './auth/auth-context'
-import { createDefaultBackupService, createLocalBackupService } from './backup/backup-service'
+import {
+  createDefaultBackupService,
+  createLocalBackupIO,
+  createLocalBackupService,
+} from './backup/backup-service'
 import { ActivityPage } from './components/ActivityPage/activity-page'
 import { AiPullDialog } from './components/AiPullDialog/ai-pull-dialog'
 import { CloudBackupDialog } from './components/CloudBackupDialog/cloud-backup-dialog'
@@ -45,6 +49,7 @@ import {
   useSaveProfile,
 } from './hooks/use-pen-name'
 import { useIsStaff } from './hooks/use-staff'
+import { NarrationBackupIO } from './narration/backup'
 import {
   createDefaultActivityRepository,
   createDefaultGameAssetRepository,
@@ -127,6 +132,7 @@ function RootRoutes({ store }: RootProps) {
     status,
     canRestore,
     graceUntil,
+    userId,
     getToken,
     openSignIn,
     openSignUp,
@@ -155,14 +161,17 @@ function RootRoutes({ store }: RootProps) {
   const backupService = useMemo(
     () =>
       status === 'member' || canRestore
-        ? createDefaultBackupService(() => getTokenRef.current())
+        ? createDefaultBackupService(() => getTokenRef.current(), userId ?? 'local')
         : null,
-    [status, canRestore],
+    [status, canRestore, userId],
   )
   // 執筆活動（草・ストリーク）は純ローカル・誰でも使える（同じ IndexedDB を読む）。
   const activityRepo = useMemo(() => createDefaultActivityRepository(), [])
   // ローカル（ファイル）バックアップも純ローカル・誰でも使える（全状態の書き出し／全置換復元）。
-  const localBackup = useMemo(() => createLocalBackupService(), [])
+  const localBackup = useMemo(() => {
+    const narration = new NarrationBackupIO(userId ?? 'local', () => getTokenRef.current())
+    return createLocalBackupService(createLocalBackupIO(narration), () => Date.now(), narration)
+  }, [userId])
   // ネタ帳（アイデアの受け皿）も純ローカル・誰でも使える。
   // 構造・ネタ帳の編集は editorStore を通らないため、変更系メソッドに同期通知（sync-touch）を
   // 差し込む＝編集の ~1.5 秒後に push される（これが無いと構造・ネタ帳の編集が push されない）。
@@ -231,11 +240,12 @@ function RootRoutes({ store }: RootProps) {
   // 端末の全データを平文 JSON でダウンロードする（無料のファイルバックアップと同じ中身）。
   const downloadLocalBackup = useCallback(
     async (prefix: string) => {
-      const json = await localBackup.exportPlaintext()
+      if (!localBackup.exportFile) throw new Error('バックアップを書き出せませんでした。')
+      const file = await localBackup.exportFile()
       triggerDownload({
-        filename: `${prefix}-${new Date().toISOString().slice(0, 10)}.json`,
-        mime: 'application/json;charset=utf-8',
-        data: json,
+        filename: prefix + '-' + new Date().toISOString().slice(0, 10) + '.' + file.extension,
+        mime: file.mime,
+        data: file.data,
       })
     },
     [localBackup],
@@ -305,9 +315,10 @@ function RootRoutes({ store }: RootProps) {
                 ? { id: snap.work.id, dirty: snap.dirty || snap.workOperation !== 'idle' }
                 : null
             },
+            userId ?? 'local',
           )
         : null,
-    [status, store],
+    [status, store, userId],
   )
   useAutoSync(
     store,

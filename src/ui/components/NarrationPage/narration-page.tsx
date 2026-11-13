@@ -11,6 +11,7 @@ import {
   readingCuesNeedingReview,
   resolveSegments,
 } from '@/core/narration/resolve'
+import { selectNarrationSentence } from '@/core/narration/selection'
 import { STYLES, type VoiceCue, type VoiceSegment, type VoiceTake } from '@/core/narration/types'
 import type { Work } from '@/core/schema'
 import type { StagingRepository } from '@/core/storage/stagingRepository'
@@ -22,7 +23,9 @@ import { Button } from '@/ui/components/ui/button'
 import { useEditorStore } from '@/ui/hooks/use-editor-store'
 import { assembleNarration } from '@/ui/narration/audio'
 import { narrationService } from '@/ui/narration/service'
+import { narrationTransfer, subscribeNarrationTransfer } from '@/ui/narration/transfer-status'
 import type { EditorStore } from '@/ui/store/editorStore'
+import { NarrationCloudStatus } from './narration-cloud-status'
 import { NarrationPlayer } from './narration-player'
 import './narration.css'
 
@@ -72,6 +75,9 @@ function NarrationPage({
   stagingRepo: StagingRepository
 }) {
   const auth = useAuth()
+  const cloud = useSyncExternalStore(subscribeNarrationTransfer, () =>
+    narrationTransfer(auth.userId ?? 'local'),
+  )
   const service = useMemo(
     () => narrationService(work.id, auth.getToken, auth.userId ?? 'local'),
     [work.id, auth.getToken, auth.userId],
@@ -93,7 +99,6 @@ function NarrationPage({
     label: string
     action: () => void
   } | null>(null)
-  const selectionAnchor = useRef<string | null>(null)
   const manuscript = useRef<HTMLDivElement>(null)
   const [scope, setScope] = useState<VoiceCue['scope']>('episode')
   const [notice, setNotice] = useState('')
@@ -343,12 +348,7 @@ function NarrationPage({
     ? { model: entitlement.model, voices: entitlement.voices }
     : undefined
   const segments = resolveSegments(episode, settings, staging, generation)
-  const paragraphs: VoiceSegment[][] = []
-  for (const segment of segments) {
-    const last = paragraphs.at(-1)
-    if (last?.[0]?.blockId === segment.blockId) last.push(segment)
-    else paragraphs.push([segment])
-  }
+  const paragraphs = segments.map((segment) => [segment])
   const needsSentenceRebuild = (record.snapshots?.[episode.id] ?? []).some(
     (saved) => !segments.some((current) => current.id === saved.id),
   )
@@ -465,7 +465,6 @@ function NarrationPage({
     patchSettings({ cues: [...settings.cues.filter((c) => c.id !== cue.id), next] })
   }
   const clearSelection = () => {
-    selectionAnchor.current = null
     window.getSelection()?.removeAllRanges()
     setSelection([])
     setOffsets({})
@@ -475,28 +474,17 @@ function NarrationPage({
     audio.current?.pause()
     fullAudio.current?.pause()
     window.getSelection()?.removeAllRanges()
-    if (!only && selection.includes(id)) {
-      const next = selection.filter((selected) => selected !== id)
-      if (!next.length) clearSelection()
-      else {
-        if (selectionAnchor.current === id) selectionAnchor.current = next[0]!
-        setSelection(next)
-        setOffsets({})
-      }
+    const next = selectNarrationSentence(
+      segments.map((segment) => segment.id),
+      selection,
+      id,
+      only,
+    )
+    if (!next.length) {
+      clearSelection()
       return
     }
-    if (only || !selection.length) selectionAnchor.current = id
-    const anchor = selectionAnchor.current ?? selection[0] ?? id
-    selectionAnchor.current = anchor
-    const a = segments.findIndex((s) => s.id === anchor)
-    const b = segments.findIndex((s) => s.id === id)
-    const first = segments.findIndex((s) => selection.includes(s.id))
-    const last = segments.findLastIndex((s) => selection.includes(s.id))
-    setSelection(
-      !only && first < b && b < last
-        ? segments.filter((s) => selection.includes(s.id) || s.id === id).map((s) => s.id)
-        : segments.slice(Math.min(a, b), Math.max(a, b) + 1).map((s) => s.id),
-    )
+    setSelection(next)
     setOffsets({})
     setScope('range')
   }
@@ -521,7 +509,6 @@ function NarrationPage({
   const openCue = (c: VoiceCue) => {
     audio.current?.pause()
     fullAudio.current?.pause()
-    selectionAnchor.current = null
     setScope(c.scope)
     const next: Record<string, { start: number; end: number }> = {}
     for (const [i, segment] of segments.entries()) {
@@ -672,7 +659,7 @@ function NarrationPage({
       })
     else action()
   }
-  const saveLabel = saving ? '保存中…' : '保存済み'
+  const saveLabel = saving ? '保存中…' : '端末に保存済み'
   const voices = entitlement?.voices ?? []
   const voiceRanges = settings.cues.filter(
     (c) =>
@@ -833,6 +820,7 @@ function NarrationPage({
             書き出し設定 <span aria-hidden="true">⌄</span>
           </summary>
           <div className="narration-popover-body">
+            <NarrationCloudStatus />
             <h2>複数話をZIPで保存</h2>
             <div className="narration-export-list">
               {work.episodes.map((ep) => (
@@ -887,9 +875,9 @@ function NarrationPage({
           読み方
         </button>
       </nav>
-      {(error || notice) && (
+      {(error || notice || cloud.error) && (
         <div className="narration-notice" role="status">
-          {notice || error}
+          {notice || error || cloud.error}
           <button type="button" onClick={() => void act(() => service.refresh())}>
             状態を更新
           </button>
@@ -1062,7 +1050,7 @@ function NarrationPage({
                 ).values(),
               )
               return (
-                <div className="narration-block" key={parts[0]!.blockId}>
+                <div className="narration-block" key={parts[0]!.id}>
                   <div className="narration-block-select">
                     {details.map(({ segment, active, isCurrent, tone }) => (
                       <span

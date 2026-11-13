@@ -1,6 +1,7 @@
 import type { DailyActivity } from '@/core/activity'
 import { StagingSchema } from '@/core/game'
 import { IdeaNoteSchema } from '@/core/idea'
+import { NarrationBackupSchema } from '@/core/narration/backup'
 import { PlotSchema } from '@/core/plot'
 import { ProfileRepository, ProfileSchema } from '@/core/profile'
 import { ProofreadRecordSchema } from '@/core/proofread/decisions'
@@ -40,6 +41,8 @@ import {
   postSyncActivity as apiPostActivity,
   putSyncWork as apiPut,
 } from '@/ui/_api/sync'
+import { NarrationBackupIO } from '@/ui/narration/backup'
+import { narrationBusy, reloadNarration } from '@/ui/narration/service'
 import { isSyncSuspended, syncEpoch } from '@/ui/sync/sync-gate'
 
 /**
@@ -107,32 +110,35 @@ type ItemKind =
   | 'proofread'
   | 'proofreadNames'
   | 'proofreadRules'
+  | 'narration'
 
 /** プロフィールは端末に 1 件だけの singleton（決定的 id）。 */
 const PROFILE_SYNC_ID = 'profile:me'
 
 const kindOf = (syncId: string): ItemKind =>
-  syncId.startsWith('structure:')
-    ? 'structure'
-    : syncId.startsWith('idea:')
-      ? 'idea'
-      : syncId.startsWith('profile:')
-        ? 'profile'
-        : syncId.startsWith('plot:')
-          ? 'plot'
-          : syncId.startsWith('staging:')
-            ? 'staging'
-            : syncId.startsWith('proofread:')
-              ? 'proofread'
-              : syncId.startsWith('proofread-names:')
-                ? 'proofreadNames'
-                : syncId.startsWith('proofread-rules:')
-                  ? 'proofreadRules'
-                  : 'work'
+  syncId.startsWith('narration:')
+    ? 'narration'
+    : syncId.startsWith('structure:')
+      ? 'structure'
+      : syncId.startsWith('idea:')
+        ? 'idea'
+        : syncId.startsWith('profile:')
+          ? 'profile'
+          : syncId.startsWith('plot:')
+            ? 'plot'
+            : syncId.startsWith('staging:')
+              ? 'staging'
+              : syncId.startsWith('proofread:')
+                ? 'proofread'
+                : syncId.startsWith('proofread-names:')
+                  ? 'proofreadNames'
+                  : syncId.startsWith('proofread-rules:')
+                    ? 'proofreadRules'
+                    : 'work'
 
 const rawIdOf = (syncId: string): string =>
   syncId.replace(
-    /^(?:structure|idea|profile|plot|staging|proofread|proofread-names|proofread-rules):/,
+    /^(?:structure|idea|profile|plot|staging|proofread|proofread-names|proofread-rules|narration):/,
     '',
   )
 
@@ -150,6 +156,7 @@ const dedupeConflicts = (conflicts: ConflictInfo[]): ConflictInfo[] => [
 
 /** テストで差し替える I/O。既定実装は createDefaultSyncService が結線する。 */
 export interface SyncDeps {
+  narration?: NarrationBackupIO
   repo: WorkRepository
   snapshotRepo: SnapshotRepository
   structures: StructureRepository
@@ -366,6 +373,26 @@ export function createSyncService(deps: SyncDeps): SyncService {
         maskedIds.add(syncId)
       }
     }
+    if (deps.narration) {
+      for (const record of await deps.narration.repository.list()) {
+        const syncId = 'narration:' + record.settings.workId
+        try {
+          const entry = await deps.narration.gather(record)
+          const str = canonicalJson(NarrationBackupSchema, entry)
+          canon.set(syncId, str)
+          localItems.push({
+            workId: syncId,
+            updatedAt: record.updatedAt ?? 0,
+            hash: await sha256Hex(str),
+          })
+        } catch {
+          maskedIds.add(syncId)
+        }
+      }
+    } else {
+      for (const row of [...remote, ...bases])
+        if (row.workId.startsWith('narration:')) maskedIds.add(row.workId)
+    }
     // プロフィール（ペンネーム・アバター）も 1 レコードとして相乗りする。
     // updatedAt が無い＝一度も設定していない端末は push しない（新端末では remote から
     // 普通に pull される。ローカル欠落と誤認した purgeRemote も起きない：プロフィールは
@@ -489,6 +516,18 @@ export function createSyncService(deps: SyncDeps): SyncService {
         case 'push': {
           const body = canon.get(op.workId)
           if (body === undefined) break
+          if (kindOf(op.workId) === 'narration') {
+            if (!deps.narration) break
+            await deps.narration.upload([NarrationBackupSchema.parse(JSON.parse(body))])
+            if (conflictIds.has(op.workId)) {
+              const remoteEntry = await deps.getWork(op.workId)
+              if (!remoteEntry || remoteEntry.docHash !== op.baseHash) {
+                replanNeeded = true
+                break
+              }
+              await recordLost(op.workId, 'conflict', '朗読制作', remoteEntry.json)
+            }
+          }
           const res = await deps.putWork(op.workId, body, {
             baseHash: op.baseHash,
             updatedAt: op.updatedAt,
@@ -552,7 +591,36 @@ export function createSyncService(deps: SyncDeps): SyncService {
             const rawId = rawIdOf(op.workId)
             let currentJson: string | undefined
             try {
-              if (kind === 'structure') {
+              if (kind === 'narration') {
+                const io = deps.narration
+                if (!io || narrationBusy(io.owner, rawId)) break
+                const pulled = NarrationBackupSchema.parse(JSON.parse(got.json))
+                if (pulled.record.settings.workId !== rawId) throw new Error('id mismatch')
+                await io.prepare([pulled])
+                const applied = await withWorkMutationLock(
+                  'narration:' + io.owner + ':' + rawId,
+                  async () => {
+                    if (stale() || narrationBusy(io.owner, rawId)) return false
+                    const rows = await io.repository.list()
+                    const cur = rows.find((row) => row.settings.workId === rawId)
+                    const current = cur
+                      ? canonicalJson(NarrationBackupSchema, await io.gather(cur))
+                      : undefined
+                    if (
+                      (current ? await sha256Hex(current) : undefined) !== planHash.get(op.workId)
+                    ) {
+                      replanNeeded = true
+                      return false
+                    }
+                    if (current && conflictIds.has(op.workId))
+                      await recordLost(op.workId, 'conflict', '朗読制作', current)
+                    await io.apply([pulled])
+                    reloadNarration(io.owner, rawId, pulled.record)
+                    return true
+                  },
+                )
+                if (!applied) break
+              } else if (kind === 'structure') {
                 // 開いている作品の構造でも pull は適用する：構造ビューは自前 state で表示して
                 // おり IDB 上書きと衝突しない。見送ると /write 内の構造画面で待つ端末が
                 // 永遠に受信できない（stg で実発生）。
@@ -846,6 +914,7 @@ export function createSyncService(deps: SyncDeps): SyncService {
           break
         }
         case 'purgeRemote': {
+          if (kindOf(op.workId) === 'narration') break // No implicit deletion of durable audio/editing state.
           // 失敗（オフライン・レート制限・409＝purge 後にリモートが前進）したら base を温存する。
           // ここで base を消すと次の reconcile が「他端末の新規」と誤認して pull し、
           // 消したはずの作品が復活してしまう（旧設計の失敗の再来）ため。
@@ -991,10 +1060,12 @@ export function createSyncService(deps: SyncDeps): SyncService {
 export function createDefaultSyncService(
   getToken: () => Promise<string | null>,
   getOpenWork?: () => { id: string; dirty: boolean } | null,
+  owner = 'local',
 ): SyncService {
   const store = new IdbStore('novel-studio')
   const activityRepo = new ActivityRepository(store)
   return createSyncService({
+    narration: new NarrationBackupIO(owner, getToken, store),
     repo: new WorkRepository(store),
     snapshotRepo: new SnapshotRepository(store),
     structures: new StructureRepository(store),

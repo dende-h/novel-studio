@@ -24,6 +24,7 @@ interface BackupDialogProps {
  * 個別作品の書き出し（EPUB/Web/フォルダ/AI）とは分離し、ライブラリ全体の保存だけを担う。
  */
 export function BackupDialog({ open, onOpenChange, workCount, onExport }: BackupDialogProps) {
+  const [error, setError] = useState('')
   const [done, setDone] = useState(false)
   const [busy, setBusy] = useState(false)
 
@@ -37,9 +38,14 @@ export function BackupDialog({ open, onOpenChange, workCount, onExport }: Backup
 
   const handleExport = async () => {
     setBusy(true)
+    setError('')
     try {
       await onExport()
       setDone(true)
+    } catch (error) {
+      setError(
+        error instanceof Error ? error.message : '書き出せませんでした。もう一度お試しください。',
+      )
     } finally {
       setBusy(false)
     }
@@ -54,7 +60,7 @@ export function BackupDialog({ open, onOpenChange, workCount, onExport }: Backup
           </DialogTitle>
           <DialogDescription>
             作品・用語集・ネタ帳・執筆記録・ゴミ箱・プロフィールを
-            1つのバックアップ（JSON）にまとめて保存します。
+            朗読の設定・生成音声とともに、1つのバックアップ（ZIP）に保存します。
           </DialogDescription>
         </DialogHeader>
 
@@ -72,12 +78,17 @@ export function BackupDialog({ open, onOpenChange, workCount, onExport }: Backup
             <p className="flex items-start gap-2 rounded-md bg-surface-container-low p-3 text-on-surface-variant text-xs">
               <Info className="mt-0.5 size-4 shrink-0 text-primary" aria-hidden />
               <span>
-                作品・用語集・プロット・アウトライン等の構造データ・ネタ帳・執筆記録・ゴミ箱・プロフィールを含みます。執筆履歴（版）は含まれません。取り込み時に全置換で復元できます。
+                作品・用語集・プロット・アウトライン等の構造データ・ネタ帳・執筆記録・ゴミ箱・プロフィールを含みます。朗読の比較待ちの音声も含みます。生成途中の音声は、生成が終わってからもう一度バックアップしてください。執筆履歴（版）は含まれません。取り込み時に全置換で復元できます。
               </span>
             </p>
           </div>
         )}
 
+        {error && (
+          <p role="alert" className="text-destructive text-sm">
+            {error}
+          </p>
+        )}
         <DialogFooter>
           {done ? (
             <Button

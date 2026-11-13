@@ -1202,3 +1202,37 @@
   user-select: text;
   -webkit-user-select: text;
 }
+
+/* The visible unit and click target both represent one generated sentence. */
+.narration-block {
+  margin: 8px 0 12px;
+}
+.narration-block-select {
+  cursor: pointer;
+  user-select: none;
+}
+.narration-paragraph {
+  display: block;
+  border-radius: 6px;
+}
+.narration-studio .narration-paragraph-select {
+  display: block;
+  width: 100%;
+  padding: 8px 10px;
+  text-align: left;
+  border-radius: 6px;
+}
+.narration-paragraph[data-narration-state] {
+  background: color-mix(in srgb, var(--narration-state-ink) 7%, var(--background));
+}
+.narration-paragraph.is-selected {
+  background: color-mix(in srgb, var(--narration-selection) 18%, var(--background));
+}
+.narration-paragraph[data-narration-state] .narration-prose,
+.narration-paragraph .narration-prose mark {
+  background: transparent;
+  border-bottom: 0;
+}
+.narration-paragraph-meta {
+  padding-left: 10px;
+}
