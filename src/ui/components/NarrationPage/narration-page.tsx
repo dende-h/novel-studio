@@ -659,6 +659,8 @@ function NarrationPage({
       })
     else action()
   }
+  const availabilityError = error === '朗読制作は現在、運営による検証中です。' ? error : ''
+  const bannerError = availabilityError ? '' : error
   const saveLabel = saving ? '保存中…' : '端末に保存済み'
   const voices = entitlement?.voices ?? []
   const voiceRanges = settings.cues.filter(
@@ -784,9 +786,20 @@ function NarrationPage({
           </summary>
           <section className="narration-popover-body narration-quota" aria-label="利用枠">
             <div>
-              <strong>{entitlement?.model ?? '利用枠を確認中'}</strong>
+              <strong>
+                {entitlement?.model ?? (availabilityError ? '利用枠' : '利用枠を確認中')}
+              </strong>
               {entitlement?.development && <span className="narration-tag">開発用・無料API</span>}
-              <p>{entitlement?.label ?? 'サインインすると利用枠を確認できます。'}</p>
+              <p>
+                {availabilityError ||
+                  entitlement?.label ||
+                  'サインインすると利用枠を確認できます。'}
+              </p>
+              {availabilityError && (
+                <button type="button" onClick={() => void act(() => service.refresh())}>
+                  状態を更新
+                </button>
+              )}
             </div>
             {entitlement && (
               <div className="narration-quota-numbers">
@@ -875,9 +888,9 @@ function NarrationPage({
           読み方
         </button>
       </nav>
-      {(error || notice || cloud.error) && (
+      {(bannerError || notice || cloud.error) && (
         <div className="narration-notice" role="status">
-          {notice || error || cloud.error}
+          {notice || bannerError || cloud.error}
           <button type="button" onClick={() => void act(() => service.refresh())}>
             状態を更新
           </button>
