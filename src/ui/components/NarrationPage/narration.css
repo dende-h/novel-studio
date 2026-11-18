@@ -101,7 +101,7 @@
   overflow: hidden;
 }
 .narration-manuscript {
-  padding: 12px clamp(16px, 3vw, 48px) 28px;
+  padding: 0 clamp(16px, 3vw, 48px) 28px;
   overflow-y: auto;
   overscroll-behavior: contain;
 }
@@ -1138,12 +1138,15 @@
 .narration-paragraph .narration-prose mark {
   background: color-mix(in srgb, var(--narration-selection) 24%, var(--background));
 }
+.narration-manuscript {
+  padding-top: 0;
+}
 .narration-manuscript-toolbar {
   position: sticky;
   top: 0;
   z-index: 2;
   background: var(--background);
-  padding-bottom: 12px;
+  padding-block: 12px;
   border-bottom: 1px solid var(--border);
 }
 .narration-state-legend {
