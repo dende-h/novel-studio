@@ -366,7 +366,7 @@ Clerk へ登録済みのクライアントの互換。消すとトークン更�
 
 ---
 
-モデル選択・共通枠は `src/core/narration/types.ts`、`functions/api/_lib/narration.ts`、月間単位の予約・確定は `migrations/0013_narration_shared_quota.sql`。朗読音声の容量台帳は `0012_narration_assets.sql`（Pages配備前に適用）。朗読の生成台帳は `0011_narration.sql`（jobs/takes/budgets/daily/lock、予約・確定のトリガー）。stgの実行担当は `workers/narration/wrangler.toml` で独立デプロイする。Pagesの `NARRATION_DISPATCH_URL` から接続する。
+モデル選択・共通枠は `src/core/narration/types.ts`、`functions/api/_lib/narration.ts`（運営個別枠は `NARRATION_OPERATOR_USER_ID` と掲示板の運営権限）、月間単位の予約・確定は `migrations/0013_narration_shared_quota.sql`。朗読音声の容量台帳は `0012_narration_assets.sql`（Pages配備前に適用）。朗読の生成台帳は `0011_narration.sql`（jobs/takes/budgets/daily/lock、予約・確定のトリガー）。stgの実行担当は `workers/narration/wrangler.toml` で独立デプロイする。Pagesの `NARRATION_DISPATCH_URL` から接続する。
 
 ## 5. 開発コマンド・規約
 
