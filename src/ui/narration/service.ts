@@ -42,7 +42,7 @@ export class NarrationService {
   private pendingSaves = 0
   private saveFailed = false
   private timer: ReturnType<typeof setTimeout> | undefined
-  private refreshing = false
+  private refreshing?: Promise<void>
   private paused = false
   private revision = 0
   constructor(
@@ -104,7 +104,7 @@ export class NarrationService {
     return response
   }
   busy() {
-    return this.pendingSaves > 0 || this.state.sending || this.refreshing
+    return this.pendingSaves > 0 || this.state.sending || !!this.refreshing
   }
   replaceFromSync(record: NarrationRecord) {
     this.revision++
@@ -156,10 +156,22 @@ export class NarrationService {
   changeSettings(settings: NarrationSettings) {
     if (this.state.record) void this.persist({ ...this.state.record, settings })
   }
-  async refresh() {
-    if (this.refreshing || this.paused) return
+  refresh(): Promise<void> {
+    if (this.paused) return Promise.resolve()
+    this.refreshing ??= this.refreshOnce().finally(() => {
+      this.refreshing = undefined
+    })
+    return this.refreshing
+  }
+
+  private async refreshAfterWrite() {
+    // A status request that started before the write can return the old state.
+    if (this.refreshing) await this.refreshing
+    await this.refresh()
+  }
+
+  private async refreshOnce() {
     const revision = this.revision
-    this.refreshing = true
     try {
       const body = (await (await this.api(`?work=${encodeURIComponent(this.workId)}`)).json()) as {
         entitlement: Entitlement
@@ -193,8 +205,6 @@ export class NarrationService {
     } catch (error) {
       this.update({ error: error instanceof Error ? error.message : '読み込めませんでした。' })
       this.schedule(15000)
-    } finally {
-      this.refreshing = false
     }
   }
   private schedule(delay = 2500) {
@@ -296,7 +306,7 @@ export class NarrationService {
       try {
         await this.api('', { method: 'POST', body: payload })
         await db.delete(key)
-        await this.refresh()
+        await this.refreshAfterWrite()
       } catch (error) {
         if (error instanceof ApiError && error.status >= 400 && error.status < 500) {
           await db.delete(key)
@@ -518,11 +528,11 @@ export class NarrationService {
     if (!payload) return
     await this.api('', { method: 'POST', body: payload })
     await new IdbStore('novel-studio').delete(`narration-pending:${this.owner}:${this.workId}`)
-    await this.refresh()
+    await this.refreshAfterWrite()
   }
   async cancel(jobId: string) {
     await this.api('', { method: 'PATCH', body: JSON.stringify({ id: jobId }) })
-    await this.refresh()
+    await this.refreshAfterWrite()
   }
   async accept(take: VoiceTake) {
     if (take.state !== 'ready' || !this.state.record) return

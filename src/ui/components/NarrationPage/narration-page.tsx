@@ -115,6 +115,15 @@ function NarrationPage({
     service.subscribe,
     service.getSnapshot,
   )
+  useEffect(() => {
+    const refreshOnReturn = () => {
+      if (document.visibilityState === 'visible' && service.getSnapshot().record)
+        void service.refresh()
+    }
+    refreshOnReturn()
+    document.addEventListener('visibilitychange', refreshOnReturn)
+    return () => document.removeEventListener('visibilitychange', refreshOnReturn)
+  }, [service])
   const [showSaving, setShowSaving] = useState(false)
   useEffect(() => {
     if (!saving) {
