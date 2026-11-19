@@ -3,7 +3,10 @@ import { z } from 'zod'
 import { countCharacters, plainText, segmentFingerprint } from '../../../src/core/narration/resolve'
 import {
   type Entitlement,
+  NARRATION_BILLING_PLANS,
+  NARRATION_PAID_MODELS,
   NARRATION_PLANS,
+  type NarrationAllowance,
   type NarrationPlan,
   type VoiceSegment,
 } from '../../../src/core/narration/types'
@@ -118,10 +121,24 @@ export async function entitlement(
       ? null
       : Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 1) - 9 * 3600_000
   const budget = await env.DB.prepare(
-    'SELECT used,reserved FROM narration_budgets WHERE user_id=? AND period=?',
+    'SELECT used+extra_used AS used,reserved+extra_reserved AS reserved FROM narration_budgets WHERE user_id=? AND period=?',
   )
     .bind(userId, budgetPeriod)
     .first<{ used: number; reserved: number }>()
+  const canChooseModel =
+    model === 'drama-3' && NARRATION_BILLING_PLANS.some((tier) => tier === plan)
+  const unitQuota = definition.limit * (canChooseModel ? 2 : 1)
+  const used = budget?.used ?? 0
+  const reserved = budget?.reserved ?? 0
+  const allowance = (unitsPerCharacter: number): NarrationAllowance => ({
+    limit: Math.floor(unitQuota / unitsPerCharacter),
+    used: Math.floor(used / unitsPerCharacter),
+    reserved: Math.floor(reserved / unitsPerCharacter),
+    remaining: Math.floor(Math.max(0, unitQuota - used - reserved) / unitsPerCharacter),
+  })
+  const modelAllowances = canChooseModel
+    ? { 'drama-3': allowance(2), 's2.1-pro': allowance(1) }
+    : undefined
   const previewPeriod =
     'preview:' + date.toISOString().slice(0, 10) + (testPlan ? ':staff:' + testPlan : '')
   const previewLimit = Math.max(
@@ -148,10 +165,9 @@ export async function entitlement(
     plan,
     label: definition.label,
     model,
-    limit: definition.limit,
-    used: budget?.used ?? 0,
-    reserved: budget?.reserved ?? 0,
-    remaining: Math.max(0, definition.limit - (budget?.used ?? 0) - (budget?.reserved ?? 0)),
+    ...(modelAllowances?.['drama-3'] ?? allowance(1)),
+    modelAllowances,
+    unitQuota,
     period: budgetPeriod,
     periodEnd,
     voices: voiceCatalog(env).map(({ id, label, description, version, sampleUrl }) => ({
@@ -187,6 +203,7 @@ export const jobSchema = z.object({
   id: z.string().uuid(),
   workId: z.string().min(1).max(100),
   preview: z.boolean().optional(),
+  model: z.enum(NARRATION_PAID_MODELS).optional(),
   segments: z.array(segmentSchema).min(1).max(500),
 })
 export function validateSegments(
@@ -234,6 +251,7 @@ export function publicTake(t: TakeRow) {
     id: t.id,
     jobId: t.job_id,
     segmentId: t.segment_id,
+    model: t.model,
     fingerprint: t.fingerprint,
     state: t.state,
     createdAt: t.created_at,

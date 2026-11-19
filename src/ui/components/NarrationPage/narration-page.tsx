@@ -10,9 +10,19 @@ import {
   plainText,
   readingCuesNeedingReview,
   resolveSegments,
+  segmentFingerprint,
 } from '@/core/narration/resolve'
 import { selectNarrationSentence } from '@/core/narration/selection'
-import { STYLES, type VoiceCue, type VoiceSegment, type VoiceTake } from '@/core/narration/types'
+import {
+  type Entitlement,
+  NARRATION_MODEL_LABELS,
+  NARRATION_PAID_MODELS,
+  type NarrationPaidModel,
+  STYLES,
+  type VoiceCue,
+  type VoiceSegment,
+  type VoiceTake,
+} from '@/core/narration/types'
 import type { Work } from '@/core/schema'
 import type { StagingRepository } from '@/core/storage/stagingRepository'
 import { zipStore } from '@/core/zip'
@@ -28,6 +38,20 @@ import type { EditorStore } from '@/ui/store/editorStore'
 import { NarrationCloudStatus } from './narration-cloud-status'
 import { NarrationPlayer } from './narration-player'
 import './narration.css'
+
+function matchesAdopted(
+  segment: VoiceSegment,
+  take: VoiceTake | undefined,
+  access: Entitlement | null,
+) {
+  if (!take) return false
+  if (segment.fingerprint === take.fingerprint) return true
+  const voiceVersion = access?.voices.find((voice) => voice.id === segment.voiceId)?.version
+  const models = take.model ? [take.model] : Object.keys(NARRATION_MODEL_LABELS)
+  return models.some(
+    (model) => take.fingerprint === segmentFingerprint(segment, model, voiceVersion),
+  )
+}
 
 export function NarrationRoute({
   store,
@@ -110,6 +134,7 @@ function NarrationPage({
     whole?: boolean
     preview?: boolean
     retry?: boolean
+    model?: NarrationPaidModel
   } | null>(null)
   const [consent, setConsent] = useState(() => localStorage.getItem('ns-narration-consent') === '1')
   const [playing, setPlaying] = useState<{
@@ -236,7 +261,7 @@ function NarrationPage({
         ).some((s) => {
           const take = record.takes.find((t) => t.id === record.accepted[s.id])
           return take
-            ? take.fingerprint !== s.fingerprint
+            ? !matchesAdopted(s, take, entitlement)
             : record.settings.cues.some((c) => c.episodeId === ep.id)
         }),
       )
@@ -344,8 +369,12 @@ function NarrationPage({
       : c,
   )
   const staging = stagings.find((s) => s.episodeId === episode.id)
+  const modelAllowances = entitlement?.modelAllowances
+  const requestedModel = modelAllowances ? (settings.model ?? 'drama-3') : undefined
+  const model = requestedModel ?? entitlement?.model
+  const quota = requestedModel ? modelAllowances?.[requestedModel] : entitlement
   const generation = entitlement
-    ? { model: entitlement.model, voices: entitlement.voices }
+    ? { model: model ?? entitlement.model, voices: entitlement.voices }
     : undefined
   const segments = resolveSegments(episode, settings, staging, generation)
   const paragraphs = segments.map((segment) => [segment])
@@ -401,7 +430,7 @@ function NarrationPage({
   const previewReady = opening.length > 0 && opening.every(cached)
   const pending = segments.filter(
     (s) =>
-      accepted(s)?.fingerprint !== s.fingerprint &&
+      !matchesAdopted(s, accepted(s), entitlement) &&
       !record.takes.some(
         (t) => t.segmentId === s.id && t.fingerprint === s.fingerprint && t.state === 'ready',
       ) &&
@@ -423,36 +452,41 @@ function NarrationPage({
       saved.length !== current.length ||
       saved.some(
         (s, i) =>
-          current[i]?.id !== s.id || accepted(current[i]!)?.fingerprint !== current[i]?.fingerprint,
+          current[i]?.id !== s.id ||
+          !matchesAdopted(current[i]!, accepted(current[i]!), entitlement),
       )
     )
   }
-  const changed = segments.filter((s) => accepted(s) && accepted(s)?.fingerprint !== s.fingerprint)
+  const changed = segments.filter(
+    (s) => accepted(s) && !matchesAdopted(s, accepted(s), entitlement),
+  )
   const readingReview = readingCuesNeedingReview(episode, settings)
   const cost = (items: VoiceSegment[]) => items.reduce((n, s) => n + s.characters, 0)
-  const readyToGenerate = (items: VoiceSegment[]) =>
+  const readyToGenerate = (items: VoiceSegment[], allowance = quota) =>
     !!entitlement?.enabled &&
     items.length > 0 &&
     !readingReview.some(
       (c) => !c.refs.length || c.refs.some((r) => items.some((s) => s.blockId === r.blockId)),
     ) &&
-    cost(items) <= entitlement.remaining &&
+    !!allowance &&
+    cost(items) <= allowance.remaining &&
     !sending &&
     !running.length &&
     !record.takes.some((t) => t.state === 'unknown') &&
     !items.some((s) => s.characters > 800)
   const patchSettings = (patch: Partial<typeof settings>) => {
-    const { style, narrator, mode, ...rest } = patch
+    const { style, narrator, mode, model, ...rest } = patch
     service.changeSettings({
       ...record.settings,
       ...rest,
       episodes:
-        style !== undefined || narrator !== undefined || mode !== undefined
+        style !== undefined || narrator !== undefined || mode !== undefined || model !== undefined
           ? {
               ...record.settings.episodes,
               [episode.id]: {
                 ...record.settings.episodes?.[episode.id],
                 ...(mode !== undefined ? { mode } : {}),
+                ...(model !== undefined ? { model } : {}),
                 style: style ?? settings.style,
                 narrator: narrator ?? settings.narrator,
               },
@@ -549,6 +583,7 @@ function NarrationPage({
     whole = false,
     preview = false,
     retry = false,
+    jobModel = requestedModel,
   ) => {
     if (!whole && !preview && needsSentenceRebuild) {
       setNotice('前回の音声と文の区切りが異なります。先に一話を再生成してください。')
@@ -562,14 +597,22 @@ function NarrationPage({
       setNotice('複数の文にまたがる以前の読み指定を確認してください。')
       return
     }
+    if (whole && !regenerate) {
+      items = items.map((segment) => {
+        const take = accepted(segment)
+        return take && matchesAdopted(segment, take, entitlement)
+          ? { ...segment, fingerprint: take.fingerprint }
+          : segment
+      })
+    }
     if (
       !consent ||
       (whole && (!!record.snapshots?.[episode.id] || segments.some(accepted)) && !retry)
     ) {
-      setGenerationRequest({ segments: items, regenerate, whole, preview, retry })
+      setGenerationRequest({ segments: items, regenerate, whole, preview, retry, model: jobModel })
       return
     }
-    void act(() => service.generate(items, regenerate, { whole, preview, retry }))
+    void act(() => service.generate(items, regenerate, { whole, preview, retry, model: jobModel }))
   }
   const play = async (items: VoiceSegment[], variant: 'accepted' | 'candidate', from = 0) => {
     audio.current?.pause()
@@ -787,14 +830,18 @@ function NarrationPage({
         </div>
         <details className="narration-popover">
           <summary>
-            <span className="narration-model">{entitlement?.model}</span>
-            {entitlement ? `残り ${entitlement.remaining.toLocaleString()}文字` : '利用枠'}{' '}
+            <span className="narration-model">{model && NARRATION_MODEL_LABELS[model]}</span>
+            {quota ? `残り ${quota.remaining.toLocaleString()}文字` : '利用枠'}{' '}
             <span aria-hidden="true">⌄</span>
           </summary>
           <section className="narration-popover-body narration-quota" aria-label="利用枠">
             <div>
               <strong>
-                {entitlement?.model ?? (availabilityError ? '利用枠' : '利用枠を確認中')}
+                {model
+                  ? NARRATION_MODEL_LABELS[model]
+                  : availabilityError
+                    ? '利用枠'
+                    : '利用枠を確認中'}
               </strong>
               {entitlement?.development && (
                 <span className="narration-tag">
@@ -812,21 +859,55 @@ function NarrationPage({
                 </button>
               )}
             </div>
-            {entitlement && (
+            {modelAllowances && (
+              <label className="narration-model-choice">
+                この話のモデル
+                <select
+                  value={requestedModel}
+                  disabled={sending}
+                  onChange={(event) =>
+                    patchSettings({ model: event.target.value as NarrationPaidModel })
+                  }
+                >
+                  {NARRATION_PAID_MODELS.map((option) => (
+                    <option key={option} value={option}>
+                      {NARRATION_MODEL_LABELS[option]}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+            {modelAllowances ? (
               <div className="narration-quota-numbers">
-                <strong>
-                  残り {entitlement.remaining.toLocaleString()}
-                  <small>文字 / {entitlement.limit.toLocaleString()}文字</small>
-                </strong>
+                {NARRATION_PAID_MODELS.map((option) => (
+                  <p key={option}>
+                    {NARRATION_MODEL_LABELS[option]} 残り{' '}
+                    <strong>{modelAllowances[option].remaining.toLocaleString()}文字</strong>
+                  </p>
+                ))}
+                <p>共通の利用枠です。S2.1 Proでは同じ枠で2倍の文字数を生成できます。</p>
                 <p>
-                  使用済み {entitlement.used.toLocaleString()}文字・予約中{' '}
-                  {entitlement.reserved.toLocaleString()}文字
-                  <br />
-                  {entitlement.periodEnd
-                    ? `${new Date(entitlement.periodEnd).toLocaleDateString('ja-JP')} に更新`
-                    : '初回のみの体験枠'}
+                  {entitlement?.periodEnd &&
+                    `${new Date(entitlement.periodEnd).toLocaleDateString('ja-JP')} に更新`}
                 </p>
               </div>
+            ) : (
+              entitlement && (
+                <div className="narration-quota-numbers">
+                  <strong>
+                    残り {entitlement.remaining.toLocaleString()}
+                    <small>文字 / {entitlement.limit.toLocaleString()}文字</small>
+                  </strong>
+                  <p>
+                    使用済み {entitlement.used.toLocaleString()}文字・予約中{' '}
+                    {entitlement.reserved.toLocaleString()}文字
+                    <br />
+                    {entitlement.periodEnd
+                      ? `${new Date(entitlement.periodEnd).toLocaleDateString('ja-JP')} に更新`
+                      : '初回のみの体験枠'}
+                  </p>
+                </div>
+              )
             )}
           </section>
         </details>
@@ -943,7 +1024,7 @@ function NarrationPage({
                         ).filter(
                           (s) =>
                             latest(s) ||
-                            (accepted(s) && accepted(s)?.fingerprint !== s.fingerprint),
+                            (accepted(s) && !matchesAdopted(s, accepted(s), entitlement)),
                         ).length
                         return count ? ' · 作業途中 ' + count : ''
                       })()}
@@ -1034,7 +1115,7 @@ function NarrationPage({
                   : candidate && candidate.id !== take?.id
                     ? '比較待ち'
                     : take
-                      ? take.fingerprint === segment.fingerprint
+                      ? matchesAdopted(segment, take, entitlement)
                         ? '生成済み'
                         : '変更あり'
                       : candidate
@@ -1676,7 +1757,7 @@ function NarrationPage({
                     ).toLocaleString()}
                     文字
                   </strong>
-                  {entitlement && <> / 残り {entitlement.remaining.toLocaleString()}文字</>}
+                  {quota && <> / 残り {quota.remaining.toLocaleString()}文字</>}
                 </p>
               )}
             </div>
@@ -1854,8 +1935,13 @@ function NarrationPage({
                 <div className="narration-progress">
                   現在の音声は保持されています。
                   <Button
-                    disabled={busy || !readyToGenerate(retry)}
-                    onClick={() => generate(retry, true, op.whole, op.preview, true)}
+                    disabled={
+                      busy ||
+                      !readyToGenerate(retry, op.model ? modelAllowances?.[op.model] : quota)
+                    }
+                    onClick={() =>
+                      generate(retry, true, op.whole, op.preview, true, op.model ?? requestedModel)
+                    }
                   >
                     未完了の区間を再生成 · {cost(retry)}文字
                   </Button>
@@ -1925,9 +2011,9 @@ function NarrationPage({
                     : '書き出せます'}
           </span>
           <span>
-            {entitlement && (
+            {quota && (
               <>
-                使用 {entitlement.used.toLocaleString()} / {entitlement.limit.toLocaleString()}文字
+                使用 {quota.used.toLocaleString()} / {quota.limit.toLocaleString()}文字
               </>
             )}
           </span>
@@ -1956,7 +2042,8 @@ function NarrationPage({
               '文字。生成後の残り ' +
               Math.max(
                 0,
-                (entitlement?.remaining ?? 0) -
+                ((generationRequest?.model ? modelAllowances?.[generationRequest.model] : quota)
+                  ?.remaining ?? 0) -
                   cost(
                     (generationRequest?.segments ?? []).filter(
                       (s) => generationRequest?.regenerate || !cached(s),
@@ -1979,6 +2066,7 @@ function NarrationPage({
               whole: generationRequest.whole,
               preview: generationRequest.preview,
               retry: generationRequest.retry,
+              model: generationRequest.model,
             }),
           )
         }}

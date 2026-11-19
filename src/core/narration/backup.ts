@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import { BlockSchema } from '../schema'
-import type { NarrationRecord } from './types'
+import { NARRATION_PAID_MODELS, type NarrationRecord } from './types'
 
 // Unknown fields survive backup round trips for forward compatibility.
 const strings = z.record(z.string(), z.string())
@@ -39,6 +39,7 @@ export const NarrationRecordSchema: z.ZodType<NarrationRecord> = z
                 style: z.string(),
                 narrator: z.string(),
                 mode: z.enum(['solo', 'cast']).optional(),
+                model: z.enum(NARRATION_PAID_MODELS).optional(),
               })
               .passthrough(),
           )
@@ -87,6 +88,7 @@ export const NarrationRecordSchema: z.ZodType<NarrationRecord> = z
           segmentId: z.string(),
           fingerprint: z.string(),
           jobId: z.string(),
+          model: z.string().optional(),
           state: z.enum([
             'queued',
             'generating',
@@ -117,6 +119,7 @@ export const NarrationRecordSchema: z.ZodType<NarrationRecord> = z
         jobs: z.array(z.string()),
         whole: z.boolean(),
         preview: z.boolean(),
+        model: z.enum(NARRATION_PAID_MODELS).optional(),
       })
       .passthrough()
       .optional(),

@@ -88,6 +88,11 @@ export default function CloudPricing() {
               <span className="font-serif text-3xl text-on-surface">{p.price}</span>
               <span className="text-on-surface-variant text-sm">{p.note}</span>
             </div>
+            {higher.length > 0 && (
+              <p className="mt-2 text-sm text-muted-foreground">
+                朗読 S2.1 Pro · 月{NARRATION_PLANS.basic.limit.toLocaleString('ja-JP')}文字
+              </p>
+            )}
             <Button
               onClick={() => void subscribe(p.interval)}
               disabled={busy !== null}
@@ -116,7 +121,9 @@ export default function CloudPricing() {
                   <div>
                     <strong>月額 ¥{price.toLocaleString('ja-JP')}</strong>
                     <p className="text-sm text-muted-foreground">
-                      Drama 3 · 月{limit.toLocaleString('ja-JP')}文字
+                      Drama 3なら月{limit.toLocaleString('ja-JP')}文字
+                      <br />
+                      S2.1 Proなら月{(limit * 2).toLocaleString('ja-JP')}文字
                     </p>
                   </div>
                   {!member && (
@@ -132,6 +139,7 @@ export default function CloudPricing() {
               )
             })}
           </div>
+          <p className="mt-2 text-sm text-muted-foreground">一つの利用枠を両モデルで使えます。</p>
           {member && (
             <p className="mt-2 text-sm text-muted-foreground">
               プラン変更は「契約を管理」から行えます。

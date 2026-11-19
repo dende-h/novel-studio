@@ -146,7 +146,12 @@ export const onRequest: PagesFunction<NarrationEnv> = async (context) => {
     const access = await entitlement(env, userId)
     if (!access.enabled)
       return reply({ error: '音声生成の準備が整っていません。設定は保存できます。' }, 503)
-    const segments = validateSegments(input.segments, env, access.model)
+    const model = input.model ?? access.model
+    const allowance = input.model && access.modelAllowances?.[input.model]
+    if (model !== access.model && !allowance)
+      return reply({ error: '現在のプランではこのモデルを使えません。' }, 409)
+    const remaining = allowance ? allowance.remaining : access.remaining
+    const segments = validateSegments(input.segments, env, model)
     if (new Set(segments.map((s) => s.id)).size !== segments.length)
       return reply({ error: '同じ区間が重複しています。' }, 400)
     const total = segments.reduce((n, s) => n + s.characters, 0)
@@ -157,10 +162,10 @@ export const onRequest: PagesFunction<NarrationEnv> = async (context) => {
         { error: '本日のスタイル試聴回数を使い切りました。生成済みの音声は再生できます。' },
         409,
       )
-    if (!input.preview && total > access.remaining)
+    if (!input.preview && total > remaining)
       return reply(
         {
-          error: `残りは${access.remaining.toLocaleString()}文字です。生成範囲を短くしてください。`,
+          error: `残りは${remaining.toLocaleString()}文字です。生成範囲を短くしてください。`,
         },
         409,
       )
@@ -168,7 +173,7 @@ export const onRequest: PagesFunction<NarrationEnv> = async (context) => {
     const snapshot: Snapshot = {
       segments,
       voices: voiceCatalog(env).filter((voice) => voiceIds.has(voice.id)),
-      model: access.model,
+      model,
     }
     await env.MEDIA.put(
       snapshotKey(userId, input.id + '/' + requestHash),
@@ -189,11 +194,12 @@ export const onRequest: PagesFunction<NarrationEnv> = async (context) => {
           Math.max(0, Number(env.NARRATION_DAILY_BYTE_LIMIT ?? 1000000)),
         ),
         env.DB.prepare(
-          'INSERT INTO narration_budgets(user_id,period,quota) VALUES(?,?,?) ON CONFLICT(user_id,period) DO UPDATE SET quota=excluded.quota',
+          'INSERT INTO narration_budgets(user_id,period,quota,unit_quota) VALUES(?,?,?,?) ON CONFLICT(user_id,period) DO UPDATE SET quota=excluded.quota,unit_quota=excluded.unit_quota',
         ).bind(
           userId,
           input.preview ? access.preview!.period : access.period,
           input.preview ? access.preview!.limit : access.limit,
+          input.preview ? null : access.unitQuota,
         ),
         env.DB.prepare(
           'INSERT INTO narration_jobs(id,user_id,work_id,period,request_hash,dispatch_token,created_at) VALUES(?,?,?,?,?,?,?)',
@@ -216,7 +222,7 @@ export const onRequest: PagesFunction<NarrationEnv> = async (context) => {
             s.fingerprint,
             input.preview ? (index === 0 ? 1 : 0) : s.characters,
             new TextEncoder().encode(providerText(s)).length,
-            access.model,
+            model,
             now,
           ),
         ),
