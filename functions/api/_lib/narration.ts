@@ -10,6 +10,7 @@ import {
 import { BlockSchema } from '../../../src/core/schema'
 import type { ClerkEnv } from './auth'
 import { readSubscription } from './membership'
+import licensedJapaneseVoices from './narration-voices.json'
 export interface NarrationEnv extends ClerkEnv {
   DB: D1Database
   MEDIA: R2Bucket
@@ -17,8 +18,10 @@ export interface NarrationEnv extends ClerkEnv {
   FISH_AUDIO_API_KEY: string
   FISH_NARRATION_VOICE_ID?: string
   NARRATION_VOICES?: string
+  NARRATION_JAPANESE_CATALOG?: string
   NARRATION_DAILY_BYTE_LIMIT?: string
   NARRATION_PREVIEW_LIMIT?: string
+  NARRATION_STAFF_TEST_PLAN?: string
   NARRATION_RELEASE?: string
   NARRATION_PAID_ENABLED?: string
   NARRATION_DISPATCH_URL?: string
@@ -39,9 +42,12 @@ export function voiceCatalog(env: NarrationEnv) {
       sampleUrl: z.string().startsWith('/narration-samples/').optional(),
     }),
   )
-  if (env.NARRATION_VOICES) return schema.parse(JSON.parse(env.NARRATION_VOICES))
-  return env.FISH_NARRATION_VOICE_ID
-    ? schema.parse([
+  const voices = env.NARRATION_VOICES ? schema.parse(JSON.parse(env.NARRATION_VOICES)) : []
+  if (new Set(voices.map((voice) => voice.id)).size !== voices.length)
+    throw new Error('Duplicate narration voice ID')
+  if (!voices.some((voice) => voice.id === 'default') && env.FISH_NARRATION_VOICE_ID) {
+    voices.unshift(
+      ...schema.parse([
         {
           id: 'default',
           label: 'Shiori',
@@ -49,9 +55,35 @@ export function voiceCatalog(env: NarrationEnv) {
           version: '1',
           referenceId: env.FISH_NARRATION_VOICE_ID,
         },
-      ])
-    : []
+      ]),
+    )
+  }
+  if (env.NARRATION_JAPANESE_CATALOG === '1') {
+    for (const voice of licensedJapaneseVoices) {
+      if (voice.availableUntil && Date.parse(voice.availableUntil) <= Date.now()) continue
+      const existing = voices.find((item) => item.referenceId === voice.referenceId)
+      if (existing) {
+        existing.sampleUrl ??= voice.sampleUrl
+      } else if (!voices.some((item) => item.id === voice.id)) {
+        voices.push(voice)
+      }
+    }
+  }
+  return voices
 }
+function staffTestPlan(env: NarrationEnv): NarrationPlan | undefined {
+  const plan = env.NARRATION_STAFF_TEST_PLAN
+  if (env.NARRATION_RELEASE !== '1' && plan && Object.hasOwn(NARRATION_PLANS, plan))
+    return plan as NarrationPlan
+}
+
+export function paidNarrationEnabled(env: NarrationEnv): boolean {
+  return (
+    env.NARRATION_PAID_ENABLED === '1' &&
+    (env.NARRATION_RELEASE === '1' || staffTestPlan(env) !== undefined)
+  )
+}
+
 export async function entitlement(
   env: NarrationEnv,
   userId: string,
@@ -71,10 +103,16 @@ export async function entitlement(
     else if (price && [env.STRIPE_PRICE_MONTHLY, env.STRIPE_PRICE_YEARLY].includes(price))
       plan = 'basic'
   }
+  const development = env.NARRATION_RELEASE !== '1'
+  const testPlan = staffTestPlan(env)
+  if (testPlan) plan = testPlan
   const definition = NARRATION_PLANS[plan]
+  const model = development && !testPlan ? 's2.1-pro-free' : definition.model
   // Calendar months in JST also give annual subscribers monthly narration allowances.
   const date = new Date(now + 9 * 3600_000)
-  const period = plan === 'trial' ? 'trial' : date.toISOString().slice(0, 7)
+  const month = date.toISOString().slice(0, 7)
+  const period = plan === 'trial' ? 'trial' : month
+  const budgetPeriod = testPlan ? 'staff:' + testPlan + ':' + period : period
   const periodEnd =
     plan === 'trial'
       ? null
@@ -82,9 +120,10 @@ export async function entitlement(
   const budget = await env.DB.prepare(
     'SELECT used,reserved FROM narration_budgets WHERE user_id=? AND period=?',
   )
-    .bind(userId, period)
+    .bind(userId, budgetPeriod)
     .first<{ used: number; reserved: number }>()
-  const previewPeriod = 'preview:' + date.toISOString().slice(0, 10)
+  const previewPeriod =
+    'preview:' + date.toISOString().slice(0, 10) + (testPlan ? ':staff:' + testPlan : '')
   const previewLimit = Math.max(
     0,
     Math.min(
@@ -97,7 +136,6 @@ export async function entitlement(
   )
     .bind(userId, previewPeriod)
     .first<{ used: number; reserved: number }>()
-  const development = env.NARRATION_RELEASE !== '1'
   return {
     preview: {
       limit: previewLimit,
@@ -109,20 +147,27 @@ export async function entitlement(
     },
     plan,
     label: definition.label,
-    model: development ? 's2.1-pro-free' : definition.model,
+    model,
     limit: definition.limit,
     used: budget?.used ?? 0,
     reserved: budget?.reserved ?? 0,
     remaining: Math.max(0, definition.limit - (budget?.used ?? 0) - (budget?.reserved ?? 0)),
-    period,
+    period: budgetPeriod,
     periodEnd,
-    voices: voiceCatalog(env).map(({ referenceId: _, ...voice }) => voice),
+    voices: voiceCatalog(env).map(({ id, label, description, version, sampleUrl }) => ({
+      id,
+      label,
+      description,
+      version,
+      sampleUrl,
+    })),
     development,
     enabled:
       !!env.FISH_AUDIO_API_KEY &&
       !!env.NARRATION_DISPATCH_URL &&
       voiceCatalog(env).length > 0 &&
-      (development || env.NARRATION_PAID_ENABLED === '1'),
+      (!env.NARRATION_STAFF_TEST_PLAN || !development || !!testPlan) &&
+      (model === 's2.1-pro-free' || paidNarrationEnabled(env)),
   }
 }
 export const segmentSchema = z.object({

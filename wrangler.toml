@@ -74,3 +74,4 @@ bucket_name = "novel-studio-media-stg"
 [env.preview.vars]
 NARRATION_DISPATCH_URL = "https://novel-studio-narration-stg.dende0206.workers.dev"
 NARRATION_DAILY_BYTE_LIMIT = "1000000"
+NARRATION_JAPANESE_CATALOG = "1"

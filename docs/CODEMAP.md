@@ -317,7 +317,7 @@ Clerk へ登録済みのクライアントの互換。消すとトークン更�
 | `/api/game-assets` | 持ち込みゲーム素材のクラウド保管（会員のみ・枚数/サイズ上限・暗号化）。GET=一覧/1件 / PUT / DELETE |
 | `/game-templates/*` | **運営テンプレの公開読み口**（認証なし・`/api/` の外＝SW がキャッシュする）。`manifest.json`（目録・max-age=300）／`<kind>/<slug>[.thumb].<ext>`（ext は MIME から＝webp/png/jpg/mp3/m4a・`?v=<hash>`・immutable）。実装は `functions/game-templates/[[path]].ts` |
 | `/api/admin/templates` | 運営テンプレの管理（**staff だけ・それ以外は 404**）。GET=目録 / PUT=`?kind=&slug=` 投入・置き換え（kind bg/sprite は画像 1.5MB＋サムネ、se は mp3/m4a 2MB＋長さ、bgm は mp3/m4a 8MB＋長さ＋ループ区間） / PATCH=表示名・分類・時間帯・並び・非表示・BGM のループ区間・分類の表示名 / DELETE=非表示 |
-| `/api/narration` | GET=プラン・ジョブ状態／本人の音声取得、POST=冪等な生成予約、PATCH=未着手分のキャンセル。開発中はstaff限定・S2.1 Pro Free固定。非公開スナップショットは暗号化R2、実行はDurable Object |
+| `/api/narration` | GET=プラン・ジョブ状態／本人の音声取得、POST=冪等な生成予約、PATCH=未着手分のキャンセル。開発中はstaff限定。通常はS2.1 Pro Free、NARRATION_STAFF_TEST_PLANで有料プラン検証。日本語の声目録は `scripts/refresh-narration-voices.mjs` で更新し、NARRATION_JAPANESE_CATALOGで有効化。非公開スナップショットは暗号化R2、実行はDurable Object |
 | `/api/narration-assets` | 会員本人の耐久音声：GET=容量/復号取得、HEAD=保管済み確認、PUT=内容ハッシュで重複を避ける暗号化保存。5GiB/人、8MiB/音声、解約猶予は取得のみ |
 | `POST /api/hit` | 訪問者集計（Cookie なし） |
 | `/api/billing/{checkout,portal,status,reap}` | Stripe Checkout / Portal / 会員状態 / 猶予切れのクラウドデータ削除ジョブ |

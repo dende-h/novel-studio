@@ -6,6 +6,7 @@ import { resolveSegments } from '../../src/core/narration/resolve'
 import { emptyNarration } from '../../src/core/narration/types'
 import { parseEpisodeBody } from '../../src/core/parser/parseNotation'
 import { entitlement, jobSchema, type NarrationEnv, validateSegments } from './_lib/narration'
+import { verifyStaff } from './_lib/staff'
 import { makeRealD1 } from './board/real-d1'
 import { onRequest } from './narration'
 
@@ -281,4 +282,54 @@ it.each([
   expect((await call(env, body)).status).toBe(202)
   expect(await entitlement(env, 'user')).toMatchObject({ reserved: 8, remaining: 492 })
   real.close()
+})
+
+it.each([
+  ['trial', 'drama-3', 500],
+  ['basic', 's2.1-pro', 5000],
+  ['standard', 'drama-3', 10000],
+  ['plus', 'drama-3', 30000],
+  ['premium', 'drama-3', 100000],
+])('スタッフ検証の %s はモデルと枠を分け、明示有効化後だけ予約する', async (plan, model, limit) => {
+  const { real, env } = setup()
+  try {
+    env.NARRATION_STAFF_TEST_PLAN = plan
+    expect(await entitlement(env, 'user')).toMatchObject({ plan, model, limit, enabled: false })
+    expect((await call(env, payload())).status).toBe(503)
+    env.NARRATION_PAID_ENABLED = '1'
+    vi.mocked(verifyStaff).mockResolvedValueOnce(null)
+    expect((await call(env, payload())).status).toBe(404)
+    expect((await call(env, payload())).status).toBe(202)
+    expect(real.row('SELECT model FROM narration_takes')).toMatchObject({ model })
+    expect(await entitlement(env, 'user')).toMatchObject({ reserved: 6 })
+    env.NARRATION_RELEASE = '1'
+    expect(await entitlement(env, 'user')).toMatchObject({ plan: 'trial', reserved: 0 })
+  } finally {
+    real.close()
+  }
+})
+
+it('声を追加しても既存設定の default が使え、Fish の参照IDは返さない', async () => {
+  const { real, env } = setup()
+  try {
+    env.NARRATION_VOICES = JSON.stringify([
+      {
+        id: 'second',
+        label: '追加の声',
+        description: '検証用',
+        version: '1',
+        referenceId: 'b'.repeat(32),
+        sampleUrl: '/narration-samples/second.mp3',
+      },
+    ])
+    const { voices } = await entitlement(env, 'user')
+    expect(voices).toEqual([
+      expect.objectContaining({ id: 'default', label: 'Shiori' }),
+      expect.objectContaining({ id: 'second', sampleUrl: '/narration-samples/second.mp3' }),
+    ])
+    expect(voices.every((voice) => !('referenceId' in voice))).toBe(true)
+    expect((await call(env, payload())).status).toBe(202)
+  } finally {
+    real.close()
+  }
 })
