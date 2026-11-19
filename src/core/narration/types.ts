@@ -128,6 +128,7 @@ export interface NarrationRecord {
   candidateSegments?: Record<string, VoiceSegment>
   undoSnapshots?: Record<string, VoiceSegment[]>
   dismissed?: string[]
+  deletedTakeIds?: string[]
   snapshots?: Record<string, VoiceSegment[]>
   undo?: Record<string, string>
   operation?: {

@@ -468,6 +468,16 @@ test('一文の前半と後半の読みを別々に直しても、生成・置�
  await expect.poll(()=>page.locator('.narration-inspector audio').evaluate(el=>(el as HTMLAudioElement).duration)).toBeGreaterThan(0.4)
  expect(await page.locator('.narration-inspector audio').evaluate(el=>(el as HTMLAudioElement).duration)).toBeLessThan(0.6)
  await expect(page.locator('.narration-paragraph[data-narration-state=ready]')).toHaveCount(1)
+ await page.getByText('書き出し設定',{exact:false}).first().click()
+ await page.getByRole('button',{name:'この話の音声を削除',exact:true}).click()
+ await expect(page.getByRole('dialog')).toContainText('原稿や読み方の設定は残ります')
+ await page.getByRole('dialog').getByRole('button',{name:'音声を削除',exact:true}).click()
+ await expect(page.getByText('この話の朗読音声を削除しました。')).toBeVisible()
+ await expect(page.locator('.narration-paragraph[data-narration-state=empty]')).toHaveCount(1)
+ await page.reload()
+ await expect(page.locator('.narration-paragraph[data-narration-state=empty]')).toHaveCount(1)
+ expect(posts).toBe(2)
+
 })
 
 

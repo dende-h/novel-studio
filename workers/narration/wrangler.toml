@@ -3,6 +3,7 @@ main = "worker.ts"
 compatibility_date = "2026-11-01"
 [vars]
 NARRATION_PARALLEL_GENERATION = "1"
+NARRATION_STORAGE_CLEANUP = "1"
 API_ORIGIN = "https://stg.novel-studio-b2m.pages.dev"
 [[d1_databases]]
 binding = "DB"

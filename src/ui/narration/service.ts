@@ -173,8 +173,13 @@ export class NarrationService {
       if (this.paused || revision !== this.revision) return
       const record = this.state.record
       if (record) {
+        const discarded = new Set(record.deletedTakeIds)
         const merged = Array.from(
-          new Map([...record.takes, ...body.takes].map((take) => [take.id, take])).values(),
+          new Map(
+            [...record.takes, ...body.takes]
+              .filter((take) => !discarded.has(take.id))
+              .map((take) => [take.id, take]),
+          ).values(),
         )
         await this.persist({ ...record, takes: merged, jobs: body.jobs })
         await this.completeOperation()
@@ -312,6 +317,46 @@ export class NarrationService {
     } finally {
       this.update({ sending: false })
     }
+  }
+
+  async deleteEpisodeAudio(episodeId: string) {
+    const record = this.state.record
+    const prefix = episodeId + ':'
+    const targets = record?.takes.filter((take) => take.segmentId.startsWith(prefix))
+    if (!record || !targets?.length) return
+    if (
+      this.state.sending ||
+      targets.some((take) => ['queued', 'generating', 'unknown'].includes(take.state))
+    )
+      throw new Error('生成が終わってから音声を削除してください。')
+
+    const ids = new Set(targets.map((take) => take.id))
+    const withoutEpisode = <T>(map?: Record<string, T>) =>
+      map &&
+      Object.fromEntries(Object.entries(map).filter(([segmentId]) => !segmentId.startsWith(prefix)))
+    const withoutSnapshot = (snapshots?: NarrationRecord['snapshots']) => {
+      if (!snapshots) return undefined
+      const next = { ...snapshots }
+      delete next[episodeId]
+      return next
+    }
+
+    await this.persist({
+      ...record,
+      takes: record.takes.filter((take) => !ids.has(take.id)),
+      deletedTakeIds: [...new Set([...(record.deletedTakeIds ?? []), ...ids])],
+      accepted: withoutEpisode(record.accepted) ?? {},
+      candidates: withoutEpisode(record.candidates),
+      candidateSegments: withoutEpisode(record.candidateSegments),
+      undo: withoutEpisode(record.undo),
+      snapshots: withoutSnapshot(record.snapshots),
+      undoSnapshots: withoutSnapshot(record.undoSnapshots),
+      operation: record.operation?.segments.some((segment) => segment.episodeId === episodeId)
+        ? undefined
+        : record.operation,
+    })
+    await this.flush()
+    await Promise.all([...ids].map((id) => this.repository.deleteAudio(id)))
   }
 
   async pauseForRestore() {
