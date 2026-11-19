@@ -58,11 +58,13 @@ export function NarrationRoute({
   workId,
   episodeId,
   stagingRepo,
+  syncAudioRemoval,
 }: {
   store: EditorStore
   workId: string
   episodeId: string
   stagingRepo: StagingRepository
+  syncAudioRemoval?: () => Promise<unknown>
 }) {
   const state = useEditorStore(store)
   const [error, setError] = useState('')
@@ -86,6 +88,7 @@ export function NarrationRoute({
       work={state.work}
       initialEpisodeId={episodeId}
       stagingRepo={stagingRepo}
+      syncAudioRemoval={syncAudioRemoval}
     />
   )
 }
@@ -93,10 +96,12 @@ function NarrationPage({
   work,
   initialEpisodeId,
   stagingRepo,
+  syncAudioRemoval,
 }: {
   work: Work
   initialEpisodeId: string
   stagingRepo: StagingRepository
+  syncAudioRemoval?: () => Promise<unknown>
 }) {
   const auth = useAuth()
   const cloud = useSyncExternalStore(subscribeNarrationTransfer, () =>
@@ -130,6 +135,7 @@ function NarrationPage({
     title: string
     description: string
     label: string
+    destructive?: boolean
     action: () => void
   } | null>(null)
   const manuscript = useRef<HTMLDivElement>(null)
@@ -426,6 +432,13 @@ function NarrationPage({
   const selectedText = targets.map((s) => plainText(s.source.inlines)).join('')
   const currentIndex =
     playing?.timeline.findIndex((t) => position >= t.start && position < t.end) ?? -1
+  const episodeTakes = record.takes.filter((take) => take.segmentId.startsWith(episode.id + ':'))
+  const deletableAudio = episodeTakes.some(
+    (take) => take.state === 'ready' || take.state === 'missing',
+  )
+  const deletionBlocked = episodeTakes.some((take) =>
+    ['queued', 'generating', 'unknown'].includes(take.state),
+  )
   const running = record.takes.filter((t) => t.state === 'queued' || t.state === 'generating')
   const accepted = (segment: VoiceSegment) =>
     record.takes.find((t) => t.id === record.accepted[segment.id] && t.state === 'ready')
@@ -954,6 +967,35 @@ function NarrationPage({
           </summary>
           <div className="narration-popover-body">
             <NarrationCloudStatus />
+            {deletableAudio && (
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                disabled={busy || saving || sending || deletionBlocked}
+                onClick={() =>
+                  setConfirmation({
+                    title: 'この話の朗読音声を削除しますか？',
+                    description:
+                      '生成した音声と修正候補を削除します。原稿や読み方の設定は残ります。保存済みのバックアップからは復元できます。',
+                    label: '音声を削除',
+                    destructive: true,
+                    action: () =>
+                      void act(async () => {
+                        await service.deleteEpisodeAudio(episode.id)
+                        audio.current?.pause()
+                        fullAudio.current?.pause()
+                        setPlaying(null)
+                        setFullPlayback(null)
+                        setNotice('この話の朗読音声を削除しました。')
+                        await syncAudioRemoval?.()
+                      }),
+                  })
+                }
+              >
+                この話の音声を削除
+              </Button>
+            )}
             <h2>複数話をZIPで保存</h2>
             <div className="narration-export-list">
               {work.episodes.map((ep) => (
@@ -2120,7 +2162,7 @@ function NarrationPage({
         description={confirmation?.description}
         confirmLabel={confirmation?.label}
         cancelLabel="作業を続ける"
-        destructive={false}
+        destructive={confirmation?.destructive ?? false}
         onConfirm={() => confirmation?.action()}
       />
     </main>

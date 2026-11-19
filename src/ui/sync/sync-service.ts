@@ -40,9 +40,11 @@ import {
   patchSyncWork as apiPatch,
   postSyncActivity as apiPostActivity,
   putSyncWork as apiPut,
+  type PutSyncResult,
 } from '@/ui/_api/sync'
 import { NarrationBackupIO } from '@/ui/narration/backup'
 import { narrationBusy, reloadNarration } from '@/ui/narration/service'
+import { setNarrationTransfer } from '@/ui/narration/transfer-status'
 import { isSyncSuspended, syncEpoch } from '@/ui/sync/sync-gate'
 
 /**
@@ -198,9 +200,7 @@ export interface SyncDeps {
     workId: string,
     plaintext: string,
     opts: { baseHash: string; updatedAt: number; trashedAt: number },
-  ): Promise<
-    { ok: true; docHash: string; syncedAt: number } | { ok: false; conflict: RemoteWorkMeta } | null
-  >
+  ): Promise<PutSyncResult | null>
   patchWork(
     workId: string,
     body: { trashedAt: number; updatedAt: number },
@@ -525,6 +525,9 @@ export function createSyncService(deps: SyncDeps): SyncService {
                 replanNeeded = true
                 break
               }
+              await deps.narration.prepare([
+                NarrationBackupSchema.parse(JSON.parse(remoteEntry.json)),
+              ])
               await recordLost(op.workId, 'conflict', '朗読制作', remoteEntry.json)
             }
           }
@@ -534,9 +537,20 @@ export function createSyncService(deps: SyncDeps): SyncService {
             trashedAt: op.trashedAt,
           })
           if (res === null) break // オフライン等：base を触らず次の機会に任せる
+          if (!res.ok && 'narrationStorageFull' in res) {
+            if (deps.narration)
+              setNarrationTransfer(deps.narration.owner, {
+                error:
+                  '現在の朗読音声がクラウドの5GBに達しています。不要な話の音声を削除すると容量が空きます。',
+              })
+            break
+          }
           if (!res.ok) {
             replanNeeded = true // サーバが進んでいた。再 reconcile で三方向差分に回す
             break
+          }
+          if (kindOf(op.workId) === 'narration' && deps.narration) {
+            await deps.narration.usage().catch(() => {})
           }
           summary.pushed++
           // 競合でこちら（ローカル）が勝った＝サーバ側の版が置き換わった。決着として記録する。

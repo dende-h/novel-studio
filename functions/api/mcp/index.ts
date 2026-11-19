@@ -12,6 +12,7 @@ import type { CloudBackup } from '../../../src/core/backup'
 import { decryptPart, encryptPart, importKey } from '../_lib/crypto'
 import { resolveMcpAuth } from '../_lib/mcp-auth'
 import { handleMcpMessage, type McpDeps } from '../_lib/mcp-server'
+import { putNarrationSnapshot } from '../_lib/narration-storage'
 import { PRM_WELL_KNOWN_PATH, wwwAuthenticateBearer } from '../_lib/oauth-metadata'
 import { readTemplateManifest } from '../_lib/templates-store'
 
@@ -87,10 +88,18 @@ async function loadSnapshot(env: Env, userId: string): Promise<CloudBackup | nul
 async function saveSnapshot(env: Env, userId: string, backup: CloudBackup): Promise<boolean> {
   try {
     const key = await importKey(env.ENCRYPTION_KEY)
-    const blob = await encryptPart(JSON.stringify(backup), key, liveAad(userId))
-    await env.MEDIA.put(`${userId}/live`, blob as unknown as ArrayBuffer, {
-      customMetadata: { aiEditedAt: String(Date.now()) },
-    })
+    const plaintext = JSON.stringify(backup)
+    const blob = await encryptPart(plaintext, key, liveAad(userId))
+    await putNarrationSnapshot(
+      env,
+      userId,
+      `${userId}/live`,
+      plaintext,
+      blob as unknown as ArrayBuffer,
+      {
+        aiEditedAt: String(Date.now()),
+      },
+    )
     return true
   } catch {
     return false
@@ -109,7 +118,13 @@ async function createBackup(
     const id = `${createdAt}-${crypto.randomUUID().slice(0, 8)}`
     const key = await importKey(env.ENCRYPTION_KEY)
     const blob = await encryptPart(plaintext, key, backupAad(userId, id))
-    await env.MEDIA.put(backupKey(userId, id), blob as unknown as ArrayBuffer)
+    await putNarrationSnapshot(
+      env,
+      userId,
+      backupKey(userId, id),
+      plaintext,
+      blob as unknown as ArrayBuffer,
+    )
     // 保持世代を超えた古い版を間引く。
     const backups = await listBackups(env, userId)
     const stale = backups.slice(KEEP).map((b) => backupKey(userId, b.id))
@@ -148,9 +163,16 @@ async function restoreBackup(env: Env, userId: string, id: string): Promise<bool
     const plaintext = await decryptPart(blob, key, backupAad(userId, id))
     const liveBlob = await encryptPart(plaintext, key, liveAad(userId))
     // AI 起点でライブを書き換えたので、取り込み対象として目印を刻む。
-    await env.MEDIA.put(`${userId}/live`, liveBlob as unknown as ArrayBuffer, {
-      customMetadata: { aiEditedAt: String(Date.now()) },
-    })
+    await putNarrationSnapshot(
+      env,
+      userId,
+      `${userId}/live`,
+      plaintext,
+      liveBlob as unknown as ArrayBuffer,
+      {
+        aiEditedAt: String(Date.now()),
+      },
+    )
     return true
   } catch {
     return false

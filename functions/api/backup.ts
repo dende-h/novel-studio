@@ -12,8 +12,10 @@
 
 import { type ClerkEnv, json, verifyBackupAccess, verifyMember } from './_lib/auth'
 import { decryptPart, encryptPart, importKey } from './_lib/crypto'
+import { indexLegacyNarration, putNarrationSnapshot } from './_lib/narration-storage'
 
 interface Env extends ClerkEnv {
+  DB: D1Database
   MEDIA: R2Bucket
   ENCRYPTION_KEY: string
 }
@@ -79,7 +81,13 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
   const id = `${createdAt}-${crypto.randomUUID().slice(0, 8)}`
   const key = await importKey(context.env.ENCRYPTION_KEY)
   const blob = await encryptPart(plaintext, key, aadOf(userId, id))
-  await context.env.MEDIA.put(keyOf(userId, id), blob as unknown as ArrayBuffer)
+  await putNarrationSnapshot(
+    context.env,
+    userId,
+    keyOf(userId, id),
+    plaintext,
+    blob as unknown as ArrayBuffer,
+  )
 
   // 保持世代を超えた古いバックアップを間引く（createdAt 降順で KEEP 件を残す）。
   const keys = await listKeys(context.env.MEDIA, userId)
@@ -87,6 +95,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
   const stale = keys.slice(KEEP).map((k) => k.key)
   if (stale.length > 0) await context.env.MEDIA.delete(stale)
 
+  context.waitUntil?.(indexLegacyNarration(context.env, userId).catch(() => {}))
   return json({ id, createdAt })
 }
 
@@ -126,7 +135,13 @@ export const onRequestPut: PagesFunction<Env> = async (context) => {
 
   const key = await importKey(context.env.ENCRYPTION_KEY)
   const blob = await encryptPart(plaintext, key, `${userId}:live`)
-  await context.env.MEDIA.put(`${userId}/live`, blob as unknown as ArrayBuffer)
+  await putNarrationSnapshot(
+    context.env,
+    userId,
+    `${userId}/live`,
+    plaintext,
+    blob as unknown as ArrayBuffer,
+  )
   return json({ ok: true })
 }
 
@@ -187,5 +202,6 @@ export const onRequestDelete: PagesFunction<Env> = async (context) => {
   const id = new URL(context.request.url).searchParams.get('id')
   if (!id) return json({ error: 'missing_id' }, 400)
   await context.env.MEDIA.delete(keyOf(userId, id))
+  context.waitUntil?.(indexLegacyNarration(context.env, userId).catch(() => {}))
   return json({ ok: true })
 }

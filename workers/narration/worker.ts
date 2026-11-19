@@ -1,4 +1,5 @@
 import { DurableObject } from 'cloudflare:workers'
+import { cleanNarrationStorage } from './storage-cleanup'
 
 interface Env {
   DB: D1Database
@@ -6,6 +7,7 @@ interface Env {
   RUNNER: DurableObjectNamespace<NarrationRunner>
   API_ORIGIN: string
   NARRATION_PARALLEL_GENERATION?: string
+  NARRATION_STORAGE_CLEANUP?: string
 }
 interface Dispatch {
   id: string
@@ -60,6 +62,7 @@ export class NarrationRunner extends DurableObject<Env> {
 }
 export default {
   async scheduled(_controller: ScheduledController, env: Env, ctx: ExecutionContext) {
+    if (env.NARRATION_STORAGE_CLEANUP === '1') ctx.waitUntil(cleanNarrationStorage(env))
     ctx.waitUntil(
       (async () => {
         const expired = (

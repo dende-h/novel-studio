@@ -85,7 +85,7 @@ export class NarrationBackupIO {
     const body = (await response.json()) as { used: number; limit: number }
     setNarrationTransfer(this.owner, body)
   }
-  private uploaded = new Set<string>()
+  private uploaded = new Map<string, number>()
   async upload(entries: NarrationBackup[]): Promise<void> {
     if (!entries.length) return
     setNarrationTransfer(this.owner, { busy: true, error: '' })
@@ -106,7 +106,7 @@ export class NarrationBackupIO {
     const done = this.uploaded
     for (const entry of entries)
       for (const [id, hash] of Object.entries(entry.audio)) {
-        if (done.has(hash)) continue
+        if (Date.now() - (done.get(hash) ?? 0) < 10 * 60_000) continue
         const path = '/api/narration-assets?hash=' + hash
         const exists = await this.request(path, { method: 'HEAD' })
         if (!exists.ok) {
@@ -117,11 +117,11 @@ export class NarrationBackupIO {
           if (!response.ok)
             throw new Error(
               response.status === 409
-                ? '朗読音声のクラウド保管が5GBに達しました。端末の音声は残っています。ファイルにバックアップできます。'
+                ? 'クラウドへの音声転送が混み合っています。時間をおいて再試行してください。'
                 : '音声をクラウドに保存できませんでした。もう一度お試しください。',
             )
         }
-        done.add(hash)
+        done.set(hash, Date.now())
       }
   }
   /** Validate and stage every asset before replacing any editing state. */

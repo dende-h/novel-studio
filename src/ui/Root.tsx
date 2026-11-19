@@ -376,6 +376,7 @@ function RootRoutes({ store }: RootProps) {
             workId={workId}
             episodeId={episodeId ?? ''}
             stagingRepo={stagingRepo}
+            syncAudioRemoval={syncService?.reconcile}
           />
         </Suspense>
       )

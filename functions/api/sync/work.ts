@@ -13,6 +13,11 @@
 
 import { type ClerkEnv, json, verifyMember } from '../_lib/auth'
 import { decryptPart, encryptPart, importKey, sha256Hex } from '../_lib/crypto'
+import {
+  indexCurrentNarration,
+  narrationWorkHashes,
+  replaceCurrentNarrationRefs,
+} from '../_lib/narration-storage'
 import { checkRateLimit } from '../_lib/rate-limit'
 import { type RemoteWorkMeta, toMeta } from './manifest'
 
@@ -148,38 +153,78 @@ export const onRequestPut: PagesFunction<Env> = async (context) => {
   }
 
   const docHash = await sha256Hex(plaintext)
-  const docKey = docKeyOf(userId, workId)
+  const isNarration = workId.startsWith('narration:')
+  let narrationHashes: string[] = []
+  if (isNarration) {
+    try {
+      narrationHashes = narrationWorkHashes(plaintext)
+    } catch {
+      return json({ error: 'bad_request' }, 400)
+    }
+    if (!(await indexCurrentNarration(context.env, userId, workId))) {
+      return json({ error: 'narration_indexing' }, 503)
+    }
+  }
+  const docKey = docKeyOf(userId, workId) + (isNarration ? '/' + crypto.randomUUID() : '')
   const syncedAt = Date.now()
 
   // 条件付き書き込み（CAS の確定判定）。0 行更新＝競り負け → 現在メタで 409。
-  const written = !row
-    ? await context.env.DB.prepare(
+  const statement = !row
+    ? context.env.DB.prepare(
         `INSERT INTO works
            (user_id, work_id, updated_at, deleted, doc_key, doc_hash, doc_size,
             media_key, media_hash, media_size, synced_at, trashed_at)
          VALUES (?, ?, ?, 0, ?, ?, ?, NULL, '', 0, ?, ?)
          ON CONFLICT(user_id, work_id) DO NOTHING`,
-      )
-        .bind(userId, workId, updatedAt, docKey, docHash, docSize, syncedAt, trashedAt)
-        .run()
+      ).bind(userId, workId, updatedAt, docKey, docHash, docSize, syncedAt, trashedAt)
     : row.deleted
-      ? await context.env.DB.prepare(
+      ? context.env.DB.prepare(
           `UPDATE works SET updated_at = ?, deleted = 0, doc_key = ?, doc_hash = ?,
              doc_size = ?, synced_at = ?, trashed_at = ?
            WHERE user_id = ? AND work_id = ? AND deleted = 1 AND updated_at < ?`,
-        )
-          .bind(updatedAt, docKey, docHash, docSize, syncedAt, trashedAt, userId, workId, updatedAt)
-          .run()
-      : await context.env.DB.prepare(
+        ).bind(updatedAt, docKey, docHash, docSize, syncedAt, trashedAt, userId, workId, updatedAt)
+      : context.env.DB.prepare(
           `UPDATE works SET updated_at = ?, deleted = 0, doc_key = ?, doc_hash = ?,
              doc_size = ?, synced_at = ?, trashed_at = ?
            WHERE user_id = ? AND work_id = ? AND deleted = 0 AND doc_hash = ?`,
-        )
-          .bind(updatedAt, docKey, docHash, docSize, syncedAt, trashedAt, userId, workId, baseHash)
-          .run()
+        ).bind(updatedAt, docKey, docHash, docSize, syncedAt, trashedAt, userId, workId, baseHash)
+  let written: D1Result
+  if (isNarration) {
+    // Immutable R2 version first; the CAS publishes the blob and its audio refs together.
+    const key = await importKey(context.env.ENCRYPTION_KEY)
+    const blob = await encryptPart(plaintext, key, aadOf(userId, workId))
+    await context.env.MEDIA.put(docKey, blob as unknown as ArrayBuffer)
+    try {
+      const results = await context.env.DB.batch([
+        statement,
+        ...replaceCurrentNarrationRefs(context.env.DB, userId, workId, docKey, narrationHashes),
+      ])
+      written = results[0]!
+    } catch (error) {
+      const message = String(error)
+      if (
+        message.includes('narration_storage_full') ||
+        message.includes('narration_audio_missing')
+      ) {
+        await context.env.MEDIA.delete(docKey)
+        return message.includes('narration_storage_full')
+          ? json({ error: 'narration_storage_full' }, 507)
+          : json({ error: 'narration_audio_missing' }, 503)
+      }
+      throw error
+    }
+  } else {
+    written = await statement.run()
+  }
   if ((written.meta?.changes ?? 0) < 1) {
+    if (isNarration) await context.env.MEDIA.delete(docKey)
     const cur = await readRow(context.env.DB, userId, workId)
     return json({ error: 'conflict', meta: cur ? toMeta(cur) : absentMeta(workId) }, 409)
+  }
+
+  if (isNarration) {
+    if (row?.doc_key) context.waitUntil?.(context.env.MEDIA.delete(row.doc_key).catch(() => {}))
+    return json({ docHash, syncedAt })
   }
 
   // blob は D1 の CAS が通ってから書く。逆順だと競り負けた側が blob だけ上書きし、
@@ -251,13 +296,28 @@ export const onRequestDelete: PagesFunction<Env> = async (context) => {
   // 編集を push している。削除で新しい編集を消さない（D-SYNC-TOMBSTONE の「編集が新しければ勝つ」）。
   if (at < row.updated_at) return json({ error: 'conflict', meta: toMeta(row) }, 409)
 
-  // トゥームストーン化: blob を消し、行は残して他端末へ削除を伝播する。
-  await context.env.DB.prepare(
-    `UPDATE works SET deleted = 1, updated_at = ?, synced_at = ?
-     WHERE user_id = ? AND work_id = ?`,
-  )
-    .bind(at, Date.now(), userId, workId)
-    .run()
+  // Only remove the immutable version we checked. A newer write wins the race.
+  if (workId.startsWith('narration:')) {
+    const deleted = await context.env.DB.prepare(
+      `UPDATE works SET deleted = 1, updated_at = ?, synced_at = ?
+     WHERE user_id = ? AND work_id = ? AND doc_key = ? AND updated_at <= ? AND deleted=0`,
+    )
+      .bind(at, Date.now(), userId, workId, row.doc_key, at)
+      .run()
+    if (!deleted.meta.changes) {
+      const current = await readRow(context.env.DB, userId, workId)
+      return current && !current.deleted
+        ? json({ error: 'conflict', meta: toMeta(current) }, 409)
+        : json({ ok: true })
+    }
+  } else {
+    await context.env.DB.prepare(
+      `UPDATE works SET deleted = 1, updated_at = ?, synced_at = ?
+       WHERE user_id = ? AND work_id = ?`,
+    )
+      .bind(at, Date.now(), userId, workId)
+      .run()
+  }
   await context.env.MEDIA.delete(row.doc_key)
 
   return json({ ok: true })
