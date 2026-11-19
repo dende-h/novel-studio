@@ -48,7 +48,7 @@ D1ロックで環境全体1区間ずつ。プロバイダーの429は失敗と�
 `NARRATION_RELEASE` を設定しない場合はstaff限定。通常はs2.1-pro-freeを使用し、有料モデルへの自動フォールバックはない。
 STGで有料モデルを検証するときは、Previewにだけ `NARRATION_STAFF_TEST_PLAN`（trial / basic / standard / plus / premium）と `NARRATION_PAID_ENABLED=1` を設定する。小さい `NARRATION_DAILY_BYTE_LIMIT` を先に設定し、検証予算を制限する。検証枠は通常の試聴・利用枠と分離され、Stripeの変更は不要。一般公開時はテストプランを無視し、通常の契約からプランを決める。
 本番で有料モデルを利用できるのは `NARRATION_RELEASE=1` と `NARRATION_PAID_ENABLED=1` を両方設定した場合。`NARRATION_PAID_ENABLED` を下ろすと、予約済みの有料ジョブもFishへの送信前に停止する。
-料金公開・Stripe価格作成・本番のWorker作成はこの変更では行わない。
+追加料金の公開は `NARRATION_BILLING_ENABLED=1` と対象のStripe価格IDで制御する。
 既存STRIPE_PRICE_MONTHLY/YEARLYはbasic、追加プランは
 NARRATION_PRICE_STANDARD/PLUS/PREMIUMをサーバー側のprice IDに対応付ける。
 
@@ -150,3 +150,17 @@ resolveSegments は新規の読点補正を停止し、句点等に350msの最�
 5. STGのスタッフ検証でbasicとstandardを切り替え、API応答・文字枠・実際の音声を確認する。各声の短いサンプルと、日本語の地の文・セリフ・自然文の演技指定を聴く。
 
 公開前に本番用の実行Worker、D1マイグレーション、音声目録と利用条件、追加プランの決済導線、試聴回数と日次予算を用意する。
+
+
+## Stripeと本番配備
+
+追加プランは既存クラウド版と同じ1契約の上位プラン。Stripeでは既存商品にJPYで月額980円・1,980円・4,980円の価格を作り、環境別のPrice IDを `NARRATION_PRICE_STANDARD`、`NARRATION_PRICE_PLUS`、`NARRATION_PRICE_PREMIUM` に設定する。テストモードと本番の価格は別。既存の月額500円・年額4,800円のPrice IDは維持する。
+
+- 基本プランの初回30日トライアルを維持。追加プランのCheckoutには契約トライアルを付けない。朗読の無料体験500文字は別枠。
+- Customer Portalのプラン変更を有効にし、既存と追加の価格を許可する。日割りの扱いと変更時期はオーナーが確定する。上位から下位への変更は、支払済みの期間末に適用する案。
+- STGではStripeテストモードで新規契約と既存契約の変更を試し、webhook後にD1のprice_idと残り文字数・モデルを確認する。環境変数の登録後に `NARRATION_BILLING_ENABLED=1` を設定する。
+
+本番リリース時は `pnpm exec wrangler d1 migrations apply DB --remote` で 0011・0012 を先に適用し、`pnpm exec wrangler deploy --config workers/narration/wrangler.production.toml` で本番Workerを配備する。Pagesの本番環境にそのURLを `NARRATION_DISPATCH_URL` として設定する。
+一般公開フラグを閉じた状態でPagesを配信し、設定と動作を確認してから公開する。声目録の有効化と公開前の利用条件確認も本番側で行う。
+
+Fish Audioへの確認事項は、leaf運営のAPI契約で利用者が本文から音声を生成し、MP3を端末へ保存できるか、公開・ライセンス済みの日本語声をleafの選択肢に掲載できるか、公式試聴サンプルをleaf上で再生できるか、利用停止や表示条件があるか。今回の範囲は生成とダウンロードまでで、grove配信は別途確認する。

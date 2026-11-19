@@ -3,11 +3,13 @@ export const MIN_SENTENCE_PAUSE_MS = 350
 export const NARRATION_PLANS = {
   trial: { label: '無料体験', limit: 500, model: 'drama-3' },
   basic: { label: '500円プラン', limit: 5000, model: 's2.1-pro' },
-  standard: { label: '980円プラン', limit: 10000, model: 'drama-3' },
-  plus: { label: '1,980円プラン', limit: 30000, model: 'drama-3' },
-  premium: { label: '4,980円プラン', limit: 100000, model: 'drama-3' },
+  standard: { label: '980円プラン', price: 980, limit: 10000, model: 'drama-3' },
+  plus: { label: '1,980円プラン', price: 1980, limit: 30000, model: 'drama-3' },
+  premium: { label: '4,980円プラン', price: 4980, limit: 100000, model: 'drama-3' },
 } as const
 export type NarrationPlan = keyof typeof NARRATION_PLANS
+export const NARRATION_BILLING_PLANS = ['standard', 'plus', 'premium'] as const
+export type NarrationBillingPlan = (typeof NARRATION_BILLING_PLANS)[number]
 export const STYLES = [
   {
     id: 'none',
