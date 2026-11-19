@@ -188,7 +188,7 @@
           "name": "AI 連携は原稿を学習に使われませんか？",
           "acceptedAnswer": {
             "@type": "Answer",
-            "text": "コトノハ-leaf- 自体は AI を内蔵せず、原稿を勝手に外部へ送ることはありません。無料版の「AI に渡す」はあなたの操作で書き出すだけ。クラウド版の MCP 連携も、あなたが接続を選んだときだけ AI が読み書きできます。渡した先での扱いは各 AI サービスの規約に従うため、気になる場合は学習に使わない設定のあるサービスをお使いください。"
+            "text": "原稿が送られるのは、AI 連携や朗読制作など、外部サービスを使う機能を選んだときです。無料版の「AI に渡す」はあなたの操作で書き出すだけ。クラウド版の MCP 連携も、あなたが接続を選んだときだけ AI が読み書きできます。渡した先での扱いは各 AI サービスの規約に従うため、気になる場合は学習に使わない設定のあるサービスをお使いください。"
           }
         },
         {
@@ -274,6 +274,14 @@
   .price-row { display: grid; grid-template-columns: 1fr 110px 150px; gap: 12px; align-items: center; padding: 16px 28px; border-top: 1px solid var(--border-subtle); }
   .price-scroll { overflow-x: auto; }
   .price-inner { min-width: 560px; }
+  .narration-plan-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  .narration-plan-table th, .narration-plan-table td { padding: 12px 8px; border-bottom: 1px solid var(--border-subtle); text-align: right; font-variant-numeric: tabular-nums; }
+  .narration-plan-table th:first-child { text-align: left; }
+  .narration-plan-table thead { color: var(--text-heading); }
+  @media (max-width: 540px) {
+    .narration-plan-table { font-size: 12px; }
+    .narration-plan-table th, .narration-plan-table td { padding-inline: 4px; }
+  }
 
   @media (max-width: 1560px) { [data-hero-decor="inner"] { display: none; } }
   @media (max-width: 1150px) { [data-hero-decor] { display: none; } }
@@ -362,6 +370,7 @@
     </div>
     <nav style="display:flex;align-items:center;gap:28px">
       <a class="nav-a" href="#features">できること</a>
+      <a class="nav-a" href="#narration">朗読</a>
       <a class="nav-a" href="#cloud">クラウド</a>
       <a class="nav-a" href="#yours">安心</a>
       <a class="nav-a" href="#pricing">料金</a>
@@ -534,6 +543,18 @@
   </div>
 </section>
 
+<section id="narration" style="margin-top:96px;background:var(--surface-reading);padding:72px 0">
+  <div style="max-width:780px;margin:0 auto;padding:0 24px">
+    <div data-reveal>
+      <h2 style="margin:0 0 16px;font-family:var(--font-display);font-size:clamp(28px,3vw,38px);color:var(--text-heading)">書いた話を、声で聴く。</h2>
+      <p style="font-size:15px;line-height:2;color:var(--text-body)">執筆画面の「朗読制作」から、地の文をひとりの声で読んだり、セリフに別の声をつけたりできます。声を選んだら、話の冒頭で朗読スタイルを試聴。気になる文を選んで、読み方や演技を直し、聴き比べて採用します。</p>
+      <p style="font-size:15px;line-height:2;color:var(--text-body)">完成した朗読は話ごとにMP3で保存できます。作業の続きは端末へのバックアップに残せます。クラウド版では自動同期やクラウドバックアップでも引き継げます。</p>
+      <p style="font-size:14px;line-height:1.9;color:var(--text-muted)">試聴や生成を実行したときは、対象の本文や指示を音声生成サービスの Fish Audio に送信します。</p>
+      <a href="#narration-pricing">朗読の利用枠を見る →</a>
+    </div>
+  </div>
+</section>
+
 <!-- ================= 設計思想（ローカルファースト・クラウドの前に） ================= -->
 <!-- クラウド紹介の直前に置く。制限の告知ではなく「原稿は手元に置く」という設計思想を先に伝え、
      続くクラウド節が“移行”ではなく“二重化”の選択肢として読まれるようにするための橋渡し。 -->
@@ -541,10 +562,10 @@
   <div style="max-width:780px;margin:0 auto;padding:0 32px;display:flex;flex-direction:column;gap:28px;align-items:center">
     <div data-reveal style="text-align:center;display:flex;flex-direction:column;gap:16px;align-items:center">
       <div style="font-family:var(--font-mono);font-size:12px;letter-spacing:0.32em;color:var(--wheat-600)">LOCAL-FIRST</div>
-      <h2 style="margin:0;font-family:var(--font-display);font-weight:600;font-size:clamp(28px,2.8vw,38px);letter-spacing:0.08em;color:var(--text-heading)">原稿は、サーバーに送りません。</h2>
+      <h2 style="margin:0;font-family:var(--font-display);font-weight:600;font-size:clamp(28px,2.8vw,38px);letter-spacing:0.08em;color:var(--text-heading)">原稿は、あなたの手元に。</h2>
     </div>
     <div data-reveal data-reveal-delay="120" style="max-width:620px;display:flex;flex-direction:column;gap:22px">
-      <p style="margin:0;font-size:15px;line-height:2.1;letter-spacing:0.03em;color:var(--text-body);text-wrap:pretty">コトノハ-leaf- は、書いたそばから原稿をあなたのブラウザの中——つまりお使いの端末——に保存します。文章がどこかのサーバーへ送られることはありません。原稿は書き手の持ちもの。手元に置いておく、という考えかたです。</p>
+      <p style="margin:0;font-size:15px;line-height:2.1;letter-spacing:0.03em;color:var(--text-body);text-wrap:pretty">コトノハ-leaf- は、書いたそばから原稿をあなたのブラウザの中——つまりお使いの端末——に保存します。ふだんの執筆では、原稿をサーバーへ送りません。原稿は書き手の持ちもの。手元に置いておく、という考えかたです。</p>
       <p style="margin:0;font-size:15px;line-height:2.1;letter-spacing:0.03em;color:var(--text-body);text-wrap:pretty">サーバーとやりとりしないぶん、動作は速く、静かです。一度ひらけば、ネットのない場所でも、そのまま書き続けられます。</p>
       <p style="margin:0;font-size:15px;line-height:2.1;letter-spacing:0.03em;color:var(--text-body);text-wrap:pretty">その一方で、端末は壊れることも、失くすこともあります。だから次に紹介するクラウドは、原稿の<em style="font-style:normal;color:var(--text-heading);font-weight:600">引っ越し先ではなく、手元の原稿をもう一つ持っておくための場所</em>です。必要になったとき、自動同期・クラウドバックアップという選択肢があります。</p>
     </div>
@@ -661,6 +682,22 @@
       <a class="btn-card" href="/" style="font-size:15px;padding:14px 30px">クラウドをアプリで見る</a>
     </div>
   </div>
+  <div id="narration-pricing" style="max-width:780px;margin:48px auto 0;padding:0 24px">
+    <h3 style="margin:0 0 12px;font-family:var(--font-display);font-size:22px;color:var(--text-heading)">朗読の利用枠</h3>
+    <table class="narration-plan-table">
+      <thead>
+        <tr><th scope="col">プラン（税込）</th><th scope="col">Drama 3</th><th scope="col">S2.1 Pro</th></tr>
+      </thead>
+      <tbody>
+        <tr><th scope="row">無料アカウント</th><td>初回500文字</td><td>—</td></tr>
+        <tr><th scope="row">基本 月額500円／年額4,800円</th><td>—</td><td>月7,500文字</td></tr>
+        <tr><th scope="row">月額980円</th><td>月12,000文字</td><td>月24,000文字</td></tr>
+        <tr><th scope="row">月額1,980円</th><td>月35,000文字</td><td>月70,000文字</td></tr>
+        <tr><th scope="row">月額4,980円</th><td>月110,000文字</td><td>月220,000文字</td></tr>
+      </tbody>
+    </table>
+    <p style="margin:12px 0 0;font-size:14px;line-height:1.8;color:var(--text-muted)">上位3プランは、話ごとにモデルを選べます。表は各モデルだけで使った場合の文字数です。ひとつの月間枠を共有し、同じ文字数を生成するとS2.1 Proの消費量はDrama 3の半分です。</p>
+  </div>
 </section>
 
 <!-- ================= よくある質問 ================= -->
@@ -689,7 +726,7 @@
       </details>
       <details style="background:var(--surface-card);border:1px solid var(--border-subtle);border-radius:10px;padding:0 24px">
         <summary style="display:flex;align-items:center;justify-content:space-between;gap:16px;padding:20px 0;font-size:15px;font-weight:700;color:var(--text-heading)">AI 連携は原稿を学習に使われませんか？<span data-plus style="color:var(--forest-600);font-size:20px;font-weight:400;transition:transform 0.2s">＋</span></summary>
-        <p style="margin:0;padding:0 0 20px;font-size:14px;line-height:2;color:var(--text-body)">コトノハ-leaf- 自体は AI を内蔵せず、原稿を勝手に外部へ送ることはありません。無料版の「AI に渡す」はあなたの操作で書き出すだけ。クラウド版の MCP 連携も、あなたが接続を選んだときだけ AI が読み書きできます。渡した先での扱いは各 AI サービスの規約に従うため、気になる場合は学習に使わない設定のあるサービスをお使いください。</p>
+        <p style="margin:0;padding:0 0 20px;font-size:14px;line-height:2;color:var(--text-body)">原稿が送られるのは、AI 連携や朗読制作など、外部サービスを使う機能を選んだときです。無料版の「AI に渡す」はあなたの操作で書き出すだけ。クラウド版の MCP 連携も、あなたが接続を選んだときだけ AI が読み書きできます。渡した先での扱いは各 AI サービスの規約に従うため、気になる場合は学習に使わない設定のあるサービスをお使いください。</p>
       </details>
       <details style="background:var(--surface-card);border:1px solid var(--border-subtle);border-radius:10px;padding:0 24px">
         <summary style="display:flex;align-items:center;justify-content:space-between;gap:16px;padding:20px 0;font-size:15px;font-weight:700;color:var(--text-heading)">Claude や ChatGPT から、原稿を読み書きできますか？<span data-plus style="color:var(--forest-600);font-size:20px;font-weight:400;transition:transform 0.2s">＋</span></summary>
