@@ -72,6 +72,7 @@ bucket_name = "novel-studio-media-stg"
 
 # Narration stays in staff-only development mode until the explicit release switches are set.
 [env.preview.vars]
+NARRATION_PARALLEL_GENERATION = "1"
 NARRATION_DISPATCH_URL = "https://novel-studio-narration-stg.dende0206.workers.dev"
 NARRATION_DAILY_BYTE_LIMIT = "1000000"
 NARRATION_JAPANESE_CATALOG = "1"
