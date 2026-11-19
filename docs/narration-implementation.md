@@ -45,16 +45,18 @@ D1ロックで環境全体1区間ずつ。プロバイダーの429は失敗と�
 
 ## 公開切り替え
 
-現在はstaff限定、s2.1-pro-free固定。有料モデルへの自動フォールバックはない。
-NARRATION_RELEASE=1 と NARRATION_PAID_ENABLED=1 の両方を明示設定しない限り有料モデルに送信しない。
+`NARRATION_RELEASE` を設定しない場合はstaff限定。通常はs2.1-pro-freeを使用し、有料モデルへの自動フォールバックはない。
+STGで有料モデルを検証するときは、Previewにだけ `NARRATION_STAFF_TEST_PLAN`（trial / basic / standard / plus / premium）と `NARRATION_PAID_ENABLED=1` を設定する。小さい `NARRATION_DAILY_BYTE_LIMIT` を先に設定し、検証予算を制限する。検証枠は通常の試聴・利用枠と分離され、Stripeの変更は不要。一般公開時はテストプランを無視し、通常の契約からプランを決める。
+本番で有料モデルを利用できるのは `NARRATION_RELEASE=1` と `NARRATION_PAID_ENABLED=1` を両方設定した場合。`NARRATION_PAID_ENABLED` を下ろすと、予約済みの有料ジョブもFishへの送信前に停止する。
 料金公開・Stripe価格作成・本番のWorker作成はこの変更では行わない。
 既存STRIPE_PRICE_MONTHLY/YEARLYはbasic、追加プランは
 NARRATION_PRICE_STANDARD/PLUS/PREMIUMをサーバー側のprice IDに対応付ける。
 
-声の初期目録はユーザー設定済みのFISH_NARRATION_VOICE_ID（Shiori）だけ。
+STGでは `NARRATION_JAPANESE_CATALOG=1` で Fish Audio の公開・ライセンス済み日本語音声の目録を使う。取得時点の一覧は `node scripts/refresh-narration-voices.mjs` で更新する。廃止済み・非公開・取り下げ済みの声は対象外。自動更新ではないため、公開前と運用中に再取得して確認する。
+試聴にはFishが公開しているサンプルへの直参照を使う。ページを開いた時点では先読みせず、再生時にFishの配信先へ接続する。
 追加する声は利用条件・日本語の試聴を確認したうえで、NARRATION_VOICESに
-id/label/description/version/referenceId/sampleUrlの配列を設定する。
-sampleUrlは自サイトの /narration-samples/ 以下のみ。声クローン作成や未確認の公開声を自動で提供しない。
+id/label/description/version/referenceId/sampleUrlの配列を設定する。既存設定の声IDを引き継ぐため、追加目録にdefaultが無ければ設定済みのShioriを先頭に補う。参照音声を差し替える場合はversionを更新する。
+手動設定のsampleUrlは自サイトの /narration-samples/ 以下のみ。声クローン作成や未確認の公開声を自動で提供しない。
 
 ## 公開前に残る品質・運用確認
 
@@ -135,3 +137,16 @@ resolveSegments は新規の読点補正を停止し、句点等に350msの最�
 ## バックアップ・同期統合（2026-11-09）
 
 設計・保存範囲・容量・旧形式互換・配備順は [保存と同期](specs/narration-workflow/backup-sync.md)。
+
+
+## リリース候補のSTG確認
+
+公開範囲は朗読制作・試聴・書き出しと保存の引き継ぎ。groveへの投稿は次回以降に検討する。
+
+1. 検証用原稿で一話を生成し、別の声で一文を再生成して比較待ちにする。保存後に再読み込みし、採用中と候補の両方を再生する。
+2. クラウド会員の検証アカウントで自動バックアップの世代が増えるまで待つ。別のブラウザでその世代を復元し、声・指示・採用中と比較待ちの音声を確認する。
+3. 全体ZIPをダウンロードし、別のブラウザで復元する。音声の再取得や生成をせず再生できることを確認する。
+4. 復元操作を使わず、同じ会員アカウントの別ブラウザへ同期する。候補の比較から作業を続け、採用結果が元の端末にも戻ることを確認する。
+5. STGのスタッフ検証でbasicとstandardを切り替え、API応答・文字枠・実際の音声を確認する。各声の短いサンプルと、日本語の地の文・セリフ・自然文の演技指定を聴く。
+
+公開前に本番用の実行Worker、D1マイグレーション、音声目録と利用条件、追加プランの決済導線、試聴回数と日次予算を用意する。

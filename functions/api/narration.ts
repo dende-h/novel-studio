@@ -9,6 +9,7 @@ import {
   entitlement,
   jobSchema,
   type NarrationEnv,
+  paidNarrationEnabled,
   publicTake,
   type TakeRow,
   validateSegments,
@@ -163,7 +164,12 @@ export const onRequest: PagesFunction<NarrationEnv> = async (context) => {
         },
         409,
       )
-    const snapshot: Snapshot = { segments, voices: voiceCatalog(env), model: access.model }
+    const voiceIds = new Set(segments.map((segment) => segment.voiceId))
+    const snapshot: Snapshot = {
+      segments,
+      voices: voiceCatalog(env).filter((voice) => voiceIds.has(voice.id)),
+      model: access.model,
+    }
     await env.MEDIA.put(
       snapshotKey(userId, input.id + '/' + requestHash),
       await encryptPart(
@@ -281,10 +287,7 @@ async function runNext(env: NarrationEnv, job: Job): Promise<Response> {
     const voice = segment && snapshot.voices.find((v) => v.id === segment.voiceId)
     if (!segment || !voice || !['s2.1-pro-free', 's2.1-pro', 'drama-3'].includes(snapshot.model))
       throw new Error('snapshot')
-    if (
-      snapshot.model !== 's2.1-pro-free' &&
-      (env.NARRATION_RELEASE !== '1' || env.NARRATION_PAID_ENABLED !== '1')
-    )
+    if (snapshot.model !== 's2.1-pro-free' && !paidNarrationEnabled(env))
       throw new Error('paid-disabled')
     sent = true
     const result = await fetch('https://api.fish.audio/v1/tts', {

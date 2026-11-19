@@ -187,3 +187,30 @@ describe('useAutoBackup', () => {
     expect(backupNow).not.toHaveBeenCalled()
   })
 })
+
+it('バックアップ送信中に保存された朗読の変更は次の世代で送る', async () => {
+  const { store } = makeStore()
+  const { service, backupNow } = makeService()
+  let resolveFirst!: (value: BackupSummary) => void
+  backupNow.mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        resolveFirst = resolve
+      }),
+  )
+  renderHook(() => useAutoBackup(store, service, true))
+
+  act(() => touchSync())
+  await act(async () => {
+    vi.advanceTimersByTime(IDLE_MS)
+  })
+  act(() => touchSync())
+  await act(async () => {
+    resolveFirst({ id: 'b1', createdAt: Date.now(), size: 1 })
+  })
+  expect(backupNow).toHaveBeenCalledTimes(1)
+  await act(async () => {
+    vi.advanceTimersByTime(MIN_INTERVAL_MS)
+  })
+  expect(backupNow).toHaveBeenCalledTimes(2)
+})

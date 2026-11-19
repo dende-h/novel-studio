@@ -1,0 +1,319 @@
+[
+  {
+    "id": "fish-297a6fd278df47c3b9da9bfdf55ac89a",
+    "label": "さとる Satoru",
+    "description": "",
+    "version": "2026-10-28T08:12:53.342000Z",
+    "referenceId": "297a6fd278df47c3b9da9bfdf55ac89a",
+    "sampleUrl": "https://platform.r2.fish.audio/task/1b4712fb831f4c149eef6b0133157418.mp3"
+  },
+  {
+    "id": "fish-d738c70d206149e69f8e3b6fc8af9d96",
+    "label": "じん Jin",
+    "description": "",
+    "version": "2026-10-28T08:12:56.557000Z",
+    "referenceId": "d738c70d206149e69f8e3b6fc8af9d96",
+    "sampleUrl": "https://platform.r2.fish.audio/task/ca21de27d45f4081bcc00b73a091306d.mp3"
+  },
+  {
+    "id": "fish-5da7f24e9e274f91b2b677669c818ce9",
+    "label": "しおり Shiori",
+    "description": "",
+    "version": "2026-10-28T08:13:03.408000Z",
+    "referenceId": "5da7f24e9e274f91b2b677669c818ce9",
+    "sampleUrl": "https://platform.r2.fish.audio/task/61acd0a659304a4eb8eae28dbcc83bc4.mp3"
+  },
+  {
+    "id": "fish-b2d9d8db057042688a5e318b8f405bc2",
+    "label": "きょうこ Kyoko",
+    "description": "",
+    "version": "2026-10-28T08:13:13.957000Z",
+    "referenceId": "b2d9d8db057042688a5e318b8f405bc2",
+    "sampleUrl": "https://platform.r2.fish.audio/task/993b3ccb52124341aff79580f1ce5a5a.mp3"
+  },
+  {
+    "id": "fish-97eda32449cf443bbc4b8782853ca554",
+    "label": "あかり Akari",
+    "description": "",
+    "version": "2026-10-28T08:13:08.832000Z",
+    "referenceId": "97eda32449cf443bbc4b8782853ca554",
+    "sampleUrl": "https://platform.r2.fish.audio/task/24b48234df004f1983dd7b36ee95ba3b.mp3"
+  },
+  {
+    "id": "fish-35c8e5ae5239435f8d9c26c86802b86d",
+    "label": "美咲 Misaki",
+    "description": "",
+    "version": "2026-10-28T08:13:17.779000Z",
+    "referenceId": "35c8e5ae5239435f8d9c26c86802b86d",
+    "sampleUrl": "https://platform.r2.fish.audio/tasks/2026-07-27/869a1faa99d04f368d2868e9e74a83ad.mp3"
+  },
+  {
+    "id": "fish-59a78821a8924989b70d2a63d588e8eb",
+    "label": "まこと Makoto",
+    "description": "",
+    "version": "2026-10-28T08:12:59.623000Z",
+    "referenceId": "59a78821a8924989b70d2a63d588e8eb",
+    "sampleUrl": "https://platform.r2.fish.audio/task/e3e92d23483a4f30997be24c69294440.mp3"
+  },
+  {
+    "id": "fish-99a9ade4fdba4a1ea87bff0bb153767a",
+    "label": "Lirica | Soft Japanese Female Narrator",
+    "description": "",
+    "version": "2026-08-26T14:51:32.010000Z",
+    "referenceId": "99a9ade4fdba4a1ea87bff0bb153767a",
+    "sampleUrl": "https://platform.r2.fish.audio/tasks/2026-08-21/9caaa4ff6fe649aabd41a98436b395d8.mp3",
+    "availableUntil": "2027-08-22T07:12:24.585000Z"
+  },
+  {
+    "id": "fish-447915fb781e4613a7e8f4ec077de2c5",
+    "label": "Yuii",
+    "description": "",
+    "version": "2026-11-03T00:15:50.174000Z",
+    "referenceId": "447915fb781e4613a7e8f4ec077de2c5",
+    "sampleUrl": "https://platform.r2.fish.audio/tasks/2026-09-23/f99f9f6bd73348589a9d43f16b0d43b3.mp3",
+    "availableUntil": "2029-10-02T07:27:23.882000Z"
+  },
+  {
+    "id": "fish-d2a6f1d480704101b9ddff5a610e8a33",
+    "label": "アニメキャラの若い女性ボイス",
+    "description": "",
+    "version": "2026-07-30T13:29:11.746000Z",
+    "referenceId": "d2a6f1d480704101b9ddff5a610e8a33",
+    "sampleUrl": "https://platform.r2.fish.audio/tasks/2026-07-30/2107adfbb81a4dbda9ca467c0cbc8781.mp3",
+    "availableUntil": "2029-07-30T13:29:11.746000Z"
+  },
+  {
+    "id": "fish-9e33bdf212254b33bec7f444234a529c",
+    "label": "AZUKI",
+    "description": "",
+    "version": "2026-10-16T00:20:50.554000Z",
+    "referenceId": "9e33bdf212254b33bec7f444234a529c",
+    "sampleUrl": "https://platform.r2.fish.audio/tasks/2026-10-16/08d729e4956f4d92ab22c83850ccb955.mp3",
+    "availableUntil": "2028-10-16T00:20:50.554000Z"
+  },
+  {
+    "id": "fish-442bda01f08542a5be0af38dc4bfac3a",
+    "label": "オルステッド　元気Ver",
+    "description": "",
+    "version": "2026-10-08T04:48:01.958000Z",
+    "referenceId": "442bda01f08542a5be0af38dc4bfac3a",
+    "sampleUrl": "https://platform.r2.fish.audio/tasks/2026-10-08/9ed3b3f7a72e4df9974315d844cd9885.mp3",
+    "availableUntil": "2028-10-08T04:48:01.958000Z"
+  },
+  {
+    "id": "fish-4b726b99b14f45d4b49587b18b84572a",
+    "label": "ALpapa",
+    "description": "",
+    "version": "2026-10-17T21:26:31.487000Z",
+    "referenceId": "4b726b99b14f45d4b49587b18b84572a",
+    "sampleUrl": "https://platform.r2.fish.audio/tasks/2026-09-06/1ba2e2dc1b2c43068d61f3c01203a495.mp3",
+    "availableUntil": "2028-10-17T20:37:38.650000Z"
+  },
+  {
+    "id": "fish-0e750cc1649c49908a59b5fb0ac21577",
+    "label": "Hiroyuki Maeda",
+    "description": "",
+    "version": "2026-10-20T15:26:54.055000Z",
+    "referenceId": "0e750cc1649c49908a59b5fb0ac21577",
+    "sampleUrl": "https://platform.r2.fish.audio/tasks/2026-09-02/9c9abee2cbc0464b988da0dcdea4be53.mp3",
+    "availableUntil": "2027-10-20T15:26:54.055000Z"
+  },
+  {
+    "id": "fish-b66ae5c9b2c24f7e92d8204d241def5f",
+    "label": "ナレーション用",
+    "description": "",
+    "version": "2026-10-20T06:08:19.053000Z",
+    "referenceId": "b66ae5c9b2c24f7e92d8204d241def5f",
+    "sampleUrl": "https://platform.r2.fish.audio/tasks/2026-10-06/7098ee5720194523b48061821199c4a1.mp3",
+    "availableUntil": "2028-10-06T05:51:44.214000Z"
+  },
+  {
+    "id": "fish-56a79ff6b91c47bab46aaf9589ceffcb",
+    "label": "おさむ",
+    "description": "",
+    "version": "2026-11-05T00:27:43.129000Z",
+    "referenceId": "56a79ff6b91c47bab46aaf9589ceffcb",
+    "sampleUrl": "https://platform.r2.fish.audio/tasks/2026-09-03/59702b5a97ea49be8aa1e4e64673e4e7.mp3",
+    "availableUntil": "2027-11-05T00:27:43.129000Z"
+  },
+  {
+    "id": "fish-8980432406e5432d95e18985ff4f4e95",
+    "label": "20261002穏やかな朝の声",
+    "description": "",
+    "version": "2026-10-02T08:49:57.935000Z",
+    "referenceId": "8980432406e5432d95e18985ff4f4e95",
+    "sampleUrl": "https://platform.r2.fish.audio/tasks/2026-10-02/79df2c84f7224b9991f6a060f620fec0.mp3",
+    "availableUntil": "2029-10-02T08:49:57.935000Z"
+  },
+  {
+    "id": "fish-57657dd9148b42ad98367a7b89b81bec",
+    "label": "しょうナレーション",
+    "description": "",
+    "version": "2026-10-16T08:42:47.260000Z",
+    "referenceId": "57657dd9148b42ad98367a7b89b81bec",
+    "sampleUrl": "https://platform.r2.fish.audio/tasks/2026-10-16/82f3a22012514682acaa275ca63b8132.mp3",
+    "availableUntil": "2027-10-16T08:42:47.260000Z"
+  },
+  {
+    "id": "fish-db5898035fdf49e7a0a259bb2b885237",
+    "label": "Soul Alchemist Hiro",
+    "description": "",
+    "version": "2026-09-13T14:25:08.426000Z",
+    "referenceId": "db5898035fdf49e7a0a259bb2b885237",
+    "sampleUrl": "https://platform.r2.fish.audio/tasks/2026-08-17/11480989a70944ae80359d482be11175.mp3",
+    "availableUntil": "2028-09-13T14:25:08.426000Z"
+  },
+  {
+    "id": "fish-34b90787d3044cda885998c4537d9e9b",
+    "label": "Chihiro - Elegant Female Narrator",
+    "description": "",
+    "version": "2026-10-23T05:49:41.107000Z",
+    "referenceId": "34b90787d3044cda885998c4537d9e9b",
+    "sampleUrl": "https://platform.r2.fish.audio/tasks/2026-10-23/b7c4dc599526430f912ba6eefd09fe09.mp3",
+    "availableUntil": "2028-10-23T05:49:41.107000Z"
+  },
+  {
+    "id": "fish-e4cb2c988e804eb897bf1046e1879242",
+    "label": "穏やかな朝の語り",
+    "description": "",
+    "version": "2026-10-10T00:29:18.046000Z",
+    "referenceId": "e4cb2c988e804eb897bf1046e1879242",
+    "sampleUrl": "https://platform.r2.fish.audio/tasks/2026-10-09/6f6cf1603580414cb7e9a1ba7360f804.mp3",
+    "availableUntil": "2029-10-10T00:29:18.046000Z"
+  },
+  {
+    "id": "fish-2c5d856a9a524d099d2a62a5eeed6679",
+    "label": "Kプロ",
+    "description": "",
+    "version": "2026-10-09T10:34:54.716000Z",
+    "referenceId": "2c5d856a9a524d099d2a62a5eeed6679",
+    "sampleUrl": "https://platform.r2.fish.audio/tasks/2026-07-26/5e7ad0ea9b374d54b42ffec3b1130d1c.mp3",
+    "availableUntil": "2027-10-09T10:34:54.716000Z"
+  },
+  {
+    "id": "fish-697cacf693184ea28541a88b3edd8fe4",
+    "label": "DABO",
+    "description": "",
+    "version": "2026-11-08T02:42:21.236000Z",
+    "referenceId": "697cacf693184ea28541a88b3edd8fe4",
+    "sampleUrl": "https://platform.r2.fish.audio/tasks/2026-07-25/0eaf134b59a94e3bbe37df976ae732c8.mp3",
+    "availableUntil": "2029-11-08T02:40:33.380000Z"
+  },
+  {
+    "id": "fish-e73bbde413d04f89bfded19468eef89a",
+    "label": "穏やかな日常の声",
+    "description": "",
+    "version": "2026-10-28T12:27:46.393000Z",
+    "referenceId": "e73bbde413d04f89bfded19468eef89a",
+    "sampleUrl": "https://platform.r2.fish.audio/tasks/2026-08-26/2d54973ad4d0404b9ad48e9ab260fba5.mp3",
+    "availableUntil": "2027-10-28T12:27:46.393000Z"
+  },
+  {
+    "id": "fish-e635096afb754090835ff02e88264c16",
+    "label": "AI都市伝説・まこと",
+    "description": "",
+    "version": "2026-10-18T13:44:38.562000Z",
+    "referenceId": "e635096afb754090835ff02e88264c16",
+    "sampleUrl": "https://platform.r2.fish.audio/tasks/2026-10-18/34a3bbee77444ce1a9ead4cd8202b906.mp3",
+    "availableUntil": "2027-10-18T13:44:25.168000Z"
+  },
+  {
+    "id": "fish-b84eb9e643fb4ea2aca0c2c6a45887a1",
+    "label": "穏やかな語り手",
+    "description": "",
+    "version": "2026-10-03T02:16:28.844000Z",
+    "referenceId": "b84eb9e643fb4ea2aca0c2c6a45887a1",
+    "sampleUrl": "https://platform.r2.fish.audio/tasks/2026-10-03/576b2c98c7e34a29bd0dbe2fd52fc328.mp3",
+    "availableUntil": "2027-10-03T02:16:28.844000Z"
+  },
+  {
+    "id": "fish-f7f826880ec449cea295b7080dd20071",
+    "label": "Jun-Voice-for-Videos",
+    "description": "",
+    "version": "2026-10-20T03:32:34.228000Z",
+    "referenceId": "f7f826880ec449cea295b7080dd20071",
+    "sampleUrl": "https://platform.r2.fish.audio/tasks/2026-10-20/d6c28cb99f7a44d093a4968eafffe363.mp3",
+    "availableUntil": "2029-10-20T03:32:34.228000Z"
+  },
+  {
+    "id": "fish-80a430af5a8e45d7961ee6ec35dc1efc",
+    "label": "けいが",
+    "description": "",
+    "version": "2026-10-08T12:37:14.887000Z",
+    "referenceId": "80a430af5a8e45d7961ee6ec35dc1efc",
+    "sampleUrl": "https://platform.r2.fish.audio/tasks/2026-10-07/51edd75a63f04e699aef12dd8f5baf2d.mp3",
+    "availableUntil": "2027-10-08T12:37:14.887000Z"
+  },
+  {
+    "id": "fish-4f45bed5c53140948a207e27d4c3f9f5",
+    "label": "穏やかな朝のひととき",
+    "description": "",
+    "version": "2026-10-29T07:39:21.670000Z",
+    "referenceId": "4f45bed5c53140948a207e27d4c3f9f5",
+    "sampleUrl": "https://platform.r2.fish.audio/tasks/2026-10-29/1374e1d2dacd4b46a6249e71c35a4e11.mp3",
+    "availableUntil": "2027-10-29T04:36:13.850000Z"
+  },
+  {
+    "id": "fish-5633a22b825646b2883074b94c2a49f5",
+    "label": "穏やかな朝のひととき",
+    "description": "",
+    "version": "2026-10-26T11:55:07.908000Z",
+    "referenceId": "5633a22b825646b2883074b94c2a49f5",
+    "sampleUrl": "https://platform.r2.fish.audio/tasks/2026-10-23/ff323e815a8a430da853a4640e741e01.mp3",
+    "availableUntil": "2028-10-26T11:55:07.908000Z"
+  },
+  {
+    "id": "fish-081b67bc150f4bb8bb4a31d5ebab3019",
+    "label": "ひろゆき",
+    "description": "",
+    "version": "2026-10-18T11:28:45.711000Z",
+    "referenceId": "081b67bc150f4bb8bb4a31d5ebab3019",
+    "sampleUrl": "https://platform.r2.fish.audio/tasks/2026-10-18/b146568530a745cb8f763f2de6fb4a0d.mp3",
+    "availableUntil": "2029-10-18T11:28:45.711000Z"
+  },
+  {
+    "id": "fish-59ccd014a19c48f9895aeda3ba5beb3f",
+    "label": "穏やかな語り手",
+    "description": "",
+    "version": "2026-11-14T10:18:47.061000Z",
+    "referenceId": "59ccd014a19c48f9895aeda3ba5beb3f",
+    "sampleUrl": "https://platform.r2.fish.audio/tasks/2026-11-14/eb2bf4d576f74e548e2d5375d034e517.mp3",
+    "availableUntil": "2029-11-14T10:18:47.061000Z"
+  },
+  {
+    "id": "fish-d552b31ed9e24dbe87413dd0e3313973",
+    "label": "kurumin-アナウンサー",
+    "description": "",
+    "version": "2026-11-04T14:17:44.006000Z",
+    "referenceId": "d552b31ed9e24dbe87413dd0e3313973",
+    "sampleUrl": "https://platform.r2.fish.audio/tasks/2026-11-03/606e60def1074976a8488a95510b46af.mp3",
+    "availableUntil": "2028-11-03T13:24:54.276000Z"
+  },
+  {
+    "id": "fish-c09baf45aa8d480488545325ec39958d",
+    "label": "鼻声のリアルな男",
+    "description": "",
+    "version": "2026-10-25T04:33:44.975000Z",
+    "referenceId": "c09baf45aa8d480488545325ec39958d",
+    "sampleUrl": "https://platform.r2.fish.audio/tasks/2026-10-25/9738ebba77b14c48bd0b1850d91f558b.mp3",
+    "availableUntil": "2027-10-25T04:31:41.155000Z"
+  },
+  {
+    "id": "fish-e7d5a5462de64d41aa4f880e0c434717",
+    "label": "しんちゃんプロ",
+    "description": "",
+    "version": "2026-11-09T15:12:02.333000Z",
+    "referenceId": "e7d5a5462de64d41aa4f880e0c434717",
+    "sampleUrl": "https://platform.r2.fish.audio/tasks/2026-11-09/870c51f491b048dd9d68ba47e4bf723c.mp3",
+    "availableUntil": "2029-11-09T15:12:02.333000Z"
+  },
+  {
+    "id": "fish-a23d95967f474e71884a9c7f02cd4a27",
+    "label": "tomaspoppo",
+    "description": "",
+    "version": "2026-11-15T16:25:54.868000Z",
+    "referenceId": "a23d95967f474e71884a9c7f02cd4a27",
+    "sampleUrl": "https://platform.r2.fish.audio/tasks/2026-11-15/dfb74c8f11924a178a463d282ffa9f29.mp3",
+    "availableUntil": "2029-11-15T16:18:20.172000Z"
+  }
+]

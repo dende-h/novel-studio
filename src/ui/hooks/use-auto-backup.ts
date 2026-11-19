@@ -26,7 +26,8 @@ export function useAutoBackup(
   enabled: boolean,
 ): void {
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const dirty = useRef(false)
+  const editVersion = useRef(0)
+  const savedVersion = useRef(0)
   const sending = useRef(false)
 
   useEffect(() => {
@@ -38,20 +39,26 @@ export function useAutoBackup(
         timer.current = null
       }
     }
+    let active = true
     const flush = () => {
       clear()
-      if (!dirty.current || sending.current) return
+      if (editVersion.current === savedVersion.current || sending.current) return
       // 間隔判定は送信直前に毎回読む（手動バックアップが間に走った場合も正しくスキップする）。
       const { cloudBackupAt } = readBackupMarks()
       if (cloudBackupAt != null && Date.now() - cloudBackupAt < MIN_INTERVAL_MS) return
+      const version = editVersion.current
       sending.current = true
       void service
         .backupNow()
         .then((res) => {
           // 成功（非 null）時のみ記録して dirty を下ろす。失敗は次の機会に再試行。
           if (res) {
-            dirty.current = false
+            savedVersion.current = version
             markCloudBackup(Date.now())
+            if (active && editVersion.current !== version) {
+              clear()
+              timer.current = setTimeout(flush, MIN_INTERVAL_MS)
+            }
           }
         })
         .catch(() => {
@@ -62,7 +69,7 @@ export function useAutoBackup(
         })
     }
     const schedule = () => {
-      dirty.current = true
+      editVersion.current += 1
       clear()
       timer.current = setTimeout(flush, IDLE_MS)
     }
@@ -78,6 +85,7 @@ export function useAutoBackup(
     window.addEventListener('pagehide', flush)
 
     return () => {
+      active = false
       unsub()
       unsubTouch()
       document.removeEventListener('visibilitychange', onVisibility)

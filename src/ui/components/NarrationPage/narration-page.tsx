@@ -670,6 +670,20 @@ function NarrationPage({
       cueIsValid(c, episode) &&
       (c.voiceId || c.style),
   )
+  const voiceSample = (voiceId: string) => {
+    const sample = voices.find((voice) => voice.id === voiceId)
+    if (!sample?.sampleUrl) return null
+    return (
+      // biome-ignore lint/a11y/useMediaCaption: 声の比較用サンプル。
+      <audio
+        key={sample.id}
+        controls
+        preload="none"
+        src={sample.sampleUrl}
+        aria-label="声のサンプル"
+      />
+    )
+  }
   const baseControls = (
     <>
       {' '}
@@ -690,14 +704,7 @@ function NarrationPage({
           )}
         </select>
       </label>
-      {voices.find((v) => v.id === settings.narrator)?.sampleUrl && (
-        // biome-ignore lint/a11y/useMediaCaption: 声の比較用サンプル。
-        <audio
-          controls
-          src={voices.find((v) => v.id === settings.narrator)?.sampleUrl}
-          aria-label="声のサンプル"
-        />
-      )}
+      {voiceSample(settings.narrator)}
       <label>
         朗読スタイル
         <select value={settings.style} onChange={(e) => patchSettings({ style: e.target.value })}>
@@ -789,7 +796,11 @@ function NarrationPage({
               <strong>
                 {entitlement?.model ?? (availabilityError ? '利用枠' : '利用枠を確認中')}
               </strong>
-              {entitlement?.development && <span className="narration-tag">開発用・無料API</span>}
+              {entitlement?.development && (
+                <span className="narration-tag">
+                  {entitlement.model === 's2.1-pro-free' ? '開発用・無料API' : '開発用・有料API'}
+                </span>
+              )}
               <p>
                 {availabilityError ||
                   entitlement?.label ||
@@ -1282,6 +1293,7 @@ function NarrationPage({
                     ))}
                   </select>
                 </label>
+                {voiceSample(matchingCue?.voiceId || settings.narrator)}
                 <label>
                   この部分のスタイル
                   <select
