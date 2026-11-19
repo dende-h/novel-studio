@@ -12,6 +12,7 @@ import {
 } from '../../../src/core/narration/types'
 import { BlockSchema } from '../../../src/core/schema'
 import type { ClerkEnv } from './auth'
+import { readProfile } from './board-store'
 import { readSubscription } from './membership'
 import licensedJapaneseVoices from './narration-voices.json'
 export interface NarrationEnv extends ClerkEnv {
@@ -25,6 +26,7 @@ export interface NarrationEnv extends ClerkEnv {
   NARRATION_DAILY_BYTE_LIMIT?: string
   NARRATION_PREVIEW_LIMIT?: string
   NARRATION_STAFF_TEST_PLAN?: string
+  NARRATION_OPERATOR_USER_ID?: string
   NARRATION_RELEASE?: string
   NARRATION_PAID_ENABLED?: string
   NARRATION_DISPATCH_URL?: string
@@ -107,6 +109,12 @@ export async function entitlement(
       plan = 'basic'
   }
   const development = env.NARRATION_RELEASE !== '1'
+  const operator =
+    !development && env.NARRATION_OPERATOR_USER_ID === userId
+      ? await readProfile(env.DB, userId)
+      : null
+  const operatorPremium = operator?.role === 'staff' && operator.deleted_at === 0
+  if (operatorPremium) plan = 'premium'
   const testPlan = staffTestPlan(env)
   if (testPlan) plan = testPlan
   const definition = NARRATION_PLANS[plan]
@@ -163,7 +171,7 @@ export async function entitlement(
       period: previewPeriod,
     },
     plan,
-    label: definition.label,
+    label: operatorPremium ? '運営・プレミアム' : definition.label,
     model,
     ...(modelAllowances?.['drama-3'] ?? allowance(1)),
     modelAllowances,
