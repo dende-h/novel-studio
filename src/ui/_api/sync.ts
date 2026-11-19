@@ -83,6 +83,7 @@ export async function getSyncWork(
 export type PutSyncResult =
   | { ok: true; docHash: string; syncedAt: number }
   | { ok: false; conflict: RemoteWorkMeta }
+  | { ok: false; narrationStorageFull: true }
 
 /**
  * CAS 付き push。`baseHash` が最後に同期した時点のサーバ docHash（新規は ''）。
@@ -112,6 +113,10 @@ export async function putSyncWork(
     if (res.status === 409) {
       const body = (await res.json()) as { meta: RemoteWorkMeta }
       return { ok: false, conflict: body.meta }
+    }
+    if (res.status === 507 && workId.startsWith('narration:')) {
+      const body = (await res.json()) as { error?: string }
+      if (body.error === 'narration_storage_full') return { ok: false, narrationStorageFull: true }
     }
     if (!res.ok) return null
     const body = (await res.json()) as { docHash: string; syncedAt: number }
