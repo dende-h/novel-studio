@@ -703,7 +703,9 @@ function NarrationPage({
     else action()
   }
   const availabilityError = error === '朗読制作は現在、運営による検証中です。' ? error : ''
-  const bannerError = availabilityError ? '' : error
+  const showSignIn =
+    auth.available && !auth.isSignedIn && error === '朗読を作るにはサインインしてください。'
+  const bannerError = availabilityError || showSignIn ? '' : error
   const saveLabel = saving ? '保存中…' : '端末に保存済み'
   const voices = entitlement?.voices ?? []
   const voiceRanges = settings.cues.filter(
@@ -980,6 +982,17 @@ function NarrationPage({
           読み方
         </button>
       </nav>
+      {showSignIn && (
+        <div className="narration-notice flex flex-wrap items-center gap-2">
+          <span>無料アカウントで最初の500文字を試せます。</span>
+          <Button size="sm" onClick={auth.openSignUp}>
+            無料登録
+          </Button>
+          <Button variant="outline" size="sm" onClick={auth.openSignIn}>
+            サインイン
+          </Button>
+        </div>
+      )}
       {(bannerError || notice || cloud.error) && (
         <div className="narration-notice" role="status">
           {notice || bannerError || cloud.error}
