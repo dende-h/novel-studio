@@ -253,29 +253,37 @@ async function runNext(env: NarrationEnv, job: Job): Promise<Response> {
   )
     .bind(job.id, Date.now() - 180_000)
     .run()
-  const candidate = await env.DB.prepare(
-    "SELECT * FROM narration_takes WHERE job_id=? AND state='queued' ORDER BY created_at,id LIMIT 1",
-  )
-    .bind(job.id)
-    .first<TakeRow>()
-  if (!candidate || job.cancel_requested) return reply({ done: true })
   const now = Date.now()
-  const locked = await env.DB.prepare(
-    'UPDATE narration_lock SET take_id=?,until_ms=? WHERE id=1 AND until_ms<?',
+  const parallel = env.NARRATION_PARALLEL_GENERATION === '1'
+  // One atomic D1 write applies the shared cap and claims a single take across all runners.
+  const candidate = await env.DB.prepare(
+    `UPDATE narration_takes SET state='generating', started_at=?
+     WHERE id=(
+       SELECT t.id FROM narration_takes t
+       JOIN narration_jobs j ON j.id=t.job_id
+       WHERE t.job_id=? AND t.state='queued' AND t.retry_at<=? AND j.cancel_requested=0
+       ORDER BY t.retry_at, t.created_at, t.id LIMIT 1
+     )
+     AND (
+       SELECT COUNT(*) FROM narration_takes WHERE state='generating' AND started_at>=?
+     ) < CASE
+       WHEN ?=0 THEN 1
+       WHEN ? LIKE 'preview:%' OR (
+         SELECT COUNT(*) FROM (SELECT id FROM narration_takes WHERE job_id=? LIMIT 5)
+       ) <= 4 THEN 5
+       ELSE 4
+     END
+     RETURNING *`,
   )
-    .bind(candidate.id, now + 180_000, now)
-    .run()
-  if (!locked.meta.changes) return reply({ done: false })
-  const claimed = await env.DB.prepare(
-    "UPDATE narration_takes SET state='generating',started_at=? WHERE id=? AND state='queued' AND job_id IN (SELECT id FROM narration_jobs WHERE cancel_requested=0)",
-  )
-    .bind(now, candidate.id)
-    .run()
-  if (!claimed.meta.changes) {
-    await env.DB.prepare('UPDATE narration_lock SET until_ms=0 WHERE take_id=?')
-      .bind(candidate.id)
-      .run()
-    return reply({ done: false })
+    .bind(now, job.id, now, now - 180_000, parallel ? 1 : 0, job.period, job.id)
+    .first<TakeRow & { retry_count: number }>()
+  if (!candidate) {
+    const pending = await env.DB.prepare(
+      "SELECT 1 FROM narration_takes WHERE job_id=? AND state IN ('queued','generating') LIMIT 1",
+    )
+      .bind(job.id)
+      .first()
+    return reply({ done: !pending, progressed: false })
   }
   let sent = false
   try {
@@ -312,6 +320,20 @@ async function runNext(env: NarrationEnv, job: Job): Promise<Response> {
       }),
       signal: AbortSignal.timeout(120_000),
     })
+    if (parallel && result.status === 429 && candidate.retry_count < 2) {
+      const retryAt = Date.now() + 2000 * 2 ** candidate.retry_count
+      await env.DB.prepare(
+        `UPDATE narration_takes
+         SET state=CASE WHEN EXISTS (
+           SELECT 1 FROM narration_jobs WHERE id=? AND cancel_requested=1
+         ) THEN 'canceled' ELSE 'queued' END,
+         started_at=NULL, retry_at=?, retry_count=retry_count+1
+         WHERE id=? AND state='generating'`,
+      )
+        .bind(job.id, retryAt, candidate.id)
+        .run()
+      return reply({ done: false, progressed: false })
+    }
     if (!result.ok) {
       await env.DB.prepare(
         "UPDATE narration_takes SET state='failed',error=? WHERE id=? AND state='generating'",
@@ -323,7 +345,7 @@ async function runNext(env: NarrationEnv, job: Job): Promise<Response> {
           candidate.id,
         )
         .run()
-      return reply({ done: false })
+      return reply({ done: false, progressed: result.status !== 429 })
     }
     const audio = await result.arrayBuffer(),
       bytes = new Uint8Array(audio)
@@ -343,7 +365,7 @@ async function runNext(env: NarrationEnv, job: Job): Promise<Response> {
       )
         .bind(candidate.id)
         .run()
-      return reply({ done: false })
+      return reply({ done: false, progressed: true })
     }
     await env.MEDIA.put(audioKey(job.user_id, candidate.id), audio, {
       httpMetadata: { contentType: 'audio/mpeg' },
@@ -365,10 +387,6 @@ async function runNext(env: NarrationEnv, job: Job): Promise<Response> {
         candidate.id,
       )
       .run()
-  } finally {
-    await env.DB.prepare('UPDATE narration_lock SET until_ms=0 WHERE take_id=?')
-      .bind(candidate.id)
-      .run()
   }
-  return reply({ done: false })
+  return reply({ done: false, progressed: true })
 }
