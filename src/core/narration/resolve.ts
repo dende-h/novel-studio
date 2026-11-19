@@ -336,14 +336,39 @@ export function sliceInlines(inlines: Inline[], start: number, end: number): Inl
     return [i]
   })
 }
+const quoteEnd = new Map([
+  ['「', '」'],
+  ['『', '』'],
+  ['（', '）'],
+  ['(', ')'],
+])
+
 export function splitSentences(inlines: Inline[]): Inline[][] {
   const text = plainText(inlines)
   const boundaries: number[] = []
-  // Punctuation inside dialogue is a boundary too. Keep consecutive terminal
-  // marks and closing quotes with the sentence they finish.
+  const open: { start: number; close: string }[] = []
+  const groups = new Map<number, number>()
   for (let i = 0; i < text.length; i++) {
-    if (!'。！？!?」』'.includes(text[i]!)) continue
-    while (i + 1 < text.length && '。！？!?」』'.includes(text[i + 1]!)) i++
+    const close = quoteEnd.get(text[i]!)
+    if (close) {
+      open.push({ start: i, close })
+    } else if (open.at(-1)?.close === text[i]) {
+      groups.set(open.pop()!.start, i)
+    }
+  }
+
+  const terminal = '。！？!?」』'
+  for (let i = 0; i < text.length; i++) {
+    const end = groups.get(i)
+    if (end !== undefined) {
+      // Keep a complete quote together, including punctuation and nested brackets.
+      if (text.slice(boundaries.at(-1) ?? 0, i).trim()) boundaries.push(i)
+      i = end
+    } else if (!terminal.includes(text[i]!)) {
+      continue
+    }
+    const trailing = end === undefined ? terminal : terminal + '、'
+    while (i + 1 < text.length && trailing.includes(text[i + 1]!)) i++
     boundaries.push(i + 1)
   }
   let tokenOffset = 0
