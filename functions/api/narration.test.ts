@@ -459,3 +459,43 @@ it('公開後の未ログインにはサインイン案内を返す', async () =
     real.close()
   }
 })
+
+it('本番に指定された有効な運営アカウントだけにプレミアムを適用する', async () => {
+  const { real, env } = setup()
+  try {
+    real.exec(readFileSync(new URL('../../migrations/0008_board.sql', import.meta.url), 'utf8'))
+    for (const id of ['user_operator', 'user_other_staff']) {
+      real.insert('board_profiles', {
+        user_id: id,
+        display_name: id,
+        name_key: id,
+        role: 'staff',
+        created_at: 1,
+        updated_at: 1,
+      })
+    }
+    env.NARRATION_OPERATOR_USER_ID = 'user_operator'
+    env.NARRATION_PAID_ENABLED = '1'
+    expect(await entitlement(env, 'user_operator')).toMatchObject({ plan: 'trial' })
+
+    env.NARRATION_RELEASE = '1'
+    expect(await entitlement(env, 'user_operator')).toMatchObject({
+      plan: 'premium',
+      label: '運営・プレミアム',
+      model: 'drama-3',
+      modelAllowances: {
+        'drama-3': { limit: 110000 },
+        's2.1-pro': { limit: 220000 },
+      },
+    })
+    expect(await entitlement(env, 'user_other_staff')).toMatchObject({ plan: 'trial' })
+    expect(await entitlement(env, 'user_unregistered')).toMatchObject({ plan: 'trial' })
+
+    real.exec("UPDATE board_profiles SET deleted_at=1 WHERE user_id='user_operator'")
+    expect(await entitlement(env, 'user_operator')).toMatchObject({ plan: 'trial' })
+    real.exec("UPDATE board_profiles SET deleted_at=0,role='member' WHERE user_id='user_operator'")
+    expect(await entitlement(env, 'user_operator')).toMatchObject({ plan: 'trial' })
+  } finally {
+    real.close()
+  }
+})
