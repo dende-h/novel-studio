@@ -5,6 +5,7 @@ import { providerText } from '../../src/core/narration/provider'
 import { resolveSegments } from '../../src/core/narration/resolve'
 import { emptyNarration } from '../../src/core/narration/types'
 import { parseEpisodeBody } from '../../src/core/parser/parseNotation'
+import { verifyUserId } from './_lib/auth'
 import { entitlement, jobSchema, type NarrationEnv, validateSegments } from './_lib/narration'
 import { verifyStaff } from './_lib/staff'
 import { makeRealD1 } from './board/real-d1'
@@ -441,6 +442,19 @@ it('旧来の消費と予約を移行し、移行前に開始した処理も確�
     expect(await entitlement(env, 'user')).toMatchObject({
       modelAllowances: { 's2.1-pro': { used: 25, reserved: 0, remaining: 23975 } },
     })
+  } finally {
+    real.close()
+  }
+})
+
+it('公開後の未ログインにはサインイン案内を返す', async () => {
+  const { real, env } = setup()
+  try {
+    env.NARRATION_RELEASE = '1'
+    vi.mocked(verifyUserId).mockResolvedValueOnce(null)
+    const response = await call(env)
+    expect(response.status).toBe(401)
+    expect(await response.json()).toEqual({ error: '朗読を作るにはサインインしてください。' })
   } finally {
     real.close()
   }

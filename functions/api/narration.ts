@@ -65,10 +65,9 @@ export const onRequest: PagesFunction<NarrationEnv> = async (context) => {
       ? await verifyUserId(request, env)
       : await verifyStaff(request, env)
   if (!userId)
-    return reply(
-      { error: '朗読制作は現在、運営による検証中です。' },
-      env.NARRATION_RELEASE === '1' ? 401 : 404,
-    )
+    return env.NARRATION_RELEASE === '1'
+      ? reply({ error: '朗読を作るにはサインインしてください。' }, 401)
+      : reply({ error: '朗読制作は現在、運営による検証中です。' }, 404)
   try {
     const action = url.searchParams.get('action')
     if (request.method === 'GET' && action === 'audio') {
