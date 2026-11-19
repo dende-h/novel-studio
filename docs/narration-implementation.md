@@ -154,11 +154,11 @@ resolveSegments は新規の読点補正を停止し、句点等に350msの最�
 
 ## Stripeと本番配備
 
-追加プランは既存クラウド版と同じ1契約の上位プラン。Stripeでは既存商品にJPYで月額980円・1,980円・4,980円の価格を作り、環境別のPrice IDを `NARRATION_PRICE_STANDARD`、`NARRATION_PRICE_PLUS`、`NARRATION_PRICE_PREMIUM` に設定する。テストモードと本番の価格は別。既存の月額500円・年額4,800円のPrice IDは維持する。
+追加プランは既存クラウド版と同じ1契約の上位プラン。Stripeでは上位プランごとに商品を分け、JPYで月額980円・1,980円・4,980円の価格を作り、環境別のPrice IDを `NARRATION_PRICE_STANDARD`、`NARRATION_PRICE_PLUS`、`NARRATION_PRICE_PREMIUM` に設定する。テストモードと本番の価格は別。基本プランは既存の商品と月額500円・年額4,800円のPrice IDを維持する。Stripeのカスタマーポータルでは、同じ商品に同じ請求間隔の複数価格を登録できない。
 
 - 基本プランの初回30日トライアルを維持。追加プランのCheckoutには契約トライアルを付けない。朗読の無料体験500文字は別枠。
-- Customer Portalのプラン変更を有効にし、既存と追加の価格を許可する。日割りの扱いと変更時期はオーナーが確定する。上位から下位への変更は、支払済みの期間末に適用する案。
-- STGではStripeテストモードで新規契約と既存契約の変更を試し、webhook後にD1のprice_idと残り文字数・モデルを確認する。環境変数の登録後に `NARRATION_BILLING_ENABLED=1` を設定する。
+- Customer Portalのプラン変更を有効にし、基本プランの2価格と上位プランの3価格を許可する。日割りの扱いと変更時期は本番の設定前に確定する。Stripe標準の期間末ダウングレードは同じ商品内の変更に限られる。商品をまたぐ変更を期間末に適用する場合は、別途変更予約の実装が必要。
+- STGではStripeテストモードで新規契約と既存契約の変更を試し、webhook後にD1のprice_idと残り文字数・モデルを確認する。環境変数の登録後に `NARRATION_BILLING_ENABLED=1` を設定する。設定根拠は [Stripeのポータルの制約](https://docs.stripe.com/customer-management#technical-limitations) と [契約変更の設定](https://docs.stripe.com/customer-management/configure-portal#configure-subscription-management) を参照。
 
 本番リリース時は `pnpm exec wrangler d1 migrations apply DB --remote` で 0011・0012 を先に適用し、`pnpm exec wrangler deploy --config workers/narration/wrangler.production.toml` で本番Workerを配備する。Pagesの本番環境にそのURLを `NARRATION_DISPATCH_URL` として設定する。
 一般公開フラグを閉じた状態でPagesを配信し、設定と動作を確認してから公開する。声目録の有効化と公開前の利用条件確認も本番側で行う。
