@@ -173,10 +173,9 @@ export class NarrationService {
       if (this.paused || revision !== this.revision) return
       const record = this.state.record
       if (record) {
-        const merged = [
-          ...record.takes.filter((t) => !body.takes.some((v) => v.id === t.id)),
-          ...body.takes,
-        ]
+        const merged = Array.from(
+          new Map([...record.takes, ...body.takes].map((take) => [take.id, take])).values(),
+        )
         await this.persist({ ...record, takes: merged, jobs: body.jobs })
         await this.completeOperation()
         await this.applyInitialRecordings()
@@ -241,7 +240,7 @@ export class NarrationService {
               .at(-1),
           )
           if (ready.every(Boolean)) {
-            for (const t of ready) await this.audio(t!.id)
+            await this.cacheAudio(ready.map((take) => take!.id))
             await this.persist({
               ...this.state.record,
               accepted: {
@@ -348,7 +347,7 @@ export class NarrationService {
     })
     if (takes.some((t) => !t)) return
     // Fetch every asset before atomically replacing any accepted audio.
-    for (const t of takes) await this.audio(t!.id)
+    await this.cacheAudio(takes.map((take) => take!.id))
     const current = this.state.record!
     if (current.operation !== operation) return
     const mapping = Object.fromEntries(takes.map((t) => [t!.segmentId, t!.id]))
@@ -488,6 +487,12 @@ export class NarrationService {
       accepted: { ...this.state.record.accepted, [take.segmentId]: take.id },
     })
   }
+  private async cacheAudio(ids: string[]) {
+    for (let offset = 0; offset < ids.length; offset += 4) {
+      await Promise.all(ids.slice(offset, offset + 4).map((id) => this.audio(id)))
+    }
+  }
+
   async audio(id: string): Promise<Blob> {
     return new NarrationBackupIO(this.owner, this.getToken).audio(id)
   }
