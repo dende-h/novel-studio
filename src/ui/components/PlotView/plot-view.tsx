@@ -75,6 +75,7 @@ import type { PlotRepository } from '@/core/storage/plotRepository'
 import type { StructureRepository } from '@/core/storage/structureRepository'
 import { pickPrimaryStructure, type StructureNode } from '@/core/structure'
 import { ConfirmDialog } from '@/ui/components/ConfirmDialog/confirm-dialog'
+import { FeatureIntro } from '@/ui/components/FeatureIntro/feature-intro'
 import { NotationField } from '@/ui/components/NotationField/notation-field'
 import { NotationHelpButton } from '@/ui/components/NotationField/notation-help'
 import { useSerialSave } from '@/ui/hooks/use-serial-save'
@@ -326,6 +327,7 @@ export default function PlotView({
               この作品の決め事を置く、作者だけの場所です。用語集と違って公開されません。
             </p>
           ) : null}
+          <FeatureIntro feature="plot" />
           {/* 世界観設定を先頭に置く：決め事を決めてからプロットを組む、という順で読める。
               ただし開いた直後に出すのはビートシートのまま（プロットを触りに来た人の手を止めない）。 */}
           <div className="mt-3 flex items-center gap-1.5">
@@ -1874,6 +1876,10 @@ function TemplatePicker({ onPick }: { onPick: (template: PlotTemplate) => void }
           <p className="mt-2 text-[13px] text-on-surface-variant">
             型から始めると、幕とガイド付きのビートが用意されます。あとから自由に組み替えられます。
           </p>
+          <FeatureIntro
+            feature="plot"
+            firstStep="使いたい型を一つ選びます。自分で組むときは「白紙から」を選びます。"
+          />
         </header>
         <div className="grid gap-3 sm:grid-cols-2">
           {entries.map(([key, def]) => (

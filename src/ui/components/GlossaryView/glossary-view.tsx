@@ -31,6 +31,7 @@ import type { GameAssetRepository } from '@/core/storage/gameAssetRepository'
 import { cn } from '@/lib/utils'
 import { thumbnailToDataUrl } from '@/ui/_utils/imageResizer'
 import { ConfirmDialog } from '@/ui/components/ConfirmDialog/confirm-dialog'
+import { FeatureIntro } from '@/ui/components/FeatureIntro/feature-intro'
 import {
   formValuesToFieldPatch,
   GLOSSARY_CATEGORIES,
@@ -334,6 +335,7 @@ export function GlossaryView({
             本文やプロットから @ で呼び出せる、作品の事典です。投稿すると読者にも見えます
             （作品の決め事やネタバレは、プロットの「世界観設定」へ）。
           </p>
+          <FeatureIntro feature="glossary" />
         </header>
 
         <div className="flex min-h-0 flex-1 items-stretch gap-6">
