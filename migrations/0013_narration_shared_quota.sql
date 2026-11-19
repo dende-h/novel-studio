@@ -6,7 +6,7 @@ ALTER TABLE narration_budgets ADD COLUMN extra_reserved INTEGER NOT NULL DEFAULT
 
 WITH previous_drama AS (
  SELECT j.user_id, j.period,
-        SUM(CASE WHEN t.state = 'ready' THEN t.characters ELSE 0 END) AS used,
+        SUM(CASE WHEN t.state IN ('ready','missing') THEN t.characters ELSE 0 END) AS used,
         SUM(CASE WHEN t.state IN ('queued','generating','unknown') THEN t.characters ELSE 0 END) AS reserved
  FROM narration_takes t JOIN narration_jobs j ON j.id = t.job_id
  WHERE t.model = 'drama-3'

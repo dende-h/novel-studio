@@ -430,6 +430,7 @@ it('旧来の消費と予約を移行し、移行前に開始した処理も確�
                ('running','old','b','fp',3,9,'drama-3',${now}),
                ('basic','old','c','fp',5,15,'s2.1-pro',${now});
       UPDATE narration_takes SET state='ready' WHERE id IN ('done','basic');
+      UPDATE narration_takes SET state='missing' WHERE id='done';
       UPDATE narration_takes SET state='generating' WHERE id='running';
     `)
     real.exec(sharedQuota)
