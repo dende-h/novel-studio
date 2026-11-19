@@ -189,7 +189,7 @@ function NarrationEntry({ open }: { open: () => void }) {
         <span className="max-sm:hidden">朗読制作</span>
       </Button>
       {!seen && (
-        <div className="fixed top-14 right-3 z-30 flex w-52 items-start gap-2 rounded-xl border border-outline-variant/50 bg-surface-container-lowest p-3 text-on-surface shadow-lg sm:absolute sm:top-full sm:right-0 sm:mt-2">
+        <div className="pointer-events-none fixed top-14 right-3 z-30 flex w-52 items-start gap-2 rounded-xl border border-outline-variant/50 bg-surface-container-lowest p-3 text-on-surface shadow-lg sm:absolute sm:top-full sm:right-0 sm:mt-2">
           <p id={hintId} className="text-xs leading-relaxed">
             <strong className="block text-sm">原稿から朗読を作る</strong>
             「朗読制作」で声を選び、話ごとにMP3で保存できます。
@@ -197,7 +197,7 @@ function NarrationEntry({ open }: { open: () => void }) {
           <button
             type="button"
             aria-label="朗読制作の案内を閉じる"
-            className="inline-flex size-7 shrink-0 items-center justify-center rounded-full text-on-surface-variant hover:bg-surface-container"
+            className="pointer-events-auto inline-flex size-7 shrink-0 items-center justify-center rounded-full text-on-surface-variant hover:bg-surface-container"
             onClick={dismiss}
           >
             <X size={16} aria-hidden />
