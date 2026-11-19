@@ -47,7 +47,10 @@ function matchesAdopted(
   if (!take) return false
   if (segment.fingerprint === take.fingerprint) return true
   const voiceVersion = access?.voices.find((voice) => voice.id === segment.voiceId)?.version
-  return take.fingerprint === segmentFingerprint(segment, take.model ?? access?.model, voiceVersion)
+  const models = take.model ? [take.model] : Object.keys(NARRATION_MODEL_LABELS)
+  return models.some(
+    (model) => take.fingerprint === segmentFingerprint(segment, model, voiceVersion),
+  )
 }
 
 export function NarrationRoute({

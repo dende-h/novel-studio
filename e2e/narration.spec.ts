@@ -529,10 +529,10 @@ test('モデルを切り替えても採用済み音声を維持し、話ごと�
   }
   const record = emptyNarration(work.id)
   const voices = [{ id: 'default', label: 'Shiori', description: '', version: '1' }]
-  const [original] = resolveSegments(work.episodes[0]!, record.settings, undefined, { model: 'drama-3', voices })
+  const [original] = resolveSegments(work.episodes[0]!, record.settings, undefined, { model: 's2.1-pro', voices })
   const adopted: VoiceTake = {
     id: 'original', jobId: 'old', segmentId: original!.id, fingerprint: original!.fingerprint,
-    model: 'drama-3', state: 'ready', createdAt: 1,
+    state: 'ready', createdAt: 1,
   }
   record.takes = [adopted]
   record.accepted[original!.id] = adopted.id
@@ -588,6 +588,7 @@ test('モデルを切り替えても採用済み音声を維持し、話ごと�
   await page.goto('/#/narration/shared-quota/first')
   const quota = page.locator('.narration-popover summary').first()
   await expect(quota).toContainText('残り 6,000文字')
+  await expect(page.locator('.narration-paragraph[data-narration-state=ready]')).toHaveCount(1)
   await quota.click()
   const model = page.getByLabel('この話のモデル')
   await model.selectOption('s2.1-pro')
