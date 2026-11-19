@@ -125,8 +125,9 @@ export async function entitlement(
   )
     .bind(userId, budgetPeriod)
     .first<{ used: number; reserved: number }>()
-  const upper = NARRATION_BILLING_PLANS.some((tier) => tier === plan)
-  const unitQuota = definition.limit * (upper ? 2 : 1)
+  const canChooseModel =
+    model === 'drama-3' && NARRATION_BILLING_PLANS.some((tier) => tier === plan)
+  const unitQuota = definition.limit * (canChooseModel ? 2 : 1)
   const used = budget?.used ?? 0
   const reserved = budget?.reserved ?? 0
   const allowance = (unitsPerCharacter: number): NarrationAllowance => ({
@@ -135,8 +136,9 @@ export async function entitlement(
     reserved: Math.floor(reserved / unitsPerCharacter),
     remaining: Math.floor(Math.max(0, unitQuota - used - reserved) / unitsPerCharacter),
   })
-  const modelAllowances =
-    upper && model === 'drama-3' ? { 'drama-3': allowance(2), 's2.1-pro': allowance(1) } : undefined
+  const modelAllowances = canChooseModel
+    ? { 'drama-3': allowance(2), 's2.1-pro': allowance(1) }
+    : undefined
   const previewPeriod =
     'preview:' + date.toISOString().slice(0, 10) + (testPlan ? ':staff:' + testPlan : '')
   const previewLimit = Math.max(
