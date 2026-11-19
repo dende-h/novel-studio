@@ -3,17 +3,20 @@ import {
   CloudUpload,
   CreditCard,
   Download,
+  Headphones,
   History,
   LoaderCircle,
   Menu,
+  X,
 } from 'lucide-react'
 import type React from 'react'
-import { lazy, Suspense } from 'react'
+import { lazy, Suspense, useId } from 'react'
 import { cn } from '@/lib/utils'
 import { openBillingPortal } from '@/ui/_api/billing'
 import { useAuth } from '@/ui/auth/auth-context'
 import { type SaveState, SaveStatus } from '@/ui/components/SaveStatus/save-status'
 import { Button } from '@/ui/components/ui/button'
+import { useLocalFlag } from '@/ui/hooks/use-local-flag'
 import { useOpenProfile, usePenName } from '@/ui/hooks/use-pen-name'
 import { useSyncStatus } from '@/ui/hooks/use-sync-status'
 
@@ -34,6 +37,7 @@ interface TopAppBarProps {
   /** 編集中のみ保存状態を表示 */
   saveStatus?: SaveState
   /** 書き出しダイアログを開く。未指定なら非表示 */
+  onNarration?: () => void
   onExport?: () => void
   exportDisabled?: boolean
   /** コトノハ-grove- への投稿ダイアログを開く。未指定なら非表示（投稿先が未設定のビルドなど） */
@@ -165,6 +169,45 @@ function SyncIndicator() {
   )
 }
 
+function NarrationEntry({ open }: { open: () => void }) {
+  const [seen, dismiss] = useLocalFlag('ns-narration-entry-seen')
+  const hintId = useId()
+  return (
+    <div className="relative">
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={() => {
+          dismiss()
+          open()
+        }}
+        aria-label="朗読制作"
+        aria-describedby={seen ? undefined : hintId}
+        className="gap-2"
+      >
+        <Headphones className="size-4" aria-hidden />
+        <span className="max-sm:hidden">朗読制作</span>
+      </Button>
+      {!seen && (
+        <div className="pointer-events-none fixed top-14 right-3 z-30 flex w-52 items-start gap-2 rounded-xl border border-outline-variant/50 bg-surface-container-lowest p-3 text-on-surface shadow-lg sm:absolute sm:top-full sm:right-0 sm:mt-2">
+          <p id={hintId} className="text-xs leading-relaxed">
+            <strong className="block text-sm">原稿から朗読を作る</strong>
+            「朗読制作」で声を選び、話ごとにMP3で保存できます。
+          </p>
+          <button
+            type="button"
+            aria-label="朗読制作の案内を閉じる"
+            className="pointer-events-auto inline-flex size-7 shrink-0 items-center justify-center rounded-full text-on-surface-variant hover:bg-surface-container"
+            onClick={dismiss}
+          >
+            <X size={16} aria-hidden />
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
 /** 全画面共通のトップバー（ブランド・作品パンくず・保存状態・同期・履歴・書き出し・投稿）。 */
 export function TopAppBar({
   brand,
@@ -172,6 +215,7 @@ export function TopAppBar({
   workTitle,
   episodeTitle,
   saveStatus,
+  onNarration,
   onExport,
   exportDisabled,
   onPublish,
@@ -268,6 +312,7 @@ export function TopAppBar({
             <History className="size-4" aria-hidden />
           </button>
         ) : null}
+        {onNarration && <NarrationEntry open={onNarration} />}
         {onExport ? (
           <Button
             variant="outline"

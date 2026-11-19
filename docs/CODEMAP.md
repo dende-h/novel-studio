@@ -42,6 +42,8 @@ Cloudflare Pages Functions
 | プレビューのマークダウン（見出し・リスト・表・引用）を変える | `src/core/markdown/index.ts`（本文は非対応。効くのはプロット・世界観・用語集の記法つき欄） |
 | 書き出し（EPUB/なろう/カクヨム/HTML）の出力を変える | `src/core/exporter/` 配下（形式ごとに1ファイル） |
 | テキスト（.txt／貼り付け）の取り込み＝見出し行で話に分けて新しい作品にする（COT-31） | 分割・文字コード判別・Work 組み立ては `src/core/importer/`（`splitEpisodes` `decodeTextFile` `buildImportedWork`）、画面は `src/ui/components/TextImportDialog/`、入口はライブラリ「データ管理」→「テキストから作品を作る」（`src/ui/components/Library/library.tsx`）。JSON バックアップの取り込みは別（`ImportDialog/`） |
+| **朗読制作・MP3/ZIP書き出し**を変える | 設計は `docs/requirement/13-narration.md`。専用ルート `#/narration/<workId>/<episodeId>` は `src/ui/Root.tsx`、画面は `src/ui/components/NarrationPage/narration-page.tsx`、比較・通し再生のプレーヤーは `src/ui/components/NarrationPage/narration-player.tsx`、画面から独立した状態・候補保存・全区間成功後の一括採用・通信は `src/ui/narration/service.ts`。連続した文のクリック選択は `src/core/narration/selection.ts`。話別設定・文の区切り・読み指定の確認（`readingCuesNeedingReview`）・冒頭試聴範囲は `src/core/narration/resolve.ts`、API用テキストと旧読点補正の互換処理は `src/core/narration/provider.ts`、音声前後の無音計測と不足する間の結合は `src/ui/narration/audio.ts` と `src/core/narration/mp3.ts`。端末の設定・採用音声は `src/core/storage/narrationRepository.ts`（作者用・公開Workには載せない）。APIは `functions/api/narration.ts`、プランと声の許可リストは `functions/api/_lib/narration.ts`、原子的な枠予約は `migrations/0011_narration.sql`。実行と期限切れ削除は `workers/narration/worker.ts`（stg専用Durable Object・cron）。合意した操作は `docs/specs/narration-workflow/decisions.md`、運用と公開前の確認は `docs/narration-implementation.md` |
+# CODEMAP — novel-studio コード地図
 | サウンドノベル書き出し（ゲーム化・演出譜）を変える | `src/core/game/`（判別・演出譜・テンプレ背景・持ち込み背景・`stage.ts`＝立ち絵の席（左・中央・右）を行ごとに解く `resolveStages`＝書き出しと画面が共用・`continuity.ts`＝「この行で何が効いているか」の解決）+ `src/core/exporter/toNovelGame.ts`（プレイヤー本体は `novelGamePlayer.ts`。**場面の切れ目＝暗転＋間**（D-GAME-SCENE-CURTAIN）は同ファイルの `changeScene`＝幕 `#curtain` を下ろして BGM・環境音を絞り、幕の下で背景・立ち絵を組んでフェードで明ける。時間は `CURTAIN_OUT/HOLD/IN`）。演出エディタは `src/ui/components/StagingView/`（欄の説明は `field-helps.tsx`、アプリ内プレビューは `preview-dialog.tsx`＝`buildNovelGameHtml` を sandbox iframe に流し込む・`startAt` でその行から）、永続化は `src/core/storage/stagingRepository.ts`（演出譜）と `gameAssetRepository.ts`（持ち込み背景） |
 | サウンドノベルの効果音（合成SE＋運営テンプレの音声ファイル）を変える／**出す・しまう** | **いまは画面・MCP・書き出しから外している**（D-GAME-SE-HOLD）。出し入れは `src/core/game/features.ts` の `GAME_FEATURES.se` だけ（演出エディタの欄とレーン・`resolveTemplateSes`・exporter の `se` 読み飛ばし・MCP のスキーマと `setStagingCues`・管理ページのタブが揃って切り替わる。フラグを立てた状態の検証は各 `*.test` が `vi.mock('@/core/game/features')` で、落ちた状態は `*.features.test`）。合成レシピは `src/core/game/sePresets.ts`（`PRESET_SES`＝12 種・`presetSe` `sePeriod`＝環境音のループ周期。レシピの語彙は白/ピンク/ブラウンのノイズ・hp/bp/lp・a/s のエンベロープ・mf/md の揺らぎ・rv の残響。鳴らし方は `Cue.seRepeat`＝1回/2回/ループ・止めるのは予約キー `SE_STOP`）。音声ファイル（目録 kind `se`・mp3/m4a）は `templates.ts` の `mergeSeCatalog` で合成に重なり、exporter がシナリオ `ses[key]` を `{steps}`（合成）か `{src}`（ファイル・zip は `assets/se/<slug>.mp3`・投稿は契約 v6 の `asset:<id>`）で載せる。解釈はプレイヤー（`novelGamePlayer.ts` の `playSe` `startLoopSe`＝`src` は fetch→decodeAudioData）とアプリ試聴 `src/ui/_utils/sePlayer.ts`（`playCatalogSe`）の2箇所——**両方を同時に直す** |
 | サウンドノベルの **BGM**（運営のオリジナル曲・D-GAME-BGM）を変える | **組み込みの枠 24 曲**は `src/core/game/bgmPresets.ts`（`PRESET_BGMS`＝slug・曲名・分類 calm/emotion/tense/scene・用途。音の実体は無い・制作プロンプトは `docs/game/bgm-presets.md`）。目録の kind `bgm`（`src/core/game/templates.ts` の `mergeBgmCatalog`＝枠に目録を重ねる・`isBgmReady`＝実体の有無（無ければ「準備中」で選べるが鳴らない・`BGM_PENDING_LABEL` は `template-picker.tsx`）・`catalogBgmKeys`・命名 `bgm-<曲調>-<曲名>.mp3`・ループ区間は `TemplateEntry.loopStart/loopEnd`）。演出は `Cue.bgm`（`preset:bgm/<slug>` か予約キー `BGM_STOP`＝`src/core/game/index.ts`。**次の曲か stop か場面の切れ目（暗転）まで続く**＝`continuity.ts` の bgm レーン・プレイヤーの `bgmAt`・exporter の載せ直し判定の 3 箇所が `sceneBreak` で揃って下ろす）。書き出しは `toNovelGame.ts`（曲が変わるページにだけ `pages[].bgm`・使った曲だけ `bgms[key]`＝zip は `assets/bgm/<slug>.mp3`・投稿は契約 v6 の `asset:tpl-bgm-<slug>`）、プレイヤーは `novelGamePlayer.ts` の `startBgm` `syncBgm`（Web Audio のループ区間・file:// は `<audio loop>` に倒す・メニューの BGM あり/なし）。画面へは `src/ui/game/template-catalog.ts` の `resolveTemplateBgms` `templateBgmKeysOf`（プレビュー・書き出し・投稿の 3 箇所が呼ぶ）、演出エディタの欄は `staging-view.tsx`、試聴は `src/ui/_utils/bgmPlayer.ts`（`toggleCatalogBgm`＝ループ区間ごと・`BgmPreviewButton` は `template-picker.tsx`）。MCP は `set_staging` の `bgm` と `get_staging` の一覧。**プレイヤーとアプリ試聴の 2 箇所を同時に直す** |
@@ -74,6 +76,7 @@ Cloudflare Pages Functions
 | **小説投稿サイトの紹介**（`#/sites`）に載せるサイトを足す・外す・紹介文を直す | 一覧は `src/core/sites/index.ts`（`POSTING_SITES`＝掲載の了承をいただいたサイトだけ・サイト名・URL・紹介文・バナー＝相手の og:image の URL。足すときに相手の OGP を読んで写す）、画面は `src/ui/components/PostingSitesPage/`（バナーは相手のサーバから直接読む・複製しない・切り抜かない）、導線はサイドバーのフッター（`SideNav`）。閲覧者のアクセスが相手に届くことは `public/privacy.html` の 4 章に書いてある＝**読み込み方を変えたらここも直す** |
 | **ペンネーム（表示名）**の扱い — ヘッダ・サイドバー・新しい作品の著者・掲示板の表示名は同じ 1 つ | 判定は `src/core/profile/account.ts`、配線は `src/ui/hooks/use-pen-name.ts`、編集は `src/ui/components/ProfileDialog/`（Root が 1 つだけ持つ）、正本はサーバの `board_profiles.display_name` |
 | **コトノハ-grove- （grove）の作者名** — コトノハ-leaf- のペンネームとは**別物**（D-PENNAME-GROVE）。語も分ける（ペンネーム／作者名） | `src/ui/components/PublishPage/publish-page.tsx` の `AuthorNameCard`（投稿前に名前を見せる）＋ `author-register-card.tsx`（登録）。取得は `src/ui/_api/author.ts`。変更の口は コトノハ-grove- の `/settings` |
+| **朗読制作の初回案内**を変える | `src/ui/components/TopAppBar/top-app-bar.tsx` の `NarrationEntry`（端末内の初回表示フラグ） |
 | **更新のお知らせ（リリースノート）**を足す（リリースのたびに 1 件・本番に出た日 JST・利用者に見える変更だけ） | `public/updates.html`（`/updates`・いちばん上へ足す・書き方は先頭のコメントと toc-copy）。導線は静的ページのフッター・`src/ui/components/PageLayout/`・LP のフッター・ヘルプの FAQ・`public/sitemap.xml`・`public/llms.txt` |
 | 解約後の復元猶予中の案内（ライブラリ上部・復元／書き出し／再開。アプリは塞がない・復元の前に端末のデータを自動で書き出す） | `src/ui/components/RestoreGrace/` + `src/ui/Root.tsx`（`canRestore`・Library の `notice`・`downloadLocalBackup`）+ `src/ui/components/CloudBackupDialog/`（`beforeRestore`）+ `src/ui/auth/clerk-gate.tsx` |
 | 解約して猶予が切れた人のクラウドデータ削除（reaper・ログインと掲示板は残す） | `src/core/billing/reap-policy.ts` + `functions/api/billing/reap.ts` + `functions/api/_lib/purge.ts` |
@@ -315,8 +318,10 @@ Clerk へ登録済みのクライアントの互換。消すとトークン更�
 | `/api/game-assets` | 持ち込みゲーム素材のクラウド保管（会員のみ・枚数/サイズ上限・暗号化）。GET=一覧/1件 / PUT / DELETE |
 | `/game-templates/*` | **運営テンプレの公開読み口**（認証なし・`/api/` の外＝SW がキャッシュする）。`manifest.json`（目録・max-age=300）／`<kind>/<slug>[.thumb].<ext>`（ext は MIME から＝webp/png/jpg/mp3/m4a・`?v=<hash>`・immutable）。実装は `functions/game-templates/[[path]].ts` |
 | `/api/admin/templates` | 運営テンプレの管理（**staff だけ・それ以外は 404**）。GET=目録 / PUT=`?kind=&slug=` 投入・置き換え（kind bg/sprite は画像 1.5MB＋サムネ、se は mp3/m4a 2MB＋長さ、bgm は mp3/m4a 8MB＋長さ＋ループ区間） / PATCH=表示名・分類・時間帯・並び・非表示・BGM のループ区間・分類の表示名 / DELETE=非表示 |
+| `/api/narration` | GET=プラン・ジョブ状態／本人の音声取得、POST=冪等な生成予約、PATCH=未着手分のキャンセル。開発中はstaff限定。通常はS2.1 Pro Free、NARRATION_STAFF_TEST_PLANで有料プラン検証。日本語の声目録は `scripts/refresh-narration-voices.mjs` で更新し、NARRATION_JAPANESE_CATALOGで有効化。非公開スナップショットは暗号化R2、実行はDurable Object |
+| `/api/narration-assets` | 会員本人の耐久音声：GET=容量/復号取得、HEAD=保管済み確認、PUT=内容ハッシュで重複を避ける暗号化保存。5GiB/人、8MiB/音声、解約猶予は取得のみ |
 | `POST /api/hit` | 訪問者集計（Cookie なし） |
-| `/api/billing/{checkout,portal,status,reap}` | Stripe Checkout / Portal / 会員状態 / 猶予切れのクラウドデータ削除ジョブ |
+| `/api/billing/{checkout,portal,status,reap}` | Stripe Checkout（GETで追加朗読プランの公開状態、POSTで決済） / Portal / 会員状態 / 猶予切れのクラウドデータ削除ジョブ |
 | `POST /api/webhooks/stripe` | Stripe webhook → D1 `subscriptions` にミラー |
 | `GET /api/board/threads` | 掲示板の一覧（`?kind=` `?cursor=`）。**未ログインでも読める** |
 | `POST /api/board/threads` | スレ立て（本文＋任意でアンケート）。リンクカードの取得もここ |
@@ -360,12 +365,14 @@ Clerk へ登録済みのクライアントの互換。消すとトークン更�
 
 ---
 
+モデル選択・共通枠は `src/core/narration/types.ts`、`functions/api/_lib/narration.ts`、月間単位の予約・確定は `migrations/0013_narration_shared_quota.sql`。朗読音声の容量台帳は `0012_narration_assets.sql`（Pages配備前に適用）。朗読の生成台帳は `0011_narration.sql`（jobs/takes/budgets/daily/lock、予約・確定のトリガー）。stgの実行担当は `workers/narration/wrangler.toml` で独立デプロイする。Pagesの `NARRATION_DISPATCH_URL` から接続する。
+
 ## 5. 開発コマンド・規約
 
 ```bash
 pnpm dev            # Vite 開発サーバ (localhost:5173)。predev で推敲の辞書を取得（取れなくても続行）
 pnpm test           # Vitest（ユニット・約200ファイル）。pretest で推敲の辞書を取得（取れなくても続行）
-pnpm typecheck      # tsc -b --noEmit
+pnpm typecheck      # ブラウザ＋朗読API/Worker（tsconfig.narration-edge.json）の型検査
 pnpm lint           # biome check .
 pnpm format         # biome format --write .
 pnpm build          # tsc -b && vite build。prebuild で推敲の辞書を取得（取れなければ失敗）、postbuild で scripts/check-precache.mjs（.wasm と dict/ がプリキャッシュに無いか）
@@ -379,6 +386,7 @@ uv run .claude/skills/natural-japanese/scripts/lint.py <file>   # 仕事の文�
 ```
 
 - CI（`.github/workflows/ci.yml`）は main / stg への push・PR で lint → typecheck → test → build → e2e。E2EのランナーはPlaywright 1.60が対応する `ubuntu-24.04` に固定。推敲の辞書（`public/dict/`）は `actions/cache` に載せる（キーは `scripts/fetch-dict.mjs` のハッシュ）。
+- 朗読Workerの配備は `pnpm exec wrangler deploy --config workers/narration/wrangler.toml`（stg・Pagesより先に手動実行。GitHubのPages用トークンには権限なし）。本番の実行設定は `workers/narration/wrangler.production.toml`。手順は `docs/narration-implementation.md`。
 - Node 22 / pnpm 10.29.3（`mise.toml` で固定）。環境別は `mise.staging.toml` / `mise.production.toml`。
 - インポートエイリアス `@/` → `src/`。
 - Biome: シングルクォート・セミコロンなし・幅100・スペース2。

@@ -5,6 +5,7 @@
     "includes": [
       "src/**",
       "functions/**",
+      "workers/**/*.ts",
       "*.ts",
       "*.json",
       "!**/node_modules",

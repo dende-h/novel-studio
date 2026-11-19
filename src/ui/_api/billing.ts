@@ -4,9 +4,22 @@
  * Checkout / Portal はサーバーが作った URL へ window 遷移する（クライアントに Stripe 鍵は不要）。
  */
 
+import { NARRATION_BILLING_PLANS, type NarrationBillingPlan } from '@/core/narration/types'
+
 type GetToken = () => Promise<string | null>
 
 export type PlanInterval = 'monthly' | 'yearly'
+
+export type CheckoutPlan = PlanInterval | NarrationBillingPlan
+
+export async function listNarrationBillingPlans(
+  signal: AbortSignal,
+): Promise<NarrationBillingPlan[]> {
+  const response = await fetch('/api/billing/checkout', { signal })
+  if (!response.ok) return []
+  const data = (await response.json()) as { narrationPlans?: string[] }
+  return NARRATION_BILLING_PLANS.filter((plan) => data.narrationPlans?.includes(plan))
+}
 
 export interface BillingStatus {
   isMember: boolean
@@ -39,7 +52,7 @@ export async function getBillingStatus(getToken: GetToken): Promise<BillingStatu
 }
 
 /** Checkout セッションを作り、その Stripe ホスト画面へ遷移する。開始できなければ false。 */
-export async function startCheckout(getToken: GetToken, plan: PlanInterval): Promise<boolean> {
+export async function startCheckout(getToken: GetToken, plan: CheckoutPlan): Promise<boolean> {
   try {
     const headers = await authHeader(getToken)
     if (!headers) return false
@@ -48,6 +61,7 @@ export async function startCheckout(getToken: GetToken, plan: PlanInterval): Pro
       headers: { ...headers, 'content-type': 'application/json' },
       body: JSON.stringify({ plan }),
     })
+    if (res.status === 409) return openBillingPortal(getToken)
     if (!res.ok) return false
     const { url } = (await res.json()) as { url?: string }
     if (!url) return false

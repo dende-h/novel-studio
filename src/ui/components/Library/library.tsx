@@ -649,12 +649,22 @@ export function Library({
         onOpenChange={setBackupOpen}
         workCount={state.workList.length}
         onExport={async () => {
-          const json = await localBackup.exportPlaintext()
-          triggerDownload({
-            filename: `kotonoha-backup-${new Date().toISOString().slice(0, 10)}.json`,
-            mime: 'application/json;charset=utf-8',
-            data: json,
-          })
+          if (localBackup.exportFile) {
+            const file = await localBackup.exportFile()
+            triggerDownload({
+              filename:
+                'kotonoha-backup-' + new Date().toISOString().slice(0, 10) + '.' + file.extension,
+              mime: file.mime,
+              data: file.data,
+            })
+          } else {
+            const json = await localBackup.exportPlaintext()
+            triggerDownload({
+              filename: 'kotonoha-backup.json',
+              mime: 'application/json',
+              data: json,
+            })
+          }
           // 保存状態インジケータ・執筆量案内が参照する「最後の書き出し日時＋そのときの総文字数」を記録。
           markLocalBackup(
             Date.now(),
@@ -667,6 +677,7 @@ export function Library({
         onOpenChange={setImportOpen}
         onImport={(works) => store.importWorks(works)}
         onRestoreAll={(json) => localBackup.restorePlaintext(json)}
+        onRestoreFile={localBackup.restoreFile}
       />
       <TextImportDialog
         open={textImportOpen}

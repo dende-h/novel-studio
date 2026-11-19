@@ -11,7 +11,7 @@ function makeWork(id: string, title: string): Work {
 
 /** 隠しファイル入力に JSON を流し込む（ボタン経由のピックを模す）。 */
 function pick(json: string, name = 'backup.json') {
-  const input = screen.getByLabelText('バックアップ JSON ファイル')
+  const input = screen.getByLabelText('バックアップファイル')
   const file = new File([json], name, { type: 'application/json' })
   fireEvent.change(input, { target: { files: [file] } })
 }
@@ -51,7 +51,7 @@ describe('ImportDialog（バックアップ取り込み）', () => {
     pick(exportBundle([makeWork('a', '銀河の終わり')]))
     fireEvent.click(await screen.findByRole('button', { name: '別のファイル' }))
     await waitFor(() =>
-      expect(screen.getByRole('button', { name: 'JSON ファイルを選択' })).toBeInTheDocument(),
+      expect(screen.getByRole('button', { name: 'バックアップを選択' })).toBeInTheDocument(),
     )
     expect(screen.queryByRole('button', { name: '取り込む' })).toBeNull()
   })

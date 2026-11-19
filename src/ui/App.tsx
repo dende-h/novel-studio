@@ -512,6 +512,19 @@ export function App({
         workTitle={work?.title}
         episodeTitle={activeScreen === 'episodes' && episode ? episode.title : undefined}
         saveStatus={{ dirty: state.dirty, status: state.status }}
+        onNarration={
+          work?.format !== 'script' && work
+            ? () => {
+                void store.save().then(() => {
+                  window.location.hash =
+                    '/narration/' +
+                    encodeURIComponent(work.id) +
+                    '/' +
+                    encodeURIComponent(episode?.id ?? '')
+                })
+              }
+            : undefined
+        }
         onExport={() => void openExport()}
         onPublish={
           isPublishAvailable && work && onNavigatePublish ? () => void openPublish() : undefined

@@ -1,7 +1,8 @@
 // @vitest-environment node
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import type { Staging } from '@/core/game'
 import type { IdeaNote } from '@/core/idea'
+import { emptyNarration } from '@/core/narration/types'
 import type { Plot } from '@/core/plot'
 import { ProfileRepository } from '@/core/profile'
 import type { ProofreadRecord } from '@/core/proofread/decisions'
@@ -26,6 +27,7 @@ import { canonicalWorkJson, sha256Hex } from '@/core/sync/hash'
 import { SyncBaseRepository } from '@/core/sync/syncBaseRepository'
 import type { SyncLostEntry } from '@/core/sync/syncLostRepository'
 import type { RemoteWorkMeta } from '@/core/sync/types'
+import { NarrationBackupIO } from '@/ui/narration/backup'
 import { createSyncService, type SyncDeps } from './sync-service'
 
 /**
@@ -171,6 +173,7 @@ function makeFakeRemote(hooks: { onManifest?: () => void | Promise<void> } = {})
 function makeEnv(
   remote = makeFakeRemote(),
   opts: {
+    narration?: boolean
     getOpenWork?: () => { id: string; dirty: boolean } | null
     /** 既定 null（オフライン相当）＝activity 同期はスキップされ、既存テストに影響しない。 */
     postActivity?: (days: ActivityDay[]) => Promise<ActivityDay[] | null>
@@ -182,6 +185,8 @@ function makeEnv(
   } = {},
 ) {
   const store = new MemoryStore()
+  const narration = opts.narration ? new NarrationBackupIO('alice', undefined, store) : undefined
+  if (narration) vi.spyOn(narration, 'upload').mockResolvedValue()
   const repo = new WorkRepository(store)
   const snapshotRepo = new SnapshotRepository(store)
   const structures = new StructureRepository(store)
@@ -198,6 +203,7 @@ function makeEnv(
   let id = 0
   // remote.api は委譲で包む（テストが後から remote.api.* を差し替えられるように）。
   const service = createSyncService({
+    narration,
     repo,
     snapshotRepo,
     structures,
@@ -231,6 +237,7 @@ function makeEnv(
     getOpenWork: opts.getOpenWork,
   })
   return {
+    narration,
     store,
     repo,
     snapshotRepo,
@@ -1448,5 +1455,70 @@ describe('他端末の削除が届いたときの退避（端末に見えない�
     expect(lost.get('w1')?.json).toContain('消える作品')
     // 作品が無くなり開く画面も無い履歴は端末に溜めない
     expect(await snapshotRepo.list('w1')).toEqual([])
+  })
+})
+
+describe('朗読の別端末同期', () => {
+  it('設定・採用と比較待ち・同じ送信待ちIDを別端末へ渡す', async () => {
+    const remote = makeFakeRemote()
+    const a = makeEnv(remote, { narration: true })
+    const b = makeEnv(remote, { narration: true })
+    const record = {
+      ...emptyNarration('w'),
+      updatedAt: 10,
+      accepted: { s: 'old' },
+      candidates: { s: 'candidate' },
+    }
+    await a.narration!.repository.save(record)
+    await a.narration!.repository.restorePending(
+      'w',
+      JSON.stringify({ id: 'same-id', workId: 'w', segments: [] }),
+    )
+    expect((await a.service.reconcile())?.pushed).toBe(1)
+    expect((await b.service.reconcile())?.pulled).toBe(1)
+    expect(await b.narration!.repository.get('w')).toEqual(record)
+    expect(await b.narration!.repository.pending('w')).toContain('same-id')
+    expect((await b.service.reconcile())?.pushed).toBe(0)
+  })
+  it('音声アップロードの失敗時は編集状態も同期済み扱いにしない', async () => {
+    const a = makeEnv(makeFakeRemote(), { narration: true })
+    await a.narration!.repository.save(emptyNarration('w'))
+    vi.mocked(a.narration!.upload).mockRejectedValue(new Error('storage_full'))
+    expect(await a.service.reconcile()).toBeNull()
+    expect(a.remote.rows.has('narration:w')).toBe(false)
+    expect(await a.bases.list()).toEqual([])
+  })
+  it('競合で別端末が新しいとき、こちらの読み方を退避してから取り込む', async () => {
+    const remote = makeFakeRemote()
+    const a = makeEnv(remote, { narration: true })
+    const b = makeEnv(remote, { narration: true })
+    await a.narration!.repository.save({ ...emptyNarration('w'), updatedAt: 1 })
+    await a.service.reconcile()
+    await b.service.reconcile()
+    const left = await a.narration!.repository.get('w')
+    const right = await b.narration!.repository.get('w')
+    await a.narration!.repository.save({
+      ...left,
+      settings: { ...left.settings, style: 'quiet' },
+      updatedAt: 10,
+    })
+    await b.narration!.repository.save({
+      ...right,
+      settings: { ...right.settings, style: 'bright' },
+      updatedAt: 20,
+    })
+    await b.service.reconcile()
+    await a.service.reconcile()
+    expect((await a.narration!.repository.get('w')).settings.style).toBe('bright')
+    expect(a.lost.get('narration:w')?.json).toContain('quiet')
+  })
+  it('朗読に対応しない同期では新しい朗読データを消さない', async () => {
+    const remote = makeFakeRemote()
+    const a = makeEnv(remote, { narration: true })
+    await a.narration!.repository.save(emptyNarration('w'))
+    await a.service.reconcile()
+    const older = makeEnv(remote)
+    expect((await older.service.reconcile())?.pulled).toBe(0)
+    expect(remote.rows.get('narration:w')?.deleted).toBe(0)
   })
 })

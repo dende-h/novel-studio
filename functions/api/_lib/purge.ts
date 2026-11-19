@@ -39,5 +39,6 @@ export async function purgeCloudData(env: PurgeEnv, userId: string): Promise<voi
     // 自前 OAuth のトークン（migration 0010）。消し忘れると、失効後も AI から読める。
     env.DB.prepare('DELETE FROM oauth_tokens WHERE user_id = ?').bind(userId),
     env.DB.prepare('DELETE FROM activity WHERE user_id = ?').bind(userId),
+    env.DB.prepare('DELETE FROM narration_assets WHERE user_id = ?').bind(userId),
   ])
 }
