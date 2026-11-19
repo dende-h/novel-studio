@@ -1,7 +1,14 @@
 import { Check, LoaderCircle } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { NARRATION_PLANS, type NarrationBillingPlan } from '@/core/narration/types'
 import { cn } from '@/lib/utils'
-import { type PlanInterval, startCheckout } from '@/ui/_api/billing'
+import {
+  type CheckoutPlan,
+  listNarrationBillingPlans,
+  openBillingPortal,
+  type PlanInterval,
+  startCheckout,
+} from '@/ui/_api/billing'
 import { useAuth } from '@/ui/auth/auth-context'
 import { Button } from '@/ui/components/ui/button'
 
@@ -30,19 +37,34 @@ const PLANS: Array<{
 ]
 
 export default function CloudPricing() {
-  const { getToken } = useAuth()
-  const [busy, setBusy] = useState<PlanInterval | null>(null)
+  const { getToken, status } = useAuth()
+  const [busy, setBusy] = useState<CheckoutPlan | null>(null)
+  const [higher, setHigher] = useState<NarrationBillingPlan[]>([])
+  const [error, setError] = useState(false)
+  const member = status === 'member'
 
-  const subscribe = async (plan: PlanInterval) => {
+  useEffect(() => {
+    const request = new AbortController()
+    void listNarrationBillingPlans(request.signal)
+      .then(setHigher)
+      .catch(() => {})
+    return () => request.abort()
+  }, [])
+
+  const subscribe = async (plan: CheckoutPlan) => {
+    setError(false)
     setBusy(plan)
-    const ok = await startCheckout(getToken, plan)
-    if (!ok) setBusy(null) // 成功時は Stripe へ遷移するのでリセット不要。
+    const ok = member ? await openBillingPortal(getToken) : await startCheckout(getToken, plan)
+    if (!ok) {
+      setBusy(null)
+      setError(true)
+    }
   }
 
   return (
     <div className="w-full">
       <p className="mx-auto mb-4 max-w-xl rounded-lg bg-primary/10 px-4 py-2.5 font-sans text-[13px] text-primary">
-        初回のご契約には <strong className="font-semibold">30 日間の無料トライアル</strong>
+        基本プランの初回契約には <strong className="font-semibold">30 日間の無料トライアル</strong>
         が付きます。期間中に解約すれば料金はかかりません（お支払い方法の登録が必要です）。
       </p>
       <div className="mx-auto grid max-w-xl gap-4 sm:grid-cols-2">
@@ -73,6 +95,8 @@ export default function CloudPricing() {
             >
               {busy === p.interval ? (
                 <LoaderCircle className="size-4 animate-spin" aria-hidden />
+              ) : member ? (
+                '契約を管理'
               ) : (
                 '購読する'
               )}
@@ -80,6 +104,46 @@ export default function CloudPricing() {
           </div>
         ))}
       </div>
+
+      {higher.length > 0 && (
+        <section className="mx-auto mt-6 max-w-xl text-left">
+          <h2 className="mb-2 font-medium">朗読を多く作る方へ</h2>
+          <div className="divide-y rounded-2xl border px-4">
+            {higher.map((plan) => {
+              const { price, limit } = NARRATION_PLANS[plan]
+              return (
+                <div key={plan} className="flex flex-wrap items-center justify-between gap-2 py-3">
+                  <div>
+                    <strong>月額 ¥{price.toLocaleString('ja-JP')}</strong>
+                    <p className="text-sm text-muted-foreground">
+                      Drama 3 · 月{limit.toLocaleString('ja-JP')}文字
+                    </p>
+                  </div>
+                  {!member && (
+                    <Button
+                      disabled={busy !== null}
+                      onClick={() => void subscribe(plan)}
+                      aria-label={`月額 ${price.toLocaleString('ja-JP')}円を購読する`}
+                    >
+                      {busy === plan ? '開いています…' : '購読する'}
+                    </Button>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+          {member && (
+            <p className="mt-2 text-sm text-muted-foreground">
+              プラン変更は「契約を管理」から行えます。
+            </p>
+          )}
+        </section>
+      )}
+      {error && (
+        <p className="mt-3 text-sm text-destructive" role="alert">
+          決済画面を開けませんでした。もう一度お試しください。
+        </p>
+      )}
 
       <ul className="mx-auto mt-6 max-w-md space-y-2">
         {FEATURES.map((f) => (

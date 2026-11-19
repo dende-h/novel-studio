@@ -1,0 +1,26 @@
+name = "novel-studio-narration"
+main = "worker.ts"
+compatibility_date = "2026-11-01"
+
+[vars]
+API_ORIGIN = "https://cotonoha-leaf.org"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "novel-studio"
+database_id = "811bad99-8040-4c46-9192-26623aeabc99"
+
+[[durable_objects.bindings]]
+name = "RUNNER"
+class_name = "NarrationRunner"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["NarrationRunner"]
+
+[[r2_buckets]]
+binding = "MEDIA"
+bucket_name = "novel-studio-media"
+
+[triggers]
+crons = ["17 * * * *"]

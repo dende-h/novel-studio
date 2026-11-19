@@ -320,7 +320,7 @@ Clerk へ登録済みのクライアントの互換。消すとトークン更�
 | `/api/narration` | GET=プラン・ジョブ状態／本人の音声取得、POST=冪等な生成予約、PATCH=未着手分のキャンセル。開発中はstaff限定。通常はS2.1 Pro Free、NARRATION_STAFF_TEST_PLANで有料プラン検証。日本語の声目録は `scripts/refresh-narration-voices.mjs` で更新し、NARRATION_JAPANESE_CATALOGで有効化。非公開スナップショットは暗号化R2、実行はDurable Object |
 | `/api/narration-assets` | 会員本人の耐久音声：GET=容量/復号取得、HEAD=保管済み確認、PUT=内容ハッシュで重複を避ける暗号化保存。5GiB/人、8MiB/音声、解約猶予は取得のみ |
 | `POST /api/hit` | 訪問者集計（Cookie なし） |
-| `/api/billing/{checkout,portal,status,reap}` | Stripe Checkout / Portal / 会員状態 / 猶予切れのクラウドデータ削除ジョブ |
+| `/api/billing/{checkout,portal,status,reap}` | Stripe Checkout（GETで追加朗読プランの公開状態、POSTで決済） / Portal / 会員状態 / 猶予切れのクラウドデータ削除ジョブ |
 | `POST /api/webhooks/stripe` | Stripe webhook → D1 `subscriptions` にミラー |
 | `GET /api/board/threads` | 掲示板の一覧（`?kind=` `?cursor=`）。**未ログインでも読める** |
 | `POST /api/board/threads` | スレ立て（本文＋任意でアンケート）。リンクカードの取得もここ |
@@ -385,7 +385,7 @@ uv run .claude/skills/natural-japanese/scripts/lint.py <file>   # 仕事の文�
 ```
 
 - CI（`.github/workflows/ci.yml`）は main / stg への push・PR で lint → typecheck → test → build → e2e。E2EのランナーはPlaywright 1.60が対応する `ubuntu-24.04` に固定。推敲の辞書（`public/dict/`）は `actions/cache` に載せる（キーは `scripts/fetch-dict.mjs` のハッシュ）。
-- 朗読Workerの配備は `pnpm exec wrangler deploy --config workers/narration/wrangler.toml`（stg・Pagesより先に手動実行。GitHubのPages用トークンには権限なし）。手順は `docs/narration-implementation.md`。
+- 朗読Workerの配備は `pnpm exec wrangler deploy --config workers/narration/wrangler.toml`（stg・Pagesより先に手動実行。GitHubのPages用トークンには権限なし）。本番の実行設定は `workers/narration/wrangler.production.toml`。手順は `docs/narration-implementation.md`。
 - Node 22 / pnpm 10.29.3（`mise.toml` で固定）。環境別は `mise.staging.toml` / `mise.production.toml`。
 - インポートエイリアス `@/` → `src/`。
 - Biome: シングルクォート・セミコロンなし・幅100・スペース2。
