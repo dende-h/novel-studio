@@ -110,6 +110,15 @@ function NarrationPage({
     service.subscribe,
     service.getSnapshot,
   )
+  useEffect(() => {
+    const refreshOnReturn = () => {
+      if (document.visibilityState === 'visible' && service.getSnapshot().record)
+        void service.refresh()
+    }
+    refreshOnReturn()
+    document.addEventListener('visibilitychange', refreshOnReturn)
+    return () => document.removeEventListener('visibilitychange', refreshOnReturn)
+  }, [service])
   const [episodeId, setEpisodeId] = useState(initialEpisodeId || work.episodes[0]?.id || '')
   const episode = work.episodes.find((e) => e.id === episodeId) ?? work.episodes[0]
   const [stagings, setStagings] = useState<Staging[]>([])

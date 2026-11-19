@@ -275,3 +275,77 @@ it('旧UIの初回候補を復元すると自動反映し、試聴キャッシ�
   expect(service.getSnapshot().record?.candidates).toEqual({})
   expect(service.getSnapshot().record?.takes).toHaveLength(2)
 })
+
+it('送信前の状態確認と重なっても、新しい生成結果を取り込み次の部分修正を続けられる', async () => {
+  const record = emptyNarration('w')
+  const [segment] = resolveSegments(
+    { id: 'e', title: '話', blocks: parseEpisodeBody('朝になった。') },
+    record.settings,
+  )
+  const original: VoiceTake = {
+    id: 'original',
+    segmentId: segment!.id,
+    fingerprint: 'original',
+    jobId: 'original',
+    state: 'ready',
+    createdAt: 1,
+  }
+  record.takes = [original]
+  record.accepted = { [original.segmentId]: original.id }
+  memory.set('narration:local:w', record)
+
+  const service = new NarrationService('w', async () => null)
+  const takes = [original]
+  let releaseStale: () => void = () => {}
+  const staleGate = new Promise<void>((resolve) => {
+    releaseStale = resolve
+  })
+  let staleRefresh: Promise<void> | undefined
+  let nextReadIsStale = false
+  let posts = 0
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (url: string, init?: RequestInit) => {
+      if (url.includes('action=audio')) return new Response(new Blob(['audio']))
+      if (init?.method === 'POST') {
+        const body = JSON.parse(init.body as string)
+        posts++
+        if (posts === 1) {
+          nextReadIsStale = true
+          staleRefresh = service.refresh()
+        }
+        takes.push({
+          ...original,
+          id: 'candidate-' + posts,
+          jobId: body.id,
+          fingerprint: body.segments[0].fingerprint,
+          createdAt: posts + 1,
+        })
+        return Response.json({ id: body.id }, { status: 202 })
+      }
+      if (nextReadIsStale) {
+        nextReadIsStale = false
+        await staleGate
+        return Response.json({ entitlement: {}, jobs: [original.jobId], takes: [original] })
+      }
+      return Response.json({ entitlement: {}, jobs: takes.map((take) => take.jobId), takes })
+    }),
+  )
+
+  await service.init()
+  const first = service.generate([segment!], true)
+  await vi.waitFor(() => {
+    expect(staleRefresh).toBeDefined()
+    expect(memory.has('narration-pending:local:w')).toBe(false)
+  })
+  releaseStale()
+  await Promise.all([first, staleRefresh])
+  expect(service.getSnapshot().record?.operation).toBeUndefined()
+  expect(service.getSnapshot().record?.candidates?.[segment!.id]).toBe('candidate-1')
+
+  await service.generate([segment!], true)
+  expect(service.getSnapshot().record?.operation).toBeUndefined()
+  expect(service.getSnapshot().record?.candidates?.[segment!.id]).toBe('candidate-2')
+  expect(service.getSnapshot().record?.accepted[segment!.id]).toBe('original')
+  expect(posts).toBe(2)
+})
