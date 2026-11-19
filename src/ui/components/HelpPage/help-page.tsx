@@ -1,5 +1,6 @@
 import { ChevronDown, ExternalLink, MessagesSquare } from 'lucide-react'
 import type { ReactNode } from 'react'
+import { FEATURE_INTROS } from '@/ui/components/FeatureIntro/feature-intro'
 import { PageLayout } from '@/ui/components/PageLayout/page-layout'
 
 // お問い合わせフォーム（Google フォーム）。回答者向けの公開 viewform URL。
@@ -47,6 +48,18 @@ export function HelpPage() {
       title="ヘルプ"
       description="コトノハ-leaf- の使い方と、よくある質問をまとめました。"
     >
+      <Section title="機能のはじめ方">
+        <div className="rounded-lg border border-outline-variant/30 bg-surface-container-lowest px-4 py-1">
+          {Object.values(FEATURE_INTROS).map(({ label, summary, firstStep }) => (
+            <HowTo key={label} term={label}>
+              {summary} {firstStep}
+            </HowTo>
+          ))}
+          <HowTo term="朗読制作">
+            書いた話を声にして、MP3で保存できます。執筆画面の「朗読制作」を開き、語り手の声を一つ選びます。
+          </HowTo>
+        </div>
+      </Section>
       <Section title="基本の使い方">
         <div className="rounded-lg border border-outline-variant/30 bg-surface-container-lowest px-4 py-1">
           <HowTo term="作品をつくる">
