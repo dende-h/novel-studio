@@ -13,12 +13,17 @@ import { onRequest } from './narration'
 vi.mock('./_lib/staff', () => ({ verifyStaff: vi.fn(async () => 'user') }))
 vi.mock('./_lib/auth', () => ({ verifyUserId: vi.fn(async () => 'user') }))
 const ddl = readFileSync(new URL('../../migrations/0011_narration.sql', import.meta.url), 'utf8')
-function setup() {
+const sharedQuota = readFileSync(
+  new URL('../../migrations/0013_narration_shared_quota.sql', import.meta.url),
+  'utf8',
+)
+function setup(migrate = true) {
   const real = makeRealD1()
   real.exec(
     readFileSync(new URL('../../migrations/0005_subscriptions.sql', import.meta.url), 'utf8'),
   )
   real.exec(ddl)
+  if (migrate) real.exec(sharedQuota)
   const batch = real.db.batch.bind(real.db)
   let tail = Promise.resolve()
   real.db.batch = (statements) => {
@@ -211,12 +216,12 @@ it('年額会員にもJST月次枠を付け、予約は元の月に残す', asyn
   })
   expect(await entitlement(env, 'user', before)).toMatchObject({
     plan: 'basic',
-    limit: 5000,
+    limit: 7500,
     period: '2026-11',
   })
   expect(await entitlement(env, 'user', before + 1000)).toMatchObject({
     plan: 'basic',
-    limit: 5000,
+    limit: 7500,
     period: '2026-12',
   })
   real.close()
@@ -286,10 +291,10 @@ it.each([
 
 it.each([
   ['trial', 'drama-3', 500],
-  ['basic', 's2.1-pro', 5000],
-  ['standard', 'drama-3', 10000],
-  ['plus', 'drama-3', 30000],
-  ['premium', 'drama-3', 100000],
+  ['basic', 's2.1-pro', 7500],
+  ['standard', 'drama-3', 12000],
+  ['plus', 'drama-3', 35000],
+  ['premium', 'drama-3', 110000],
 ])('スタッフ検証の %s はモデルと枠を分け、明示有効化後だけ予約する', async (plan, model, limit) => {
   const { real, env } = setup()
   try {
@@ -329,6 +334,112 @@ it('声を追加しても既存設定の default が使え、Fish の参照IDは
     ])
     expect(voices.every((voice) => !('referenceId' in voice))).toBe(true)
     expect((await call(env, payload())).status).toBe(202)
+  } finally {
+    real.close()
+  }
+})
+
+function payForStandard(env: NarrationEnv, real: ReturnType<typeof makeRealD1>) {
+  env.NARRATION_RELEASE = '1'
+  env.NARRATION_PAID_ENABLED = '1'
+  env.NARRATION_PRICE_STANDARD = 'standard'
+  real.insert('subscriptions', {
+    user_id: 'user',
+    stripe_customer_id: 'c',
+    stripe_subscription_id: 's',
+    status: 'active',
+    price_id: 'standard',
+    current_period_end: Date.now() + 86400000,
+    grace_until: 0,
+    updated_at: Date.now(),
+  })
+}
+
+it('切り替え後も同じ枠を使い、同時の異なるモデルの予約が二重に通らない', async () => {
+  const { real, env } = setup()
+  try {
+    payForStandard(env, real)
+    expect(await entitlement(env, 'user')).toMatchObject({
+      modelAllowances: {
+        'drama-3': { limit: 12000, remaining: 12000 },
+        's2.1-pro': { limit: 24000, remaining: 24000 },
+      },
+    })
+    expect((await call(env, { ...payload(), model: 's2.1-pro' })).status).toBe(202)
+    real.exec("UPDATE narration_takes SET state='ready'")
+    expect(await entitlement(env, 'user')).toMatchObject({
+      modelAllowances: { 'drama-3': { remaining: 11997 }, 's2.1-pro': { remaining: 23994 } },
+    })
+    real.exec('UPDATE narration_budgets SET used=23993 WHERE unit_quota IS NOT NULL')
+    const requests = await Promise.all([
+      call(env, { ...payload(), model: 's2.1-pro' }),
+      call(env, {
+        ...payload(),
+        model: 'drama-3',
+        segments: resolveSegments(
+          { id: 'e', title: '話', blocks: parseEpisodeBody('朝だ。') },
+          emptyNarration('w').settings,
+        ),
+      }),
+    ])
+    expect(requests.map((response) => response.status).sort()).toEqual([202, 409])
+    expect(await entitlement(env, 'user')).toMatchObject({
+      modelAllowances: { 'drama-3': { remaining: 0 }, 's2.1-pro': { remaining: 1 } },
+    })
+    real.exec("UPDATE narration_takes SET state='failed' WHERE state='queued'")
+    expect(await entitlement(env, 'user')).toMatchObject({
+      modelAllowances: { 'drama-3': { remaining: 3 }, 's2.1-pro': { remaining: 7 } },
+    })
+  } finally {
+    real.close()
+  }
+})
+
+it('無料体験はS2.1 Proへ切り替えられず、試聴は選択モデルで通常枠を消費しない', async () => {
+  const { real, env } = setup()
+  try {
+    env.NARRATION_RELEASE = '1'
+    env.NARRATION_PAID_ENABLED = '1'
+    expect((await call(env, { ...payload(), model: 's2.1-pro' })).status).toBe(409)
+    payForStandard(env, real)
+    env.NARRATION_PREVIEW_LIMIT = '1'
+    expect((await call(env, { ...payload(), preview: true, model: 's2.1-pro' })).status).toBe(202)
+    expect(real.row('SELECT model FROM narration_takes')).toEqual({ model: 's2.1-pro' })
+    expect(await entitlement(env, 'user')).toMatchObject({
+      preview: { remaining: 0 },
+      modelAllowances: { 'drama-3': { remaining: 12000 }, 's2.1-pro': { remaining: 24000 } },
+    })
+  } finally {
+    real.close()
+  }
+})
+
+it('旧来の消費と予約を移行し、移行前に開始した処理も確定できる', async () => {
+  const { real, env } = setup(false)
+  try {
+    payForStandard(env, real)
+    const period = new Date(Date.now() + 9 * 3600000).toISOString().slice(0, 7)
+    const now = Date.now()
+    real.exec(`
+      INSERT INTO narration_budgets(user_id,period,quota) VALUES ('user','${period}',10000);
+      INSERT INTO narration_jobs(id,user_id,work_id,period,request_hash,dispatch_token,created_at)
+        VALUES ('old','user','w','${period}','req','token',${now});
+      INSERT INTO narration_daily(day,byte_limit) VALUES (${Math.floor(now / 86400000)},1000000);
+      INSERT INTO narration_takes(id,job_id,segment_id,fingerprint,characters,input_bytes,model,created_at)
+        VALUES ('done','old','a','fp',7,21,'drama-3',${now}),
+               ('running','old','b','fp',3,9,'drama-3',${now}),
+               ('basic','old','c','fp',5,15,'s2.1-pro',${now});
+      UPDATE narration_takes SET state='ready' WHERE id IN ('done','basic');
+      UPDATE narration_takes SET state='generating' WHERE id='running';
+    `)
+    real.exec(sharedQuota)
+    expect(await entitlement(env, 'user')).toMatchObject({
+      modelAllowances: { 's2.1-pro': { used: 19, reserved: 6, remaining: 23975 } },
+    })
+    real.exec("UPDATE narration_takes SET state='ready' WHERE id='running'")
+    expect(await entitlement(env, 'user')).toMatchObject({
+      modelAllowances: { 's2.1-pro': { used: 25, reserved: 0, remaining: 23975 } },
+    })
   } finally {
     real.close()
   }

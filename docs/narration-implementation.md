@@ -152,6 +152,12 @@ resolveSegments は新規の読点補正を停止し、句点等に350msの最�
 公開前に本番用の実行Worker、D1マイグレーション、音声目録と利用条件、追加プランの決済導線、試聴回数と日次予算を用意する。
 
 
+## モデル選択と月間枠
+
+上位プランのモデルは話ごとの朗読設定に保存する。リクエストにモデルがなければプランの既定値を使い、指定がある場合はサーバーで利用可否を確認する。採用済み音声の判定には生成時のモデルを使う。
+
+0013は従来の文字数台帳を維持しつつ、上位プランで使うDrama 3の追加単位を補う。残りを表示するときだけモデルごとの文字数に換算する。500円プラン・無料体験・スタイル試聴は従来の消費単位を使う。
+
 ## Stripeと本番配備
 
 追加プランは既存クラウド版と同じ1契約の上位プラン。Stripeでは上位プランごとに商品を分け、JPYで月額980円・1,980円・4,980円の価格を作り、環境別のPrice IDを `NARRATION_PRICE_STANDARD`、`NARRATION_PRICE_PLUS`、`NARRATION_PRICE_PREMIUM` に設定する。テストモードと本番の価格は別。基本プランは既存の商品と月額500円・年額4,800円のPrice IDを維持する。Stripeのカスタマーポータルでは、同じ商品に同じ請求間隔の複数価格を登録できない。
@@ -160,7 +166,7 @@ resolveSegments は新規の読点補正を停止し、句点等に350msの最�
 - Customer Portalのプラン変更を有効にし、基本プランの2価格と上位プランの3価格を許可する。プランの引き下げは即時適用し、支払済みの残り期間を日割りで精算する。Stripe標準の期間末ダウングレードは同じ商品内の変更に限られる。
 - STGではStripeテストモードで新規契約と既存契約の変更を試し、webhook後にD1のprice_idと残り文字数・モデルを確認する。環境変数の登録後に `NARRATION_BILLING_ENABLED=1` を設定する。本番のポータルに上位プランを追加するのは、朗読機能と上位プランの利用枠が本番で利用できることを確認した後。設定根拠は [Stripeのポータルの制約](https://docs.stripe.com/customer-management#technical-limitations) と [契約変更の設定](https://docs.stripe.com/customer-management/configure-portal#configure-subscription-management) を参照。
 
-本番リリース時は `pnpm exec wrangler d1 migrations apply DB --remote` で 0011・0012 を先に適用し、`pnpm exec wrangler deploy --config workers/narration/wrangler.production.toml` で本番Workerを配備する。Pagesの本番環境にそのURLを `NARRATION_DISPATCH_URL` として設定する。
+本番リリース時は `pnpm exec wrangler d1 migrations apply DB --remote` で 0011〜0013 を先に適用し、`pnpm exec wrangler deploy --config workers/narration/wrangler.production.toml` で本番Workerを配備する。Pagesの本番環境にそのURLを `NARRATION_DISPATCH_URL` として設定する。
 一般公開フラグを閉じた状態でPagesを配信し、設定と動作を確認してから公開する。声目録の有効化と公開前の利用条件確認も本番側で行う。
 
 Fish Audioへの確認事項は、leaf運営のAPI契約で利用者が本文から音声を生成し、MP3を端末へ保存できるか、公開・ライセンス済みの日本語声をleafの選択肢に掲載できるか、公式試聴サンプルをleaf上で再生できるか、利用停止や表示条件があるか。今回の範囲は生成とダウンロードまでで、grove配信は別途確認する。

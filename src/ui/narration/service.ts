@@ -1,5 +1,6 @@
 import type {
   Entitlement,
+  NarrationPaidModel,
   NarrationRecord,
   NarrationSettings,
   VoiceSegment,
@@ -200,7 +201,12 @@ export class NarrationService {
   async generate(
     segments: VoiceSegment[],
     regenerate = false,
-    options: { whole?: boolean; preview?: boolean; retry?: boolean } = {},
+    options: {
+      whole?: boolean
+      preview?: boolean
+      retry?: boolean
+      model?: NarrationPaidModel
+    } = {},
   ) {
     if (this.state.sending || !segments.length) return
     this.update({ sending: true, error: '' })
@@ -271,11 +277,13 @@ export class NarrationService {
             ],
             whole: !!options.whole,
             preview: !!options.preview,
+            model: options.model,
           },
         })
       const payload = JSON.stringify({
         id,
         preview: !!options.preview,
+        model: options.model,
         workId: this.workId,
         segments: pending,
       })
@@ -328,17 +336,16 @@ export class NarrationService {
     const record = this.state.record,
       operation = record?.operation
     if (!record || !operation) return
-    const takes = operation.segments.map((s) =>
-      record.takes
-        .filter(
-          (t) =>
-            operation.jobs.includes(t.jobId) &&
-            t.segmentId === s.id &&
-            t.fingerprint === s.fingerprint &&
-            t.state === 'ready',
-        )
-        .at(-1),
-    )
+    const takes = operation.segments.map((segment) => {
+      const ready = record.takes.filter(
+        (take) =>
+          operation.jobs.includes(take.jobId) &&
+          take.segmentId === segment.id &&
+          take.fingerprint === segment.fingerprint &&
+          take.state === 'ready',
+      )
+      return ready.find((take) => take.id === record.accepted[segment.id]) ?? ready.at(-1)
+    })
     if (takes.some((t) => !t)) return
     // Fetch every asset before atomically replacing any accepted audio.
     for (const t of takes) await this.audio(t!.id)

@@ -517,3 +517,96 @@ test('旧セリフ音声は一話再生成が成功するまで保持し、新�
  await page.getByText('以前の生成音声',{exact:true}).click()
  await expect(page.getByRole('button',{name:'聴く',exact:true})).toBeVisible()
 })
+
+test('モデルを切り替えても採用済み音声を維持し、話ごとに選んだモデルで生成する', async ({ page }) => {
+  const work = {
+    id: 'shared-quota',
+    title: '共通枠',
+    episodes: [
+      { id: 'first', title: '第一話', blocks: [{ id: 'a', type: 'paragraph' as const, inlines: [{ type: 'text' as const, text: '朝だ。' }] }] },
+      { id: 'second', title: '第二話', blocks: [{ id: 'b', type: 'paragraph' as const, inlines: [{ type: 'text' as const, text: '風吹く。' }] }] },
+    ],
+  }
+  const record = emptyNarration(work.id)
+  const voices = [{ id: 'default', label: 'Shiori', description: '', version: '1' }]
+  const [original] = resolveSegments(work.episodes[0]!, record.settings, undefined, { model: 'drama-3', voices })
+  const adopted: VoiceTake = {
+    id: 'original', jobId: 'old', segmentId: original!.id, fingerprint: original!.fingerprint,
+    model: 'drama-3', state: 'ready', createdAt: 1,
+  }
+  record.takes = [adopted]
+  record.accepted[original!.id] = adopted.id
+  const takes = [adopted]
+  let units = 12001
+  let postedModel = ''
+  await page.route('**/api/narration*', async (route) => {
+    const request = route.request()
+    if (new URL(request.url()).searchParams.get('action') === 'audio') {
+      await route.fulfill({ contentType: 'audio/mpeg', body: readFileSync('e2e/fixtures/narration-tone.mp3') })
+      return
+    }
+    if (request.method() === 'POST') {
+      const body = request.postDataJSON()
+      postedModel = body.model
+      const segments = body.segments as Array<{ id: string; characters: number; fingerprint: string }>
+      units -= segments.reduce((sum, segment) => sum + segment.characters * (body.model === 'drama-3' ? 2 : 1), 0)
+      for (const segment of segments)
+        takes.push({ id: crypto.randomUUID(), jobId: body.id, segmentId: segment.id, fingerprint: segment.fingerprint, model: body.model, state: 'ready', createdAt: 2 })
+      await route.fulfill({ status: 202, json: { id: body.id } })
+      return
+    }
+    const allowance = (scale: number) => ({
+      limit: 24000 / scale, remaining: Math.floor(units / scale), used: Math.floor((24000 - units) / scale), reserved: 0,
+    })
+    await route.fulfill({
+      json: {
+        entitlement: {
+          ...allowance(2), plan: 'standard', label: '980円プラン', model: 'drama-3',
+          modelAllowances: { 'drama-3': allowance(2), 's2.1-pro': allowance(1) },
+          unitQuota: 24000, period: '2026-11', periodEnd: null, voices, enabled: true, development: false,
+        },
+        jobs: [...new Set(takes.map((take) => take.jobId))],
+        takes,
+      },
+    })
+  })
+  await page.goto('/')
+  await page.evaluate(async ({ work, record }) => {
+    localStorage.setItem('ns-onboarded', '1')
+    localStorage.setItem('ns-narration-consent', '1')
+    const request = indexedDB.open('novel-studio', 1)
+    const db = await new Promise<IDBDatabase>((resolve) => { request.onsuccess = () => resolve(request.result) })
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction('kv', 'readwrite')
+      tx.objectStore('kv').put(work, 'work:' + work.id)
+      tx.objectStore('kv').put(record, 'narration:local:' + work.id)
+      tx.oncomplete = () => resolve()
+      tx.onerror = () => reject(tx.error)
+    })
+    db.close()
+  }, { work, record })
+  await page.goto('/#/narration/shared-quota/first')
+  const quota = page.locator('.narration-popover summary').first()
+  await expect(quota).toContainText('残り 6,000文字')
+  await quota.click()
+  const model = page.getByLabel('この話のモデル')
+  await model.selectOption('s2.1-pro')
+  await expect(quota).toContainText('残り 12,001文字')
+  await page.keyboard.press('Escape')
+  await expect(page.locator('.narration-paragraph[data-narration-state=ready]')).toHaveCount(1)
+  await expect(page.getByRole('button', { name: '通して聴く', exact: true })).toBeEnabled()
+  await expect(page.getByRole('button', { name: 'MP3で保存', exact: true })).toBeEnabled()
+  await expect(page.getByText('端末に保存済み')).toBeVisible()
+  await page.goto('/#/narration/shared-quota/second')
+  await page.reload()
+  await expect(quota).toContainText('Drama 3')
+  await quota.click()
+  await model.selectOption('s2.1-pro')
+  await page.keyboard.press('Escape')
+  await page.getByRole('button', { name: '一話を生成', exact: true }).click()
+  await expect.poll(() => postedModel).toBe('s2.1-pro')
+  await expect(quota).toContainText('残り 11,997文字')
+  await quota.click()
+  await model.selectOption('drama-3')
+  await expect(quota).toContainText('残り 5,998文字')
+})

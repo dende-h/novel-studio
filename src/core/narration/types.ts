@@ -2,11 +2,18 @@ import type { Block } from '../schema'
 export const MIN_SENTENCE_PAUSE_MS = 350
 export const NARRATION_PLANS = {
   trial: { label: '無料体験', limit: 500, model: 'drama-3' },
-  basic: { label: '500円プラン', limit: 5000, model: 's2.1-pro' },
-  standard: { label: '980円プラン', price: 980, limit: 10000, model: 'drama-3' },
-  plus: { label: '1,980円プラン', price: 1980, limit: 30000, model: 'drama-3' },
-  premium: { label: '4,980円プラン', price: 4980, limit: 100000, model: 'drama-3' },
+  basic: { label: '500円プラン', limit: 7500, model: 's2.1-pro' },
+  standard: { label: '980円プラン', price: 980, limit: 12000, model: 'drama-3' },
+  plus: { label: '1,980円プラン', price: 1980, limit: 35000, model: 'drama-3' },
+  premium: { label: '4,980円プラン', price: 4980, limit: 110000, model: 'drama-3' },
 } as const
+export const NARRATION_PAID_MODELS = ['drama-3', 's2.1-pro'] as const
+export type NarrationPaidModel = (typeof NARRATION_PAID_MODELS)[number]
+export const NARRATION_MODEL_LABELS: Record<string, string> = {
+  'drama-3': 'Drama 3',
+  's2.1-pro': 'S2.1 Pro',
+  's2.1-pro-free': 'S2.1 Pro Free',
+}
 export type NarrationPlan = keyof typeof NARRATION_PLANS
 export const NARRATION_BILLING_PLANS = ['standard', 'plus', 'premium'] as const
 export type NarrationBillingPlan = (typeof NARRATION_BILLING_PLANS)[number]
@@ -72,7 +79,10 @@ export interface VoiceCue {
 export interface NarrationSettings {
   version: 1
   workId: string
-  episodes?: Record<string, { style: string; narrator: string; mode?: 'solo' | 'cast' }>
+  episodes?: Record<
+    string,
+    { style: string; narrator: string; mode?: 'solo' | 'cast'; model?: NarrationPaidModel }
+  >
   style: string
   narrator: string
   mode: 'solo' | 'cast'
@@ -101,6 +111,7 @@ export interface VoiceTake {
   segmentId: string
   fingerprint: string
   jobId: string
+  model?: string
   state: 'queued' | 'generating' | 'ready' | 'failed' | 'canceled' | 'unknown' | 'missing'
   error?: string
   createdAt: number
@@ -119,16 +130,26 @@ export interface NarrationRecord {
   dismissed?: string[]
   snapshots?: Record<string, VoiceSegment[]>
   undo?: Record<string, string>
-  operation?: { segments: VoiceSegment[]; jobs: string[]; whole: boolean; preview: boolean }
+  operation?: {
+    segments: VoiceSegment[]
+    jobs: string[]
+    whole: boolean
+    preview: boolean
+    model?: NarrationPaidModel
+  }
 }
-export interface Entitlement {
-  plan: NarrationPlan
-  label: string
-  model: string
+export interface NarrationAllowance {
   limit: number
   used: number
   reserved: number
   remaining: number
+}
+export interface Entitlement extends NarrationAllowance {
+  plan: NarrationPlan
+  label: string
+  model: string
+  modelAllowances?: Record<NarrationPaidModel, NarrationAllowance>
+  unitQuota: number
   period: string
   periodEnd: number | null
   voices: VoiceProfile[]

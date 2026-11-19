@@ -542,6 +542,14 @@
 .narration-quota {
   display: block;
 }
+.narration-model-choice {
+  display: grid;
+  gap: 6px;
+  margin-top: 12px;
+}
+.narration-model-choice select {
+  width: 100%;
+}
 .narration-quota-numbers {
   text-align: left;
   margin-top: 16px;
