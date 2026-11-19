@@ -28,7 +28,9 @@ export function NarrationCloudStatus() {
           {(cloud.limit / 1024 ** 3).toFixed(0)} GB
         </p>
       )}
-      <p>以前のバックアップで使う音声も保管します。生成の文字数枠とは別です。</p>
+      <p>
+        クラウドに保存した音声は、以前のバックアップで使う分も容量の範囲内で日数を問わず保管します。
+      </p>
     </div>
   )
 }
