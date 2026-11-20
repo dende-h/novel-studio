@@ -55,6 +55,9 @@
   margin: 0;
 }
 .narration-save {
+  flex: 0 0 8em;
+  text-align: center;
+  white-space: nowrap;
   font-size: 12px;
   color: var(--muted-foreground);
 }
@@ -687,6 +690,9 @@
   }
 }
 
+.narration-quota-trigger {
+  font-variant-numeric: tabular-nums;
+}
 .narration-model {
   color: var(--muted-foreground);
   margin-right: 10px;
@@ -1114,6 +1120,9 @@
 }
 .narration-studio [data-narration-state="changed"] {
   --narration-state-ink: light-dark(#7841a6, #d3a7f5);
+}
+.narration-studio [data-narration-state="preview"] {
+  --narration-state-ink: light-dark(#385b8d, #a6c3ed);
 }
 .narration-studio [data-narration-state="working"] {
   --narration-state-ink: light-dark(#0b7285, #76d7e8);

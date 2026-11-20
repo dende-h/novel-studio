@@ -24,6 +24,9 @@ function setup(migrate = true) {
     readFileSync(new URL('../../migrations/0005_subscriptions.sql', import.meta.url), 'utf8'),
   )
   real.exec(ddl)
+  real.exec(
+    readFileSync(new URL('../../migrations/0014_narration_parallel.sql', import.meta.url), 'utf8'),
+  )
   if (migrate) real.exec(sharedQuota)
   const batch = real.db.batch.bind(real.db)
   let tail = Promise.resolve()
@@ -498,4 +501,78 @@ it('本番に指定された有効な運営アカウントだけにプレミア�
   } finally {
     real.close()
   }
+})
+
+function multiSegmentPayload(count: number) {
+  return {
+    ...payload(),
+    segments: resolveSegments(
+      { id: 'e', title: '話', blocks: parseEpisodeBody('こんにちは。'.repeat(count)) },
+      emptyNarration('w').settings,
+    ),
+  }
+}
+
+it('複数の一話ジョブでも共有の4枠を超えず、短い修正に1枠を残す', async () => {
+  const { real, env } = setup()
+  env.NARRATION_PARALLEL_GENERATION = '1'
+  const left = multiSegmentPayload(5)
+  const right = multiSegmentPayload(5)
+  const edit = payload()
+  for (const body of [left, right, edit]) {
+    expect((await call(env, body)).status).toBe(202)
+  }
+  const jobs = real.rows<{ id: string; dispatch_token: string }>(
+    'SELECT id,dispatch_token FROM narration_jobs ORDER BY rowid',
+  )
+  const audio = readFileSync(new URL('../../public/narration-samples/silence.mp3', import.meta.url))
+  const ongoing: Array<() => void> = []
+  const provider = vi.fn(
+    () =>
+      new Promise<Response>((resolve) => {
+        ongoing.push(() => resolve(new Response(audio)))
+      }),
+  )
+  vi.stubGlobal('fetch', provider)
+  const bulk = Array.from({ length: 8 }, (_, i) => runJob(env, jobs[i % 2]!))
+  await vi.waitFor(() => expect(provider).toHaveBeenCalledTimes(4))
+  expect(real.rows("SELECT id FROM narration_takes WHERE state='generating'")).toHaveLength(4)
+  const partial = runJob(env, jobs[2]!)
+  await vi.waitFor(() => expect(provider).toHaveBeenCalledTimes(5))
+  const extra = await runJob(env, jobs[0]!)
+  expect(await extra.json()).toMatchObject({ done: false, progressed: false })
+  for (const complete of ongoing) complete()
+  await Promise.all([...bulk, partial])
+  expect(real.rows("SELECT id FROM narration_takes WHERE state='ready'")).toHaveLength(5)
+  expect(await entitlement(env, 'user')).toMatchObject({ used: 30, reserved: 36 })
+  real.close()
+})
+
+it('429だけを間隔を空けて再試行し、同じ文字枠の予約を一度だけ確定する', async () => {
+  const { real, env } = setup()
+  env.NARRATION_PARALLEL_GENERATION = '1'
+  const body = payload()
+  await call(env, body)
+  const job = real.row<{ id: string; dispatch_token: string }>(
+    'SELECT id,dispatch_token FROM narration_jobs',
+  )!
+  const provider = vi
+    .fn()
+    .mockResolvedValueOnce(new Response(null, { status: 429 }))
+    .mockImplementation(
+      async () =>
+        new Response(
+          readFileSync(new URL('../../public/narration-samples/silence.mp3', import.meta.url)),
+        ),
+    )
+  vi.stubGlobal('fetch', provider)
+  await runJob(env, job)
+  await runJob(env, job)
+  expect(provider).toHaveBeenCalledTimes(1)
+  expect(await entitlement(env, 'user')).toMatchObject({ used: 0, reserved: 6 })
+  real.exec('UPDATE narration_takes SET retry_at=0')
+  await runJob(env, job)
+  expect(provider).toHaveBeenCalledTimes(2)
+  expect(await entitlement(env, 'user')).toMatchObject({ used: 6, reserved: 0 })
+  real.close()
 })

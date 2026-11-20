@@ -2,6 +2,13 @@ import { useEffect, useMemo, useSyncExternalStore } from 'react'
 import { useAuth } from '@/ui/auth/auth-context'
 import { NarrationBackupIO } from '@/ui/narration/backup'
 import { narrationTransfer, subscribeNarrationTransfer } from '@/ui/narration/transfer-status'
+
+const formatUsed = (bytes: number) => {
+  if (bytes < 1024) return `${bytes} B`
+  const scale = bytes < 1024 ** 2 ? 1 : bytes < 1024 ** 3 ? 2 : 3
+  return `${(bytes / 1024 ** scale).toLocaleString('ja-JP', { maximumFractionDigits: 1 })} ${['', 'KB', 'MB', 'GB'][scale]}`
+}
+
 export function NarrationCloudStatus() {
   const { userId, getToken, status, canRestore } = useAuth()
   const owner = userId ?? 'local'
@@ -24,11 +31,12 @@ export function NarrationCloudStatus() {
       </p>
       {cloud.limit !== undefined && (
         <p>
-          音声の保管：{((cloud.used ?? 0) / 1024 ** 3).toFixed(2)} /{' '}
-          {(cloud.limit / 1024 ** 3).toFixed(0)} GB
+          現在の朗読：{formatUsed(cloud.used ?? 0)} / {(cloud.limit / 1024 ** 3).toFixed(0)} GB
         </p>
       )}
-      <p>以前のバックアップで使う音声も保管します。生成の文字数枠とは別です。</p>
+      <p>
+        現在の朗読をクラウドに保存します。復元用の音声は、対応するバックアップを保持している間は別に保管します。
+      </p>
     </div>
   )
 }

@@ -30,6 +30,7 @@ export interface NarrationEnv extends ClerkEnv {
   NARRATION_RELEASE?: string
   NARRATION_PAID_ENABLED?: string
   NARRATION_DISPATCH_URL?: string
+  NARRATION_PARALLEL_GENERATION?: string
   STRIPE_PRICE_MONTHLY?: string
   STRIPE_PRICE_YEARLY?: string
   NARRATION_PRICE_STANDARD?: string

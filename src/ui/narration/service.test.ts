@@ -276,6 +276,49 @@ it('旧UIの初回候補を復元すると自動反映し、試聴キャッシ�
   expect(service.getSnapshot().record?.takes).toHaveLength(2)
 })
 
+it('話の音声だけを削除し、サーバーから同じ音声が戻っても再表示しない', async () => {
+  const record = emptyNarration('w')
+  const [first] = resolveSegments(
+    { id: 'episode-one', title: '第一話', blocks: parseEpisodeBody('朝。') },
+    record.settings,
+  )
+  const [second] = resolveSegments(
+    { id: 'episode-two', title: '第二話', blocks: parseEpisodeBody('夕方。') },
+    record.settings,
+  )
+  const take = (id: string, segment: VoiceSegment): VoiceTake => ({
+    id,
+    segmentId: segment.id,
+    fingerprint: segment.fingerprint,
+    jobId: id,
+    state: 'ready',
+    createdAt: 1,
+  })
+  const takes = [take('morning', first!), take('evening', second!)]
+  record.takes = takes
+  record.accepted = Object.fromEntries(takes.map((item) => [item.segmentId, item.id]))
+  record.snapshots = { 'episode-one': [first!], 'episode-two': [second!] }
+  record.settings.episodes = { 'episode-one': { style: 'quiet', narrator: 'default' } }
+  memory.set('narration:local:w', record)
+  memory.set('narration-audio:local:morning', new Blob(['test']))
+  memory.set('narration-audio:local:evening', new Blob(['test']))
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () => Response.json({ entitlement: {}, takes, jobs: [] })),
+  )
+  const service = new NarrationService('w', async () => null)
+  await service.init()
+  await service.deleteEpisodeAudio('episode-one')
+  await service.refresh()
+  const after = service.getSnapshot().record
+  expect(after?.takes).toEqual([takes[1]])
+  expect(after?.snapshots).toEqual({ 'episode-two': [second!] })
+  expect(after?.settings).toEqual(record.settings)
+  expect(after?.deletedTakeIds).toEqual(['morning'])
+  expect(memory.has('narration-audio:local:morning')).toBe(false)
+  expect(memory.has('narration-audio:local:evening')).toBe(true)
+})
+
 it('送信前の状態確認と重なっても、新しい生成結果を取り込み次の部分修正を続けられる', async () => {
   const record = emptyNarration('w')
   const [segment] = resolveSegments(

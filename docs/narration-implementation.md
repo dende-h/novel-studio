@@ -25,7 +25,7 @@ D1 batch内のトリガーで文字枠を予約し、成功だけ消費、失敗
 予約時の期間を保持し、JSTの月境界や年額会員にも月次枠を適用する。
 日次入力バイト上限は `NARRATION_DAILY_BYTE_LIMIT`（既定1,000,000）。失敗を含めた保守的な合計で停止する。
 試行IDはtake ID。結果不明は自動再送せず予約を保留し、事業者側での成功／失敗を確認して運営が確定する。
-D1ロックで環境全体1区間ずつ。プロバイダーの429は失敗として返却し、作者が時間をおいて再試行する。
+Pagesと朗読Workerの `NARRATION_PARALLEL_GENERATION=1` で、D1により環境全体で一話生成を最大4区間、試聴・4区間以下の短いジョブに追加1枠を確保する。空き枠では続けて次の区間を処理し、429だけ最大2回、待機を挟んで再試行する。結果不明の生成は再送しない。未設定の環境では1区間ずつ処理する。 STGのDrama 3で6,210文字・300区間を実測し、全区間が約78秒で生成完了。失敗・再試行は0件で、音声の取得まで約100秒だった。
 
 原稿スナップショットは既存ENCRYPTION_KEYで暗号化したR2。
 音声はprivate R2のユーザーprefix内に保存し、Clerk認証＋所有者照合のAPIだけで取得。
@@ -130,7 +130,7 @@ E2Eは場面区切り付きの長文、連続クリック・ドラッグ、語�
 
 ## 2026-11-09 文単位の生成範囲と句点の間
 
-本文は文単位の連続選択に統一。語句の読み修正は専用の選択欄で行い、再生成範囲は常に文全体。セリフも句点等で分割し、旧音声は保存・再生の導線を維持する。跨文の旧読み指定は確認対象として生成を止める。
+本文は文単位の連続選択に統一。語句の読み修正は専用の選択欄で行い、再生成範囲は常に文全体。本文の句点などで分ける。同じ段落の中で対応する「」・『』・（）・()は、句点や疑問符・感嘆符を含めて一つの生成区間にする。旧音声は保存済みの区間順で再生・書き出しできる。跨文の旧読み指定は確認対象として生成を止める。
 
 resolveSegments は新規の読点補正を停止し、句点等に350msの最低間を設定。assembleNarration は OfflineAudioContext で前後の無音を測定し、joinMp3 で不足分だけを補う。音声データは切らず、再生・試聴・比較・書き出しに共用。端の測定値だけを最大256音声分キャッシュする。詳細と互換性の扱いは decisions.md の同日項目を参照。
 
@@ -170,7 +170,7 @@ resolveSegments は新規の読点補正を停止し、句点等に350msの最�
 - Customer Portalのプラン変更を有効にし、基本プランの2価格と上位プランの3価格を許可する。プランの引き下げは即時適用し、支払済みの残り期間を日割りで精算する。Stripe標準の期間末ダウングレードは同じ商品内の変更に限られる。
 - STGではStripeテストモードで新規契約と既存契約の変更を試し、webhook後にD1のprice_idと残り文字数・モデルを確認する。環境変数の登録後に `NARRATION_BILLING_ENABLED=1` を設定する。本番のポータルに上位プランを追加するのは、朗読機能と上位プランの利用枠が本番で利用できることを確認した後。設定根拠は [Stripeのポータルの制約](https://docs.stripe.com/customer-management#technical-limitations) と [契約変更の設定](https://docs.stripe.com/customer-management/configure-portal#configure-subscription-management) を参照。
 
-本番リリース時は `pnpm exec wrangler d1 migrations apply DB --remote` で 0011〜0013 を先に適用し、`pnpm exec wrangler deploy --config workers/narration/wrangler.production.toml` で本番Workerを配備する。Pagesの本番環境にそのURLを `NARRATION_DISPATCH_URL` として設定する。
+本番では `pnpm exec wrangler d1 migrations apply DB --remote` で必要なマイグレーションを先に適用する（4並列生成と容量管理では 0014・0015）。Pagesの本番環境に `NARRATION_DISPATCH_URL` と `NARRATION_PARALLEL_GENERATION=1` を設定する。Pagesで新しい音声参照の保存を開始した後に `pnpm exec wrangler deploy --config workers/narration/wrangler.production.toml` で4並列生成と未参照音声の回収を有効にする。
 一般公開フラグを閉じた状態でPagesを配信し、設定と動作を確認してから公開する。声目録の有効化と公開前の利用条件確認も本番側で行う。
 
 Fish Audioへの確認事項は、leaf運営のAPI契約で利用者が本文から音声を生成し、MP3を端末へ保存できるか、公開・ライセンス済みの日本語声をleafの選択肢に掲載できるか、公式試聴サンプルをleaf上で再生できるか、利用停止や表示条件があるか。今回の範囲は生成とダウンロードまでで、grove配信は別途確認する。

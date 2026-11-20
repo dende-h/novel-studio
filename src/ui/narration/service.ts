@@ -185,10 +185,14 @@ export class NarrationService {
       if (this.paused || revision !== this.revision) return
       const record = this.state.record
       if (record) {
-        const merged = [
-          ...record.takes.filter((t) => !body.takes.some((v) => v.id === t.id)),
-          ...body.takes,
-        ]
+        const discarded = new Set(record.deletedTakeIds)
+        const merged = Array.from(
+          new Map(
+            [...record.takes, ...body.takes]
+              .filter((take) => !discarded.has(take.id))
+              .map((take) => [take.id, take]),
+          ).values(),
+        )
         await this.persist({ ...record, takes: merged, jobs: body.jobs })
         await this.completeOperation()
         await this.applyInitialRecordings()
@@ -251,7 +255,7 @@ export class NarrationService {
               .at(-1),
           )
           if (ready.every(Boolean)) {
-            for (const t of ready) await this.audio(t!.id)
+            await this.cacheAudio(ready.map((take) => take!.id))
             await this.persist({
               ...this.state.record,
               accepted: {
@@ -325,6 +329,46 @@ export class NarrationService {
     }
   }
 
+  async deleteEpisodeAudio(episodeId: string) {
+    const record = this.state.record
+    const prefix = episodeId + ':'
+    const targets = record?.takes.filter((take) => take.segmentId.startsWith(prefix))
+    if (!record || !targets?.length) return
+    if (
+      this.state.sending ||
+      targets.some((take) => ['queued', 'generating', 'unknown'].includes(take.state))
+    )
+      throw new Error('生成が終わってから音声を削除してください。')
+
+    const ids = new Set(targets.map((take) => take.id))
+    const withoutEpisode = <T>(map?: Record<string, T>) =>
+      map &&
+      Object.fromEntries(Object.entries(map).filter(([segmentId]) => !segmentId.startsWith(prefix)))
+    const withoutSnapshot = (snapshots?: NarrationRecord['snapshots']) => {
+      if (!snapshots) return undefined
+      const next = { ...snapshots }
+      delete next[episodeId]
+      return next
+    }
+
+    await this.persist({
+      ...record,
+      takes: record.takes.filter((take) => !ids.has(take.id)),
+      deletedTakeIds: [...new Set([...(record.deletedTakeIds ?? []), ...ids])],
+      accepted: withoutEpisode(record.accepted) ?? {},
+      candidates: withoutEpisode(record.candidates),
+      candidateSegments: withoutEpisode(record.candidateSegments),
+      undo: withoutEpisode(record.undo),
+      snapshots: withoutSnapshot(record.snapshots),
+      undoSnapshots: withoutSnapshot(record.undoSnapshots),
+      operation: record.operation?.segments.some((segment) => segment.episodeId === episodeId)
+        ? undefined
+        : record.operation,
+    })
+    await this.flush()
+    await Promise.all([...ids].map((id) => this.repository.deleteAudio(id)))
+  }
+
   async pauseForRestore() {
     this.paused = true
     clearTimeout(this.timer)
@@ -358,7 +402,7 @@ export class NarrationService {
     })
     if (takes.some((t) => !t)) return
     // Fetch every asset before atomically replacing any accepted audio.
-    for (const t of takes) await this.audio(t!.id)
+    await this.cacheAudio(takes.map((take) => take!.id))
     const current = this.state.record!
     if (current.operation !== operation) return
     const mapping = Object.fromEntries(takes.map((t) => [t!.segmentId, t!.id]))
@@ -498,6 +542,12 @@ export class NarrationService {
       accepted: { ...this.state.record.accepted, [take.segmentId]: take.id },
     })
   }
+  private async cacheAudio(ids: string[]) {
+    for (let offset = 0; offset < ids.length; offset += 4) {
+      await Promise.all(ids.slice(offset, offset + 4).map((id) => this.audio(id)))
+    }
+  }
+
   async audio(id: string): Promise<Blob> {
     return new NarrationBackupIO(this.owner, this.getToken).audio(id)
   }

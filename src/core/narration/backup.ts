@@ -113,6 +113,7 @@ export const NarrationRecordSchema: z.ZodType<NarrationRecord> = z
     undoSnapshots: z.record(z.string(), z.array(segment)).optional(),
     undo: strings.optional(),
     dismissed: z.array(z.string()).optional(),
+    deletedTakeIds: z.array(z.string()).optional(),
     operation: z
       .object({
         segments: z.array(segment),

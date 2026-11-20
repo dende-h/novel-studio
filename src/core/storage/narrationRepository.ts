@@ -39,6 +39,10 @@ export class NarrationRepository {
   saveAudio(id: string, blob: Blob): Promise<void> {
     return this.store.set(`narration-audio:${this.owner}:${id}`, blob)
   }
+  async deleteAudio(id: string): Promise<void> {
+    await this.store.delete(`narration-audio:${this.owner}:${id}`)
+    await this.store.delete(`narration-audio-hash:${this.owner}:${id}`)
+  }
   audio(id: string): Promise<Blob | undefined> {
     return this.store.get<Blob>(`narration-audio:${this.owner}:${id}`)
   }

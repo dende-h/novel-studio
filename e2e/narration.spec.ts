@@ -24,9 +24,11 @@ test('専用画面で複数の指示を保存し、再読込後も同じジョ�
  test.setTimeout(60000)
  const takes:VoiceTake[]=[]
  let posts=0
+ let releaseDownloads = () => {}
+ const downloadsMayStart = new Promise<void>((resolve) => { releaseDownloads = resolve })
  await page.route('**/api/narration*',async(route)=>{
   const request=route.request(),url=new URL(request.url())
-  if(url.searchParams.get('action')==='audio'){await route.fulfill({contentType:'audio/mpeg',body:readFileSync('public/narration-samples/silence.mp3')});return}
+  if(url.searchParams.get('action')==='audio'){await downloadsMayStart;await route.fulfill({contentType:'audio/mpeg',body:readFileSync('public/narration-samples/silence.mp3')});return}
   if(request.method()==='POST'){
    posts++
    const body=request.postDataJSON()
@@ -84,8 +86,10 @@ test('専用画面で複数の指示を保存し、再読込後も同じジョ�
  await page.getByRole('button',{name:'同意して生成',exact:true}).click()
  await expect.poll(()=>posts).toBe(1)
  await page.reload()
- await expect(page.getByText(/生成中：残り 4区間/)).toBeVisible()
+ await expect(page.getByText(/生成中：残り 3区間/)).toBeVisible()
  for(const take of takes)take.state='ready'
+ await expect(page.locator('footer').getByText('音声を端末に保存中…')).toBeVisible()
+ releaseDownloads()
  await page.getByRole('button',{name:'通して聴く',exact:true}).waitFor()
  await expect(page.getByRole('button',{name:'通して聴く',exact:true})).toBeEnabled({timeout:10000})
  await page.getByRole('button',{name:'通して聴く',exact:true}).click()
@@ -94,7 +98,7 @@ test('専用画面で複数の指示を保存し、再読込後も同じジョ�
  await page.locator('footer input[type=range]').focus()
  await page.keyboard.press('End')
  await page.locator('footer').getByRole('button',{name:'ここを直す',exact:true}).click()
- await expect(page.getByRole('button',{name:'文4を選ぶ',exact:true})).toHaveAttribute('aria-pressed','true')
+ await expect(page.getByRole('button',{name:'文3を選ぶ',exact:true})).toHaveAttribute('aria-pressed','true')
  await page.getByRole('button',{name:'× 選択解除',exact:true}).click()
  await page.reload()
  await expect(page.getByRole('button',{name:'MP3で保存',exact:true})).toBeEnabled()
@@ -110,7 +114,7 @@ test('専用画面で複数の指示を保存し、再読込後も同じジョ�
  await expect(page.getByRole('button',{name:'こちらを採用',exact:true})).toBeVisible({timeout:10000})
  await expect(page.locator('.narration-inspector audio')).toHaveAttribute('src',/^blob:/)
  await expect(page.locator('.narration-paragraph[data-narration-state=compare]')).toHaveCount(1)
- await expect(page.locator('.narration-paragraph[data-narration-state=ready]')).toHaveCount(3)
+ await expect(page.locator('.narration-paragraph[data-narration-state=ready]')).toHaveCount(2)
  await expect(page.getByText(/保存した指示/)).toHaveCount(0)
  const colors=await page.locator('.narration-paragraph[data-narration-state=compare]').evaluate(el=>({
   status:getComputedStyle(el.closest('.narration-block')!.querySelector('.narration-state-tag')!).backgroundColor,
@@ -157,8 +161,8 @@ test('専用画面で複数の指示を保存し、再読込後も同じジョ�
  for(let i=0;i<4;i++) await page.keyboard.press('ArrowRight')
  await page.keyboard.up('Shift')
  await expect(page.getByLabel('「ただいま」の読み仮名')).toBeVisible()
- await expect(page.locator('.narration-direction blockquote')).toHaveText('「ただいま。')
- await expect(page.locator('.narration-selection-bar')).toContainText('6文字を選択中')
+ await expect(page.locator('.narration-direction blockquote')).toHaveText('「ただいま。会いたかった」')
+ await expect(page.locator('.narration-selection-bar')).toContainText('13文字を選択中')
  await page.keyboard.press('Escape')
  await expect(page.getByLabel('朗読スタイル')).toBeVisible()
 
@@ -196,9 +200,9 @@ test('長い原稿でもスタイルと速さ・間をまとめ、複数の声�
  await expect(page.getByText('場面の切れ目',{exact:true})).toHaveCount(0)
  await expect(page.getByText('演技を添える',{exact:true})).toHaveCount(0)
  await expect(page.getByRole('region',{name:'本文の色分け'})).toBeVisible()
- await expect(page.locator('.narration-paragraph[data-narration-state=empty]')).toHaveCount(80)
- await expect(page.locator('.narration-block')).toHaveCount(80)
- await expect(page.locator('.narration-block .narration-state-tag')).toHaveCount(80)
+ await expect(page.locator('.narration-paragraph[data-narration-state=empty]')).toHaveCount(60)
+ await expect(page.locator('.narration-block')).toHaveCount(60)
+ await expect(page.locator('.narration-block .narration-state-tag')).toHaveCount(60)
  const style=await page.getByLabel('朗読スタイル').boundingBox()
  const speed=await page.getByLabel('速さ').boundingBox()
  const gap=await page.getByLabel('段落のあとの間').boundingBox()
@@ -261,7 +265,7 @@ test('長い原稿でもスタイルと速さ・間をまとめ、複数の声�
  await expect(page.locator('.narration-paragraph.is-selected')).toHaveCount(1)
  await page.getByRole('button',{name:'文3を選ぶ',exact:true}).click()
  await expect(page.locator('.narration-paragraph.is-selected')).toHaveCount(0)
- await expect(page.locator('.narration-block')).toHaveCount(80)
+ await expect(page.locator('.narration-block')).toHaveCount(60)
  expect(await page.locator('.narration-block').evaluateAll(blocks=>blocks.every(block=>block.querySelectorAll('[data-selectable]').length===1))).toBe(true)
  const chooseWord = async () => {
   await page.getByRole('button',{name:'文1を選ぶ',exact:true}).click()
@@ -464,17 +468,32 @@ test('一文の前半と後半の読みを別々に直しても、生成・置�
  await expect.poll(()=>page.locator('.narration-inspector audio').evaluate(el=>(el as HTMLAudioElement).duration)).toBeGreaterThan(0.4)
  expect(await page.locator('.narration-inspector audio').evaluate(el=>(el as HTMLAudioElement).duration)).toBeLessThan(0.6)
  await expect(page.locator('.narration-paragraph[data-narration-state=ready]')).toHaveCount(1)
+ await page.getByText('書き出し設定',{exact:false}).first().click()
+ await page.getByRole('button',{name:'この話の音声を削除',exact:true}).click()
+ await expect(page.getByRole('dialog')).toContainText('原稿や読み方の設定は残ります')
+ await page.getByRole('dialog').getByRole('button',{name:'音声を削除',exact:true}).click()
+ await expect(page.getByText('この話の朗読音声を削除しました。')).toBeVisible()
+ await expect(page.locator('.narration-paragraph[data-narration-state=empty]')).toHaveCount(1)
+ await page.reload()
+ await expect(page.locator('.narration-paragraph[data-narration-state=empty]')).toHaveCount(1)
+ expect(posts).toBe(2)
+
 })
 
 
-test('旧セリフ音声は一話再生成が成功するまで保持し、新しい文単位に移行する',async({page})=>{
+test('分割済みの旧セリフ音声を保持し、一話再生成で一つのセリフにまとめる',async({page})=>{
  const work={id:'legacy-audio',title:'旧音声',episodes:[{id:'episode',title:'話',blocks:[{id:'b0',type:'paragraph' as const,inlines:[{type:'text' as const,text:'「朝。夜。」'}]}]}]}
  const record=emptyNarration(work.id)
- const old=resolveSegments(work.episodes[0]!,record.settings,undefined,{model:'s2.1-pro-free',voices:[{id:'default',version:'1'}],legacy:true})
+ const [group]=resolveSegments(work.episodes[0]!,record.settings)
+ const old=['「朝。','夜。」'].map((text,i)=>({
+  ...group!,id:'episode:b0:old-part-'+i,spanId:'old-part-'+i,text,characters:text.length,
+  source:{...group!.source,inlines:[{type:'text' as const,text}]},
+ }))
  record.snapshots={episode:old}
- record.takes=old.map((s)=>({id:'old-take',segmentId:s.id,fingerprint:s.fingerprint,state:'ready' as const,jobId:'old-job',createdAt:1}))
- record.accepted={[old[0]!.id]:'old-take'}
+ record.takes=old.map((s,i)=>({id:'old-take-'+i,segmentId:s.id,fingerprint:s.fingerprint,state:'ready' as const,jobId:'old-job',createdAt:1}))
+ record.accepted=Object.fromEntries(record.takes.map((take)=>[take.segmentId,take.id]))
  const takes=[...record.takes]
+ let generated: string[] = []
  let posts=0
  await page.route('**/api/narration*',async(route)=>{
   if(new URL(route.request().url()).searchParams.get('action')==='audio'){
@@ -483,6 +502,7 @@ test('旧セリフ音声は一話再生成が成功するまで保持し、新�
   if(route.request().method()==='POST'){
    posts++
    const body=route.request().postDataJSON()
+   generated=body.segments.map((segment: { text: string })=>segment.text)
    for(const part of body.segments) takes.push({id:crypto.randomUUID(),segmentId:part.id,fingerprint:part.fingerprint,jobId:body.id,state:'ready',createdAt:2})
    await route.fulfill({status:202,json:{id:body.id}});return
   }
@@ -505,17 +525,18 @@ test('旧セリフ音声は一話再生成が成功するまで保持し、新�
  await expect(page.getByRole('button',{name:'通して聴く',exact:true})).toBeEnabled()
  await page.getByRole('button',{name:'文1を選ぶ',exact:true}).click()
  await expect(page.getByRole('button',{name:'選択部分を生成',exact:true})).toBeDisabled()
- await expect(page.getByText(/前回の音声と文の区切りが異なります。選択を解除/)).toBeVisible()
+ await expect(page.getByText(/前回の音声と区間の分け方が異なります。選択を解除/)).toBeVisible()
  expect(posts).toBe(0)
  await page.getByRole('button',{name:'× 選択解除',exact:true}).click()
  await page.getByRole('button',{name:'一話を再生成',exact:true}).click()
  await page.getByRole('dialog').getByRole('button',{name:'同意して生成',exact:true}).click()
  await expect.poll(()=>posts).toBe(1)
- await expect(page.locator('.narration-paragraph[data-narration-state=ready]')).toHaveCount(2)
+ expect(generated).toEqual(['「朝。夜。」'])
+ await expect(page.locator('.narration-paragraph[data-narration-state=ready]')).toHaveCount(1)
  await page.getByRole('button',{name:'文1を選ぶ',exact:true}).click()
  await expect(page.getByRole('button',{name:'選択部分を修正して生成',exact:true})).toBeEnabled()
  await page.getByText('以前の生成音声',{exact:true}).click()
- await expect(page.getByRole('button',{name:'聴く',exact:true})).toBeVisible()
+ await expect(page.getByRole('button',{name:'聴く',exact:true})).toHaveCount(2)
 })
 
 test('モデルを切り替えても採用済み音声を維持し、話ごとに選んだモデルで生成する', async ({ page }) => {

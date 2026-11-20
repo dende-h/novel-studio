@@ -1,10 +1,13 @@
 import { DurableObject } from 'cloudflare:workers'
+import { cleanNarrationStorage } from './storage-cleanup'
 
 interface Env {
   DB: D1Database
   MEDIA: R2Bucket
   RUNNER: DurableObjectNamespace<NarrationRunner>
   API_ORIGIN: string
+  NARRATION_PARALLEL_GENERATION?: string
+  NARRATION_STORAGE_CLEANUP?: string
 }
 interface Dispatch {
   id: string
@@ -23,28 +26,43 @@ export class NarrationRunner extends DurableObject<Env> {
     if (!job) return
     // Set the next alarm before starting network I/O. A crashed request cannot strand a job.
     await this.ctx.storage.setAlarm(Date.now() + 190_000)
-    try {
-      const response = await fetch(
-        `${this.env.API_ORIGIN}/api/narration?action=run&job=${encodeURIComponent(job.id)}`,
-        {
-          method: 'POST',
-          headers: { authorization: `Bearer ${job.token}` },
-          signal: AbortSignal.timeout(150_000),
-        },
-      )
-      if (response.ok && ((await response.json()) as { done: boolean }).done) {
-        await this.ctx.storage.deleteAll()
-        await this.ctx.storage.deleteAlarm()
-        return
+    const parallel = this.env.NARRATION_PARALLEL_GENERATION === '1'
+    const stopAt = Date.now() + 25_000
+    let done = false
+    let progressed = false
+    const runLane = async () => {
+      try {
+        do {
+          const response = await fetch(
+            `${this.env.API_ORIGIN}/api/narration?action=run&job=${encodeURIComponent(job.id)}`,
+            {
+              method: 'POST',
+              headers: { authorization: `Bearer ${job.token}` },
+              signal: AbortSignal.timeout(150_000),
+            },
+          )
+          if (!response.ok) return
+          const state = (await response.json()) as { done: boolean; progressed?: boolean }
+          if (state.done) done = true
+          if (!state.progressed || done) return
+          progressed = true
+        } while (parallel && Date.now() < stopAt)
+      } catch {
+        /* D1 prevents a provider call being repeated after an unknown result. */
       }
-    } catch {
-      /* D1 prevents a provider call being repeated after an unknown result. */
     }
-    await this.ctx.storage.setAlarm(Date.now() + 5000)
+    await Promise.all(Array.from({ length: parallel ? 4 : 1 }, runLane))
+    if (done) {
+      await this.ctx.storage.deleteAll()
+      await this.ctx.storage.deleteAlarm()
+      return
+    }
+    await this.ctx.storage.setAlarm(Date.now() + (parallel && progressed ? 100 : 5000))
   }
 }
 export default {
   async scheduled(_controller: ScheduledController, env: Env, ctx: ExecutionContext) {
+    if (env.NARRATION_STORAGE_CLEANUP === '1') ctx.waitUntil(cleanNarrationStorage(env))
     ctx.waitUntil(
       (async () => {
         const expired = (

@@ -10,7 +10,7 @@ import {
 import { emptyNarration } from './types'
 
 describe('文章選択と読み方', () => {
-  it('台詞の句点でも分割し、話別スタイルと語句だけの読みを反映する', () => {
+  it('台詞の途中の句点を保ち、話別スタイルと語句だけの読みを反映する', () => {
     const episode = {
       id: 'e',
       title: '話',
@@ -31,8 +31,8 @@ describe('文章選択と読み方', () => {
       },
     ]
     const segments = resolveSegments(episode, settings)
-    expect(segments).toHaveLength(4)
-    expect(segments[1]?.text).toBe('「やしろへ。')
+    expect(segments).toHaveLength(3)
+    expect(segments[1]?.text).toBe('「やしろへ。帰ろう」')
     expect(segments[0]?.direction).toBe('静かに落ち着いて、言葉の余韻を大切に')
     expect(segments[1]?.direction).toBe('寂しそうに')
     expect(resolveSegments({ ...episode, id: 'other' }, settings)[0]?.direction).toBe('')
@@ -151,7 +151,7 @@ it('サウンドノベルの場面区切りを新しい朗読の間に取り込�
   ).toBe(700)
 })
 
-it('句点・疑問符・感嘆符・閉じかっこを区切りとし、読点は分割しない', () => {
+it('地の文は句点で分け、かっこ内の句点・疑問符・感嘆符では分けない', () => {
   const text = '母は、笑った。「本当？うれしい！！ありがとう。」帰ろう。'
   const pieces = resolveSegments(
     { id: 'e', title: '話', blocks: parseEpisodeBody(text) },
@@ -159,13 +159,36 @@ it('句点・疑問符・感嘆符・閉じかっこを区切りとし、読点�
   )
   expect(pieces.map((s) => s.text)).toEqual([
     '母は、笑った。',
-    '「本当？',
-    'うれしい！！',
-    'ありがとう。」',
+    '「本当？うれしい！！ありがとう。」',
     '帰ろう。',
   ])
   expect(pieces.map((s) => s.text).join('')).toBe(text)
   expect(pieces.every((s) => s.pauseMs === 350)).toBe(true)
+})
+
+it('会話と括弧書きは前後の地の文から分け、入れ子は同じ区間に保つ', () => {
+  const text =
+    '母は、「『本当？』と思ったよ。（あの夜だ！）」、と笑った。（うれしかった！本当に。）私はうなずく。'
+  const pieces = resolveSegments(
+    { id: 'e', title: '話', blocks: parseEpisodeBody(text) },
+    emptyNarration('w').settings,
+  )
+  expect(pieces.map((part) => part.text)).toEqual([
+    '母は、',
+    '「『本当？』と思ったよ。（あの夜だ！）」、',
+    'と笑った。',
+    '（うれしかった！本当に。）',
+    '私はうなずく。',
+  ])
+  expect(pieces.map((part) => part.text).join('')).toBe(text)
+})
+
+it('閉じ忘れた括弧のあとも、本文の残りを分ける', () => {
+  const pieces = resolveSegments(
+    { id: 'e', title: '話', blocks: parseEpisodeBody('「閉じ忘れた。次の文。最後の文。') },
+    emptyNarration('w').settings,
+  )
+  expect(pieces.map((part) => part.text)).toEqual(['「閉じ忘れた。', '次の文。', '最後の文。'])
 })
 
 it('段落末の指定は句点の間と重ねず、長い文を読点で勝手に分割しない', () => {
@@ -216,7 +239,7 @@ it('同じ一文の読みを前半・後半で直しても、原文の順序と�
 })
 
 it('旧形式の複数文にまたがる読みを文ごとに繰り返さず、元の指定は確認用に残す', () => {
-  const text = '「こんにちは。さようなら」'
+  const text = '朝になった。夕方になった。'
   const episode = { id: 'e', title: '話', blocks: parseEpisodeBody(text) }
   const settings = emptyNarration('w').settings
   settings.cues = [
@@ -225,14 +248,14 @@ it('旧形式の複数文にまたがる読みを文ごとに繰り返さず、�
       episodeId: 'e',
       scope: 'range',
       refs: [{ blockId: 'b1', snapshot: text }],
-      reading: 'こんにちは。さようなら',
+      reading: 'あさになった。ゆうがたになった。',
     },
   ]
   const before = JSON.stringify(settings)
   expect(readingCuesNeedingReview(episode, settings).map((c) => c.id)).toEqual(['old'])
   expect(resolveSegments(episode, settings).map((s) => s.text)).toEqual([
-    '「こんにちは。',
-    'さようなら」',
+    '朝になった。',
+    '夕方になった。',
   ])
   expect(JSON.stringify(settings)).toBe(before)
 })

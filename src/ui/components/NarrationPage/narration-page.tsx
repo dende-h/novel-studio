@@ -58,11 +58,13 @@ export function NarrationRoute({
   workId,
   episodeId,
   stagingRepo,
+  syncAudioRemoval,
 }: {
   store: EditorStore
   workId: string
   episodeId: string
   stagingRepo: StagingRepository
+  syncAudioRemoval?: () => Promise<unknown>
 }) {
   const state = useEditorStore(store)
   const [error, setError] = useState('')
@@ -86,6 +88,7 @@ export function NarrationRoute({
       work={state.work}
       initialEpisodeId={episodeId}
       stagingRepo={stagingRepo}
+      syncAudioRemoval={syncAudioRemoval}
     />
   )
 }
@@ -93,10 +96,12 @@ function NarrationPage({
   work,
   initialEpisodeId,
   stagingRepo,
+  syncAudioRemoval,
 }: {
   work: Work
   initialEpisodeId: string
   stagingRepo: StagingRepository
+  syncAudioRemoval?: () => Promise<unknown>
 }) {
   const auth = useAuth()
   const cloud = useSyncExternalStore(subscribeNarrationTransfer, () =>
@@ -119,6 +124,15 @@ function NarrationPage({
     document.addEventListener('visibilitychange', refreshOnReturn)
     return () => document.removeEventListener('visibilitychange', refreshOnReturn)
   }, [service])
+  const [showSaving, setShowSaving] = useState(false)
+  useEffect(() => {
+    if (!saving) {
+      setShowSaving(false)
+      return
+    }
+    const timer = window.setTimeout(() => setShowSaving(true), 450)
+    return () => window.clearTimeout(timer)
+  }, [saving])
   const [episodeId, setEpisodeId] = useState(initialEpisodeId || work.episodes[0]?.id || '')
   const episode = work.episodes.find((e) => e.id === episodeId) ?? work.episodes[0]
   const [stagings, setStagings] = useState<Staging[]>([])
@@ -130,6 +144,7 @@ function NarrationPage({
     title: string
     description: string
     label: string
+    destructive?: boolean
     action: () => void
   } | null>(null)
   const manuscript = useRef<HTMLDivElement>(null)
@@ -426,6 +441,13 @@ function NarrationPage({
   const selectedText = targets.map((s) => plainText(s.source.inlines)).join('')
   const currentIndex =
     playing?.timeline.findIndex((t) => position >= t.start && position < t.end) ?? -1
+  const episodeTakes = record.takes.filter((take) => take.segmentId.startsWith(episode.id + ':'))
+  const deletableAudio = episodeTakes.some(
+    (take) => take.state === 'ready' || take.state === 'missing',
+  )
+  const deletionBlocked = episodeTakes.some((take) =>
+    ['queued', 'generating', 'unknown'].includes(take.state),
+  )
   const running = record.takes.filter((t) => t.state === 'queued' || t.state === 'generating')
   const accepted = (segment: VoiceSegment) =>
     record.takes.find((t) => t.id === record.accepted[segment.id] && t.state === 'ready')
@@ -437,6 +459,20 @@ function NarrationPage({
       .at(-1)
   const opening = openingSegments(segments)
   const previewReady = opening.length > 0 && opening.every(cached)
+  const previewIds = new Set(opening.filter(cached).map((segment) => segment.id))
+  const operation = record.operation
+  const operationJobs = new Set(operation?.jobs)
+  const generated = new Set(
+    record.takes
+      .filter((take) => take.state === 'ready' && operationJobs.has(take.jobId))
+      .map((take) => JSON.stringify([take.segmentId, take.fingerprint])),
+  )
+  const ungenerated = operation?.segments.filter(
+    (segment) => !generated.has(JSON.stringify([segment.id, segment.fingerprint])),
+  )
+  const preparing = !!operation && ungenerated?.length === 0
+  const preparingIds = new Set(preparing ? operation?.segments.map((segment) => segment.id) : [])
+  const preparingLabel = error ? '音声の端末保存を再試行します' : '音声を端末に保存中…'
   const pending = segments.filter(
     (s) =>
       !matchesAdopted(s, accepted(s), entitlement) &&
@@ -480,6 +516,7 @@ function NarrationPage({
     !!allowance &&
     cost(items) <= allowance.remaining &&
     !sending &&
+    !preparing &&
     !running.length &&
     !record.takes.some((t) => t.state === 'unknown') &&
     !items.some((s) => s.characters > 800)
@@ -595,7 +632,9 @@ function NarrationPage({
     jobModel = requestedModel,
   ) => {
     if (!whole && !preview && needsSentenceRebuild) {
-      setNotice('前回の音声と文の区切りが異なります。先に一話を再生成してください。')
+      setNotice(
+        '前回の音声と区間の分け方が異なります。部分修正するには、一話を再生成してください。',
+      )
       return
     }
     if (
@@ -715,7 +754,7 @@ function NarrationPage({
   const showSignIn =
     auth.available && !auth.isSignedIn && error === '朗読を作るにはサインインしてください。'
   const bannerError = availabilityError || showSignIn ? '' : error
-  const saveLabel = saving ? '保存中…' : '端末に保存済み'
+  const saveLabel = showSaving ? '保存中…' : '端末に保存済み'
   const voices = entitlement?.voices ?? []
   const voiceRanges = settings.cues.filter(
     (c) =>
@@ -840,7 +879,7 @@ function NarrationPage({
           </h1>
         </div>
         <details className="narration-popover">
-          <summary>
+          <summary className="narration-quota-trigger">
             <span className="narration-model">{model && NARRATION_MODEL_LABELS[model]}</span>
             {quota ? `残り ${quota.remaining.toLocaleString()}文字` : '利用枠'}{' '}
             <span aria-hidden="true">⌄</span>
@@ -937,6 +976,35 @@ function NarrationPage({
           </summary>
           <div className="narration-popover-body">
             <NarrationCloudStatus />
+            {deletableAudio && (
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                disabled={busy || saving || sending || deletionBlocked}
+                onClick={() =>
+                  setConfirmation({
+                    title: 'この話の朗読音声を削除しますか？',
+                    description:
+                      '生成した音声と修正候補を削除します。原稿や読み方の設定は残ります。保存済みのバックアップからは復元できます。',
+                    label: '音声を削除',
+                    destructive: true,
+                    action: () =>
+                      void act(async () => {
+                        await service.deleteEpisodeAudio(episode.id)
+                        audio.current?.pause()
+                        fullAudio.current?.pause()
+                        setPlaying(null)
+                        setFullPlayback(null)
+                        setNotice('この話の朗読音声を削除しました。')
+                        await syncAudioRemoval?.()
+                      }),
+                  })
+                }
+              >
+                この話の音声を削除
+              </Button>
+            )}
             <h2>複数話をZIPで保存</h2>
             <div className="narration-export-list">
               {work.episodes.map((ep) => (
@@ -968,7 +1036,7 @@ function NarrationPage({
               選んだ話を書き出す
             </Button>
             <p className="narration-help">
-              音声のサーバー保管は生成から7日間です。採用・試聴した音声はこの端末にも保存します。端末のデータ削除に備えてMP3を書き出してください。
+              生成直後の一時音声はサーバーに7日間保管します。端末に保存した音声は、この期間を過ぎても使えます。
             </p>
           </div>
         </details>
@@ -1068,7 +1136,8 @@ function NarrationPage({
                   ['compare', '比較待ち'],
                   ['changed', '変更・未反映'],
                   ['selected', '選択中'],
-                  ...(running.length ? [['working', '生成中']] : []),
+                  ...(running.length || preparing ? [['working', '生成・保存中']] : []),
+                  ...(previewIds.size ? [['preview', '試聴可']] : []),
                   ...(record.takes.some((t) => ['failed', 'unknown', 'missing'].includes(t.state))
                     ? [['error', '要確認']]
                     : []),
@@ -1089,7 +1158,7 @@ function NarrationPage({
           )}
           {segments.some((s) => s.characters > 800) && (
             <p role="alert" className="narration-notice">
-              800文字を超える文があります。本文を句点などで区切ってください。
+              800文字を超える区間があります。長い文やセリフは本文で分けてください。
             </p>
           )}
           {/* biome-ignore lint/a11y/noStaticElementInteractions: Blank space deselects; Escape and the explicit button provide keyboard equivalents. */}
@@ -1134,35 +1203,38 @@ function NarrationPage({
                 const lastAttempt = record.takes.filter((t) => t.segmentId === segment.id).at(-1)
                 const status = running.some((t) => t.segmentId === segment.id)
                   ? '生成中'
-                  : candidate && candidate.id !== take?.id
-                    ? '比較待ち'
-                    : take
-                      ? matchesAdopted(segment, take, entitlement)
-                        ? '生成済み'
-                        : '変更あり'
-                      : candidate
-                        ? '比較待ち'
-                        : lastAttempt?.state === 'failed'
-                          ? '生成に失敗'
-                          : lastAttempt?.state === 'unknown'
-                            ? '結果を確認中'
-                            : lastAttempt?.state === 'missing'
-                              ? '保管期限切れ'
-                              : record.snapshots?.[episode.id]
-                                ? '音声に未反映'
-                                : '未生成'
-                const tone =
-                  status === '生成済み'
-                    ? 'ready'
-                    : status === '比較待ち'
-                      ? 'compare'
-                      : status === '未生成'
-                        ? 'empty'
-                        : status === '生成中'
-                          ? 'working'
-                          : status === '変更あり' || status === '音声に未反映'
-                            ? 'changed'
-                            : 'error'
+                  : preparingIds.has(segment.id)
+                    ? '端末に保存中'
+                    : candidate && candidate.id !== take?.id
+                      ? '比較待ち'
+                      : take
+                        ? matchesAdopted(segment, take, entitlement)
+                          ? '生成済み'
+                          : '変更あり'
+                        : previewIds.has(segment.id)
+                          ? '試聴可'
+                          : lastAttempt?.state === 'failed'
+                            ? '生成に失敗'
+                            : lastAttempt?.state === 'unknown'
+                              ? '結果を確認中'
+                              : lastAttempt?.state === 'missing'
+                                ? '保管期限切れ'
+                                : record.snapshots?.[episode.id]
+                                  ? '音声に未反映'
+                                  : '未生成'
+                const tone = {
+                  生成済み: 'ready',
+                  比較待ち: 'compare',
+                  未生成: 'empty',
+                  生成中: 'working',
+                  端末に保存中: 'working',
+                  試聴可: 'preview',
+                  変更あり: 'changed',
+                  音声に未反映: 'changed',
+                  生成に失敗: 'error',
+                  結果を確認中: 'error',
+                  保管期限切れ: 'error',
+                }[status]
                 return { segment, active, isCurrent, status, tone, instructions, lastAttempt }
               })
               const statuses = details.filter(
@@ -1612,7 +1684,7 @@ function NarrationPage({
             )}
             {scope !== 'episode' && needsSentenceRebuild && (
               <p role="status" className="narration-help">
-                前回の音声と文の区切りが異なります。選択を解除して一話を再生成すると、文ごとの修正が使えます。以前の音声は再生成の完了まで残ります。
+                前回の音声と区間の分け方が異なります。選択を解除して一話を再生成すると、部分修正が使えます。以前の音声は再生成の完了まで残ります。
               </p>
             )}
             <div className="narration-trial">
@@ -1938,39 +2010,32 @@ function NarrationPage({
         </aside>
       </div>
       <footer className="narration-transport">
-        {record.operation &&
-          running.length === 0 &&
-          (() => {
-            const op = record.operation
-            const retry = op.segments.filter(
-              (s) =>
-                !record.takes.some(
-                  (t) =>
-                    op.jobs.includes(t.jobId) &&
-                    t.segmentId === s.id &&
-                    t.fingerprint === s.fingerprint &&
-                    t.state === 'ready',
-                ),
-            )
-            return (
-              retry.length > 0 && (
-                <div className="narration-progress">
-                  現在の音声は保持されています。
-                  <Button
-                    disabled={
-                      busy ||
-                      !readyToGenerate(retry, op.model ? modelAllowances?.[op.model] : quota)
-                    }
-                    onClick={() =>
-                      generate(retry, true, op.whole, op.preview, true, op.model ?? requestedModel)
-                    }
-                  >
-                    未完了の区間を再生成 · {cost(retry)}文字
-                  </Button>
-                </div>
-              )
-            )
-          })()}
+        {operation && !sending && !running.length && !!ungenerated?.length && (
+          <div className="narration-progress">
+            現在の音声は保持されています。
+            <Button
+              disabled={
+                busy ||
+                !readyToGenerate(
+                  ungenerated,
+                  operation.model ? modelAllowances?.[operation.model] : quota,
+                )
+              }
+              onClick={() =>
+                generate(
+                  ungenerated,
+                  true,
+                  operation.whole,
+                  operation.preview,
+                  true,
+                  operation.model ?? requestedModel,
+                )
+              }
+            >
+              未完了の区間を再生成 · {cost(ungenerated)}文字
+            </Button>
+          </div>
+        )}
         {running.length > 0 && (
           <div className="narration-progress" role="status">
             生成中：残り {running.length}区間
@@ -2022,15 +2087,19 @@ function NarrationPage({
         </div>
         <div className="narration-footer-status">
           <span role="status">
-            {running.length
+            {running.length || sending
               ? '音声を生成中'
-              : targets.some(latest)
-                ? '修正候補を比較できます'
-                : pending.length
-                  ? '未生成・変更あり ' + pending.length + '文'
-                  : missing.length || changed.length
-                    ? '試聴して読みを採用'
-                    : '書き出せます'}
+              : preparing
+                ? preparingLabel
+                : targets.some(latest)
+                  ? '修正候補を比較できます'
+                  : previewReady && missing.length
+                    ? '冒頭のスタイルを試聴できます'
+                    : pending.length
+                      ? '未生成・変更あり ' + pending.length + '文'
+                      : missing.length || changed.length
+                        ? '試聴して読みを採用'
+                        : '書き出せます'}
           </span>
           <span>
             {quota && (
@@ -2102,7 +2171,7 @@ function NarrationPage({
         description={confirmation?.description}
         confirmLabel={confirmation?.label}
         cancelLabel="作業を続ける"
-        destructive={false}
+        destructive={confirmation?.destructive ?? false}
         onConfirm={() => confirmation?.action()}
       />
     </main>
