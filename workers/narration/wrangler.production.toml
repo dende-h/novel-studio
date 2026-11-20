@@ -3,6 +3,8 @@ main = "worker.ts"
 compatibility_date = "2026-11-01"
 
 [vars]
+NARRATION_PARALLEL_GENERATION = "1"
+NARRATION_STORAGE_CLEANUP = "1"
 API_ORIGIN = "https://cotonoha-leaf.org"
 
 [[d1_databases]]
