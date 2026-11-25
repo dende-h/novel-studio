@@ -18,6 +18,7 @@ import {
   type Work,
   type WorkPlatform,
 } from '@/core/schema'
+import { type WorkPresentation, WorkPresentationSchema } from '@/core/schema/work-presentation'
 import { countEpisodeChars } from '@/core/stats'
 import type { GameAssetRepository } from '@/core/storage/gameAssetRepository'
 import type { StagingRepository } from '@/core/storage/stagingRepository'
@@ -38,6 +39,7 @@ import { episodeKakuyomuExport, episodeNarouExport, workEpubExport } from '@/ui/
 import { ConfirmDialog } from '@/ui/components/ConfirmDialog/confirm-dialog'
 import { PageLayout } from '@/ui/components/PageLayout/page-layout'
 import { AuthorRegisterCard } from '@/ui/components/PublishPage/author-register-card'
+import { PresentationFields } from '@/ui/components/PublishPage/presentation-fields'
 import { Button } from '@/ui/components/ui/button'
 import { Label } from '@/ui/components/ui/label'
 import { Switch } from '@/ui/components/ui/switch'
@@ -136,6 +138,7 @@ export function PublishPage({
 }: PublishPageProps) {
   const uid = useId()
   const [description, setDescription] = useState('')
+  const [presentation, setPresentation] = useState<WorkPresentation>({})
   const [genre, setGenre] = useState('')
   const [tagsText, setTagsText] = useState('')
   const [isCompleted, setIsCompleted] = useState(false)
@@ -165,6 +168,7 @@ export function PublishPage({
     syncedId.current = work.id
     const p = work.platform
     setDescription(work.description ?? '')
+    setPresentation(p?.presentation ?? {})
     setGenre(p?.genre ?? '')
     setTagsText((p?.tags ?? []).join('、'))
     setIsCompleted(p?.isCompleted ?? false)
@@ -259,7 +263,9 @@ export function PublishPage({
   /** 送信・保存する投稿設定。画面の入力から毎回作り直す（前回値のマージは古い値を残す）。 */
   const buildPlatform = (): WorkPlatform => {
     const { lastPublishedAt, workUrl, manageUrl } = work?.platform ?? {}
+    const sendablePresentation = WorkPresentationSchema.parse(presentation)
     return {
+      ...(sendablePresentation ? { presentation: sendablePresentation } : {}),
       ...(genre !== '' ? { genre } : {}),
       tags,
       declaredAllAges: allAges,
@@ -645,6 +651,8 @@ export function PublishPage({
               className="max-h-40"
             />
           </div>
+
+          <PresentationFields value={presentation} onChange={setPresentation} disabled={pending} />
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div className="space-y-2">

@@ -3,6 +3,7 @@ import type { Staging } from '@/core/game'
 import type { UserGameAsset } from '@/core/game/assets'
 import { publicTextOf } from '@/core/glossary'
 import type { Episode, GlossaryEntry, Work, WorkPlatform } from '@/core/schema'
+import { WorkPresentationSchema } from '@/core/schema/work-presentation'
 
 /**
  * novel platform への直接投稿クライアント。
@@ -25,12 +26,14 @@ type GetToken = () => Promise<string | null>
  * v2 で work.platform、v3 で episodes[].visibility（話ごとの公開状態）、
  * v4 で episodes[].game（サウンドノベルの自己完結プレイヤー HTML）、
  * v5 で work.gameAssets（素材の実体を**作品ぶん1回だけ**送り、話は `asset:<id>` で参照）、
+ * v8 で work.platform.presentation（気分・キャッチコピー・装丁・帯）を追加。
  * v7 は脚本の work.format を追加（小説では従来の版を維持）。
  * v6 で work.gameAssets に**音声**（運営テンプレの BGM・効果音ファイル・`data:audio/…`）を追加。
  *
  * 使わない機能の版は名乗らない（**最小の版で送る**）。先方が新しい版を知らないあいだも
  * 「本文の更新だけは通る」ようにしておく（新しすぎるバンドルは 409 で弾かれる契約）。
  */
+const SCHEMA_VERSION_WITH_PRESENTATION = 8
 const SCHEMA_VERSION_WITH_FORMAT = 7
 const SCHEMA_VERSION_WITH_AUDIO_ASSETS = 6
 const SCHEMA_VERSION_WITH_SHARED_ASSETS = 5
@@ -52,10 +55,17 @@ export const isPublishAvailable = Boolean(PLATFORM_ORIGIN)
 /** 取り込みは成功したが公開はされなかった理由（契約 v2）。 */
 export type PublishBlockedReason = 'declarations-missing' | 'moderated'
 
-/** 契約 v2 の `work.platform` に載せてよいキー。ここに無いものはローカル専用。 */
+/** 契約の `work.platform` に載せてよいキー。ここに無いものはローカル専用。 */
 export type PlatformPayload = Pick<
   WorkPlatform,
-  'genre' | 'tags' | 'declaredAllAges' | 'declaredOriginal' | 'visibility' | 'isCompleted' | 'kind'
+  | 'genre'
+  | 'tags'
+  | 'declaredAllAges'
+  | 'declaredOriginal'
+  | 'visibility'
+  | 'isCompleted'
+  | 'kind'
+  | 'presentation'
 >
 
 export type PublishSuccess = {
@@ -93,7 +103,9 @@ export type PublishResult = PublishSuccess | PublishFailure
 export function toPlatformPayload(platform: WorkPlatform | undefined): PlatformPayload | undefined {
   if (!platform) return undefined
   const { genre, tags, declaredAllAges, declaredOriginal, visibility, isCompleted, kind } = platform
+  const presentation = WorkPresentationSchema.parse(platform.presentation)
   const payload: PlatformPayload = {
+    ...(presentation ? { presentation } : {}),
     ...(genre !== undefined ? { genre } : {}),
     ...(tags !== undefined ? { tags } : {}),
     ...(declaredAllAges !== undefined ? { declaredAllAges } : {}),
@@ -352,17 +364,19 @@ export async function publishWorkToPlatform(
       body: JSON.stringify({
         // 脚本は v7。素材をまとめて送るときだけ v5、その中に音声（効果音ファイル）があるときだけ v6。
         // テンプレだけの作品は v4 のまま＝使わない版は名乗らない
-        schemaVersion: bundleWork.format
-          ? SCHEMA_VERSION_WITH_FORMAT
-          : bundleWork.gameAssets
-            ? bundleWork.gameAssets.some((a) => a.dataUrl.startsWith('data:audio/'))
-              ? SCHEMA_VERSION_WITH_AUDIO_ASSETS
-              : SCHEMA_VERSION_WITH_SHARED_ASSETS
-            : withGame
-              ? SCHEMA_VERSION_WITH_GAME
-              : toBundleEpisodes(work).declared
-                ? SCHEMA_VERSION_WITH_EPISODES
-                : SCHEMA_VERSION_BASE,
+        schemaVersion: bundleWork.platform?.presentation
+          ? SCHEMA_VERSION_WITH_PRESENTATION
+          : bundleWork.format
+            ? SCHEMA_VERSION_WITH_FORMAT
+            : bundleWork.gameAssets
+              ? bundleWork.gameAssets.some((a) => a.dataUrl.startsWith('data:audio/'))
+                ? SCHEMA_VERSION_WITH_AUDIO_ASSETS
+                : SCHEMA_VERSION_WITH_SHARED_ASSETS
+              : withGame
+                ? SCHEMA_VERSION_WITH_GAME
+                : toBundleEpisodes(work).declared
+                  ? SCHEMA_VERSION_WITH_EPISODES
+                  : SCHEMA_VERSION_BASE,
         work: bundleWork,
       }),
     })
@@ -399,8 +413,9 @@ export async function publishWorkToPlatform(
     const supported = typeof payload.supported === 'number' ? payload.supported : 0
     return {
       ok: false,
-      message:
-        bundleWork.format && supported < SCHEMA_VERSION_WITH_FORMAT
+      message: bundleWork.platform?.presentation
+        ? '公開先がまだ作品の見た目の設定に対応していません。設定を外せば投稿できます。'
+        : bundleWork.format && supported < SCHEMA_VERSION_WITH_FORMAT
           ? '公開先がまだ脚本の体裁に対応していません。作品情報で形式を小説にしてから、もう一度お試しください。'
           : supported >= SCHEMA_VERSION_WITH_SHARED_ASSETS
             ? '公開先がまだ音の素材（BGM・効果音）に対応していません。演出から BGM と効果音を外してから、もう一度お試しください。'

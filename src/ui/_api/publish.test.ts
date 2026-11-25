@@ -797,3 +797,64 @@ it('v7未対応の公開先では脚本向けの案内を表示する', async ()
       '公開先がまだ脚本の体裁に対応していません。作品情報で形式を小説にしてから、もう一度お試しください。',
   })
 })
+
+describe('作品の見た目（契約 v8）', () => {
+  it('未設定や空の設定は送らず、読める項目だけを載せる', async () => {
+    const { toBundleWork } = await loadModule()
+    expect(toBundleWork({ ...work, platform: { tags: [] } }).platform).not.toHaveProperty(
+      'presentation',
+    )
+    expect(toBundleWork({ ...work, platform: { presentation: {} } })).not.toHaveProperty('platform')
+    const presentation = {
+      mood: { tone: 20 }, // 片方だけ
+      catchcopy: '  星の手紙  ',
+      binding: 'unknown',
+      motif: 'lighthouse',
+      obiText: 'あ'.repeat(26),
+      showObi: false,
+    } as unknown as NonNullable<Work['platform']>['presentation']
+
+    expect(toBundleWork({ ...work, platform: { presentation } }).platform?.presentation).toEqual({
+      catchcopy: '星の手紙',
+      motif: 'lighthouse',
+      showObi: false,
+    })
+    expect(
+      toBundleWork({
+        ...work,
+        platform: {
+          presentation: { mood: { tone: 101, pace: 0 }, catchcopy: '  ', binding: null },
+        },
+      }).platform?.presentation,
+    ).toEqual({ catchcopy: null, binding: null })
+  })
+
+  it('見た目を送るときだけ v8 になり、外すと従来の版に戻る', async () => {
+    const { publishWorkToPlatform } = await loadModule()
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ error: 'unsupported-schema-version', supported: 7 }), {
+          status: 409,
+        }),
+      )
+      .mockResolvedValueOnce(new Response('{}', { status: 200 }))
+    vi.stubGlobal('fetch', fetchMock)
+    const script = { ...work, format: 'script' as const }
+    expect(
+      await publishWorkToPlatform(async () => 'jwt', {
+        ...script,
+        platform: { presentation: { mood: null } },
+      }),
+    ).toEqual({
+      ok: false,
+      message: '公開先がまだ作品の見た目の設定に対応していません。設定を外せば投稿できます。',
+    })
+    await publishWorkToPlatform(async () => 'jwt', { ...script, platform: { presentation: {} } })
+    const [first, second] = fetchMock.mock.calls.map(([, request]) => JSON.parse(request.body))
+    expect(first.schemaVersion).toBe(8)
+    expect(first.work.platform.presentation).toEqual({ mood: null })
+    expect(second.schemaVersion).toBe(7)
+    expect(second.work).not.toHaveProperty('platform')
+  })
+})
