@@ -248,6 +248,14 @@ export function PublishPage({
     [episodes, episodeVisibility, visibility, novelGameEpisodes],
   )
 
+  // 下書きにするだけなら、選択済みのプレイヤーは公開先に残す。
+  const clearGame =
+    Boolean(stagingRepo && gameAssetRepo) &&
+    work?.platform?.novelGame === true &&
+    gameCount === 0 &&
+    (visibility === 'public' ||
+      !episodes.some((ep) => novelGameEpisodeOf(novelGameEpisodes, ep.id)))
+
   /** 選んだ話のうち、まだ演出を付けていない話の数（＝文字だけで進む話） */
   const unstagedGameCount = useMemo(
     () =>
@@ -277,9 +285,8 @@ export function PublishPage({
       //（下書きへ戻して公開し直したときに、伏せた話が黙って表へ出ないように）
       ...(Object.keys(episodeVisibility).length > 0 ? { episodeVisibility } : {}),
       // 作品ぜんたいの切り替えは持たない（対象は話ごとの記録だけで決まる）。
-      // この印は「今回の投稿にプレイヤーを載せた」の控え＝次に1話も選ばれなくなったとき、
-      // 先方へ「消してほしい」と宣言すべきかの判断に使う
-      ...(gameCount > 0 ? { novelGame: true } : {}),
+      // 公開先にプレイヤーがあるかの控え。下書き化で据え置く場合も残す。
+      ...(gameCount > 0 || (work?.platform?.novelGame && !clearGame) ? { novelGame: true } : {}),
       ...(Object.keys(novelGameEpisodes).length > 0 ? { novelGameEpisodes } : {}),
       ...(lastPublishedAt !== undefined ? { lastPublishedAt } : {}),
       ...(workUrl ? { workUrl } : {}),
@@ -294,11 +301,7 @@ export function PublishPage({
 
     const platform = buildPlatform()
     const desc = description.trim()
-    // サウンドノベル（契約 v4）：選ばれた話があるときだけ、演出譜と素材を集めてプレイヤーを同梱する。
-    // 前回は載せたのに今回は1話も無いときは v4 で「同梱なし」を宣言し、先方に前回のプレイヤーを
-    // 消してもらう（何も送らないと v3 になり、先方は据え置き＝解除が効かないため）。この宣言は
-    // **下書きへ戻す送信でも出す**——ここで落とすと、解除したまま再公開したとき
-    // 古いプレイヤーが先方で復活する。
+    // 公開対象のプレイヤーを同梱し、すべて外した場合は解除を明示する。
     let gameInput: NovelGameBundleInput | undefined
     if (stagingRepo && gameAssetRepo) {
       if (gameCount > 0) {
@@ -352,7 +355,7 @@ export function PublishPage({
             ...templateBgms.assets,
           ],
         }
-      } else if (work.platform?.novelGame === true) {
+      } else if (clearGame) {
         gameInput = { stagings: [], gameAssets: [], enabled: false }
       }
     }

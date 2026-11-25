@@ -454,6 +454,7 @@ describe('契約 v4（サウンドノベル：episodes[].game）', () => {
 
     const body = JSON.parse((fetchMock.mock.calls[0] as [string, RequestInit])[1].body as string)
     expect(body.schemaVersion).toBe(4)
+    expect(body).not.toHaveProperty('gameUpdate')
     const [e1, e2] = body.work.episodes
     expect(e1.game?.v).toBe(1)
     expect(typeof e1.game?.html).toBe('string')
@@ -577,6 +578,69 @@ describe('契約 v4（サウンドノベル：episodes[].game）', () => {
     const body = JSON.parse((fetchMock.mock.calls[0] as [string, RequestInit])[1].body as string)
     expect(body.schemaVersion).toBe(4)
     expect(body.work.episodes.every((ep: { game?: unknown }) => ep.game === undefined)).toBe(true)
+  })
+
+  it.each([
+    {
+      name: '下書き切替',
+      visibility: 'draft' as const,
+      input: undefined,
+      updates: false,
+      hasPlayer: false,
+    },
+    {
+      name: '公開中の見た目更新',
+      visibility: 'public' as const,
+      input: undefined,
+      updates: false,
+      hasPlayer: false,
+    },
+    {
+      name: '下書きへのプレイヤー同梱なし',
+      visibility: 'draft' as const,
+      input: novelGame(),
+      updates: false,
+      hasPlayer: false,
+    },
+    {
+      name: 'プレイヤー更新',
+      visibility: 'public' as const,
+      input: novelGame(),
+      updates: true,
+      hasPlayer: true,
+    },
+    {
+      name: '下書き化と同時に明示解除',
+      visibility: 'draft' as const,
+      input: { ...novelGame(), enabled: false },
+      updates: true,
+      hasPlayer: false,
+    },
+  ])('v8 の $name でプレイヤーの更新意図を送る', async ({
+    visibility,
+    input,
+    updates,
+    hasPlayer,
+  }) => {
+    const { publishWorkToPlatform } = await loadModule()
+    const fetchMock = vi.fn().mockResolvedValue(new Response('{}', { status: 200 }))
+    vi.stubGlobal('fetch', fetchMock)
+    const source = publicWork()
+    await publishWorkToPlatform(
+      async () => 'jwt',
+      {
+        ...source,
+        platform: { ...source.platform, visibility, presentation: { catchcopy: '星の手紙' } },
+      },
+      input,
+    )
+
+    const body = JSON.parse((fetchMock.mock.calls[0] as [string, RequestInit])[1].body as string)
+    expect(body.schemaVersion).toBe(8)
+    if (updates) expect(body.gameUpdate).toBe(true)
+    else expect(body).not.toHaveProperty('gameUpdate')
+    expect(Boolean(body.work.episodes[0].game)).toBe(hasPlayer)
+    expect(body.work.episodes[1]).not.toHaveProperty('game')
   })
 
   it('下書き作品では novelGame を渡しても game は付かない（v2 のまま）', async () => {

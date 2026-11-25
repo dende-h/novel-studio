@@ -292,6 +292,27 @@ describe('話ごとのサウンドノベル', () => {
     expect(values.platform?.novelGame).toBeUndefined()
   })
 
+  it.each([true, false])('下書き化では話の選択を尊重する（選択を残す: %s）', async (keepPlayer) => {
+    const { onPersist } = renderWithGame(
+      makeWork({
+        ...withGame,
+        novelGameEpisodes: { e1: true },
+        presentation: { catchcopy: '星の手紙' },
+      }),
+    )
+    const first = await screen.findByRole('switch', { name: '「第一話」をサウンドノベルにする' })
+    if (!keepPlayer) fireEvent.click(first)
+    fireEvent.click(screen.getByRole('button', { name: '下書き（非公開）' }))
+    fireEvent.click(screen.getByRole('button', { name: '公開状態を更新' }))
+    fireEvent.click(await screen.findByRole('button', { name: '下書きに戻す' }))
+
+    await waitFor(() => expect(onPersist).toHaveBeenCalledOnce())
+    expect(publishWorkToPlatform.mock.calls[0]?.[2]).toEqual(
+      keepPlayer ? undefined : { stagings: [], gameAssets: [], enabled: false },
+    )
+    expect(onPersist.mock.calls[0]?.[1].platform.novelGame).toBe(keepPlayer ? true : undefined)
+  })
+
   it('演出をまだ付けていない話を選んだら、そのことを伝える', async () => {
     renderWithGame(makeWork(publishable), ['e1'])
     const second = await screen.findByRole('switch', { name: '「第二話」をサウンドノベルにする' })

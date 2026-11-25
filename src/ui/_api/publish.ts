@@ -356,6 +356,7 @@ export async function publishWorkToPlatform(
     (novelGame !== undefined &&
       work.episodes.length > 0 &&
       (work.platform?.visibility === 'public' || novelGame.enabled === false))
+  const withPresentation = bundleWork.platform?.presentation !== undefined
   let res: Response
   try {
     res = await fetch(`${PLATFORM_ORIGIN}/api/import/kotonoha`, {
@@ -364,7 +365,7 @@ export async function publishWorkToPlatform(
       body: JSON.stringify({
         // 脚本は v7。素材をまとめて送るときだけ v5、その中に音声（効果音ファイル）があるときだけ v6。
         // テンプレだけの作品は v4 のまま＝使わない版は名乗らない
-        schemaVersion: bundleWork.platform?.presentation
+        schemaVersion: withPresentation
           ? SCHEMA_VERSION_WITH_PRESENTATION
           : bundleWork.format
             ? SCHEMA_VERSION_WITH_FORMAT
@@ -377,6 +378,7 @@ export async function publishWorkToPlatform(
                 : toBundleEpisodes(work).declared
                   ? SCHEMA_VERSION_WITH_EPISODES
                   : SCHEMA_VERSION_BASE,
+        ...(withPresentation && withGame ? { gameUpdate: true } : {}),
         work: bundleWork,
       }),
     })
