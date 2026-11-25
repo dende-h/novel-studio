@@ -321,3 +321,24 @@ test('スマホの小説でも本文の下に推敲チェックを出さない�
   await expect(page.getByText(/推敲チェック/)).toHaveCount(0)
   await expect(page.getByRole('button', { name: /直すと決めた箇所/ })).toHaveCount(0)
 })
+
+test('公開フォームの気分パッドと装丁の詳細が狭い画面に収まる', async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 720 })
+  await page.goto('/')
+  await createWork(page, '空気感のある作品')
+  await openWriter(page, '空気感のある作品')
+  await expect(page).toHaveURL(/#\/write/)
+  await page.evaluate(() => {
+    window.location.hash = '/publish'
+  })
+
+  const pad = page.getByRole('button', { name: '気分を選ぶ' })
+  const point = { x: 30, y: 30 }
+  await pad.tap({ position: point })
+  await expect(page.getByText(/明るさ \d+ \/ テンポ \d+/)).toBeVisible()
+  await pad.tap({ position: point })
+  await expect(page.getByText('公開先の気分を解除')).toBeVisible()
+  await page.getByText('装丁・モチーフ・帯（任意）').tap()
+  await expect(page.getByLabel('帯の文言')).toBeVisible()
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(320)
+})

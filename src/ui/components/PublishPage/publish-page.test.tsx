@@ -292,6 +292,27 @@ describe('話ごとのサウンドノベル', () => {
     expect(values.platform?.novelGame).toBeUndefined()
   })
 
+  it.each([true, false])('下書き化では話の選択を尊重する（選択を残す: %s）', async (keepPlayer) => {
+    const { onPersist } = renderWithGame(
+      makeWork({
+        ...withGame,
+        novelGameEpisodes: { e1: true },
+        presentation: { catchcopy: '星の手紙' },
+      }),
+    )
+    const first = await screen.findByRole('switch', { name: '「第一話」をサウンドノベルにする' })
+    if (!keepPlayer) fireEvent.click(first)
+    fireEvent.click(screen.getByRole('button', { name: '下書き（非公開）' }))
+    fireEvent.click(screen.getByRole('button', { name: '公開状態を更新' }))
+    fireEvent.click(await screen.findByRole('button', { name: '下書きに戻す' }))
+
+    await waitFor(() => expect(onPersist).toHaveBeenCalledOnce())
+    expect(publishWorkToPlatform.mock.calls[0]?.[2]).toEqual(
+      keepPlayer ? undefined : { stagings: [], gameAssets: [], enabled: false },
+    )
+    expect(onPersist.mock.calls[0]?.[1].platform.novelGame).toBe(keepPlayer ? true : undefined)
+  })
+
   it('演出をまだ付けていない話を選んだら、そのことを伝える', async () => {
     renderWithGame(makeWork(publishable), ['e1'])
     const second = await screen.findByRole('switch', { name: '「第二話」をサウンドノベルにする' })
@@ -314,5 +335,77 @@ describe('話ごとのサウンドノベル', () => {
 
     await waitFor(() => expect(gameSwitch).toBeDisabled())
     expect(gameSwitch).not.toBeChecked()
+  })
+})
+
+describe('作品の見た目', () => {
+  it('座標を選択して矢印キーで調整でき、同じ点を再度押すと解除される', async () => {
+    renderPage(makeWork(publishable))
+    await screen.findByText('結')
+    const pad = screen.getByRole('button', { name: '気分を選ぶ' })
+    vi.spyOn(pad, 'getBoundingClientRect').mockReturnValue(new DOMRect(10, 20, 100, 100))
+    const point = { detail: 1, clientX: 85, clientY: 40 }
+    fireEvent.click(pad, point)
+    expect(screen.getByText(/明るさ 75 \/ テンポ 80/)).toBeVisible()
+    fireEvent.click(pad, point)
+    expect(screen.getByText('公開先の気分を解除')).toBeVisible()
+    fireEvent.keyDown(pad, { key: 'ArrowLeft' })
+    fireEvent.keyDown(pad, { key: 'ArrowUp', shiftKey: true })
+    expect(screen.getByText(/明るさ 49 \/ テンポ 60/)).toBeVisible()
+  })
+
+  it('文字数を制限し、作者が設定した項目と明示的な解除だけを送って保存する', async () => {
+    const { onPersist } = renderPage(
+      makeWork({
+        ...publishable,
+        presentation: { mood: { tone: 12, pace: 32 }, catchcopy: '以前の紹介' },
+      }),
+    )
+    expect(screen.getByText(/明るさ 12 \/ テンポ 32/)).toBeVisible()
+    fireEvent.click(screen.getByRole('button', { name: '気分を解除' }))
+    const catchcopy = screen.getByLabelText('キャッチコピー')
+    expect(catchcopy).toHaveValue('以前の紹介')
+    fireEvent.change(catchcopy, { target: { value: '🌿'.repeat(121) } })
+    expect(catchcopy).toHaveValue('🌿'.repeat(120))
+    expect(screen.getByText('残り0字')).toBeVisible()
+    fireEvent.change(catchcopy, { target: { value: '' } })
+
+    const details = screen.getByText('装丁・モチーフ・帯（任意）').closest('details')
+    expect(details).not.toHaveAttribute('open')
+    details?.setAttribute('open', '')
+    fireEvent.change(screen.getByLabelText('装丁'), { target: { value: 'moss' } })
+    const obiText = screen.getByLabelText('帯の文言')
+    fireEvent.change(obiText, { target: { value: '帯'.repeat(26) } })
+    expect(obiText).toHaveValue('帯'.repeat(25))
+    fireEvent.click(screen.getByRole('switch', { name: '帯を出す' }))
+    fireEvent.click(screen.getByRole('switch', { name: '帯を出す' }))
+
+    fireEvent.click(screen.getByRole('button', { name: '公開状態を更新' }))
+    fireEvent.click(await screen.findByRole('button', { name: '公開する' }))
+    const presentation = {
+      mood: null,
+      catchcopy: null,
+      binding: 'moss',
+      obiText: '帯'.repeat(25),
+      showObi: false,
+    }
+    await waitFor(() => expect(onPersist).toHaveBeenCalled())
+    expect(publishWorkToPlatform.mock.calls[0]?.[1].platform.presentation).toEqual(presentation)
+    expect(onPersist.mock.calls[0]?.[1].platform.presentation).toEqual(presentation)
+  })
+
+  it('送信設定を外して再投稿すると公開先に解除を送らず、leaf の設定からも外れる', async () => {
+    const { onPersist } = renderPage(
+      makeWork({
+        ...publishable,
+        presentation: { motif: null, showObi: false },
+      }),
+    )
+    fireEvent.click(screen.getByRole('button', { name: '見た目の送信設定をすべて外す' }))
+    fireEvent.click(screen.getByRole('button', { name: '公開状態を更新' }))
+    fireEvent.click(await screen.findByRole('button', { name: '公開する' }))
+    await waitFor(() => expect(onPersist).toHaveBeenCalled())
+    expect(publishWorkToPlatform.mock.calls[0]?.[1].platform).not.toHaveProperty('presentation')
+    expect(onPersist.mock.calls[0]?.[1].platform).not.toHaveProperty('presentation')
   })
 })

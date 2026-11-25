@@ -133,8 +133,8 @@ export function stripLeadingSpace(inlines: Inline[]): Inline[]
 - `blocksToHtml(blocks, resolvedNames?, opts?)`：第 3 引数追加。既存呼び出し（`App.tsx:239`・`toEpub.ts:36`）は互換。
 - `blocksToPlainText / blocksToNarou / blocksToKakuyomu (blocks, opts?)`：同様。
 - `toBundleWork`：`const { platform: _local, episodes: _episodes, glossary, format, ...rest } = work` として `rest` に紛れ込まないよう **分割代入で取り出し**、`format === 'script'` のときだけ `base.format = 'script'`。
-- `schemaVersion`：`bundleWork.format ? 7 : (現状の分岐)`。
-- 409 案内（`publish.ts:376-385`）：`bundleWork.format && supported < SCHEMA_VERSION_WITH_FORMAT` を先頭に置き、「公開先がまだ脚本の体裁に対応していません。作品情報で形式を小説にしてから、もう一度お試しください。」を返す。既存 2 分岐はその後ろに据え置き。
+- `schemaVersion` は見た目の設定を送る場合に v8、脚本の形式を送る場合に v7 を選ぶ。見た目に関する契約は [直接投稿契約 v8](../../requirement/14-grove-presentation.md) を参照。
+- 409 案内では見た目の設定を送った場合の文言を優先し、`bundleWork.format && supported < SCHEMA_VERSION_WITH_FORMAT` なら「公開先がまだ脚本の体裁に対応していません。作品情報で形式を小説にしてから、もう一度お試しください。」を返す。既存 2 分岐はその後ろに据え置き。
 - MCP `set_work_meta`：`format: { type: 'string', enum: ['novel','script'] }`。
 - `updateWorkMeta`：`if (format === 'novel') delete work.format; else if (format) work.format = format`。
 - 演出譜の `classifyBlock` は触らない（対象外）。

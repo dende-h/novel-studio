@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { WorkPresentationSchema } from './work-presentation'
 
 /**
  * 正本（canonical）スキーマ。エディタライブラリ非依存・純TS。
@@ -190,6 +191,7 @@ export const WorkPlatformSchema = z.object({
   visibility: z.enum(['draft', 'public']).optional(),
   isCompleted: z.boolean().optional(),
   kind: z.enum(['serial', 'oneshot']).optional(),
+  presentation: WorkPresentationSchema,
 
   /**
    * 話ごとの公開状態（話ID → 公開状態）。記録の無い話は作品の公開状態に従う。
