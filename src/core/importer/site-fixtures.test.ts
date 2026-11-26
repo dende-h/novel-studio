@@ -3,6 +3,7 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { buildImportedWork, decodeTextFile } from '.'
+import { narouEpisodes } from './site-formats'
 
 const fixtureRoot = new URL('../../../docs/specs/posting-import-fixtures/', import.meta.url)
 
@@ -42,6 +43,30 @@ describe('投稿サイトの合成サンプルで既存TXT取込を確認', () =
     expect(decoded?.text).toContain('第2話 灯り 第二夜\n')
     expect(decoded?.text).toContain('第3話 灯り 第三夜\n')
     expect(decoded?.text).not.toContain('\r')
+  })
+
+  it.each([
+    ['第1部分', '第2部分', 'サブタイトル'],
+    ['エピソード1', 'エピソード2', 'エピソードタイトル'],
+  ])('なろうの開始行と同じ地の文を保つ（%s）', (first, second, titleField) => {
+    const separatorInBody = '---- ' + second + '開始 ----'
+    const text = [
+      '---- ' + first + '開始 ----',
+      '〖' + titleField + '〗',
+      'その一',
+      '〖本文〗',
+      '黒板にはこう書いてあった。\n' + separatorInBody + '\n誰もそれを消さなかった。',
+      '',
+      '',
+      '---- ' + second + '開始 ----',
+      '〖' + titleField + '〗',
+      'その二',
+      '〖本文〗',
+      '翌日。',
+    ].join('\n')
+    const episodes = narouEpisodes('n0000zz.txt', text)
+    expect(episodes.map((episode) => episode.title)).toEqual(['その一', 'その二'])
+    expect(episodes[0]?.body).toContain(separatorInBody)
   })
 
   it('画像をTXTに改名した入力を拒否する', () => {

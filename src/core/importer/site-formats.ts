@@ -77,7 +77,9 @@ export function kakuyomuEpisode(path: string, text: string): ManuscriptEpisode {
 
 export function narouEpisodes(path: string, text: string): ManuscriptEpisode[] {
   const starts = [
-    ...text.matchAll(/^-{2,}[ 　]*(?:第(\d+)部分|エピソード(\d+))開始[ 　]*-{2,}[ \t]*$/gm),
+    ...text.matchAll(
+      /^-{2,}[ 　]*(?:第(\d+)部分|エピソード(\d+))開始[ 　]*-{2,}[ \t]*(?=\n(?:[ \t　]*\n)*〖(?:サブタイトル|エピソードタイトル|章タイトル|大見出し|章|前書き|本文)〗$)/gm,
+    ),
   ]
   const section = (part: string, number?: number): ManuscriptEpisode => {
     const bodyMarker = /^〖本文〗\n/gm.exec(part)

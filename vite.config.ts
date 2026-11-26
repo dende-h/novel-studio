@@ -40,6 +40,7 @@ export default defineConfig({
           /^\/game-templates\//,
           // Public event URLs return HTML from Pages Functions, including when a service worker is active.
           /^\/events(?:\/|$)/,
+          /^\/notation-converter(?:\/|$)/,
           /^\/llms(-full)?\.txt$/,
           /^\/robots\.txt$/,
           /^\/sitemap\.xml$/,
