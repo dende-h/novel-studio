@@ -1,8 +1,8 @@
-import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { BoardMeResponse, BoardThread, MyBoardPost } from '@/core/board/types'
 import { AuthContext, type AuthState } from '@/ui/auth/auth-context'
-import { BOARD_SEEN_KEY } from '@/ui/board/board-ui'
+import { BoardNotificationsProvider } from '@/ui/board/board-notifications-provider'
 import { BoardPage } from './board-page'
 
 // アカウントメニューは Clerk を遅延読み込みするのでスタブに差し替える（TopAppBar のテストと同じ）。
@@ -110,16 +110,30 @@ const signedInAuth = (over: Partial<AuthState> = {}): AuthState =>
 
 function renderPage(
   auth: AuthState,
-  props: { onOpenThread?: (id: string) => void; onNavigateBoard?: () => void } = {},
+  props: {
+    onOpenThread?: (id: string) => void
+    onNavigateBoard?: () => void
+    notifications?: boolean
+  } = {},
 ) {
+  const wrap = (page: React.ReactNode) =>
+    props.notifications ? (
+      <BoardNotificationsProvider userId={auth.userId} getToken={auth.getToken}>
+        {page}
+      </BoardNotificationsProvider>
+    ) : (
+      page
+    )
   return render(
     <AuthContext.Provider value={auth}>
-      <BoardPage
-        onNavigateCollection={() => {}}
-        onNavigateBoard={props.onNavigateBoard}
-        onOpenThread={props.onOpenThread ?? (() => {})}
-        now={NOW}
-      />
+      {wrap(
+        <BoardPage
+          onNavigateCollection={() => {}}
+          onNavigateBoard={props.onNavigateBoard}
+          onOpenThread={props.onOpenThread ?? (() => {})}
+          now={NOW}
+        />,
+      )}
     </AuthContext.Provider>,
   )
 }
@@ -339,29 +353,29 @@ describe('BoardPage（掲示板の一覧）', () => {
     expect(await screen.findByText('新しく立てたスレ')).toBeInTheDocument()
   })
 
-  it('自分が書いたスレッドが最後に見た時刻より後に動いていたら、タブに未読バッジを出す', async () => {
-    localStorage.setItem(BOARD_SEEN_KEY, String(NOW - 2 * HOUR))
-    stubFetch((url) => {
+  it('ヘッダーとスレッド行に同じアカウントの未読を表示し、自分の書き込みを開いても既読にしない', async () => {
+    const fetchMock = stubFetch((url) => {
+      if (url === '/api/board/notifications?summary=1') {
+        return jsonRes({ scope: 'all', unreadThreadIds: ['t1'], silentUntil: null, serverNow: NOW })
+      }
       if (url.startsWith('/api/board/threads')) {
         return jsonRes({ threads: [threadOf({ mine: true })], nextCursor: null })
       }
       if (url === '/api/board/me') return jsonRes(meOf({ posts: [myPostOf()] }))
-      throw new Error(`想定外の取得: ${url}`)
+      throw new Error('想定外の取得: ' + url)
     })
 
-    renderPage(signedInAuth())
-
-    const tab = await screen.findByRole('button', { name: /自分の書き込み/ })
-    await waitFor(() => {
-      expect(within(tab).getByText('1')).toBeInTheDocument()
-    })
-
-    // 開いたら既読にする（未読の基準は localStorage・設計 §2）。
-    fireEvent.click(tab)
-    expect(within(tab).queryByText('1')).toBeNull()
-    expect(Number(localStorage.getItem(BOARD_SEEN_KEY))).toBeGreaterThan(NOW - 2 * HOUR)
-    // 自分の書き込みが並ぶ。
-    expect(screen.getByRole('link', { name: /章ごとの文字数を出してほしい/ })).toBeInTheDocument()
+    renderPage(signedInAuth(), { notifications: true })
+    expect(await screen.findByRole('button', { name: '通知、未読 1 スレッド' })).toBeInTheDocument()
+    expect(await screen.findByText('未読', { exact: true })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: '自分の書き込み' }))
+    expect(
+      await screen.findByRole('link', { name: /章ごとの文字数を出してほしい/ }),
+    ).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '通知、未読 1 スレッド' })).toBeInTheDocument()
+    expect(fetchMock.mock.calls.some(([path]) => path === '/api/board/notifications/read')).toBe(
+      false,
+    )
   })
 
   it('スレ立てで profile_required が返っても、書いた本文を閉じずに表示名を挟む', async () => {
@@ -464,61 +478,6 @@ describe('BoardPage（掲示板の一覧）', () => {
     })
     // 追い越された続きは、切り替えたあとの一覧に混ぜない。
     expect(screen.queryByText('次の1本')).toBeNull()
-  })
-
-  it('最後に書き込んだのが自分なら、未読バッジを出さない', async () => {
-    localStorage.setItem(BOARD_SEEN_KEY, String(NOW - 2 * HOUR))
-    stubFetch((url) => {
-      if (url.startsWith('/api/board/threads')) {
-        // スレッドが動いた時刻＝自分が返信した時刻（＝最後の書き込みは自分）。
-        return jsonRes({
-          threads: [threadOf({ mine: true, bumpedAt: NOW - HOUR })],
-          nextCursor: null,
-        })
-      }
-      if (url === '/api/board/me') {
-        return jsonRes(meOf({ posts: [myPostOf({ id: 'p2', seq: 2, createdAt: NOW - HOUR })] }))
-      }
-      throw new Error(`想定外の取得: ${url}`)
-    })
-
-    renderPage(signedInAuth())
-
-    const tab = await screen.findByRole('button', { name: /自分の書き込み/ })
-    await settle()
-
-    expect(within(tab).queryByText('1')).toBeNull()
-    expect(screen.queryByText('件の新しい書き込み')).toBeNull()
-  })
-
-  it('種別で絞り込んでも、未読バッジは据え置かれる（他の種別の未読を落とさない）', async () => {
-    localStorage.setItem(BOARD_SEEN_KEY, String(NOW - 2 * HOUR))
-    stubFetch((url) => {
-      if (url === '/api/board/me') return jsonRes(meOf({ posts: [myPostOf()] }))
-      if (!url.startsWith('/api/board/threads')) throw new Error(`想定外の取得: ${url}`)
-      // 「不具合」で絞ると、自分が書いた要望のスレッドは一覧から外れる。
-      if (url.includes('kind=bug')) {
-        return jsonRes({
-          threads: [threadOf({ id: 't3', kind: 'bug', title: '不具合の1本' })],
-          nextCursor: null,
-        })
-      }
-      return jsonRes({ threads: [threadOf({ mine: true })], nextCursor: null })
-    })
-
-    renderPage(signedInAuth())
-
-    const tab = await screen.findByRole('button', { name: /自分の書き込み/ })
-    await waitFor(() => {
-      expect(within(tab).getByText('1')).toBeInTheDocument()
-    })
-
-    fireEvent.click(screen.getByRole('button', { name: '不具合' }))
-    expect(await screen.findByText('不具合の1本')).toBeInTheDocument()
-    await settle()
-
-    // 絞り込みは一覧の話。未読の数え直しに巻き込まない。
-    expect(within(tab).getByText('1')).toBeInTheDocument()
   })
 
   it('onNavigateBoard を渡すと、サイドバーの掲示板が現在地になる', async () => {

@@ -20,6 +20,7 @@
  *     加算だと失敗した書き込みや二重送信でずれ、ずれたまま誰も直せない。
  */
 
+import type { EventListGroup } from '../../../src/core/board/events'
 import { DELETED_BODY_TEXT, HIDDEN_BODY_TEXT } from '../../../src/core/board/permission'
 import { boardBodyToPlain } from '../../../src/core/board/render'
 import {
@@ -121,6 +122,8 @@ export interface VoteRow {
 }
 
 export interface ReportRow {
+  participant_id?: string | null
+  reported_work_url?: string | null
   id: string
   post_id: string
   user_id: string
@@ -170,10 +173,15 @@ export interface ThreadListRow extends ThreadRow, AuthorCols {
   has_poll: number
   /** 閲覧者が 👍 しているか（0/1・未ログインは 0） */
   liked: number
+  starts_at?: number | null
+  ends_at?: number | null
+  cancelled_at?: number | null
+  max_seq?: number
 }
 
 /** 詳細で返す投稿 1 行（投稿 ＋ 現在の表示名 ＋ 閲覧者が 👍 しているか）。 */
 export interface PostWithAuthorRow extends PostRow, AuthorCols {
+  activity_id?: number | null
   /** 閲覧者が 👍 しているか（0/1・未ログインは 0） */
   liked: number
 }
@@ -274,6 +282,15 @@ export function toThread(row: ThreadListRow, viewerId?: string | null): BoardThr
     createdAt: row.created_at,
     bumpedAt: row.bumped_at,
     deleted: row.deleted_at !== 0,
+    ...(row.starts_at != null && row.ends_at != null
+      ? {
+          event: {
+            startsAt: row.starts_at,
+            endsAt: row.ends_at,
+            cancelledAt: row.cancelled_at ?? null,
+          },
+        }
+      : {}),
   }
 }
 
@@ -378,6 +395,8 @@ const LINK_COLS_JOINED = LINK_COLS.split(',')
 const THREAD_LIST_SELECT = `SELECT t.id, t.kind, t.title, t.user_id, t.status, t.status_note,
        t.shipped_version, t.pinned, t.locked, t.reply_count, t.like_count, t.created_at,
        t.bumped_at, t.deleted_at, t.hidden_at,
+       e.starts_at, e.ends_at, e.cancelled_at,
+       (SELECT MAX(maxp.seq) FROM board_posts maxp WHERE maxp.thread_id = t.id) AS max_seq,
        hp.body AS head_body, hp.deleted_at AS head_deleted_at, hp.hidden_at AS head_hidden_at,
        pr.display_name AS author_name, pr.role AS author_role, pr.deleted_at AS author_deleted,
        (SELECT COUNT(*) FROM board_polls po WHERE po.thread_id = t.id) AS has_poll,
@@ -385,7 +404,8 @@ const THREAD_LIST_SELECT = `SELECT t.id, t.kind, t.title, t.user_id, t.status, t
           WHERE lk.post_id = hp.id AND lk.user_id = ?) AS liked
 FROM board_threads t
 LEFT JOIN board_posts hp ON hp.thread_id = t.id AND hp.seq = 1
-LEFT JOIN board_profiles pr ON pr.user_id = t.user_id`
+LEFT JOIN board_profiles pr ON pr.user_id = t.user_id
+LEFT JOIN board_events e ON e.thread_id = t.id`
 
 /** 返信の件数を数え直す式（スレ本文 seq=1 は含めない・伏せた投稿も含めない）。 */
 const REPLY_COUNT_EXPR = `(SELECT COUNT(*) FROM board_posts rc
@@ -475,10 +495,16 @@ export async function markProfileDeleted(
   userId: string,
   now: number,
 ): Promise<void> {
-  await db
-    .prepare('UPDATE board_profiles SET deleted_at = ?, updated_at = ? WHERE user_id = ?')
-    .bind(now, now, userId)
-    .run()
+  await db.batch([
+    db
+      .prepare(
+        'UPDATE board_profiles SET deleted_at = ?, updated_at = ? WHERE user_id = ? AND deleted_at = 0',
+      )
+      .bind(now, now, userId),
+    db.prepare('DELETE FROM board_event_participants WHERE user_id = ?').bind(userId),
+    db.prepare('DELETE FROM board_thread_reads WHERE user_id = ?').bind(userId),
+    db.prepare('DELETE FROM board_notification_state WHERE user_id = ?').bind(userId),
+  ])
 }
 
 // ---------------------------------------------------------------------------
@@ -521,17 +547,67 @@ export async function listThreads(
     cursor?: string | null
     limit?: number
     viewerId?: string | null
+    events?: { group: EventListGroup; now: number; mine: boolean }
   } = {},
 ): Promise<{ rows: ThreadListRow[]; nextCursor: string | null }> {
   const limit = Math.max(1, Math.min(opts.limit ?? 20, 100))
   const cursor = decodeCursor(opts.cursor)
   const args: unknown[] = [opts.viewerId ?? null]
 
-  let sql = `${THREAD_LIST_SELECT}\nWHERE t.deleted_at = 0 AND t.hidden_at = 0`
+  let sql = `${THREAD_LIST_SELECT}\nWHERE t.deleted_at = 0 AND t.hidden_at = 0
+    AND (t.kind <> 'event' OR (hp.deleted_at = 0 AND hp.hidden_at = 0))`
   const kinds = opts.kinds && opts.kinds.length > 0 ? opts.kinds : opts.kind ? [opts.kind] : null
   if (kinds) {
     sql += `\n  AND t.kind IN (${placeholders(kinds.length)})`
     args.push(...kinds)
+  }
+  if (opts.events) {
+    const { group, now, mine } = opts.events
+    const past = group === 'past'
+    const sort =
+      group === 'upcoming'
+        ? 'e.starts_at'
+        : past
+          ? 'COALESCE(e.cancelled_at, e.ends_at)'
+          : 'e.ends_at'
+    if (group === 'upcoming') {
+      sql += ' AND e.cancelled_at IS NULL AND e.starts_at > ?'
+      args.push(now)
+    } else if (group === 'active') {
+      sql += ' AND e.cancelled_at IS NULL AND e.starts_at <= ? AND e.ends_at > ?'
+      args.push(now, now)
+    } else {
+      sql += ' AND (e.cancelled_at IS NOT NULL OR e.ends_at <= ?)'
+      args.push(now)
+    }
+    if (mine) {
+      sql +=
+        ' AND EXISTS (SELECT 1 FROM board_event_participants ep JOIN board_profiles participant ON participant.user_id = ep.user_id AND participant.deleted_at = 0 WHERE ep.thread_id = t.id AND ep.user_id = ? AND ep.withdrawn_at IS NULL AND ep.hidden_at = 0)'
+      args.push(opts.viewerId ?? null)
+    }
+    const eventCursor = opts.cursor?.match(/^(\d+):([\w-]+)$/)
+    if (eventCursor) {
+      sql += ` AND (${sort}, t.id) ${past ? '<' : '>'} (?, ?)`
+      args.push(Number(eventCursor[1]), eventCursor[2])
+    }
+    const direction = past ? 'DESC' : 'ASC'
+    sql += ` ORDER BY ${sort} ${direction}, t.id ${direction} LIMIT ?`
+    const { results } = await db
+      .prepare(sql)
+      .bind(...args, limit + 1)
+      .all<ThreadListRow>()
+    const rows = results.slice(0, limit)
+    const last = rows.at(-1)
+    const position =
+      group === 'upcoming'
+        ? last?.starts_at
+        : past
+          ? (last?.cancelled_at ?? last?.ends_at)
+          : last?.ends_at
+    return {
+      rows,
+      nextCursor: last && position && results.length > limit ? position + ':' + last.id : null,
+    }
   }
   if (cursor) {
     sql += `\n  AND (t.pinned < ?
@@ -577,6 +653,7 @@ export async function readThreadDetail(
   db: D1Database,
   threadId: string,
   viewerId?: string | null,
+  postTarget?: number,
 ): Promise<{
   thread: ThreadListRow
   posts: PostWithAuthorRow[]
@@ -592,16 +669,23 @@ export async function readThreadDetail(
       .prepare(
         `SELECT p.id, p.thread_id, p.seq, p.user_id, p.body, p.reply_to, p.created_at,
                 p.deleted_at, p.hidden_at, p.like_count,
+                (SELECT a.id FROM board_activity a WHERE a.post_id = p.id) AS activity_id,
                 pr.display_name AS author_name, pr.role AS author_role,
                 pr.deleted_at AS author_deleted,
                 (SELECT COUNT(*) FROM board_post_likes lk
                    WHERE lk.post_id = p.id AND lk.user_id = ?) AS liked
          FROM board_posts p
          LEFT JOIN board_profiles pr ON pr.user_id = p.user_id
-         WHERE p.thread_id = ?
+         WHERE p.thread_id = ?2 ${
+           postTarget === undefined
+             ? ''
+             : `AND (p.seq = 1 OR p.seq BETWEEN
+           COALESCE((SELECT recent.seq FROM board_posts recent WHERE recent.thread_id = ?2
+             AND recent.seq BETWEEN 2 AND ?3 ORDER BY recent.seq DESC LIMIT 1 OFFSET 49), 2) AND ?3)`
+}
          ORDER BY p.seq ASC`,
       )
-      .bind(viewer, threadId),
+      .bind(viewer, threadId, ...(postTarget === undefined ? [] : [postTarget])),
     db
       .prepare(
         'SELECT thread_id, question, options, multiple, closes_at, created_at FROM board_polls WHERE thread_id = ?',
@@ -623,10 +707,16 @@ export async function readThreadDetail(
          FROM board_post_links pl
          JOIN board_links l ON l.url_key = pl.url_key
          JOIN board_posts p ON p.id = pl.post_id
-         WHERE p.thread_id = ?
+         WHERE p.thread_id = ?1 ${
+           postTarget === undefined
+             ? ''
+             : `AND (p.seq = 1 OR p.seq BETWEEN
+           COALESCE((SELECT recent.seq FROM board_posts recent WHERE recent.thread_id = ?1
+             AND recent.seq BETWEEN 2 AND ?2 ORDER BY recent.seq DESC LIMIT 1 OFFSET 49), 2) AND ?2)`
+}
          ORDER BY pl.post_id ASC, pl.ord ASC`,
       )
-      .bind(threadId),
+      .bind(threadId, ...(postTarget === undefined ? [] : [postTarget])),
   ])
 
   const thread = rowsOf<ThreadListRow>(res[0])[0]
@@ -650,11 +740,16 @@ export async function readThreadDetail(
 }
 
 /** スレ行を作る。本文（seq=1）は `createPost` で別に入れる（設計 §4）。 */
-export async function createThread(
-  db: D1Database,
-  input: { id: string; kind: BoardKind; title: string; userId: string; now: number },
-): Promise<void> {
-  await db
+export type ThreadInsert = {
+  id: string
+  kind: BoardKind
+  title: string
+  userId: string
+  now: number
+}
+
+export function prepareThreadInsert(db: D1Database, input: ThreadInsert): D1PreparedStatement {
+  return db
     .prepare(
       `INSERT INTO board_threads
          (id, kind, title, user_id, status, status_note, shipped_version, pinned, locked,
@@ -662,7 +757,10 @@ export async function createThread(
        VALUES (?, ?, ?, ?, '', '', '', 0, 0, 0, 0, ?, ?, 0, 0)`,
     )
     .bind(input.id, input.kind, input.title, input.userId, input.now, input.now)
-    .run()
+}
+
+export async function createThread(db: D1Database, input: ThreadInsert): Promise<void> {
+  await prepareThreadInsert(db, input).run()
 }
 
 /**
@@ -1029,13 +1127,39 @@ export async function insertVote(
 // 通報
 // ---------------------------------------------------------------------------
 
-const REPORT_COLS = 'id, post_id, user_id, reason, created_at, handled_at'
+const REPORT_COLS =
+  'id, post_id, user_id, reason, created_at, handled_at, participant_id, reported_work_url'
 
 /** 通報を運営のキューに積むだけ（件数による自動非表示はしない・D-BOARD-REPORT）。 */
 export async function insertReport(
   db: D1Database,
-  input: { id: string; postId: string; userId: string; reason: string; now: number },
+  input: {
+    id: string
+    postId: string
+    userId: string
+    reason: string
+    now: number
+    participantId?: string
+    reportedWorkUrl?: string
+  },
 ): Promise<void> {
+  if (input.participantId) {
+    await db
+      .prepare(`INSERT INTO board_reports
+      (id, post_id, user_id, reason, created_at, participant_id, reported_work_url)
+      VALUES (?, ?, ?, ?, ?, ?, ?)`)
+      .bind(
+        input.id,
+        input.postId,
+        input.userId,
+        input.reason,
+        input.now,
+        input.participantId,
+        input.reportedWorkUrl ?? null,
+      )
+      .run()
+    return
+  }
   await db
     .prepare(
       `INSERT INTO board_reports (id, post_id, user_id, reason, created_at, handled_at)

@@ -9,7 +9,7 @@ export const MAX_IMPORT_BYTES = 20 * 1024 * 1024
  */
 export const MAX_WORK_JSON_BYTES = 20 * 1024 * 1024
 
-export type TextEncodingName = 'utf-8' | 'shift_jis'
+export type TextEncodingName = 'utf-8' | 'shift_jis' | 'euc-jp' | 'iso-2022-jp'
 
 export interface DecodedText {
   text: string
@@ -24,7 +24,8 @@ const isNotTextChar = (code: number) =>
   code <= 0x08 ||
   code === 0x0b ||
   code === 0x0c ||
-  (code >= 0x0e && code <= 0x1f)
+  (code >= 0x0e && code <= 0x1f) ||
+  (code >= 0x7f && code <= 0x9f)
 
 /** 復号結果が本文として読めるか（制御文字・置換文字を 1 つも含まない）。 */
 export function looksLikeText(text: string): boolean {
@@ -40,25 +41,46 @@ export function normalizeImportedText(text: string): string {
   return t.replace(/\r\n?/g, '\n')
 }
 
-/**
- * .txt のバイト列を UTF-8（fatal）→ Shift_JIS の順で復号する。
- * どちらの結果も `looksLikeText` を通らなければ null（画像のリネーム等）。復号後は normalize 済み。
- */
-export function decodeTextFile(bytes: Uint8Array): DecodedText | null {
+function decodeAs(bytes: Uint8Array, encoding: TextEncodingName): DecodedText | null {
   try {
-    const text = new TextDecoder('utf-8', { fatal: true }).decode(bytes)
-    if (looksLikeText(text)) return { text: normalizeImportedText(text), encoding: 'utf-8' }
+    const text = new TextDecoder(encoding, { fatal: true }).decode(bytes)
+    return looksLikeText(text) ? { text: normalizeImportedText(text), encoding } : null
+  } catch {
     return null
-  } catch {
-    // UTF-8 として不正 → Shift_JIS を試す
   }
-  try {
-    const text = new TextDecoder('shift_jis').decode(bytes)
-    if (looksLikeText(text)) return { text: normalizeImportedText(text), encoding: 'shift_jis' }
-  } catch {
-    // 実行環境が shift_jis ラベルを持たない（Node の small-icu 等）
+}
+
+export function decodeTextFile(
+  bytes: Uint8Array,
+  preferred?: TextEncodingName,
+): DecodedText | null {
+  if (preferred) return decodeAs(bytes, preferred)
+  if (bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf) return decodeAs(bytes, 'utf-8')
+  if (bytes.includes(27)) return decodeAs(bytes, 'iso-2022-jp')
+  const utf8 = decodeAs(bytes, 'utf-8')
+  if (utf8) return utf8
+  // EUC-JP and CP932 overlap. Prefer the decode with fewer half-width kana when both are legal.
+  const sjis = decodeAs(bytes, 'shift_jis')
+  const euc = decodeAs(bytes, 'euc-jp')
+  if (sjis && euc) {
+    const score = (text: string) => text.match(/[｡-ﾟ]/g)?.length ?? 0
+    return score(euc.text) < score(sjis.text) ? euc : sjis
   }
-  return null
+  return sjis ?? euc
+}
+
+export function readManuscriptText(bytes: Uint8Array): string {
+  if (bytes.length > MAX_IMPORT_BYTES) throw new Error('TXTは20 MBまで取り込めます')
+  const signature = new TextDecoder().decode(bytes.subarray(0, 32))
+  const zip = bytes[0] === 0x50 && bytes[1] === 0x4b && bytes[2] === 3 && bytes[3] === 4
+  if (zip || /^%PDF-|^GIF8[79]a|^RIFF....WEBP|^<\?xml\b|^<!doctype html\b/i.test(signature)) {
+    throw new Error('中身がTXT形式と一致しません')
+  }
+  const decoded = decodeTextFile(bytes)
+  if (!decoded)
+    throw new Error('文字を読み込めません。UTF-8、Shift_JIS、EUC-JP、JISのTXTを選んでください')
+  if (!decoded.text.trim()) throw new Error('本文が空です')
+  return decoded.text
 }
 
 /** 文字列の UTF-8 バイト数（貼り付けの容量判定に使う）。 */

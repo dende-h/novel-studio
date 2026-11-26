@@ -1,8 +1,10 @@
 import { Lock, MessageSquare, Pin, ThumbsUp, Vote } from 'lucide-react'
+import { eventPeriod, eventStatusLabel, eventStatusOf } from '@/core/board/events'
 import type { BoardKind, BoardThread } from '@/core/board/types'
 import { hasStatusUi } from '@/core/board/types'
 import { cn } from '@/lib/utils'
 import { formatCount } from '@/ui/_utils/format'
+import { useBoardNotifications } from '@/ui/board/board-notifications-provider'
 import { formatBoardTime, KIND_UI, kindOrder, STATUS_UI } from '@/ui/board/board-ui'
 import { Badge } from '@/ui/components/ui/badge'
 
@@ -43,6 +45,7 @@ export interface ThreadRowProps {
  * リンクの入れ子になり、キーボードの移動順が読めなくなる。押せる 👍 はスレ詳細に置く。
  */
 export function ThreadRow({ thread, now = Date.now(), href }: ThreadRowProps) {
+  const unread = useBoardNotifications()?.unread.has(thread.id)
   const kindUi = KIND_UI[thread.kind]
   const withStatus = hasStatusUi(thread.kind)
   const statusUi = STATUS_UI[thread.status]
@@ -75,6 +78,7 @@ export function ThreadRow({ thread, now = Date.now(), href }: ThreadRowProps) {
           </>
         )}
         <Badge className={kindUi.className}>{kindUi.label}</Badge>
+        {unread && <Badge className="bg-primary text-primary-foreground">未読</Badge>}
         {showStatus && (
           <Badge className={statusUi.className}>
             {statusUi.label}
@@ -89,9 +93,14 @@ export function ThreadRow({ thread, now = Date.now(), href }: ThreadRowProps) {
       {/* 中: タイトル。**ここだけが伸び縮みする**（`min-w-0` が無いと flex 子は縮まない）。
           本文の抜粋は出さない。何が書いてあるかはタイトルで見当をつけ、開いて読む。
           抜粋そのものは API が返し続ける（`BoardThread.excerpt`）ので、必要になれば戻せる。 */}
-      <h3 className="min-w-0 flex-1 truncate font-medium text-[14px] text-on-surface">
-        {thread.title}
-      </h3>
+      <div className="min-w-0 flex-1">
+        <h3 className="truncate font-medium text-[14px] text-on-surface">{thread.title}</h3>
+        {thread.event && (
+          <div className="text-xs text-on-surface-variant">
+            {eventStatusLabel[eventStatusOf(thread.event, now)]} · {eventPeriod(thread.event)}
+          </div>
+        )}
+      </div>
 
       {/* 右: 印と数。狭い画面では落とす順に並べる（アンケート → 作者 → 時刻） */}
       <span className="flex shrink-0 items-center gap-2 text-on-surface-variant text-xs">
@@ -163,7 +172,7 @@ export function ThreadList({
 }: ThreadListProps) {
   const pinned = threads.filter((t) => t.pinned)
   const rest = threads.filter((t) => !t.pinned)
-  const ordered = [...pinned, ...rest]
+  const ordered = kind === 'event' ? threads : [...pinned, ...rest]
 
   if (ordered.length === 0) {
     return <ThreadListEmpty kind={kind} />
@@ -193,6 +202,12 @@ export function ThreadList({
  * 「どちらが正しいのか」を考えさせるだけで、増えるのは迷いだけになる。
  */
 function ThreadListEmpty({ kind }: Pick<ThreadListProps, 'kind'>) {
+  if (kind === 'event')
+    return (
+      <p className="py-8 text-center text-on-surface-variant text-sm">
+        この条件に合うイベントはありません。
+      </p>
+    )
   // 絞り込んでいるかは「種別の名前が引けたか」で見る（null と undefined を別に扱わない）。
   const kindLabel = kind ? KIND_UI[kind].label : ''
   const filtered = kindLabel !== ''

@@ -1,5 +1,4 @@
-import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { BoardPost } from '@/core/board/types'
+import { describe, expect, it } from 'vitest'
 import {
   BOARD_KINDS,
   BOARD_STATUSES,
@@ -9,27 +8,13 @@ import {
 } from '@/core/board/types'
 import { formatRelative } from '@/ui/_utils/format'
 import {
-  BOARD_SEEN_KEY,
   creatableKindOrder,
   excerptOf,
   formatBoardTime,
   KIND_UI,
   kindOrder,
-  markSeen,
-  readLastSeen,
   STATUS_UI,
-  type UnreadPost,
-  unreadCount,
 } from './board-ui'
-
-afterEach(() => {
-  vi.restoreAllMocks()
-  try {
-    localStorage.clear()
-  } catch {
-    // 差し替えたモックが投げても後片付けは止めない
-  }
-})
 
 describe('KIND_UI / kindOrder', () => {
   // 表に漏れがあると、その種別のスレだけチップが引けず一覧が空白になる。
@@ -50,7 +35,7 @@ describe('KIND_UI / kindOrder', () => {
     expect(kindOrder).not.toContain('suggestion')
     // 出すのは「いま生きている種別」の全部。1 つでも落ちるとその種別が開けなくなる。
     expect([...kindOrder].sort()).toEqual(
-      BOARD_KINDS.filter((kind) => canonicalKind(kind) === kind).sort(),
+      BOARD_KINDS.filter((kind) => kind !== 'event' && canonicalKind(kind) === kind).sort(),
     )
     // ラベルは重複しない（同じ表記のタブが並ぶと、どちらを押せばよいか分からない）
     const labels = kindOrder.map((kind) => KIND_UI[kind].label)
@@ -130,103 +115,6 @@ describe('formatBoardTime', () => {
   it('時刻が無いときは空文字（1970 年を出さない）', () => {
     expect(formatBoardTime(0, now)).toBe('')
     expect(formatBoardTime(Number.NaN, now)).toBe('')
-  })
-})
-
-describe('readLastSeen / markSeen', () => {
-  it('書いた時刻を読み戻せる', () => {
-    markSeen(1_700_000_000_000)
-    expect(localStorage.getItem(BOARD_SEEN_KEY)).toBe('1700000000000')
-    expect(readLastSeen()).toBe(1_700_000_000_000)
-  })
-
-  it('記録が無い・壊れているときは 0（全部を未読として拾う）', () => {
-    expect(readLastSeen()).toBe(0)
-    localStorage.setItem(BOARD_SEEN_KEY, 'あとで')
-    expect(readLastSeen()).toBe(0)
-    localStorage.setItem(BOARD_SEEN_KEY, '-1')
-    expect(readLastSeen()).toBe(0)
-  })
-
-  it('無効な時刻は書かない', () => {
-    markSeen(0)
-    markSeen(Number.NaN)
-    expect(localStorage.getItem(BOARD_SEEN_KEY)).toBeNull()
-  })
-
-  // プライベートウィンドウでは localStorage へのアクセス自体が例外を投げる。
-  it('localStorage が投げても落ちない', () => {
-    vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
-      throw new Error('access denied')
-    })
-    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
-      throw new Error('quota exceeded')
-    })
-    expect(readLastSeen()).toBe(0)
-    expect(() => markSeen(1_700_000_000_000)).not.toThrow()
-  })
-})
-
-describe('unreadCount', () => {
-  const post = (over: Partial<UnreadPost> & { createdAt: number }): UnreadPost => ({
-    author: { displayName: 'ほかの人' },
-    ...over,
-  })
-
-  it('lastSeen より後のものだけ数える（同時刻は既読）', () => {
-    const posts = [post({ createdAt: 90 }), post({ createdAt: 100 }), post({ createdAt: 110 })]
-    expect(unreadCount(posts, 100)).toBe(1)
-    expect(unreadCount(posts, 110)).toBe(0)
-    expect(unreadCount(posts, 0)).toBe(3)
-  })
-
-  it('自分の投稿は数えない（mine と表示名の両方で落とす）', () => {
-    const posts = [
-      post({ createdAt: 200, mine: true }),
-      post({ createdAt: 201, author: { displayName: 'わたし' } }),
-      post({ createdAt: 202 }),
-    ]
-    expect(unreadCount(posts, 100, 'わたし')).toBe(1)
-    // 表示名を渡さなければ mine だけで落ちる
-    expect(unreadCount(posts, 100)).toBe(2)
-    // 空文字の表示名で全部を自分扱いにしない
-    expect(unreadCount(posts, 100, '  ')).toBe(2)
-  })
-
-  it('削除・非表示はバッジに数えない（開いても何も残っていない）', () => {
-    const posts = [
-      post({ createdAt: 200, deleted: true }),
-      post({ createdAt: 201, hidden: true }),
-      post({ createdAt: 202 }),
-    ]
-    expect(unreadCount(posts, 100)).toBe(1)
-  })
-
-  // サーバから来る BoardPost をそのまま渡せること（渡す側で詰め替えさせない）。
-  it('BoardPost をそのまま数えられる', () => {
-    const boardPost: BoardPost = {
-      id: 'p1',
-      threadId: 't1',
-      seq: 2,
-      author: { displayName: 'ほかの人', staff: false, retired: false },
-      mine: false,
-      body: '返信です',
-      replyTo: 1,
-      likeCount: 0,
-      liked: false,
-      deleted: false,
-      hidden: false,
-      createdAt: 200,
-      links: [],
-    }
-    expect(unreadCount([boardPost], 100)).toBe(1)
-    expect(unreadCount([boardPost], 200)).toBe(0)
-  })
-
-  it('空配列と壊れた時刻で落ちない', () => {
-    expect(unreadCount([], 100)).toBe(0)
-    expect(unreadCount([post({ createdAt: Number.NaN })], 100)).toBe(0)
-    expect(unreadCount([post({ createdAt: 200 })], Number.NaN)).toBe(1)
   })
 })
 

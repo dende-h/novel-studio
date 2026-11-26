@@ -29,8 +29,6 @@ import { cn } from '@/lib/utils'
 import { copyText } from '@/ui/_utils/clipboard'
 import { triggerDownload } from '@/ui/_utils/download'
 import {
-  episodeKakuyomuExport,
-  episodeNarouExport,
   episodeNovelGameExport,
   workAiTextExport,
   workEpubExport,
@@ -65,15 +63,16 @@ import {
   useTemplateCatalog,
 } from '@/ui/game/template-catalog'
 import { useIsNarrow } from '@/ui/hooks/use-narrow'
+import { PostingExport } from './posting-export'
 
-type Format = 'script' | 'epub' | 'web' | 'game' | 'folder' | 'ai'
-type Platform = 'narou' | 'kakuyomu'
+type Format = 'script' | 'epub' | 'web' | 'kakuyomu-zip' | 'game' | 'folder' | 'ai'
 
 interface ExportDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   /** 書き出し対象。エディタは現在の作品、ライブラリは選択カードの作品。 */
   work: Work | null
+  initialEpisode?: string
   /** EPUB メタ情報を編集（指定時のみ「作品情報を編集」を表示） */
   onEditMeta?: () => void
   /** 保存済みの演出譜（サウンドノベル用）。渡されたときだけ書き出しに演出が載る。 */
@@ -116,6 +115,13 @@ const FORMATS: FormatDef[] = [
     only: 'novel',
   },
   {
+    key: 'kakuyomu-zip',
+    icon: Folder,
+    title: 'カクヨム互換ZIP（作品全体）',
+    desc: '作品情報と話ごとの原稿をまとめる',
+    only: 'novel',
+  },
+  {
     key: 'game',
     icon: Gamepad2,
     title: 'サウンドノベル',
@@ -140,13 +146,13 @@ export function ExportDialog({
   open,
   onOpenChange,
   work,
+  initialEpisode,
   onEditMeta,
   stagingRepo,
   gameAssetRepo,
   onEditStaging,
 }: ExportDialogProps) {
   const [format, setFormat] = useState<Format>('epub')
-  const [platform, setPlatform] = useState<Platform>('narou')
   const [episodeId, setEpisodeId] = useState<string | null>(null)
   const [copied, setCopied] = useState<'ok' | 'err' | null>(null)
   const [includeGlossary, setIncludeGlossary] = useState(false)
@@ -310,13 +316,6 @@ export function ExportDialog({
         )
       } else if (fmt === 'epub') triggerDownload(workEpubExport(work))
       else if (fmt === 'folder') triggerDownload(workFolderZipExport(work))
-      else if (fmt === 'web' && selectedEpisode) {
-        triggerDownload(
-          platform === 'narou'
-            ? episodeNarouExport(work.title, selectedEpisode)
-            : episodeKakuyomuExport(work.title, selectedEpisode),
-        )
-      }
     }
     onOpenChange(false)
   }
@@ -502,56 +501,14 @@ export function ExportDialog({
               </Section>
             )}
 
-            {fmt === 'web' && (
-              <Section title="Web投稿 設定">
-                <div className="space-y-5">
-                  <div>
-                    <div className="mb-2 text-on-surface-variant text-xs uppercase tracking-wider">
-                      投稿先
-                    </div>
-                    <div className="flex gap-2">
-                      {(['narou', 'kakuyomu'] as const).map((p) => (
-                        <button
-                          key={p}
-                          type="button"
-                          onClick={() => setPlatform(p)}
-                          className={cn(
-                            'rounded-full border px-4 py-1.5 text-sm transition-colors',
-                            platform === p
-                              ? 'border-primary bg-primary/10 text-primary'
-                              : 'border-outline-variant/50 text-on-surface-variant hover:bg-surface-container-high',
-                          )}
-                        >
-                          {p === 'narou' ? '小説家になろう' : 'カクヨム'}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                  <div>
-                    <label
-                      htmlFor="export-episode"
-                      className="mb-2 block text-on-surface-variant text-xs uppercase tracking-wider"
-                    >
-                      話を選択
-                    </label>
-                    <select
-                      id="export-episode"
-                      value={selectedEpisode?.id ?? ''}
-                      onChange={(e) => setEpisodeId(e.target.value)}
-                      className="w-full rounded-md border border-outline-variant bg-surface-container-lowest px-3 py-2 text-base text-on-surface outline-none focus:border-primary md:text-sm"
-                    >
-                      {episodes.length === 0 ? (
-                        <option value="">（話がありません）</option>
-                      ) : (
-                        episodes.map((e) => (
-                          <option key={e.id} value={e.id}>
-                            {e.title}
-                          </option>
-                        ))
-                      )}
-                    </select>
-                  </div>
-                </div>
+            {work && (fmt === 'web' || fmt === 'kakuyomu-zip') && (
+              <Section title={fmt === 'web' ? 'Web投稿' : 'カクヨム互換ZIP'}>
+                <PostingExport
+                  key={work.id + fmt + (initialEpisode ?? '')}
+                  work={work}
+                  initialEpisode={initialEpisode}
+                  compatible={fmt === 'kakuyomu-zip'}
+                />
               </Section>
             )}
 
@@ -775,10 +732,12 @@ export function ExportDialog({
           >
             キャンセル
           </Button>
-          <Button onClick={handleExport} disabled={!canExport || busy} className="gap-2">
-            {fmt === 'ai' ? <Copy className="size-4" /> : <Download className="size-4" />}
-            {fmt === 'ai' ? 'コピー' : busy ? '書き出し中…' : '書き出し'}
-          </Button>
+          {fmt !== 'web' && fmt !== 'kakuyomu-zip' && (
+            <Button onClick={handleExport} disabled={!canExport || busy} className="gap-2">
+              {fmt === 'ai' ? <Copy className="size-4" /> : <Download className="size-4" />}
+              {fmt === 'ai' ? 'コピー' : busy ? '書き出し中…' : '書き出し'}
+            </Button>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>

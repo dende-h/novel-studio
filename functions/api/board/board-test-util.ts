@@ -429,6 +429,13 @@ export function makeBoardDb(
   // INSERT / UPDATE / DELETE
   // -------------------------------------------------------------------------
   function run(sql: string, args: unknown[]): number {
+    // Retirement also deletes new feature state, which is covered in the real-D1 tests.
+    if (
+      /^DELETE FROM board_(event_participants|thread_reads|notification_state) WHERE user_id/.test(
+        sql,
+      )
+    )
+      return 0
     // --- profiles ---------------------------------------------------------
     if (sql.startsWith('INSERT INTO board_profiles')) {
       const [user_id, display_name, name_key, created_at, updated_at] = args as [

@@ -550,3 +550,9 @@
 .writing-focus-editor .editor:focus-visible {
   scrollbar-color: color-mix(in srgb, var(--outline-variant) 45%, transparent) transparent;
 }
+
+.illustration-reference {
+  color: var(--color-primary);
+  text-decoration: underline dotted;
+  text-underline-offset: 0.16em;
+}

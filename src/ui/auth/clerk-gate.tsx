@@ -89,7 +89,14 @@ function ClerkAuthBridge({ children }: { children: ReactNode }) {
     graceUntil: membership.graceUntil,
     canRestore,
     displayName: user?.fullName ?? user?.primaryEmailAddress?.emailAddress ?? null,
-    openSignIn: () => clerk.openSignIn(),
+    openSignIn: () => {
+      const url = window.location.href
+      if (window.location.hash.startsWith('#/board/')) {
+        clerk.openSignIn({ fallbackRedirectUrl: url, signUpFallbackRedirectUrl: url })
+      } else {
+        clerk.openSignIn()
+      }
+    },
     openSignUp: () => clerk.openSignUp(),
     signOut: () => void clerk.signOut(),
     getToken: () => getToken(),

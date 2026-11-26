@@ -11,6 +11,7 @@ export default defineConfig({
     tailwindcss(),
     VitePWA({
       registerType: 'autoUpdate',
+      injectRegister: false,
       workbox: {
         // LP（マーケティング静的ページ）はアプリの SW 資産に含めない。
         //
@@ -26,7 +27,7 @@ export default defineConfig({
         // 取りに行き、下の runtimeCaching で 2 回目以降はオフラインでも読める（COT-40）。辞書の zip は
         // public/dict/ に置くが、既定の globPatterns（js/wasm/css/html）に zip は入らない。
         // 入れ忘れると 2MiB 超のアセットで vite-plugin-pwa が build を止める。
-        globIgnores: ['lp/**', '**/*.wasm'],
+        globIgnores: ['lp/**', '**/*.wasm', '**/pdf.worker*', '**/manuscript-pdf-*'],
         // 同期 API（/api/*）は絶対にキャッシュしない。SW をネットワーク直行（NetworkOnly）にし、
         // SPA のナビゲーションフォールバック（index.html 差し替え）の対象からも除外する。
         // これを怠ると古い manifest/work レスポンスが返り、同期が壊れる（Phase 2 の必須対策）。
@@ -37,6 +38,9 @@ export default defineConfig({
           /^\/api\//,
           /^\/lp/,
           /^\/game-templates\//,
+          // Public event URLs return HTML from Pages Functions, including when a service worker is active.
+          /^\/events(?:\/|$)/,
+          /^\/notation-converter(?:\/|$)/,
           /^\/llms(-full)?\.txt$/,
           /^\/robots\.txt$/,
           /^\/sitemap\.xml$/,
@@ -84,6 +88,14 @@ export default defineConfig({
   ],
   // 推敲画面の解析 Worker（COT-40）は ES モジュールで出す（lindera-wasm が import.meta.url で wasm を引くため）。
   worker: { format: 'es' },
+  build: {
+    rollupOptions: {
+      input: {
+        app: fileURLToPath(new URL('./index.html', import.meta.url)),
+        notation: fileURLToPath(new URL('./notation-converter/index.html', import.meta.url)),
+      },
+    },
+  },
   // lindera-wasm は wasm を import.meta.url で引くので、依存の事前バンドルから外す（README の指示）。
   optimizeDeps: { exclude: ['lindera-wasm'] },
   resolve: {

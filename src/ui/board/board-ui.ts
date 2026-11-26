@@ -100,6 +100,12 @@ export const KIND_UI: Record<BoardKind, BoardKindUi> = {
     order: 4,
     rowClassName: '',
   },
+  event: {
+    label: boardKindLabel.event,
+    className: 'bg-primary-container text-on-primary-container',
+    order: 6,
+    rowClassName: '',
+  },
   promo: {
     label: boardKindLabel.promo,
     className: 'bg-surface-container text-secondary-foreground',
@@ -117,7 +123,7 @@ export const KIND_UI: Record<BoardKind, BoardKindUi> = {
  * `kindsForFilter`・サーバの一覧 API が使う）。
  */
 export const kindOrder: readonly BoardKind[] = BOARD_KINDS.filter(
-  (kind) => canonicalKind(kind) === kind,
+  (kind) => kind !== 'event' && canonicalKind(kind) === kind,
 ).sort((a, b) => KIND_UI[a].order - KIND_UI[b].order)
 
 /**
@@ -204,79 +210,6 @@ export function formatBoardTime(ms: number, now: number): string {
 // ---------------------------------------------------------------------------
 // 未読（設計 §2「未読の基準は localStorage に置く」）
 // ---------------------------------------------------------------------------
-
-/** 最後に掲示板を見た時刻を置く localStorage のキー。 */
-export const BOARD_SEEN_KEY = 'ns-board-seen'
-
-/**
- * 最後に見た時刻（epoch ms）。記録が無い・壊れている・localStorage が使えないときは 0。
- *
- * 0 は「一度も見ていない」＝全部が未読になるが、それでよい。既読側へ倒すと、
- * 初めて開いた人に付いた返信がバッジに出ないまま埋もれる。
- */
-export function readLastSeen(): number {
-  try {
-    const raw = localStorage.getItem(BOARD_SEEN_KEY)
-    if (!raw) return 0
-    const at = Number(raw)
-    return Number.isFinite(at) && at > 0 ? at : 0
-  } catch {
-    // プライベートウィンドウ等で localStorage 自体が投げる。未読の記録は諦めて 0 にする。
-    return 0
-  }
-}
-
-/**
- * 「ここまで見た」を記録する。D1 に既読テーブルを持たない代わりの、端末ローカルの印。
- *
- * 書けなくても黙って続ける（バッジが消えないだけで、投稿の読み書きには影響しない）。
- */
-export function markSeen(now: number): void {
-  if (!Number.isFinite(now) || now <= 0) return
-  try {
-    localStorage.setItem(BOARD_SEEN_KEY, String(Math.floor(now)))
-  } catch {
-    // 書き込み拒否。次に開いてもバッジが残るだけで実害はない。
-  }
-}
-
-/** 未読を数える対象。`BoardPost` をそのまま渡せる形にしてある。 */
-export type UnreadPost = {
-  createdAt: number
-  /** 自分の投稿か（サーバが付ける） */
-  mine?: boolean
-  deleted?: boolean
-  hidden?: boolean
-  author?: { displayName: string }
-}
-
-/**
- * 未読の数。**「自分が関わったスレの投稿」を渡す側で絞ってから**呼ぶ
- *（どの投稿が自分宛かの判断は、スレを持っている画面のほうが正しくできる）。
- *
- * 数える条件は 3 つ。
- * - `lastSeen` より**後**に書かれたもの。**同時刻はすでに読んだ扱い**にする
- *   （`markSeen(now)` の直後に同じ ms の投稿を数え直して、消えないバッジを作らない）。
- * - 自分の投稿でないもの。`mine` が来ない経路のために、表示名（`myUserKey`）でも落とす。
- * - 削除・非表示でないもの。伏字にバッジを立てても、開いた人には何も残っていない。
- */
-export function unreadCount(
-  posts: readonly UnreadPost[],
-  lastSeen: number,
-  myUserKey?: string,
-): number {
-  const since = Number.isFinite(lastSeen) && lastSeen > 0 ? lastSeen : 0
-  const mine = myUserKey?.trim() ?? ''
-  let count = 0
-  for (const post of posts) {
-    if (!Number.isFinite(post.createdAt) || post.createdAt <= since) continue
-    if (post.deleted || post.hidden) continue
-    if (post.mine) continue
-    if (mine !== '' && post.author?.displayName === mine) continue
-    count += 1
-  }
-  return count
-}
 
 // ---------------------------------------------------------------------------
 // 抜粋

@@ -61,9 +61,12 @@ export interface RealD1Result<T = unknown> {
 
 /** 掲示板のマイグレーション（このハーネスが読み込む DDL。本番と同じ順に流す）。 */
 const BOARD_MIGRATIONS = [
+  new URL('../../../migrations/0001_init.sql', import.meta.url),
+  new URL('../../../migrations/0002_sync_works.sql', import.meta.url),
   new URL('../../../migrations/0008_board.sql', import.meta.url),
   new URL('../../../migrations/0009_board_post_likes.sql', import.meta.url),
   new URL('../../../migrations/0012_narration_assets.sql', import.meta.url),
+  new URL('../../../migrations/0016_board_notifications_events.sql', import.meta.url),
 ]
 
 // ---------------------------------------------------------------------------
@@ -154,6 +157,15 @@ export function makeRealD1(): RealD1 {
 
   function makeStmt(sql: string) {
     let args: SqlValue[] = []
+    const positions: number[] = []
+    let position = 0
+    // SQLite exposes explicitly numbered parameters as named values. D1 binds them positionally.
+    const query = sql.replace(/\?(\d*)/g, (_, num: string) => {
+      position = num ? Number(num) : position + 1
+      positions.push(position - 1)
+      return '?'
+    })
+    const values = () => positions.map((index) => args[index] as SqlValue)
     const stmt = {
       __sql: sql,
       bind(...a: unknown[]) {
@@ -163,22 +175,29 @@ export function makeRealD1(): RealD1 {
         return stmt
       },
       async first<T>(): Promise<T | null> {
-        return (sqlite.prepare(sql).get(...args) ?? null) as T | null
+        return (sqlite.prepare(query).get(...values()) ?? null) as T | null
       },
       async all<T>(): Promise<RealD1Result<T>> {
         return {
           success: true,
-          results: sqlite.prepare(sql).all(...args) as T[],
+          results: sqlite.prepare(query).all(...values()) as T[],
           meta: { changes: 0 },
         }
       },
       async run(): Promise<RealD1Result<never>> {
-        const r = sqlite.prepare(sql).run(...args)
+        const r = sqlite.prepare(query).run(...values())
         return { success: true, results: [], meta: { changes: Number(r.changes) } }
       },
       /** batch() 用。SELECT なら all()、それ以外は run() の結果を返す。 */
-      async __exec(): Promise<RealD1Result<unknown>> {
-        return isRead(sql) ? await stmt.all() : await stmt.run()
+      __exec(): RealD1Result<unknown> {
+        if (isRead(sql))
+          return {
+            success: true,
+            results: sqlite.prepare(query).all(...values()),
+            meta: { changes: 0 },
+          }
+        const result = sqlite.prepare(query).run(...values())
+        return { success: true, results: [], meta: { changes: Number(result.changes) } }
       },
     }
     return stmt
@@ -189,11 +208,16 @@ export function makeRealD1(): RealD1 {
   const db = {
     prepare: (sql: string) => makeStmt(sql),
     async batch(stmts: Stmt[]) {
-      const out: RealD1Result<unknown>[] = []
-      // D1 の batch は順に実行する。前の文の結果を次の文が読む（seq 採番 → 集計）ので
-      // 並列にしてはいけない。
-      for (const s of stmts) out.push(await s.__exec())
-      return out
+      sqlite.exec('SAVEPOINT d1_batch')
+      try {
+        const out = stmts.map((stmt) => stmt.__exec())
+        sqlite.exec('RELEASE d1_batch')
+        return out
+      } catch (error) {
+        sqlite.exec('ROLLBACK TO d1_batch')
+        sqlite.exec('RELEASE d1_batch')
+        throw error
+      }
     },
   } as unknown as D1Database
 

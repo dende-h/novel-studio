@@ -27,6 +27,7 @@ import type { ComponentType } from 'react'
 import { cn } from '@/lib/utils'
 import { PLATFORM_ORIGIN } from '@/ui/_api/publish'
 import { coverTone } from '@/ui/_utils/cover-tone'
+import { SidebarNotificationToggle } from '@/ui/components/BoardNotifications/board-notifications'
 import { Badge } from '@/ui/components/ui/badge'
 import { Button } from '@/ui/components/ui/button'
 import { ScrollArea } from '@/ui/components/ui/scroll-area'
@@ -519,6 +520,7 @@ export function SideNav({
           <Signpost className="size-[15px] shrink-0" />
           <span className="flex-1 truncate">小説投稿サイト</span>
         </a>
+        <SidebarNotificationToggle />
         <NavRow
           icon={Settings}
           label="設定"

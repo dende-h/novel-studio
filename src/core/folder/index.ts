@@ -19,6 +19,7 @@ interface Manifest {
   title: string
   episodes: { id: string; title: string; file: string }[]
   glossary?: GlossaryEntry[]
+  manuscriptImport?: Work['manuscriptImport']
 }
 
 const MANIFEST = 'manifest.json'
@@ -28,6 +29,7 @@ const episodeFile = (index: number) => `${pad(index + 1)}.txt`
 export function workToFolder(work: Work): FolderFile[] {
   const manifest: Manifest = {
     id: work.id,
+    ...(work.manuscriptImport ? { manuscriptImport: work.manuscriptImport } : {}),
     title: work.title,
     episodes: work.episodes.map((ep, i) => ({ id: ep.id, title: ep.title, file: episodeFile(i) })),
     // 辞書（@参照の解決先）は manifest に相乗りで往復させる。空/未設定なら省略。
@@ -52,6 +54,7 @@ export function folderToWork(files: FolderFile[]): Work {
   const byPath = new Map(files.map((f) => [f.path, f.content]))
   return {
     id: manifest.id,
+    ...(manifest.manuscriptImport ? { manuscriptImport: manifest.manuscriptImport } : {}),
     title: manifest.title,
     episodes: manifest.episodes.map((e) => {
       const body = byPath.get(e.file)

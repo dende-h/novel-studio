@@ -249,6 +249,18 @@ export const WorkSchema = z.object({
   // コトノハ-grove- （novel platform）への投稿設定。投稿しない作品は持たない・旧データ互換のため任意。
   platform: WorkPlatformSchema.optional(),
   format: WorkFormatSchema.optional(),
+  /** 投稿サイト原稿の作者用取込情報と、明示的に対応付けられた挿絵。 */
+  manuscriptImport: z
+    .object({
+      notes: z.string(),
+      assets: z.array(
+        z.object({
+          path: z.string(),
+          image: z.string().regex(/^data:image\/(?:png|jpeg|gif|webp);base64,[A-Za-z0-9+/=]+$/),
+        }),
+      ),
+    })
+    .optional(),
   // 脚本の梗概（結末まで書く提出用のあらすじ）。description（読者向け・grove 公開）とは別物。
   // 脚本の書き出しだけが使う。任意・旧データ互換。
   synopsis: z.string().optional(),

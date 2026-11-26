@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { BoardEventDetailSchema, EventScheduleInputSchema, EventScheduleSchema } from './events'
 
 /**
  * 掲示板（docs/requirement/09-board.md）の共有スキーマと定数。
@@ -40,6 +41,7 @@ export const BOARD_KINDS = [
   'intro',
   'promo',
   'notice',
+  'event',
 ] as const
 export type BoardKind = (typeof BOARD_KINDS)[number]
 
@@ -55,6 +57,7 @@ export const boardKindLabel: Record<BoardKind, string> = {
   intro: '自己紹介',
   promo: '作品紹介',
   notice: 'お知らせ',
+  event: 'イベント',
 }
 
 /**
@@ -107,6 +110,7 @@ export const boardKindHint: Record<BoardKind, string> = {
   bug: '「おかしな動きをした」を書く場所です。再現する手順があれば添えてください。👍 と対応状況が付きます',
   chat: 'いま書いている話のことでも、雑談でも。運営の対応状況は付きません',
   intro: 'どんなものを書いているか、ひとことどうぞ。運営の対応状況は付きません',
+  event: 'お題や感想交換、執筆会を開けます',
   promo: '作品の URL を貼ると、表紙つきのカードで並びます',
   notice: '運営からのお知らせです。書けるのは運営だけで、返信は付きません',
 }
@@ -312,6 +316,7 @@ export const BoardThreadSchema = z.object({
   /** 最終書き込み時刻。一覧の既定の並び順（設計 §2） */
   bumpedAt: z.number(),
   deleted: z.boolean().default(false),
+  event: EventScheduleSchema.optional(),
 })
 export type BoardThread = z.infer<typeof BoardThreadSchema>
 
@@ -382,6 +387,10 @@ export const BoardThreadDetailSchema = z.object({
   poll: PollResultSchema.nullable().default(null),
   /** 自分が書き込めるか（未ログイン・投稿禁止・ロックの判定済み） */
   canPost: z.boolean().default(false),
+  event: BoardEventDetailSchema.optional(),
+  readToken: z.string().optional(),
+  olderPost: z.number().int().positive().optional(),
+  newerPost: z.number().int().positive().optional(),
 })
 export type BoardThreadDetail = z.infer<typeof BoardThreadDetailSchema>
 
@@ -400,6 +409,7 @@ export type BoardThreadDetail = z.infer<typeof BoardThreadDetailSchema>
 export const ThreadListResponseSchema = z.object({
   threads: z.array(BoardThreadSchema),
   nextCursor: z.string().nullable().default(null),
+  serverNow: z.number().optional(),
 })
 export type ThreadListResponse = z.infer<typeof ThreadListResponseSchema>
 
@@ -457,13 +467,18 @@ export const PollInputSchema = z.object({
 })
 export type PollInput = z.infer<typeof PollInputSchema>
 
-export const CreateThreadInputSchema = z.object({
-  kind: kindSchema,
-  title: trimmed(BOARD_LIMITS.title),
-  body: trimmed(BOARD_LIMITS.body),
-  /** アンケートを添える場合のみ */
-  poll: PollInputSchema.optional(),
-})
+export const CreateThreadInputSchema = z
+  .object({
+    kind: kindSchema,
+    title: trimmed(BOARD_LIMITS.title),
+    body: trimmed(BOARD_LIMITS.body),
+    /** アンケートを添える場合のみ */
+    poll: PollInputSchema.optional(),
+    event: EventScheduleInputSchema.optional(),
+  })
+  .refine((input) =>
+    input.kind === 'event' ? Boolean(input.event) && !input.poll : input.event === undefined,
+  )
 export type CreateThreadInput = z.infer<typeof CreateThreadInputSchema>
 
 export const CreatePostInputSchema = z.object({
@@ -478,10 +493,26 @@ export const VoteInputSchema = z.object({
 })
 export type VoteInput = z.infer<typeof VoteInputSchema>
 
-export const ReportInputSchema = z.object({
-  postId: z.string().min(1),
-  reason: trimmed(BOARD_LIMITS.reportReason),
-})
+export const ReportInputSchema = z
+  .object({
+    postId: z.string().min(1).optional(),
+    participantId: z.string().min(1).optional(),
+    reason: trimmed(BOARD_LIMITS.reportReason),
+  })
+  .refine((input) => Boolean(input.postId) !== Boolean(input.participantId))
+
+export const EventPatchInputSchema = z.discriminatedUnion('action', [
+  z.object({ action: z.literal('cancel') }),
+  z.object({
+    action: z.literal('edit'),
+    revision: z.number().int().positive(),
+    title: trimmed(BOARD_LIMITS.title),
+    body: trimmed(BOARD_LIMITS.body),
+    startsAt: EventScheduleSchema.shape.startsAt,
+    endsAt: EventScheduleInputSchema.shape.endsAt,
+  }),
+])
+export type EventPatchInput = z.infer<typeof EventPatchInputSchema>
 export type ReportInput = z.infer<typeof ReportInputSchema>
 
 export const ProfileInputSchema = z.object({
@@ -519,11 +550,14 @@ export const ModerateInputSchema = z
       'ban_user',
       'unban_user',
       'block_link',
+      'hide_participant_link',
+      'unhide_participant_link',
     ]),
     postId: z.string().optional(),
     /** `hide_thread` / `unhide_thread` の対象 */
     threadId: z.string().optional(),
     userId: z.string().optional(),
+    participantId: z.string().optional(),
     url: z.string().optional(),
     /** 投稿禁止の期限（epoch ms） */
     bannedUntil: z.number().optional(),

@@ -1,5 +1,6 @@
 import { Plus } from 'lucide-react'
 import { type MouseEvent, type ReactNode, useCallback, useEffect, useRef, useState } from 'react'
+import type { EventListGroup } from '@/core/board/events'
 import type {
   BoardKind,
   BoardMeResponse,
@@ -15,21 +16,14 @@ import {
   fetchThreads,
   setDisplayName,
 } from '@/ui/_api/board'
-import { formatCount } from '@/ui/_utils/format'
 import { useAuth } from '@/ui/auth/auth-context'
-import {
-  excerptOf,
-  formatBoardTime,
-  KIND_UI,
-  markSeen,
-  readLastSeen,
-  unreadCount,
-} from '@/ui/board/board-ui'
+import { excerptOf, formatBoardTime, KIND_UI } from '@/ui/board/board-ui'
 import { AppShell } from '@/ui/components/AppShell/app-shell'
 import { type NavKey, SideNav } from '@/ui/components/SideNav/side-nav'
 import { useToast } from '@/ui/components/Toast/toast'
 import { Badge } from '@/ui/components/ui/badge'
 import { Button } from '@/ui/components/ui/button'
+import { EventFormDialog } from './event-form-dialog'
 import { NameDialog } from './name-dialog'
 import { NewThreadDialog } from './new-thread-dialog'
 import { KindFilter, ThreadList, threadHref } from './thread-list'
@@ -38,7 +32,7 @@ import { KindFilter, ThreadList, threadHref } from './thread-list'
  * 掲示板の一覧画面（`#/board`・設計 docs/requirement/09-board.md §2）。
  *
  * この画面が持つのは**取得と導線だけ**で、見た目は `thread-list.tsx`、
- * 色と抜粋と未読は `@/ui/board/board-ui`、通信は `@/ui/_api/board` にある。
+ * 色と抜粋は `@/ui/board/board-ui`、通信は `@/ui/_api/board` にある。
  *
  * 守っていること。
  *
@@ -75,7 +69,7 @@ function threadIdFromHref(href: string | null): string | null {
  */
 const SIDE_NAV_ACTIVE: NavKey = 'board'
 
-type BoardTab = 'threads' | 'mine'
+type BoardTab = 'threads' | 'events' | 'mine'
 
 export interface BoardPageProps {
   /** ライブラリ（コレクション）へ戻る。左サイドバー／ブランドから使う。 */
@@ -117,24 +111,32 @@ export function BoardPage({
 
   // Clerk 配線（clerk-gate.tsx）は毎レンダーで新しい関数を作るので、effect の依存に置くと
   // 取得が止まらなくなる。認証は ref 越しに読み、`getToken` だけ安定した関数にして渡す。
+  const accountId = auth.isSignedIn ? auth.userId : null
   const authRef = useRef(auth)
   authRef.current = auth
-  const getToken = useCallback(() => authRef.current.getToken(), [])
+  const getToken = useCallback(
+    () =>
+      accountId && authRef.current.isSignedIn && authRef.current.userId === accountId
+        ? authRef.current.getToken()
+        : Promise.resolve(null),
+    [accountId],
+  )
 
   const [tab, setTab] = useState<BoardTab>('threads')
   const [kind, setKind] = useState<BoardKind | null>(null)
+  const [eventGroup, setEventGroup] = useState<EventListGroup>('active')
+  const [onlyParticipated, setOnlyParticipated] = useState(false)
+  const [listNow, setListNow] = useState<number>()
+  const listFetchedAt = useRef(0)
+  const listKind = tab === 'events' ? 'event' : kind
   const [threads, setThreads] = useState<readonly BoardThread[] | null>(null)
   const [nextCursor, setNextCursor] = useState<string | null>(null)
-  // 未読バッジを数える材料。**絞り込みの影響を受けない**ように、種別を指定せずに取れた
-  // 一覧だけをここに写す。種別で絞っている間は更新されない＝バッジは絞り込み前の値のまま
-  // 据え置かれる（絞り込みで他の種別の未読が落ちない）。
-  const [badgeThreads, setBadgeThreads] = useState<readonly BoardThread[]>([])
   const [listError, setListError] = useState<string | null>(null)
   const [loadingMore, setLoadingMore] = useState(false)
   const [me, setMe] = useState<BoardMeResponse | null>(null)
-  const [lastSeen, setLastSeen] = useState<number>(() => readLastSeen())
   const [nameOpen, setNameOpen] = useState(false)
   const [newOpen, setNewOpen] = useState(false)
+  const [eventOpen, setEventOpen] = useState(false)
 
   // 表示名を決めたら、そのままスレ立てへ進むための印（押し直させない）。
   const continueToCreateRef = useRef(false)
@@ -157,6 +159,7 @@ export function BoardPage({
       // 未ログインならトークンを取りに行かない（`mine` / `liked` は false で返る）。
       const result = await fetchThreads({
         kind: target,
+        ...(target === 'event' ? { group: eventGroup, mine: withToken && onlyParticipated } : {}),
         getToken: withToken ? getToken : undefined,
       })
       if (seq !== listSeqRef.current) return
@@ -166,17 +169,42 @@ export function BoardPage({
       }
       setThreads(result.data.threads)
       setNextCursor(result.data.nextCursor)
-      // 絞り込み無しで取れたときだけ、未読の材料を更新する（絞り込み中は据え置き）。
-      if (target === null) setBadgeThreads(result.data.threads)
+      listFetchedAt.current = Date.now()
+      setListNow(result.data.serverNow)
     },
-    [getToken],
+    [getToken, eventGroup, onlyParticipated],
   )
 
   // 種別を変えたとき・ログイン状態が変わったときに読み直す
   //（`mine` と `liked` は閲覧者ごとに違うので、ログインの前後で同じ配列を使い回せない）。
   useEffect(() => {
-    void loadThreads(kind, signedIn)
-  }, [kind, signedIn, loadThreads])
+    void loadThreads(listKind, signedIn)
+  }, [listKind, signedIn, loadThreads])
+
+  useEffect(() => {
+    if (tab !== 'events') return
+    const refresh = () => {
+      if (!document.hidden) void loadThreads('event', signedIn)
+    }
+    document.addEventListener('visibilitychange', refresh)
+    const upcomingBoundaries =
+      listNow === undefined
+        ? []
+        : (threads ?? [])
+            .flatMap(({ event }) =>
+              event && !event.cancelledAt ? [event.startsAt, event.endsAt] : [],
+            )
+            .filter((boundary) => boundary > listNow)
+    const wait =
+      listNow === undefined
+        ? Infinity
+        : Math.min(...upcomingBoundaries) - listNow - (Date.now() - listFetchedAt.current)
+    const timer = wait < 2_147_483_647 ? window.setTimeout(refresh, Math.max(0, wait)) : undefined
+    return () => {
+      document.removeEventListener('visibilitychange', refresh)
+      window.clearTimeout(timer)
+    }
+  }, [tab, listNow, threads, signedIn, loadThreads])
 
   // 自分の表示名と書き込み。**未ログインでは呼ばない**（401 が返るだけで得るものがない）。
   useEffect(() => {
@@ -200,7 +228,8 @@ export function BoardPage({
     setLoadingMore(true)
     try {
       const result = await fetchThreads({
-        kind,
+        kind: listKind,
+        ...(listKind === 'event' ? { group: eventGroup, mine: signedIn && onlyParticipated } : {}),
         cursor: nextCursor,
         getToken: signedIn ? getToken : undefined,
       })
@@ -234,7 +263,8 @@ export function BoardPage({
       setNameOpen(true)
       return
     }
-    setNewOpen(true)
+    if (tab === 'events') setEventOpen(true)
+    else setNewOpen(true)
   }
 
   const handleSetName = async (name: string): Promise<BoardResult<unknown>> => {
@@ -255,7 +285,26 @@ export function BoardPage({
     const goOn = continueToCreateRef.current && nameJustSetRef.current
     continueToCreateRef.current = false
     nameJustSetRef.current = false
-    if (goOn) setNewOpen(true)
+    if (goOn) {
+      if (tab === 'events') setEventOpen(true)
+      else setNewOpen(true)
+    }
+  }
+
+  const handleCreateEvent = async (input: CreateThreadInput) => {
+    const result = await createThread(input, getToken)
+    if (result.ok) {
+      const group = input.event?.startsAt === 'now' ? 'active' : 'upcoming'
+      setEventGroup(group)
+      setOnlyParticipated(false)
+      // Changing the filter triggers its own load.
+      if (group === eventGroup && !onlyParticipated) void loadThreads('event', signedIn)
+    } else if (result.code === 'profile_required') {
+      setNameOpen(true)
+    } else if (result.code === 'unauthorized') {
+      auth.openSignIn()
+    }
+    return result
   }
 
   const handleCreateThread = async (input: CreateThreadInput): Promise<BoardResult<unknown>> => {
@@ -297,46 +346,6 @@ export function BoardPage({
   }
 
   const myPosts: readonly MyBoardPost[] = me?.posts ?? []
-  // 自分が最後に書いた時刻（スレッドごと）。`me.posts` は自分の投稿しか返らないので、
-  // これがそのまま「自分の最終書き込み」になる。
-  const myLastPostAt = new Map<string, number>()
-  for (const post of myPosts) {
-    myLastPostAt.set(post.threadId, Math.max(myLastPostAt.get(post.threadId) ?? 0, post.createdAt))
-  }
-  // 未読は「自分が書き込んだスレッドが、最後に見て以降に**他人の手で**動いたか」で数える。
-  // 一覧は最終書き込みの主を返さないので、`bumpedAt` が自分の最終書き込み以降に
-  // 進んでいなければ「最後に書いたのは自分」とみなして数えない（自分の返信でバッジが
-  // 立つのを防ぐ）。
-  //
-  // 限界（サーバに口ができるまで直せない）:
-  // - 自分の書き込みと他人の書き込みが同じ ms に並ぶと、他人のぶんを取りこぼす。
-  // - `bumpedAt` は「そのスレが動いた」しか表さないので、数えられるのは**スレッド単位**
-  //   （1 スレに 3 件返信が付いても 1 と出る）。件数まで正しく出すには、サーバが
-  //   「自分の関わったスレの、自分以外の新着数」を返す必要がある。
-  // - 材料は種別なしの一覧の 1 ページ目だけ。並びは `bumpedAt` の降順なので、動いた
-  //   スレは先頭側に集まる＝取りこぼすのは「1 ページぶんより多くのスレが自分より後に
-  //   動いた」ときに限られる。
-  // - `me.posts` はサーバ側で直近 50 件まで。それより古い書き込みしかないスレは、
-  //   返信が付いてもバッジに出ない。
-  const unread = unreadCount(
-    badgeThreads
-      .filter((thread) => myLastPostAt.has(thread.id))
-      .map((thread) => ({
-        createdAt: thread.bumpedAt,
-        mine: thread.bumpedAt <= (myLastPostAt.get(thread.id) ?? 0),
-        deleted: thread.deleted,
-      })),
-    lastSeen,
-  )
-
-  const showMine = () => {
-    setTab('mine')
-    // ここを開いた時点までを既読にする（未読の基準は localStorage・§2）。
-    const seenAt = Date.now()
-    markSeen(seenAt)
-    setLastSeen(seenAt)
-  }
-
   return (
     <AppShell
       onBrandClick={onNavigateCollection}
@@ -381,19 +390,21 @@ export function BoardPage({
                 active={tab === 'threads'}
                 onClick={() => setTab('threads')}
               />
-              <TabButton label="自分の書き込み" active={tab === 'mine'} onClick={showMine}>
-                {unread > 0 && (
-                  <Badge className="bg-primary text-primary-foreground">
-                    {formatCount(unread)}
-                    <span className="sr-only">件の新しい書き込み</span>
-                  </Badge>
-                )}
-              </TabButton>
+              <TabButton
+                label="イベント"
+                active={tab === 'events'}
+                onClick={() => setTab('events')}
+              />
+              <TabButton
+                label="自分の書き込み"
+                active={tab === 'mine'}
+                onClick={() => setTab('mine')}
+              />
             </div>
-            {signedIn && (
+            {(signedIn || (auth.available && tab === 'events')) && (
               <Button type="button" size="sm" onClick={startCreate}>
                 <Plus className="size-4" />
-                スレッドを立てる
+                {tab === 'events' ? 'イベントを作る' : 'スレッドを立てる'}
               </Button>
             )}
           </div>
@@ -402,16 +413,51 @@ export function BoardPage({
               捕捉フェーズで受けて既定のハッシュ遷移を止める。Enter で押したときも click は
               飛ぶので、キーボードだけでも同じ経路を通る。 */}
           <div onClickCapture={openThread}>
-            {tab === 'threads' ? (
+            {tab !== 'mine' ? (
               <>
-                <KindFilter kind={kind} onChange={setKind} className="mb-4" />
+                {tab === 'threads' ? (
+                  <KindFilter kind={kind} onChange={setKind} className="mb-4" />
+                ) : (
+                  <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex flex-wrap gap-1">
+                      <TabButton
+                        label="開催中"
+                        active={eventGroup === 'active'}
+                        onClick={() => setEventGroup('active')}
+                      />
+                      <TabButton
+                        label="開催前"
+                        active={eventGroup === 'upcoming'}
+                        onClick={() => setEventGroup('upcoming')}
+                      />
+                      <TabButton
+                        label="終了・中止"
+                        active={eventGroup === 'past'}
+                        onClick={() => setEventGroup('past')}
+                      />
+                    </div>
+                    {signedIn && (
+                      <label className="flex items-center gap-2 text-sm">
+                        <input
+                          type="checkbox"
+                          checked={onlyParticipated}
+                          onChange={(event) => setOnlyParticipated(event.target.checked)}
+                        />
+                        参加したイベント
+                      </label>
+                    )}
+                  </div>
+                )}
                 {listError !== null ? (
-                  <ListError message={listError} onRetry={() => void loadThreads(kind, signedIn)} />
+                  <ListError
+                    message={listError}
+                    onRetry={() => void loadThreads(listKind, signedIn)}
+                  />
                 ) : threads === null ? (
                   <p className="py-8 text-center text-on-surface-variant text-sm">読み込み中…</p>
                 ) : (
                   <>
-                    <ThreadList threads={threads} now={nowMs} kind={kind} />
+                    <ThreadList threads={threads} now={listNow ?? nowMs} kind={listKind} />
                     {nextCursor !== null && (
                       <div className="mt-4 flex justify-center">
                         <Button
@@ -448,6 +494,13 @@ export function BoardPage({
         onSubmit={handleCreateThread}
         role={me?.profile?.role}
       />
+      {eventOpen && (
+        <EventFormDialog
+          onClose={() => setEventOpen(false)}
+          onCreate={handleCreateEvent}
+          onOpenThread={onOpenThread}
+        />
+      )}
     </AppShell>
   )
 }

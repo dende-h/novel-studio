@@ -494,7 +494,7 @@ it('新しい作品のダイアログから、テキストの取り込みへ移�
   fireEvent.click(screen.getByRole('radio', { name: '脚本' }))
   fireEvent.click(screen.getByRole('button', { name: 'テキストから作る' }))
   expect(screen.queryByRole('dialog', { name: '新しいプロジェクト' })).toBeNull()
-  const dialog = screen.getByRole('dialog', { name: 'テキストから作品を作る' })
+  const dialog = screen.getByRole('dialog', { name: '原稿を取り込む' })
   // 新しいプロジェクトで選んだ形式のまま開く
   expect(within(dialog).getByRole('radio', { name: '脚本' })).toBeChecked()
 })

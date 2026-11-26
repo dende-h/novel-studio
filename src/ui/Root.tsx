@@ -19,6 +19,7 @@ import {
   createLocalBackupIO,
   createLocalBackupService,
 } from './backup/backup-service'
+import { BoardNotificationsProvider } from './board/board-notifications-provider'
 import { ActivityPage } from './components/ActivityPage/activity-page'
 import { AiPullDialog } from './components/AiPullDialog/ai-pull-dialog'
 import { CloudBackupDialog } from './components/CloudBackupDialog/cloud-backup-dialog'
@@ -100,7 +101,7 @@ const BOARD_THREAD_PREFIX = '/board/'
  */
 function boardThreadId(route: string): string | null {
   if (!route.startsWith(BOARD_THREAD_PREFIX)) return null
-  const raw = route.slice(BOARD_THREAD_PREFIX.length)
+  const raw = route.slice(BOARD_THREAD_PREFIX.length).split('?')[0] ?? ''
   if (raw === '') return null
   try {
     return decodeURIComponent(raw)
@@ -382,7 +383,8 @@ function RootRoutes({ store }: RootProps) {
       )
   }
 
-  if (route === '/settings') return <SettingsPage />
+  if (route === '/settings' || route === '/settings/notifications')
+    return <SettingsPage showNotifications={route.endsWith('/notifications')} />
   if (route === '/help') return <HelpPage />
   if (route === '/sites') return <PostingSitesPage />
 
@@ -441,6 +443,10 @@ function RootRoutes({ store }: RootProps) {
   // 認証のガードは置かない（書き込みの手前で画面側がログイン・表示名を要求する）。
   if (route === '/board' || route.startsWith(BOARD_THREAD_PREFIX)) {
     const threadId = boardThreadId(route)
+    const query = new URLSearchParams(route.split('?')[1])
+    const post = Number(query.get('post'))
+    const action = query.get('action')
+    const activity = Number(query.get('activity'))
     return (
       <Suspense fallback={<PageLoading />}>
         {threadId === null ? (
@@ -456,7 +462,18 @@ function RootRoutes({ store }: RootProps) {
           />
         ) : (
           <ThreadView
+            key={
+              Number.isSafeInteger(activity) && activity > 0 ? threadId + ':' + activity : threadId
+            }
             threadId={threadId}
+            postTarget={Number.isSafeInteger(post) && post > 0 ? post : undefined}
+            intent={action === 'join' || action === 'reply' ? action : undefined}
+            onNavigatePost={(seq) =>
+              navigate(BOARD_THREAD_PREFIX + encodeURIComponent(threadId) + '?post=' + seq)
+            }
+            onJoinIntent={() =>
+              navigate(BOARD_THREAD_PREFIX + encodeURIComponent(threadId) + '?action=join')
+            }
             onBack={() => navigate('/board')}
             onNavigateCollection={() => navigate('/')}
             onNavigateActivity={() => navigate('/activity')}
@@ -610,12 +627,26 @@ export function Root({ store }: RootProps) {
   const [profileOpen, setProfileOpen] = useState(false)
   const openProfile = useCallback(() => setProfileOpen(true), [])
   const saveProfile = useSaveProfile(store)
-  const { isSignedIn } = useAuth()
+  const { isSignedIn, userId, getToken } = useAuth()
+  const accountAuth = useRef({ userId, getToken })
+  accountAuth.current = { userId, getToken }
+  const getNotificationToken = useCallback(
+    () =>
+      accountAuth.current.userId === userId
+        ? accountAuth.current.getToken()
+        : Promise.resolve(null),
+    [userId],
+  )
 
   return (
     <PenNameContext.Provider value={penName}>
       <ProfileEditContext.Provider value={openProfile}>
-        <RootRoutes store={store} />
+        <BoardNotificationsProvider
+          userId={isSignedIn ? userId : null}
+          getToken={getNotificationToken}
+        >
+          <RootRoutes store={store} />
+        </BoardNotificationsProvider>
         {/* プロフィールはアプリに 1 つだけ。どの画面からでも同じ口で開く。 */}
         <ProfileDialog
           open={profileOpen}

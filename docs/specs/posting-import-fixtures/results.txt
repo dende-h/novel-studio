@@ -1,0 +1,29 @@
+PASS  kakuyomu.zip
+PASS  kakuyomu-compatible.zip
+PASS  narou 2023
+PASS  narou 2026
+PASS  akatsuki: title from first line, numeric order
+PASS  mock novelup structure
+PASS  mock tales structure
+PASS  mock alpha CP932 TXT
+PASS  mock alpha CP932 ZIP
+PASS  mock solispia headings
+PASS  mock vertical PDF: chapters and reading order
+PASS  three prose episodes, approximately 1000 characters each
+PASS  mock EPUB: spine order and ruby
+PASS  euc-jp decode
+PASS  iso-2022-jp decode
+PASS  berrys-cafe one-episode TXT
+PASS  noichigo one-episode TXT
+PASS  novel-days-body one-episode TXT
+PASS  novema one-episode TXT
+PASS  pixiv tags retained verbatim
+PASS  teller-novel one-episode TXT
+PASS  folder natural path order
+PASS  image renamed txt
+PASS  broken zip
+PASS  missing required Kakuyomu body
+PASS  unsafe archive member
+PASS  zip with no supported document flagged
+
+27 checks passed.

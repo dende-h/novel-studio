@@ -12,6 +12,8 @@ interface AppShellProps {
   saveStatus?: SaveState
   onNarration?: () => void
   onExport?: () => void
+  onImportBody?: () => void
+  onUndoBodyImport?: () => void
   exportDisabled?: boolean
   /** コトノハ-grove- への投稿ダイアログを開く（任意） */
   onPublish?: () => void
@@ -38,6 +40,8 @@ export function AppShell({
   saveStatus,
   onNarration,
   onExport,
+  onImportBody,
+  onUndoBodyImport,
   exportDisabled,
   onPublish,
   onToggleHistory,
@@ -65,12 +69,15 @@ export function AppShell({
           saveStatus={saveStatus}
           onNarration={onNarration}
           onExport={onExport}
+          onImportBody={onImportBody}
+          onUndoBodyImport={onUndoBodyImport}
           exportDisabled={exportDisabled}
           onPublish={onPublish}
           onToggleHistory={onToggleHistory}
           historyOpen={historyOpen}
           onToggleNav={() => setNavOpen((v) => !v)}
           navOpen={navOpen}
+          hideNotifications={focusMode}
         />
       </div>
       {focusMode ? focusControls : null}
@@ -97,7 +104,8 @@ export function AppShell({
           // ナビ内の操作＝行き先が決まったとみなして閉じる。同一 AppShell 内の画面切替
           // （activeScreen）は unmount されないため、SideNav 側に prop を足さずここで拾う。
           onClick={(e) => {
-            if ((e.target as HTMLElement).closest('button, a')) setNavOpen(false)
+            const action = (e.target as HTMLElement).closest('button, a')
+            if (action && !action.hasAttribute('data-keep-nav-open')) setNavOpen(false)
           }}
         >
           {sidebar}

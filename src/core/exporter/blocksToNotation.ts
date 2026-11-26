@@ -1,32 +1,37 @@
+import { needsRubyPipe } from '../parser/parseNotation'
 import type { Block, Inline } from '../schema'
 
 /**
  * 正本 block 列 → ロスレスな正本記法テキスト。
  *
- * カクヨム記法（傍点ネイティブ `《《》》`・漢字のみ親文字はパイプ省略）を踏襲しつつ、
- * @参照を `[[名前]]` で**保存**する点が `blocksToKakuyomu`（外部入稿用＝ref をプレーン名に degrade）
- * との違い。ref を含まない block では blocksToKakuyomu と出力が一致する。
+ * カクヨムに近い記法に、用語参照とリテラル文字のエスケープを加える。
+ * 投稿用のルビ制限や挿絵タグの変換はここでは適用しない。
  * エディタの話オープン/復元・folder 往復（外部 Claude 編集の橋）が往復で ref を失わないために使う。
  * `parseEpisodeBody` と対で blocks レベルの恒等（往復不動点）を保つ。純関数。
  */
 
-// blocksToKakuyomu と同じく、漢字のみの親文字はパイプ省略（自動ルビ）で出す
-const KANJI_ONLY = /^[一-鿿々〆ヵヶ]+$/
+const endsWithKanji = /[\p{Script=Han}々〆ヵヶ]$/u
+
+function escapeText(text: string): string {
+  return text.replace(/\\(?=![\\《｜|[])|[《｜|]|\[(?=\[)/g, '\\!$&')
+}
 
 export function blocksToNotation(blocks: Block[]): string {
   return blocks.map(blockToNotation).join('\n')
 }
 
 function blockToNotation(block: Block): string {
-  return block.inlines.map(inlineToNotation).join('')
+  let text = ''
+  for (const inline of block.inlines) text += inlineToNotation(inline, endsWithKanji.test(text))
+  return text
 }
 
-function inlineToNotation(inline: Inline): string {
+function inlineToNotation(inline: Inline, afterKanji = false): string {
   switch (inline.type) {
     case 'text':
-      return inline.text
+      return escapeText(inline.text)
     case 'ruby':
-      return KANJI_ONLY.test(inline.base)
+      return !afterKanji && !needsRubyPipe(inline.base)
         ? `${inline.base}《${inline.reading}》`
         : `｜${inline.base}《${inline.reading}》`
     case 'emphasisDots':
@@ -34,7 +39,7 @@ function inlineToNotation(inline: Inline): string {
     case 'ref':
       // 装飾を重ねた ref（[[｜言葉《ことば》]]）は children を中身として書き戻す。
       // ref を外側に置く正規形で出す（`《《[[言葉]]》》` と書かれていてもこちらへ寄る）。
-      return `[[${inline.children ? inline.children.map(inlineToNotation).join('') : inline.name}]]`
+      return `[[${inline.children ? inline.children.map((child) => inlineToNotation(child)).join('') : inline.name}]]`
   }
 }
 
