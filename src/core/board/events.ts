@@ -80,9 +80,14 @@ export function parseJstInput(value: string): number | null {
   return Number.isFinite(ms) && ms > 0 && jstInputValue(ms) === value ? ms : null
 }
 
-export const LEAF_ORIGIN = 'https://cotonoha-leaf.org'
-export const eventShareUrl = (threadId: string): string =>
-  LEAF_ORIGIN + '/events/' + encodeURIComponent(threadId)
+const LEAF_ORIGIN = 'https://cotonoha-leaf.org'
+const STAGING_ORIGIN = 'https://stg.novel-studio-b2m.pages.dev'
+
+export const eventShareOrigin = (origin?: string): string =>
+  origin === STAGING_ORIGIN ? STAGING_ORIGIN : LEAF_ORIGIN
+
+export const eventShareUrl = (threadId: string, origin?: string): string =>
+  eventShareOrigin(origin) + '/events/' + encodeURIComponent(threadId)
 
 export function parseEventWorkUrl(raw: string): string | null {
   try {

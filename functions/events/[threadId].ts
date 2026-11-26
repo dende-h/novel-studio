@@ -1,10 +1,10 @@
 /// <reference types="@cloudflare/workers-types" />
 import {
   eventPeriod,
+  eventShareOrigin,
   eventShareUrl,
   eventStatusLabel,
   eventStatusOf,
-  LEAF_ORIGIN,
 } from '../../src/core/board/events'
 import { boardBodyToPlain, escapeHtml } from '../../src/core/board/render'
 import { publicEvent } from '../api/_lib/board-event-store'
@@ -18,7 +18,7 @@ const headers = {
 const styles =
   '<style>body{background:#f6f7f0;color:#24332a;font:1rem/1.7 system-ui,sans-serif;margin:0;padding:2rem 1rem}main{background:white;border:1px solid #dce4d8;border-radius:1rem;margin:3vh auto;max-width:40rem;padding:clamp(1rem,5vw,2.5rem)}h1{line-height:1.25;overflow-wrap:anywhere}p{overflow-wrap:anywhere}a{color:#24583d}nav{display:flex;gap:1rem;flex-wrap:wrap}</style>'
 
-export const onRequestGet: PagesFunction<{ DB: D1Database }> = async ({ params, env }) => {
+export const onRequestGet: PagesFunction<{ DB: D1Database }> = async ({ params, env, request }) => {
   const id = params.threadId
   const event = typeof id === 'string' && id.length <= 100 ? await publicEvent(env.DB, id) : null
   if (!event || typeof id !== 'string') {
@@ -39,8 +39,9 @@ export const onRequestGet: PagesFunction<{ DB: D1Database }> = async ({ params, 
   const period = escapeHtml(eventPeriod(schedule))
   const status = eventStatusLabel[state]
   const title = escapeHtml(event.title)
-  const url = escapeHtml(eventShareUrl(id))
-  const card = LEAF_ORIGIN + '/lp/ogp.png'
+  const origin = new URL(request.url).origin
+  const url = escapeHtml(eventShareUrl(id, origin))
+  const card = eventShareOrigin(origin) + '/lp/ogp.png'
   const thread = '/#/board/' + encodeURIComponent(id)
   const join =
     state === 'active' || state === 'upcoming'
