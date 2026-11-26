@@ -36,7 +36,8 @@ interface Local {
   offset: number
 }
 
-export function zipStore(inputs: ZipInput[]): Uint8Array {
+export function zipStore(inputs: ZipInput[], options: { utf8Names?: boolean } = {}): Uint8Array {
+  const flags = options.utf8Names ? 0x800 : 0
   const locals: Local[] = []
   const chunks: Uint8Array[] = []
   let offset = 0
@@ -49,7 +50,7 @@ export function zipStore(inputs: ZipInput[]): Uint8Array {
     const v = new DataView(header.buffer)
     v.setUint32(0, 0x04034b50, true) // local file header signature
     v.setUint16(4, 20, true) // version needed
-    v.setUint16(6, 0, true) // flags
+    v.setUint16(6, flags, true) // UTF-8 file name when requested
     v.setUint16(8, 0, true) // method = store
     v.setUint16(10, 0, true) // mod time
     v.setUint16(12, 0x21, true) // mod date (1980-01-01)
@@ -72,7 +73,7 @@ export function zipStore(inputs: ZipInput[]): Uint8Array {
     v.setUint32(0, 0x02014b50, true) // central dir header signature
     v.setUint16(4, 20, true) // version made by
     v.setUint16(6, 20, true) // version needed
-    v.setUint16(8, 0, true) // flags
+    v.setUint16(8, flags, true) // UTF-8 file name when requested
     v.setUint16(10, 0, true) // method
     v.setUint16(12, 0, true) // mod time
     v.setUint16(14, 0x21, true) // mod date

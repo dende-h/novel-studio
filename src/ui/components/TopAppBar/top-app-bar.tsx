@@ -3,6 +3,7 @@ import {
   CloudUpload,
   CreditCard,
   Download,
+  Ellipsis,
   Headphones,
   History,
   LoaderCircle,
@@ -17,6 +18,12 @@ import { useAuth } from '@/ui/auth/auth-context'
 import { BoardNotificationBell } from '@/ui/components/BoardNotifications/board-notifications'
 import { type SaveState, SaveStatus } from '@/ui/components/SaveStatus/save-status'
 import { Button } from '@/ui/components/ui/button'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/ui/components/ui/dropdown-menu'
 import { useLocalFlag } from '@/ui/hooks/use-local-flag'
 import { useOpenProfile, usePenName } from '@/ui/hooks/use-pen-name'
 import { useSyncStatus } from '@/ui/hooks/use-sync-status'
@@ -40,6 +47,8 @@ interface TopAppBarProps {
   /** 書き出しダイアログを開く。未指定なら非表示 */
   onNarration?: () => void
   onExport?: () => void
+  onImportBody?: () => void
+  onUndoBodyImport?: () => void
   exportDisabled?: boolean
   /** コトノハ-grove- への投稿ダイアログを開く。未指定なら非表示（投稿先が未設定のビルドなど） */
   onPublish?: () => void
@@ -219,6 +228,8 @@ export function TopAppBar({
   saveStatus,
   onNarration,
   onExport,
+  onImportBody,
+  onUndoBodyImport,
   exportDisabled,
   onPublish,
   onToggleHistory,
@@ -316,6 +327,23 @@ export function TopAppBar({
           </button>
         ) : null}
         {onNarration && <NarrationEntry open={onNarration} />}
+        {onImportBody && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="icon-sm" aria-label="話のメニュー">
+                <Ellipsis className="size-4" aria-hidden />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onSelect={onImportBody}>本文を取り込む</DropdownMenuItem>
+              {onUndoBodyImport && (
+                <DropdownMenuItem onSelect={onUndoBodyImport}>
+                  本文の取り込みを取り消す
+                </DropdownMenuItem>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
         {onExport ? (
           <Button
             variant="outline"

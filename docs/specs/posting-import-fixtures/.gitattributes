@@ -1,0 +1,7 @@
+# Preserve the bytes used to verify encodings, line endings, and container formats.
+*.zip binary
+*.pdf binary
+*.epub binary
+mock/alphapolis.txt binary
+fallback/encoding-*.txt binary
+rejected/image-renamed.txt binary

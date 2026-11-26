@@ -290,6 +290,7 @@ export function toBundleWork(work: Work, novelGame?: NovelGameBundleInput): Bund
     glossary,
     format,
     synopsis: _synopsis,
+    manuscriptImport: _manuscriptImport,
     ...rest
   } = work
   const payload = toPlatformPayload(work.platform)

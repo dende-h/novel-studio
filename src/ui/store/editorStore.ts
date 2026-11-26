@@ -2,6 +2,7 @@ import { blocksToNotation } from '../../core/exporter/blocksToNotation'
 import { renameEntry, resolveRef } from '../../core/glossary'
 import { DIALOG_VERSION } from '../../core/glossary/dialog'
 import { applyGlossaryFieldPatch, type GlossaryFieldPatch } from '../../core/glossary/patch'
+import { validateImportedWork } from '../../core/importer/posting-work'
 import { parseEpisodeBody } from '../../core/parser/parseNotation'
 import { reconcileBlockIds } from '../../core/parser/reconcileBlockIds'
 import type { Profile, ProfileRepository } from '../../core/profile'
@@ -106,6 +107,13 @@ export interface EditorStore {
   /** 作品メタ（タイトル・著者・あらすじ）を更新して永続化する。 */
   updateWorkMeta(id: string, meta: WorkMeta): Promise<void>
   importWorks(works: Work[]): Promise<void>
+  appendImportedEpisodes(workId: string, imported: Work): Promise<void>
+  applyImportedBody(input: {
+    workId: string
+    episodeId: string
+    expected: string
+    body: string
+  }): Promise<void>
   getAllWorks(): Promise<Work[]>
   /** 辞書 entry を新規作成して永続化し、作成した entry を返す（name/別名の完全同名は拒否）。 */
   addGlossaryEntry(input: NewGlossaryEntry): Promise<GlossaryEntry>
@@ -686,6 +694,70 @@ export function createEditorStore({
       await refreshList()
     },
 
+    async appendImportedEpisodes(workId, imported) {
+      const current = await repo.getWork(workId)
+      if (!current) throw new Error('追加先の作品が見つかりません')
+      const old = current.manuscriptImport
+      const added = imported.manuscriptImport
+      const assets = new Map(
+        [...(old?.assets ?? []), ...(added?.assets ?? [])].map((asset) => [asset.path, asset]),
+      )
+      const work = validateImportedWork({
+        ...current,
+        episodes: [...current.episodes, ...imported.episodes],
+        updatedAt: now(),
+        ...(added
+          ? {
+              manuscriptImport: {
+                notes: [old?.notes, added.notes].filter(Boolean).join('\n\n'),
+                assets: [...assets.values()],
+              },
+            }
+          : {}),
+      })
+      await repo.saveWork(work)
+      if (state.work?.id === workId) set({ work })
+      await refreshList()
+    },
+
+    async applyImportedBody({ workId, episodeId, expected, body }) {
+      const work = state.work
+      const ep = currentEpisode(state)
+      if (work?.id !== workId || ep?.id !== episodeId || state.draft !== expected) {
+        throw new Error('本文が変わりました。変更後の本文を確認してから取り込んでください')
+      }
+      const blocks = reconcileBlockIds(ep.blocks, parseEpisodeBody(body))
+      validateImportedWork({
+        ...work,
+        episodes: work.episodes.map((item) => (item.id === episodeId ? { ...item, blocks } : item)),
+      })
+      const original = { draft: state.draft, dirty: state.dirty, status: state.status }
+      const flushSnapshot = appendNextSnapshot
+      if (expected !== body)
+        await snapshotRepo.append(
+          {
+            ...work,
+            episodes: work.episodes.map((item) =>
+              item.id === episodeId
+                ? { ...item, blocks: reconcileBlockIds(ep.blocks, parseEpisodeBody(expected)) }
+                : item,
+            ),
+          },
+          now(),
+          genId(),
+        )
+      appendNextSnapshot = true
+      set({ draft: body, dirty: true, status: 'idle' })
+      try {
+        await internal.save()
+      } catch (error) {
+        if (state.work !== work) return // 原稿は確定済み。補助の記録だけが失敗した。
+        appendNextSnapshot = flushSnapshot
+        set(original)
+        throw error
+      }
+    },
+
     async getAllWorks() {
       const list = await repo.listWorks()
       const works = await Promise.all(list.map((w) => repo.getWork(w.id)))
@@ -850,6 +922,8 @@ export function createEditorStore({
     'reorderEpisodes',
     'updateWorkMeta',
     'importWorks',
+    'appendImportedEpisodes',
+    'applyImportedBody',
     'addGlossaryEntry',
     'updateGlossaryEntry',
     'renameGlossaryEntry',
@@ -866,7 +940,7 @@ export function createEditorStore({
           return Promise.reject(new Error('処理が終わるまでお待ちください'))
         }
         const operation =
-          name === 'replaceWorkMatches'
+          name === 'replaceWorkMatches' || name === 'applyImportedBody'
             ? 'replacing'
             : name === 'navigateWorkMatch'
               ? 'navigating'
@@ -878,6 +952,7 @@ export function createEditorStore({
             'restoreWork',
             'purgeWork',
             'updateWorkMeta',
+            'appendImportedEpisodes',
             'openWork',
           ].includes(name)
           const input = args[0] as { workId?: string } | undefined
@@ -885,6 +960,7 @@ export function createEditorStore({
           const run = async () => {
             const writesOpenWork = [
               'save',
+              'applyImportedBody',
               'createEpisode',
               'deleteEpisode',
               'renameEpisode',

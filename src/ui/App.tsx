@@ -47,6 +47,10 @@ import { PreviewPane, type PreviewPosition } from '@/ui/components/PreviewPane/p
 import { SHEET_PRESETS } from '@/ui/components/ScriptSheet/script-sheet'
 import { ScriptSheetView } from '@/ui/components/ScriptSheet/script-sheet-view'
 import { SideNav } from '@/ui/components/SideNav/side-nav'
+import {
+  type CurrentDraft,
+  EpisodeImportDialog,
+} from '@/ui/components/TextImportDialog/episode-import-dialog'
 import { TitlePromptDialog } from '@/ui/components/TitlePromptDialog/title-prompt-dialog'
 import { useToast } from '@/ui/components/Toast/toast'
 import { Button } from '@/ui/components/ui/button'
@@ -174,6 +178,10 @@ export function App({
   const openProfile = useOpenProfile()
   const [newEpisodeOpen, setNewEpisodeOpen] = useState(false)
   const [exportOpen, setExportOpen] = useState(false)
+  const [importDraft, setImportDraft] = useState<CurrentDraft | null>(null)
+  const [undoImport, setUndoImport] = useState<{ draft: CurrentDraft; imported: string } | null>(
+    null,
+  )
   const [metaOpen, setMetaOpen] = useState(false)
   const [historyOpen, setHistoryOpen] = useState(false)
   const [activeScreen, setActiveScreen] = useState<
@@ -279,7 +287,7 @@ export function App({
   // 解決（グレーリンク）／未解決（点線）で描き分ける（D-GLOS-PREVIEW-API）。
   const resolvedNames = useMemo(() => resolvedNameSet(work?.glossary ?? []), [work?.glossary])
   const previewHtml = useMemo(
-    () => blocksToHtml(parseEpisodeBody(state.draft), resolvedNames),
+    () => blocksToHtml(parseEpisodeBody(state.draft), resolvedNames, true),
     [state.draft, resolvedNames],
   )
   // 脚本は HTML ではなく原稿用紙（20字×20行など）に組む。縦横の切替は用紙の型の切替になる。
@@ -309,6 +317,35 @@ export function App({
 
   const episode = work?.episodes.find((e) => e.id === state.currentEpisodeId) ?? null
   const onEpisodes = activeScreen === 'episodes'
+  const currentDraft =
+    work && episode
+      ? {
+          workId: work.id,
+          episodeId: episode.id,
+          draft: state.draft,
+          title: episode.title,
+        }
+      : null
+  const canUndoImport =
+    currentDraft &&
+    undoImport &&
+    currentDraft.workId === undoImport.draft.workId &&
+    currentDraft.episodeId === undoImport.draft.episodeId &&
+    currentDraft.draft === undoImport.imported
+  const undoBodyImport = async () => {
+    if (!canUndoImport || !undoImport) return
+    try {
+      await store.applyImportedBody({
+        ...undoImport.draft,
+        expected: undoImport.imported,
+        body: undoImport.draft.draft,
+      })
+      setUndoImport(null)
+      show('本文の取り込みを取り消しました')
+    } catch {
+      show('本文を元に戻せませんでした。履歴から確認できます')
+    }
+  }
   const writingMode = useWritingMode(Boolean(episode && onEpisodes), !narrow)
   const focusMode = writingMode.focus
   const previousFocusMode = useRef(false)
@@ -526,6 +563,8 @@ export function App({
             : undefined
         }
         onExport={() => void openExport()}
+        onImportBody={onEpisodes && currentDraft ? () => setImportDraft(currentDraft) : undefined}
+        onUndoBodyImport={onEpisodes && canUndoImport ? () => void undoBodyImport() : undefined}
         onPublish={
           isPublishAvailable && work && onNavigatePublish ? () => void openPublish() : undefined
         }
@@ -1202,9 +1241,22 @@ export function App({
           onCreateEntry={createPlainGlossaryEntry}
           onCloseAutoFocus={onQuickCreateCloseAutoFocus}
         />
+        {importDraft && (
+          <EpisodeImportDialog
+            opened={importDraft}
+            current={currentDraft}
+            onClose={() => setImportDraft(null)}
+            onCommit={async (draft, body) => {
+              await store.applyImportedBody({ ...draft, expected: draft.draft, body })
+              setUndoImport({ draft, imported: body })
+              show('本文を取り込みました')
+            }}
+          />
+        )}
         <ExportDialog
           open={exportOpen}
           onOpenChange={setExportOpen}
+          initialEpisode={episode?.id}
           work={state.work}
           onEditMeta={
             work

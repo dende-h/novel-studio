@@ -10,7 +10,7 @@
 ## 0. 30秒でわかる全体像
 
 ローカルファーストの小説執筆ツール。原稿は既定で端末内（IndexedDB）にのみ置き、
-クラウド同期・バックアップは有料オプトイン（at-rest 暗号化）。書き出し先は EPUB / なろう / カクヨム / 自前 コトノハ-grove-（脚本の作品は体裁を整えたテキスト）。
+クラウド同期・バックアップは有料オプトイン（at-rest 暗号化）。書き出し先は EPUB / 投稿サイト別TXT・ZIP / カクヨム互換ZIP / コトノハ-grove-（脚本の作品は体裁を整えたテキスト）。
 
 ```
 ブラウザ (Vite + React 19 + Tailwind4 + PWA)
@@ -41,6 +41,7 @@ Cloudflare Pages Functions
 | 記法（ルビ・傍点・`[[参照]]`）の解釈を変える | `src/core/parser/parseNotation.ts` + `src/core/schema/index.ts` |
 | プレビューのマークダウン（見出し・リスト・表・引用）を変える | `src/core/markdown/index.ts`（本文は非対応。効くのはプロット・世界観・用語集の記法つき欄） |
 | 書き出し（EPUB/なろう/カクヨム/HTML）の出力を変える | `src/core/exporter/` 配下（形式ごとに1ファイル） |
+| 投稿サイト原稿の取込・Web投稿・公開記法変換 | プロファイルは `src/core/sites/portability.ts`、取込は `src/core/importer/manuscript.ts`（TXT/ZIP）・`src/core/importer/site-formats.ts`（目次・話境界）・`src/core/importer/markup.ts`（EPUB/HTML）・`src/ui/_utils/manuscript-pdf.ts`（PDF）。ホームと各話の入口は `src/ui/components/TextImportDialog/`、出力は `src/core/exporter/toPostingSite.ts` と `src/core/exporter/posting-files.ts`、公開ページは `src/ui/notation-converter.tsx` |
 | テキスト（.txt／貼り付け）の取り込み＝見出し行で話に分けて新しい作品にする（COT-31） | 分割・文字コード判別・Work 組み立ては `src/core/importer/`（`splitEpisodes` `decodeTextFile` `buildImportedWork`）、画面は `src/ui/components/TextImportDialog/`、入口はライブラリ「データ管理」→「テキストから作品を作る」（`src/ui/components/Library/library.tsx`）。JSON バックアップの取り込みは別（`ImportDialog/`） |
 | **朗読制作・MP3/ZIP書き出し**を変える | 設計は `docs/requirement/13-narration.md`。専用ルート `#/narration/<workId>/<episodeId>` は `src/ui/Root.tsx`、画面は `src/ui/components/NarrationPage/narration-page.tsx`、比較・通し再生のプレーヤーは `src/ui/components/NarrationPage/narration-player.tsx`、画面から独立した状態・候補保存・全区間成功後の一括採用・通信は `src/ui/narration/service.ts`。連続した文のクリック選択は `src/core/narration/selection.ts`。話別設定・文の区切り・読み指定の確認（`readingCuesNeedingReview`）・冒頭試聴範囲は `src/core/narration/resolve.ts`、API用テキストと旧読点補正の互換処理は `src/core/narration/provider.ts`、音声前後の無音計測と不足する間の結合は `src/ui/narration/audio.ts` と `src/core/narration/mp3.ts`。端末の設定・採用音声は `src/core/storage/narrationRepository.ts`（作者用・公開Workには載せない）。APIは `functions/api/narration.ts`、プランと声の許可リストは `functions/api/_lib/narration.ts`、原子的な枠予約は `migrations/0011_narration.sql`。実行と期限切れ削除は `workers/narration/worker.ts`（stg専用Durable Object・cron）。合意した操作は `docs/specs/narration-workflow/decisions.md`、運用と公開前の確認は `docs/narration-implementation.md` |
 # CODEMAP — novel-studio コード地図
@@ -117,6 +118,9 @@ Cloudflare Pages Functions
 | モジュール | 責務 |
 |---|---|
 | `src/core/parser/parseNotation.ts` | 記法テキスト → 正本 Block。`parseEpisodeBody` `parseInlines`、`plainOffsetMap`（表示文字の位置 → 行の位置・推敲の「直す箇所」の選択に使う） |
+| `src/core/importer/site-notation.ts` | 外部のルビ・傍点・挿絵タグの解析（Leafの用語参照とは別の入口） |
+| `src/core/zip/read.ts` | 投稿用ZIP・EPUBのパス、展開量、CRCの検証 |
+| `src/core/importer/posting-work.ts` | 取込原稿のWork化と保存サイズの検証 |
 | `src/core/parser/reconcileBlockIds.ts` | 保存の再パースで振り直された block id を旧 blocks から引き継ぐ（演出譜 Staging のアンカー安定化。editorStore.save と mcp-edit の setEpisode が通す） |
 | `src/core/exporter/toEpub.ts` | 正本 → EPUB（`episodeToXhtml` + `zip/`） |
 | `src/core/exporter/toHtml.ts` | 正本 → 安全な HTML（プレビュー兼用・全エスケープ済み。`inlinesToHtml` も公開） |
@@ -184,6 +188,7 @@ Cloudflare Pages Functions
 | ファイル | 責務 |
 |---|---|
 | `src/ui/main.tsx` | フォント読込・`createRoot`・Provider 積み上げ |
+| `src/ui/notation-converter.tsx` | Viteの独立入口 `/notation-converter/`。ブラウザ内で原稿を変換し、任意でホームの取込に引き継ぐ |
 | `src/ui/Root.tsx` | **ハッシュルーティングの分岐点**（下表）。リポジトリ生成と会員判定の配線 |
 | `src/ui/App.tsx` | 執筆画面本体（`#/write`）。エディタ・プレビュー・用語集・履歴パネル・推敲画面への入口と「直す箇所」の統括。**約1,200行 / 最も密度が高い** |
 | `src/ui/store/editorStore.ts` | 自前ストア。`getSnapshot`/`subscribe` + 作品・話・用語集・ゴミ箱・プロフィール、作品操作キュー・`workOperation`・`getSearchSources`・`replaceWorkMatches`・`navigateWorkMatch` |

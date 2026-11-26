@@ -1,4 +1,5 @@
 import type { Block, Inline } from '../schema'
+import { illustrationReferences } from '../sites/illustrations'
 
 /**
  * 正本 block 列 → ライブプレビュー用 HTML 文字列。
@@ -33,8 +34,12 @@ export function wrapTcy(escaped: string): string {
  *   - 指定あり（プレビュー）: ref を `<span class="ref">`（解決）/ `ref ref--unresolved`（未解決）で描画。
  *   - 未指定（EPUB 等）: ref は名前のプレーンテキストへ degrade（リンク化しない）。辞書非依存を保つ。
  */
-export function blocksToHtml(blocks: Block[], resolvedNames?: Set<string>): string {
-  return blocks.map((b) => blockToHtml(b, resolvedNames)).join('')
+export function blocksToHtml(
+  blocks: Block[],
+  resolvedNames?: Set<string>,
+  showIllustrations = false,
+): string {
+  return blocks.map((b) => blockToHtml(b, resolvedNames, showIllustrations)).join('')
 }
 
 /** inline 列だけを HTML 化する（マークダウンプレビュー等、段落を自前で組む呼び出し側用）。 */
@@ -42,15 +47,34 @@ export function inlinesToHtml(inlines: Inline[], resolvedNames?: Set<string>): s
   return inlines.map((inl) => inlineToHtml(inl, resolvedNames)).join('')
 }
 
-function blockToHtml(block: Block, resolvedNames?: Set<string>): string {
+function blockToHtml(block: Block, resolvedNames?: Set<string>, showIllustrations = false): string {
   if (block.inlines.length === 0) return '<p class="blank"></p>'
-  return `<p>${block.inlines.map((inl) => inlineToHtml(inl, resolvedNames)).join('')}</p>`
+  return `<p>${block.inlines.map((inl) => inlineToHtml(inl, resolvedNames, showIllustrations)).join('')}</p>`
 }
 
-function inlineToHtml(inline: Inline, resolvedNames?: Set<string>): string {
+function inlineToHtml(
+  inline: Inline,
+  resolvedNames?: Set<string>,
+  showIllustrations = false,
+): string {
   switch (inline.type) {
-    case 'text':
-      return wrapTcy(escapeHtml(inline.text))
+    case 'text': {
+      const plain = (value: string) => wrapTcy(escapeHtml(value))
+      if (!showIllustrations) return plain(inline.text)
+      let html = ''
+      let start = 0
+      for (const ref of illustrationReferences(inline.text)) {
+        html += plain(inline.text.slice(start, ref.offset))
+        html +=
+          '<span class="illustration-reference" title="挿絵の参照 ' +
+          escapeAttr(ref.name) +
+          '">' +
+          escapeHtml(ref.raw) +
+          '</span>'
+        start = ref.offset + ref.raw.length
+      }
+      return html + plain(inline.text.slice(start))
+    }
     case 'ruby':
       // <rp> は ruby 対応環境では非表示になり、非対応環境では「漢字（かんじ）」と読める保険。
       return `<ruby>${escapeHtml(inline.base)}<rp>（</rp><rt>${escapeHtml(inline.reading)}</rt><rp>）</rp></ruby>`

@@ -29,6 +29,7 @@ import {
   publishWorkToPlatform,
 } from '@/ui/_api/publish'
 import { triggerDownload } from '@/ui/_utils/download'
+import { takeNotationHandoff } from '@/ui/_utils/notation-handoff'
 import { useAuth } from '@/ui/auth/auth-context'
 import type { LocalBackupService } from '@/ui/backup/backup-service'
 import { AppShell } from '@/ui/components/AppShell/app-shell'
@@ -39,6 +40,7 @@ import { ExportDialog } from '@/ui/components/ExportDialog/export-dialog'
 import { ImportDialog } from '@/ui/components/ImportDialog/import-dialog'
 import { SaveStateIndicator } from '@/ui/components/SaveStateIndicator/save-state-indicator'
 import { SideNav } from '@/ui/components/SideNav/side-nav'
+import { ManuscriptImportDialog } from '@/ui/components/TextImportDialog/manuscript-import-dialog'
 import { TextImportDialog } from '@/ui/components/TextImportDialog/text-import-dialog'
 import { TitlePromptDialog } from '@/ui/components/TitlePromptDialog/title-prompt-dialog'
 import { useToast } from '@/ui/components/Toast/toast'
@@ -184,8 +186,26 @@ export function Library({
   const [publishBusyId, setPublishBusyId] = useState<string | null>(null)
   const [importOpen, setImportOpen] = useState(false)
   const [textImportOpen, setTextImportOpen] = useState(false)
+  const [manuscriptOpen, setManuscriptOpen] = useState(false)
+  const [handoff, setHandoff] = useState<Awaited<ReturnType<typeof takeNotationHandoff>>>()
+  useEffect(() => {
+    let cancelled = false
+    void takeNotationHandoff()
+      .then((value) => {
+        if (!cancelled && value) {
+          setHandoff(value)
+          setManuscriptOpen(true)
+        }
+      })
+      .catch(() => {
+        if (!cancelled) show('原稿を引き継げませんでした')
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [show])
   // 取り込みを開いたときに選ばれている形式（新しいプロジェクトから来たら、そこで選んだ形式）
-  const [textImportFormat, setTextImportFormat] = useState<WorkFormat>('novel')
+  const [manuscriptFormat, setManuscriptFormat] = useState<WorkFormat>('novel')
   const [backupOpen, setBackupOpen] = useState(false)
   const [trashOpen, setTrashOpen] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<WorkSummary | null>(null)
@@ -390,6 +410,17 @@ export function Library({
                 onOpenCloudBackup={onOpenCloudBackup}
               />
               <div className="flex flex-wrap items-center justify-end gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setManuscriptFormat('novel')
+                    setManuscriptOpen(true)
+                  }}
+                >
+                  <FileText className="size-4" aria-hidden />
+                  原稿を取り込む
+                </Button>
                 {/* 作品名で検索（タイトル部分一致） */}
                 <div className="relative">
                   <Search className="-translate-y-1/2 absolute top-1/2 left-2.5 size-3.5 text-on-surface-variant/60" />
@@ -490,7 +521,7 @@ export function Library({
                           label="テキストから作品を作る"
                           onClick={() => {
                             setDataMenuOpen(false)
-                            setTextImportFormat('novel')
+
                             setTextImportOpen(true)
                           }}
                         />
@@ -617,7 +648,7 @@ export function Library({
             ))}
           </div>
         </fieldset>
-        {/* 書きためた原稿から作る入口（データ管理の「テキストから作品を作る」と同じダイアログ） */}
+        {/* 書きためた原稿はホームと同じ取込画面へ渡す */}
         <div className="flex flex-wrap items-center justify-between gap-3 border-outline-variant/30 border-t pt-4">
           <p className="text-on-surface-variant text-xs">
             書きためた原稿があるときは、.txt や貼り付けた本文から作れます。
@@ -628,8 +659,8 @@ export function Library({
             size="sm"
             onClick={() => {
               setNewOpen(false)
-              setTextImportFormat(newFormat)
-              setTextImportOpen(true)
+              setManuscriptFormat(newFormat)
+              setManuscriptOpen(true)
             }}
           >
             <FileText className="size-4" />
@@ -679,11 +710,26 @@ export function Library({
         onRestoreAll={(json) => localBackup.restorePlaintext(json)}
         onRestoreFile={localBackup.restoreFile}
       />
+      <ManuscriptImportDialog
+        open={manuscriptOpen}
+        onOpenChange={(open) => {
+          setManuscriptOpen(open)
+          if (!open) setHandoff(undefined)
+        }}
+        store={store}
+        works={state.workList}
+        defaultAuthor={state.profile.penName ?? ''}
+        defaultFormat={manuscriptFormat}
+        initial={handoff}
+        onSaved={(id) => {
+          void handleWrite(id)
+        }}
+      />
       <TextImportDialog
         open={textImportOpen}
         onOpenChange={setTextImportOpen}
         defaultAuthor={state.profile.penName ?? ''}
-        defaultFormat={textImportFormat}
+        defaultFormat="novel"
         onCreate={(work) => store.importWorks([work])}
         onWrite={(id) => handleWrite(id)}
       />

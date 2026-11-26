@@ -227,7 +227,7 @@ describe('作品全体検索の保存・履歴・競合', () => {
   })
   it('一致数が同じでも正規化で前後文脈が変われば移動を中止する', async () => {
     const { store } = await fixture()
-    store.setDraft('猫｜漢字《かんじ》')
+    store.setDraft('猫、｜漢字《かんじ》')
     const sources = store.getSearchSources()
     const match = required(
       searchWork(sources, '猫').find((m) => m.episodeId === store.getSnapshot().currentEpisodeId),
@@ -240,7 +240,7 @@ describe('作品全体検索の保存・履歴・競合', () => {
         match,
       }),
     ).rejects.toThrow('検索し直して')
-    expect(store.getSnapshot().draft).toBe('猫｜漢字《かんじ》')
+    expect(store.getSnapshot().draft).toBe('猫、｜漢字《かんじ》')
   })
   it('1件と無変更を区別し、未変更話を同じ参照で保持する', async () => {
     const { store, snapshotRepo } = await fixture()

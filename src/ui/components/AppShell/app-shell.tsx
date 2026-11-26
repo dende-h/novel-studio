@@ -12,6 +12,8 @@ interface AppShellProps {
   saveStatus?: SaveState
   onNarration?: () => void
   onExport?: () => void
+  onImportBody?: () => void
+  onUndoBodyImport?: () => void
   exportDisabled?: boolean
   /** コトノハ-grove- への投稿ダイアログを開く（任意） */
   onPublish?: () => void
@@ -38,6 +40,8 @@ export function AppShell({
   saveStatus,
   onNarration,
   onExport,
+  onImportBody,
+  onUndoBodyImport,
   exportDisabled,
   onPublish,
   onToggleHistory,
@@ -65,6 +69,8 @@ export function AppShell({
           saveStatus={saveStatus}
           onNarration={onNarration}
           onExport={onExport}
+          onImportBody={onImportBody}
+          onUndoBodyImport={onUndoBodyImport}
           exportDisabled={exportDisabled}
           onPublish={onPublish}
           onToggleHistory={onToggleHistory}

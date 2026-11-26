@@ -1,6 +1,6 @@
 import { FileText, Upload, X } from 'lucide-react'
 import { useId, useRef, useState } from 'react'
-import type { SplitMode, SplitOptions } from '@/core/importer'
+import type { SplitMode, SplitOptions, TextEncodingName } from '@/core/importer'
 import { cn } from '@/lib/utils'
 import { Badge } from '@/ui/components/ui/badge'
 import { Button } from '@/ui/components/ui/button'
@@ -27,7 +27,13 @@ const MODES: { value: SplitMode; label: string }[] = [
 ]
 
 const fmt = (n: number) => n.toLocaleString('ja-JP')
-const encodingLabel = (e: 'utf-8' | 'shift_jis') => (e === 'utf-8' ? 'UTF-8' : 'Shift_JIS')
+const encodingLabel = (e: TextEncodingName) =>
+  ({
+    'utf-8': 'UTF-8',
+    shift_jis: 'Shift_JIS',
+    'euc-jp': 'EUC-JP',
+    'iso-2022-jp': 'JIS',
+  })[e]
 
 /** 左ペイン：入力元（ファイル／貼り付け）と分け方。 */
 export function SourcePane({ kind, files, paste, options, actions }: SourcePaneProps) {

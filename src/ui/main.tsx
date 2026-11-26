@@ -43,6 +43,9 @@ const SW_UPDATE_INTERVAL_MS = 10 * 60_000
 /** SW 更新による自動再読み込みは 1 セッション 1 回まで（暴走した場合の歯止め）。 */
 const SW_RELOAD_KEY = 'ns-sw-reloaded'
 if ('serviceWorker' in navigator) {
+  // 公開の記法変換ページからは執筆アプリのSWを登録しない。
+  if (import.meta.env.PROD) void navigator.serviceWorker.register('/sw.js').catch(() => {})
+
   const hadController = navigator.serviceWorker.controller !== null
   let reloaded = false
   navigator.serviceWorker.addEventListener('controllerchange', () => {
@@ -56,7 +59,7 @@ if ('serviceWorker' in navigator) {
     reloaded = true
     window.location.reload()
   })
-  // SW の登録自体はプラグインの自動注入スクリプトが行う。ready で拾って更新ループだけ足す
+  // ready を待って更新ループを登録する。
   //（virtual:pwa-register は workbox-window 依存を増やすため使わない）。
   void navigator.serviceWorker.ready.then((registration) => {
     const check = () => void registration.update().catch(() => {})

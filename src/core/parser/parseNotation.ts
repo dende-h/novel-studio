@@ -15,9 +15,9 @@ import type { Block, Inline, RefChild } from '../schema'
  */
 
 // 自動ルビ（パイプ省略）の親文字に許す漢字レンジ
-const KANJI = '\\u4E00-\\u9FFF\\u3005\\u3006\\u30F5\\u30F6'
-const AUTO_RUBY_RE = new RegExp(`^([${KANJI}]+)《([^》]+)》`)
-const ALL_KANJI_RE = new RegExp(`^[${KANJI}]+$`)
+const KANJI = '\\p{Script=Han}々〆ヵヶ'
+const AUTO_RUBY_RE = new RegExp(`^([${KANJI}]+)《([^》]+)》`, 'u')
+const ALL_KANJI_RE = new RegExp(`^[${KANJI}]+$`, 'u')
 
 /**
  * ルビを書くときに親文字の前へ `｜` が必要か。
@@ -85,7 +85,9 @@ function scanInlines(line: string, allowRef: boolean, trace?: ScanTrace): Inline
   let buf = ''
   let bufStart = 0
   const emit = (inline: Inline, sourceStart: number | null) => {
-    inlines.push(inline)
+    const previous = inlines.at(-1)
+    if (!trace && previous?.type === 'text' && inline.type === 'text') previous.text += inline.text
+    else inlines.push(inline)
     trace?.(inline, sourceStart)
   }
   const flush = () => {
@@ -97,6 +99,15 @@ function scanInlines(line: string, allowRef: boolean, trace?: ScanTrace): Inline
 
   let i = 0
   while (i < line.length) {
+    // 正本へ取り込んだ地の文の記号を記法として読み替えず、そのまま復元する。
+    const escaped = line[i + 2]
+    if (line.startsWith('\\!', i) && escaped && '\\《｜|['.includes(escaped)) {
+      flush()
+      emit({ type: 'text', text: escaped }, i + 2)
+      i += 3
+      continue
+    }
+
     // @参照: [[名前]]（P1）。区切りは ]] または行末。前後 trim（半角/全角空白）。
     // 中身の存在に関わらず常に ref（未終端・空も ref 化）。中身はルビ・傍点だけ解釈する。
     if (allowRef && line.startsWith('[[', i)) {
@@ -138,7 +149,8 @@ function scanInlines(line: string, allowRef: boolean, trace?: ScanTrace): Inline
     if (line[i] === '｜' || line[i] === '|') {
       const open = line.indexOf('《', i + 1)
       const close = open === -1 ? -1 : line.indexOf('》', open + 1)
-      if (open !== -1 && close !== -1) {
+      const intervening = line.slice(i + 1, open)
+      if (open > i + 1 && close > open + 1 && !/\\!|[｜|]/.test(intervening)) {
         const base = line.slice(i + 1, open)
         const reading = line.slice(open + 1, close)
         // ルビで ref を囲んだ形（｜[[言葉]]《ことば》）も ref を外側へ持ち上げる。
