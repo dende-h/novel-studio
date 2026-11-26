@@ -179,6 +179,8 @@ describe('アカウント単位の掲示板通知', () => {
     seededPost('page-23', 2, 'host')
     const second = await inbox('?cursor=' + encodeURIComponent(first.nextCursor))
     expect(second.notifications).toHaveLength(4)
+    expect(second.readToken).toBeNull()
+    expect((await inbox('?cursor=9007199254740991:9007199254740991')).readToken).toBeNull()
     expect(
       new Set([...first.notifications, ...second.notifications].map((row) => row.threadId)).size,
     ).toBe(24)

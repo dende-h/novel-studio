@@ -26,14 +26,10 @@ export const onRequestGet: PagesFunction<NotificationEnv> = async ({ request, en
     const ids = await unreadThreadIds(env.DB, userId, now)
     return boardJson({ ...response, unreadCount: ids.length, unreadThreadIds: ids })
   }
-  const { notifications, upper, nextCursor } = await listNotifications(
-    env.DB,
-    userId,
-    now,
-    query.get('cursor'),
-  )
-  const readToken = upper
-    ? await boardReadToken(env.CLERK_SECRET_KEY, userId, { all: upper })
-    : null
+  const cursor = query.get('cursor')
+  const { notifications, upper, nextCursor } = await listNotifications(env.DB, userId, now, cursor)
+  // Only the initial server snapshot can authorize marking all notifications read.
+  const readToken =
+    !cursor && upper ? await boardReadToken(env.CLERK_SECRET_KEY, userId, { all: upper }) : null
   return boardJson({ ...response, notifications, nextCursor, readToken })
 }
