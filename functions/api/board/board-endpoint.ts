@@ -11,9 +11,13 @@
  */
 
 import { BOARD_LIMITS } from '../../../src/core/board/types'
-import { json } from '../_lib/auth'
+import { type ClerkEnv, json } from '../_lib/auth'
 import { countPostsSince, createPost } from '../_lib/board-store'
 import { checkRateLimit } from '../_lib/rate-limit'
+
+export interface BoardEnv extends ClerkEnv {
+  DB: D1Database
+}
 
 /** 投稿 10 件/時（D-BOARD-OPEN）を数える窓。 */
 export const HOUR_MS = 60 * 60 * 1000

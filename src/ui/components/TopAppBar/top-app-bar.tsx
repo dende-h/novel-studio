@@ -14,6 +14,7 @@ import { lazy, Suspense, useId } from 'react'
 import { cn } from '@/lib/utils'
 import { openBillingPortal } from '@/ui/_api/billing'
 import { useAuth } from '@/ui/auth/auth-context'
+import { BoardNotificationBell } from '@/ui/components/BoardNotifications/board-notifications'
 import { type SaveState, SaveStatus } from '@/ui/components/SaveStatus/save-status'
 import { Button } from '@/ui/components/ui/button'
 import { useLocalFlag } from '@/ui/hooks/use-local-flag'
@@ -48,6 +49,7 @@ interface TopAppBarProps {
   /** サイドバー（ドロワー）の開閉トグル。狭幅でのみ表示。未指定なら非表示 */
   onToggleNav?: () => void
   navOpen?: boolean
+  hideNotifications?: boolean
 }
 
 /**
@@ -223,6 +225,7 @@ export function TopAppBar({
   historyOpen,
   onToggleNav,
   navOpen,
+  hideNotifications,
 }: TopAppBarProps) {
   return (
     <header className="flex h-14 shrink-0 items-center justify-between gap-3 border-outline-variant/30 border-b bg-surface-container-lowest px-3 max-lg:h-12 sm:px-5">
@@ -337,6 +340,7 @@ export function TopAppBar({
             <span className="max-sm:hidden">投稿</span>
           </Button>
         ) : null}
+        {!hideNotifications && <BoardNotificationBell />}
         <AccountControl />
       </div>
     </header>

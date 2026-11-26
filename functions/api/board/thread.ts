@@ -43,6 +43,13 @@ import { pollResultFor } from '../../../src/core/board/poll'
 import { ThreadPatchInputSchema } from '../../../src/core/board/types'
 import { type ClerkEnv, verifyUserId } from '../_lib/auth'
 import {
+  type EventDetailRow,
+  patchBoardEvent,
+  prepareEventDetail,
+  toEventDetail,
+} from '../_lib/board-event-store'
+import { boardReadToken } from '../_lib/board-read-token'
+import {
   type PostWithAuthorRow,
   type ProfileRow,
   patchThread,
@@ -124,13 +131,21 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
   if (!threadId) return boardJson({ error: 'missing_id' }, 400)
 
   const viewerId = await viewerIdOf(context.request, context.env)
-  const detail = await readThreadDetail(db, threadId, viewerId)
+  const post = Number(new URL(context.request.url).searchParams.get('post'))
+  const postTarget = Number.isSafeInteger(post) && post > 0 ? post : Number.MAX_SAFE_INTEGER
+  const detail = await readThreadDetail(db, threadId, viewerId, postTarget)
   if (!detail) return boardJson({ error: 'not_found' }, 404)
 
   // 削除済み・運営が非表示にしたスレは、見出しごと出さない（一覧の条件と揃える）。
   if (detail.thread.deleted_at !== 0 || detail.thread.hidden_at !== 0) {
     return boardJson({ error: 'not_found' }, 404)
   }
+
+  const eventRow =
+    detail.thread.kind === 'event'
+      ? await prepareEventDetail(db, threadId, viewerId, now).first<EventDetailRow>()
+      : null
+  if (detail.thread.kind === 'event' && !eventRow) return boardJson({ error: 'not_found' }, 404)
 
   // 書き込めるかの判定にプロフィール（立場と投稿禁止）が要る。未ログインなら引かない。
   const profile = viewerId ? await readProfile(db, viewerId) : null
@@ -150,7 +165,29 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
       )
     : null
 
+  const postThrough = detail.posts.reduce(
+    (max, row) => (row.deleted_at || row.hidden_at ? max : Math.max(max, row.activity_id ?? 0)),
+    0,
+  )
+  const eventThrough = eventRow?.activity_id ?? 0
+  const readToken =
+    viewerId && context.env.CLERK_SECRET_KEY && (postThrough || eventThrough)
+      ? await boardReadToken(context.env.CLERK_SECRET_KEY, viewerId, {
+          thread: threadId,
+          post: postThrough,
+          event: eventThrough,
+        })
+      : undefined
+  const firstReply = posts.find((item) => item.seq > 1)?.seq
+  const last = posts.at(-1)?.seq ?? 1
+  const maxSeq = detail.thread.max_seq ?? last
+  const event = eventRow ? toEventDetail(eventRow, viewerId, now) : undefined
+  if (event && actor.role === 'staff' && event.cancelledAt === null) event.canCancel = true
   return boardJson({
+    event,
+    readToken,
+    olderPost: firstReply && firstReply > 2 ? firstReply - 1 : undefined,
+    newerPost: last < maxSeq ? Math.min(last + 50, maxSeq) : undefined,
     thread: toThread(detail.thread, viewerId),
     posts,
     poll,
@@ -235,6 +272,11 @@ export const onRequestDelete: PagesFunction<Env> = async (context) => {
   // 分あたりの安全弁（D-BOARD-RATE）。鍵と上限は board-endpoint.ts に 1 つだけ置いてある。
   const limited = await rateLimitedResponse(db, userId, now)
   if (limited) return limited
+
+  if (detail.thread.kind === 'event') {
+    await patchBoardEvent(db, threadId, userId, { action: 'cancel' }, now)
+    return boardJson({ ok: true, mode: 'cancelled' })
+  }
 
   // 返信が 1 件でも**行として在れば** 'head-only'＝本文（seq=1）だけ伏せ、返信は残す（§7-5）。
   // 数えるのは生きている返信（`reply_count`）ではない。運営が返信を伏せると reply_count は

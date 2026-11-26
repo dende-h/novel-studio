@@ -72,6 +72,7 @@ Cloudflare Pages Functions
 | MCP コネクタの接続（OAuth・**認可サーバーは自前**） | 純ロジックは `functions/api/_lib/oauth-server.ts`、SQL は `oauth-store.ts`（migration 0010）、窓口は `functions/api/oauth/[[path]].ts`、同意画面は `src/ui/components/OAuthConsent/` ＋ `functions/api/oauth/consent.ts`、ディスカバリは `functions/_middleware.ts`。**利用者向けの接続手順**（タブは Claude / ChatGPT・Bearer 直接設定は折りたたみ）は `src/ui/components/McpConnectDialog/mcp-connect-dialog.tsx`、同じ手順のヘルプ掲載は `src/ui/components/HelpPage/help-page.tsx`、公開の案内は `public/lp/ai/index.html` と `public/llms-full.txt`——**文言は 4 か所を揃える**。経緯と決定表は `docs/requirement/10-mcp-oauth.md` |
 | **UI 部品・ヘルパを新規に作りたい** | まず §3「共通部品カタログ」で在庫を確認する（重複作成の防止） |
 | **掲示板**（記名式スレッド・お知らせ・アンケート・通報）の挙動 | 画面は `src/ui/components/BoardPage/`、判断は `src/core/board/`、SQL は `functions/api/_lib/board-store.ts`、窓口は `functions/api/board/` |
+| **掲示板通知・イベント**を変える | 仕様は `docs/specs/board-notifications-and-events.md`、通知の画面状態は `src/ui/board/board-notifications-provider.tsx`、SQL は `functions/api/_lib/board-notification-store.ts` と `functions/api/_lib/board-event-store.ts`、共有ページは `functions/events/[threadId].ts` |
 | 掲示板に貼られた外部リンクの OGP（取得可否・画像の許可表） | `src/core/board/link.ts`（判定）+ `functions/api/_lib/board-link-fetch.ts`（取得とキャッシュ） |
 | **小説投稿サイトの紹介**（`#/sites`）に載せるサイトを足す・外す・紹介文を直す | 一覧は `src/core/sites/index.ts`（`POSTING_SITES`＝掲載の了承をいただいたサイトだけ・サイト名・URL・紹介文・バナー＝相手の og:image の URL。足すときに相手の OGP を読んで写す）、画面は `src/ui/components/PostingSitesPage/`（バナーは相手のサーバから直接読む・複製しない・切り抜かない）、導線はサイドバーのフッター（`SideNav`）。閲覧者のアクセスが相手に届くことは `public/privacy.html` の 4 章に書いてある＝**読み込み方を変えたらここも直す** |
 | **ペンネーム（表示名）**の扱い — ヘッダ・サイドバー・新しい作品の著者・掲示板の表示名は同じ 1 つ | 判定は `src/core/profile/account.ts`、配線は `src/ui/hooks/use-pen-name.ts`、編集は `src/ui/components/ProfileDialog/`（Root が 1 つだけ持つ）、正本はサーバの `board_profiles.display_name` |
@@ -166,7 +167,9 @@ Cloudflare Pages Functions
 ### 掲示板（`board/`）— 判断はすべてここ。サーバは呼ぶだけ
 | ファイル | 責務 | 主な export |
 |---|---|---|
-| `src/core/board/types.ts` | **サーバ・クライアント共通の契約**（Zod）と上限。種別は request/bug/chat/intro/promo/notice（旧 `suggestion` は request へ統合・enum には残す） | `BOARD_KINDS` `BOARD_STATUSES` `BOARD_LIMITS`（本文 1500 字） `KIND_ALIASES` `canonicalKind` `kindsForFilter` `CREATABLE_KINDS` `STAFF_ONLY_KINDS` `KINDS_WITH_STATUS` `boardKindLabel` `boardKindHint` `BoardThread` `BoardPost` `PollResult` `LinkCard` `BoardThreadDetail` `ThreadListResponse` `BoardMeResponse` `ModerateInputSchema` |
+| `src/core/board/types.ts` | **サーバ・クライアント共通の契約**（Zod）と上限。種別は request/bug/chat/intro/promo/notice/event（旧 `suggestion` は request へ統合・enum には残す） | `BOARD_KINDS` `BOARD_STATUSES` `BOARD_LIMITS`（本文 1500 字） `KIND_ALIASES` `canonicalKind` `kindsForFilter` `CREATABLE_KINDS` `STAFF_ONLY_KINDS` `KINDS_WITH_STATUS` `boardKindLabel` `boardKindHint` `BoardThread` `BoardPost` `PollResult` `LinkCard` `BoardThreadDetail` `ThreadListResponse` `BoardMeResponse` `ModerateInputSchema` |
+| `src/core/board/events.ts` | イベントの日時、状態、公開作品 URL、共有 URL の契約 | `eventStatusOf` `eventPeriod` `parseJstInput` `BoardEventDetailSchema` |
+| `src/core/board/notifications.ts` | 通知対象と通知 API の共有契約 | `NotificationScopeSchema` `BoardNotificationResponseSchema` `BOARD_SILENT_MS` |
 | `src/core/board/name.ts` | 表示名の正規化・予約語。**見た目が同じ文字を畳んでから**重複判定（なりすまし防止） | `normalizeDisplayName` `nameKeyOf` `RESERVED_NAME_KEYS` `validateDisplayName` |
 | `src/core/board/link.ts` | **URL を取りに行ってよいかの判定（SSRF）**と OGP の抽出。og:image はホストの許可表を通す | `extractUrls` `normalizeUrl` `urlKeyOf` `canFetchUrl` `parseOgp` `OGP_IMAGE_HOSTS` `isAllowedImageHost` `resolveImageUrl` |
 | `src/core/board/render.ts` | 掲示板本文の描画。**`markdownToHtml` は本文向けで使えない**（数字に縦中横、`[[用語]]` 素通し、URL がリンクにならない）ためブロック層だけ再利用 | `escapeHtml` `boardInlineHtml` `boardBodyToHtml` `boardBodyToPlain` |
@@ -189,7 +192,7 @@ Cloudflare Pages Functions
 
 ### ルート（`src/ui/hooks/use-hash-route.ts`・`location.hash` が唯一の真実）
 `/` ライブラリ ・ `/write` 執筆 ・ `/publish` 公開 ・ `/activity` 執筆の記録 ・ `/ideas` ネタ帳
-・ `/settings` ・ `/help` ・ `/sites` 小説投稿サイトの紹介 ・ `/plan` 同期の案内 ・ `/board` 掲示板 ・ `/board/<threadId>` スレ詳細
+・ `/settings` ・ `/settings/notifications` 通知設定 ・ `/help` ・ `/sites` 小説投稿サイトの紹介 ・ `/plan` 同期の案内 ・ `/board` 掲示板 ・ `/board/<threadId>` スレ詳細（`?post=` で返信を指定、`?activity=` で通知からイベントを開く、`?action=join` / `?action=reply` でイベントの操作を開く）
 ・ `/admin/templates` 運営テンプレの管理（**staff だけ描く**・それ以外は通常の入口に倒す・`use-staff.ts`）
 
 ### 画面（`components/` — PascalCase ディレクトリ + kebab ファイル・1ファイル1コンポーネント）
@@ -200,7 +203,7 @@ Cloudflare Pages Functions
 - **執筆画面の右パネル（遅延ロードしない）**: `PlotPeek/`（この話のビート一覧 `plot-peek.tsx` ＋ 読み取り専用のビート詳細 `beat-detail.tsx`）
 - **入出力**: `ExportDialog/`, `ImportDialog/`（JSON バックアップ）, `TextImportDialog/`（.txt／貼り付け→話に分けて新規作品。左：入力と分け方 `source-pane.tsx`／右：プレビューと手直し `preview-pane.tsx`／状態は `use-text-import.ts`・lg 未満は 2 ステップ）, `BackupDialog/`, `CloudBackupDialog/`, `AiPullDialog/`
 - **同期/課金**: `SyncOnboarding/`, `SyncLostDialog/`, `RestoreGrace/`, `McpConnectDialog/`, `SaveStateIndicator/`, `BackupNudgeDialog/`
-- **掲示板（遅延ロード・未ログインでも読める）**: `BoardPage/`（`board-page.tsx` 一覧 ／ `thread-view.tsx` スレ詳細 ／ `thread-list.tsx` `board-body.tsx` `link-card.tsx` `poll-card.tsx` `name-dialog.tsx` `new-thread-dialog.tsx` `report-dialog.tsx` `staff-controls.tsx`）
+- **掲示板（遅延ロード・未ログインでも読める）**: `BoardPage/`（`board-page.tsx` 一覧 ／ `thread-view.tsx` スレ詳細 ／ `thread-list.tsx` `board-body.tsx` `link-card.tsx` `poll-card.tsx` `name-dialog.tsx` `new-thread-dialog.tsx` `report-dialog.tsx` `staff-controls.tsx` `event-view.tsx` `event-form-dialog.tsx`）、通知ベル・一覧・サイドバーは `src/ui/components/BoardNotifications/`
 - **その他**: `ActivityPage/`, `IdeaboxPage/`, `PublishPage/`, `SettingsPage/`（staff には管理ページの入口）, `HelpPage/`, `PostingSitesPage/`（小説投稿サイトの紹介・`PageLayout` の一枚もの）, `ProfileDialog/`, `FirstRunDialog/`
 - **運営だけ（遅延ロード）**: `AdminTemplatesPage/`（テンプレ素材の管理：背景・立ち絵・BGM のタブ（効果音は `GAME_FEATURES.se` が立つと出る）。ドロップで一括投入＝ファイル名からキー・画像はブラウザで WebP/サムネ/tone・音声はそのまま長さだけ測る・表示名/分類/時間帯/非表示・BGM のループ区間（秒）・TSV の一括取り込み・音は試聴）
 - **共通**: `AppShell/`, `PageLayout/`, `SideNav/`, `TopAppBar/`, `SaveStatus/`（執筆中の保存状態）、`WritingModeControls/`（集中・追従・全画面）、`Toast/`, `ConfirmDialog/`, `ErrorBoundary/`
@@ -286,7 +289,7 @@ Cloudflare Pages Functions
 | `src/ui/backup/backup-service.ts` | クラウド全体バックアップの実行 |
 | `game/` | 持ち込み素材のクラウド保管の配線（`asset-hosting.ts`＝API 結線と下り取り込み `pullHostedAssets`。ローカルが正・上りは追加時と明示操作のみ）／運営テンプレの目録を画面へ配る `template-catalog.ts`（`useTemplateCatalog`＝アプリで1つの `useSyncExternalStore`・localStorage に控え、`templateBgSrc` `templateSpriteSrc`、`resolveTemplateBackgrounds` `resolveTemplateSes` `resolveTemplateBgms`＝演出譜が指す目録の実体を素材の形にして書き出し・投稿へ、`templateSpriteDataUrl`） |
 | `plot/` | プロットの表示ヘルパ（React 非依存・`beat-ui.ts` に `STATUS_UI` `LINE_PALETTE` `lineColorOf` `beatStripeColor` `plainOf` `fmtCount`）。プロット画面と執筆画面のパネルで色・表記を揃える |
-| `board/` | 掲示板の表示ヘルパ（React 非依存・`board-ui.ts` に `KIND_UI`／`STATUS_UI` の色・`kindOrder`・`creatableKindOrder(role)`・未読件数・抜粋） |
+| `board/` | 掲示板の表示ヘルパ（React 非依存・`board-ui.ts` に `KIND_UI`／`STATUS_UI` の色・`kindOrder`・`creatableKindOrder(role)`・抜粋。`src/ui/board/board-notifications-provider.tsx` に通知の購読とアカウント単位の未読状態） |
 | `structure/` | React Flow アダプタ（`flow-adapter` `tree-layout` `use-structure-flow` `ensure-structure`） |
 | `proofread/` | 推敲の解析 Worker と窓口（`analyzer.worker.ts` `analyzer-engine.ts` `analyzer-client.ts` `unzip.ts` `protocol.ts`）。`lindera-wasm` を import するのはここの Worker だけ |
 | `auth/` | Clerk 配線（`auth-provider` `clerk-gate` `derive-status` `cloud-pricing`） |
@@ -328,11 +331,18 @@ Clerk へ登録済みのクライアントの互換。消すとトークン更�
 | `POST /api/board/threads` | スレ立て（本文＋任意でアンケート）。リンクカードの取得もここ |
 | `/api/board/thread` | スレ1本（`?id=`）。GET=詳細 / PATCH=ステータス・ピン・ロック（staff）/ DELETE=自分のスレ |
 | `/api/board/posts` | POST=返信（`?thread=`）/ DELETE=自分の投稿（`?id=`） |
+| `/api/board/events` | GET=公開参加者（ページ単位） / PATCH=主催者による編集・中止（運営は中止可） |
+| `/api/board/events/participation` | PUT=参加・作品 URL の更新／削除 / DELETE=参加取り消し |
+| `/api/board/notifications` | GET=アカウント単位の未読スレッド・通知一覧（`?summary=1` で概要） |
+| `/api/board/notifications/read` | POST=署名済みの表示範囲まで既読にする |
+| `/api/board/notifications/settings` ・ `/api/board/notifications/silent` | PUT=通知対象、停止は PUT=24 時間 / DELETE=解除 |
+| `GET /events/<threadId>` | 未ログインで読めるイベント共有ページと SNS カード |
+| `POST /api/webhooks/clerk` | 署名済み `user.deleted` で掲示板表示名を伏せ、通知・参加データを削除 |
 | `POST /api/board/like` | 👍 のトグル（`?post=`・**投稿 1 件ごと**。古い `?thread=` はスレ本文への 👍 に写す） |
 | `POST /api/board/vote` | アンケートの投票（`?thread=`・1アカウント1票） |
 | `POST /api/board/reports` | 通報（作業キューに積むだけ・自動非表示はしない） |
 | `/api/board/me` | GET=自分の表示名と投稿 / PUT=表示名の設定・変更（**アカウントのペンネームの正本**） |
-| `POST /api/board/moderate` | 運営の措置（非表示・投稿禁止・カードの停止）。**staff のみ** |
+| `POST /api/board/moderate` | 運営の措置（非表示・投稿禁止・カードやイベント参加リンクの停止）。**staff のみ** |
 | `/api/mcp` | リモート MCP（Streamable HTTP・JSON-RPC 2.0） |
 | `/api/mcp/token` | MCP アクセストークン発行（会員のみ） |
 | `/api/mcp/oauth-protected-resource` | RFC 9728 メタデータ |
@@ -346,14 +356,14 @@ Clerk へ登録済みのクライアントの互換。消すとトークン更�
 `api/_lib/`: `auth`（Clerk 検証・`verifyMember`）, `membership`（**会員判定の単一の真実 = D1 `subscriptions`**）,
 `crypto`（at-rest 暗号化）, `mcp-server`（MCP プロトコル核・約1,200行。用語集の対話は `get_glossary_questions`＝作品に依らない読み口と `upsert_glossary_entry` の `dialog`＝`dialogPatchOf` で形を検め core の `applyDialogPatch` へ）, `mcp-auth`, `mcp-token`,
 `oauth-metadata`（PRM）, `oauth-server`（**認可サーバーの純ロジック**）, `oauth-store`（同 SQL）, `oauth-upstream`（中継先 Clerk の取得）, `stripe`, `rate-limit`, `purge`, `visitor`,
-`board-store`（**掲示板の SQL はすべてここ**・行 ⇄ camelCase の変換も）, `board-link-fetch`（OGP の取得とキャッシュ）,
+`board-store`（スレッド・投稿の SQL と変換）、`functions/api/_lib/board-notification-store.ts`（通知の集計と既読）、`functions/api/_lib/board-event-store.ts`（イベントと参加）、`functions/api/_lib/board-read-token.ts`（表示範囲の署名）、 `board-link-fetch`（OGP の取得とキャッシュ）,
 `staff`（`verifyStaff`＝運営の判定・`board_profiles.role`）, `templates-store`（運営テンプレの R2 キー `_templates/` と目録の読み書き）, `server-card`（MCP の名刺と AI Catalog・版は `mcp-server` の `SERVER_INFO` に連動）。
 
 掲示板の共通部品は `functions/api/board/board-endpoint.ts`（`boardJson`＝`private, no-store` 付きの応答、
 `rateLimitedResponse`＝分あたりの安全弁、`postQuotaExceeded`＝10件/時、`createPostRetrying`、`conflictResponse`）。
 **新しいエンドポイントを足すときはここから使う**（片方だけ緩むと誰も気づけない）。
 テスト用の D1 フェイクは `functions/api/board/board-test-util.ts`（`makeBoardDb` `makeBoardEnv` `clerkAuthMock`）。
-**SQL そのものを確かめるのは `functions/api/board/real-d1.ts`**（`migrations/` の掲示板 DDL（0008・0009）を順に流した実 SQLite＝`node:sqlite`。フェイクは SQL を解釈しないので構文エラー・曖昧な列名を拾えない。**マイグレーションを足したらここにも足す**）。
+**SQL そのものを確かめるのは `functions/api/board/real-d1.ts`**（`migrations/` の掲示板 DDL（0008・0009・0016 と依存スキーマ）を順に流した実 SQLite＝`node:sqlite`。フェイクは SQL を解釈しないので構文エラー・曖昧な列名を拾えない。**マイグレーションを足したらここにも足す**）。
 
 **バインディング**（`wrangler.toml`）: `DB` = D1 `novel-studio`、`MEDIA` = R2 `novel-studio-media`
 （preview 環境は `-stg` サフィックス）。
@@ -361,6 +371,7 @@ Clerk へ登録済みのクライアントの互換。消すとトークン更�
 **マイグレーション**（`migrations/`）: `0001_init` → `0002_sync_works` → `0003_trash_sync` →
 `0004_mcp_tokens` → `0005_subscriptions` → `0006_activity_sync` → `0007_visitor_days` → `0008_board`（掲示板9テーブル）
 → `0009_board_post_likes`（👍 を投稿単位へ。`board_post_likes` ＋ `board_posts.like_count`・旧 `board_likes` は残す）
+→ 0010〜0015 を経て `migrations/0016_board_notifications_events.sql`（新着・通知設定・既読・イベント・参加・通報対象）
 → `0010_oauth`（自前の認可サーバー。`oauth_clients` / `oauth_requests` / `oauth_codes` / `oauth_tokens`。
 **適用前に配ると、アカウント削除（purge の batch）と MCP の接続解除が落ちる**——順序は migration → デプロイ）
 
@@ -377,7 +388,7 @@ pnpm typecheck      # ブラウザ＋朗読API/Worker（tsconfig.narration-edge.
 pnpm lint           # biome check .
 pnpm format         # biome format --write .
 pnpm build          # tsc -b && vite build。prebuild で推敲の辞書を取得（取れなければ失敗）、postbuild で scripts/check-precache.mjs（.wasm と dict/ がプリキャッシュに無いか）
-pnpm test:e2e       # Playwright（e2e/smoke.spec.ts, e2e/mobile.spec.ts, e2e/work-search*.spec.ts, e2e/text-import.spec.ts）
+pnpm test:e2e       # Playwright（e2e/smoke.spec.ts, e2e/mobile.spec.ts, e2e/board-events.spec.ts, e2e/work-search*.spec.ts, e2e/text-import.spec.ts）
 pnpm d1:migrate:local / :remote
 node scripts/gen-morph-fixtures.mjs --names   # 名前の候補のテスト用フィクスチャ（names.json）をいまの辞書で作り直す（手で回す。samples.json は --dict <COT-40 の辞書> のときだけ）
 node scripts/build-dict.mjs   # 推敲の解析辞書（IPADIC＋SudachiDict）を固定した元データから作り直す（手で回す。できた zip は GitHub Release へ）
@@ -409,6 +420,7 @@ uv run .claude/skills/natural-japanese/scripts/lint.py <file>   # 仕事の文�
 | `docs/requirement/07-analytics.md` | アクセス解析 |
 | `docs/requirement/07-novel-game.md` | **サウンドノベル書き出し（ゲーム化）の設計**（演出譜・素材・課金の線・G0〜G3） |
 | `docs/game/bgm-presets.md` | 組み込み BGM 24 曲のファイル名・用途と Suno 用の制作プロンプト（管理ページへ入れる手順つき） |
+| `docs/specs/board-notifications-and-events.md` | 掲示板通知とイベントの仕様・受け入れ条件 |
 | `docs/requirement/09-board.md` | 掲示板（記名式スレッド・お知らせ・アンケート・外部リンクの OGP）の設計と決定表 |
 | `docs/requirement/10-mcp-oauth.md` | MCP の OAuth（ChatGPT で繋がらなかった原因の実測と診断・Phase 1 の撤去・自前 認可サーバーの設計と、2026-09 の ChatGPT 実地確認） |
 | `docs/requirement/11-glossary-dialog.md` | 用語集の「対話」（一問一答で項目を育てる）の決定表・`GlossaryEntry.dialog` の形・MCP 契約（`get_glossary` の出力、`upsert_glossary_entry` の `dialog` パッチ、`get_glossary_questions`）・質問の正本（付録 A） |

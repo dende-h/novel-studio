@@ -32,6 +32,7 @@
 
 import { ReportInputSchema } from '../../../src/core/board/types'
 import { type ClerkEnv, verifyUserId } from '../_lib/auth'
+import { findReportedEventLink } from '../_lib/board-event-store'
 import { insertReport, readPost } from '../_lib/board-store'
 import { sha256Hex } from '../_lib/crypto'
 import { boardJson, rateLimitedResponse } from './board-endpoint'
@@ -80,8 +81,11 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
   // 表示名（board_profiles）は要求しない。通報は記名で表に出るものではないので、
   // 投稿（§7-2 の profile_required）と同じ入口を通す必要がない。設定ダイアログを
   // 挟むと、荒らしを見つけた通りすがりが通報をやめる。
-  const post = await readPost(db, input.postId)
-  if (!post) return boardJson({ error: 'not_found' }, 404)
+  const link = input.participantId ? await findReportedEventLink(db, input.participantId) : null
+  const post = input.postId ? await readPost(db, input.postId) : null
+  if (!post && !link) return boardJson({ error: 'not_found' }, 404)
+  const postId = post?.id ?? link?.post_id
+  if (!postId) return boardJson({ error: 'not_found' }, 404)
 
   // 削除済み・運営が非表示にした投稿でも通報は受ける。伏せ字になっているだけで行は
   // 残っており（D-BOARD-DELETE）、投稿者への措置（投稿禁止）はまだ打てるため。
@@ -100,8 +104,14 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
 
   try {
     await insertReport(db, {
-      id: await reportIdOf(input.postId, userId),
-      postId: input.postId,
+      id: await reportIdOf(
+        input.participantId ? 'event-link:' + input.participantId + ':' + link?.url : postId,
+        userId,
+      ),
+      postId,
+      ...(input.participantId && link
+        ? { participantId: input.participantId, reportedWorkUrl: link.url }
+        : {}),
       userId,
       reason: input.reason,
       now,

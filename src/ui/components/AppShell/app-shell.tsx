@@ -71,6 +71,7 @@ export function AppShell({
           historyOpen={historyOpen}
           onToggleNav={() => setNavOpen((v) => !v)}
           navOpen={navOpen}
+          hideNotifications={focusMode}
         />
       </div>
       {focusMode ? focusControls : null}
@@ -97,7 +98,8 @@ export function AppShell({
           // ナビ内の操作＝行き先が決まったとみなして閉じる。同一 AppShell 内の画面切替
           // （activeScreen）は unmount されないため、SideNav 側に prop を足さずここで拾う。
           onClick={(e) => {
-            if ((e.target as HTMLElement).closest('button, a')) setNavOpen(false)
+            const action = (e.target as HTMLElement).closest('button, a')
+            if (action && !action.hasAttribute('data-keep-nav-open')) setNavOpen(false)
           }}
         >
           {sidebar}

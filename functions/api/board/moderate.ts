@@ -52,6 +52,7 @@ import {
 } from '../../../src/core/board/permission'
 import { type ModerateInput, ModerateInputSchema } from '../../../src/core/board/types'
 import { type ClerkEnv, verifyUserId } from '../_lib/auth'
+import { moderateEventLink } from '../_lib/board-event-store'
 import {
   blockLink,
   hideThread,
@@ -246,6 +247,15 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     case 'ban_user':
     case 'unban_user':
       return await moderateUser(db, input, userId, now)
+    case 'hide_participant_link':
+    case 'unhide_participant_link': {
+      const id = input.participantId?.trim()
+      if (!id) return boardJson({ error: 'bad_request' }, 400)
+      const hidden = input.action === 'hide_participant_link'
+      if (!(await moderateEventLink(db, id, hidden ? now : 0)))
+        return boardJson({ error: 'not_found' }, 404)
+      return boardJson({ ok: true, action: input.action, hidden })
+    }
     case 'block_link':
       return await moderateLink(db, input, now)
   }

@@ -16,6 +16,8 @@
  * `undefined` のまま画面まで流れると、原因の分からない白画面になる。
  */
 
+import { type EventListGroup, EventParticipantsSchema } from '@/core/board/events'
+import { BoardNotificationResponseSchema, type NotificationScope } from '@/core/board/notifications'
 import type { ThreadDeleteMode } from '@/core/board/permission'
 import type {
   BoardKind,
@@ -24,6 +26,7 @@ import type {
   BoardThreadDetail,
   CreatePostInput,
   CreateThreadInput,
+  EventPatchInput,
   ModerateInput,
   PollResult,
   ReportInput,
@@ -136,6 +139,10 @@ export const BOARD_ERROR_MESSAGES: Readonly<Record<string, string>> = {
   missing_id: '対象が分かりませんでした。画面を読み込み直してからお試しください',
   missing_thread: '対象のスレッドが分かりませんでした。画面を読み込み直してからお試しください',
   missing_post: '対象の書き込みが分かりませんでした。画面を読み込み直してからお試しください',
+  bad_event_dates: '開始と終了の日時を確かめてください',
+  event_changed: 'イベントの内容が変わりました。開き直してから変更してください',
+  event_closed: '参加や作品 URL の変更は締め切りました',
+  bad_work_url: '公開作品の HTTP または HTTPS の URL を入力してください',
   missing_user: '対象の利用者が指定されていません',
   missing_url: '対象の URL が指定されていません',
   bad_url: 'この URL は読み取れませんでした。もう一度確かめてください',
@@ -305,10 +312,21 @@ const decodeAck = (): Decoded<null> => null
  * `nextCursor` が null なら次のページは無い（件数ではなくカーソルの有無で判定する）。
  */
 export async function fetchThreads(
-  opts: { kind?: BoardKind | null; cursor?: string | null; getToken?: GetToken } = {},
+  opts: {
+    kind?: BoardKind | null
+    cursor?: string | null
+    getToken?: GetToken
+    group?: EventListGroup
+    mine?: boolean
+  } = {},
 ): Promise<BoardResult<ThreadListResponse>> {
   return await boardFetch(
-    withQuery('/api/board/threads', { kind: opts.kind, cursor: opts.cursor }),
+    withQuery('/api/board/threads', {
+      kind: opts.kind,
+      cursor: opts.cursor,
+      group: opts.group,
+      mine: opts.mine ? '1' : null,
+    }),
     { auth: 'optional', getToken: opts.getToken },
     (raw) => {
       const parsed = ThreadListResponseSchema.safeParse(raw)
@@ -324,9 +342,10 @@ export async function fetchThreads(
 export async function fetchThread(
   id: string,
   getToken?: GetToken,
+  post?: number,
 ): Promise<BoardResult<BoardThreadDetail>> {
   return await boardFetch(
-    withQuery('/api/board/thread', { id }),
+    withQuery('/api/board/thread', { id, post: post ? String(post) : null }),
     { auth: 'optional', getToken },
     (raw) => {
       const parsed = BoardThreadDetailSchema.safeParse(raw)
@@ -344,7 +363,9 @@ export async function fetchThread(
 export async function createThread(
   input: CreateThreadInput,
   getToken: GetToken,
-): Promise<BoardResult<{ threadId: string; postId: string; seq: number }>> {
+): Promise<
+  BoardResult<{ threadId: string; postId: string; seq: number; startsAt?: number; endsAt?: number }>
+> {
   return await boardFetch(
     '/api/board/threads',
     { method: 'POST', auth: 'required', getToken, body: input },
@@ -353,7 +374,14 @@ export async function createThread(
       const postId = str(raw, 'postId')
       const seq = num(raw, 'seq')
       if (threadId === null || postId === null || seq === null) return DECODE_FAILED
-      return { threadId, postId, seq }
+      const startsAt = num(raw, 'startsAt')
+      const endsAt = num(raw, 'endsAt')
+      return {
+        threadId,
+        postId,
+        seq,
+        ...(startsAt !== null && endsAt !== null ? { startsAt, endsAt } : {}),
+      }
     },
   )
 }
@@ -388,13 +416,15 @@ export async function patchThread(
 export async function deleteThread(
   id: string,
   getToken: GetToken,
-): Promise<BoardResult<{ mode: ThreadDeleteMode }>> {
+): Promise<BoardResult<{ mode: ThreadDeleteMode | 'cancelled' }>> {
   return await boardFetch(
     withQuery('/api/board/thread', { id }),
     { method: 'DELETE', auth: 'required', getToken },
     (raw) => {
       const mode = str(raw, 'mode')
-      return mode === 'whole' || mode === 'head-only' ? { mode } : DECODE_FAILED
+      return mode === 'whole' || mode === 'head-only' || mode === 'cancelled'
+        ? { mode }
+        : DECODE_FAILED
     },
   )
 }
@@ -574,3 +604,73 @@ export async function moderate(
     },
   )
 }
+
+export const fetchBoardNotifications = (
+  getToken: GetToken,
+  summary: boolean,
+  cursor?: string | null,
+) =>
+  boardFetch(
+    withQuery('/api/board/notifications', { summary: summary ? '1' : null, cursor }),
+    { auth: 'required', getToken },
+    (raw) => {
+      const parsed = BoardNotificationResponseSchema.safeParse(raw)
+      return parsed.success ? parsed.data : DECODE_FAILED
+    },
+  )
+
+export const markBoardNotificationsRead = (getToken: GetToken, token: string) =>
+  boardFetch(
+    '/api/board/notifications/read',
+    { method: 'POST', auth: 'required', getToken, body: { token } },
+    decodeAck,
+  )
+
+export const saveBoardNotificationScope = (getToken: GetToken, scope: NotificationScope) =>
+  boardFetch(
+    '/api/board/notifications/settings',
+    { method: 'PUT', auth: 'required', getToken, body: { scope } },
+    decodeAck,
+  )
+
+export const saveBoardNotificationSilence = (getToken: GetToken, silent: boolean) =>
+  boardFetch(
+    '/api/board/notifications/silent',
+    { method: silent ? 'PUT' : 'DELETE', auth: 'required', getToken },
+    (raw) => {
+      if (
+        !isRecord(raw) ||
+        (raw.silentUntil !== null && typeof raw.silentUntil !== 'number') ||
+        typeof raw.serverNow !== 'number'
+      )
+        return DECODE_FAILED
+      return { silentUntil: raw.silentUntil, serverNow: raw.serverNow }
+    },
+  )
+
+export const fetchEventParticipants = (thread: string, cursor?: string | null) =>
+  boardFetch(withQuery('/api/board/events', { thread, cursor }), { auth: 'optional' }, (raw) => {
+    const parsed = EventParticipantsSchema.safeParse(raw)
+    return parsed.success ? parsed.data : DECODE_FAILED
+  })
+
+export const patchEvent = (thread: string, input: EventPatchInput, getToken: GetToken) =>
+  boardFetch(
+    withQuery('/api/board/events', { thread }),
+    { method: 'PATCH', auth: 'required', body: input, getToken },
+    decodeAck,
+  )
+
+export const setEventWork = (thread: string, getToken: GetToken, workUrl?: string | null) =>
+  boardFetch(
+    withQuery('/api/board/events/participation', { thread }),
+    { method: 'PUT', auth: 'required', body: { workUrl }, getToken },
+    decodeAck,
+  )
+
+export const leaveBoardEvent = (thread: string, getToken: GetToken) =>
+  boardFetch(
+    withQuery('/api/board/events/participation', { thread }),
+    { method: 'DELETE', auth: 'required', getToken },
+    decodeAck,
+  )

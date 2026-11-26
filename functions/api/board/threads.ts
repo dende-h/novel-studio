@@ -20,6 +20,7 @@
  * テストから固定できる）。
  */
 
+import { EventListGroupSchema } from '../../../src/core/board/events'
 import { urlKeyOf } from '../../../src/core/board/link'
 import { type Actor, canCreateThread, STATUS_OF_REASON } from '../../../src/core/board/permission'
 import { validatePollInput } from '../../../src/core/board/poll'
@@ -31,6 +32,7 @@ import {
   kindsForFilter,
 } from '../../../src/core/board/types'
 import { type ClerkEnv, verifyUserId } from '../_lib/auth'
+import { createBoardEvent, findEventRequest } from '../_lib/board-event-store'
 import { type BoardLinkEnv, resolveLinkCards } from '../_lib/board-link-fetch'
 import {
   countThreadsSince,
@@ -92,14 +94,29 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
   // ほかの種別が多いときに「1 ページ目が空なのに nextCursor だけ返る」＝
   // 画面が『要望タブが空＋もっと読む』になる（雑談 25 件・要望 1 件で再現した）。
   const viewerId = await viewerIdOf(context.request, context.env)
+  const now = Date.now()
+  const group = EventListGroupSchema.safeParse(url.searchParams.get('group'))
+  const events =
+    kind === 'event'
+      ? {
+          group: group.success ? group.data : ('active' as const),
+          now,
+          mine: url.searchParams.get('mine') === '1',
+        }
+      : undefined
   const { rows, nextCursor } = await listThreads(context.env.DB, {
     kinds: wanted,
     cursor: url.searchParams.get('cursor'),
     limit: PAGE_SIZE,
     viewerId,
+    events,
   })
 
-  return boardJson({ threads: rows.map((row) => toThread(row, viewerId)), nextCursor })
+  return boardJson({
+    threads: rows.map((row) => toThread(row, viewerId)),
+    nextCursor,
+    ...(events ? { serverNow: now } : {}),
+  })
 }
 
 export const onRequestPost: PagesFunction<Env> = async (context) => {
@@ -120,10 +137,25 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
   const parsed = CreateThreadInputSchema.safeParse(raw)
   if (!parsed.success) return boardJson({ error: 'bad_request' }, 400)
   const input = parsed.data
+  const event = input.event
+  const startsAt = event?.startsAt === 'now' ? now : event?.startsAt
+  if (event) {
+    const existing = await findEventRequest(db, userId, event.requestId)
+    if (existing) return boardJson(existing, 200)
+    if (
+      startsAt === undefined ||
+      startsAt >= event.endsAt ||
+      event.endsAt <= now ||
+      (event.startsAt !== 'now' && startsAt < now)
+    ) {
+      return boardJson({ error: 'bad_event_dates' }, 400)
+    }
+  }
 
   // 表示名が無いと投稿できない（§7-2）。画面はこの 409 を受けて設定ダイアログを出す。
   const profile = await readProfile(db, userId)
-  if (!profile) return boardJson({ error: 'profile_required' }, 409)
+  if (!profile || (event && profile.deleted_at))
+    return boardJson({ error: 'profile_required' }, 409)
 
   const actor: Actor = {
     userId,
@@ -180,6 +212,21 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
 
   const threadId = crypto.randomUUID()
   const postId = crypto.randomUUID()
+
+  if (event && startsAt !== undefined) {
+    const created = await createBoardEvent(db, {
+      id: threadId,
+      postId,
+      userId,
+      now,
+      startsAt,
+      endsAt: event.endsAt,
+      requestId: event.requestId,
+      title: input.title,
+      body: input.body,
+    })
+    return boardJson(created, created.id === threadId ? 201 : 200)
+  }
 
   await createThread(db, { id: threadId, kind: input.kind, title: input.title, userId, now })
   // 本文は投稿の 1 件目（seq=1）。採番は store の INSERT ... SELECT MAX(seq)+1 に任せる。

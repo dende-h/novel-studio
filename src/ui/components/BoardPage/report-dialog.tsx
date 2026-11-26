@@ -54,11 +54,18 @@ export interface ReportDialogProps {
   onOpenChange: (open: boolean) => void
   /** 通報する投稿の id。スレ本文も seq=1 の投稿なので、同じ経路で通報できる（設計 §4） */
   postId: string
+  participantId?: string
   /** 送信。成否だけを返す（件数も他人の通報も画面には出さない） */
   onSubmit: (input: ReportInput) => Promise<BoardResult<null>>
 }
 
-export function ReportDialog({ open, onOpenChange, postId, onSubmit }: ReportDialogProps) {
+export function ReportDialog({
+  open,
+  onOpenChange,
+  postId,
+  participantId,
+  onSubmit,
+}: ReportDialogProps) {
   const toast = useToast()
   const reasonId = useId()
   const [reason, setReason] = useState('')
@@ -94,11 +101,13 @@ export function ReportDialog({ open, onOpenChange, postId, onSubmit }: ReportDia
 
   const submit = async () => {
     const trimmed = reason.trim()
-    if (submitting || trimmed === '' || postId === '') return
+    if (submitting || trimmed === '' || (!postId && !participantId)) return
     setSubmitting(true)
     setError('')
     try {
-      const result = await onSubmit({ postId, reason: trimmed })
+      const result = await onSubmit(
+        participantId ? { participantId, reason: trimmed } : { postId, reason: trimmed },
+      )
       if (result.ok) {
         toast.show('通報を受け取りました')
         onOpenChange(false)
@@ -125,7 +134,9 @@ export function ReportDialog({ open, onOpenChange, postId, onSubmit }: ReportDia
           }}
         >
           <DialogHeader>
-            <DialogTitle className="font-serif text-primary">この投稿を通報する</DialogTitle>
+            <DialogTitle className="font-serif text-primary">
+              {participantId ? 'この作品リンクを通報する' : 'この投稿を通報する'}
+            </DialogTitle>
             <DialogDescription>
               誰が通報したかは、書いた本人にも、ほかの人にも見えません。
             </DialogDescription>

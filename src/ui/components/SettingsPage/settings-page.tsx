@@ -1,6 +1,8 @@
 import { Monitor, Moon, Sun } from 'lucide-react'
 import type { ComponentType } from 'react'
+import { NotificationScopeSchema, notificationScopeLabel } from '@/core/board/notifications'
 import { cn } from '@/lib/utils'
+import { useBoardNotifications } from '@/ui/board/board-notifications-provider'
 import { PageLayout } from '@/ui/components/PageLayout/page-layout'
 import { type ReadingSize, type Theme, usePreferences } from '@/ui/hooks/use-preferences'
 import { useIsStaff } from '@/ui/hooks/use-staff'
@@ -84,17 +86,15 @@ const SIZE_OPTIONS: SegmentedOption<ReadingSize>[] = [
 ]
 
 /** 設定ページ（外観テーマ・本文の文字サイズ）。 */
-export function SettingsPage() {
+export function SettingsPage({ showNotifications = false }: { showNotifications?: boolean }) {
   const { theme, readingSize, setTheme, setReadingSize } = usePreferences()
   // 運営だけに管理ページの入口を出す（それ以外は何も出ない）
   const staff = useIsStaff(true)
+  const notifications = useBoardNotifications()
 
   return (
-    <PageLayout
-      title="設定"
-      description="表示まわりの好みを整えます。変更はこの端末にだけ保存されます。"
-    >
-      <section className="space-y-6">
+    <PageLayout title="設定" description="表示まわりと通知の設定を変更できます。">
+      <section className="flex flex-col gap-6">
         {/* 外観 */}
         <div>
           <h2 className="mb-2.5 font-semibold font-serif text-[17px] text-on-surface">外観</h2>
@@ -139,6 +139,52 @@ export function SettingsPage() {
             </p>
           </div>
         </div>
+
+        {(notifications || showNotifications) && (
+          <section
+            aria-labelledby="notification-settings"
+            className={showNotifications ? 'order-first' : undefined}
+          >
+            <h2
+              id="notification-settings"
+              className="mb-2.5 font-semibold font-serif text-[17px] text-on-surface"
+            >
+              通知
+            </h2>
+            <SettingRow
+              label="通知対象"
+              description="通知はアプリ内に表示されます。設定はログイン中の端末に反映されます。"
+              control={
+                notifications ? (
+                  <select
+                    aria-label="通知対象"
+                    className="rounded-md border border-outline-variant bg-surface-container-lowest p-2 text-sm"
+                    value={notifications.scope ?? ''}
+                    disabled={!notifications.scope || notifications.saving}
+                    onChange={(event) => {
+                      const parsed = NotificationScopeSchema.safeParse(event.target.value)
+                      if (parsed.success) void notifications.saveScope(parsed.data)
+                    }}
+                  >
+                    {!notifications.scope && <option value="">読み込み中…</option>}
+                    {NotificationScopeSchema.options.map((scope) => (
+                      <option key={scope} value={scope}>
+                        {notificationScopeLabel[scope]}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <p className="text-sm">ログインすると変更できます。</p>
+                )
+              }
+            />
+            {notifications?.scopeError && (
+              <p role="alert" className="mt-1 text-error text-sm">
+                {notifications.scopeError}
+              </p>
+            )}
+          </section>
+        )}
 
         {staff ? (
           <div>

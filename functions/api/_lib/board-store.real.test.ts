@@ -269,6 +269,14 @@ describe('readThreadDetail', () => {
 
 describe('スレの作成・更新・削除', () => {
   it('createThread / readThread / patchThread / bumpThread / hideThread', async () => {
+    await S.prepareThreadInsert(d.db, {
+      id: 'prepared',
+      kind: 'event',
+      title: '確認',
+      userId: 'user_1',
+      now: 1,
+    }).run()
+    expect((await S.readThread(d.db, 'prepared'))?.title).toBe('確認')
     await S.createThread(d.db, {
       id: 't1',
       kind: 'request',

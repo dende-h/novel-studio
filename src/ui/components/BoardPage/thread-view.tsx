@@ -1,5 +1,5 @@
 import { ArrowLeft, CornerDownRight, Lock, Pin, ThumbsUp } from 'lucide-react'
-import { type ReactNode, useCallback, useEffect, useId, useRef, useState } from 'react'
+import { Fragment, type ReactNode, useCallback, useEffect, useId, useRef, useState } from 'react'
 import { isStaffOnlyKind } from '@/core/board/permission'
 import type {
   BoardMeResponse,
@@ -28,6 +28,7 @@ import {
 } from '@/ui/_api/board'
 import { formatCount } from '@/ui/_utils/format'
 import { useAuth } from '@/ui/auth/auth-context'
+import { useBoardNotifications } from '@/ui/board/board-notifications-provider'
 import { formatBoardTime, KIND_UI, STATUS_UI } from '@/ui/board/board-ui'
 import { AppShell } from '@/ui/components/AppShell/app-shell'
 import { BoardBody } from '@/ui/components/BoardPage/board-body'
@@ -43,6 +44,8 @@ import { Badge } from '@/ui/components/ui/badge'
 import { Button } from '@/ui/components/ui/button'
 import { Label } from '@/ui/components/ui/label'
 import { Textarea } from '@/ui/components/ui/textarea'
+import { usePenName } from '@/ui/hooks/use-pen-name'
+import { EventHeader, EventParticipants } from './event-view'
 
 /**
  * スレッド 1 本の画面（設計 09-board §2・`GET /api/board/thread?id=`）。
@@ -110,6 +113,10 @@ function likeBlockedReason(thread: BoardThread, banned: boolean): string {
 
 export interface ThreadViewProps {
   threadId: string
+  postTarget?: number
+  intent?: 'join' | 'reply'
+  onNavigatePost?: (seq: number) => void
+  onJoinIntent?: () => void
   /** 掲示板の一覧へ戻る */
   onBack: () => void
   /** マイライブラリへ（ブランド・サイドバー） */
@@ -135,6 +142,10 @@ export interface ThreadViewProps {
 
 export function ThreadView({
   threadId,
+  postTarget,
+  intent,
+  onNavigatePost,
+  onJoinIntent,
   onBack,
   onNavigateCollection,
   onNavigateActivity,
@@ -148,16 +159,29 @@ export function ThreadView({
 }: ThreadViewProps) {
   const auth = useAuth()
   const toast = useToast()
+  const penName = usePenName()
+  const markRead = useBoardNotifications()?.read
+  const focusedPost = useRef<number | undefined>(undefined)
+  const lastRead = useRef('')
+  const promptedForReply = useRef(false)
   // 投稿へ飛ぶためのアンカー。`useId` を混ぜて、同じ文書に 2 つ描かれても id が衝突しない形にする。
   const anchorPrefix = useId()
   const replyFieldId = useId()
   const replyRef = useRef<HTMLTextAreaElement>(null)
+  const replySection = useRef<HTMLElement>(null)
 
   // Clerk の `getToken` は毎レンダー別の関数になりうる。そのまま依存に置くと読み込みが
   // 無限に走るので、参照を ref で束ねて呼び口だけ固定する（`clerk-gate.tsx` と同じ手当て）。
-  const getTokenRef = useRef(auth.getToken)
-  getTokenRef.current = auth.getToken
-  const getToken = useCallback(async () => await getTokenRef.current(), [])
+  const accountId = auth.isSignedIn ? auth.userId : null
+  const authRef = useRef(auth)
+  authRef.current = auth
+  const getToken = useCallback(
+    () =>
+      accountId && authRef.current.isSignedIn && authRef.current.userId === accountId
+        ? authRef.current.getToken()
+        : Promise.resolve(null),
+    [accountId],
+  )
 
   const [detail, setDetail] = useState<BoardThreadDetail | null>(null)
   const [loading, setLoading] = useState(true)
@@ -171,6 +195,7 @@ export function ThreadView({
 
   const [nameOpen, setNameOpen] = useState(false)
   const [reportTarget, setReportTarget] = useState('')
+  const [reportParticipant, setReportParticipant] = useState('')
   const [confirmThread, setConfirmThread] = useState(false)
   const [confirmPost, setConfirmPost] = useState<BoardPost | null>(null)
   const [busy, setBusy] = useState(false)
@@ -181,7 +206,10 @@ export function ThreadView({
   const load = useCallback(async () => {
     const gen = genRef.current + 1
     genRef.current = gen
-    const res = await fetchThread(threadId, getToken)
+    const res =
+      postTarget === undefined
+        ? await fetchThread(threadId, getToken)
+        : await fetchThread(threadId, getToken, postTarget)
     if (gen !== genRef.current) return
     setLoading(false)
     if (res.ok) {
@@ -191,26 +219,35 @@ export function ThreadView({
     }
     setDetail(null)
     setLoadError(res.message)
-  }, [threadId, getToken])
+  }, [threadId, getToken, postTarget])
 
   useEffect(() => {
     setLoading(true)
     void load()
+    return () => {
+      genRef.current++
+    }
   }, [load])
 
   // 自分の立場（運営かどうか・表示名の有無・投稿禁止）。**未ログインでは叩かない**
   // （`/api/board/me` は読み取りでもログインが要る唯一の窓口）。
-  const loadMe = useCallback(async () => {
-    if (!auth.isSignedIn) {
-      setMe(null)
-      return
-    }
-    const res = await fetchMe(getToken)
-    if (res.ok) setMe(res.data)
-  }, [auth.isSignedIn, getToken])
+  const loadMe = useCallback(
+    async (signal?: AbortSignal) => {
+      if (!auth.isSignedIn) {
+        setMe(null)
+        return
+      }
+      const res = await fetchMe(getToken)
+      if (res.ok && !signal?.aborted) setMe(res.data)
+    },
+    [auth.isSignedIn, getToken],
+  )
 
   useEffect(() => {
-    void loadMe()
+    const controller = new AbortController()
+    setMe(null)
+    void loadMe(controller.signal)
+    return () => controller.abort()
   }, [loadMe])
 
   const thread = detail?.thread ?? null
@@ -230,14 +267,59 @@ export function ThreadView({
   const anchorOf = (seq: number) => `${anchorPrefix}-post-${seq}`
 
   /** `>>N` を押したときの移動。無い番号（削除で行が飛んだ等）なら何もしない。 */
-  const jumpTo = (seq: number) => {
-    const el = document.getElementById(anchorOf(seq))
-    if (!el) return
-    // happy-dom には scrollIntoView が無いことがある。読み上げとキーボードのために
-    // フォーカスだけは必ず移す（飛んだ先を見失わせない）。
-    if (typeof el.scrollIntoView === 'function') el.scrollIntoView({ block: 'center' })
-    el.focus()
-  }
+  const jumpTo = useCallback(
+    (seq: number, navigate = true) => {
+      const el = document.getElementById(anchorPrefix + '-post-' + seq)
+      if (!el) {
+        if (navigate && postTarget !== seq) onNavigatePost?.(seq)
+        return
+      }
+      // happy-dom には scrollIntoView が無いことがある。読み上げとキーボードのために
+      // フォーカスだけは必ず移す（飛んだ先を見失わせない）。
+      if (typeof el.scrollIntoView === 'function') el.scrollIntoView({ block: 'center' })
+      el.focus()
+    },
+    [anchorPrefix, onNavigatePost, postTarget],
+  )
+
+  useEffect(() => {
+    if (loading || !detail || focusedPost.current === postTarget) return
+    focusedPost.current = postTarget
+    if (postTarget) jumpTo(postTarget, false)
+  }, [detail, jumpTo, loading, postTarget])
+
+  useEffect(() => {
+    const token = detail?.readToken
+    if (!markRead || !token || loading) return
+    let active = true
+    let sending = false
+    const readVisible = async () => {
+      if (!active || sending || document.hidden || lastRead.current === token) return
+      sending = true
+      const result = await markRead(token)
+      sending = false
+      if (active && result.ok) lastRead.current = token
+    }
+    void readVisible()
+    document.addEventListener('visibilitychange', readVisible)
+    window.addEventListener('online', readVisible)
+    return () => {
+      active = false
+      document.removeEventListener('visibilitychange', readVisible)
+      window.removeEventListener('online', readVisible)
+    }
+  }, [detail?.readToken, loading, markRead])
+
+  useEffect(() => {
+    if (intent !== 'reply' || loading || !detail?.event || nameOpen) return
+    if (auth.isSignedIn && me?.profile === null && !promptedForReply.current) {
+      promptedForReply.current = true
+      setNameOpen(true)
+      return
+    }
+    if (auth.isSignedIn && me?.profile) replyRef.current?.focus()
+    else if (!auth.isSignedIn) replySection.current?.scrollIntoView?.({ block: 'center' })
+  }, [intent, loading, detail?.event, nameOpen, auth.isSignedIn, me?.profile])
 
   /** 返信先を決めて入力欄へ。番号を打ち直させない。 */
   const replyToSeq = (seq: number) => {
@@ -286,7 +368,8 @@ export function ThreadView({
     // 書いた返信は一覧のいちばん下＝入力欄のすぐ上に出るので、送ったあとに動かさない。
     setReplyBody('')
     setReplyTo(0)
-    await load()
+    if (postTarget !== undefined && onNavigatePost) onNavigatePost(res.data.seq)
+    else await load()
   }
 
   const removeThread = async () => {
@@ -296,6 +379,11 @@ export function ThreadView({
     setBusy(false)
     if (!res.ok) {
       handleFailure(res.code, res.message, 'toast')
+      return
+    }
+    if (res.data.mode === 'cancelled') {
+      toast.show('イベントを中止しました')
+      await load()
       return
     }
     if (res.data.mode === 'whole') {
@@ -475,6 +563,22 @@ export function ThreadView({
                     票が入ったのか誰にも分からない。ボタンは投稿カードの中にある。 */}
               </header>
 
+              {detail.event && (
+                <EventHeader
+                  threadId={threadId}
+                  title={thread.title}
+                  body={posts[0]?.body ?? ''}
+                  host={thread.author}
+                  event={detail.event}
+                  getToken={getToken}
+                  refresh={load}
+                  onRequireName={() => setNameOpen(true)}
+                  joinIntent={intent === 'join'}
+                  onJoinIntent={onJoinIntent}
+                  banned={me?.banned ?? false}
+                />
+              )}
+
               {detail.poll && (
                 <div className="mt-4">
                   <PollCard
@@ -496,36 +600,76 @@ export function ThreadView({
 
               <ol className="mt-4 flex flex-col gap-2.5">
                 {posts.map((post) => (
-                  <li key={post.id}>
-                    <PostCard
-                      post={post}
-                      anchorId={anchorOf(post.seq)}
-                      now={now}
-                      staff={staff}
-                      canPost={canPost}
-                      signedIn={auth.isSignedIn}
-                      busy={busy}
-                      likeBlocked={likeBlocked}
-                      onLike={() => void like(post)}
-                      onJump={jumpTo}
-                      onReply={replyToSeq}
-                      onDelete={() => {
-                        // スレ本文（seq=1）は投稿の削除では消せない（`use_thread_delete`）。
-                        // 消える範囲が違うので、確認ダイアログも別にする。
-                        if (post.seq === 1) setConfirmThread(true)
-                        else setConfirmPost(post)
-                      }}
-                      onReport={() => setReportTarget(post.id)}
-                      onModerate={applyModerate}
-                    />
-                  </li>
+                  <Fragment key={post.id}>
+                    <li>
+                      <PostCard
+                        post={post}
+                        anchorId={anchorOf(post.seq)}
+                        now={now}
+                        staff={staff}
+                        canPost={canPost}
+                        signedIn={auth.isSignedIn}
+                        busy={busy}
+                        likeBlocked={likeBlocked}
+                        onLike={() => void like(post)}
+                        onJump={jumpTo}
+                        onReply={replyToSeq}
+                        allowDelete={post.seq !== 1 || !detail.event}
+                        onDelete={() => {
+                          // スレ本文（seq=1）は投稿の削除では消せない（`use_thread_delete`）。
+                          // 消える範囲が違うので、確認ダイアログも別にする。
+                          if (post.seq === 1) setConfirmThread(true)
+                          else setConfirmPost(post)
+                        }}
+                        onReport={() => setReportTarget(post.id)}
+                        onModerate={applyModerate}
+                      />
+                    </li>
+                    {post.seq === 1 && detail.event && (
+                      <li>
+                        <EventParticipants
+                          threadId={threadId}
+                          version={detail.event.serverNow}
+                          count={detail.event.participantCount}
+                          staff={staff}
+                          getToken={getToken}
+                          onReport={auth.isSignedIn ? setReportParticipant : undefined}
+                        />
+                      </li>
+                    )}
+                    {post.seq === 1 && detail.olderPost && onNavigatePost && (
+                      <li>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {
+                            if (detail.olderPost) onNavigatePost(detail.olderPost)
+                          }}
+                        >
+                          前の返信
+                        </Button>
+                      </li>
+                    )}
+                  </Fragment>
                 ))}
               </ol>
+              {detail.newerPost && onNavigatePost && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="mt-2"
+                  onClick={() => {
+                    if (detail.newerPost) onNavigatePost(detail.newerPost)
+                  }}
+                >
+                  次の返信
+                </Button>
+              )}
 
               {/* お知らせは運営からの連絡で、返信の器を持たない（D-BOARD-NOTICE）。
                   読む人には「書き込めません」の断りすら出さない——押せないボタンや
                   断り書きが並ぶより、最初から無いほうが読みやすい。運営には出す（追記できる）。 */}
-              <section className={cn('mt-6', replySectionHidden && 'hidden')}>
+              <section ref={replySection} className={cn('mt-6', replySectionHidden && 'hidden')}>
                 {canPost ? (
                   <form
                     onSubmit={(e) => {
@@ -613,14 +757,23 @@ export function ThreadView({
         </div>
       </div>
 
-      <NameDialog open={nameOpen} onOpenChange={setNameOpen} onSubmit={submitName} />
+      <NameDialog
+        open={nameOpen}
+        onOpenChange={setNameOpen}
+        initialName={penName}
+        onSubmit={submitName}
+      />
 
       <ReportDialog
-        open={reportTarget !== ''}
+        open={reportTarget !== '' || reportParticipant !== ''}
         onOpenChange={(open) => {
-          if (!open) setReportTarget('')
+          if (!open) {
+            setReportTarget('')
+            setReportParticipant('')
+          }
         }}
         postId={reportTarget}
+        participantId={reportParticipant || undefined}
         onSubmit={sendReport}
       />
 
@@ -675,6 +828,7 @@ interface PostCardProps {
   onLike: () => void
   onJump: (seq: number) => void
   onReply: (seq: number) => void
+  allowDelete: boolean
   onDelete: () => void
   onReport: () => void
   onModerate: (input: ModerateInput) => Promise<void>
@@ -698,6 +852,7 @@ function PostCard({
   onLike,
   onJump,
   onReply,
+  allowDelete,
   onDelete,
   onReport,
   onModerate,
@@ -799,28 +954,28 @@ function PostCard({
               返信
             </button>
           )}
-          {post.mine ? (
-            <button
-              type="button"
-              onClick={onDelete}
-              disabled={busy}
-              className="rounded text-error text-xs disabled:opacity-50"
-            >
-              削除
-            </button>
-          ) : (
-            // 通報はログイン必須（`POST /api/board/reports`）。押してから 401 を出すより、
-            // 出さないほうが正直。
-            signedIn && (
-              <button
-                type="button"
-                onClick={onReport}
-                className="rounded text-on-surface-variant text-xs hover:text-on-surface"
-              >
-                通報
-              </button>
-            )
-          )}
+          {post.mine
+            ? allowDelete && (
+                <button
+                  type="button"
+                  onClick={onDelete}
+                  disabled={busy}
+                  className="rounded text-error text-xs disabled:opacity-50"
+                >
+                  削除
+                </button>
+              )
+            : // 通報はログイン必須（`POST /api/board/reports`）。押してから 401 を出すより、
+              // 出さないほうが正直。
+              signedIn && (
+                <button
+                  type="button"
+                  onClick={onReport}
+                  className="rounded text-on-surface-variant text-xs hover:text-on-surface"
+                >
+                  通報
+                </button>
+              )}
         </div>
       )}
 
