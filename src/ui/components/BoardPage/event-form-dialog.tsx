@@ -277,7 +277,7 @@ export function ShareEvent({
   schedule: Parameters<typeof eventPeriod>[0]
 }) {
   const toast = useToast()
-  const url = eventShareUrl(threadId)
+  const url = eventShareUrl(threadId, window.location.origin)
   const inputId = useId()
   const [manualCopy, setManualCopy] = useState(false)
   const [shareError, setShareError] = useState('')

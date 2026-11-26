@@ -64,11 +64,12 @@ async function call(
   method = 'GET',
   body?: unknown,
   threadId?: string,
+  origin = 'https://local.test',
 ) {
   return await (handler as Handler)({
     env,
     params: { threadId },
-    request: new Request('https://local.test' + path, {
+    request: new Request(origin + path, {
       method,
       headers: user ? { authorization: user } : undefined,
       body: body === undefined ? undefined : JSON.stringify(body),
@@ -381,6 +382,18 @@ describe('公開イベント API', () => {
       participantCount: join.status === 200 ? 1 : 0,
     })
     expect((await call(participate, joinUrl(id), 'other', 'PUT', {})).status).toBe(409)
+  })
+
+  it('イベント共有ページのURLと画像はステージング内を指す', async () => {
+    const id = await publish()
+    const path = '/events/' + id
+    const origin = 'https://stg.novel-studio-b2m.pages.dev'
+    const response = await call(share, path, undefined, 'GET', undefined, id, origin)
+    expect(response.status).toBe(200)
+    const html = await response.text()
+    expect(html).toContain('rel="canonical" href="' + origin + path + '"')
+    expect(html).toContain('property="og:url" content="' + origin + path + '"')
+    expect(html).toContain('property="og:image" content="' + origin + '/lp/ogp.png"')
   })
 
   it('作品リンクの通報と非表示、投稿禁止中の取り下げ、退会後の参加者除外、公開ページのカードと 404', async () => {
