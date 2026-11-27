@@ -15,22 +15,29 @@ export function validArchivePath(path: string): boolean {
   )
 }
 
-async function inflate(data: Uint8Array, expected: number) {
+async function inflate(data: Uint8Array, expected: number, signal?: AbortSignal) {
   const stream = new Blob([new Uint8Array(data)])
     .stream()
     .pipeThrough(new DecompressionStream('deflate-raw'))
   const reader = stream.getReader()
   const out = new Uint8Array(expected)
   let offset = 0
+  const cancel = () => {
+    void reader.cancel().catch(() => {})
+  }
+  signal?.addEventListener('abort', cancel, { once: true })
   try {
     for (;;) {
+      signal?.throwIfAborted()
       const { done, value } = await reader.read()
+      signal?.throwIfAborted()
       if (done) return out.subarray(0, offset)
       if (value.length + offset > expected) throw new Error('展開サイズが記録と一致しません')
       out.set(value, offset)
       offset += value.length
     }
   } finally {
+    signal?.removeEventListener('abort', cancel)
     await reader.cancel().catch(() => {})
   }
 }
@@ -38,8 +45,11 @@ async function inflate(data: Uint8Array, expected: number) {
 export async function readArchive(
   bytes: Uint8Array,
   maxBytes: number,
+  signal?: AbortSignal,
 ): Promise<Map<string, Uint8Array>> {
-  if (bytes.length > maxBytes) throw new Error('ファイルは20 MBまで取り込めます')
+  signal?.throwIfAborted()
+  const limits = maxBytes % (1024 * 1024) === 0 ? maxBytes / (1024 * 1024) + ' MB' : maxBytes + ' B'
+  if (bytes.length > maxBytes) throw new Error('ファイルは' + limits + 'まで取り込めます')
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
   const u16 = (i: number) => view.getUint16(i, true)
   const u32 = (i: number) => view.getUint32(i, true)
@@ -74,7 +84,7 @@ export async function readArchive(
     const next = cursor + 46 + nameSize + u16(cursor + 30) + u16(cursor + 32)
     if (next > end || u16(cursor + 34)) throw new Error('ZIPの目録が壊れています')
     total += size
-    if (total > maxBytes) throw new Error('ZIPは展開後20 MBまで取り込めます')
+    if (total > maxBytes) throw new Error('ZIPは展開後' + limits + 'まで取り込めます')
     const name = bytes.subarray(cursor + 46, cursor + 46 + nameSize)
     let path: string
     try {
@@ -122,14 +132,16 @@ export async function readArchive(
   }
   const result = new Map<string, Uint8Array>()
   for (const member of members) {
+    signal?.throwIfAborted()
     const { path, start, compressed, size, checksum, method } = member
     try {
       const raw = bytes.subarray(start, start + compressed)
-      const data = method === 0 ? raw.slice() : await inflate(raw, size)
+      const data = method === 0 ? raw.slice() : await inflate(raw, size, signal)
       if (data.length !== size || crc32(data) !== checksum)
         throw new Error('チェックサムが一致しません')
-      if (!path.endsWith('/')) result.set(path, data)
+      if (!path.endsWith('/')) result.set(path.normalize('NFC'), data)
     } catch (error) {
+      signal?.throwIfAborted()
       throw new Error(`ZIP内の「${path}」を展開できません`, { cause: error })
     }
   }

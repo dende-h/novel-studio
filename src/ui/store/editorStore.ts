@@ -2,7 +2,11 @@ import { blocksToNotation } from '../../core/exporter/blocksToNotation'
 import { renameEntry, resolveRef } from '../../core/glossary'
 import { DIALOG_VERSION } from '../../core/glossary/dialog'
 import { applyGlossaryFieldPatch, type GlossaryFieldPatch } from '../../core/glossary/patch'
-import { validateImportedWork } from '../../core/importer/posting-work'
+import {
+  referencedAssetPaths,
+  unambiguousAssets,
+  validateImportedWork,
+} from '../../core/importer/posting-work'
 import { parseEpisodeBody } from '../../core/parser/parseNotation'
 import { reconcileBlockIds } from '../../core/parser/reconcileBlockIds'
 import type { Profile, ProfileRepository } from '../../core/profile'
@@ -699,9 +703,13 @@ export function createEditorStore({
       if (!current) throw new Error('追加先の作品が見つかりません')
       const old = current.manuscriptImport
       const added = imported.manuscriptImport
-      const assets = new Map(
-        [...(old?.assets ?? []), ...(added?.assets ?? [])].map((asset) => [asset.path, asset]),
+      const existing = old?.assets ?? []
+      const existingPaths = new Set(existing.map((asset) => asset.path))
+      const originalReferences = added ? referencedAssetPaths(current.episodes) : new Set<string>()
+      const candidates = (added?.assets ?? []).filter(
+        (asset) => existingPaths.has(asset.path) || !originalReferences.has(asset.path),
       )
+      const assets = unambiguousAssets([...existing, ...candidates], (a, b) => a.image === b.image)
       const work = validateImportedWork({
         ...current,
         episodes: [...current.episodes, ...imported.episodes],
@@ -710,7 +718,7 @@ export function createEditorStore({
           ? {
               manuscriptImport: {
                 notes: [old?.notes, added.notes].filter(Boolean).join('\n\n'),
-                assets: [...assets.values()],
+                assets,
               },
             }
           : {}),

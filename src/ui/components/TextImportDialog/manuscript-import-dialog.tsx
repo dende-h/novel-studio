@@ -1,5 +1,9 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
-import { readPastedManuscript } from '@/core/importer/manuscript'
+import {
+  type ManuscriptInput,
+  manuscriptBytes,
+  readPastedManuscript,
+} from '@/core/importer/manuscript'
 import { makePostingWork } from '@/core/importer/posting-work'
 import type { ManuscriptEpisode, ManuscriptSource } from '@/core/importer/site-formats'
 import { looksLikeText, MAX_IMPORT_BYTES, textBytes } from '@/core/importer/text'
@@ -33,9 +37,9 @@ type Row = {
   name: string
   source?: ManuscriptSource
   error?: string
-  bytes: number
+  inputs: ManuscriptInput[]
+  skipped?: true
   file?: File
-  paths?: string[]
 }
 type EpisodeEdit = { title?: string; body?: string; exclude?: boolean; join?: boolean }
 
@@ -105,7 +109,8 @@ function ImportForm({
   const [previewId, setPreviewId] = useState<string>()
   const [busy, setBusy] = useState(false)
   const [reading, setReading] = useState(false)
-  const readingRef = useRef(false)
+  const readingRef = useRef<AbortController | null>(null)
+  useEffect(() => () => readingRef.current?.abort(), [])
   const [error, setError] = useState('')
   const id = useId()
 
@@ -166,7 +171,7 @@ function ImportForm({
       (row) =>
         row.file && row.source?.episodes.some((episode) => episode.path === active.episode.path),
     )?.file
-  const totalBytes = rows.reduce((total, row) => total + row.bytes, 0) + textBytes(paste)
+  const totalBytes = manuscriptBytes(rows) + textBytes(paste)
   const invalidBody = selected.some(
     (episode) => !episode.body.trim() || !looksLikeText(episode.body),
   )
@@ -183,14 +188,19 @@ function ImportForm({
   const patchEpisode = (key: string, edit: EpisodeEdit) =>
     setEdits((current) => ({ ...current, [key]: { ...current[key], ...edit } }))
 
-  async function add(getPicks: () => Promise<PickedManuscript[]>) {
+  async function add(getPicks: (signal: AbortSignal) => Promise<PickedManuscript[]>) {
     if (readingRef.current || busy) return
-    readingRef.current = true
+    const operation = new AbortController()
+    const { signal } = operation
+    readingRef.current = operation
     setReading(true)
     setError('')
     try {
-      const picks = await getPicks()
-      const seen = new Set(rows.flatMap((row) => row.paths ?? [row.name]))
+      const picks = await getPicks(signal)
+      signal.throwIfAborted()
+      const seen = new Set(
+        rows.flatMap((row) => row.inputs.map((file) => file.path.normalize('NFC'))),
+      )
       const admitted: PickedManuscript[] = []
       const next: Row[] = []
       const paths = (pick: PickedManuscript) => pick.path.normalize('NFC')
@@ -201,7 +211,7 @@ function ImportForm({
         if (seen.has(paths(pick))) reason = '同じ相対パスのファイルがあります'
         else if (bytes + pick.file.size > MAX_IMPORT_BYTES || seen.size >= 2000)
           reason = '原稿は合計20 MB・2,000件まで取り込めます'
-        if (reason) next.push({ id: nextId.current++, name: pick.path, error: reason, bytes: 0 })
+        if (reason) next.push({ id: nextId.current++, name: pick.path, error: reason, inputs: [] })
         else {
           bytes += pick.file.size
           seen.add(paths(pick))
@@ -209,28 +219,23 @@ function ImportForm({
         }
         if (next.length >= 2000) break
       }
-      const results = await readManuscriptPicks(admitted)
+      const results = await readManuscriptPicks(admitted, signal)
+      signal.throwIfAborted()
+      const pickedByPath = new Map(admitted.map((pick) => [pick.path, pick.file]))
       for (const result of results) {
-        const matches = admitted.filter(
-          (pick) => pick.path === result.name || pick.path.startsWith(`${result.name}/`),
-        )
-        const rawBytes = matches.reduce((sum, pick) => sum + pick.file.size, 0)
-        const size = 'source' in result ? Math.max(rawBytes, result.source.expandedBytes ?? 0) : 0
-        const exact = matches.find((pick) => pick.path === result.name)
+        const input = result.inputs.length === 1 ? result.inputs[0] : undefined
         next.push({
           ...result,
           id: nextId.current++,
-          bytes: size,
-          paths: matches.map(paths),
-          file: exact && /\.pdf$/i.test(exact.path) ? exact.file : undefined,
+          file: input && /\.pdf$/i.test(input.path) ? pickedByPath.get(input.path) : undefined,
         })
       }
       setRows((current) => [...current, ...next])
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : '原稿を読み込めません')
+      if (!signal.aborted) setError(cause instanceof Error ? cause.message : '原稿を読み込めません')
     } finally {
-      readingRef.current = false
-      setReading(false)
+      if (readingRef.current === operation) readingRef.current = null
+      if (!signal.aborted) setReading(false)
     }
   }
 
@@ -297,7 +302,7 @@ function ImportForm({
             onDrop={(event) => {
               event.preventDefault()
               const transfer = event.dataTransfer
-              void add(() => droppedManuscripts(transfer))
+              void add((signal) => droppedManuscripts(transfer, signal))
             }}
           >
             <p className="text-sm text-on-surface-variant">
@@ -397,6 +402,9 @@ function ImportForm({
                       外す
                     </Button>
                   </div>
+                  {row.skipped && (
+                    <p className="text-on-surface-variant">本文として取り込まないファイルです。</p>
+                  )}
                   {row.error && (
                     <p role="alert" className="text-destructive">
                       {row.error}

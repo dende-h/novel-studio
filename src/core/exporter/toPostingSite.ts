@@ -1,6 +1,7 @@
 import type { Block, Inline } from '../schema'
 import { hamelnTag } from '../sites/hameln-notation'
 import { type IllustrationReference, illustrationReferences } from '../sites/illustrations'
+import { writeLiteralNotation } from '../sites/literal-notation'
 import { type PostingSiteId, postingProfile } from '../sites/portability'
 
 export interface PostingOptions {
@@ -30,7 +31,7 @@ export interface PostingResult {
 }
 
 const kanji = /^[\p{Script=Han}々〆ヵヶ]+$/u
-const lastKanji = /[\p{Script=Han}々〆ヵヶ]$/u
+const requiresRubyPipe = /[\p{Script=Han}々〆ヵヶ｜|]$/u
 const kana = /^[\p{Script=Hiragana}\p{Script=Katakana}ー]+$/u
 
 export function toPostingSite(
@@ -47,18 +48,12 @@ export function toPostingSite(
       let column = 1
       const warn = (value: string, reason: string, needsReview = false, offset = 0) =>
         warnings.push({ line: index + 1, column: column + offset, value, reason, needsReview })
-      const plain = (value: string) => {
-        if (site === 'novelup')
-          return value
-            .replaceAll('《', '｜《')
-            .replace(/([\p{Script=Han}々〆ヵヶA-Za-z0-9])(?=（[^（）\n]+）)/gu, '$1｜')
-        if (site === 'narou')
-          return value.replace(
-            /([\p{Script=Han}々〆ヵヶ])(?=[（(][\p{Script=Hiragana}\p{Script=Katakana}ー]{1,10}[）)])/gu,
-            '$1｜',
-          )
-        return profile.escape ? value.replaceAll('《', '｜《') : value
-      }
+      const literalWarning =
+        '記号が投稿先で装飾として表示される可能性があります。投稿前に確認してください'
+      const plain = (value: string, offset = 0) =>
+        writeLiteralNotation(value, site, (token, start) =>
+          warn(token, literalWarning, true, offset + start),
+        )
       const addText = (value: string) => {
         let start = 0
         for (const ref of illustrationReferences(value)) {
@@ -94,7 +89,18 @@ export function toPostingSite(
         const tags = new RegExp(`${pixivTag.source}|${hamelnTag.source}`, 'gi')
         for (const match of value.matchAll(tags)) {
           const original = match[0]
-          result += plain(value.slice(start, match.index))
+          const tag = /^《(\/?)([a-z]+)(?::[^《》]+)?》$/i.exec(original)
+          if (tag && tag[2] && tag[2] !== 'hr' && tag[2] !== 'id') {
+            const matching = tag[1]
+              ? new RegExp('《' + tag[2] + '(?::[^《》]+)?》', 'i').test(
+                  value.slice(0, match.index),
+                )
+              : value
+                  .toLowerCase()
+                  .includes('《/' + tag[2].toLowerCase() + '》', match.index + original.length)
+            if (!matching) continue
+          }
+          result += plain(value.slice(start, match.index), offset + start)
           const styled = /^\[([bi]):([^\]]+)\]$/i.exec(original)
           if (site === 'pixiv' && original.startsWith('[')) result += original
           else if (site === 'hameln' && original.startsWith('《')) result += original
@@ -115,7 +121,7 @@ export function toPostingSite(
           }
           start = match.index + original.length
         }
-        return result + plain(value.slice(start))
+        return result + plain(value.slice(start), offset + start)
       }
       const add = (inline: Inline) => {
         switch (inline.type) {
@@ -129,6 +135,9 @@ export function toPostingSite(
           case 'emphasisDots': {
             const value = inline.text
             const after = column + value.length
+            if (profile.dots === 'angle' && profile.escapeAngle && /[｜|]$/.test(line)) {
+              warn(value, literalWarning, true)
+            }
             if (profile.dots === 'plain' || options.plainEmphasis) {
               warn(value, '傍点を外しました')
               line += plain(value)
@@ -180,7 +189,7 @@ export function toPostingSite(
               const automatic =
                 profile.auto &&
                 kanji.test(base) &&
-                !lastKanji.test(line) &&
+                !requiresRubyPipe.test(line) &&
                 (site !== 'narou' || kana.test(reading))
               line += `${(automatic ? '' : '｜') + base}《${reading}》`
             }

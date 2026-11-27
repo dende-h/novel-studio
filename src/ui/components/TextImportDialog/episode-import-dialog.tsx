@@ -1,10 +1,11 @@
-import { useId, useRef, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import { blocksToNotation } from '@/core/exporter/blocksToNotation'
 import { readPastedManuscript, readSingleManuscript } from '@/core/importer/manuscript'
 import { manuscriptBlocks } from '@/core/importer/posting-work'
 import type { ManuscriptSource } from '@/core/importer/site-formats'
 import { MAX_IMPORT_BYTES } from '@/core/importer/text'
 import type { SourceNotation } from '@/core/sites/portability'
+import { readManuscriptFile } from '@/ui/_utils/manuscript-file'
 import { Button } from '@/ui/components/ui/button'
 import {
   Dialog,
@@ -43,7 +44,8 @@ export function EpisodeImportDialog({
   const [confirming, setConfirming] = useState(false)
   const [reading, setReading] = useState(false)
   const [saving, setSaving] = useState(false)
-  const inputVersion = useRef(0)
+  const fileRead = useRef<AbortController | null>(null)
+  useEffect(() => () => fileRead.current?.abort(), [])
   let source = file
   let validation = ''
   if (paste.trim()) {
@@ -71,7 +73,7 @@ export function EpisodeImportDialog({
   const sameEpisode = current?.workId === base.workId && current?.episodeId === base.episodeId
 
   async function select(files: File[]) {
-    const version = ++inputVersion.current
+    fileRead.current?.abort()
     setConfirming(false)
     setPaste('')
     setFile(undefined)
@@ -82,18 +84,22 @@ export function EpisodeImportDialog({
       return
     }
     const selected = files[0]!
+    const operation = new AbortController()
+    fileRead.current = operation
+    const { signal } = operation
     setReading(true)
     try {
       if (selected.size > MAX_IMPORT_BYTES) throw new Error('原稿は20 MBまで取り込めます')
-      const data = new Uint8Array(await selected.arrayBuffer())
-      if (version === inputVersion.current) setFile(readSingleManuscript(selected.name, data))
+      const data = await readManuscriptFile(selected, signal)
+      if (!signal.aborted) setFile(readSingleManuscript(selected.name, data))
     } catch (cause) {
-      if (version === inputVersion.current)
+      if (!signal.aborted)
         setError(
           `${selected.name} — ${cause instanceof Error ? cause.message : '原稿を読めません'}`,
         )
     } finally {
-      if (version === inputVersion.current) setReading(false)
+      if (fileRead.current === operation) fileRead.current = null
+      if (!signal.aborted) setReading(false)
     }
   }
 
@@ -156,7 +162,7 @@ export function EpisodeImportDialog({
                 rows={5}
                 value={paste}
                 onChange={(event) => {
-                  inputVersion.current += 1
+                  fileRead.current?.abort()
                   setReading(false)
                   setFile(undefined)
                   setError('')

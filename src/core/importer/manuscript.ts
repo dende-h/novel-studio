@@ -1,7 +1,7 @@
 import { illustrationReferences } from '../sites/illustrations'
 import { readArchive, validArchivePath } from '../zip/read'
 import { linkedImage } from './local-image'
-import { readAkatsukiHtml, readEpub } from './markup'
+import { isEpubMimetype, readAkatsukiHtml, readEpub } from './markup'
 import {
   fileName,
   fileTitle,
@@ -15,9 +15,31 @@ export interface LocalManuscriptFile {
   path: string
   data: Uint8Array
 }
-export type ManuscriptRead =
-  | { name: string; source: ManuscriptSource }
-  | { name: string; error: string }
+export interface ManuscriptInput {
+  path: string
+  bytes: number
+}
+export type ManuscriptRead = { name: string; inputs: ManuscriptInput[] } & (
+  | { source: ManuscriptSource }
+  | { error: string }
+  | { skipped: true }
+)
+
+export function manuscriptBytes(rows: { inputs: ManuscriptInput[]; source?: ManuscriptSource }[]) {
+  const inputs = new Map<string, number>()
+  let expanded = 0
+  for (const row of rows) {
+    for (const file of row.inputs) {
+      const path = file.path.normalize('NFC')
+      inputs.set(path, Math.max(inputs.get(path) ?? 0, file.bytes))
+    }
+    if (row.source?.expandedBytes !== undefined) {
+      const raw = row.inputs.reduce((sum, file) => sum + file.bytes, 0)
+      expanded += Math.max(0, row.source.expandedBytes - raw)
+    }
+  }
+  return [...inputs.values()].reduce((sum, bytes) => sum + bytes, expanded)
+}
 
 function txt(path: string, bytes: Uint8Array) {
   try {
@@ -76,8 +98,8 @@ function parseGroup(
       let start = 0
       for (const ref of illustrationReferences(text)) {
         if (ref.site !== 'file') continue
-        const relative = parent + ref.name.replace(/^\.\//, '')
-        const path = all.has(relative) ? relative : ref.name
+        const relative = (parent + ref.name.replace(/^\.\//, '')).normalize('NFC')
+        const path = all.has(relative) ? relative : ref.name.normalize('NFC')
         if (!all.has(path)) continue
         result += text.slice(start, ref.offset) + linkedImage(path, all.get(path), assets)
         start = ref.offset + ref.raw.length
@@ -118,21 +140,17 @@ function mergeGroups(name: string, groups: ManuscriptSource[]): ManuscriptSource
   }
 }
 
-export async function readManuscriptArchive({
-  path,
-  data,
-}: LocalManuscriptFile): Promise<ManuscriptSource> {
-  const files = await readArchive(data, MAX_IMPORT_BYTES)
+export async function readManuscriptArchive(
+  { path, data }: LocalManuscriptFile,
+  signal?: AbortSignal,
+): Promise<ManuscriptSource> {
+  const files = await readArchive(data, MAX_IMPORT_BYTES, signal)
   const expandedBytes = Array.from(files.values()).reduce(
     (total, member) => total + member.length,
     0,
   )
   if (/\.epub$/i.test(path)) return { ...readEpub(path, files), expandedBytes }
-  if (
-    files.has('META-INF/container.xml') ||
-    (files.has('mimetype') &&
-      new TextDecoder().decode(files.get('mimetype')) === 'application/epub+zip')
-  ) {
+  if (files.has('META-INF/container.xml') || isEpubMimetype(files.get('mimetype'))) {
     throw new Error('中身がEPUB形式です。拡張子を .epub にして選んでください')
   }
   const groups = [...supportedGroups(files)].flatMap(([parent, group]) => {
@@ -150,42 +168,106 @@ export async function readManuscriptArchive({
   return { ...merged, expandedBytes }
 }
 
-function readResult(name: string, read: () => ManuscriptSource): ManuscriptRead {
-  try {
-    return { name, source: read() }
-  } catch (error) {
-    return { name, error: error instanceof Error ? error.message : 'ファイルを読み込めません' }
-  }
+export function manuscriptReadError(
+  name: string,
+  inputs: ManuscriptInput[],
+  error: unknown,
+): ManuscriptRead {
+  return { name, inputs, error: error instanceof Error ? error.message : '原稿を読み込めません' }
 }
 
 export function readLooseManuscripts(inputs: LocalManuscriptFile[]): ManuscriptRead[] {
   const results: ManuscriptRead[] = []
   const files = new Map<string, Uint8Array>()
+  const original = new Map<string, ManuscriptInput>()
+  const accounted = new Set<string>()
   for (const { path, data } of inputs) {
-    if (!validArchivePath(path) || files.has(path)) {
-      results.push({ name: path, error: '原稿に同じパスか無効なファイル名があります' })
-    } else if (/\.(?:txt|html?|jpe?g|png|gif|webp)$/i.test(path)) files.set(path, data)
-    else if (!path.includes('/') || !/\.(?:css|js)$/i.test(path)) {
-      results.push({ name: path, error: 'TXT、原稿ZIP、PDF、EPUBを選んでください' })
+    const key = path.normalize('NFC')
+    const input = { path, bytes: data.length }
+    if (!validArchivePath(path) || original.has(key)) {
+      results.push({
+        name: path,
+        inputs: [input],
+        error: '原稿に同じパスか無効なファイル名があります',
+      })
+      continue
+    }
+    original.set(key, input)
+    if (/\.(?:txt|html?|jpe?g|png|gif|webp)$/i.test(key)) files.set(key, data)
+    else if (!key.includes('/') || !/\.(?:css|js)$/i.test(key)) {
+      accounted.add(key)
+      results.push({
+        name: path,
+        inputs: [input],
+        error: 'TXT、原稿ZIP、PDF、EPUBを選んでください',
+      })
     }
   }
+
+  function addGroup(name: string, group: Map<string, Uint8Array>) {
+    const assigned = [...group.keys()]
+    let result: ManuscriptRead
+    try {
+      const source = parseGroup(name, group, files)
+      for (const asset of source.assets ?? [])
+        assigned.push(asset.path.slice(asset.path.indexOf('/') + 1))
+      result = { name, inputs: [], source }
+    } catch (error) {
+      result = manuscriptReadError(name, [], error)
+    }
+    for (const path of new Set(assigned)) {
+      const file = original.get(path)
+      if (file) {
+        result.inputs.push(file)
+        accounted.add(path)
+      }
+    }
+    results.push(result)
+  }
+
   for (const [parent, group] of supportedGroups(files)) {
     const members = [...group.keys()]
     const grouped = members.some((path) =>
       /(?:^|\/)(?:about|0000_目次|episode_\d{5,})\.txt$|(?:^|\/)nvl\d+\/index\.html?$/i.test(path),
     )
-    if (grouped)
-      results.push(
-        readResult(parent || members[0]!, () => parseGroup(parent || members[0]!, group, files)),
-      )
-    else
-      for (const [path, data] of group) {
-        results.push(readResult(path, () => parseGroup(path, new Map([[path, data]]), files)))
-      }
+    if (grouped) addGroup(parent || members[0] || '', group)
+    else for (const [path, data] of group) addGroup(path, new Map([[path, data]]))
   }
-  return results.length
-    ? results
-    : [{ name: inputs[0]?.path ?? '', error: '取り込める原稿が見つかりません' }]
+  const skipped = [...original].flatMap(([path, file]) => (accounted.has(path) ? [] : [file]))
+  if (!results.length) {
+    return [
+      { name: skipped[0]?.path ?? '', inputs: skipped, error: '取り込める原稿が見つかりません' },
+    ]
+  }
+  if (skipped.length) {
+    results.push({
+      name: skipped.length === 1 ? (skipped[0]?.path ?? '') : '取込対象外のファイル',
+      inputs: skipped,
+      skipped: true,
+    })
+  }
+  return results
+}
+
+export async function readManuscriptFiles(files: LocalManuscriptFile[], signal?: AbortSignal) {
+  const results: ManuscriptRead[] = []
+  const loose: LocalManuscriptFile[] = []
+  for (const file of files) {
+    signal?.throwIfAborted()
+    if (!/\.(?:zip|epub)$/i.test(file.path)) {
+      loose.push(file)
+      continue
+    }
+    const inputs = [{ path: file.path, bytes: file.data.length }]
+    try {
+      results.push({ name: file.path, inputs, source: await readManuscriptArchive(file, signal) })
+    } catch (error) {
+      signal?.throwIfAborted()
+      results.push(manuscriptReadError(file.path, inputs, error))
+    }
+  }
+  signal?.throwIfAborted()
+  return [...results, ...(loose.length ? readLooseManuscripts(loose) : [])]
 }
 
 export function readSingleManuscript(path: string, bytes: Uint8Array): ManuscriptSource {

@@ -17,12 +17,12 @@ function escapeText(text: string): string {
 }
 
 export function blocksToNotation(blocks: Block[]): string {
-  return blocks.map(blockToNotation).join('\n')
+  return blocks.map((block) => inlinesToNotation(block.inlines)).join('\n')
 }
 
-function blockToNotation(block: Block): string {
+function inlinesToNotation(inlines: Inline[]): string {
   let text = ''
-  for (const inline of block.inlines) text += inlineToNotation(inline, endsWithKanji.test(text))
+  for (const inline of inlines) text += inlineToNotation(inline, endsWithKanji.test(text))
   return text
 }
 
@@ -39,7 +39,7 @@ function inlineToNotation(inline: Inline, afterKanji = false): string {
     case 'ref':
       // 装飾を重ねた ref（[[｜言葉《ことば》]]）は children を中身として書き戻す。
       // ref を外側に置く正規形で出す（`《《[[言葉]]》》` と書かれていてもこちらへ寄る）。
-      return `[[${inline.children ? inline.children.map((child) => inlineToNotation(child)).join('') : inline.name}]]`
+      return `[[${inline.children ? inlinesToNotation(inline.children) : inline.name}]]`
   }
 }
 

@@ -1,4 +1,4 @@
-import { DOMParser } from '@xmldom/xmldom'
+import { DOMParser, type Node as XmlNode } from '@xmldom/xmldom'
 import { type DefaultTreeAdapterTypes as Html, parse } from 'parse5'
 import { illustrationFileTag } from '../sites/illustrations'
 import { validArchivePath } from '../zip/read'
@@ -21,13 +21,13 @@ function memberPath(base: string, href: string): string | undefined {
       result.pop()
     } else if (segment && segment !== '.') result.push(segment)
   }
-  const path = result.join('/')
+  const path = result.join('/').normalize('NFC')
   return validArchivePath(path) ? path : undefined
 }
 
 function reader(files: Map<string, Uint8Array>) {
   return (path: string) => {
-    const bytes = files.get(path)
+    const bytes = files.get(path.normalize('NFC'))
     const text = bytes && decodeTextFile(bytes)
     if (!text) throw new Error(`「${path}」がないか、文字を読み込めません`)
     return text.text
@@ -43,14 +43,48 @@ function imageHandler(files: Map<string, Uint8Array>, assets: Map<string, Manusc
   }
 }
 
-function xml(text: string) {
-  // No DTD/entity resolution is needed for EPUB package metadata.
-  if (/<!DOCTYPE|<!ENTITY/i.test(text)) throw new Error('外部定義のあるEPUB目録は読み込めません')
+const xmlProlog = /^(?:\s+|<\?xml\s[^?]*\?>|<!--[\s\S]*?-->)*/
+const ncxDoctype =
+  /^<!DOCTYPE\s+ncx\s+PUBLIC\s+(['"])-\/\/NISO\/\/DTD ncx 2005-1\/\/EN\1\s+(['"])https?:\/\/www\.daisy\.org\/z3986\/2005\/ncx-2005-1\.dtd\2\s*>/
+const simpleHtmlDoctype = /^<!DOCTYPE\s+html\s*>/
+
+function xml(text: string, permissibleDoctype?: RegExp) {
+  // Strip recognized declarations in the prolog before parsing. No DTD is resolved.
+  const offset = permissibleDoctype ? (xmlProlog.exec(text)?.[0].length ?? 0) : 0
+  const document = permissibleDoctype
+    ? text.slice(0, offset) + text.slice(offset).replace(permissibleDoctype, '')
+    : text
+  if (/<!DOCTYPE|<!ENTITY/i.test(document))
+    throw new Error('外部定義のあるEPUB文書は読み込めません')
   return new DOMParser({
     onError: (level) => {
       if (level !== 'warning') throw new Error('EPUBのXMLを読み込めません')
     },
-  }).parseFromString(text, 'application/xml')
+  }).parseFromString(document, 'application/xml')
+}
+
+export function isEpubMimetype(bytes?: Uint8Array) {
+  return new TextDecoder().decode(bytes).trim() === 'application/epub+zip'
+}
+
+type XmlContent =
+  | { value: string }
+  | { tagName: string; attrs: { name: string; value: string }[]; childNodes: XmlContent[] }
+
+function xmlContent(node: XmlNode): XmlContent[] {
+  if (node.nodeType === 3 || node.nodeType === 4) return [{ value: node.nodeValue ?? '' }]
+  if (!('localName' in node) || !('attributes' in node) || node.nodeType !== 1) return []
+  const element = node as import('@xmldom/xmldom').Element
+  return [
+    {
+      tagName: element.localName ?? element.tagName,
+      attrs: Array.from(element.attributes, (attribute) => ({
+        name: attribute.name,
+        value: attribute.value,
+      })),
+      childNodes: Array.from(element.childNodes).flatMap(xmlContent),
+    },
+  ]
 }
 
 function descendants(node: Html.Node): Html.Element[] {
@@ -60,7 +94,7 @@ function descendants(node: Html.Node): Html.Element[] {
   )
 }
 
-const attr = (node: Html.Element, name: string) =>
+const attr = (node: Pick<Html.Element, 'attrs'>, name: string) =>
   node.attrs.find((a) => a.name === name)?.value ?? ''
 const cls = (node: Html.Element, value: string) => attr(node, 'class').split(/\s+/).includes(value)
 const ignored = new Set([
@@ -90,7 +124,7 @@ const paragraph = new Set([
 ])
 
 function htmlText(
-  node: Html.Node,
+  node: Html.Node | XmlContent,
   opts: { image?: (src: string, alt: string) => string; paragraphs?: boolean } = {},
 ): string {
   if ('value' in node) return node.value
@@ -112,7 +146,7 @@ function htmlText(
     }
     if (node.tagName === 'em') {
       const body = node.childNodes.map((e) => htmlText(e, opts)).join('')
-      return body ? `《《${body}》》` : ''
+      return body && !/[《》\n]/.test(body) ? '《《' + body + '》》' : body
     }
   }
   const text = node.childNodes
@@ -129,11 +163,12 @@ function htmlText(
 
 export function readEpub(name: string, files: Map<string, Uint8Array>): ManuscriptSource {
   const read = reader(files)
-  if (read('mimetype') !== 'application/epub+zip') throw new Error('EPUBの種類を確認できません')
+  if (!isEpubMimetype(files.get('mimetype'))) throw new Error('EPUBの種類を確認できません')
   const root = xml(read('META-INF/container.xml'))
     .getElementsByTagNameNS('*', 'rootfile')
     .item(0)
     ?.getAttribute('full-path')
+    ?.normalize('NFC')
   if (!root || !validArchivePath(root)) throw new Error('EPUBの目録が見つかりません')
   const pkg = xml(read(root))
   const first = (tag: string) =>
@@ -158,7 +193,9 @@ export function readEpub(name: string, files: Map<string, Uint8Array>): Manuscri
     )
     const ncxPath = ncx && memberPath(root, ncx.getAttribute('href') ?? '')
     if (ncxPath)
-      for (const point of Array.from(xml(read(ncxPath)).getElementsByTagNameNS('*', 'navPoint'))) {
+      for (const point of Array.from(
+        xml(read(ncxPath), ncxDoctype).getElementsByTagNameNS('*', 'navPoint'),
+      )) {
         const path = memberPath(
           ncxPath,
           point.getElementsByTagNameNS('*', 'content').item(0)?.getAttribute('src') ?? '',
@@ -178,22 +215,34 @@ export function readEpub(name: string, files: Map<string, Uint8Array>): Manuscri
     seen.add(path)
     if (path === navPath || item?.getAttribute('properties')?.split(/\s+/).includes('nav'))
       return []
-    if (!/^application\/xhtml\+xml$|^text\/html$/.test(item?.getAttribute('media-type') ?? '')) {
-      throw new Error(`EPUBの本文が対応するHTML形式ではありません（${path}）`)
-    }
-    const elements = descendants(parse(read(path)))
-    const content = elements.find((node) => node.tagName === 'body')!
-    const title =
-      titles.get(path) ||
-      elements
+    const mediaType = item?.getAttribute('media-type')
+    const options = { paragraphs: true, image: (src: string, alt: string) => image(path, src, alt) }
+    let fallback: string | undefined
+    let body: string
+    if (mediaType === 'application/xhtml+xml') {
+      const document = xml(read(path), simpleHtmlDoctype)
+      const content = document.getElementsByTagNameNS('*', 'body').item(0)
+      if (!content) throw new Error('EPUBの本文要素を確認できません')
+      fallback =
+        document.getElementsByTagNameNS('*', 'h1').item(0)?.textContent?.trim() ||
+        document.getElementsByTagNameNS('*', 'title').item(0)?.textContent?.trim()
+      body = xmlContent(content)
+        .map((node) => htmlText(node, options))
+        .join('')
+    } else if (mediaType === 'text/html') {
+      const elements = descendants(parse(read(path)))
+      const content = elements.find((node) => node.tagName === 'body')
+      if (!content) throw new Error('EPUBの本文要素を確認できません')
+      fallback = elements
         .filter((node) => node.tagName === 'h1' || node.tagName === 'title')
         .map((node) => htmlText(node).trim())
-        .find(Boolean) ||
-      fileTitle(path)
-    const body = htmlText(content, {
-      paragraphs: true,
-      image: (src, alt) => image(path, src, alt),
-    }).replace(/\n$/, '')
+        .find(Boolean)
+      body = htmlText(content, options)
+    } else {
+      throw new Error('EPUBの本文が対応するHTML形式ではありません（' + path + '）')
+    }
+    const title = titles.get(path) || fallback || fileTitle(path)
+    body = body.replace(/\n$/, '')
     return body.trim() ? [{ path, title, body }] : []
   })
   if (!episodes.length) throw new Error('EPUBに文字のある本文が見つかりません')

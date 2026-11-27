@@ -40,6 +40,8 @@ export const field = (text: string, heading: string) =>
 const byName = (paths: string[]) =>
   sortSourcesNatural(paths.map((name) => ({ name }))).map(({ name }) => name)
 
+const metadataHeading = /^〖[^〗]+〗$/
+
 const bodyField = (text: string, prefix: RegExp, strictHeader = false) => {
   const lines = text.split('\n')
   // エピソードの各メタデータは1行見出しと値で構成される。
@@ -47,8 +49,9 @@ const bodyField = (text: string, prefix: RegExp, strictHeader = false) => {
   while (index < lines.length && !prefix.test(lines[index] ?? '')) {
     const line = lines[index] ?? ''
     if (!strictHeader || !line.trim()) index += 1
-    else if (/^〖[^〗]+〗$/.test(line)) index += 2
-    else throw new Error('本文の前の見出しを確認できません')
+    else if (metadataHeading.test(line)) {
+      index += metadataHeading.test(lines[index + 1] ?? '') ? 1 : 2
+    } else throw new Error('本文の前の見出しを確認できません')
   }
   if (index >= lines.length - 1) throw new Error('本文の見出しがありません')
   return {
@@ -56,6 +59,11 @@ const bodyField = (text: string, prefix: RegExp, strictHeader = false) => {
     body: lines.slice(index + 1).join('\n'),
     marker: lines[index]!,
   }
+}
+
+function kakuyomuTitle(header: string) {
+  const title = field(header, '〖タイトル〗')
+  return title && !metadataHeading.test(title) ? title : undefined
 }
 
 export function kakuyomuEpisode(path: string, text: string): ManuscriptEpisode {
@@ -66,12 +74,19 @@ export function kakuyomuEpisode(path: string, text: string): ManuscriptEpisode {
     throw new Error('本文の行数が見出しと一致しません')
   }
   if (!body.trim()) throw new Error('本文が空です')
+  const title = kakuyomuTitle(header)
+  const details = header.startsWith('〖タイトル〗')
+    ? header
+        .split('\n')
+        .slice(title ? 2 : 1)
+        .join('\n')
+    : header
   return {
     path,
-    title: field(header, '〖タイトル〗') || fileTitle(path),
+    title: title || fileTitle(path),
     body,
     site: 'kakuyomu',
-    details: header.replace(/^〖タイトル〗\n[^\n]*(?:\n+|$)/, '').trim(),
+    details: details.trim(),
   }
 }
 

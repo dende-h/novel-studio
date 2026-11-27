@@ -104,3 +104,63 @@ test('ログイン不要の変換から原稿を引き継いで、単話の取�
   await exported.getByRole('button', { name: 'カクヨム互換ZIPを保存' }).click()
   expect((await zip).suggestedFilename()).toMatch(/_カクヨム互換\.zip$/)
 })
+
+test('ルート直下のカクヨム原稿の全パスを記録し、失敗行を外して再選択できる', async ({ page }) => {
+  await openLibrary(page)
+  const dialog = page.getByRole('dialog', { name: '原稿を取り込む' })
+  const files = dialog.getByLabel('原稿ファイル', { exact: true })
+  const about = { name: 'about.txt', mimeType: 'text/plain', buffer: Buffer.from('〖タイトル〗\n作品\n〖目次〗\n1. 話') }
+  const chapter = { name: 'episode_0001.txt', mimeType: 'text/plain', buffer: Buffer.from('〖タイトル〗\n話\n〖本文（1行）〗\n確認する本文') }
+  await files.setInputFiles([about, chapter])
+  await expect(dialog.getByLabel('1話目のタイトル')).toHaveValue('話')
+  await files.setInputFiles(chapter)
+  await expect(dialog.getByRole('alert')).toContainText('同じ相対パス')
+  await dialog.getByRole('button', { name: 'episode_0001.txtを外す' }).click()
+  await expect(dialog.getByRole('button', { name: '作品を作る' })).toBeEnabled()
+  await dialog.getByRole('button', { name: 'about.txtを外す' }).click()
+  await files.setInputFiles([about, { ...chapter, buffer: Buffer.from('〖タイトル〗\n壊れた話') }])
+  await expect(dialog.getByRole('alert')).toContainText('本文の見出し')
+  await dialog.getByRole('button', { name: 'about.txtを外す' }).click()
+  await files.setInputFiles([about, chapter])
+  await expect(dialog.getByLabel('1話目のタイトル')).toHaveValue('話')
+  await expect(dialog.getByRole('button', { name: '作品を作る' })).toBeEnabled()
+})
+
+test('読取中に閉じた画面のWorkerを終了し、開き直した画面を更新しない', async ({ page }) => {
+  await page.addInitScript(() => {
+    const workers = { hold: true, sent: 0, terminated: 0 }
+    Object.assign(window, { __testManuscriptWorkers: workers })
+    const NativeWorker = Worker
+    window.Worker = class extends NativeWorker {
+      private manuscript: boolean
+      constructor(url: string | URL, options?: WorkerOptions) {
+        super(url, options)
+        this.manuscript = String(url).includes('manuscript.worker')
+      }
+      postMessage(message: unknown, transfer: Transferable[] = []) {
+        if (this.manuscript) {
+          workers.sent += 1
+          if (workers.hold) return
+        }
+        super.postMessage(message, transfer)
+      }
+      terminate() {
+        if (this.manuscript) workers.terminated += 1
+        super.terminate()
+      }
+    }
+  })
+  await openLibrary(page)
+  const dialog = page.getByRole('dialog', { name: '原稿を取り込む' })
+  const files = dialog.getByLabel('原稿ファイル', { exact: true })
+  await files.setInputFiles(fixture('manuscript/01.txt'))
+  await expect.poll(() => page.evaluate(() => Reflect.get(window, '__testManuscriptWorkers').sent)).toBe(1)
+  await dialog.getByRole('button', { name: '閉じる', exact: true }).click()
+  await expect.poll(() => page.evaluate(() => Reflect.get(window, '__testManuscriptWorkers').terminated)).toBe(1)
+  await page.evaluate(() => { Reflect.get(window, '__testManuscriptWorkers').hold = false })
+  await page.getByRole('button', { name: '原稿を取り込む' }).click()
+  await files.setInputFiles(fixture('manuscript/02.txt'))
+  await expect(dialog.getByLabel('1話目のタイトル')).toHaveValue('02')
+  await expect(dialog.getByLabel('2話目のタイトル')).toHaveCount(0)
+  await expect(dialog.getByRole('alert')).toHaveCount(0)
+})

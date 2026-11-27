@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest'
+import { parseEpisodeBody } from '../../core/parser/parseNotation'
 import { ProfileRepository } from '../../core/profile'
+import { illustrationFileTag } from '../../core/sites/illustrations'
 import { SnapshotRepository } from '../../core/snapshot/snapshotRepository'
 import { ActivityRepository } from '../../core/storage/activityRepository'
 import { MemoryStore } from '../../core/storage/memoryStore'
@@ -49,6 +51,27 @@ describe('editorStore（自前ストア・useSyncExternalStore 用）', () => {
     expect(s.currentEpisodeId).toBeNull()
     expect(s.draft).toBe('')
     expect(s.dirty).toBe(false)
+  })
+
+  it('別の挿絵が同じ保存パスを使った場合は画像を割り当てず、再追加でも誤って関連付けない', async () => {
+    const path = 'abcd-8/画像.png'
+    const body = illustrationFileTag('画像.png', 'abcd-8')
+    const parts = (id: string, image: string) => ({
+      id,
+      title: '作品',
+      episodes: [{ id, title: '話', blocks: parseEpisodeBody(body) }],
+      manuscriptImport: { notes: '', assets: [{ path, image }] },
+    })
+    const first = parts('first', 'data:image/png;base64,AA==')
+    await store.importWorks([first])
+    await store.openWork(first.id)
+    await store.appendImportedEpisodes(first.id, parts('second', 'data:image/png;base64,AQ=='))
+    expect(store.getSnapshot().work?.manuscriptImport?.assets).toEqual([])
+    await store.appendImportedEpisodes(first.id, parts('third', 'data:image/png;base64,AA=='))
+    expect(store.getSnapshot().work?.manuscriptImport?.assets).toEqual([])
+    expect(store.getSnapshot().work?.episodes.map((episode) => episode.blocks)).toEqual(
+      Array.from({ length: 3 }, () => parseEpisodeBody(body)),
+    )
   })
 
   it('init は保存済み作品一覧を読み込む', async () => {
