@@ -11,7 +11,7 @@ import { publicEvent } from '../api/_lib/board-event-store'
 
 const headers = {
   'content-type': 'text/html; charset=utf-8',
-  'cache-control': 'public, no-store',
+  'cache-control': 'no-store',
   'referrer-policy': 'no-referrer',
   'x-content-type-options': 'nosniff',
 }

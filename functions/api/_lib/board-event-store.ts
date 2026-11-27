@@ -1,14 +1,7 @@
 import type { BoardEventDetail } from '../../../src/core/board/events'
 import type { EventPatchInput } from '../../../src/core/board/types'
+import { eventJoin, PUBLIC_EVENT, publicEventExists } from './board-event-visibility'
 import { prepareThreadInsert } from './board-store'
-
-// t is the board thread and head is its seq=1 post.
-export const PUBLIC_EVENT = `t.kind = 'event' AND t.deleted_at = 0 AND t.hidden_at = 0
-  AND head.deleted_at = 0 AND head.hidden_at = 0`
-
-const eventJoin = `FROM board_events e
-  JOIN board_threads t ON t.id = e.thread_id
-  JOIN board_posts head ON head.thread_id = t.id AND head.seq = 1`
 
 const activeParticipant = 'ep.withdrawn_at IS NULL AND ep.hidden_at = 0'
 const participantJoin = `FROM board_event_participants ep
@@ -28,7 +21,7 @@ interface EventDetailRow extends EventRow {
   participant_count: number
   my_participant: string | null
   my_work_url: string | null
-  my_link_hidden: number | null
+  my_link_hidden: number
   can_write: number
   activity_id: number
 }
@@ -44,7 +37,8 @@ export function prepareEventDetail(
     SELECT e.*, t.title, head.body,
       (SELECT COUNT(*) ${participantJoin}
         WHERE ep.thread_id = t.id AND ${activeParticipant}) AS participant_count,
-      mine.id AS my_participant, mine.work_url AS my_work_url, mine.link_hidden_at AS my_link_hidden,
+      mine.id AS my_participant, mine.work_url AS my_work_url,
+      COALESCE(hidden_link.hidden_at, 0) AS my_link_hidden,
       EXISTS (SELECT 1 FROM board_profiles pr WHERE pr.user_id = ?1 AND pr.deleted_at = 0
         AND pr.banned_until <= ?2) AS can_write,
       (SELECT COALESCE(MAX(a.id), 0) FROM board_activity a
@@ -52,6 +46,8 @@ export function prepareEventDetail(
     ${eventJoin}
     LEFT JOIN board_event_participants mine ON mine.thread_id = t.id AND mine.user_id = ?1
       AND mine.withdrawn_at IS NULL
+    LEFT JOIN board_event_hidden_links hidden_link
+      ON hidden_link.participant_id = mine.id AND hidden_link.work_url = mine.work_url
     WHERE t.id = ?3 AND ${PUBLIC_EVENT}`)
     .bind(viewer, now, threadId)
 }
@@ -60,6 +56,7 @@ export function toEventDetail(
   row: EventDetailRow,
   viewer: string | null,
   now: number,
+  staff = false,
 ): BoardEventDetail {
   const host = viewer === row.host_id
   return {
@@ -69,11 +66,14 @@ export function toEventDetail(
     revision: row.revision,
     participantCount: row.participant_count,
     myParticipation: row.my_participant
-      ? { workUrl: row.my_work_url, linkHidden: Boolean(row.my_link_hidden) }
+      ? {
+          workUrl: row.my_work_url,
+          ...(row.my_work_url ? { linkHidden: Boolean(row.my_link_hidden) } : {}),
+        }
       : null,
     canParticipate: Boolean(row.can_write) && !row.cancelled_at && now < row.ends_at,
     canEdit: host && Boolean(row.can_write) && !row.cancelled_at && now < row.ends_at,
-    canCancel: host && !row.cancelled_at,
+    canCancel: (host || staff) && row.cancelled_at === null && now < row.ends_at,
     serverNow: now,
   }
 }
@@ -145,12 +145,6 @@ export async function createBoardEvent(db: D1Database, input: EventCreation) {
   }
 }
 
-const publicThreadExists = `EXISTS (
-  SELECT 1 FROM board_threads t
-  JOIN board_posts head ON head.thread_id = t.id AND head.seq = 1
-  WHERE t.id = board_events.thread_id AND ${PUBLIC_EVENT}
-)`
-
 export async function patchBoardEvent(
   db: D1Database,
   threadId: string,
@@ -162,7 +156,7 @@ export async function patchBoardEvent(
     const result = await db
       .prepare(`
       UPDATE board_events SET cancelled_at = ?1, updated_at = ?1, updated_by = ?2, revision = revision + 1
-      WHERE thread_id = ?3 AND cancelled_at IS NULL AND ${publicThreadExists}
+      WHERE thread_id = ?3 AND cancelled_at IS NULL AND ?1 < ends_at AND ${publicEventExists('board_events.thread_id')}
       AND (host_id = ?2 OR EXISTS (
         SELECT 1 FROM board_profiles pr WHERE pr.user_id = ?2 AND pr.role = 'staff' AND pr.deleted_at = 0
       ))`)
@@ -180,7 +174,7 @@ export async function patchBoardEvent(
       WHERE thread_id = ?5 AND revision = ?6 AND host_id = ?4 AND cancelled_at IS NULL
         AND ?3 < ends_at AND ?3 < ?2 AND ?1 < ?2
         AND (starts_at = ?1 OR (starts_at > ?3 AND ?1 >= ?3))
-        AND ${publicThreadExists}
+        AND ${publicEventExists('board_events.thread_id')}
         AND EXISTS (SELECT 1 FROM board_profiles pr WHERE pr.user_id = ?4 AND pr.deleted_at = 0 AND pr.banned_until <= ?3)
     `)
       .bind(startsAt, endsAt, now, actorId, threadId, revision),
@@ -264,8 +258,10 @@ export async function listEventParticipants(
   const { results } = await db
     .prepare(`
     SELECT ep.id, pr.display_name AS name, ep.joined_at,
-      CASE WHEN ep.link_hidden_at = 0 THEN ep.work_url END AS work_url
+      CASE WHEN COALESCE(hidden_link.hidden_at, 0) = 0 THEN ep.work_url END AS work_url
     ${participantJoin}
+    LEFT JOIN board_event_hidden_links hidden_link
+      ON hidden_link.participant_id = ep.id AND hidden_link.work_url = ep.work_url
     WHERE ep.thread_id = ?1 AND ${activeParticipant}
       AND EXISTS (SELECT 1 ${eventJoin} WHERE t.id = ep.thread_id AND ${PUBLIC_EVENT})
       AND (?2 IS NULL OR (ep.joined_at, ep.id) > (?2, ?3))
@@ -287,14 +283,19 @@ export function findReportedEventLink(db: D1Database, id: string) {
     ${eventJoin.replace('FROM board_events e', 'JOIN board_events e ON e.thread_id = ep.thread_id')}
     JOIN board_profiles pr ON pr.user_id = ep.user_id AND pr.deleted_at = 0
     WHERE ep.id = ? AND ${activeParticipant} AND ${PUBLIC_EVENT}
-      AND ep.link_hidden_at = 0 AND ep.work_url IS NOT NULL`)
+      AND ep.work_url IS NOT NULL AND NOT EXISTS (
+        SELECT 1 FROM board_event_hidden_links hidden_link
+        WHERE hidden_link.participant_id = ep.id AND hidden_link.work_url = ep.work_url AND hidden_link.hidden_at > 0
+      )`)
     .bind(id)
     .first<{ url: string; post_id: string }>()
 }
 
 export async function moderateEventLink(db: D1Database, id: string, hiddenAt: number) {
   const result = await db
-    .prepare('UPDATE board_event_participants SET link_hidden_at = ? WHERE id = ?')
+    .prepare(`INSERT INTO board_event_hidden_links (participant_id, work_url, hidden_at)
+      SELECT id, work_url, ? FROM board_event_participants WHERE id = ? AND work_url IS NOT NULL
+      ON CONFLICT (participant_id, work_url) DO UPDATE SET hidden_at = excluded.hidden_at`)
     .bind(hiddenAt, id)
     .run()
   return result.meta.changes > 0

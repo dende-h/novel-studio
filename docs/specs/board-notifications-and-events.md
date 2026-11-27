@@ -93,5 +93,6 @@
 
 ## 反映時の確認
 
-- D1 の `0001`〜`0015` が適用済みの環境に `0016_board_notifications_events.sql` を適用してから Pages を更新する。既存の書き込みから通知履歴は作らない。
+- D1 の `0001`〜`0015` が適用済みの環境に `0016_board_notifications_events.sql`、`0017_board_event_link_moderation.sql` の順で適用してから Pages を更新する。既存の書き込みから通知履歴は作らない。
+- 作品URLの非表示は参加者と正規化済みURLの組み合わせで保持する。同じURLを削除して登録し直しても非表示を維持し、別のURLには引き継がない。移行時点で非表示のURLと通報記録を保持する。
 - 実際の Clerk 退会を掲示板に反映するには、環境ごとの Clerk で `user.deleted` を Leaf の `/api/webhooks/clerk` へ配信し、そのエンドポイントの署名シークレットを Pages の `CLERK_WEBHOOK_SECRET` に設定する。退会した人のペンネームは伏せ、公開参加と本人の通知状態を削除する。

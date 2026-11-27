@@ -4,6 +4,7 @@ import { NotificationScopeSchema, notificationScopeLabel } from '@/core/board/no
 import { cn } from '@/lib/utils'
 import { useBoardNotifications } from '@/ui/board/board-notifications-provider'
 import { PageLayout } from '@/ui/components/PageLayout/page-layout'
+import { Button } from '@/ui/components/ui/button'
 import { type ReadingSize, type Theme, usePreferences } from '@/ui/hooks/use-preferences'
 import { useIsStaff } from '@/ui/hooks/use-staff'
 
@@ -166,7 +167,11 @@ export function SettingsPage({ showNotifications = false }: { showNotifications?
                       if (parsed.success) void notifications.saveScope(parsed.data)
                     }}
                   >
-                    {!notifications.scope && <option value="">読み込み中…</option>}
+                    {!notifications.scope && (
+                      <option value="">
+                        {notifications.summaryError ? '取得できませんでした' : '読み込み中…'}
+                      </option>
+                    )}
                     {NotificationScopeSchema.options.map((scope) => (
                       <option key={scope} value={scope}>
                         {notificationScopeLabel[scope]}
@@ -178,6 +183,22 @@ export function SettingsPage({ showNotifications = false }: { showNotifications?
                 )
               }
             />
+            {notifications?.summaryError && !notifications.scope && (
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <p role="alert" className="text-error text-sm">
+                  {notifications.summaryError}
+                </p>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  disabled={notifications.refreshing}
+                  onClick={() => void notifications.retrySummary()}
+                >
+                  再試行
+                </Button>
+              </div>
+            )}
             {notifications?.scopeError && (
               <p role="alert" className="mt-1 text-error text-sm">
                 {notifications.scopeError}

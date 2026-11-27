@@ -1,5 +1,7 @@
 // @vitest-environment node
 import { createHmac } from 'node:crypto'
+import { readFileSync } from 'node:fs'
+import { DatabaseSync } from 'node:sqlite'
 
 import { jstInputValue, parseJstInput } from '../../../src/core/board/events'
 import { BOARD_SILENT_MS } from '../../../src/core/board/notifications'
@@ -16,7 +18,7 @@ import { onRequestDelete as resume, onRequestPut as silence } from './notificati
 import { onRequestPost as createReply } from './posts'
 import { makeRealD1, type RealD1 } from './real-d1'
 import { onRequestPost as report } from './reports'
-import { onRequestGet as detail } from './thread'
+import { onRequestDelete as deleteThread, onRequestGet as detail } from './thread'
 import { onRequestPost as create, onRequestGet as threads } from './threads'
 
 vi.mock('../_lib/auth', async (importOriginal) => ({
@@ -402,6 +404,7 @@ describe('公開イベント API', () => {
     const guest = await call(share, shareUrl, undefined, 'GET', undefined, id)
     const html = await guest.text()
     expect(guest.status).toBe(200)
+    expect(guest.headers.get('cache-control')).toBe('no-store')
     expect(html).toContain('property="og:title" content="週末の &lt;短編&gt;"')
     expect(html).toContain('content="https://cotonoha-leaf.org/lp/ogp.png"')
     expect(html).toContain('?action=join')
@@ -448,6 +451,7 @@ describe('公開イベント API', () => {
     await hideThread(d.db, id, NOW)
     const hidden = await call(share, shareUrl, undefined, 'GET', undefined, id)
     expect(hidden.status).toBe(404)
+    expect(hidden.headers.get('cache-control')).toBe('no-store')
     expect(await hidden.text()).not.toContain('週末')
     expect((await call(participants, eventUrl(id))).status).toBe(404)
     expect((await call(detail, threadUrl(id))).status).toBe(404)
@@ -488,4 +492,271 @@ it('署名済み Clerk 退会 webhook がアカウントの通知・公開参加
   expect(d.row("SELECT deleted_at FROM board_profiles WHERE user_id = 'reader'")).toEqual({
     deleted_at: NOW,
   })
+})
+describe('掲示板レビュー回帰', () => {
+  const cancel = (id: string, user = 'host') =>
+    call(patchEvent, eventUrl(id), user, 'PATCH', { action: 'cancel' })
+  const deleteEvent = (id: string) => call(deleteThread, threadUrl(id), 'host', 'DELETE')
+  const eventDetail = async (id: string, user: string) =>
+    (await call(detail, threadUrl(id), user)).json()
+
+  it('終了時刻に達したイベントを中止せず、過去一覧の順と参加者向け通知を保つ', async () => {
+    const finished = await publish(creation({ endsAt: NOW + HOUR }))
+    const older = await publish(creation({ endsAt: NOW + HOUR - 1 }))
+    await call(participate, joinUrl(finished), 'reader', 'PUT', {})
+    await scope('related')
+    expect((await eventDetail(finished, 'host')).event.canCancel).toBe(true)
+    expect((await eventDetail(finished, 'staff')).event.canCancel).toBe(true)
+    const past = async () =>
+      (await call(threads, '/api/board/threads?kind=event&group=past')).json()
+    vi.setSystemTime(NOW + HOUR)
+    expect((await past()).threads.map((row: { id: string }) => row.id)).toEqual([finished, older])
+    for (const user of ['host', 'staff']) {
+      expect((await eventDetail(finished, user)).event.canCancel).toBe(false)
+      expect((await cancel(finished, user)).status).toBe(409)
+    }
+    expect((await deleteEvent(finished)).status).toBe(409)
+    vi.setSystemTime(NOW + HOUR + 1)
+    expect((await cancel(finished)).status).toBe(409)
+    expect((await deleteEvent(finished)).status).toBe(409)
+    expect((await past()).threads.map((row: { id: string }) => row.id)).toEqual([finished, older])
+    expect((await eventDetail(finished, 'host')).event).toMatchObject({
+      cancelledAt: null,
+      revision: 1,
+    })
+    expect((await inbox()).notifications).toEqual([])
+    expect(d.rows("SELECT id FROM board_activity WHERE kind = 'event_cancelled'")).toEqual([])
+  })
+
+  it('中止 PATCH の再送は同じ結果になり、DELETE は中止済みを 409、非公開・不存在を 404 にする', async () => {
+    const id = await publish()
+    await call(participate, joinUrl(id), 'reader', 'PUT', {})
+    expect((await cancel(id)).status).toBe(200)
+    expect((await cancel(id)).status).toBe(200)
+    expect((await deleteEvent(id)).status).toBe(409)
+    vi.setSystemTime(NOW + 2 * HOUR)
+    expect((await cancel(id)).status).toBe(200)
+    expect(d.rows("SELECT id FROM board_activity WHERE kind = 'event_cancelled'")).toHaveLength(1)
+    await hideThread(d.db, id, NOW)
+    expect((await deleteEvent(id)).status).toBe(404)
+    expect((await deleteEvent('missing')).status).toBe(404)
+    vi.setSystemTime(NOW + 3 * HOUR)
+    const visibleThread = await publish(creation({ endsAt: Date.now() + HOUR }))
+    d.exec(`UPDATE board_posts SET hidden_at = 1 WHERE thread_id = '${visibleThread}' AND seq = 1`)
+    expect(await (await deleteEvent(visibleThread)).json()).toEqual({ error: 'not_found' })
+  })
+
+  it('DELETE の更新直前に公開状態が変わった場合は404を返す', async () => {
+    const id = await publish()
+    const prepare = d.db.prepare.bind(d.db)
+    d.db.prepare = (sql) => {
+      if (sql.includes('UPDATE board_events SET cancelled_at')) {
+        d.exec(`UPDATE board_threads SET hidden_at = 1 WHERE id = '${id}'`)
+      }
+      return prepare(sql)
+    }
+    const result = await deleteEvent(id)
+    expect(result.status).toBe(404)
+    expect(await result.json()).toEqual({ error: 'not_found' })
+    expect(d.rows("SELECT id FROM board_activity WHERE kind = 'event_cancelled'")).toEqual([])
+  })
+
+  it('過去の開始と開催中の開始変更は400、開始を保持した編集は成功し、古いリビジョンは409', async () => {
+    const start = NOW + 30 * 60_000 + 1275
+    const end = NOW + HOUR
+    const id = await publish(creation({ startsAt: start, endsAt: end }))
+    const edit = (startsAt: number, revision = 1) =>
+      call(patchEvent, eventUrl(id), 'host', 'PATCH', {
+        action: 'edit',
+        startsAt,
+        endsAt: NOW + 2 * HOUR,
+        title: '編集した題',
+        body: '編集した説明',
+        revision,
+      })
+    expect(await (await edit(NOW - 1)).json()).toEqual({ error: 'bad_event_dates' })
+    const newPast = await call(
+      create,
+      '/api/board/threads',
+      'host',
+      'POST',
+      creation({ startsAt: NOW - 1 }),
+    )
+    expect(newPast.status).toBe(400)
+    expect(await newPast.json()).toEqual({ error: 'bad_event_dates' })
+    vi.setSystemTime(start)
+    const changedAfterStart = await edit(start + 1)
+    expect(changedAfterStart.status).toBe(400)
+    expect(await changedAfterStart.json()).toEqual({ error: 'bad_event_dates' })
+    expect((await edit(start)).status).toBe(200)
+    const edited = await eventDetail(id, 'host')
+    expect(edited.event).toMatchObject({ startsAt: start, endsAt: NOW + 2 * HOUR, revision: 2 })
+    expect(edited.thread.title).toBe('編集した題')
+    expect(edited.posts[0].body).toBe('編集した説明')
+    const conflict = await edit(start)
+    expect(conflict.status).toBe(409)
+    expect(await conflict.json()).toEqual({ error: 'event_changed' })
+  })
+
+  it('post=1 は先頭側の50返信を返し、ページ外の新着は未読のままにする', async () => {
+    await summary()
+    seededThread('head-page')
+    for (let seq = 2; seq <= 64; seq++) seededPost('head-page', seq, 'other')
+    const first = await (await call(detail, threadUrl('head-page', 1), 'reader')).json()
+    expect(first.posts.map((row: { seq: number }) => row.seq)).toEqual(
+      Array.from({ length: 51 }, (_, i) => i + 1),
+    )
+    expect(first.olderPost).toBeUndefined()
+    expect(first.newerPost).toBe(64)
+    expect((await readToken(first.readToken)).status).toBe(200)
+    expect((await inbox()).notifications).toMatchObject([{ postSeq: 64, unread: true }])
+  })
+
+  it.each([
+    'hidden_at',
+    'deleted_at',
+  ])('イベント本文の %s が立つと返信と通知行を作らない', async (column) => {
+    const id = await publish()
+    d.exec(`UPDATE board_posts SET ${column} = 1 WHERE thread_id = '${id}' AND seq = 1`)
+    const result = await call(createReply, '/api/board/posts?thread=' + id, 'reader', 'POST', {
+      body: '返信',
+    })
+    expect(result.status).toBe(404)
+    expect(await result.json()).toEqual({ error: 'not_found' })
+    const noProfile = await call(
+      createReply,
+      '/api/board/posts?thread=' + id,
+      'without-profile',
+      'POST',
+      { body: '返信' },
+    )
+    expect(noProfile.status).toBe(404)
+    expect(d.rows('SELECT seq FROM board_posts WHERE thread_id = ?', id)).toEqual([{ seq: 1 }])
+    expect(
+      d.rows("SELECT id FROM board_activity WHERE thread_id = ? AND kind = 'reply'", id),
+    ).toEqual([])
+    seededThread('ordinary')
+    d.exec("UPDATE board_posts SET hidden_at = 1 WHERE thread_id = 'ordinary' AND seq = 1")
+    const normal = await call(createReply, '/api/board/posts?thread=ordinary', 'reader', 'POST', {
+      body: '通常の返信',
+    })
+    expect(normal.status).toBe(201)
+  })
+
+  it('公開確認の後、保存の直前にイベント本文が伏せられても投稿・通知・スレ更新を行わない', async () => {
+    const id = await publish()
+    vi.setSystemTime(NOW + 3000)
+    const batch = d.db.batch.bind(d.db)
+    d.db.batch = (statements) => {
+      const sql = statements[0] as D1PreparedStatement & { __sql: string }
+      if (sql.__sql.includes('INSERT INTO board_posts')) {
+        d.exec(`UPDATE board_posts SET hidden_at = 1 WHERE thread_id = '${id}' AND seq = 1`)
+      }
+      return batch(statements)
+    }
+    const result = await call(createReply, '/api/board/posts?thread=' + id, 'reader', 'POST', {
+      body: '同時に送信',
+    })
+    expect(result.status).toBe(404)
+    expect(await result.json()).toEqual({ error: 'not_found' })
+    expect(d.row('SELECT bumped_at, reply_count FROM board_threads WHERE id = ?', id)).toEqual({
+      bumped_at: NOW,
+      reply_count: 0,
+    })
+    expect(d.rows('SELECT kind FROM board_activity WHERE thread_id = ?', id)).toEqual([
+      { kind: 'thread' },
+    ])
+  })
+
+  it('作品URLの非表示を正規化したURL単位で保持し、削除・再参加・再送を区別する', async () => {
+    const id = await publish()
+    const urlA = 'https://example.com/work'
+    const urlB = 'https://example.com/new'
+    const update = async (workUrl: string | null) =>
+      expect((await call(participate, joinUrl(id), 'reader', 'PUT', { workUrl })).status).toBe(200)
+    const mine = async () => (await eventDetail(id, 'reader')).event.myParticipation
+    const publicList = async () =>
+      (await (await call(participants, eventUrl(id))).json()).participants
+    await update(urlA)
+    const [{ id: participantId }] = await publicList()
+    const moderateLink = async (hide: boolean) =>
+      call(moderate, '/api/board/moderate', 'staff', 'POST', {
+        action: hide ? 'hide_participant_link' : 'unhide_participant_link',
+        participantId,
+      })
+    expect((await moderateLink(true)).status).toBe(200)
+    await update('https://EXAMPLE.com:443/work')
+    expect(await mine()).toEqual({ workUrl: urlA, linkHidden: true })
+    expect(await publicList()).toMatchObject([{ name: '参加者', workUrl: null }])
+    await update(null)
+    expect(await mine()).toEqual({ workUrl: null })
+    await update(urlB)
+    expect(await mine()).toEqual({ workUrl: urlB, linkHidden: false })
+    expect(await publicList()).toMatchObject([{ workUrl: urlB }])
+    await call(leave, joinUrl(id), 'reader', 'DELETE')
+    expect(await mine()).toBeNull()
+    await update(urlB)
+    expect(await mine()).toEqual({ workUrl: urlB, linkHidden: false })
+    await update(urlA)
+    expect(await mine()).toEqual({ workUrl: urlA, linkHidden: true })
+    expect((await moderateLink(false)).status).toBe(200)
+    expect(await mine()).toEqual({ workUrl: urlA, linkHidden: false })
+  })
+
+  it('通知設定と停止・再開は認証済みの掲示板操作枠を共有する', async () => {
+    expect(
+      (await call(settings, notificationsPath + '/settings', undefined, 'PUT', { scope: 'off' }))
+        .status,
+    ).toBe(401)
+    expect((await call(silence, notificationsPath + '/silent', undefined, 'PUT')).status).toBe(401)
+    d.insert('rate_limits', {
+      user_id: 'board:reader',
+      window_start: Math.floor(NOW / 60_000) * 60_000,
+      count: 59,
+    })
+    expect((await scope('related')).status).toBe(200)
+    expect((await call(silence, notificationsPath + '/silent', 'reader', 'PUT')).status).toBe(429)
+    expect((await call(resume, notificationsPath + '/silent', 'reader', 'DELETE')).status).toBe(429)
+    expect((await scope('off')).status).toBe(429)
+    expect(await summary()).toMatchObject({ scope: 'related', silentUntil: null })
+    vi.setSystemTime(NOW + 60_000)
+    expect((await call(silence, notificationsPath + '/silent', 'reader', 'PUT')).status).toBe(200)
+    expect((await call(resume, notificationsPath + '/silent', 'reader', 'DELETE')).status).toBe(200)
+  })
+})
+
+it('0017 は従来の非表示URLと通報を保持し、切り替え前の旧コードからの操作も引き継ぐ', () => {
+  const db = new DatabaseSync(':memory:')
+  try {
+    const apply = (file: string) =>
+      db.exec(readFileSync(new URL('../../../migrations/' + file, import.meta.url), 'utf8'))
+    apply('0008_board.sql')
+    apply('0009_board_post_likes.sql')
+    apply('0016_board_notifications_events.sql')
+    db.exec(`INSERT INTO board_event_participants (id, thread_id, user_id, joined_at, joined_after, work_url, link_hidden_at)
+      VALUES ('old', 'event', 'a', 1, 1, 'https://example.com/old', 2),
+        ('empty', 'event', 'b', 1, 1, NULL, 2),
+        ('public', 'event', 'c', 1, 1, 'https://example.com/public', 0);
+      INSERT INTO board_reports (id, post_id, user_id, reason, created_at, participant_id, reported_work_url)
+      VALUES ('r', 'head', 'reporter', '確認', 1, 'old', 'https://example.com/old')`)
+    apply('0017_board_event_link_moderation.sql')
+    const hidden = () =>
+      db
+        .prepare(
+          'SELECT participant_id, work_url, hidden_at FROM board_event_hidden_links ORDER BY participant_id',
+        )
+        .all()
+    expect(hidden()).toEqual([
+      { participant_id: 'old', work_url: 'https://example.com/old', hidden_at: 2 },
+    ])
+    expect(db.prepare('SELECT reported_work_url FROM board_reports').get()).toEqual({
+      reported_work_url: 'https://example.com/old',
+    })
+    db.exec("UPDATE board_event_participants SET link_hidden_at = 3 WHERE id = 'public'")
+    expect(hidden()).toHaveLength(2)
+    db.exec("DELETE FROM board_event_participants WHERE id = 'public'")
+    expect(hidden()).toHaveLength(1)
+  } finally {
+    db.close()
+  }
 })

@@ -6,6 +6,8 @@ export interface FocusWhenReadyOptions {
   maxFrames?: number
   /** focus() に渡すオプション（preventScroll など）。 */
   focusOptions?: FocusOptions
+  /** 対象がフォーカスを受け取ったときに一度だけ呼ぶ。 */
+  onFocused?: () => void
   /** テスト用の差し替え口。既定は window の requestAnimationFrame / cancelAnimationFrame。 */
   raf?: (cb: FrameRequestCallback) => number
   caf?: (handle: number) => void
@@ -26,6 +28,7 @@ export function focusWhenReady(
   {
     maxFrames = DEFAULT_MAX_FRAMES,
     focusOptions,
+    onFocused,
     raf = (cb) => window.requestAnimationFrame(cb),
     caf = (handle) => window.cancelAnimationFrame(handle),
   }: FocusWhenReadyOptions = {},
@@ -36,9 +39,11 @@ export function focusWhenReady(
     handle = null
     const el = getTarget()
     if (el) {
-      if (el.ownerDocument.activeElement === el) return
-      el.focus(focusOptions)
-      if (el.ownerDocument.activeElement === el) return
+      if (el.ownerDocument.activeElement !== el) el.focus(focusOptions)
+      if (el.ownerDocument.activeElement === el) {
+        onFocused?.()
+        return
+      }
     }
     if (retries >= maxFrames) return
     retries += 1

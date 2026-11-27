@@ -33,6 +33,9 @@ interface NotificationControls {
   saveScope: (scope: NotificationScope) => Promise<void>
   silenceError: string
   scopeError: string
+  summaryError: string
+  refreshing: boolean
+  retrySummary: () => Promise<void>
 }
 const NotificationContext = createContext<NotificationControls | null>(null)
 export const useBoardNotifications = () => useContext(NotificationContext)
@@ -59,9 +62,12 @@ export function BoardNotificationsProvider({
   const [saving, setSaving] = useState(false)
   const [silenceError, setSilenceError] = useState('')
   const [scopeError, setScopeError] = useState('')
+  const [summaryError, setSummaryError] = useState('')
+  const [refreshing, setRefreshing] = useState(false)
   const [deadline, setDeadline] = useState<number | null>(null)
   const generation = useRef(0)
   const mutation = useRef(false)
+  const refreshAfterMutation = useRef(false)
 
   const receive = useCallback((data: State) => {
     setState(data)
@@ -73,11 +79,22 @@ export function BoardNotificationsProvider({
   }, [])
 
   const refresh = useCallback(async () => {
-    if (!userId || mutation.current) return
+    if (!userId || owner.current !== userId) return
+    if (mutation.current) {
+      refreshAfterMutation.current = true
+      return
+    }
     const request = ++generation.current
+    setRefreshing(true)
     const result = await fetchBoardNotifications(getToken, true)
-    if (result.ok && owner.current === userId && generation.current === request)
+    if (owner.current !== userId || generation.current !== request) return
+    setRefreshing(false)
+    if (result.ok) {
+      setSummaryError('')
       receive(result.data)
+    } else {
+      setSummaryError('通知の設定を読み込めませんでした。')
+    }
   }, [getToken, receive, userId])
 
   useEffect(() => {
@@ -87,30 +104,43 @@ export function BoardNotificationsProvider({
     setSaving(false)
     setSilenceError('')
     setScopeError('')
+    setSummaryError('')
+    setRefreshing(false)
     mutation.current = false
+    refreshAfterMutation.current = false
     if (!userId) return
     const visible = () => {
       if (!document.hidden) void refresh()
     }
     visible()
+    let lastForeground = -Infinity
+    const foreground = () => {
+      if (document.hidden) return
+      // Returning to the tab can fire both events in adjacent browser tasks.
+      const now = performance.now()
+      if (now - lastForeground < 250) return
+      lastForeground = now
+      void refresh()
+    }
     let interval: number | undefined
     const reschedule = () => {
       window.clearInterval(interval)
-      if (!document.hidden) {
-        visible()
+      if (document.hidden) lastForeground = -Infinity
+      else {
+        foreground()
         interval = window.setInterval(visible, 60_000)
       }
     }
     const online = () => visible()
     if (!document.hidden) interval = window.setInterval(visible, 60_000)
     document.addEventListener('visibilitychange', reschedule)
-    window.addEventListener('focus', visible)
+    window.addEventListener('focus', foreground)
     window.addEventListener('online', online)
     return () => {
       generation.current++
       window.clearInterval(interval)
       document.removeEventListener('visibilitychange', reschedule)
-      window.removeEventListener('focus', visible)
+      window.removeEventListener('focus', foreground)
       window.removeEventListener('online', online)
     }
   }, [refresh, userId])
@@ -159,7 +189,9 @@ export function BoardNotificationsProvider({
     }
     mutation.current = false
     setSaving(false)
-    if (result.ok) void refresh()
+    const shouldRefresh = result.ok || refreshAfterMutation.current
+    refreshAfterMutation.current = false
+    if (shouldRefresh) void refresh()
   }
 
   const saveScope = async (scope: NotificationScope) => {
@@ -174,7 +206,9 @@ export function BoardNotificationsProvider({
     else setScopeError('通知の設定を保存できませんでした。もう一度お試しください。')
     mutation.current = false
     setSaving(false)
-    if (result.ok) void refresh()
+    const shouldRefresh = result.ok || refreshAfterMutation.current
+    refreshAfterMutation.current = false
+    if (shouldRefresh) void refresh()
   }
 
   const unread = useMemo(
@@ -197,6 +231,9 @@ export function BoardNotificationsProvider({
               saveScope,
               silenceError,
               scopeError,
+              summaryError,
+              refreshing,
+              retrySummary: refresh,
             }
           : null
       }

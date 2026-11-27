@@ -67,6 +67,7 @@ const BOARD_MIGRATIONS = [
   new URL('../../../migrations/0009_board_post_likes.sql', import.meta.url),
   new URL('../../../migrations/0012_narration_assets.sql', import.meta.url),
   new URL('../../../migrations/0016_board_notifications_events.sql', import.meta.url),
+  new URL('../../../migrations/0017_board_event_link_moderation.sql', import.meta.url),
 ]
 
 // ---------------------------------------------------------------------------

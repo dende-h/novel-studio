@@ -36,7 +36,7 @@ export function eventStatusOf(event: EventSchedule, now: number): EventStatus {
 export const EventParticipantSchema = z.object({
   id: z.string(),
   name: z.string(),
-  workUrl: z.string().nullable(),
+  workUrl: z.string().nullable().catch(null),
 })
 export const EventParticipantsSchema = z.object({
   participants: z.array(EventParticipantSchema),
@@ -46,7 +46,9 @@ export const EventParticipantsSchema = z.object({
 export const BoardEventDetailSchema = EventScheduleSchema.extend({
   revision: z.number().int(),
   participantCount: z.number().int(),
-  myParticipation: z.object({ workUrl: z.string().nullable(), linkHidden: z.boolean() }).nullable(),
+  myParticipation: z
+    .object({ workUrl: z.string().nullable(), linkHidden: z.boolean().optional() })
+    .nullable(),
   canParticipate: z.boolean(),
   canEdit: z.boolean(),
   canCancel: z.boolean(),

@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { DELETED_BODY_TEXT, HIDDEN_BODY_TEXT } from '@/core/board/permission'
 import type { BoardMeResponse, BoardPost, BoardThread, BoardThreadDetail } from '@/core/board/types'
@@ -137,6 +137,7 @@ function renderView(auth: AuthState = GUEST_AUTH_STATE, props: ViewProps = {}) {
 
 afterEach(() => {
   vi.unstubAllGlobals()
+  vi.restoreAllMocks()
 })
 
 // ---------------------------------------------------------------------------
@@ -513,4 +514,128 @@ describe('ThreadView — サイドバーの掲示板', () => {
     await screen.findByText('章ごとの文字数を出してほしい')
     expect(screen.getAllByRole('button', { name: '掲示板' }).length).toBe(1)
   })
+})
+it('返信リンクはゲスト表示・名前設定・返信欄への移動をそれぞれ一度だけ行い、再取得時にフォーカスを奪わない', async () => {
+  const scroll = vi.spyOn(HTMLElement.prototype, 'scrollIntoView').mockImplementation(() => {})
+  let profileSet = false
+  let participation = true
+  let edited = false
+  const eventSchedule = { startsAt: NOW - 100, endsAt: NOW + 3_600_000, cancelledAt: null }
+  const fetchMock = vi.fn(async (path: string, init?: RequestInit) => {
+    if (path.startsWith('/api/board/thread?')) {
+      return respond(
+        detailOf({
+          canPost: Boolean(init?.headers && (init.headers as Record<string, string>).Authorization),
+          thread: threadOf({ kind: 'event', title: edited ? '更新した会' : '執筆会' }),
+          event: {
+            ...eventSchedule,
+            revision: 1,
+            participantCount: 0,
+            serverNow: NOW,
+            myParticipation: participation ? { workUrl: null } : null,
+            canEdit: true,
+            canCancel: true,
+            canParticipate: true,
+          },
+        }),
+      )
+    }
+    if (path === '/api/board/me') {
+      if (init?.method === 'PUT') profileSet = true
+      return respond(profileSet ? meOf() : meOf({ profile: null }))
+    }
+    if (path.startsWith('/api/board/likes') || path.startsWith('/api/board/like?'))
+      return respond({ liked: true, likeCount: 1 })
+    if (path.startsWith('/api/board/events/participation')) {
+      participation = false
+      return respond({ ok: true })
+    }
+    if (path.startsWith('/api/board/events?') && init?.method === 'PATCH') {
+      edited = true
+      return respond({ ok: true })
+    }
+    return respond({ error: 'not_found' }, 404)
+  })
+  vi.stubGlobal('fetch', fetchMock)
+  const view = (auth: AuthState) => (
+    <AuthContext.Provider value={auth}>
+      <ThreadView
+        threadId="t1"
+        now={NOW}
+        intent="reply"
+        onBack={() => {}}
+        onNavigateCollection={() => {}}
+      />
+    </AuthContext.Provider>
+  )
+  const rendered = render(view(GUEST_AUTH_STATE))
+  await screen.findByRole('heading', { name: '執筆会' })
+  await waitFor(() => expect(scroll).toHaveBeenCalledTimes(1))
+  rendered.rerender(view(GUEST_AUTH_STATE))
+  expect(scroll).toHaveBeenCalledTimes(1)
+
+  rendered.rerender(view(signedInAuth))
+  const dialog = await screen.findByRole('dialog', { name: '表示名を決める' })
+  fireEvent.change(within(dialog).getByLabelText('表示名'), { target: { value: '青井' } })
+  fireEvent.click(within(dialog).getByRole('button', { name: 'この名前にする' }))
+  const reply = await screen.findByRole('textbox', { name: '返信を書く' })
+  await waitFor(() => expect(reply).toHaveFocus())
+  expect(scroll).toHaveBeenCalledTimes(1)
+
+  const like = screen.getByRole('button', { name: '賛同' })
+  like.focus()
+  fireEvent.click(like)
+  await waitFor(() => expect(like).toHaveAttribute('aria-pressed', 'true'))
+  expect(like).toHaveFocus()
+
+  fireEvent.click(screen.getByRole('button', { name: '参加を取り消す' }))
+  fireEvent.click(screen.getByRole('button', { name: '取り消す' }))
+  await waitFor(() => expect(screen.queryByText('参加中')).toBeNull())
+  expect(reply).not.toHaveFocus()
+
+  fireEvent.click(screen.getByRole('button', { name: 'イベントを編集' }))
+  fireEvent.click(screen.getByRole('button', { name: '変更を保存' }))
+  expect(await screen.findByRole('heading', { name: '更新した会' })).toBeInTheDocument()
+  expect(reply).not.toHaveFocus()
+  scroll.mockRestore()
+})
+
+it('表示名設定済みで返信リンクを開いた場合も、返信欄に一度だけフォーカスする', async () => {
+  stubFetch(
+    detailOf({
+      canPost: true,
+      thread: threadOf({ kind: 'event' }),
+      event: {
+        startsAt: NOW - 100,
+        endsAt: NOW + 3_600_000,
+        cancelledAt: null,
+        revision: 1,
+        participantCount: 0,
+        serverNow: NOW,
+        myParticipation: null,
+        canEdit: false,
+        canCancel: false,
+        canParticipate: true,
+      },
+    }),
+    meOf(),
+  )
+  const wrap = () => (
+    <AuthContext.Provider value={signedInAuth}>
+      <ThreadView
+        threadId="t1"
+        now={NOW}
+        intent="reply"
+        onBack={() => {}}
+        onNavigateCollection={() => {}}
+      />
+    </AuthContext.Provider>
+  )
+  const view = render(wrap())
+  const reply = await screen.findByRole('textbox', { name: '返信を書く' })
+  await waitFor(() => expect(reply).toHaveFocus())
+  const button = screen.getByRole('button', { name: '参加する' })
+  button.focus()
+  view.rerender(wrap())
+  expect(button).toHaveFocus()
 })

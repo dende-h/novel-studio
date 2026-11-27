@@ -37,6 +37,7 @@ import {
   type LinkCard,
   type LinkKind,
 } from '../../../src/core/board/types'
+import { publicEventExists } from './board-event-visibility'
 
 // ---------------------------------------------------------------------------
 // 行の型（migrations/0008_board.sql と同形）
@@ -645,6 +646,20 @@ export async function readThread(db: D1Database, threadId: string): Promise<Thre
     .first<ThreadRow>()
 }
 
+export const BOARD_REPLY_PAGE_SIZE = 50
+
+function postWindow(threadParam: string, targetParam: string): string {
+  return `AND (p.seq = 1 OR CASE WHEN ${targetParam} = 1 THEN p.seq <= (
+    SELECT MAX(seq) FROM (
+      SELECT seq FROM board_posts WHERE thread_id = ${threadParam} AND seq > 1
+      ORDER BY seq LIMIT ${BOARD_REPLY_PAGE_SIZE}
+    )
+  ) ELSE p.seq BETWEEN COALESCE((
+    SELECT seq FROM board_posts WHERE thread_id = ${threadParam} AND seq BETWEEN 2 AND ${targetParam}
+    ORDER BY seq DESC LIMIT 1 OFFSET ${BOARD_REPLY_PAGE_SIZE - 1}
+  ), 2) AND ${targetParam} END)`
+}
+
 /**
  * スレ 1 本の詳細。**1 回の `db.batch()` で 6 本まとめて読む**（N+1 を作らない）。
  * リンクカードは投稿ごとに引かず、スレを軸に JOIN して 1 本の SELECT で取る。
@@ -676,13 +691,7 @@ export async function readThreadDetail(
                    WHERE lk.post_id = p.id AND lk.user_id = ?) AS liked
          FROM board_posts p
          LEFT JOIN board_profiles pr ON pr.user_id = p.user_id
-         WHERE p.thread_id = ?2 ${
-           postTarget === undefined
-             ? ''
-             : `AND (p.seq = 1 OR p.seq BETWEEN
-           COALESCE((SELECT recent.seq FROM board_posts recent WHERE recent.thread_id = ?2
-             AND recent.seq BETWEEN 2 AND ?3 ORDER BY recent.seq DESC LIMIT 1 OFFSET 49), 2) AND ?3)`
-}
+         WHERE p.thread_id = ?2 ${postTarget === undefined ? '' : postWindow('?2', '?3')}
          ORDER BY p.seq ASC`,
       )
       .bind(viewer, threadId, ...(postTarget === undefined ? [] : [postTarget])),
@@ -707,13 +716,7 @@ export async function readThreadDetail(
          FROM board_post_links pl
          JOIN board_links l ON l.url_key = pl.url_key
          JOIN board_posts p ON p.id = pl.post_id
-         WHERE p.thread_id = ?1 ${
-           postTarget === undefined
-             ? ''
-             : `AND (p.seq = 1 OR p.seq BETWEEN
-           COALESCE((SELECT recent.seq FROM board_posts recent WHERE recent.thread_id = ?1
-             AND recent.seq BETWEEN 2 AND ?2 ORDER BY recent.seq DESC LIMIT 1 OFFSET 49), 2) AND ?2)`
-}
+         WHERE p.thread_id = ?1 ${postTarget === undefined ? '' : postWindow('?1', '?2')}
          ORDER BY pl.post_id ASC, pl.ord ASC`,
       )
       .bind(threadId, ...(postTarget === undefined ? [] : [postTarget])),
@@ -899,6 +902,7 @@ export async function createPost(
     userId: string
     body: string
     replyTo?: number
+    eventReply?: boolean
     now: number
   },
 ): Promise<{ seq: number }> {
@@ -908,7 +912,8 @@ export async function createPost(
         `INSERT INTO board_posts
            (id, thread_id, seq, user_id, body, reply_to, created_at, deleted_at, hidden_at)
          SELECT ?, ?, COALESCE(MAX(seq), 0) + 1, ?, ?, ?, ?, 0, 0
-         FROM board_posts WHERE thread_id = ?`,
+         FROM board_posts WHERE thread_id = ?
+         ${input.eventReply ? `HAVING ${publicEventExists('?')}` : ''}`,
       )
       .bind(
         input.id,
@@ -918,12 +923,14 @@ export async function createPost(
         input.replyTo ?? 0,
         input.now,
         input.threadId,
+        ...(input.eventReply ? [input.threadId] : []),
       ),
     db
       .prepare(
-        `UPDATE board_threads SET bumped_at = ?, reply_count = ${REPLY_COUNT_EXPR} WHERE id = ?`,
+        `UPDATE board_threads SET bumped_at = ?, reply_count = ${REPLY_COUNT_EXPR} WHERE id = ?
+        ${input.eventReply ? 'AND EXISTS (SELECT 1 FROM board_posts WHERE id = ?)' : ''}`,
       )
-      .bind(input.now, input.threadId, input.threadId),
+      .bind(input.now, input.threadId, input.threadId, ...(input.eventReply ? [input.id] : [])),
   ])
 
   const row = await db

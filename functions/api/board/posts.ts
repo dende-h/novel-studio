@@ -37,6 +37,7 @@ import {
 } from '../../../src/core/board/permission'
 import { CreatePostInputSchema } from '../../../src/core/board/types'
 import { type ClerkEnv, verifyUserId } from '../_lib/auth'
+import { publicEvent } from '../_lib/board-event-store'
 import { type BoardLinkEnv, resolveLinkCards } from '../_lib/board-link-fetch'
 import {
   linkPost,
@@ -124,10 +125,11 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
   // 表示名が無いと投稿できない（§7-2）。画面はこの 409 を受けて設定ダイアログを出す。
   // permission の deny 理由には無い＝「権限が足りない」ではなく「登録が済んでいない」なので、
   // スレ立て（threads.ts）と同じ形で先に断る。
-  const profile = await readProfile(db, userId)
+  const [profile, thread] = await Promise.all([readProfile(db, userId), readThread(db, threadId)])
+  const eventReply = thread?.kind === 'event'
+  if (eventReply && !(await publicEvent(db, threadId)))
+    return boardJson({ error: 'not_found' }, 404)
   if (!profile) return boardJson({ error: 'profile_required' }, 409)
-
-  const thread = await readThread(db, threadId)
   if (!thread) return boardJson({ error: 'not_found' }, 404)
 
   // 投稿禁止（403）・削除済み／非表示のスレ（404 gone）・ロック（409）は、この 1 本で判定する。
@@ -156,9 +158,11 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     body: input.body,
     replyTo: input.replyTo,
     now,
+    eventReply,
   })
   if (!created.ok) return conflictResponse()
   const { seq } = created
+  if (eventReply && seq === 0) return boardJson({ error: 'not_found' }, 404)
 
   // **`bumpThread` はここで呼ばない。** 一覧の並び（§2）に使う bumped_at と reply_count は
   // `createPost` が投稿の INSERT と同じ batch で更新する＝投稿と並びが必ず揃う。

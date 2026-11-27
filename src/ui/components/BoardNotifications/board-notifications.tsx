@@ -82,6 +82,7 @@ function NotificationList() {
 
   const showMore = async () => {
     if (!controls || !page?.nextCursor || busy) return
+    setError('')
     setBusy(true)
     const result = await controls.list(page.nextCursor)
     if (result.ok) {

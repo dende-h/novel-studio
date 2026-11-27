@@ -46,10 +46,12 @@ import {
   type EventDetailRow,
   patchBoardEvent,
   prepareEventDetail,
+  publicEvent,
   toEventDetail,
 } from '../_lib/board-event-store'
 import { boardReadToken } from '../_lib/board-read-token'
 import {
+  BOARD_REPLY_PAGE_SIZE,
   type PostWithAuthorRow,
   type ProfileRow,
   patchThread,
@@ -181,13 +183,14 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
   const firstReply = posts.find((item) => item.seq > 1)?.seq
   const last = posts.at(-1)?.seq ?? 1
   const maxSeq = detail.thread.max_seq ?? last
-  const event = eventRow ? toEventDetail(eventRow, viewerId, now) : undefined
-  if (event && actor.role === 'staff' && event.cancelledAt === null) event.canCancel = true
+  const event = eventRow
+    ? toEventDetail(eventRow, viewerId, now, actor.role === 'staff')
+    : undefined
   return boardJson({
     event,
     readToken,
     olderPost: firstReply && firstReply > 2 ? firstReply - 1 : undefined,
-    newerPost: last < maxSeq ? Math.min(last + 50, maxSeq) : undefined,
+    newerPost: last < maxSeq ? Math.min(last + BOARD_REPLY_PAGE_SIZE, maxSeq) : undefined,
     thread: toThread(detail.thread, viewerId),
     posts,
     poll,
@@ -262,6 +265,9 @@ export const onRequestDelete: PagesFunction<Env> = async (context) => {
   const detail = await readThreadDetail(db, threadId, userId)
   if (!detail) return boardJson({ error: 'not_found' }, 404)
 
+  const isEvent = detail.thread.kind === 'event'
+  if (isEvent && !(await publicEvent(db, threadId))) return boardJson({ error: 'not_found' }, 404)
+
   const actor = actorOf(userId, await readProfile(db, userId))
   const thread = threadLikeOf(detail.thread)
 
@@ -273,9 +279,12 @@ export const onRequestDelete: PagesFunction<Env> = async (context) => {
   const limited = await rateLimitedResponse(db, userId, now)
   if (limited) return limited
 
-  if (detail.thread.kind === 'event') {
-    await patchBoardEvent(db, threadId, userId, { action: 'cancel' }, now)
-    return boardJson({ ok: true, mode: 'cancelled' })
+  if (isEvent) {
+    const cancelled = await patchBoardEvent(db, threadId, userId, { action: 'cancel' }, Date.now())
+    if (cancelled) return boardJson({ ok: true, mode: 'cancelled' })
+    return (await publicEvent(db, threadId))
+      ? boardJson({ error: 'event_changed' }, 409)
+      : boardJson({ error: 'not_found' }, 404)
   }
 
   // 返信が 1 件でも**行として在れば** 'head-only'＝本文（seq=1）だけ伏せ、返信は残す（§7-5）。

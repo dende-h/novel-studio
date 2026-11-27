@@ -361,14 +361,14 @@ Clerk へ登録済みのクライアントの互換。消すとトークン更�
 `api/_lib/`: `auth`（Clerk 検証・`verifyMember`）, `membership`（**会員判定の単一の真実 = D1 `subscriptions`**）,
 `crypto`（at-rest 暗号化）, `mcp-server`（MCP プロトコル核・約1,200行。用語集の対話は `get_glossary_questions`＝作品に依らない読み口と `upsert_glossary_entry` の `dialog`＝`dialogPatchOf` で形を検め core の `applyDialogPatch` へ）, `mcp-auth`, `mcp-token`,
 `oauth-metadata`（PRM）, `oauth-server`（**認可サーバーの純ロジック**）, `oauth-store`（同 SQL）, `oauth-upstream`（中継先 Clerk の取得）, `stripe`, `rate-limit`, `purge`, `visitor`,
-`board-store`（スレッド・投稿の SQL と変換）、`functions/api/_lib/board-notification-store.ts`（通知の集計と既読）、`functions/api/_lib/board-event-store.ts`（イベントと参加）、`functions/api/_lib/board-read-token.ts`（表示範囲の署名）、 `board-link-fetch`（OGP の取得とキャッシュ）,
+`board-store`（スレッド・投稿の SQL と変換）、`functions/api/_lib/board-notification-store.ts`（通知の集計と既読）、`functions/api/_lib/board-event-store.ts`（イベントと参加）、`functions/api/_lib/board-event-visibility.ts`（公開イベントのSQL条件）、`functions/api/_lib/board-read-token.ts`（表示範囲の署名）、 `board-link-fetch`（OGP の取得とキャッシュ）,
 `staff`（`verifyStaff`＝運営の判定・`board_profiles.role`）, `templates-store`（運営テンプレの R2 キー `_templates/` と目録の読み書き）, `server-card`（MCP の名刺と AI Catalog・版は `mcp-server` の `SERVER_INFO` に連動）。
 
 掲示板の共通部品は `functions/api/board/board-endpoint.ts`（`boardJson`＝`private, no-store` 付きの応答、
 `rateLimitedResponse`＝分あたりの安全弁、`postQuotaExceeded`＝10件/時、`createPostRetrying`、`conflictResponse`）。
 **新しいエンドポイントを足すときはここから使う**（片方だけ緩むと誰も気づけない）。
 テスト用の D1 フェイクは `functions/api/board/board-test-util.ts`（`makeBoardDb` `makeBoardEnv` `clerkAuthMock`）。
-**SQL そのものを確かめるのは `functions/api/board/real-d1.ts`**（`migrations/` の掲示板 DDL（0008・0009・0016 と依存スキーマ）を順に流した実 SQLite＝`node:sqlite`。フェイクは SQL を解釈しないので構文エラー・曖昧な列名を拾えない。**マイグレーションを足したらここにも足す**）。
+**SQL そのものを確かめるのは `functions/api/board/real-d1.ts`**（`migrations/` の掲示板 DDL（0008・0009・0016・0017 と依存スキーマ）を順に流した実 SQLite＝`node:sqlite`。フェイクは SQL を解釈しないので構文エラー・曖昧な列名を拾えない。**マイグレーションを足したらここにも足す**）。
 
 **バインディング**（`wrangler.toml`）: `DB` = D1 `novel-studio`、`MEDIA` = R2 `novel-studio-media`
 （preview 環境は `-stg` サフィックス）。
@@ -376,9 +376,9 @@ Clerk へ登録済みのクライアントの互換。消すとトークン更�
 **マイグレーション**（`migrations/`）: `0001_init` → `0002_sync_works` → `0003_trash_sync` →
 `0004_mcp_tokens` → `0005_subscriptions` → `0006_activity_sync` → `0007_visitor_days` → `0008_board`（掲示板9テーブル）
 → `0009_board_post_likes`（👍 を投稿単位へ。`board_post_likes` ＋ `board_posts.like_count`・旧 `board_likes` は残す）
-→ 0010〜0015 を経て `migrations/0016_board_notifications_events.sql`（新着・通知設定・既読・イベント・参加・通報対象）
-→ `0010_oauth`（自前の認可サーバー。`oauth_clients` / `oauth_requests` / `oauth_codes` / `oauth_tokens`。
-**適用前に配ると、アカウント削除（purge の batch）と MCP の接続解除が落ちる**——順序は migration → デプロイ）
+→ `0010_oauth`（自前の認可サーバー）→ 0011〜0015（朗読）
+→ `migrations/0016_board_notifications_events.sql`（新着・通知設定・既読・イベント・参加・通報対象）
+→ `migrations/0017_board_event_link_moderation.sql`（参加者・作品URLごとの非表示）。マイグレーションを適用してから Pages をデプロイする。
 
 ---
 

@@ -5,6 +5,7 @@ import {
   BoardNotificationsProvider,
   useBoardNotifications,
 } from '@/ui/board/board-notifications-provider'
+import { SettingsPage } from '@/ui/components/SettingsPage/settings-page'
 import { BoardNotificationBell, SidebarNotificationToggle } from './board-notifications'
 
 const NOW = Date.UTC(2026, 10, 27)
@@ -159,4 +160,80 @@ it('サーバー時刻との差から停止期限に概要を再取得する', a
   })
   expect(screen.getByRole('button', { name: '通知、未読 1 スレッド' })).toBeInTheDocument()
   expect(request).toHaveBeenCalledTimes(2)
+})
+it('設定画面で概要の初回失敗を表示し、前面復帰の重複をまとめ、明示的に再試行できる', async () => {
+  const request = vi
+    .fn()
+    .mockImplementationOnce(async () => ack({ error: 'server_error' }, 500))
+    .mockImplementationOnce(async () => ack({ error: 'server_error' }, 500))
+    .mockImplementation(async () => ack(data(['t1'])))
+  vi.stubGlobal('fetch', request)
+  render(
+    <BoardNotificationsProvider userId="account-a" getToken={token}>
+      <SettingsPage showNotifications />
+    </BoardNotificationsProvider>,
+  )
+  expect(await screen.findByRole('alert')).toHaveTextContent('通知の設定を読み込めませんでした')
+  expect(screen.getByRole('combobox', { name: '通知対象' })).toBeDisabled()
+  await act(async () => {
+    document.dispatchEvent(new Event('visibilitychange'))
+    fireEvent.focus(window)
+  })
+  expect(request).toHaveBeenCalledTimes(2)
+  fireEvent.click(screen.getByRole('button', { name: '再試行' }))
+  await waitFor(() => expect(screen.getByRole('combobox', { name: '通知対象' })).toBeEnabled())
+  expect(request).toHaveBeenCalledTimes(3)
+  expect(screen.queryByRole('alert')).toBeNull()
+})
+
+it('前面復帰の直後でも24時間停止の期限に取得する', async () => {
+  vi.useFakeTimers()
+  vi.setSystemTime(NOW)
+  const request = vi.fn(async () =>
+    ack(Date.now() < NOW + 100 ? data([], NOW + 100, Date.now()) : data(['t1'], null, Date.now())),
+  )
+  vi.stubGlobal('fetch', request)
+  render(show('account-a'))
+  await act(async () => {})
+  await act(async () => {
+    document.dispatchEvent(new Event('visibilitychange'))
+    fireEvent.focus(window)
+  })
+  expect(request).toHaveBeenCalledTimes(2)
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(100)
+  })
+  expect(request).toHaveBeenCalledTimes(3)
+  expect(screen.getByRole('button', { name: '通知、未読 1 スレッド' })).toBeInTheDocument()
+})
+
+it('通知一覧の続きを再試行して取得できたら旧エラーを消す', async () => {
+  let nextAttempt = 0
+  const row = (id: number, title: string) => ({
+    id,
+    threadId: 't' + id,
+    title,
+    actorName: '書き手',
+    postSeq: id,
+    kind: 'reply',
+    createdAt: NOW,
+    unread: true,
+  })
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (url: string) => {
+      if (url.endsWith('?summary=1')) return ack(data(['t1']))
+      if (!url.includes('cursor='))
+        return ack({ ...data(['t1']), notifications: [row(1, '先頭の通知')], nextCursor: '1:1' })
+      if (nextAttempt++ === 0) return ack({ error: 'server_error' }, 500)
+      return ack({ ...data(['t1']), notifications: [row(2, '続きの通知')], nextCursor: null })
+    }),
+  )
+  render(show('account-a'))
+  fireEvent.click(await screen.findByRole('button', { name: '通知、未読 1 スレッド' }))
+  fireEvent.click(await screen.findByRole('button', { name: 'もっと読む' }))
+  expect(await screen.findByRole('alert')).toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: 'もっと読む' }))
+  expect(await screen.findByRole('link', { name: /続きの通知/ })).toBeInTheDocument()
+  expect(screen.queryByRole('alert')).toBeNull()
 })
