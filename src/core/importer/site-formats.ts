@@ -41,14 +41,15 @@ const byName = (paths: string[]) =>
   sortSourcesNatural(paths.map((name) => ({ name }))).map(({ name }) => name)
 
 const metadataHeading = /^〖[^〗]+〗$/
+const kakuyomuBodyHeading = /^〖本文[（(]\d+行[）)]〗$/
 
-const bodyField = (text: string, prefix: RegExp, strictHeader = false) => {
+function kakuyomuBodyField(text: string) {
   const lines = text.split('\n')
   // エピソードの各メタデータは1行見出しと値で構成される。
   let index = 0
-  while (index < lines.length && !prefix.test(lines[index] ?? '')) {
+  while (index < lines.length && !kakuyomuBodyHeading.test(lines[index] ?? '')) {
     const line = lines[index] ?? ''
-    if (!strictHeader || !line.trim()) index += 1
+    if (!line.trim()) index += 1
     else if (metadataHeading.test(line)) {
       index += metadataHeading.test(lines[index + 1] ?? '') ? 1 : 2
     } else throw new Error('本文の前の見出しを確認できません')
@@ -66,12 +67,16 @@ function kakuyomuTitle(header: string) {
   return title && !metadataHeading.test(title) ? title : undefined
 }
 
-export function kakuyomuEpisode(path: string, text: string): ManuscriptEpisode {
-  const { header, body, marker } = bodyField(text, /^〖本文[（(]\d+行[）)]〗$/, true)
+export function kakuyomuEpisode(
+  path: string,
+  text: string,
+  warnings: string[] = [],
+): ManuscriptEpisode {
+  const { header, body, marker } = kakuyomuBodyField(text)
   const lineCount = Number(/\d+/.exec(marker)?.[0])
   const actual = body.split('\n').length
   if (lineCount !== actual && !(body.endsWith('\n') && lineCount === actual - 1)) {
-    throw new Error('本文の行数が見出しと一致しません')
+    warnings.push(`${path}の本文の行数が見出しと一致しません。取り込む本文を確認してください。`)
   }
   if (!body.trim()) throw new Error('本文が空です')
   const title = kakuyomuTitle(header)
@@ -101,15 +106,15 @@ export function narouEpisodes(path: string, text: string): ManuscriptEpisode[] {
     if (!bodyMarker) throw new Error('なろうの本文欄が見つかりません')
     const header = part.slice(0, bodyMarker.index)
     const rest = part.slice(bodyMarker.index + bodyMarker[0].length)
-    function supplement(value: string, marker: string) {
-      const match = new RegExp(`^〖${marker}〗\\n`, 'm').exec(value)
-      if (!match) return undefined
-      return value
-        .slice(match.index + match[0].length)
-        .split(/\n〖[^〗\n]+〗(?:\n|$)/, 1)[0]
+    const beforeMarker = /^〖前書き〗(?:\n|$)/m.exec(header)
+    const before =
+      beforeMarker &&
+      header
+        .slice(beforeMarker.index + beforeMarker[0].length)
+        .split(/(?:^|\n)〖[^〗\n]+〗(?:\n|$)/, 1)[0]
         ?.replace(/\n\n$/, '')
-    }
-    const afterMarker = /\n\n〖後書き〗\n/.exec(rest)
+    const afterMarker = /\n\n〖後書き〗(?:\n|$)/.exec(rest)
+    const after = afterMarker && rest.slice(afterMarker.index + afterMarker[0].length)
     const body = afterMarker ? rest.slice(0, afterMarker.index) : rest
     if (!body.trim()) throw new Error('なろうの本文が空です')
     return {
@@ -120,8 +125,8 @@ export function narouEpisodes(path: string, text: string): ManuscriptEpisode[] {
         field(header, '〖(?:サブタイトル|エピソードタイトル)〗') ||
         (number === undefined ? field(header, '〖タイトル〗') || fileTitle(path) : `第${number}話`),
       chapter: field(header, '〖(?:章タイトル|大見出し|章)〗'),
-      before: supplement(header, '前書き'),
-      after: afterMarker ? rest.slice(afterMarker.index + afterMarker[0].length) : undefined,
+      before: before && before.trim() ? before : undefined,
+      after: after && after.trim() ? after : undefined,
       details: /_draftepisode\.txt$/i.test(path)
         ? '下書き'
         : field(header, '〖公開状態〗') || '公開原稿',
@@ -240,6 +245,76 @@ function indexed(paths: string[], pattern: RegExp) {
 export const unconfirmedLayout =
   '公開資料で未確認の書式です。話タイトル・順序・本文を確認してください。'
 
+const genericLayout =
+  '公開資料で未確認の書式のため、ファイル単位で取り込みました。話タイトル・順序・本文を確認してください。'
+const workMetadata = /^(?:about|toc|(?:mock-)?work[-_]info)\.txt$/i
+const unconfirmedEpisodeName = /^(?:mock_)?episode_\d+\.txt$/i
+const kakuyomuEpisodeName = /^episode_(\d{4})\.txt$/i
+const kakuyomuBodyMarker = new RegExp(kakuyomuBodyHeading.source, 'm')
+
+function readUnconfirmedEpisodes(
+  paths: string[],
+  files: Map<string, string>,
+  site: 'tales' | 'novelup',
+  warnings: string[],
+): ManuscriptEpisode[] {
+  const numbered = paths.filter((path) => unconfirmedEpisodeName.test(fileName(path)))
+  const candidates = numbered.length
+    ? numbered
+    : paths.filter((path) => !workMetadata.test(fileName(path)))
+  const bodyHeading = site === 'tales' ? /^# 本文$/ : /^本文[：:]$/
+  const titleHeading = site === 'tales' ? '# エピソードタイトル' : '話名[：:]'
+  const episodes: ManuscriptEpisode[] = []
+  let usedFallback = false
+  for (const path of candidates) {
+    const text = files.get(path)!
+    const lines = text.split('\n')
+    const marker = lines.findIndex((line) => bodyHeading.test(line))
+    const header = marker < 0 ? '' : lines.slice(0, marker).join('\n')
+    const title = field(header, titleHeading)
+    const body = marker < 0 ? '' : lines.slice(marker + 1).join('\n')
+    if (title && body.trim()) {
+      episodes.push({ path, title, body, site, details: header })
+    } else {
+      usedFallback = true
+      if (text.trim()) episodes.push({ path, title: fileTitle(path), body: text })
+    }
+  }
+  warnings.push(usedFallback ? genericLayout : unconfirmedLayout)
+  return episodes
+}
+
+function readKakuyomuEpisodes(
+  members: Map<number, string>,
+  toc: string,
+  files: Map<string, string>,
+  warnings: string[],
+): ManuscriptEpisode[] {
+  if (!members.size) throw new Error('カクヨムの話ファイルがありません')
+  const rows = contents(toc)
+  const rowByNumber = new Map<number, (typeof rows)[number]>()
+  for (const row of rows) {
+    if (!rowByNumber.has(row.number)) rowByNumber.set(row.number, row)
+  }
+  const complete =
+    rows.length === members.size &&
+    rowByNumber.size === rows.length &&
+    rows.every(({ number }) => members.has(number))
+  if (!complete) {
+    warnings.push('カクヨムの目次と話ファイルが一致しません。話ファイルを連番順で取り込みました。')
+  }
+  const numbers = complete
+    ? rows.map(({ number }) => number)
+    : [...members.keys()].sort((a, b) => a - b)
+  return numbers.map((number) => {
+    const path = members.get(number)!
+    return {
+      ...kakuyomuEpisode(path, files.get(path)!, warnings),
+      chapter: rowByNumber.get(number)?.chapter,
+    }
+  })
+}
+
 export function readTextGroup(name: string, files: Map<string, string>): ManuscriptSource {
   const paths = byName([...files.keys()])
   const get = (path: string) => files.get(path)!
@@ -252,23 +327,25 @@ export function readTextGroup(name: string, files: Map<string, string>): Manuscr
   }
   const aboutPath = paths.find((path) => /^about\.txt$/i.test(fileName(path)))
   const about = aboutPath ? get(aboutPath) : ''
-  const kakuyomu = indexed(paths, /^episode_(\d{4})\.txt$/i)
+  const kakuyomu = indexed(paths, kakuyomuEpisodeName)
   const novelup = indexed(paths, /^episode_(\d{5,})\.txt$/i)
   const akatsukiToc = paths.find((path) => fileName(path) === '0000_目次.txt')
-  if (/^〖(?:タイトル|目次)〗$/m.test(about)) {
+  const tocPath = paths.find((path) => /^toc\.txt$/i.test(fileName(path)))
+  const isTales = /^# タイトル$/m.test(about)
+  const hasKakuyomuAbout = /^〖(?:タイトル|作品タイトル|目次)〗$/m.test(about)
+  const standaloneToc = tocPath ? get(tocPath) : ''
+  const hasStandaloneToc =
+    /^〖目次〗$/m.test(standaloneToc) ||
+    (tocPath && [...kakuyomu.values()].some((path) => kakuyomuBodyMarker.test(get(path))))
+  if (hasKakuyomuAbout || (!isTales && hasStandaloneToc)) {
     source.structured = true
-    const toc = /(?:^|\n)〖目次〗\n([\s\S]*)/.exec(about)?.[1] ?? ''
-    if (!toc || kakuyomu.size === 0) throw new Error('カクヨムの目次または話ファイルがありません')
+    const embeddedToc = /(?:^|\n)〖目次〗\n([\s\S]*)/.exec(about)?.[1] ?? ''
+    const toc = contents(embeddedToc).length ? embeddedToc : standaloneToc
     source.title = field(about, '〖(?:タイトル|作品タイトル)〗') || source.title
     source.author = field(about, '〖(?:著者|作者|作者名|著者名|ユーザー名)〗')
     source.description = /(?:^|\n)〖(?:紹介文|あらすじ)〗\n([\s\S]*?)(?=\n+〖|$)/.exec(about)?.[1]
-    source.details = about
-    source.episodes = matchContents(contents(toc), kakuyomu, 'カクヨム').map(
-      ({ member, chapter }) => ({
-        ...kakuyomuEpisode(member, get(member)),
-        chapter,
-      }),
-    )
+    source.details = [about, standaloneToc].filter(Boolean).join('\n\n') || undefined
+    source.episodes = readKakuyomuEpisodes(kakuyomu, toc, files, source.warnings)
   } else if (akatsukiToc) {
     source.structured = true
     const toc = get(akatsukiToc)
@@ -289,37 +366,25 @@ export function readTextGroup(name: string, files: Map<string, string>): Manuscr
         return episode
       })
     source.warnings.push('前書きと本文が空行だけで区切られている場合は、まとめて本文に残ります。')
-  } else if (novelup.size || /^# タイトル$/m.test(about)) {
+  } else if (novelup.size || isTales) {
     source.structured = true
-    source.warnings.push(unconfirmedLayout)
-    const isTales = !novelup.size
-    const mockTales = indexed(paths, /^(?:mock_)?episode_(\d{4,})\.txt$/i)
-    const members = isTales ? mockTales : novelup
-    if (!members.size)
-      throw new Error('仮書式の話ファイルを確認できません。本文TXTか貼り付けで取り込めます')
     const mockInfo = paths.find((path) => fileName(path) === 'mock-work-info.txt')
     source.title =
       (isTales ? field(about, '# タイトル') : mockInfo && get(mockInfo).split('\n')[0]) ||
       source.title
-    source.episodes = [...members]
-      .sort(([a], [b]) => a - b)
-      .map(([, path]) => {
-        const { header, body } = bodyField(get(path), isTales ? /^# 本文$/ : /^本文[：:]$/)
-        if (!body.trim()) throw new Error(`本文が空です（${path}）`)
-        return {
-          path,
-          body,
-          title: field(header, isTales ? '# エピソードタイトル' : '話名[：:]') || fileTitle(path),
-          site: isTales ? 'tales' : 'novelup',
-          details: header,
-        }
-      })
+    source.episodes = readUnconfirmedEpisodes(
+      paths,
+      files,
+      isTales ? 'tales' : 'novelup',
+      source.warnings,
+    )
   } else {
     for (const path of paths) {
       const text = get(path)
       if (/^n\d{4}[a-z]{1,2}_(?:review|impression)\.txt$/i.test(fileName(path))) continue
       const narou =
         /^n\d{4}[a-z]{1,2}(?:_draftepisode)?\.txt$/i.test(fileName(path)) ||
+        (/_draftepisode\.txt$/i.test(path) && /^〖本文〗$/m.test(text)) ||
         /^〖Nコード〗$/m.test(text) ||
         /^-{2,} *(?:第\d+部分|エピソード\d+)開始 *-{2,}$/m.test(text)
       try {
@@ -345,7 +410,7 @@ export function readTextGroup(name: string, files: Map<string, string>): Manuscr
           (/^〖タイトル〗\n/.test(text) && /^〖本文[（(]/m.test(text))
         ) {
           source.structured = true
-          source.episodes.push(kakuyomuEpisode(path, text))
+          source.episodes.push(kakuyomuEpisode(path, text, source.warnings))
         } else {
           source.episodes.push({ path, title: fileTitle(path), body: text })
         }

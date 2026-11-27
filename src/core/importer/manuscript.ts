@@ -230,7 +230,10 @@ export function readLooseManuscripts(inputs: LocalManuscriptFile[]): ManuscriptR
     const grouped = members.some((path) =>
       /(?:^|\/)(?:about|0000_目次|episode_\d{5,})\.txt$|(?:^|\/)nvl\d+\/index\.html?$/i.test(path),
     )
-    if (grouped) addGroup(parent || members[0] || '', group)
+    const hasKakuyomuToc =
+      members.some((path) => /^toc\.txt$/i.test(fileName(path))) &&
+      members.some((path) => /^episode_\d{4}\.txt$/i.test(fileName(path)))
+    if (grouped || hasKakuyomuToc) addGroup(parent || members[0] || '', group)
     else for (const [path, data] of group) addGroup(path, new Map([[path, data]]))
   }
   const skipped = [...original].flatMap(([path, file]) => (accounted.has(path) ? [] : [file]))

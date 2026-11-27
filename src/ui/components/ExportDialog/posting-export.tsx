@@ -253,8 +253,12 @@ export function PostingExport({
           }}
         />
       )}
-      {profile.txt && !compatible && (
-        <p className="text-sm">投稿画面の「ファイルをアップロード」で読み込めます。</p>
+      {!compatible && profile.txt && (
+        <p className="text-sm">
+          {site === 'estar'
+            ? 'ブラウザ版の作品管理から「新しい作品を作成」→「作品をインポート」で、TXT、作品情報を含む対応ZIP、PDFを読み込めます。'
+            : '投稿画面の「ファイルをアップロード」で読み込めます。'}
+        </p>
       )}
       {site === 'noveldays' && <p className="text-sm">NOVEL DAYSの一般小説記法で保存します。</p>}
       {!compatible && <PostingFormat format={format} setFormat={setFormat} site={site} />}

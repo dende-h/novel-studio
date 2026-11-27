@@ -30,6 +30,9 @@ export interface PostingResult {
   characters: number
 }
 
+const hashRuby = (base: string, reading: string) => `#${base}__${reading}__#`
+const hashRubyDelimiter = /#|__/
+
 const kanji = /^[\p{Script=Han}々〆ヵヶ]+$/u
 const requiresRubyPipe = /[\p{Script=Han}々〆ヵヶ｜|]$/u
 const kana = /^[\p{Script=Hiragana}\p{Script=Katakana}ー]+$/u
@@ -48,8 +51,7 @@ export function toPostingSite(
       let column = 1
       const warn = (value: string, reason: string, needsReview = false, offset = 0) =>
         warnings.push({ line: index + 1, column: column + offset, value, reason, needsReview })
-      const literalWarning =
-        '記号が投稿先で装飾として表示される可能性があります。投稿前に確認してください'
+      const literalWarning = '記号が意図どおり表示されるか、投稿先のプレビューで確認してください'
       const plain = (value: string, offset = 0) =>
         writeLiteralNotation(value, site, (token, start) =>
           warn(token, literalWarning, true, offset + start),
@@ -143,7 +145,17 @@ export function toPostingSite(
               line += plain(value)
             } else if (profile.dots === 'pixiv' && !/[[\]>]/.test(value)) {
               line += `[[emphasismark:${value}>﹅]]`
-            } else if (profile.dots === 'ruby' && !/[｜|《》]/.test(value)) {
+            } else if (
+              profile.dots === 'ruby' &&
+              profile.ruby === 'hash' &&
+              !hashRubyDelimiter.test(value)
+            ) {
+              line += Array.from(value, (char) => hashRuby(char, '・')).join('')
+            } else if (
+              profile.dots === 'ruby' &&
+              profile.ruby === 'angle' &&
+              !/[｜|《》]/.test(value)
+            ) {
               line += Array.from(value, (char) => `｜${char}《・》`).join('')
             } else if (
               profile.dots === 'angle' &&
@@ -162,7 +174,11 @@ export function toPostingSite(
             const { base, reading } = inline
             const after = column + base.length
             const forbidden =
-              profile.ruby === 'pixiv' ? /[[\]<>]/ : profile.ruby === 'hash' ? /#|__/ : /[｜|《》]/
+              profile.ruby === 'pixiv'
+                ? /[[\]<>]/
+                : profile.ruby === 'hash'
+                  ? hashRubyDelimiter
+                  : /[｜|《》]/
             const limit = (value: string, fallback?: number) =>
               profile.asciiLimit && /^[A-Za-z0-9]+$/.test(value) ? profile.asciiLimit : fallback
             const baseLimit = limit(base, profile.limits?.[0])
@@ -184,7 +200,7 @@ export function toPostingSite(
               )
               line += original
             } else if (profile.ruby === 'pixiv') line += `[[rb:${base} > ${reading}]]`
-            else if (profile.ruby === 'hash') line += `#${base}__${reading}__#`
+            else if (profile.ruby === 'hash') line += hashRuby(base, reading)
             else {
               const automatic =
                 profile.auto &&

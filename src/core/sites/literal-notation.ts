@@ -31,11 +31,13 @@ export function readLiteralEscape(line: string, position: number, site?: Posting
   }
   if (!/[｜|]/.test(line[position] ?? '')) return
   const opening = line[position + 1]
+  const parentheses = profile && profile.parens
   if (
     (opening === '《' && (!site || (profile && profile.escapeAngle))) ||
     (profile &&
       profile.escapeParens &&
-      (opening === '（' || (opening === '(' && profile.parens === 'narou')))
+      ((opening === '（' && parentheses !== 'ascii') ||
+        (opening === '(' && (parentheses === 'narou' || parentheses === 'ascii'))))
   )
     return { length: 2, text: opening }
 }
@@ -47,7 +49,7 @@ export function writeLiteralNotation(
 ) {
   const profile = postingProfile(site)
   const parens = parentheses(site)
-  if (!profile.escapeParens && parens) {
+  if (profile.escapeParens !== true && parens) {
     const brackets = site === 'akatsuki' ? /^(?:（[^）]+）|\(\([^)]*\)\))/ : /^\([^)]*\)/
     for (const match of value.matchAll(parens)) {
       const end = match.index + match[0].length
@@ -59,17 +61,28 @@ export function writeLiteralNotation(
     }
   }
 
-  if (profile.ruby === 'angle' && !profile.escapeAngle) {
-    for (const match of value.matchAll(angleRuby)) warn(match[0], match.index)
+  const escapedOpenings = new Set<number>()
+  if (profile.ruby === 'angle' && profile.escapeAngle !== true) {
+    const record = (match: RegExpMatchArray, offset: number) => {
+      warn(match[0], offset)
+      if (profile.escapeAngle !== 'preview') return
+      for (const bracket of match[0].matchAll(/《/g)) escapedOpenings.add(offset + bracket.index)
+    }
+    for (const match of value.matchAll(angleRuby)) record(match, match.index)
     if (profile.auto || site === 'tales') {
-      const reading = site === 'narou' ? kana + '+' : '[^《》\\n]+'
+      const reading = site === 'narou' ? kana + '{1,10}' : '[^《》\\n]+'
       const bare = new RegExp(han + '+《' + reading + '》', 'gu')
       for (const match of value.matchAll(bare)) {
-        if (!/[｜|]/.test(value[match.index - 1] ?? '')) warn(match[0], match.index)
+        if (!/[｜|]/.test(value[match.index - 1] ?? '')) record(match, match.index)
       }
     }
     if (profile.dots === 'angle' && !profile.escapeDots) {
-      for (const match of value.matchAll(rubyDots)) warn(match[0], match.index)
+      for (const match of value.matchAll(rubyDots)) record(match, match.index)
+    }
+    if (profile.escapeAngle === 'preview') {
+      for (const match of value.matchAll(/[｜|]《/g)) {
+        if (!escapedOpenings.has(match.index + 1)) record(match, match.index)
+      }
     }
   }
   if (profile.escapeDots) {
@@ -77,10 +90,23 @@ export function writeLiteralNotation(
   }
 
   let output = value
-  if (profile.escapeAngle) output = output.replaceAll('《', '｜《')
+  if (profile.escapeAngle === true) output = output.replaceAll('《', '｜《')
+  if (escapedOpenings.size) {
+    output = output.replace(/《/g, (bracket, offset) =>
+      escapedOpenings.has(offset) ? '｜《' : bracket,
+    )
+  }
   if (profile.escapeDots) output = output.replace(rubyDots, (match) => '《！' + match.slice(1))
   if (profile.escapeParens && parens) {
-    const existingPipe = site === 'narou' ? /[｜|](?=[（(])/g : /[｜|](?=（)/g
+    const existingPipe =
+      profile.parens === 'narou'
+        ? /[｜|](?=[（(])/g
+        : profile.parens === 'ascii'
+          ? /[｜|](?=\()/g
+          : /[｜|](?=（)/g
+    if (profile.escapeParens === 'preview') {
+      for (const match of value.matchAll(existingPipe)) warn(match[0] + '(', match.index)
+    }
     output = output.replace(existingPipe, '$&｜').replace(parens, '$&｜')
   }
   return output

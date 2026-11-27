@@ -256,3 +256,12 @@ describe('ExportDialog（脚本・提出用）', () => {
     expect(bodyOnly.data).toBe('第一話\n\n○公園\n　　　風が吹く\nユイ「はい」\n')
   })
 })
+
+it('エブリスタのブラウザ版の新規作品インポートへ案内する', () => {
+  render(<ExportDialog open onOpenChange={() => {}} work={makeWork()} />)
+  fireEvent.click(screen.getByText('Web投稿形式'))
+  fireEvent.change(screen.getByLabelText('投稿先'), { target: { value: 'estar' } })
+  expect(
+    screen.getByText(/新しい作品を作成.*作品をインポート.*TXT.*対応ZIP.*PDF/),
+  ).toBeInTheDocument()
+})

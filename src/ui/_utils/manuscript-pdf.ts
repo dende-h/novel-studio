@@ -312,7 +312,7 @@ export async function readManuscriptPdf(
     if (episodes.length) episodes.at(-1)!.pages = `${firstPage}–${pdf.numPages}`
     if (!episodes.some((episode) => episode.body.trim())) {
       throw new Error(
-        'PDFに読み取れる文字がありません。編集画面から本文をコピーし、貼り付けてください',
+        'PDFに読み取れる文字がありません。TXTを選ぶか、元の編集画面から本文をコピーして貼り付けてください',
       )
     }
     return {
@@ -321,7 +321,7 @@ export async function readManuscriptPdf(
       author,
       episodes: episodes.filter((episode) => episode.body.trim()),
       warnings: [
-        'PDFの文字層を読み取りました。話の境界はしおりと元のページで確認してください。',
+        'PDFの文字層を読み取りました。保存前にプレビューと元のページを見比べてください。文字や順序が崩れる場合は、TXTまたは貼り付けで取り込んでください。',
         ...warnings,
       ],
       expandedBytes: bytes,

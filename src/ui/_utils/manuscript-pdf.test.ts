@@ -58,7 +58,17 @@ describe('PDFのしおりとリソース解放', () => {
       ['最後の話', '原稿/sample.pdf', '3–3'],
     ])
     expect(source.episodes[0]?.body).toBe('一話の本文')
+    expect(source.warnings[0]).toMatch(/保存前にプレビュー.*TXTまたは貼り付け/)
     expect(entries.every((page) => page.cleanup.mock.calls.length === 1)).toBe(true)
+    expect(task.destroy).toHaveBeenCalledTimes(1)
+  })
+
+  it('文字層に本文がなければTXTか貼り付けを案内する', async () => {
+    const { task, entries } = loadingTask()
+    for (const page of entries) page.getTextContent.mockResolvedValue({ items: [], styles: {} })
+    await expect(readManuscriptPdf(file, new AbortController().signal)).rejects.toThrow(
+      /読み取れる文字がありません.*TXT.*貼り付け/,
+    )
     expect(task.destroy).toHaveBeenCalledTimes(1)
   })
 

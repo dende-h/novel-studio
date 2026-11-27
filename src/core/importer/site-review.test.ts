@@ -191,20 +191,67 @@ describe('入稿の地の文と実際の装飾', () => {
     expect(parseExternalNotation(output.text, site)).toEqual(blocks)
   })
 
+  it('エブリスタの地の文を公式の縦線で出力し、TXTインポートを案内できる', () => {
+    const input = parseExternalNotation('地の文《そのまま》', 'literal')
+    expect(toPostingSite(input, 'estar').text).toBe('地の文｜《そのまま》')
+    expect(parseExternalNotation('地の文｜《そのまま》', 'estar')).toEqual(input)
+  })
+
+  it('アルファポリスでは傍点を独自ルビの中黒に変換し、解除もできる', () => {
+    const work = parseExternalNotation('｜港《みなと》と《《強調》》')
+    const output = toPostingSite(work, 'alphapolis')
+    expect(output.text).toBe('#港__みなと__#と#強__・__##調__・__#')
+    expect(output.warnings).toEqual([])
+    expect(toPostingSite(work, 'alphapolis', { plainEmphasis: true }).text).toBe(
+      '#港__みなと__#と強調',
+    )
+    expect(parseExternalNotation('｜港《みなと》', 'alphapolis')[0]?.inlines).toEqual([
+      { type: 'ruby', base: '港', reading: 'みなと' },
+    ])
+  })
+
   it.each([
-    ['tales', '漢字(かんじ)《《地の文》》'],
+    '文字#',
+    '文字__',
+  ])('アルファポリスで区切りと衝突する傍点を本文のまま保つ（%s）', (value) => {
+    const work = parseExternalNotation('《《' + value + '》》')
+    const output = toPostingSite(work, 'alphapolis')
+    expect(output.text).toBe(value)
+    expect(output.warnings).toMatchObject([{ value, needsReview: true }])
+  })
+
+  it.each([
     ['akatsuki', '漢字((かんじ))、漢字（かんじ）《《地の文》》'],
     ['solispia', '｜文字《読み》と《《地の文》》'],
-    ['narou', '漢字《かんじ》'],
   ] as const)('%s の未確認記号は原文のまま確認を促す', (site: PostingSiteId, text) => {
     const result = toPostingSite(parseExternalNotation(text, 'literal'), site)
     expect(result.text).toBe(text)
     expect(result.warnings.some((warning) => warning.needsReview)).toBe(true)
   })
 
-  it('明示取込で未確認の縦線を消さず、用語参照内の親文字の範囲を保つ', () => {
-    expect(parseExternalNotation('｜《普通》　｜(普通)', 'tales')).toEqual(
-      parseExternalNotation('｜《普通》　｜(普通)', 'literal'),
+  it.each([
+    [
+      'narou',
+      '漢字《かんじ》と漢字(かんじ)、もともとの｜《、括弧(注)',
+      '漢字｜《かんじ》と漢字｜(かんじ)',
+    ],
+    [
+      'tales',
+      '漢字《かんじ》と漢字(注)、もともとの｜《、｜(注)、（補足）',
+      '漢字｜《かんじ》と漢字｜(注)',
+    ],
+  ] as const)('%s の地の文は再取り込みで元に戻り、投稿先での確認を促す', (site, input, escaped) => {
+    const prefix = parseExternalNotation(input + '。', 'literal')
+    prefix[0]?.inlines.push({ type: 'ruby', base: '潮', reading: 'しお' })
+    const output = toPostingSite(prefix, site)
+    expect(output.text).toContain(escaped)
+    expect(output.warnings.some((warning) => warning.needsReview)).toBe(true)
+    expect(parseExternalNotation(output.text, site)).toEqual(prefix)
+  })
+
+  it('TALESと無関係な全角括弧の前の縦線を消さず、用語参照内の親文字の範囲を保つ', () => {
+    expect(parseExternalNotation('縦線｜（普通）', 'tales')).toEqual(
+      parseExternalNotation('縦線｜（普通）', 'literal'),
     )
     const blocks = parseEpisodeBody('[[白｜雪《ゆき》]]')
     expect(blocksToNotation(blocks)).toBe('[[白｜雪《ゆき》]]')
