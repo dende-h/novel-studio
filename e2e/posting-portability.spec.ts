@@ -105,6 +105,36 @@ test('ログイン不要の変換から原稿を引き継いで、単話の取�
   expect((await zip).suggestedFilename()).toMatch(/_カクヨム互換\.zip$/)
 })
 
+test('作品の書き出しは形式を切り替えても外枠のサイズを維持する', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 })
+  await openLibrary(page)
+  const importer = page.getByRole('dialog', { name: '原稿を取り込む' })
+  await importer.getByLabel('原稿ファイル', { exact: true }).setInputFiles(fixture('observed/kakuyomu.zip'))
+  await importer.getByRole('button', { name: '作品を作る', exact: true }).click()
+  await page.getByRole('button', { name: '書き出し', exact: true }).click()
+
+  const dialog = page.getByRole('dialog', { name: 'プロジェクトの書き出し' })
+  const formats = dialog.getByRole('navigation').getByRole('button')
+  const web = formats.filter({ hasText: 'Web投稿形式' })
+  const size = () => dialog.evaluate((dialog) => [dialog.offsetWidth, dialog.offsetHeight])
+  for (const { width, height } of [{ width: 1280, height: 900 }, { width: 393, height: 700 }]) {
+    await page.setViewportSize({ width, height })
+    await web.click()
+    const webSize = await size()
+    expect(webSize[0]).toBeLessThanOrEqual(width - 32)
+    expect(webSize[1]).toBe(Math.min(800, height - 32))
+    for (const format of await formats.all()) {
+      await format.click()
+      expect(await size()).toEqual(webSize)
+    }
+    await web.click()
+    const saveTxt = dialog.getByRole('button', { name: 'この話をTXTで保存', exact: true })
+    await saveTxt.scrollIntoViewIfNeeded()
+    await expect(saveTxt).toBeInViewport()
+    await expect(dialog.getByRole('button', { name: 'キャンセル', exact: true })).toBeInViewport()
+  }
+})
+
 test('ルート直下のカクヨム原稿の全パスを記録し、失敗行を外して再選択できる', async ({ page }) => {
   await openLibrary(page)
   const dialog = page.getByRole('dialog', { name: '原稿を取り込む' })
