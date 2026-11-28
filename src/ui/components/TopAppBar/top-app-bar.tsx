@@ -349,6 +349,7 @@ export function TopAppBar({
             variant="outline"
             size="sm"
             onClick={onExport}
+            aria-label="書き出し"
             disabled={exportDisabled}
             className="gap-2"
           >

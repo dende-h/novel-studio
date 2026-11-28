@@ -4,7 +4,7 @@ import { parseEpisodeBody } from '@/core/parser/parseNotation'
 import type { Work } from '@/core/schema'
 import type { ExportFile } from '@/ui/_utils/exporters'
 import { AuthContext, type AuthState } from '@/ui/auth/auth-context'
-import { ExportDialog } from './export-dialog'
+import { ExportPage } from './export-page'
 
 // ダウンロード発火とフォント取得はブラウザ API 依存なのでスタブ化する
 vi.mock('@/ui/_utils/download', () => ({ triggerDownload: vi.fn(), readFileText: vi.fn() }))
@@ -17,8 +17,17 @@ vi.mock('@/ui/_api/game-templates', () => ({
 import { triggerDownload } from '@/ui/_utils/download'
 
 const writeText = vi.fn()
+const pageProps = {
+  workId: 'w1',
+  workList: [],
+  workStatus: '作品を選んでください。',
+  onSelectWork: vi.fn(),
+  onBack: vi.fn(),
+  backLabel: 'マイライブラリに戻る',
+}
 
 beforeEach(() => {
+  localStorage.clear()
   vi.mocked(triggerDownload).mockClear()
   writeText.mockReset().mockResolvedValue(undefined)
   // happy-dom には clipboard が無いので差し込む
@@ -49,9 +58,9 @@ function makeWorkWithGlossary(): Work {
   }
 }
 
-describe('ExportDialog（AI に渡す）', () => {
+describe('ExportPage（AI に渡す）', () => {
   it('AI 形式を選ぶとコピー操作になり、本文をクリップボードへ書いて完了表示を出す', async () => {
-    render(<ExportDialog open onOpenChange={() => {}} work={makeWork()} />)
+    render(<ExportPage {...pageProps} work={makeWork()} />)
     fireEvent.click(screen.getByText('AI に渡す'))
     fireEvent.click(screen.getByRole('button', { name: 'コピー' }))
     await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1))
@@ -61,7 +70,7 @@ describe('ExportDialog（AI に渡す）', () => {
   })
 
   it('「用語集も一緒にコピー」を ON にすると本文の後ろに用語集が付く', async () => {
-    render(<ExportDialog open onOpenChange={() => {}} work={makeWorkWithGlossary()} />)
+    render(<ExportPage {...pageProps} work={makeWorkWithGlossary()} />)
     fireEvent.click(screen.getByText('AI に渡す'))
     fireEvent.click(screen.getByRole('switch', { name: /用語集も一緒に渡す/ }))
     fireEvent.click(screen.getByRole('button', { name: 'コピー' }))
@@ -74,7 +83,7 @@ describe('ExportDialog（AI に渡す）', () => {
   })
 
   it('用語集トグルが OFF（既定）なら本文だけコピーする', async () => {
-    render(<ExportDialog open onOpenChange={() => {}} work={makeWorkWithGlossary()} />)
+    render(<ExportPage {...pageProps} work={makeWorkWithGlossary()} />)
     fireEvent.click(screen.getByText('AI に渡す'))
     fireEvent.click(screen.getByRole('button', { name: 'コピー' }))
     await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1))
@@ -83,7 +92,7 @@ describe('ExportDialog（AI に渡す）', () => {
 
   it('コピー失敗時はエラー表示を出す', async () => {
     writeText.mockRejectedValueOnce(new Error('denied'))
-    render(<ExportDialog open onOpenChange={() => {}} work={makeWork()} />)
+    render(<ExportPage {...pageProps} work={makeWork()} />)
     fireEvent.click(screen.getByText('AI に渡す'))
     fireEvent.click(screen.getByRole('button', { name: 'コピー' }))
     expect(await screen.findByText(/コピーに失敗しました/)).toBeInTheDocument()
@@ -108,15 +117,15 @@ function authState(overrides: Partial<AuthState>): AuthState {
   }
 }
 
-function renderWithAuth(value: AuthState, props: Partial<Parameters<typeof ExportDialog>[0]> = {}) {
+function renderWithAuth(value: AuthState, props: Partial<Parameters<typeof ExportPage>[0]> = {}) {
   return render(
     <AuthContext.Provider value={value}>
-      <ExportDialog open onOpenChange={() => {}} work={makeWork()} {...props} />
+      <ExportPage {...pageProps} work={makeWork()} {...props} />
     </AuthContext.Provider>,
   )
 }
 
-describe('ExportDialog（サウンドノベル）', () => {
+describe('ExportPage（サウンドノベル）', () => {
   it('ゲストにはサインイン案内を出し、書き出しは無効（無料枠でもアカウント必須）', () => {
     const openSignIn = vi.fn()
     renderWithAuth(authState({ status: 'guest', openSignIn }))
@@ -169,7 +178,7 @@ describe('ExportDialog（サウンドノベル）', () => {
   })
 })
 
-describe('ExportDialog（脚本・提出用）', () => {
+describe('ExportPage（脚本・提出用）', () => {
   function makeScriptWork(): Work {
     return {
       ...makeWork(),
@@ -195,9 +204,7 @@ describe('ExportDialog（脚本・提出用）', () => {
     }
   }
   it('脚本では「脚本（提出用）」が先頭に出て EPUB・Web投稿形式は出ない。小説では逆', () => {
-    const { unmount } = render(
-      <ExportDialog open onOpenChange={() => {}} work={makeScriptWork()} />,
-    )
+    const { unmount } = render(<ExportPage {...pageProps} work={makeScriptWork()} />)
     expect(screen.getByText('脚本（提出用）')).toBeInTheDocument()
     expect(screen.queryByText('EPUB / 電子書籍')).toBeNull()
     expect(screen.queryByText('Web投稿形式')).toBeNull()
@@ -206,13 +213,12 @@ describe('ExportDialog（脚本・提出用）', () => {
     expect(screen.getByText('用語集の「人物」1 件（名前と説明）を載せます')).toBeInTheDocument()
     expect(screen.getByText(/作品情報の梗概 10 字を載せます/)).toBeInTheDocument()
     unmount()
-    render(<ExportDialog open onOpenChange={() => {}} work={makeWork()} />)
+    render(<ExportPage {...pageProps} work={makeWork()} />)
     expect(screen.queryByText('脚本（提出用）')).toBeNull()
     expect(screen.getByText('EPUB / 電子書籍')).toBeInTheDocument()
   })
   it('既定は Word A4。「書き出し」で .docx をダウンロードし、B5 に切り替えられる', () => {
-    const onOpenChange = vi.fn()
-    render(<ExportDialog open onOpenChange={onOpenChange} work={makeScriptWork()} />)
+    render(<ExportPage {...pageProps} work={makeScriptWork()} />)
     expect(screen.getByRole('button', { name: 'Word A4・14pt' })).toHaveAttribute(
       'aria-pressed',
       'true',
@@ -221,7 +227,7 @@ describe('ExportDialog（脚本・提出用）', () => {
     expect(vi.mocked(triggerDownload)).toHaveBeenCalledTimes(1)
     const a4 = vi.mocked(triggerDownload).mock.calls[0]?.[0] as ExportFile
     expect(a4.filename).toBe('銀河の詩_脚本_A4.docx')
-    expect(onOpenChange).toHaveBeenCalledWith(false)
+    expect(screen.getByRole('status')).toHaveTextContent('書き出しました')
     vi.mocked(triggerDownload).mockClear()
     fireEvent.click(screen.getByRole('button', { name: 'Word B5・12pt' }))
     fireEvent.click(screen.getByRole('button', { name: '書き出し' }))
@@ -230,10 +236,7 @@ describe('ExportDialog（脚本・提出用）', () => {
     )
   })
   it('テキストを選ぶと前付け付きの .txt をダウンロードし、前付けを外すと本文だけになる', () => {
-    const onOpenChange = vi.fn()
-    const { unmount } = render(
-      <ExportDialog open onOpenChange={onOpenChange} work={makeScriptWork()} />,
-    )
+    const { unmount } = render(<ExportPage {...pageProps} work={makeScriptWork()} />)
     fireEvent.click(screen.getByRole('button', { name: 'テキスト（.txt）' }))
     fireEvent.click(screen.getByRole('button', { name: '書き出し' }))
     expect(vi.mocked(triggerDownload)).toHaveBeenCalledTimes(1)
@@ -243,10 +246,10 @@ describe('ExportDialog（脚本・提出用）', () => {
     expect(full.data as string).toContain('梗概\n\n　結末まで書いた梗概。')
     expect(full.data as string).toContain('○公園\n　　　風が吹く\nユイ「はい」')
     expect(full.data as string).not.toContain('読者向け')
-    expect(onOpenChange).toHaveBeenCalledWith(false)
+    expect(screen.getByRole('status')).toHaveTextContent('書き出しました')
     unmount()
     vi.mocked(triggerDownload).mockClear()
-    render(<ExportDialog open onOpenChange={() => {}} work={makeScriptWork()} />)
+    render(<ExportPage {...pageProps} work={makeScriptWork()} />)
     fireEvent.click(screen.getByRole('button', { name: 'テキスト（.txt）' }))
     fireEvent.click(screen.getByRole('switch', { name: /表紙/ }))
     fireEvent.click(screen.getByRole('switch', { name: /登場人物表/ }))
@@ -258,10 +261,8 @@ describe('ExportDialog（脚本・提出用）', () => {
 })
 
 it('エブリスタのブラウザ版の新規作品インポートへ案内する', () => {
-  render(<ExportDialog open onOpenChange={() => {}} work={makeWork()} />)
+  render(<ExportPage {...pageProps} work={makeWork()} />)
   fireEvent.click(screen.getByText('Web投稿形式'))
   fireEvent.change(screen.getByLabelText('投稿先'), { target: { value: 'estar' } })
-  expect(
-    screen.getByText(/新しい作品を作成.*作品をインポート.*TXT.*対応ZIP.*PDF/),
-  ).toBeInTheDocument()
+  expect(screen.getByText(/新しい作品を作るとき.*作品をインポート.*TXT/)).toBeInTheDocument()
 })

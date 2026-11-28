@@ -562,7 +562,7 @@ test('脚本形式を保存し、縦横プレビュー・再読込・小説へ�
   await expect(page.getByRole('button', { name: 'Word A4・14pt' })).toBeVisible()
   await expect(page.getByText('EPUB / 電子書籍')).toHaveCount(0)
   await expect(page.getByText(/本文 \d+ 枚（20字×20行換算）/)).toBeVisible()
-  await page.getByRole('button', { name: 'キャンセル' }).click()
+  await page.getByRole('button', { name: '執筆画面に戻る', exact: true }).click()
   await page.goto('/')
   await page.getByRole('button', { name: '「脚本E2E」のメニュー' }).click()
   await page.getByRole('menuitem', { name: '情報を編集' }).click()

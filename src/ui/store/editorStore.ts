@@ -83,6 +83,8 @@ export interface EditorStore {
   init(): Promise<void>
   createWork(title: string, format?: Work['format']): Promise<void>
   openWork(id: string): Promise<void>
+  /** 現在の執筆位置を変えずに作品を読む。 */
+  readWork(id: string): Promise<Work | undefined>
   /**
    * 開いている作品を IndexedDB から読み直してメモリ状態を追随させる（同期の pull 反映用）。
    * 下書きに未保存の編集があるとき・内容が変わっていないときは何もしない。
@@ -459,6 +461,8 @@ export function createEditorStore({
       })
       await refreshList()
     },
+
+    readWork: (id) => repo.getWork(id),
 
     async openWork(id) {
       const work = await repo.getWork(id)

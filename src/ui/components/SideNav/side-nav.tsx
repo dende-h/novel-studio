@@ -2,6 +2,7 @@ import {
   ArrowLeft,
   BookMarked,
   CircleHelp,
+  Download,
   ExternalLink,
   FileText,
   Gamepad2,
@@ -56,6 +57,7 @@ interface SideNavProps {
   active: NavKey
   /** マイライブラリへ（ライブラリ時はホーム行・作品時は戻るリンク） */
   onNavigateCollection: () => void
+  onNavigateExport?: () => void
   /** 執筆の記録（草・ストリーク）へ。指定時のみ表示。 */
   onNavigateActivity?: () => void
   /** ネタ帳（アイデアの受け皿）へ。指定時のみ表示。 */
@@ -153,6 +155,7 @@ function NavRow({ icon: Icon, label, active, onClick, disabled }: NavRowProps) {
 export function SideNav({
   active,
   onNavigateCollection,
+  onNavigateExport,
   onNavigateActivity,
   onNavigateIdeas,
   onNavigateBoard,
@@ -463,6 +466,9 @@ export function SideNav({
               active={active === 'collection'}
               onClick={onNavigateCollection}
             />
+            {onNavigateExport ? (
+              <NavRow icon={Download} label="書き出し" onClick={onNavigateExport} />
+            ) : null}
             {onNavigateActivity ? (
               <NavRow
                 icon={Sprout}

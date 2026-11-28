@@ -1,6 +1,5 @@
 import { Info } from 'lucide-react'
 import type { ReactNode } from 'react'
-import { useState } from 'react'
 import { cn } from '@/lib/utils'
 import {
   Dialog,
@@ -9,6 +8,7 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
+  DialogTrigger,
 } from '@/ui/components/ui/dialog'
 
 /**
@@ -36,33 +36,31 @@ export function FieldHelp({
   className?: string
   children: ReactNode
 }) {
-  const [open, setOpen] = useState(false)
   return (
-    <>
-      <button
-        type="button"
-        aria-label={ariaLabel ?? `${title}の説明を開く`}
-        title={title}
-        onClick={() => setOpen(true)}
-        className={cn(
-          // 押せるものだと分かるよう、ボタンと同じ緑にする（灰色だと飾りに見えて気づかれない）
-          'inline-flex shrink-0 items-center justify-center rounded-full p-0.5 text-primary transition-colors hover:bg-accent hover:text-primary',
-          className,
-        )}
-      >
-        <Info className="size-3.5" aria-hidden />
-      </button>
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="sm:max-w-lg">
-          <DialogHeader>
-            <DialogTitle className="font-serif text-on-surface">{title}</DialogTitle>
-            {description ? <DialogDescription>{description}</DialogDescription> : null}
-          </DialogHeader>
-          <DialogBody className="space-y-3 text-[13px] text-on-surface-variant leading-relaxed">
-            {children}
-          </DialogBody>
-        </DialogContent>
-      </Dialog>
-    </>
+    <Dialog>
+      <DialogTrigger asChild>
+        <button
+          type="button"
+          aria-label={ariaLabel ?? `${title}の説明を開く`}
+          title={title}
+          className={cn(
+            // 押せるものだと分かるよう、ボタンと同じ緑にする（灰色だと飾りに見えて気づかれない）
+            'inline-flex shrink-0 items-center justify-center rounded-full p-0.5 text-primary transition-colors hover:bg-accent hover:text-primary',
+            className,
+          )}
+        >
+          <Info className="size-3.5" aria-hidden />
+        </button>
+      </DialogTrigger>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle className="font-serif text-on-surface">{title}</DialogTitle>
+          {description ? <DialogDescription>{description}</DialogDescription> : null}
+        </DialogHeader>
+        <DialogBody className="space-y-3 text-[13px] text-on-surface-variant leading-relaxed">
+          {children}
+        </DialogBody>
+      </DialogContent>
+    </Dialog>
   )
 }
