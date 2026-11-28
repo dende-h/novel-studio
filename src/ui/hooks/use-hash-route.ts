@@ -13,15 +13,16 @@ const getRoute = (): string => window.location.hash.replace(/^#/, '') || '/'
 
 export interface HashRoute {
   route: string
-  navigate: (to: string) => void
+  navigate: (to: string, options?: { replace?: boolean }) => void
 }
 
 export function useHashRoute(): HashRoute {
   const route = useSyncExternalStore(subscribe, getRoute, () => '/')
-  const navigate = useCallback((to: string) => {
+  const navigate = useCallback((to: string, options?: { replace?: boolean }) => {
     const target = to.startsWith('#') ? to : `#${to}`
     if (window.location.hash === target) return
-    window.location.hash = to
+    if (options?.replace) window.history.replaceState(window.history.state, '', target)
+    else window.location.hash = to
     // 一部環境（happy-dom 等）は hash 設定で hashchange を発火しないため明示通知。
     // 実ブラウザでも値が変わった時のみで、重複しても route 不変なら no-op。
     window.dispatchEvent(new Event('hashchange'))

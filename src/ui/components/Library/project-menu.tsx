@@ -89,15 +89,17 @@ export function ProjectMenu({
                 {published ? '非公開（下書き）に戻す' : '公開する'}
               </button>
             ) : null}
-            <button
-              type="button"
-              role="menuitem"
-              onClick={() => run(onExport)}
-              className="flex items-center gap-2.5 rounded-md px-3 py-2 text-left text-[13px] text-on-surface transition-colors hover:bg-surface-container-low"
-            >
-              <Download className="size-3.5 shrink-0" />
-              書き出し
-            </button>
+            {onExport ? (
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => run(onExport)}
+                className="flex items-center gap-2.5 rounded-md px-3 py-2 text-left text-[13px] text-on-surface transition-colors hover:bg-surface-container-low"
+              >
+                <Download className="size-3.5 shrink-0" />
+                書き出し
+              </button>
+            ) : null}
             <button
               type="button"
               role="menuitem"

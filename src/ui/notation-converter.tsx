@@ -24,7 +24,7 @@ import {
   PostingDestination,
   PostingFormat,
   PostingOptionsControl,
-} from '@/ui/components/ExportDialog/posting-export'
+} from '@/ui/components/ExportPage/posting-export'
 import {
   IllustrationList,
   NotationSelect,

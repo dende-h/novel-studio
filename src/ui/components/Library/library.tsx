@@ -36,7 +36,6 @@ import { AppShell } from '@/ui/components/AppShell/app-shell'
 import { BackupDialog } from '@/ui/components/BackupDialog/backup-dialog'
 import { BackupNudgeDialog } from '@/ui/components/BackupNudgeDialog/backup-nudge-dialog'
 import { ConfirmDialog } from '@/ui/components/ConfirmDialog/confirm-dialog'
-import { ExportDialog } from '@/ui/components/ExportDialog/export-dialog'
 import { ImportDialog } from '@/ui/components/ImportDialog/import-dialog'
 import { SaveStateIndicator } from '@/ui/components/SaveStateIndicator/save-state-indicator'
 import { SideNav } from '@/ui/components/SideNav/side-nav'
@@ -64,6 +63,7 @@ interface LibraryProps {
   store: EditorStore
   /** エディタ（/write）へ遷移 */
   onEnterEditor: () => void
+  onEnterExport?: (workId?: string) => void
   /** 公開ページ（/publish）へ遷移。投稿はダイアログでなく一枚のページで扱う。 */
   onEnterPublish: () => void
   /** クラウドバックアップ管理を開く（会員のみ・未指定なら非表示）。 */
@@ -148,6 +148,7 @@ function DataMenuItem({
 export function Library({
   store,
   onEnterEditor,
+  onEnterExport,
   onEnterPublish,
   onOpenCloudBackup,
   onOpenAiPull,
@@ -181,7 +182,6 @@ export function Library({
     setNewFormat('novel')
     setNewOpen(true)
   }
-  const [exportOpen, setExportOpen] = useState(false)
   /** 公開切り替えの通信中の作品 id（多重送信を防ぐ）。 */
   const [publishBusyId, setPublishBusyId] = useState<string | null>(null)
   const [importOpen, setImportOpen] = useState(false)
@@ -281,10 +281,6 @@ export function Library({
     await store.openWork(id)
     onEnterEditor()
   }
-  const handleExport = async (id: string) => {
-    await store.openWork(id)
-    setExportOpen(true)
-  }
   const handlePublish = async (id: string) => {
     await store.openWork(id)
     onEnterPublish()
@@ -357,7 +353,7 @@ export function Library({
     summary: w,
     now,
     onWrite: () => void handleWrite(w.id),
-    onExport: () => void handleExport(w.id),
+    onExport: onEnterExport ? () => onEnterExport(w.id) : undefined,
     onEditMeta: () => setMetaTarget(w),
     onDelete: () => setDeleteTarget(w),
     // 投稿先が未設定（VITE_PLATFORM_ORIGIN なし）のビルドでは投稿の導線ごと出さない。
@@ -375,6 +371,7 @@ export function Library({
       sidebar={
         <SideNav
           active="collection"
+          onNavigateExport={onEnterExport ? () => onEnterExport() : undefined}
           onNavigateCollection={() => {}}
           onNavigateActivity={onOpenActivity}
           onNavigateIdeas={onOpenIdeas}
@@ -668,13 +665,6 @@ export function Library({
           </Button>
         </div>
       </TitlePromptDialog>
-      <ExportDialog
-        open={exportOpen}
-        onOpenChange={setExportOpen}
-        work={state.work}
-        stagingRepo={stagingRepo}
-        gameAssetRepo={gameAssetRepo}
-      />
       <BackupDialog
         open={backupOpen}
         onOpenChange={setBackupOpen}

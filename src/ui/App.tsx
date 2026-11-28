@@ -31,7 +31,6 @@ import { ConfirmDialog } from '@/ui/components/ConfirmDialog/confirm-dialog'
 import { EditorPane, type EditorPaneHandle } from '@/ui/components/EditorPane/editor-pane'
 import { NotationButtons } from '@/ui/components/EditorPane/notation-buttons'
 import { ErrorBoundary } from '@/ui/components/ErrorBoundary/error-boundary'
-import { ExportDialog } from '@/ui/components/ExportDialog/export-dialog'
 import { FieldHelp } from '@/ui/components/FieldHelp/field-help'
 import { FixListButton } from '@/ui/components/FixListButton/fix-list-button'
 import {
@@ -72,6 +71,8 @@ interface AppProps {
   store: EditorStore
   /** 入口（ライブラリ）へ戻る */
   onExit?: () => void
+  onNavigateExport?: (workId: string, episodeId?: string) => void
+  initialScreen?: 'episodes' | 'staging'
   /** 公開ページへ。投稿はダイアログで完結させず、全体を見渡せる一枚に集約する。 */
   onNavigatePublish?: () => void
   /** 執筆の記録（草・ストリーク）へ */
@@ -157,6 +158,8 @@ export function App({
   store,
   onExit,
   onNavigatePublish,
+  onNavigateExport,
+  initialScreen = 'episodes',
   onNavigateActivity,
   onNavigateBoard,
   onNavigateSettings,
@@ -177,7 +180,6 @@ export function App({
   // プロフィールの編集はアプリに 1 つ（Root が持つ）。ここは開く口を叩くだけ。
   const openProfile = useOpenProfile()
   const [newEpisodeOpen, setNewEpisodeOpen] = useState(false)
-  const [exportOpen, setExportOpen] = useState(false)
   const [importDraft, setImportDraft] = useState<CurrentDraft | null>(null)
   const [undoImport, setUndoImport] = useState<{ draft: CurrentDraft; imported: string } | null>(
     null,
@@ -186,7 +188,7 @@ export function App({
   const [historyOpen, setHistoryOpen] = useState(false)
   const [activeScreen, setActiveScreen] = useState<
     'episodes' | 'glossary' | 'outline' | 'mindmap' | 'chart' | 'plot' | 'staging' | 'proofread'
-  >('episodes')
+  >(initialScreen)
   const [previewPosition, setPreviewPosition] = useState<PreviewPosition | null>(null)
   const onCaretChange = useCallback((value: string, offset: number) => {
     setPreviewPosition({ value, offset })
@@ -357,9 +359,10 @@ export function App({
   }, [focusMode, pane, narrow])
 
   const openExport = async () => {
+    if (!work) return
     try {
       if (episode) await store.save()
-      setExportOpen(true)
+      onNavigateExport?.(work.id, episode?.id)
     } catch {
       show('保存できませんでした。下書きは残っています。もう一度お試しください')
     }
@@ -562,7 +565,7 @@ export function App({
               }
             : undefined
         }
-        onExport={() => void openExport()}
+        onExport={onNavigateExport ? () => void openExport() : undefined}
         onImportBody={onEpisodes && currentDraft ? () => setImportDraft(currentDraft) : undefined}
         onUndoBodyImport={onEpisodes && canUndoImport ? () => void undoBodyImport() : undefined}
         onPublish={
@@ -1253,30 +1256,6 @@ export function App({
             }}
           />
         )}
-        <ExportDialog
-          open={exportOpen}
-          onOpenChange={setExportOpen}
-          initialEpisode={episode?.id}
-          work={state.work}
-          onEditMeta={
-            work
-              ? () => {
-                  setExportOpen(false)
-                  setMetaOpen(true)
-                }
-              : undefined
-          }
-          stagingRepo={stagingRepo}
-          gameAssetRepo={gameAssetRepo}
-          onEditStaging={
-            stagingAvailable
-              ? () => {
-                  setExportOpen(false)
-                  setActiveScreen('staging')
-                }
-              : undefined
-          }
-        />
         {work ? (
           <WorkMetaDialog
             open={metaOpen}

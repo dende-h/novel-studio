@@ -75,6 +75,10 @@ const NarrationRoute = lazy(() =>
   import('./components/NarrationPage/narration-page').then((m) => ({ default: m.NarrationRoute })),
 )
 
+const ExportRoute = lazy(() =>
+  import('./components/ExportPage/export-route').then((m) => ({ default: m.ExportRoute })),
+)
+
 const BoardPage = lazy(() =>
   import('./components/BoardPage/board-page').then((m) => ({ default: m.BoardPage })),
 )
@@ -122,6 +126,14 @@ function PageLoading() {
   )
 }
 
+function exportPath(workId?: string, origin?: { episodeId?: string }) {
+  if (!workId) return '/export'
+  const params = new URLSearchParams({ work: workId })
+  if (origin) params.set('from', 'editor')
+  if (origin?.episodeId) params.set('episode', origin.episodeId)
+  return '/export?' + params.toString()
+}
+
 interface RootProps {
   store: EditorStore
 }
@@ -129,6 +141,7 @@ interface RootProps {
 /** 入口（ライブラリ）とエディタをハッシュで切り替えるトップレベル Container。 */
 function RootRoutes({ store }: RootProps) {
   const { route, navigate } = useHashRoute()
+  const [path, search] = route.split('?')
   const {
     status,
     canRestore,
@@ -426,6 +439,38 @@ function RootRoutes({ store }: RootProps) {
     )
   }
 
+  if (path === '/export') {
+    const params = new URLSearchParams(search)
+    const requestedWorkId = params.get('work') || undefined
+    return (
+      <Suspense fallback={<PageLoading />}>
+        <ExportRoute
+          key={route}
+          store={store}
+          requestedWorkId={requestedWorkId}
+          workId={params.get('selected') ?? requestedWorkId ?? ''}
+          onSelectWork={(id) => {
+            const next = new URLSearchParams(params)
+            next.set('selected', id)
+            navigate('/export?' + next.toString(), { replace: true })
+          }}
+          requestedEpisodeId={params.get('episode') || undefined}
+          fromEditor={params.get('from') === 'editor'}
+          onBackToLibrary={() => navigate('/')}
+          onOpenEditor={async (workId, episodeId, screen) => {
+            if (store.getSnapshot().work?.id !== workId) await store.openWork(workId)
+            if (store.getSnapshot().work?.id !== workId) throw new Error('作品が見つかりません')
+            if (episodeId && episodeId !== store.getSnapshot().currentEpisodeId)
+              store.openEpisode(episodeId)
+            navigate(screen === 'staging' ? '/write?screen=staging' : '/write')
+          }}
+          stagingRepo={stagingRepo}
+          gameAssetRepo={gameAssetRepo}
+        />
+      </Suspense>
+    )
+  }
+
   if (route === '/ideas') {
     return (
       <IdeaboxPage
@@ -490,10 +535,14 @@ function RootRoutes({ store }: RootProps) {
 
   return (
     <>
-      {route === '/write' ? (
+      {path === '/write' ? (
         <App
           store={store}
           onExit={() => navigate('/')}
+          onNavigateExport={(workId, episodeId) => navigate(exportPath(workId, { episodeId }))}
+          initialScreen={
+            new URLSearchParams(search).get('screen') === 'staging' ? 'staging' : 'episodes'
+          }
           onNavigatePublish={() => navigate('/publish')}
           onNavigateActivity={() => navigate('/activity')}
           onNavigateBoard={() => navigate('/board')}
@@ -514,6 +563,7 @@ function RootRoutes({ store }: RootProps) {
         <Library
           store={store}
           onEnterEditor={() => navigate('/write')}
+          onEnterExport={(id) => navigate(exportPath(id))}
           onEnterPublish={() => navigate('/publish')}
           onOpenCloudBackup={backupService ? () => setBackupOpen(true) : undefined}
           // AI の取り込み・MCP は会員だけ（猶予中はサーバが 402 で弾く）。
@@ -551,7 +601,7 @@ function RootRoutes({ store }: RootProps) {
         />
       )}
       {/* 初回のみの保存説明。執筆画面（/write）には出さない＝執筆中の割り込みを避ける。 */}
-      {route !== '/write' && <FirstRunDialog open={!onboarded} onClose={markOnboarded} />}
+      {path !== '/write' && <FirstRunDialog open={!onboarded} onClose={markOnboarded} />}
       {backupService && (
         <CloudBackupDialog
           open={backupOpen}
