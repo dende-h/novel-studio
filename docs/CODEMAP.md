@@ -41,7 +41,7 @@ Cloudflare Pages Functions
 | 記法（ルビ・傍点・`[[参照]]`）の解釈を変える | `src/core/parser/parseNotation.ts` + `src/core/schema/index.ts` |
 | プレビューのマークダウン（見出し・リスト・表・引用）を変える | `src/core/markdown/index.ts`（本文は非対応。効くのはプロット・世界観・用語集の記法つき欄） |
 | 書き出し（EPUB/なろう/カクヨム/HTML）の出力を変える | `src/core/exporter/` 配下（形式ごとに1ファイル） |
-| 投稿サイト原稿の取込・Web投稿・公開記法変換 | プロファイルは `src/core/sites/portability.ts`、取込は `src/core/importer/manuscript.ts`（TXT/ZIP）・`src/core/importer/site-formats.ts`（目次・話境界）・`src/core/importer/markup.ts`（EPUB/HTML）・`src/ui/_utils/manuscript-pdf.ts`（PDF）。ホームと各話の入口は `src/ui/components/TextImportDialog/`、出力は `src/core/exporter/toPostingSite.ts` と `src/core/exporter/posting-files.ts`、公開ページは `src/ui/notation-converter.tsx` |
+| 投稿サイト原稿の取込・Web投稿・公開記法変換 | プロファイルは `src/core/sites/portability.ts`、記号のエスケープは `src/core/sites/literal-notation.ts`、取込は `src/core/importer/manuscript.ts`（TXT/ZIP・入力パスと容量集計）・`src/core/importer/site-formats.ts`（目次・話境界）・`src/core/importer/markup.ts`（EPUB/HTML）・`src/ui/_utils/manuscript-pdf.ts`（PDF）。ホームと各話の入口は `src/ui/components/TextImportDialog/`、ファイル読取の中断は `src/ui/_utils/manuscript-file.ts`、出力は `src/core/exporter/toPostingSite.ts` と `src/core/exporter/posting-files.ts`、公開ページは `src/ui/notation-converter.tsx` |
 | テキスト（.txt／貼り付け）の取り込み＝見出し行で話に分けて新しい作品にする（COT-31） | 分割・文字コード判別・Work 組み立ては `src/core/importer/`（`splitEpisodes` `decodeTextFile` `buildImportedWork`）、画面は `src/ui/components/TextImportDialog/`、入口はライブラリ「データ管理」→「テキストから作品を作る」（`src/ui/components/Library/library.tsx`）。JSON バックアップの取り込みは別（`ImportDialog/`） |
 | **朗読制作・MP3/ZIP書き出し**を変える | 設計は `docs/requirement/13-narration.md`。専用ルート `#/narration/<workId>/<episodeId>` は `src/ui/Root.tsx`、画面は `src/ui/components/NarrationPage/narration-page.tsx`、比較・通し再生のプレーヤーは `src/ui/components/NarrationPage/narration-player.tsx`、画面から独立した状態・候補保存・全区間成功後の一括採用・通信は `src/ui/narration/service.ts`。連続した文のクリック選択は `src/core/narration/selection.ts`。話別設定・文の区切り・読み指定の確認（`readingCuesNeedingReview`）・冒頭試聴範囲は `src/core/narration/resolve.ts`、API用テキストと旧読点補正の互換処理は `src/core/narration/provider.ts`、音声前後の無音計測と不足する間の結合は `src/ui/narration/audio.ts` と `src/core/narration/mp3.ts`。端末の設定・採用音声は `src/core/storage/narrationRepository.ts`（作者用・公開Workには載せない）。APIは `functions/api/narration.ts`、プランと声の許可リストは `functions/api/_lib/narration.ts`、原子的な枠予約は `migrations/0011_narration.sql`。実行と期限切れ削除は `workers/narration/worker.ts`（stg専用Durable Object・cron）。合意した操作は `docs/specs/narration-workflow/decisions.md`、運用と公開前の確認は `docs/narration-implementation.md` |
 # CODEMAP — novel-studio コード地図
@@ -361,14 +361,14 @@ Clerk へ登録済みのクライアントの互換。消すとトークン更�
 `api/_lib/`: `auth`（Clerk 検証・`verifyMember`）, `membership`（**会員判定の単一の真実 = D1 `subscriptions`**）,
 `crypto`（at-rest 暗号化）, `mcp-server`（MCP プロトコル核・約1,200行。用語集の対話は `get_glossary_questions`＝作品に依らない読み口と `upsert_glossary_entry` の `dialog`＝`dialogPatchOf` で形を検め core の `applyDialogPatch` へ）, `mcp-auth`, `mcp-token`,
 `oauth-metadata`（PRM）, `oauth-server`（**認可サーバーの純ロジック**）, `oauth-store`（同 SQL）, `oauth-upstream`（中継先 Clerk の取得）, `stripe`, `rate-limit`, `purge`, `visitor`,
-`board-store`（スレッド・投稿の SQL と変換）、`functions/api/_lib/board-notification-store.ts`（通知の集計と既読）、`functions/api/_lib/board-event-store.ts`（イベントと参加）、`functions/api/_lib/board-read-token.ts`（表示範囲の署名）、 `board-link-fetch`（OGP の取得とキャッシュ）,
+`board-store`（スレッド・投稿の SQL と変換）、`functions/api/_lib/board-notification-store.ts`（通知の集計と既読）、`functions/api/_lib/board-event-store.ts`（イベントと参加）、`functions/api/_lib/board-event-visibility.ts`（公開イベントのSQL条件）、`functions/api/_lib/board-read-token.ts`（表示範囲の署名）、 `board-link-fetch`（OGP の取得とキャッシュ）,
 `staff`（`verifyStaff`＝運営の判定・`board_profiles.role`）, `templates-store`（運営テンプレの R2 キー `_templates/` と目録の読み書き）, `server-card`（MCP の名刺と AI Catalog・版は `mcp-server` の `SERVER_INFO` に連動）。
 
 掲示板の共通部品は `functions/api/board/board-endpoint.ts`（`boardJson`＝`private, no-store` 付きの応答、
 `rateLimitedResponse`＝分あたりの安全弁、`postQuotaExceeded`＝10件/時、`createPostRetrying`、`conflictResponse`）。
 **新しいエンドポイントを足すときはここから使う**（片方だけ緩むと誰も気づけない）。
 テスト用の D1 フェイクは `functions/api/board/board-test-util.ts`（`makeBoardDb` `makeBoardEnv` `clerkAuthMock`）。
-**SQL そのものを確かめるのは `functions/api/board/real-d1.ts`**（`migrations/` の掲示板 DDL（0008・0009・0016 と依存スキーマ）を順に流した実 SQLite＝`node:sqlite`。フェイクは SQL を解釈しないので構文エラー・曖昧な列名を拾えない。**マイグレーションを足したらここにも足す**）。
+**SQL そのものを確かめるのは `functions/api/board/real-d1.ts`**（`migrations/` の掲示板 DDL（0008・0009・0016・0017 と依存スキーマ）を順に流した実 SQLite＝`node:sqlite`。フェイクは SQL を解釈しないので構文エラー・曖昧な列名を拾えない。**マイグレーションを足したらここにも足す**）。
 
 **バインディング**（`wrangler.toml`）: `DB` = D1 `novel-studio`、`MEDIA` = R2 `novel-studio-media`
 （preview 環境は `-stg` サフィックス）。
@@ -376,9 +376,9 @@ Clerk へ登録済みのクライアントの互換。消すとトークン更�
 **マイグレーション**（`migrations/`）: `0001_init` → `0002_sync_works` → `0003_trash_sync` →
 `0004_mcp_tokens` → `0005_subscriptions` → `0006_activity_sync` → `0007_visitor_days` → `0008_board`（掲示板9テーブル）
 → `0009_board_post_likes`（👍 を投稿単位へ。`board_post_likes` ＋ `board_posts.like_count`・旧 `board_likes` は残す）
-→ 0010〜0015 を経て `migrations/0016_board_notifications_events.sql`（新着・通知設定・既読・イベント・参加・通報対象）
-→ `0010_oauth`（自前の認可サーバー。`oauth_clients` / `oauth_requests` / `oauth_codes` / `oauth_tokens`。
-**適用前に配ると、アカウント削除（purge の batch）と MCP の接続解除が落ちる**——順序は migration → デプロイ）
+→ `0010_oauth`（自前の認可サーバー）→ 0011〜0015（朗読）
+→ `migrations/0016_board_notifications_events.sql`（新着・通知設定・既読・イベント・参加・通報対象）
+→ `migrations/0017_board_event_link_moderation.sql`（参加者・作品URLごとの非表示）。マイグレーションを適用してから Pages をデプロイする。
 
 ---
 

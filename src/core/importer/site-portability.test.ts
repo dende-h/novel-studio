@@ -150,6 +150,122 @@ describe('公開資料で確認できた構造の合成原稿', () => {
   })
 })
 
+describe('作者用原本を照合できない書式と互換ZIPの差異', () => {
+  const zip = (files: Record<string, string>) =>
+    readManuscriptArchive({
+      path: '灯り.zip',
+      data: zipStore(Object.entries(files).map(([path, data]) => ({ path, data }))),
+    })
+  const kakuyomu = (title: string, body: string, lines = 1) =>
+    ['〖タイトル〗', title, '〖本文（' + lines + '行）〗', body].join('\n')
+
+  it.each([
+    ['ノベルアップ＋', 'episode_00010.txt', 'episode_00002.txt', 'mock-work-info.txt', '灯り'],
+    [
+      'TALESの話ファイル名',
+      'episode_0010.txt',
+      'episode_0002.txt',
+      'about.txt',
+      '# タイトル\n灯り',
+    ],
+    ['TALESの任意の話ファイル名', '第10話.txt', '第2話.txt', 'about.txt', '# タイトル\n灯り'],
+  ])('%s の未確認見出しを残し、TXT単位で取り込む', async (_, later, earlier, metadata, value) => {
+    const source = await zip({
+      [metadata]: value,
+      'toc.txt': '目次',
+      [later]: '【独自の見出し】\n十話の本文',
+      [earlier]: '【独自の見出し】\n二話の本文',
+    })
+    expect(source.title).toBe('灯り')
+    expect(source.warnings.join()).toContain('ファイル単位で取り込みました')
+    expect(source.episodes.map(({ path, body }) => [path, body])).toEqual([
+      [earlier, '【独自の見出し】\n二話の本文'],
+      [later, '【独自の見出し】\n十話の本文'],
+    ])
+  })
+
+  it('認識できる仮書式と未知の本文が同じZIPにあっても片方を失わない', async () => {
+    const source = await zip({
+      'about.txt': '# タイトル\n灯り',
+      'episode_0002.txt': '未知の見出し\n本文',
+      'episode_0001.txt': '# エピソードタイトル\n第一話\n# 本文\n本文',
+    })
+    expect(source.episodes.map(({ title, body }) => [title, body])).toEqual([
+      ['第一話', '本文'],
+      ['episode_0002', '未知の見出し\n本文'],
+    ])
+    expect(source.warnings.join()).toContain('ファイル単位')
+  })
+
+  it('カクヨムの本文行数の差を警告し、独立した目次の順序を保つ', async () => {
+    const files = {
+      'toc.txt': '§第一部\n2. 二話\n1. 一話',
+      'episode_0001.txt': kakuyomu('一話', '一行目\n二行目', 1),
+      'episode_0002.txt': kakuyomu('二話', '二話の本文'),
+    }
+    const source = await zip({ 'about.txt': '〖タイトル〗\n灯り', ...files })
+    expect(source.title).toBe('灯り')
+    expect(source.episodes.map(({ title, body, chapter }) => [title, body, chapter])).toEqual([
+      ['二話', '二話の本文', '第一部'],
+      ['一話', '一行目\n二行目', '第一部'],
+    ])
+    expect(source.warnings).toEqual([expect.stringMatching(/episode_0001\.txt.*行数/)])
+
+    const loose = readLooseManuscripts(
+      Object.entries(files).map(([path, body]) => ({ path, data: new TextEncoder().encode(body) })),
+    )
+    expect(loose).toHaveLength(1)
+    expect(loose[0]).toMatchObject({
+      source: {
+        episodes: [
+          { title: '二話', body: '二話の本文', chapter: '第一部' },
+          { title: '一話', body: '一行目\n二行目', chapter: '第一部' },
+        ],
+        warnings: source.warnings,
+      },
+    })
+  })
+
+  it('目次の不足・欠番・重複があっても存在するカクヨムの話を連番順で取り込む', async () => {
+    const source = await zip({
+      'about.txt': '〖タイトル〗\n灯り\n〖目次〗\n3. 三話\n9. 未収録\n3. 重複',
+      'episode_0003.txt': kakuyomu('三話', '三話の本文'),
+      'episode_0002.txt': kakuyomu('下書き', '未掲載の本文'),
+      'episode_0001.txt': kakuyomu('一話', '一話の本文'),
+    })
+    expect(source.episodes.map(({ title }) => title)).toEqual(['一話', '下書き', '三話'])
+    expect(source.warnings.join()).toContain('連番順')
+    await expect(zip({ 'about.txt': '〖タイトル〗\n灯り\n〖目次〗\n1. 一話' })).rejects.toThrow(
+      /話ファイルがありません/,
+    )
+  })
+
+  it.each([
+    '',
+    '〖前書き〗\n',
+    '〖前書き〗\n\n',
+  ])('なろうの短編と下書きで空・省略された前後書きを本文と分ける（%j）', async (before) => {
+    const after = before ? '\n\n〖後書き〗' + (before.endsWith('\n\n') ? '\n\n' : '') : ''
+    const source = await zip({
+      'n0123ab.txt':
+        '〖タイトル〗\n短編\n' + before + '〖公開状態〗\n公開\n〖本文〗\n短編の本文' + after,
+      'short_draftepisode.txt':
+        '〖エピソードタイトル〗\n下書きの題\n' + before + '〖本文〗\n下書きの本文' + after,
+    })
+    expect(source.title).toBe('短編')
+    expect(source.episodes).toMatchObject([
+      { title: '短編', body: '短編の本文', before: undefined, after: undefined, details: '公開' },
+      {
+        title: '下書きの題',
+        body: '下書きの本文',
+        before: undefined,
+        after: undefined,
+        details: '下書き',
+      },
+    ])
+  })
+})
+
 describe('投稿用の記法と正本の往復', () => {
   it('未知・未閉鎖・曖昧な記号を編集とフォルダ用記法の往復で維持する', () => {
     const source =

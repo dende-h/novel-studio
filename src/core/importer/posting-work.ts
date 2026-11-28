@@ -32,6 +32,34 @@ function assetData(asset: ManuscriptAsset): string {
   return bytesToDataUrl(bytes, `image/${type}`)
 }
 
+export function unambiguousAssets<T extends { path: string }>(
+  assets: T[],
+  agrees: (a: T, b: T) => boolean,
+): T[] {
+  const byPath = new Map<string, T | null>()
+  for (const asset of assets) {
+    const stored = byPath.get(asset.path)
+    if (stored === undefined) byPath.set(asset.path, asset)
+    else if (stored && !agrees(stored, asset)) byPath.set(asset.path, null)
+  }
+  return [...byPath.values()].filter((asset): asset is T => asset !== null)
+}
+
+export function referencedAssetPaths(episodes: readonly Episode[]): Set<string> {
+  const paths = new Set<string>()
+  for (const episode of episodes) {
+    for (const block of episode.blocks) {
+      for (const inline of block.inlines) {
+        if (inline.type !== 'text') continue
+        for (const ref of illustrationReferences(inline.text)) {
+          if (ref.assetPath) paths.add(ref.assetPath)
+        }
+      }
+    }
+  }
+  return paths
+}
+
 export function validateImportedWork(work: Work): Work {
   const validated = WorkSchema.parse(work)
   if (workJsonBytes(validated) > MAX_WORK_JSON_BYTES) {
@@ -59,17 +87,15 @@ export function makePostingWork(
     title: episode.title.trim() ? episode.title : `第${index + 1}話`,
     blocks: manuscriptBlocks(episode, input.notation, input.supplements),
   }))
-  const refs = new Set(
-    input.episodes.flatMap((episode) =>
-      illustrationReferences(manuscriptBody(episode, true))
-        .filter((ref) => ref.site === 'file')
-        .map((ref) => ref.assetPath ?? ref.name),
-    ),
-  )
-  const assets = input.sources
+  const refs = referencedAssetPaths(episodes)
+  const candidates = input.sources
     .flatMap((source) => source.assets ?? [])
     .filter((asset) => refs.has(asset.path))
-    .map((asset) => ({ path: asset.path, image: assetData(asset) }))
+  const assets = unambiguousAssets(
+    candidates,
+    (a, b) =>
+      a.data.length === b.data.length && a.data.every((byte, index) => byte === b.data[index]),
+  ).map((asset) => ({ path: asset.path, image: assetData(asset) }))
   const sourceNotes = input.sources
     .filter((source) => source.details || source.warnings.length)
     .map((source) => [source.name, source.details, ...source.warnings].filter(Boolean).join('\n'))

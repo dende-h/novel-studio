@@ -1,5 +1,14 @@
 import { ArrowLeft, CornerDownRight, Lock, Pin, ThumbsUp } from 'lucide-react'
-import { Fragment, type ReactNode, useCallback, useEffect, useId, useRef, useState } from 'react'
+import {
+  Fragment,
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 import { isStaffOnlyKind } from '@/core/board/permission'
 import type {
   BoardMeResponse,
@@ -26,6 +35,7 @@ import {
   toggleLike,
   vote,
 } from '@/ui/_api/board'
+import { focusWhenReady } from '@/ui/_utils/focus-when-ready'
 import { formatCount } from '@/ui/_utils/format'
 import { useAuth } from '@/ui/auth/auth-context'
 import { useBoardNotifications } from '@/ui/board/board-notifications-provider'
@@ -161,9 +171,7 @@ export function ThreadView({
   const toast = useToast()
   const penName = usePenName()
   const markRead = useBoardNotifications()?.read
-  const focusedPost = useRef<number | undefined>(undefined)
   const lastRead = useRef('')
-  const promptedForReply = useRef(false)
   // 投稿へ飛ぶためのアンカー。`useId` を混ぜて、同じ文書に 2 つ描かれても id が衝突しない形にする。
   const anchorPrefix = useId()
   const replyFieldId = useId()
@@ -183,10 +191,29 @@ export function ThreadView({
     [accountId],
   )
 
+  const page = useMemo(() => ({ threadId, postTarget }), [threadId, postTarget])
+  const request = useMemo(() => ({ page, getToken }), [page, getToken])
+  const currentRequest = useRef(request)
+  currentRequest.current = request
+  const focusedPage = useRef<typeof page | null>(null)
+  const [respondedRequest, setRespondedRequest] = useState<typeof request | null>(null)
+  const loading = respondedRequest !== request
+
+  const replyDestination = useMemo(
+    () => (intent === 'reply' ? { threadId } : null),
+    [intent, threadId],
+  )
+  const replyProgress = useRef({
+    destination: replyDestination,
+    guestScrolled: false,
+    promptedAccount: null as string | null,
+    focusedAccount: null as string | null,
+  })
+
   const [detail, setDetail] = useState<BoardThreadDetail | null>(null)
-  const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState('')
-  const [me, setMe] = useState<BoardMeResponse | null>(null)
+  const [viewer, setViewer] = useState<{ accountId: string; me: BoardMeResponse } | null>(null)
+  const me = viewer?.accountId === accountId ? viewer?.me : null
 
   const [replyBody, setReplyBody] = useState('')
   const [replyTo, setReplyTo] = useState(0)
@@ -204,14 +231,18 @@ export function ThreadView({
   const genRef = useRef(0)
 
   const load = useCallback(async () => {
-    const gen = genRef.current + 1
-    genRef.current = gen
+    if (currentRequest.current !== request) return
+    const gen = ++genRef.current
+    const {
+      page: { threadId, postTarget },
+      getToken,
+    } = request
     const res =
       postTarget === undefined
         ? await fetchThread(threadId, getToken)
         : await fetchThread(threadId, getToken, postTarget)
-    if (gen !== genRef.current) return
-    setLoading(false)
+    if (gen !== genRef.current || currentRequest.current !== request) return
+    setRespondedRequest(request)
     if (res.ok) {
       setDetail(res.data)
       setLoadError('')
@@ -219,33 +250,29 @@ export function ThreadView({
     }
     setDetail(null)
     setLoadError(res.message)
-  }, [threadId, getToken, postTarget])
+  }, [request])
 
   useEffect(() => {
-    setLoading(true)
     void load()
     return () => {
       genRef.current++
     }
   }, [load])
 
-  // 自分の立場（運営かどうか・表示名の有無・投稿禁止）。**未ログインでは叩かない**
-  // （`/api/board/me` は読み取りでもログインが要る唯一の窓口）。
+  // 自分の立場（運営、表示名、投稿禁止）はログイン中だけ取得する。
   const loadMe = useCallback(
     async (signal?: AbortSignal) => {
-      if (!auth.isSignedIn) {
-        setMe(null)
-        return
-      }
+      if (!accountId) return
       const res = await fetchMe(getToken)
-      if (res.ok && !signal?.aborted) setMe(res.data)
+      if (res.ok && !signal?.aborted && authRef.current.userId === accountId) {
+        setViewer({ accountId, me: res.data })
+      }
     },
-    [auth.isSignedIn, getToken],
+    [accountId, getToken],
   )
 
   useEffect(() => {
     const controller = new AbortController()
-    setMe(null)
     void loadMe(controller.signal)
     return () => controller.abort()
   }, [loadMe])
@@ -266,27 +293,28 @@ export function ThreadView({
 
   const anchorOf = (seq: number) => `${anchorPrefix}-post-${seq}`
 
-  /** `>>N` を押したときの移動。無い番号（削除で行が飛んだ等）なら何もしない。 */
-  const jumpTo = useCallback(
-    (seq: number, navigate = true) => {
-      const el = document.getElementById(anchorPrefix + '-post-' + seq)
-      if (!el) {
-        if (navigate && postTarget !== seq) onNavigatePost?.(seq)
-        return
-      }
-      // happy-dom には scrollIntoView が無いことがある。読み上げとキーボードのために
-      // フォーカスだけは必ず移す（飛んだ先を見失わせない）。
-      if (typeof el.scrollIntoView === 'function') el.scrollIntoView({ block: 'center' })
-      el.focus()
+  const focusPost = useCallback(
+    (seq: number): boolean => {
+      const el = document.getElementById(`${anchorPrefix}-post-${seq}`)
+      if (!el) return false
+      el.focus({ preventScroll: true })
+      if (document.activeElement !== el) return false
+      el.scrollIntoView?.({ block: 'center' })
+      return true
     },
-    [anchorPrefix, onNavigatePost, postTarget],
+    [anchorPrefix],
   )
 
+  /** `>>N` で現在のページにない返信を開く。 */
+  const jumpTo = (seq: number) => {
+    if (!focusPost(seq) && postTarget !== seq) onNavigatePost?.(seq)
+  }
+
   useEffect(() => {
-    if (loading || !detail || focusedPost.current === postTarget) return
-    focusedPost.current = postTarget
-    if (postTarget) jumpTo(postTarget, false)
-  }, [detail, jumpTo, loading, postTarget])
+    if (loading || focusedPage.current === page || !page.postTarget) return
+    if (!detail?.posts.some((post) => post.seq === page.postTarget)) return
+    if (focusPost(page.postTarget)) focusedPage.current = page
+  }, [detail?.posts, focusPost, loading, page])
 
   useEffect(() => {
     const token = detail?.readToken
@@ -310,16 +338,39 @@ export function ThreadView({
     }
   }, [detail?.readToken, loading, markRead])
 
+  const eventReady = !loading && Boolean(detail?.event)
+  const profile = me?.profile
   useEffect(() => {
-    if (intent !== 'reply' || loading || !detail?.event || nameOpen) return
-    if (auth.isSignedIn && me?.profile === null && !promptedForReply.current) {
-      promptedForReply.current = true
+    if (replyProgress.current.destination !== replyDestination) {
+      replyProgress.current = {
+        destination: replyDestination,
+        guestScrolled: false,
+        promptedAccount: null,
+        focusedAccount: null,
+      }
+    }
+    const progress = replyProgress.current
+    if (!replyDestination || !eventReady || nameOpen) return
+    if (!accountId) {
+      const section = replySection.current
+      if (!progress.guestScrolled && section?.scrollIntoView) {
+        section.scrollIntoView({ block: 'center' })
+        progress.guestScrolled = true
+      }
+      return
+    }
+    if (profile === null && canPost && progress.promptedAccount !== accountId) {
+      progress.promptedAccount = accountId
       setNameOpen(true)
       return
     }
-    if (auth.isSignedIn && me?.profile) replyRef.current?.focus()
-    else if (!auth.isSignedIn) replySection.current?.scrollIntoView?.({ block: 'center' })
-  }, [intent, loading, detail?.event, nameOpen, auth.isSignedIn, me?.profile])
+    if (!profile || !canPost || progress.focusedAccount === accountId) return
+    return focusWhenReady(() => replyRef.current, {
+      onFocused: () => {
+        progress.focusedAccount = accountId
+      },
+    })
+  }, [accountId, canPost, eventReady, nameOpen, profile, replyDestination])
 
   /** 返信先を決めて入力欄へ。番号を打ち直させない。 */
   const replyToSeq = (seq: number) => {
@@ -450,8 +501,8 @@ export function ThreadView({
 
   const submitName = async (name: string) => {
     const res = await setDisplayName(name, getToken)
-    if (res.ok) {
-      setMe(res.data.me)
+    if (res.ok && accountId && authRef.current.userId === accountId) {
+      setViewer({ accountId, me: res.data.me })
       // 表示名が決まると `canPost` が変わる。読み直して返信フォームを出す。
       await load()
     }

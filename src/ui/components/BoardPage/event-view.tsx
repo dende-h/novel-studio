@@ -167,6 +167,7 @@ export function EventHeader({
           <Button
             type="button"
             size="sm"
+            disabled={saving}
             onClick={() => {
               if (!auth.isSignedIn) onJoinIntent?.()
               setWorkUrl('')
@@ -184,6 +185,7 @@ export function EventHeader({
                 type="button"
                 variant="outline"
                 size="sm"
+                disabled={saving}
                 onClick={() => {
                   setWorkUrl(participation.workUrl ?? '')
                   setShowWork(true)
@@ -203,25 +205,43 @@ export function EventHeader({
                 作品 URL を削除
               </Button>
             )}
-            <Button type="button" variant="outline" size="sm" onClick={() => setConfirm('leave')}>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={saving}
+              onClick={() => setConfirm('leave')}
+            >
               参加を取り消す
             </Button>
           </>
         )}
         <ShareEvent threadId={threadId} title={title} schedule={event} />
         {event.canEdit && open && (
-          <Button type="button" size="sm" variant="outline" onClick={() => setEditing(true)}>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            disabled={saving}
+            onClick={() => setEditing(true)}
+          >
             イベントを編集
           </Button>
         )}
-        {event.canCancel && (
-          <Button type="button" size="sm" variant="outline" onClick={() => setConfirm('cancel')}>
+        {event.canCancel && open && (
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            disabled={saving}
+            onClick={() => setConfirm('cancel')}
+          >
             イベントを中止
           </Button>
         )}
       </div>
       {banned && open && !participation && <p className="text-sm">投稿禁止中は参加できません。</p>}
-      {participation?.linkHidden && (
+      {participation?.workUrl && participation.linkHidden && (
         <p className="text-sm">作品 URL は運営により非表示になっています。</p>
       )}
       {formVisible &&
@@ -276,9 +296,16 @@ export function EventHeader({
           existing={{ title, body, event }}
           onClose={() => setEditing(false)}
           onEdit={async (patch) => {
-            const result = await patchEvent(threadId, patch, getToken)
-            if (result.ok) await refresh()
-            return result
+            pending.current = true
+            setSaving(true)
+            try {
+              const result = await patchEvent(threadId, patch, getToken)
+              if (result.ok) await refresh()
+              return result
+            } finally {
+              pending.current = false
+              setSaving(false)
+            }
           }}
         />
       )}
@@ -373,39 +400,42 @@ export function EventParticipants({
         <p className="mt-2 text-sm text-on-surface-variant">まだ参加者はいません。</p>
       ) : (
         <ul className="mt-1 divide-y divide-outline-variant/30">
-          {data?.participants.map(({ id, name, workUrl }) => (
-            <li key={id} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2 text-sm">
-              <span className="break-all">{name}</span>
-              {workUrl && (
-                <>
-                  <a
-                    href={workUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="break-all text-primary underline"
-                  >
-                    作品を読む（{new URL(workUrl).hostname}）
-                  </a>
-                  {onReport && (
-                    <Button type="button" variant="ghost" size="sm" onClick={() => onReport(id)}>
-                      リンクを通報
-                    </Button>
-                  )}
-                  {staff && (
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      disabled={busy}
-                      onClick={() => void hideLink(id)}
+          {data?.participants.map(({ id, name, workUrl }) => {
+            const publicUrl = workUrl ? parseEventWorkUrl(workUrl) : null
+            return (
+              <li key={id} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2 text-sm">
+                <span className="break-all">{name}</span>
+                {publicUrl && (
+                  <>
+                    <a
+                      href={publicUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="break-all text-primary underline"
                     >
-                      リンクを非表示
-                    </Button>
-                  )}
-                </>
-              )}
-            </li>
-          ))}
+                      作品を読む（{new URL(publicUrl).hostname}）
+                    </a>
+                    {onReport && (
+                      <Button type="button" variant="ghost" size="sm" onClick={() => onReport(id)}>
+                        リンクを通報
+                      </Button>
+                    )}
+                    {staff && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        disabled={busy}
+                        onClick={() => void hideLink(id)}
+                      >
+                        リンクを非表示
+                      </Button>
+                    )}
+                  </>
+                )}
+              </li>
+            )
+          })}
         </ul>
       )}
       {data?.nextCursor && (

@@ -31,16 +31,31 @@ export const onRequestPatch: PagesFunction<BoardEnv> = async ({ request, env }) 
     return boardJson({ error: 'forbidden' }, 403)
   }
   const now = Date.now()
-  if (patch.action === 'edit') {
-    if (profile.banned_until > now)
-      return boardJson({ error: 'banned', bannedUntil: profile.banned_until }, 403)
-    if (patch.startsAt >= patch.endsAt || patch.endsAt <= now)
-      return boardJson({ error: 'bad_event_dates' }, 400)
+  if (patch.action === 'edit' && profile.banned_until > now) {
+    return boardJson({ error: 'banned', bannedUntil: profile.banned_until }, 403)
   }
+  const invalidDates = (currentStart: number, at: number) =>
+    patch.action === 'edit' &&
+    (patch.startsAt >= patch.endsAt ||
+      patch.endsAt <= at ||
+      (patch.startsAt !== currentStart && (currentStart <= at || patch.startsAt < at)))
+  if (patch.action === 'edit' && patch.revision !== event.revision)
+    return boardJson({ error: 'event_changed' }, 409)
+  if (invalidDates(event.starts_at, now)) return boardJson({ error: 'bad_event_dates' }, 400)
+
   const limited = await rateLimitedResponse(db, userId, now)
   if (limited) return limited
-  if (patch.action === 'cancel' && event.cancelled_at) return boardJson({ ok: true })
-  if (!(await patchBoardEvent(db, threadId, userId, patch, Date.now())))
-    return boardJson({ error: 'event_changed' }, 409)
-  return boardJson({ ok: true })
+  if (patch.action === 'cancel' && event.cancelled_at !== null) return boardJson({ ok: true })
+  if (await patchBoardEvent(db, threadId, userId, patch, Date.now())) return boardJson({ ok: true })
+
+  const current = await publicEvent(db, threadId)
+  if (!current) return boardJson({ error: 'not_found' }, 404)
+  if (patch.action === 'cancel' && current.cancelled_at !== null) return boardJson({ ok: true })
+  if (
+    patch.action === 'edit' &&
+    patch.revision === current.revision &&
+    invalidDates(current.starts_at, Date.now())
+  )
+    return boardJson({ error: 'bad_event_dates' }, 400)
+  return boardJson({ error: 'event_changed' }, 409)
 }

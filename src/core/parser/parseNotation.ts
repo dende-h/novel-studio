@@ -16,7 +16,7 @@ import type { Block, Inline, RefChild } from '../schema'
 
 // 自動ルビ（パイプ省略）の親文字に許す漢字レンジ
 const KANJI = '\\p{Script=Han}々〆ヵヶ'
-const AUTO_RUBY_RE = new RegExp(`^([${KANJI}]+)《([^》]+)》`, 'u')
+const AUTO_RUBY_RE = new RegExp(`^([${KANJI}]+)《([^《》]+)》`, 'u')
 const ALL_KANJI_RE = new RegExp(`^[${KANJI}]+$`, 'u')
 
 /**

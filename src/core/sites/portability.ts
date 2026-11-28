@@ -5,7 +5,9 @@ export const POSTING_PROFILES = {
     limits: [10, 10],
     dots: 'ruby',
     auto: true,
-    parens: 'wide',
+    parens: 'narou',
+    escapeAngle: 'preview',
+    escapeParens: true,
     image: 'narou',
   },
   kakuyomu: {
@@ -14,7 +16,7 @@ export const POSTING_PROFILES = {
     limits: [20, 50],
     dots: 'angle',
     auto: true,
-    escape: true,
+    escapeAngle: true,
   },
   novelup: {
     label: 'ノベルアップ＋',
@@ -22,10 +24,20 @@ export const POSTING_PROFILES = {
     limits: [50, 50],
     dots: 'ruby',
     parens: 'wide',
+    escapeAngle: true,
+    escapeParens: true,
   },
-  alphapolis: { label: 'アルファポリス', ruby: 'hash', dots: 'plain' },
+  alphapolis: { label: 'アルファポリス', ruby: 'hash', dots: 'ruby' },
   pixiv: { label: 'pixiv小説', ruby: 'pixiv', dots: 'pixiv', image: 'pixiv' },
-  estar: { label: 'エブリスタ', ruby: 'angle', limits: [20, 50], dots: 'angle', auto: true },
+  estar: {
+    label: 'エブリスタ',
+    ruby: 'angle',
+    limits: [20, 50],
+    dots: 'angle',
+    auto: true,
+    escapeAngle: true,
+    txt: true,
+  },
   hameln: {
     label: 'ハーメルン',
     ruby: 'angle',
@@ -33,20 +45,28 @@ export const POSTING_PROFILES = {
     asciiLimit: 60,
     dots: 'angle',
     dotsLimit: 100,
+    escapeDots: true,
     image: 'hameln',
   },
   noichigo: { label: '野いちご（Web）', ruby: 'angle', dots: 'plain', txt: true },
   berrys: { label: 'ベリーズカフェ（Web）', ruby: 'angle', dots: 'plain', txt: true },
   novema: { label: 'ノベマ！（Web）', ruby: 'angle', dots: 'plain', txt: true, maxBytes: 500_000 },
   teller: { label: 'テラーノベル（Web・新エディター）', ruby: 'angle', dots: 'plain' },
-  tales: { label: 'TALES（テイルズ）', ruby: 'angle', dots: 'angle', parens: 'ascii' },
+  tales: {
+    label: 'TALES（テイルズ）',
+    ruby: 'angle',
+    dots: 'angle',
+    parens: 'ascii',
+    escapeAngle: 'preview',
+    escapeParens: 'preview',
+  },
   solispia: { label: 'ソリスピア', ruby: 'angle', dots: 'angle', txt: true, guideChars: 20_000 },
   noveldays: {
     label: 'NOVEL DAYS（保存用）',
     ruby: 'angle',
     limits: [20, 50],
     dots: 'plain',
-    escape: true,
+    escapeAngle: true,
     auto: true,
   },
   akatsuki: {
@@ -56,6 +76,7 @@ export const POSTING_PROFILES = {
     txt: true,
     maxEpisodes: 100,
     image: 'akatsuki',
+    parens: 'akatsuki',
   },
 } as const satisfies Record<
   string,
@@ -67,8 +88,10 @@ export const POSTING_PROFILES = {
     dots: 'angle' | 'ruby' | 'plain' | 'pixiv'
     dotsLimit?: number
     auto?: boolean
-    escape?: boolean
-    parens?: 'wide' | 'ascii'
+    escapeAngle?: true | 'preview'
+    escapeParens?: true | 'preview'
+    escapeDots?: boolean
+    parens?: 'narou' | 'wide' | 'ascii' | 'akatsuki'
     image?: string
     txt?: boolean
     maxBytes?: number
@@ -86,8 +109,10 @@ export function postingProfile(site: PostingSiteId): PostingProfile & {
   asciiLimit?: number
   dotsLimit?: number
   auto?: boolean
-  escape?: boolean
-  parens?: 'wide' | 'ascii'
+  escapeAngle?: true | 'preview'
+  escapeParens?: true | 'preview'
+  escapeDots?: boolean
+  parens?: 'narou' | 'wide' | 'ascii' | 'akatsuki'
   image?: string
   txt?: boolean
   maxBytes?: number

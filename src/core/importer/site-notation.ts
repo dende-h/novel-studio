@@ -1,16 +1,15 @@
 import type { Block, Inline } from '../schema'
 import { isHamelnTagReading } from '../sites/hameln-notation'
 import { siteIllustrationTag } from '../sites/illustrations'
+import { readLiteralEscape } from '../sites/literal-notation'
 import { postingProfile, type SourceNotation } from '../sites/portability'
 
 const commonPatterns = [
   { re: /\[\[rb:([^<>[\]\n]+?)\s*>\s*([^<>[\]\n]+?)\]\]/y, kind: 'ruby' },
   { re: /\[\[emphasismark:([^[\]\n>]+?)\s*>\s*[^>[\]\n]+\]\]/y, kind: 'dots' },
   { re: /#([^#\n]+?)__([^#\n]+?)__#/y, kind: 'ruby' },
-  { re: /[｜|]《/y, kind: 'escape' },
   { re: /[｜|]([^｜|《》[\]\n]+)《([^《》\n]+)》/y, kind: 'ruby' },
   { re: /《《([^《》\n]+)》》/y, kind: 'dots' },
-  { re: /([\p{Script=Han}々〆ヵヶ]+)《([^《》\n]+)》/uy, kind: 'ruby' },
 ] as const
 
 const image =
@@ -21,22 +20,43 @@ const kanjiStart = /[\p{Script=Han}々〆ヵヶ]/u
 
 export function parseExternalNotation(text: string, source: SourceNotation = 'auto'): Block[] {
   const profile = source === 'auto' || source === 'literal' ? null : postingProfile(source)
-  const extra =
-    profile?.parens === 'wide'
-      ? source === 'novelup'
-        ? /([\p{Script=Han}々〆ヵヶA-Za-z0-9]+)（([^（）\n]+)）/uy
-        : /([\p{Script=Han}々〆ヵヶ]+)[（(]([\p{Script=Hiragana}\p{Script=Katakana}ー]+)[）)]/uy
-      : profile?.parens === 'ascii'
-        ? /([\p{Script=Han}々〆ヵヶ]+)\(([^()\n]+)\)/uy
-        : null
-  const alphaNumeric = {
-    re: /([\p{Script=Han}々〆ヵヶA-Za-z0-9]+)《([^《》\n]+)》/uy,
-    kind: 'ruby',
+  const parentheses = {
+    narou: [
+      {
+        re: /([\p{Script=Han}々〆ヵヶ]+)（([\p{Script=Hiragana}\p{Script=Katakana}ー]+)）/uy,
+        kind: 'ruby',
+      },
+      {
+        re: /([\p{Script=Han}々〆ヵヶ]+)\(([\p{Script=Hiragana}\p{Script=Katakana}ー]+)\)/uy,
+        kind: 'ruby',
+      },
+    ],
+    wide: [{ re: /([\p{Script=Han}々〆ヵヶA-Za-z0-9]+)（([^（）\n]+)）/uy, kind: 'ruby' }],
+    ascii: [{ re: /([\p{Script=Han}々〆ヵヶ]+)\(([^()\n]+)\)/uy, kind: 'ruby' }],
+    akatsuki: [
+      {
+        re: /([\p{Script=Han}々〆ヵヶ]+)（([\p{Script=Hiragana}\p{Script=Katakana}ー]+)）/uy,
+        kind: 'ruby',
+      },
+      {
+        re: /([\p{Script=Han}々〆ヵヶ]+)\(\(([\p{Script=Hiragana}\p{Script=Katakana}ー]+)\)\)/uy,
+        kind: 'ruby',
+      },
+      { re: /〖([^〗\n]+)〗（([^（）\n]+)）/uy, kind: 'ruby' },
+    ],
   } as const
+  const implicit =
+    source === 'novelup'
+      ? /([\p{Script=Han}々〆ヵヶA-Za-z0-9]+)《([^《》\n]+)》/uy
+      : source === 'narou'
+        ? /([\p{Script=Han}々〆ヵヶ]+)《([\p{Script=Hiragana}\p{Script=Katakana}ー]+)》/uy
+        : !profile || profile.auto || source === 'tales'
+          ? /([\p{Script=Han}々〆ヵヶ]+)《([^《》\n]+)》/uy
+          : null
   const patterns = [
-    ...(source === 'novelup' ? [alphaNumeric] : []),
     ...commonPatterns,
-    ...(extra ? [{ re: extra, kind: 'ruby' } as const] : []),
+    ...(implicit ? [{ re: implicit, kind: 'ruby' } as const] : []),
+    ...(profile?.parens ? parentheses[profile.parens] : []),
   ]
 
   return text.split('\n').map((line, index) => {
@@ -51,13 +71,10 @@ export function parseExternalNotation(text: string, source: SourceNotation = 'au
       for (let pos = 0; pos < line.length; ) {
         image.lastIndex = pos
         const artwork = image.exec(line)
-        if (
-          (source === 'novelup' || source === 'narou') &&
-          /[｜|]/.test(line[pos] ?? '') &&
-          /[（(]/.test(line[pos + 1] ?? '')
-        ) {
-          buffer += line[pos + 1] ?? ''
-          pos += 2
+        const escaped = readLiteralEscape(line, pos, source === 'auto' ? undefined : source)
+        if (escaped) {
+          buffer += escaped.text
+          pos += escaped.length
           continue
         }
         if (artwork) {
@@ -84,12 +101,9 @@ export function parseExternalNotation(text: string, source: SourceNotation = 'au
                 isHamelnTagReading(reading, line.slice(pos + m[0].length), source === 'hameln')))
           )
             continue
-          if (kind === 'escape') buffer += '《'
-          else {
-            flush()
-            if (kind === 'dots') inlines.push({ type: 'emphasisDots', text: m[1]! })
-            else inlines.push({ type: 'ruby', base: m[1]!.trim(), reading: reading! })
-          }
+          flush()
+          if (kind === 'dots') inlines.push({ type: 'emphasisDots', text: m[1]! })
+          else inlines.push({ type: 'ruby', base: base!, reading: reading! })
           pos += m[0].length
           parsed = true
           break

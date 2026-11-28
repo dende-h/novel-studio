@@ -57,7 +57,7 @@ type EventFormProps = {
 )
 
 export function EventFormDialog(props: EventFormProps) {
-  const initial = props.existing
+  const [initial] = useState(props.existing)
   const clockOffset = useRef(initial ? initial.event.serverNow - Date.now() : 0)
   const [requestId] = useState(() => crypto.randomUUID())
   const [ready, setReady] = useState<PublishedEvent | null>(null)
@@ -71,6 +71,7 @@ export function EventFormDialog(props: EventFormProps) {
     jstInputValue(initial?.event.endsAt ?? Date.now() + 7_200_000),
   )
   const [error, setError] = useState('')
+  const [startError, setStartError] = useState('')
   const [busy, setBusy] = useState(false)
   const pending = useRef(false)
   const prefix = useId()
@@ -86,12 +87,23 @@ export function EventFormDialog(props: EventFormProps) {
       initial && end === jstInputValue(initial.event.endsAt)
         ? initial.event.endsAt
         : parseJstInput(end)
-    if (
-      (!startsNow && startsAt === null) ||
-      endsAt === null ||
-      endsAt <= (startsNow ? now : (startsAt ?? 0)) ||
-      endsAt <= now
-    ) {
+    setError('')
+    setStartError('')
+    if (!startsNow && startsAt === null) {
+      setStartError('開始日時を入力してください。')
+      return
+    }
+    if (!startsNow && startsAt !== null && startsAt !== initial?.event.startsAt) {
+      if (startsAt < now) {
+        setStartError('開始日時は現在より前にできません。')
+        return
+      }
+      if (initial && initial.event.startsAt <= now) {
+        setStartError('開催中のイベントは開始日時を変更できません。')
+        return
+      }
+    }
+    if (endsAt === null || endsAt <= (startsNow ? now : (startsAt ?? 0)) || endsAt <= now) {
       setError('開始より後の、これからの終了日時を指定してください。')
       return
     }
@@ -100,14 +112,14 @@ export function EventFormDialog(props: EventFormProps) {
     setError('')
     try {
       if (props.existing) {
-        if (startsAt === null) return
+        if (startsAt === null || !initial) return
         const result = await props.onEdit({
           action: 'edit',
           title,
           body,
           startsAt,
           endsAt,
-          revision: props.existing.event.revision,
+          revision: initial.event.revision,
         })
         if (result.ok) props.onClose()
         else setError(result.message)
@@ -227,13 +239,23 @@ export function EventFormDialog(props: EventFormProps) {
                   id={prefix + '-start'}
                   type="datetime-local"
                   value={start}
-                  onChange={(event) => setStart(event.target.value)}
+                  onChange={(event) => {
+                    setStart(event.target.value)
+                    setStartError('')
+                  }}
+                  aria-invalid={startError !== ''}
+                  aria-describedby={startError ? prefix + '-start-error' : undefined}
                   required
                   disabled={
                     busy ||
                     Boolean(initial && Date.now() + clockOffset.current >= initial.event.startsAt)
                   }
                 />
+                {startError && (
+                  <p id={prefix + '-start-error'} role="alert" className="text-error text-sm">
+                    {startError}
+                  </p>
+                )}
               </div>
             )}
             <div className="grid gap-1.5">

@@ -1,8 +1,14 @@
-import { GlobalWorkerOptions, getDocument, type PDFDocumentProxy } from 'pdfjs-dist'
+import {
+  GlobalWorkerOptions,
+  getDocument,
+  type PDFDocumentProxy,
+  type PDFPageProxy,
+} from 'pdfjs-dist'
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
 import { fileTitle, type ManuscriptSource } from '@/core/importer/site-formats'
 import { MAX_IMPORT_BYTES, textBytes } from '@/core/importer/text'
 import { illustrationFileTag } from '@/core/sites/illustrations'
+import { abortable, readManuscriptFile } from './manuscript-file'
 
 const cmaps = import.meta.glob('../../../node_modules/pdfjs-dist/cmaps/*.bcmap', {
   eager: true,
@@ -11,26 +17,48 @@ const cmaps = import.meta.glob('../../../node_modules/pdfjs-dist/cmaps/*.bcmap',
 }) as Record<string, string>
 
 class LocalPdfResources {
+  constructor(private readonly signal: AbortSignal) {}
+
   async fetch({ kind, filename }: { kind: string; filename: string }) {
     const url = kind === 'cMapUrl' && cmaps[`../../../node_modules/pdfjs-dist/cmaps/${filename}`]
     if (!url || !/^[\w.-]+\.bcmap$/.test(filename)) throw new Error('PDFの文字マップがありません')
-    const response = await fetch(url)
+    const response = await fetch(url, { signal: this.signal })
     if (!response.ok) throw new Error('PDFの文字マップを読み込めません')
     return new Uint8Array(await response.arrayBuffer())
   }
 }
 
-async function bookmarks(pdf: PDFDocumentProxy) {
-  const entries: { number: number; title: string }[] = []
-  const outline = await pdf.getOutline()
-  for (const item of outline ?? []) {
-    const dest = typeof item.dest === 'string' ? await pdf.getDestination(item.dest) : item.dest
-    if (!dest?.length || !item.title.trim()) continue
-    const index = typeof dest[0] === 'number' ? dest[0] : await pdf.getPageIndex(dest[0])
-    if (index >= 0 && index < pdf.numPages) entries.push({ number: index + 1, title: item.title })
+async function bookmarks(pdf: PDFDocumentProxy, signal: AbortSignal) {
+  const outline = await abortable(signal, () => pdf.getOutline())
+  const entries = new Map<number, { number: number; title: string; depth: number }>()
+  const pending = (outline ?? []).map((item) => ({ item, depth: 0 })).reverse()
+  while (pending.length) {
+    signal.throwIfAborted()
+    const current = pending.pop()
+    if (!current) break
+    const { item, depth } = current
+    for (const child of [...item.items].reverse()) pending.push({ item: child, depth: depth + 1 })
+    try {
+      const dest =
+        typeof item.dest === 'string'
+          ? await abortable(signal, () => pdf.getDestination(item.dest as string))
+          : item.dest
+      if (!dest?.length || !item.title.trim()) continue
+      const index =
+        typeof dest[0] === 'number'
+          ? dest[0]
+          : await abortable(signal, () => pdf.getPageIndex(dest[0]))
+      if (!Number.isInteger(index) || index < 0 || index >= pdf.numPages) continue
+      const number = index + 1
+      const previous = entries.get(number)
+      // Prefer an episode bookmark over a parent chapter pointing to the same page.
+      if (!previous || depth > previous.depth)
+        entries.set(number, { number, title: item.title, depth })
+    } catch {
+      signal.throwIfAborted()
+    }
   }
-  const unique = new Set(entries.map((entry) => entry.number))
-  return unique.size === entries.length ? entries.sort((a, b) => a.number - b.number) : []
+  return [...entries.values()].sort((a, b) => a.number - b.number)
 }
 
 type Glyph = { text: string; x: number; y: number; size: number; end: boolean; vertical: boolean }
@@ -89,9 +117,21 @@ function uprightColumns(items: Glyph[]): Glyph[] {
   return [...selected]
 }
 
-async function extractPage(pdf: PDFDocumentProxy, number: number) {
+async function extractPage(pdf: PDFDocumentProxy, number: number, signal: AbortSignal) {
+  // Destroying the loading task also stops a pending getPage. If the page was
+  // already obtained, release it even when getTextContent fails or is cancelled.
   const page = await pdf.getPage(number)
-  const content = await page.getTextContent({ disableNormalization: true })
+  try {
+    const content = await abortable(signal, () =>
+      page.getTextContent({ disableNormalization: true }),
+    )
+    return extractText(content)
+  } finally {
+    page.cleanup()
+  }
+}
+
+function extractText(content: Awaited<ReturnType<PDFPageProxy['getTextContent']>>) {
   const items: Glyph[] = content.items.flatMap((item) => {
     if (!('str' in item) || !item.str.trim()) return []
     const [a, b, , , x, y] = item.transform
@@ -178,15 +218,28 @@ async function extractPage(pdf: PDFDocumentProxy, number: number) {
   }
 }
 
-export async function readManuscriptPdf(file: File): Promise<ManuscriptSource> {
+export async function readManuscriptPdf(
+  file: File,
+  signal: AbortSignal,
+  path = file.name,
+): Promise<ManuscriptSource> {
+  signal.throwIfAborted()
   if (file.size > MAX_IMPORT_BYTES) throw new Error('PDFは20 MBまで取り込めます')
-  const data = new Uint8Array(await file.arrayBuffer())
+  const data = await readManuscriptFile(file, signal)
+  signal.throwIfAborted()
   if (!new TextDecoder().decode(data.subarray(0, 8)).startsWith('%PDF-'))
     throw new Error('ファイルの中身がPDF形式と一致しません')
+  const password = new AbortController()
+  const extraction = AbortSignal.any([signal, password.signal])
+  class Resources extends LocalPdfResources {
+    constructor() {
+      super(extraction)
+    }
+  }
   GlobalWorkerOptions.workerSrc = workerUrl
   const task = getDocument({
     data,
-    BinaryDataFactory: LocalPdfResources,
+    BinaryDataFactory: Resources,
     cMapUrl: '/assets/',
     useWorkerFetch: false,
     useWasm: false,
@@ -194,27 +247,44 @@ export async function readManuscriptPdf(file: File): Promise<ManuscriptSource> {
     useSystemFonts: false,
     stopAtErrors: true,
   })
+  let destroying: Promise<void> | undefined
+  const destroy = () => {
+    destroying ??= task.destroy().catch(() => {})
+    return destroying
+  }
+  const cancel = () => {
+    void destroy()
+  }
+  extraction.addEventListener('abort', cancel, { once: true })
   task.onPassword = () => {
-    void task.destroy().catch(() => {})
+    password.abort(
+      new Error('パスワード付きのPDFは取り込めません。パスワードを解除したPDFを選んでください'),
+    )
   }
   try {
-    const pdf = await task.promise
+    const pdf = await abortable(extraction, () => task.promise)
     if (pdf.numPages > 1000) throw new Error('PDFは1,000ページまで取り込めます')
-    const meta = (await pdf.getMetadata()).info as { Title?: unknown; Author?: unknown }
+    const meta = (await abortable(extraction, () => pdf.getMetadata())).info as {
+      Title?: unknown
+      Author?: unknown
+    }
     const title =
       typeof meta.Title === 'string' && meta.Title.trim() && meta.Title !== 'untitled'
         ? meta.Title
         : fileTitle(file.name)
     const author =
       typeof meta.Author === 'string' && meta.Author !== 'anonymous' ? meta.Author : undefined
-    const outline = await bookmarks(pdf).catch(() => [])
+    const outline = await bookmarks(pdf, extraction).catch(() => {
+      extraction.throwIfAborted()
+      return []
+    })
     const episodes: ManuscriptSource['episodes'] = []
     const warnings: string[] = []
     let bytes = 0
     let firstPage = 1
     for (let number = 1; number <= pdf.numPages; number++) {
       const entry = outline.find((item) => item.number === number)
-      const page = await extractPage(pdf, number)
+      const page = await abortable(extraction, () => extractPage(pdf, number, extraction))
       if (page.vertical || page.review || !page.text) {
         warnings.push(
           number +
@@ -226,7 +296,7 @@ export async function readManuscriptPdf(file: File): Promise<ManuscriptSource> {
       }
       if (number === 1 || entry) {
         if (episodes.length) episodes.at(-1)!.pages = `${firstPage}–${number - 1}`
-        episodes.push({ title: entry?.title ?? title, body: '', path: file.name })
+        episodes.push({ title: entry?.title ?? title, body: '', path })
         firstPage = number
       }
       const episode = episodes.at(-1)!
@@ -242,22 +312,23 @@ export async function readManuscriptPdf(file: File): Promise<ManuscriptSource> {
     if (episodes.length) episodes.at(-1)!.pages = `${firstPage}–${pdf.numPages}`
     if (!episodes.some((episode) => episode.body.trim())) {
       throw new Error(
-        'PDFに読み取れる文字がありません。編集画面から本文をコピーし、貼り付けてください',
+        'PDFに読み取れる文字がありません。TXTを選ぶか、元の編集画面から本文をコピーして貼り付けてください',
       )
     }
     return {
-      name: file.name,
+      name: path,
       title,
       author,
       episodes: episodes.filter((episode) => episode.body.trim()),
       warnings: [
-        'PDFの文字層を読み取りました。話の境界はしおりと元のページで確認してください。',
+        'PDFの文字層を読み取りました。保存前にプレビューと元のページを見比べてください。文字や順序が崩れる場合は、TXTまたは貼り付けで取り込んでください。',
         ...warnings,
       ],
       expandedBytes: bytes,
       structured: Boolean(outline.length),
     }
   } finally {
-    await task.destroy()
+    extraction.removeEventListener('abort', cancel)
+    await destroy()
   }
 }
